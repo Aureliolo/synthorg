@@ -521,6 +521,74 @@ def test_classify_regression_when_returncode_nonzero_no_signals() -> None:
     assert outcome.repeated_crashes == ()
 
 
+def test_classify_crash_advisory_when_node_down_with_internal_error() -> None:
+    """xdist worker(s) ``node down`` + scheduler ``INTERNALERROR>`` -> advisory.
+
+    Reproduces the Python 3.14 + Windows ProactorEventLoop teardown
+    race where workers terminate between tests (so xdist prints ``[gwN]
+    node down: Not properly terminated`` instead of the canonical
+    ``crashed while running '...'`` form), then the scheduler crashes
+    when it tries to reassign work to the dead workers (``KeyError:
+    <WorkerController gwN>`` propagated as ``INTERNALERROR>``). Without
+    the dedicated branch the classifier would fall through to the
+    fail-closed path and block on documented native-level flakiness.
+    """
+    stdout = (
+        "[gw5] node down: Not properly terminated\n"
+        "[gw0] node down: Not properly terminated\n"
+        "INTERNALERROR> Traceback (most recent call last):\n"
+        "INTERNALERROR>   ...xdist scheduler details...\n"
+        "INTERNALERROR> KeyError: <WorkerController gw0>\n"
+    )
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=3,
+        stdout=stdout,
+    )
+    assert outcome.kind == "crash_advisory"
+    assert outcome.exit_code == 0
+    # Worker ids surface in lieu of test ids (the ``node down`` signature
+    # lacks a per-test attribution).
+    assert outcome.crashed_tests == ("<worker gw5>", "<worker gw0>")
+    assert outcome.failed_tests == ()
+    assert outcome.repeated_crashes == ()
+
+
+def test_classify_regression_when_node_down_without_internal_error() -> None:
+    """``node down`` alone, no ``INTERNALERROR>``, returncode non-zero.
+
+    Without the scheduler-crash signature the run is degraded but not
+    necessarily the documented native-flakiness pattern -- err on the
+    safe side and fail closed so the operator inspects the output.
+    """
+    stdout = "[gw5] node down: Not properly terminated\n"
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=1,
+        stdout=stdout,
+    )
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
+
+
+def test_classify_real_failure_outranks_node_down_signature() -> None:
+    """A genuine ``FAILED`` line is never demoted by node-down noise.
+
+    When xdist marks a test ``FAILED`` for a real assertion error AND a
+    different worker dies, the real failure is the actionable signal
+    and must not be hidden behind the crash-advisory branch.
+    """
+    stdout = (
+        "[gw5] node down: Not properly terminated\n"
+        "INTERNALERROR> KeyError: <WorkerController gw5>\n"
+        "FAILED tests/unit/foo.py::test_real_failure[2-2] - AssertionError\n"
+    )
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=1,
+        stdout=stdout,
+    )
+    assert outcome.kind == "regression"
+    assert outcome.failed_tests == ("tests/unit/foo.py::test_real_failure[2-2]",)
+
+
 def test_classify_advisory_when_single_crash_below_threshold() -> None:
     """A single crash of one test is below the real-bug threshold.
 
