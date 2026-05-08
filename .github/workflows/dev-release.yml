@@ -153,17 +153,19 @@ jobs:
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA::7}"
 
-          # Pull the commit subject + body from the local checkout so the
-          # release notes show what landed in this dev build. Squash-merges
-          # carry the PR title as the subject and the PR description as
-          # the body; ad-hoc pushes carry whatever the contributor wrote.
+          # Pull only the commit subject from the local checkout. Squash
+          # merges set the subject to "<PR title> (#NNN)", so the PR
+          # number is already present and auto-linked by GitHub. We
+          # deliberately do NOT include the commit body: for squash
+          # merges that body is the full PR description (tables,
+          # nested markdown, hundreds of lines), which renders poorly
+          # on the release page and buries what changed.
           # Variables are NOT interpolated into the gh --notes argument
           # directly: a backtick or `$()` in a commit subject would trigger
           # command substitution inside the double-quoted string. Build
           # the notes via printf into a tmpfile and pass --notes-file
           # instead.
           COMMIT_SUBJECT=$(git log -1 --format='%s' "$GITHUB_SHA")
-          COMMIT_BODY=$(git log -1 --format='%b' "$GITHUB_SHA")
 
           NOTES_FILE=$(mktemp /tmp/dev-release-notes.XXXXXX)
           trap 'rm -f "$NOTES_FILE"' EXIT
@@ -171,10 +173,6 @@ jobs:
             printf 'Dev build #%s toward v%s\n\n' "$DEV_NUM" "$NEXT_VERSION"
             printf '**Commit:** `%s`\n' "$SHORT_SHA"
             printf '**Subject:** %s\n\n' "$COMMIT_SUBJECT"
-            if [ -n "$COMMIT_BODY" ]; then
-              # Keep the body as-is; markdown renderers handle it.
-              printf '%s\n\n' "$COMMIT_BODY"
-            fi
             printf '**Full pipeline:** Docker images, CLI binaries, cosign signatures, and SLSA provenance will be attached by downstream workflows.\n\n'
             printf '> This is a pre-release for testing. Use `synthorg config set channel dev` to opt in.\n'
           } > "$NOTES_FILE"

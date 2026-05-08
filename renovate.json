@@ -96,7 +96,7 @@
   ],
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["* 0-6 * * 6"]
+    "schedule": ["* 0-6 * * 0"]
   },
   "customManagers": [
     {
