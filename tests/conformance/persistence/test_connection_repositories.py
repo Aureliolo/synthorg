@@ -425,6 +425,35 @@ class TestOAuthStateRepository:
         assert first is True
         assert second is False  # already consumed
 
+    async def test_save_preserves_consumed_markers_on_upsert(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A stale flow-start snapshot landing after ``mark_consumed`` has
+        # stamped the row must NOT clear the idempotency markers; doing
+        # so would let a redelivered callback fall back into the
+        # fresh-exchange path and re-use the (single-use) authorization
+        # code.
+        await backend.connections.save(_connection("github-bot"))
+        await backend.oauth_states.save(_state())
+
+        consumed_at = datetime.now(UTC)
+        ok = await backend.oauth_states.mark_consumed(
+            NotBlankStr("state-abc"),
+            connection_name=NotBlankStr("github-bot"),
+            consumed_at=consumed_at,
+        )
+        assert ok is True
+
+        # Re-save the same token with both idempotency fields ``None``
+        # (the flow-start shape). With unconditional EXCLUDED.* the
+        # markers would be nulled here.
+        await backend.oauth_states.save(_state())
+
+        fetched = await backend.oauth_states.get(NotBlankStr("state-abc"))
+        assert fetched is not None
+        assert fetched.consumed_at is not None
+        assert fetched.connection_name_returned == "github-bot"
+
     async def test_cleanup_reaps_stale_consumed_rows(
         self, backend: PersistenceBackend
     ) -> None:

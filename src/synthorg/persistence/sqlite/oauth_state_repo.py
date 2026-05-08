@@ -103,8 +103,11 @@ class SQLiteOAuthStateRepository:
                         redirect_uri = excluded.redirect_uri,
                         created_at = excluded.created_at,
                         expires_at = excluded.expires_at,
-                        consumed_at = excluded.consumed_at,
-                        connection_name_returned = excluded.connection_name_returned
+                        consumed_at = COALESCE(consumed_at, excluded.consumed_at),
+                        connection_name_returned = COALESCE(
+                            connection_name_returned,
+                            excluded.connection_name_returned
+                        )
                     """,
                     (
                         str(state.state_token),

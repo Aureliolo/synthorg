@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.communication.conflict_resolution.escalation import notify as notify_mod
 from synthorg.communication.conflict_resolution.escalation.notify import (
     NoopEscalationNotifySubscriber,
     PostgresEscalationNotifySubscriber,
@@ -28,6 +29,9 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
 )
 from synthorg.communication.conflict_resolution.escalation.registry import (
     PendingFuturesRegistry,
+)
+from synthorg.observability.events.conflict import (
+    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
 )
 
 pytestmark = pytest.mark.unit
@@ -167,7 +171,10 @@ class TestPostgresSubscriberDoneCallback:
             try:
                 await subscriber.start()
                 assert patched.called
+                args = patched.call_args.args
                 kwargs = patched.call_args.kwargs
+                assert args[0] is notify_mod.logger
+                assert args[1] == CONFLICT_ESCALATION_SUBSCRIBER_FAILED
                 assert kwargs.get("channel") == "escalations"
             finally:
                 # Reach in and cancel the real ``_run`` we just started

@@ -108,8 +108,13 @@ class PostgresOAuthStateRepository:
                         redirect_uri = EXCLUDED.redirect_uri,
                         created_at = EXCLUDED.created_at,
                         expires_at = EXCLUDED.expires_at,
-                        consumed_at = EXCLUDED.consumed_at,
-                        connection_name_returned = EXCLUDED.connection_name_returned
+                        consumed_at = COALESCE(
+                            oauth_states.consumed_at, EXCLUDED.consumed_at
+                        ),
+                        connection_name_returned = COALESCE(
+                            oauth_states.connection_name_returned,
+                            EXCLUDED.connection_name_returned
+                        )
                     """,
                     params,
                 )
