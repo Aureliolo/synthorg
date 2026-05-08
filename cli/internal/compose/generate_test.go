@@ -783,3 +783,72 @@ func extractServiceBlock(t *testing.T, yaml, name string) string {
 	}
 	return strings.Join(lines[:end], "\n")
 }
+
+func TestResolveNATSURL(t *testing.T) {
+	cases := []struct {
+		name   string
+		envVal string
+		envSet bool
+		want   string
+	}{
+		{
+			name:   "env_unset_falls_back_to_default",
+			envSet: false,
+			want:   config.DefaultNATSURLValue,
+		},
+		{
+			name:   "env_empty_falls_back_to_default",
+			envSet: true,
+			envVal: "",
+			want:   config.DefaultNATSURLValue,
+		},
+		{
+			name:   "env_whitespace_only_falls_back_to_default",
+			envSet: true,
+			envVal: "   \t\n",
+			want:   config.DefaultNATSURLValue,
+		},
+		{
+			name:   "env_set_returns_trimmed_value",
+			envSet: true,
+			envVal: "  nats://custom:4222  ",
+			want:   "nats://custom:4222",
+		},
+		{
+			name:   "env_set_canonical_value",
+			envSet: true,
+			envVal: "nats://broker.example.org:4222",
+			want:   "nats://broker.example.org:4222",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.envSet {
+				t.Setenv("SYNTHORG_NATS_URL", tc.envVal)
+			} else {
+				// Setenv + then Unsetenv via t.Setenv("", "") is awkward;
+				// the parent process may have SYNTHORG_NATS_URL set from
+				// a developer shell, so explicitly clear it for this case.
+				t.Setenv("SYNTHORG_NATS_URL", "")
+				if err := os.Unsetenv("SYNTHORG_NATS_URL"); err != nil {
+					t.Fatalf("Unsetenv: %v", err)
+				}
+			}
+			got := resolveNATSURL()
+			if got != tc.want {
+				t.Errorf("resolveNATSURL() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestResolveNATSURL_InvalidURLPropagatesToValidation confirms that when
+// SYNTHORG_NATS_URL holds a malformed value, resolveNATSURL itself returns
+// it (it is a pure env reader) but the downstream Generate -> ValidateNATSURL
+// chain rejects it before the value can land in compose.yml.
+func TestResolveNATSURL_InvalidURLPropagatesToValidation(t *testing.T) {
+	t.Setenv("SYNTHORG_NATS_URL", "http://not-a-nats-url:4222")
+	if err := config.ValidateNATSURL(resolveNATSURL()); err == nil {
+		t.Fatal("expected ValidateNATSURL to reject http:// scheme, got nil")
+	}
+}

@@ -103,16 +103,6 @@ class NotificationDispatcher:
                 sink_name=sink.sink_name,
             )
 
-    def set_config_resolver(self, resolver: ConfigResolver) -> None:
-        """Wire the resolver after construction.
-
-        Used by the API startup sequence which builds the dispatcher
-        before ``ConfigResolver`` is available, then swaps the resolver
-        in once persistence + settings are wired. Mirrors
-        ``app_state.oauth_token_manager.set_config_resolver`` shape.
-        """
-        self._config_resolver = resolver
-
     async def _resolve_enabled(self) -> bool:
         """Resolve the kill-switch, fail-safe to ``True``.
 

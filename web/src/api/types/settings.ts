@@ -20,9 +20,11 @@ export type SettingNamespace =
   | 'integrations'
   | 'meta'
   | 'notifications'
+  | 'simulations'
   | 'tools'
   | 'settings'
   | 'hr'
+  | 'workers'
   | 'telemetry'
 
 export type SettingType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'json'

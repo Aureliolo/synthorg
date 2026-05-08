@@ -33,8 +33,10 @@ export const APP_LOCALE_FALLBACK = 'en'
  *
  * Inputs may be ``null`` / empty; invalid BCP 47 tags throw inside
  * `Intl.getCanonicalLocales` and are caught and skipped. The
- * ``override`` slot stays so a future user-preference reader can
- * thread its value in without the resolver caring about the source.
+ * ``override`` slot is reserved for a future per-user locale
+ * preference (likely a ``client.locale`` setting threaded through
+ * the settings store) so callers can supply a higher-priority tag
+ * without changing the resolver signature.
  */
 export function resolveLocale(
   override: string | null | undefined,

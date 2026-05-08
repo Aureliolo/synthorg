@@ -1,4 +1,4 @@
-"""Kill-switch tests for the three long-running services (issue #1776).
+"""Kill-switch tests for the three long-running services.
 
 Each kill-switch follows the same pattern:
 
@@ -19,6 +19,7 @@ Setting                                        Default
 ============================================== ==========
 """
 
+import asyncio
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
@@ -28,6 +29,7 @@ import pytest
 from synthorg.api.state import AppState
 from synthorg.api.webhook_cleanup import (
     _resolve_webhook_receipt_cleanup_enabled,
+    _webhook_receipt_cleanup_loop,
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
@@ -35,8 +37,10 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
+from synthorg.persistence.connection_protocol import ConnectionRepository
 from synthorg.providers.health_prober import ProviderHealthProber
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared.fake_clock import FakeClock
 
 
 def _make_notification() -> Notification:
@@ -127,21 +131,24 @@ class TestNotificationDispatcherKillSwitch:
 
         assert len(sink.calls) == 1
 
-    async def test_set_config_resolver_enables_runtime_gate(self) -> None:
+    async def test_dispatch_re_reads_resolver_per_call(self) -> None:
+        """A flip from disabled to enabled propagates within one call."""
         sink = _RecordingSink()
-        dispatcher = NotificationDispatcher(sinks=(sink,))
-
-        # First dispatch with no resolver -> always-on path.
-        await dispatcher.dispatch(_make_notification())
-        assert len(sink.calls) == 1
-
         resolver = AsyncMock(spec=ConfigResolver)
         resolver.get_bool.return_value = False
-        dispatcher.set_config_resolver(resolver)
+        dispatcher = NotificationDispatcher(
+            sinks=(sink,),
+            config_resolver=resolver,
+        )
 
-        # Second dispatch with kill-switch flipped -> short-circuits.
         await dispatcher.dispatch(_make_notification())
+        assert sink.calls == []
+
+        resolver.get_bool.return_value = True
+        await dispatcher.dispatch(_make_notification())
+
         assert len(sink.calls) == 1
+        assert resolver.get_bool.await_count == 2
 
 
 @pytest.mark.unit
@@ -172,6 +179,62 @@ class TestHealthProberKillSwitch:
         prober = self._make_prober(resolver)
 
         assert await prober._resolve_enabled() is True
+
+    async def test_run_loop_skips_probe_when_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The loop must consult the helper and skip ``_probe_all`` when False."""
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.return_value = False
+        prober = self._make_prober(resolver)
+        # ``_interval`` is the per-cycle ceiling; ``stop_event.set()``
+        # wakes the loop immediately regardless of the timeout, so 1s
+        # is fine and the test still finishes in tens of milliseconds.
+        prober._interval = 1
+
+        probe_calls = 0
+
+        async def _fake_probe_all(self: ProviderHealthProber) -> None:
+            nonlocal probe_calls
+            probe_calls += 1
+
+        # Patch on the class because ``ProviderHealthProber`` declares
+        # ``__slots__`` -- per-instance attribute assignment is rejected.
+        monkeypatch.setattr(ProviderHealthProber, "_probe_all", _fake_probe_all)
+
+        task = asyncio.create_task(prober._run_loop())
+        # Let several loop iterations happen so a missed gate would be
+        # caught (`_probe_all` would be called every cycle).
+        await asyncio.sleep(0.05)
+        prober._stop_event.set()
+        await asyncio.wait_for(task, timeout=1.0)
+
+        assert probe_calls == 0
+        assert resolver.get_bool.await_count >= 1
+
+    async def test_run_loop_calls_probe_when_enabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sanity: when the helper returns True, the loop probes."""
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.return_value = True
+        prober = self._make_prober(resolver)
+        prober._interval = 1
+
+        probe_calls = 0
+
+        async def _fake_probe_all(self: ProviderHealthProber) -> None:
+            nonlocal probe_calls
+            probe_calls += 1
+
+        monkeypatch.setattr(ProviderHealthProber, "_probe_all", _fake_probe_all)
+
+        task = asyncio.create_task(prober._run_loop())
+        await asyncio.sleep(0.05)
+        prober._stop_event.set()
+        await asyncio.wait_for(task, timeout=1.0)
+
+        assert probe_calls >= 1
 
 
 @pytest.mark.unit
@@ -215,3 +278,68 @@ class TestWebhookCleanupKillSwitch:
         app_state = self._make_app_state(has_resolver=False)
 
         assert await _resolve_webhook_receipt_cleanup_enabled(app_state) is True
+
+    async def test_loop_skips_sweep_when_disabled(self) -> None:
+        """The loop body must short-circuit (no DB list_all) when disabled."""
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.return_value = False
+        list_all_mock = AsyncMock(spec=ConnectionRepository.list_all, return_value=())
+        connections_repo = SimpleNamespace(list_all=list_all_mock)
+        persistence = SimpleNamespace(connections=connections_repo)
+        app_state = cast(
+            AppState,
+            SimpleNamespace(
+                has_config_resolver=True,
+                config_resolver=resolver,
+                has_persistence=True,
+                persistence=persistence,
+            ),
+        )
+        clock = FakeClock()
+
+        task = asyncio.create_task(
+            _webhook_receipt_cleanup_loop(app_state, clock=clock)
+        )
+        # Yield once so the loop hits its first ``_resolve_*`` check then
+        # parks on ``clock.sleep``.
+        await asyncio.sleep(0)
+        await clock.advance_async(86_400.0)
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # Disabled => the tick body never reached ``connections.list_all``.
+        connections_repo.list_all.assert_not_awaited()
+        assert resolver.get_bool.await_count >= 1
+
+    async def test_loop_runs_sweep_when_enabled(self) -> None:
+        """Sanity: when the kill-switch is True the tick body fires."""
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.return_value = True
+        resolver.get_int.return_value = 30
+        list_all_mock = AsyncMock(spec=ConnectionRepository.list_all, return_value=())
+        connections_repo = SimpleNamespace(list_all=list_all_mock)
+        persistence = SimpleNamespace(connections=connections_repo)
+        app_state = cast(
+            AppState,
+            SimpleNamespace(
+                has_config_resolver=True,
+                config_resolver=resolver,
+                has_persistence=True,
+                persistence=persistence,
+            ),
+        )
+        clock = FakeClock()
+
+        task = asyncio.create_task(
+            _webhook_receipt_cleanup_loop(app_state, clock=clock)
+        )
+        await asyncio.sleep(0)
+        await clock.advance_async(86_400.0)
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        connections_repo.list_all.assert_awaited()

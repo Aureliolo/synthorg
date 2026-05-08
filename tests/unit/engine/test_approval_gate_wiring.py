@@ -1,11 +1,9 @@
-"""Tests for AgentEngine -> ApprovalGate timeout wiring (issue #1776).
+"""Tests for AgentEngine -> ApprovalGate timeout wiring.
 
 Confirms that ``approval_interrupt_timeout_seconds`` (sourced from
 ``EngineBridgeConfig.approval_interrupt_timeout_seconds`` at the
 construction site) actually reaches the ``ApprovalGate`` constructor
-instead of being silently lost. The factory at
-``engine/agent_engine_factories.py:_make_approval_gate`` had a
-hardcoded 300s default before this wiring landed.
+instead of falling back to the gate's hardcoded default.
 """
 
 from unittest.mock import AsyncMock

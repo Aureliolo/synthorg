@@ -107,13 +107,12 @@ export const WRITE_ROLES = ['ceo', 'manager', 'pair_programmer'] as const
 export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
 
 /** Display order for setting namespaces shown in the Settings page.
- * 'company' and 'providers' are excluded -- they have dedicated pages.
- * 'settings' is excluded -- service-managed internal knobs.
- * Includes every namespace the backend registry exposes (client and
- * telemetry land in the dashboard now that the registry surfaces
- * them).  The historical 'display' tab pointed at a non-existent
- * backend namespace and has been removed.
- * Each setting's `restart_required` flag is honored by RestartBadge. */
+ * Excluded:
+ *   - 'company' and 'providers': have dedicated pages.
+ *   - 'settings': service-managed internal knobs.
+ * Every other namespace the backend registry exposes is surfaced
+ * here. Each setting's `restart_required` flag is honoured by
+ * RestartBadge. */
 export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'api',
   'memory',
@@ -129,8 +128,10 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'integrations',
   'meta',
   'notifications',
+  'simulations',
   'tools',
   'hr',
+  'workers',
   'client',
 ] as const
 
@@ -152,9 +153,11 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   integrations: 'Integrations',
   meta: 'Meta-Agent',
   notifications: 'Notifications',
+  simulations: 'Simulations',
   tools: 'Tools',
   settings: 'Settings (internal)',
   hr: 'HR',
+  workers: 'Workers',
   telemetry: 'Telemetry',
 }
 

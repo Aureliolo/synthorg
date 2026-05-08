@@ -53,7 +53,7 @@ def build_notification_dispatcher(
             ``notifications.dispatcher_enabled`` runtime kill-switch.
             ``None`` disables the gate (always-on dispatcher); the
             startup wiring threads the resolver in via the dispatcher
-            rebuild path or a later ``set_config_resolver`` call.
+            rebuild in ``_apply_bridge_config``.
 
     Returns:
         Configured notification dispatcher.
