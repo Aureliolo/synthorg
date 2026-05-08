@@ -24,6 +24,38 @@ function fetchAllSettingsEntries(): Promise<SettingEntry[]> {
 
 const CURRENCY_PATTERN = /^[A-Z]{3}$/
 
+/**
+ * Per-key in-flight refcount. Two concurrent ``updateSetting`` /
+ * ``resetSetting`` calls on the same composite key need to be tracked
+ * independently so the second call does not see the map empty when
+ * the first one drains -- a ``Set<string>`` would collapse them and
+ * weaken the post-reset anti-clobber guard. Map immutability is
+ * preserved by cloning on every mutation; the value is the active
+ * count (always >= 1 while present).
+ */
+function incrementSavingKey(
+  current: ReadonlyMap<string, number>,
+  key: string,
+): Map<string, number> {
+  const next = new Map(current)
+  next.set(key, (next.get(key) ?? 0) + 1)
+  return next
+}
+
+function decrementSavingKey(
+  current: ReadonlyMap<string, number>,
+  key: string,
+): Map<string, number> {
+  const next = new Map(current)
+  const count = next.get(key) ?? 0
+  if (count <= 1) {
+    next.delete(key)
+  } else {
+    next.set(key, count - 1)
+  }
+  return next
+}
+
 /** Extract valid currency from entries, or undefined if not found/invalid. */
 function deriveCurrency(
   entries: SettingEntry[],
@@ -49,8 +81,17 @@ interface SettingsState {
   loading: boolean
   /** Error from the most recent fetch. */
   error: string | null
-  /** Composite keys ("ns/key") currently being saved. */
-  savingKeys: ReadonlySet<string>
+  /**
+   * Composite keys ("ns/key") with their in-flight save count.
+   *
+   * A refcount Map (rather than a Set) so two concurrent saves on the
+   * same composite key are tracked independently: when the first one
+   * drains, the key stays in the map with count 1, and ``size > 0``
+   * still reports "saves in flight" so ``refreshEntries()`` and the
+   * post-reset snapshot guard do not race a stale snapshot over the
+   * still-pending in-flight result.
+   */
+  savingKeys: ReadonlyMap<string, number>
   /** Error from the most recent save attempt. */
   saveError: string | null
 
@@ -95,7 +136,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   entries: [],
   loading: false,
   error: null,
-  savingKeys: new Set(),
+  savingKeys: new Map(),
   saveError: null,
 
   fetchCurrency: async () => {
@@ -164,7 +205,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   updateSetting: async (ns, key, value) => {
     const compositeKey = `${ns}/${key}`
     set((state) => ({
-      savingKeys: new Set([...state.savingKeys, compositeKey]),
+      savingKeys: incrementSavingKey(state.savingKeys, compositeKey),
       saveError: null,
     }))
     try {
@@ -180,8 +221,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                 : e,
             )
           : [...state.entries, updated]
-        const newSaving = new Set(state.savingKeys)
-        newSaving.delete(compositeKey)
+        const newSaving = decrementSavingKey(state.savingKeys, compositeKey)
         const patch: Partial<SettingsState> = {
           entries: newEntries,
           savingKeys: newSaving,
@@ -210,11 +250,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         compositeKey: sanitizeForLog(compositeKey),
         error: sanitizeForLog(errorMessage),
       })
-      set((state) => {
-        const newSaving = new Set(state.savingKeys)
-        newSaving.delete(compositeKey)
-        return { savingKeys: newSaving, saveError: errorMessage }
-      })
+      set((state) => ({
+        savingKeys: decrementSavingKey(state.savingKeys, compositeKey),
+        saveError: errorMessage,
+      }))
       // Error toast lives in the store so callers stop wrapping
       // mutation calls in try/catch. Bulk-save callers
       // (saveSettingsBatch) suppress their own aggregated error
@@ -232,7 +271,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   resetSetting: async (ns, key) => {
     const compositeKey = `${ns}/${key}`
     set((state) => ({
-      savingKeys: new Set([...state.savingKeys, compositeKey]),
+      savingKeys: incrementSavingKey(state.savingKeys, compositeKey),
       saveError: null,
     }))
     try {
@@ -243,11 +282,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         compositeKey: sanitizeForLog(compositeKey),
         error: sanitizeForLog(errorMessage),
       })
-      set((state) => {
-        const newSaving = new Set(state.savingKeys)
-        newSaving.delete(compositeKey)
-        return { savingKeys: newSaving, saveError: errorMessage }
-      })
+      set((state) => ({
+        savingKeys: decrementSavingKey(state.savingKeys, compositeKey),
+        saveError: errorMessage,
+      }))
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(error, `Failed to reset ${sanitizeForLog(compositeKey)}`),
@@ -258,6 +296,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // Reset succeeded -- refetch entries to get the resolved default.
     let refreshedEntries: SettingEntry[] | undefined
     let refreshFailed = false
+    let hasOtherSaves = false
     try {
       refreshedEntries = await fetchAllSettingsEntries()
     } catch (err) {
@@ -268,16 +307,17 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       })
     } finally {
       set((state) => {
-        const newSaving = new Set(state.savingKeys)
-        newSaving.delete(compositeKey)
-        // ``hasOtherSaves`` is computed from the post-delete set so a
-        // concurrent ``updateSetting()`` / ``resetSetting()`` started
-        // mid-flight (and not yet drained) prevents this older
-        // snapshot from clobbering the newer in-flight result. The
-        // refetch already merged the reset value, so per-key correctness
-        // is preserved; we only avoid replacing the whole ``entries``
-        // array under contention.
-        const hasOtherSaves = newSaving.size > 0
+        const newSaving = decrementSavingKey(state.savingKeys, compositeKey)
+        // ``hasOtherSaves`` lifts to the outer scope so the toast +
+        // return path below treat a concurrent-save skip the same as
+        // a refetch failure: the local view did not catch up either
+        // way, and callers following the documented
+        // "true == fully applied" contract must not clear dirty
+        // state on a stale snapshot. ``newSaving.size > 0`` after
+        // our decrement covers both the same-key concurrent case
+        // (refcount > 1 before our decrement) and the different-key
+        // case (other entries in the map).
+        hasOtherSaves = newSaving.size > 0
         const update: Partial<SettingsState> = {
           savingKeys: newSaving,
         }
@@ -294,12 +334,14 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         return update
       })
     }
-    // Return false on refresh failure so callers can keep dirty state
-    // and avoid clearing UI on stale data; the reset itself succeeded
-    // server-side, but the local view did not catch up. Callers that
-    // need the literal "server-side mutation succeeded" signal can
-    // inspect ``saveError`` instead.
-    if (refreshFailed) {
+    // Return false on refresh failure OR concurrent-save skip so
+    // callers can keep dirty state and avoid clearing UI on stale
+    // data; the reset itself succeeded server-side, but the local
+    // view did not catch up. Callers that need the literal
+    // "server-side mutation succeeded" signal can inspect
+    // ``saveError`` instead.
+    const localViewStale = refreshFailed || hasOtherSaves
+    if (localViewStale) {
       useToastStore.getState().add({
         variant: 'warning',
         title: `Reset ${sanitizeForLog(compositeKey)}`,
@@ -313,7 +355,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         title: `Reset ${sanitizeForLog(compositeKey)}`,
       })
     }
-    return !refreshFailed
+    return !localViewStale
   },
 
   updateFromWsEvent: (event) => {

@@ -57,20 +57,13 @@ _HTTP_SERVER_ERROR_THRESHOLD: Final[int] = (
 _MAX_ERROR_MESSAGE_LENGTH: Final[int] = (
     200  # lint-allow: magic-numbers -- log truncation limit
 )
-_DEFAULT_OLLAMA_PORT: Final[int] = (
-    11434  # lint-allow: magic-numbers -- mirrors providers.ollama_default_port
-)
-"""Documented default that mirrors the ``providers.ollama_default_port``
-setting.  Production callers resolve via ``ConfigResolver`` and pass
-the value through; this constant is the documented baseline used by
-test stubs and as the resolver's last-resort fallback."""
 
 
 def _build_ping_url(
     base_url: str,
     litellm_provider: str | None,
     *,
-    ollama_port: int = _DEFAULT_OLLAMA_PORT,
+    ollama_port: int,
 ) -> str:
     """Build a lightweight ping URL for a provider.
 
@@ -83,12 +76,13 @@ def _build_ping_url(
         base_url: Provider base URL.
         litellm_provider: LiteLLM provider identifier for path selection.
         ollama_port: Port used to detect a self-hosted Ollama provider
-            when ``litellm_provider`` is not set explicitly.  Must be a
-            valid TCP port (1-65535).  Resolve via
-            ``ConfigResolver.get_int("providers",
-            "ollama_default_port")`` at the call site; the registry
-            entry validates the bounds at write time, so a value out
-            of range cannot reach this function via the resolver path.
+            when ``litellm_provider`` is not set explicitly. Required
+            (no default) so the canonical value flows through from the
+            registered ``providers.ollama_default_port`` setting at
+            every call site instead of mirroring it locally. Must be a
+            valid TCP port (1-65535); the registry entry validates the
+            bounds at write time, so a value out of range cannot reach
+            this function via the resolver path.
 
     Returns:
         URL to ping.
@@ -233,6 +227,13 @@ class ProviderHealthProber:
             if self._task is not None and not self._task.done():
                 return
             self._stop_event.clear()
+            # ``_resolve_failed_logged`` survives a graceful stop/start
+            # otherwise, which would silence the resolver-failure
+            # warning on a re-started service that hits the same
+            # outage. Reset before each fresh run so the
+            # log-once-per-failure-run contract holds across lifecycle
+            # transitions.
+            self._resolve_failed_logged = False
             self._task = asyncio.create_task(
                 self._run_loop(),
                 name="provider-health-prober",

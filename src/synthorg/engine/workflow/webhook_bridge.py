@@ -269,6 +269,11 @@ class WebhookEventBridge:
         consecutive_errors = 0
         while True:
             if not await self._resolve_enabled():
+                # Operator-controlled pause must not consume the error
+                # budget: clear any pre-pause error streak so the first
+                # post-resume transient failure does not stop the
+                # bridge unexpectedly.
+                consecutive_errors = 0
                 logger.debug(WEBHOOK_BRIDGE_PAUSED, reason="paused_by_setting")
                 await asyncio.sleep(await self._get_poll_timeout())
                 continue

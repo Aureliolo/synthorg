@@ -38,7 +38,7 @@ function resetStore() {
     entries: [],
     loading: false,
     error: null,
-    savingKeys: new Set(),
+    savingKeys: new Map(),
     saveError: null,
     fetchSettingsData: mockFetchSettingsData,
     refreshEntries: mockRefreshEntries,
@@ -103,7 +103,7 @@ describe('useSettingsData', () => {
   })
 
   it('derives saving from savingKeys size', () => {
-    useSettingsStore.setState({ savingKeys: new Set(['api/server_port']) })
+    useSettingsStore.setState({ savingKeys: new Map([['api/server_port', 1]]) })
     const { result } = renderHook(() => useSettingsData())
     expect(result.current.saving).toBe(true)
   })

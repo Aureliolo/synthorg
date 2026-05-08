@@ -116,31 +116,48 @@ class _PatchCtx:
 
 @pytest.mark.unit
 class TestBuildPingUrl:
+    # Mirrors the registered ``providers.ollama_default_port`` default;
+    # production callers resolve via ``ConfigResolver``, tests pass it
+    # through explicitly so ``_build_ping_url`` stays free of a
+    # parallel-default (single source of truth: the settings registry).
+    OLLAMA_PORT = 11434
+
     def test_root_url_provider_returns_root(self) -> None:
         # Provider type "ollama" uses root URL (liveness string)
         assert (
-            _build_ping_url("http://localhost:11434", "ollama")
+            _build_ping_url(
+                "http://localhost:11434", "ollama", ollama_port=self.OLLAMA_PORT
+            )
             == "http://localhost:11434"
         )
 
     def test_local_detected_by_port(self) -> None:
-        assert _build_ping_url("http://host:11434/", None) == "http://host:11434"
+        assert (
+            _build_ping_url("http://host:11434/", None, ollama_port=self.OLLAMA_PORT)
+            == "http://host:11434"
+        )
 
     def test_standard_appends_models(self) -> None:
         assert (
-            _build_ping_url("http://localhost:1234/v1", None)
+            _build_ping_url(
+                "http://localhost:1234/v1", None, ollama_port=self.OLLAMA_PORT
+            )
             == "http://localhost:1234/v1/models"
         )
 
     def test_strips_trailing_slash(self) -> None:
         assert (
-            _build_ping_url("http://localhost:8000/v1/", "test-api")
+            _build_ping_url(
+                "http://localhost:8000/v1/", "test-api", ollama_port=self.OLLAMA_PORT
+            )
             == "http://localhost:8000/v1/models"
         )
 
     def test_port_in_path_does_not_match(self) -> None:
         """Port heuristic uses urlparse -- :11434 in path should not match."""
-        result = _build_ping_url("http://host:8080/api/11434/v1", None)
+        result = _build_ping_url(
+            "http://host:8080/api/11434/v1", None, ollama_port=self.OLLAMA_PORT
+        )
         assert result == "http://host:8080/api/11434/v1/models"
 
 
@@ -252,7 +269,14 @@ class TestProviderHealthProber:
         policy = ProviderDiscoveryPolicy(
             host_port_allowlist=("allowed.com:8080",),
         )
-        policy_loader = AsyncMock(return_value=policy)
+
+        # ``spec=`` against an async-callable signature so the gate's
+        # mock-spec ConcreteClass rule is satisfied; the body is never
+        # invoked because ``return_value=`` short-circuits the call.
+        async def _policy_loader_spec() -> ProviderDiscoveryPolicy:
+            raise NotImplementedError
+
+        policy_loader = AsyncMock(spec=_policy_loader_spec, return_value=policy)
 
         configs = {
             "test-blocked": _make_local_config(

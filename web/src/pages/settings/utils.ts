@@ -6,39 +6,50 @@ import { sanitizeForLog } from '@/utils/logging'
 const log = createLogger('settings')
 
 /**
- * Allowed setting namespaces, kept in lockstep with the
- * ``SettingNamespace`` union in ``@/api/types/settings``. The
- * Set-of-string lookup lets ``saveSettingsBatch`` validate a composite
- * key's namespace before casting through ``as SettingNamespace`` and
- * dispatching the API call -- so a malformed dirty-draft entry
- * (manual code-mode input, stale localStorage from an older schema,
- * fuzz noise) cannot reach the network with a literally-impossible
- * namespace.
+ * Authoritative compile-time-exhaustive map of allowed setting
+ * namespaces. ``Record<SettingNamespace, true>`` forces TypeScript to
+ * fail the build if ``SettingNamespace`` gains a new member that this
+ * table forgets to list, instead of letting a valid setting be
+ * rejected at runtime as "Unknown namespace" the first time a user
+ * tries to save it. ``VALID_SETTING_NAMESPACES`` is derived from this
+ * record so the runtime allowlist stays in lockstep automatically.
  */
-const VALID_SETTING_NAMESPACES: ReadonlySet<string> = new Set<SettingNamespace>([
-  'api',
-  'client',
-  'company',
-  'providers',
-  'memory',
-  'budget',
-  'security',
-  'coordination',
-  'observability',
-  'backup',
-  'engine',
-  'communication',
-  'a2a',
-  'integrations',
-  'meta',
-  'notifications',
-  'simulations',
-  'tools',
-  'settings',
-  'hr',
-  'workers',
-  'telemetry',
-])
+const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
+  api: true,
+  client: true,
+  company: true,
+  providers: true,
+  memory: true,
+  budget: true,
+  security: true,
+  coordination: true,
+  observability: true,
+  backup: true,
+  engine: true,
+  communication: true,
+  a2a: true,
+  integrations: true,
+  meta: true,
+  notifications: true,
+  simulations: true,
+  tools: true,
+  settings: true,
+  hr: true,
+  workers: true,
+  telemetry: true,
+}
+
+/**
+ * Runtime allowlist used by ``saveSettingsBatch`` to validate a
+ * composite key's namespace before casting through
+ * ``as SettingNamespace`` and dispatching the API call -- so a
+ * malformed dirty-draft entry (manual code-mode input, stale
+ * localStorage from an older schema, fuzz noise) cannot reach the
+ * network with a literally-impossible namespace.
+ */
+const VALID_SETTING_NAMESPACES: ReadonlySet<string> = new Set(
+  Object.keys(SETTING_NAMESPACE_TABLE),
+)
 
 /**
  * Fuzzy subsequence match: returns true if every character of `needle`
