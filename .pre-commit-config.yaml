@@ -475,8 +475,11 @@ repos:
         # Trigger on any in-scope source / test file, the gate script
         # itself, or this config so a PR that introduces a forbidden
         # pattern (or weakens the gate by editing the script) cannot
-        # bypass the check.
-        files: ^(src/synthorg/.*\.(py|sql)|tests/.*\.py|scripts/check_no_review_origin_in_code\.py|\.pre-commit-config\.yaml)$
+        # bypass the check. Atlas-managed migration revisions are
+        # auto-generated and excluded so the hook does not start a
+        # subprocess for files the script's internal allowlist would
+        # immediately skip.
+        files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_review_origin_in_code\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 
@@ -487,7 +490,10 @@ repos:
         # Trigger on any in-scope source / test file, the gate script
         # itself, or this config so a PR that introduces migration /
         # origin framing (or weakens the gate by editing the script)
-        # cannot bypass the check.
-        files: ^(src/synthorg/.*\.(py|sql)|tests/.*\.py|scripts/check_no_migration_framing\.py|\.pre-commit-config\.yaml)$
+        # cannot bypass the check. Atlas-managed migration revisions
+        # are auto-generated and excluded so the hook does not start a
+        # subprocess for files the script's internal allowlist would
+        # immediately skip.
+        files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_migration_framing\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]

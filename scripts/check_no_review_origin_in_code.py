@@ -85,6 +85,11 @@ _SEC_PATTERN: Final[re.Pattern[str]] = re.compile(r"\bSEC-\d+\b")
 # Suppression marker -- requires non-empty justification.
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: review-origin"
 
+# Sentinel prefix prepended to I/O failure entries so ``main()`` can
+# distinguish them from policy violations and surface a distinct
+# exit code (3 vs 1). Tests assert on this prefix verbatim.
+_IO_ERROR_PREFIX: Final[str] = "[I/O ERROR] "
+
 # ── Path scoping ───────────────────────────────────────────────────
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
@@ -189,6 +194,11 @@ def _line_has_trailing_marker_python(line: str) -> bool:
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(line).readline))
     except tokenize.TokenError, IndentationError, SyntaxError:
+        # Fail-closed: a malformed line cannot tokenize, so the marker
+        # (if any) is unreachable. Returning False forces the gate to
+        # flag the underlying violation rather than silently suppress
+        # it because the line happens to be syntactically broken.
+        # Committed source should never hit this branch.
         return False
     for tok in tokens:
         if tok.type != tokenize.COMMENT:
@@ -276,7 +286,10 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     try:
         text = file_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        return [f"{rel}:0: unable to scan file: {exc}"]
+        # Sentinel prefix tags I/O failures so ``main()`` can route them
+        # to a separate exit code (3) -- callers must NOT treat them
+        # as policy violations.
+        return [f"{_IO_ERROR_PREFIX}{rel}:0: unable to scan file: {exc}"]
     issues: list[str] = []
     file_lines = text.splitlines()
     is_sql = file_path.suffix == ".sql"
@@ -316,12 +329,24 @@ def _git_tracked_files(abs_root: Path, project_root: Path) -> list[tuple[Path, s
             cwd=project_root,
         )
     except subprocess.CalledProcessError, FileNotFoundError:
+        # The fallback walks the filesystem directly, which means
+        # ``.gitignore`` is NOT honoured. Surface the mode change
+        # explicitly so a CI run on a source tarball does not silently
+        # diverge from a developer's local run.
+        print(
+            "check_no_review_origin_in_code: git unavailable; "
+            "falling back to filesystem walk (.gitignore is NOT honoured)",
+            file=sys.stderr,
+        )
         return [
             (p, p.relative_to(project_root).as_posix())
             for p in abs_root.rglob("*")
             if p.is_file() and p.suffix in _SCANNED_SUFFIXES
         ]
-    out = result.stdout.decode("utf-8", errors="replace")
+    # Strict decode: a non-UTF-8 path in ``git ls-files`` output is a
+    # filesystem oddity that must surface as a hard failure rather
+    # than silently drop bytes (and silently skip the affected file).
+    out = result.stdout.decode("utf-8")
     paths = [p for p in out.split("\0") if p]
     # ``git ls-files`` with ``**`` glob patterns can yield duplicates;
     # dedupe via a dict keyed on the relative path.
@@ -334,7 +359,13 @@ def _git_tracked_files(abs_root: Path, project_root: Path) -> list[tuple[Path, s
 
 
 def _iter_targets(roots: list[Path], project_root: Path) -> list[tuple[Path, str]]:
-    """Yield ``(absolute_path, posix_relative_path)`` for every file to scan."""
+    """Yield ``(absolute_path, posix_relative_path)`` for every file to scan.
+
+    Roots are pre-validated by ``main()``; this helper silently skips
+    any unresolvable / missing root rather than raising. Direct
+    callers (tests) MUST therefore pre-validate or accept the silent
+    skip.
+    """
     targets: list[tuple[Path, str]] = []
     for root in roots:
         abs_root = _resolve_root(root, project_root)
@@ -390,9 +421,8 @@ def _force_utf8_streams() -> None:
             reconfigure(encoding="utf-8", errors="replace")
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entry point."""
-    _force_utf8_streams()
+def _build_parser() -> argparse.ArgumentParser:
+    """Return the argparse parser used by ``main()``."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "paths",
@@ -409,10 +439,45 @@ def main(argv: list[str] | None = None) -> int:
         default=list(_DEFAULT_ROOTS),
         help="Roots to scan (relative to repo root).",
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def _print_policy_summary(count: int) -> None:
+    """Print the policy-violation summary to stderr."""
+    print(
+        f"\n{count} review-origin / back-ref violation(s) found."
+        " Code comments answer WHY only -- never reviewer citations,"
+        " never issue back-refs. Origin context lives in git log + PR"
+        " body, NEVER in committed files. Per-line opt-out:"
+        " '# lint-allow: review-origin -- <reason>' (mandatory non-empty"
+        " justification).",
+        file=sys.stderr,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0912 -- CLI entry point with distinct exit-code branches (argv / policy / I/O)
+    """CLI entry point.
+
+    Exit codes:
+
+    * ``0`` -- no violations and no I/O errors.
+    * ``1`` -- one or more policy violations.
+    * ``2`` -- argv error (root outside the project, no roots).
+    * ``3`` -- one or more files unreadable (I/O / decode failure);
+      may coexist with ``1`` -- whichever is most severe wins, with
+      ``3`` taking precedence over ``1``.
+    """
+    _force_utf8_streams()
+    args = _build_parser().parse_args(argv)
 
     project_root = _REPO_ROOT
     roots = [Path(p) for p in args.roots]
+    if not roots:
+        print(
+            "check_no_review_origin_in_code: no roots to scan",
+            file=sys.stderr,
+        )
+        return 2
     for root in roots:
         if _resolve_root(root, project_root) is None:
             print(
@@ -428,21 +493,28 @@ def main(argv: list[str] | None = None) -> int:
         for path, rel in _iter_targets(roots, project_root):
             violations.extend(_scan_file(path, rel))
 
-    if not violations:
-        return 0
+    io_errors = [v for v in violations if v.startswith(_IO_ERROR_PREFIX)]
+    policy = [v for v in violations if not v.startswith(_IO_ERROR_PREFIX)]
 
-    for line in violations:
+    for line in policy:
         print(line)
-    print(
-        f"\n{len(violations)} review-origin / back-ref violation(s) found."
-        " Code comments answer WHY only -- never reviewer citations,"
-        " never issue back-refs. Origin context lives in git log + PR"
-        " body, NEVER in committed files. Per-line opt-out:"
-        " '# lint-allow: review-origin -- <reason>' (mandatory non-empty"
-        " justification).",
-        file=sys.stderr,
-    )
-    return 1
+    if io_errors:
+        if policy:
+            print(file=sys.stderr)
+        print(
+            f"{len(io_errors)} I/O error(s) -- gate cannot scan these files:",
+            file=sys.stderr,
+        )
+        for line in io_errors:
+            print(line, file=sys.stderr)
+
+    if policy:
+        _print_policy_summary(len(policy))
+    if io_errors:
+        return 3
+    if policy:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -12,6 +12,9 @@ Covers:
 * Per-line opt-out (``# lint-allow: review-origin -- <reason>``).
 * Path allowlist (docs / scanner self-test files).
 * Path-traversal guard.
+* Error-path fall-backs (tokenize error, file-read error).
+* Direct unit tests for marker helpers.
+* I/O-error sentinel prefix routing.
 """
 
 import importlib.util
@@ -312,6 +315,24 @@ class TestSuppressionMarker:
         )
         assert any("CodeRabbit" in i for i in issues), issues
 
+    def test_marker_with_colon_separator(self, src_dir: Path) -> None:
+        """The marker accepts ``:`` as separator (not just ``--``)."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            "# CodeRabbit  # lint-allow: review-origin: discussing the rule\n",
+        )
+        assert issues == [], issues
+
+    def test_marker_with_colon_separator_empty_reason(self, src_dir: Path) -> None:
+        """``review-origin:`` with empty reason must NOT suppress."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            "# CodeRabbit  # lint-allow: review-origin:   \n",
+        )
+        assert any("CodeRabbit" in i for i in issues), issues
+
 
 class TestPathAllowlist:
     """Files under canonical-doc paths are not scanned."""
@@ -369,6 +390,29 @@ class TestPathAllowlist:
         issues = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
         assert issues == [], issues
 
+    @pytest.mark.parametrize(
+        "rel_path",
+        [
+            "_audit/findings/x.py",
+            ".claude/agents/x.py",
+            ".github/scripts/x.py",
+            "src/synthorg/persistence/postgres/revisions/0001_init.sql",
+            "src/synthorg/persistence/sqlite/revisions/0001_init.sql",
+        ],
+    )
+    def test_allowlisted_path_prefixes_skipped(
+        self, src_dir: Path, rel_path: str
+    ) -> None:
+        """Each allowlist prefix is honoured: the gate scans nothing under it."""
+        fp = _write_fixture(
+            src_dir,
+            rel_path,
+            "# pre-PR review #1234 / CodeRabbit / Round-3 / SEC-1\n",
+        )
+        rel = fp.relative_to(src_dir).as_posix()
+        issues = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
+        assert issues == [], issues
+
 
 class TestScopeLimit:
     """Only ``*.py`` files under src/synthorg/ + tests/ are scanned."""
@@ -408,3 +452,154 @@ class TestPathTraversal:
         outside = Path("..") / ".." / "etc"
         resolved = _MODULE._resolve_root(outside, tmp_path)  # type: ignore[attr-defined]
         assert resolved is None
+
+
+class TestNarrativeBackrefSynonyms:
+    """Every synonym in the narrative-backref regex fires."""
+
+    @pytest.mark.parametrize(
+        "verb",
+        [
+            "issue",
+            "see",
+            "fixes",
+            "fix",
+            "closes",
+            "close",
+            "under",
+            "until",
+            "once",
+            "see PR",
+            "part of",
+            "via",
+            "tracked by",
+        ],
+    )
+    def test_synonym_flagged(self, src_dir: Path, verb: str) -> None:
+        content = f"# {verb} #1234\n"
+        issues = _scan(src_dir, "src/synthorg/x.py", content)
+        assert any(verb.split(maxsplit=1)[0].lower() in i.lower() for i in issues), (
+            verb,
+            issues,
+        )
+
+
+class TestMarkerHelpers:
+    """Direct unit tests for marker-detection helpers."""
+
+    def test_has_marker_with_reason_dash(self) -> None:
+        """``-- reason`` form with non-empty reason is recognised."""
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# CodeRabbit  # lint-allow: review-origin -- valid reason"
+        )
+        assert result is True
+
+    def test_has_marker_with_reason_colon(self) -> None:
+        """``: reason`` form with non-empty reason is recognised."""
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# CodeRabbit  # lint-allow: review-origin: alt-sep reason"
+        )
+        assert result is True
+
+    def test_has_marker_with_reason_dash_empty(self) -> None:
+        """``-- `` with empty / whitespace reason returns False."""
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# CodeRabbit  # lint-allow: review-origin --   "
+        )
+        assert result is False
+
+    def test_has_marker_with_reason_colon_empty(self) -> None:
+        """``: `` with empty / whitespace reason returns False."""
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# CodeRabbit  # lint-allow: review-origin:    "
+        )
+        assert result is False
+
+    def test_has_marker_no_separator(self) -> None:
+        """Bare ``review-origin`` with no separator returns False."""
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# CodeRabbit  # lint-allow: review-origin"
+        )
+        assert result is False
+
+    def test_has_marker_absent(self) -> None:
+        """Comment without the marker returns False."""
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# just a normal comment"
+        )
+        assert result is False
+
+    def test_dedicated_marker_python_comment(self) -> None:
+        """Whole-line ``#`` comment with marker + reason is dedicated."""
+        result = _MODULE._line_has_dedicated_marker(  # type: ignore[attr-defined]
+            "# lint-allow: review-origin -- documenting the rule"
+        )
+        assert result is True
+
+    def test_dedicated_marker_sql_comment(self) -> None:
+        """Whole-line SQL ``--`` comment with marker + reason is dedicated."""
+        result = _MODULE._line_has_dedicated_marker(  # type: ignore[attr-defined]
+            "-- lint-allow: review-origin -- in-revision pattern fixture"
+        )
+        assert result is True
+
+    def test_dedicated_marker_code_line_rejected(self) -> None:
+        """Marker after code (line does NOT start with ``#`` / ``--``) is rejected."""
+        result = _MODULE._line_has_dedicated_marker(  # type: ignore[attr-defined]
+            "x = 1  # TODO lint-allow: review-origin -- later"
+        )
+        assert result is False
+
+    def test_trailing_marker_python_in_string_literal(self) -> None:
+        """``#`` inside a string literal is not a comment, so no suppress."""
+        result = _MODULE._line_has_trailing_marker_python(  # type: ignore[attr-defined]
+            'x = "# lint-allow: review-origin -- ok"\n'
+        )
+        assert result is False
+
+    def test_trailing_marker_sql_basic(self) -> None:
+        """SQL trailing ``--`` comment with marker + reason suppresses."""
+        result = _MODULE._line_has_trailing_marker_sql(  # type: ignore[attr-defined]
+            "SELECT 1; -- lint-allow: review-origin -- example"
+        )
+        assert result is True
+
+
+class TestErrorPaths:
+    """Fail-closed semantics for tokenize / I/O errors."""
+
+    def test_tokenize_error_does_not_suppress(self, src_dir: Path) -> None:
+        """A syntactically broken line cannot tokenize; marker is unreachable."""
+        # ``def f(:`` triggers a syntax error during tokenization. Even
+        # if a trailing marker is present, it must NOT suppress the
+        # forbidden-token check on the following line.
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            "def f(:  # lint-allow: review-origin -- broken\n# CodeRabbit\n",
+        )
+        assert any("CodeRabbit" in i for i in issues), issues
+
+    def test_scan_file_io_error_emits_sentinel(self, src_dir: Path) -> None:
+        """Files that cannot be read produce an ``[I/O ERROR]``-prefixed entry."""
+        # Create a directory at a ``.py`` path so ``read_text`` raises
+        # ``IsADirectoryError`` (POSIX) / ``PermissionError`` (Windows);
+        # both are ``OSError`` subclasses.
+        fp = src_dir / "src" / "synthorg" / "fakedir.py"
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        fp.mkdir()
+        rel = fp.relative_to(src_dir).as_posix()
+        issues: list[str] = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
+        assert len(issues) == 1
+        assert issues[0].startswith("[I/O ERROR] "), issues
+        assert "fakedir.py" in issues[0]
+
+    def test_violation_message_format(self, src_dir: Path) -> None:
+        """Policy-violation messages use ``<rel>:<line>: <label>: <content>``."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            "# CodeRabbit at foo:1\n",
+        )
+        assert len(issues) >= 1
+        assert issues[0].startswith("src/synthorg/x.py:1: "), issues

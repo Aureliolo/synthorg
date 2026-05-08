@@ -11,8 +11,13 @@ Covers:
 * Negative cases for look-alikes (``re-exported from``,
   ``CoordinationPhaseResult`` -- bare ``Phase`` without digit,
   ``the phases of the moon``).
-* Per-line opt-out (``# lint-allow: migration-framing -- <reason>``).
+* Per-line opt-out (``# lint-allow: migration-framing -- <reason>``)
+  with both ``--`` and ``:`` separators, marker-in-string-literal
+  isolation, whitespace-only reason rejection.
 * Path allowlist + scope.
+* Error-path fall-backs (tokenize error, file-read error).
+* Direct unit tests for marker helpers.
+* I/O-error sentinel prefix routing.
 """
 
 import importlib.util
@@ -117,6 +122,40 @@ class TestRenamedFrom:
         assert any("renamed from" in i.lower() for i in issues), issues
 
 
+class TestMovedHereIn:
+    """``moved here in`` is migration framing."""
+
+    def test_moved_here_in_lowercase(self, src_dir: Path) -> None:
+        """``moved here in <version>`` flags as migration framing."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            '"""Service moved here in v0.7."""\n',
+        )
+        assert any("moved here in" in i.lower() for i in issues), issues
+
+    def test_moved_here_in_phase_n(self, src_dir: Path) -> None:
+        """The canonical example from the docstring fires both gates."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            "# moved here in Phase 2 of the refactor\n",
+        )
+        # Both ``moved here in`` and ``Phase 2`` patterns should match
+        # (the line carries both).
+        assert any("moved here in" in i.lower() for i in issues), issues
+        assert any("phase" in i.lower() for i in issues), issues
+
+    def test_moved_alone_not_flagged(self, src_dir: Path) -> None:
+        """The bare verb ``moved`` (without ``here in``) is fine."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            "# values are moved between buckets each step\n",
+        )
+        assert issues == [], issues
+
+
 class TestPhaseN:
     """``Phase \\d+`` (any case) is migration framing."""
 
@@ -155,7 +194,13 @@ class TestPhaseN:
         assert issues == [], issues
 
     def test_phase_with_decimal_flagged(self, src_dir: Path) -> None:
-        """Even ``Phase 1.5`` (decimal) gets flagged on the integer prefix."""
+        """``Phase 1.5`` is flagged because the regex matches the integer ``1``.
+
+        The pattern ``\\bphase\\s+\\d+`` consumes ``Phase 1`` and stops
+        before ``.5`` because ``\\d+`` does not span the decimal point.
+        Flagging is what we want -- decimal phases are still phases --
+        but the test name documents what the regex actually does.
+        """
         issues = _scan(
             src_dir,
             "src/synthorg/x.py",
@@ -227,6 +272,44 @@ class TestSuppressionMarker:
         )
         assert any("phase" in i.lower() for i in issues), issues
 
+    def test_marker_whitespace_reason_does_not_suppress(self, src_dir: Path) -> None:
+        """Whitespace-only justification after ``--`` must NOT suppress."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            'PATTERN = "Phase 1"  # lint-allow: migration-framing --   \n',
+        )
+        assert any("phase" in i.lower() for i in issues), issues
+
+    def test_marker_with_colon_separator(self, src_dir: Path) -> None:
+        """The marker accepts ``:`` as separator (not just ``--``)."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            'PATTERN = "Phase 1"  # lint-allow: migration-framing: gate fixture\n',
+        )
+        assert issues == [], issues
+
+    def test_marker_with_colon_separator_empty_reason(self, src_dir: Path) -> None:
+        """``migration-framing:`` with empty reason must NOT suppress."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            'PATTERN = "Phase 1"  # lint-allow: migration-framing:   \n',
+        )
+        assert any("phase" in i.lower() for i in issues), issues
+
+    def test_marker_inside_string_literal_does_not_suppress(
+        self, src_dir: Path
+    ) -> None:
+        """Marker inside a string literal must NOT suppress on the same line."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            'x = "# lint-allow: migration-framing -- ok"; y = "Phase 1"\n',
+        )
+        assert any("phase" in i.lower() for i in issues), issues
+
 
 class TestPathAllowlist:
     """Files under canonical-doc paths are not scanned."""
@@ -282,6 +365,29 @@ class TestPathAllowlist:
         issues = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
         assert issues == [], issues
 
+    @pytest.mark.parametrize(
+        "rel_path",
+        [
+            "_audit/findings/x.py",
+            ".claude/agents/x.py",
+            ".github/scripts/x.py",
+            "src/synthorg/persistence/postgres/revisions/0001_init.sql",
+            "src/synthorg/persistence/sqlite/revisions/0001_init.sql",
+        ],
+    )
+    def test_allowlisted_path_prefixes_skipped(
+        self, src_dir: Path, rel_path: str
+    ) -> None:
+        """Each allowlist prefix is honoured: gate scans nothing under it."""
+        fp = _write_fixture(
+            src_dir,
+            rel_path,
+            "# Phase 1: ported from previously called bar -- we used to do X\n",
+        )
+        rel = fp.relative_to(src_dir).as_posix()
+        issues = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
+        assert issues == [], issues
+
 
 class TestScopeLimit:
     """Only ``*.py`` / ``*.sql`` files under in-scope roots are scanned."""
@@ -311,3 +417,133 @@ class TestPathTraversal:
         outside = Path("..") / ".." / "etc"
         resolved = _MODULE._resolve_root(outside, tmp_path)  # type: ignore[attr-defined]
         assert resolved is None
+
+
+class TestPatternParametrized:
+    """Every forbidden framing pattern fires on a representative fixture."""
+
+    @pytest.mark.parametrize(
+        ("label", "fixture"),
+        [
+            ("ported from", '"""ported from foo.bar in v0.6."""\n'),
+            (
+                "previously called",
+                '"""TrainingController previously called repo.save()."""\n',
+            ),
+            ("renamed from", '"""Class renamed from FooBar to FooBaz."""\n'),
+            ("moved here in", '"""Service moved here in v0.7."""\n'),
+            ("we used to", '"""we used to dispatch from this module."""\n'),
+            ("Phase N", "# Phase 4: typed-args refactor\n"),
+            ("Round-N", '"""Round-7 review surfaced this."""\n'),
+        ],
+    )
+    def test_pattern_fires(self, src_dir: Path, label: str, fixture: str) -> None:
+        """A representative line for *label* is flagged by the gate."""
+        issues = _scan(src_dir, "src/synthorg/x.py", fixture)
+        assert issues, (label, issues)
+
+
+class TestMarkerHelpers:
+    """Direct unit tests for marker-detection helpers."""
+
+    def test_has_marker_with_reason_dash(self) -> None:
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# Phase 1  # lint-allow: migration-framing -- valid reason"
+        )
+        assert result is True
+
+    def test_has_marker_with_reason_colon(self) -> None:
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# Phase 1  # lint-allow: migration-framing: alt-sep reason"
+        )
+        assert result is True
+
+    def test_has_marker_with_reason_dash_empty(self) -> None:
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# Phase 1  # lint-allow: migration-framing --   "
+        )
+        assert result is False
+
+    def test_has_marker_with_reason_colon_empty(self) -> None:
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# Phase 1  # lint-allow: migration-framing:    "
+        )
+        assert result is False
+
+    def test_has_marker_no_separator(self) -> None:
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# Phase 1  # lint-allow: migration-framing"
+        )
+        assert result is False
+
+    def test_has_marker_absent(self) -> None:
+        result = _MODULE._has_marker_with_reason(  # type: ignore[attr-defined]
+            "# just a normal comment"
+        )
+        assert result is False
+
+    def test_dedicated_marker_python_comment(self) -> None:
+        result = _MODULE._line_has_dedicated_marker(  # type: ignore[attr-defined]
+            "# lint-allow: migration-framing -- documenting the rule"
+        )
+        assert result is True
+
+    def test_dedicated_marker_sql_comment(self) -> None:
+        result = _MODULE._line_has_dedicated_marker(  # type: ignore[attr-defined]
+            "-- lint-allow: migration-framing -- in-revision pattern fixture"
+        )
+        assert result is True
+
+    def test_dedicated_marker_code_line_rejected(self) -> None:
+        """Marker after code (line does NOT start with ``#`` / ``--``) is rejected."""
+        result = _MODULE._line_has_dedicated_marker(  # type: ignore[attr-defined]
+            'x = "# lint-allow: migration-framing -- inline"'
+        )
+        assert result is False
+
+    def test_trailing_marker_python_in_string_literal(self) -> None:
+        result = _MODULE._line_has_trailing_marker_python(  # type: ignore[attr-defined]
+            'x = "# lint-allow: migration-framing -- ok"\n'
+        )
+        assert result is False
+
+    def test_trailing_marker_sql_basic(self) -> None:
+        result = _MODULE._line_has_trailing_marker_sql(  # type: ignore[attr-defined]
+            "SELECT 1; -- lint-allow: migration-framing -- example"
+        )
+        assert result is True
+
+
+class TestErrorPaths:
+    """Fail-closed semantics for tokenize / I/O errors."""
+
+    def test_tokenize_error_does_not_suppress(self, src_dir: Path) -> None:
+        """A syntactically broken line cannot tokenize; marker is unreachable."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            "def f(:  # lint-allow: migration-framing -- broken\n# Phase 1\n",
+        )
+        assert any("phase" in i.lower() for i in issues), issues
+
+    def test_scan_file_io_error_emits_sentinel(self, src_dir: Path) -> None:
+        """Files that cannot be read produce an ``[I/O ERROR]``-prefixed entry."""
+        # Directory at a ``.py`` path triggers OSError on read_text.
+        fp = src_dir / "src" / "synthorg" / "fakedir.py"
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        fp.mkdir()
+        rel = fp.relative_to(src_dir).as_posix()
+        issues: list[str] = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
+        assert len(issues) == 1
+        assert issues[0].startswith("[I/O ERROR] "), issues
+        assert "fakedir.py" in issues[0]
+
+    def test_violation_message_format(self, src_dir: Path) -> None:
+        """Policy-violation messages use ``<rel>:<line>: <label>: <content>``."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            "# Phase 1: Decompose\n",
+        )
+        assert len(issues) >= 1
+        assert issues[0].startswith("src/synthorg/x.py:1: "), issues
