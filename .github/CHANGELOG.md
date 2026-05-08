@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.8.1](https://github.com/Aureliolo/synthorg/compare/v0.8.0...v0.8.1) (2026-05-08)
+
+
+### Features
+
+* add convention-gate inventory meta-gate ([#1782](https://github.com/Aureliolo/synthorg/issues/1782)) ([b8bf18c](https://github.com/Aureliolo/synthorg/commit/b8bf18c15efeec460005e9df24d0a4f5ceb576c4)), closes [#1766](https://github.com/Aureliolo/synthorg/issues/1766)
+* MCP admin_tool guardrails gate + 7-handler fix + admin-rename ([#1788](https://github.com/Aureliolo/synthorg/issues/1788)) ([1b6667f](https://github.com/Aureliolo/synthorg/commit/1b6667ff59e8f2f17faac2e484c51e34c27d0cb4))
+* source public-doc numeric claims from build-time stats ([#1789](https://github.com/Aureliolo/synthorg/issues/1789)) ([563aea3](https://github.com/Aureliolo/synthorg/commit/563aea3c8dd6be278e0b164e1d55179d689797bf))
+
+
+### Bug Fixes
+
+* **budget:** currency aggregation invariant gate + 3 sites ([#1771](https://github.com/Aureliolo/synthorg/issues/1771)) ([#1784](https://github.com/Aureliolo/synthorg/issues/1784)) ([fa181c6](https://github.com/Aureliolo/synthorg/commit/fa181c630aa068e4d400666d424da612bec75ca3))
+* extend DTO forbid-extra gate to response/snapshot/result/envelope/status/info/summary ([#1790](https://github.com/Aureliolo/synthorg/issues/1790)) ([843319a](https://github.com/Aureliolo/synthorg/commit/843319a19fbe4a24ae03945380158ee5a713f3aa))
+* **observability:** close logger error= AST blindspot + SEC-1 redaction sweep ([#1791](https://github.com/Aureliolo/synthorg/issues/1791)) ([e223fef](https://github.com/Aureliolo/synthorg/commit/e223fefc7f69d1a373075ba31093033eab00ac50))
+* **persistence:** backend protocol return-type uniformity + 40 SQLite + 5 layer violations ([#1785](https://github.com/Aureliolo/synthorg/issues/1785)) ([f5075ac](https://github.com/Aureliolo/synthorg/commit/f5075acae1a16035a510781fda4c5e6868bd1b44))
+* **renovate:** make state.go single source of DHI tag+digest pins ([#1794](https://github.com/Aureliolo/synthorg/issues/1794)) ([072add4](https://github.com/Aureliolo/synthorg/commit/072add499cb3071304b98cbec38e37ca4b7d5bea))
+* **web:** dashboard polish (responsive dialogs + UX + perf + onboarding + storybook) ([#1783](https://github.com/Aureliolo/synthorg/issues/1783)) ([1a1836a](https://github.com/Aureliolo/synthorg/commit/1a1836a59afa8516889e82afc1e1d0afc57bda26))
+
+
+### Maintenance
+
+* citation/migration-framing rot scanner (gates + scrubs) ([#1799](https://github.com/Aureliolo/synthorg/issues/1799)) ([1b8e9ca](https://github.com/Aureliolo/synthorg/commit/1b8e9caa3618f080b4d60133d854e1983e288fa0))
+* **config:** migrate Renovate config ([#1803](https://github.com/Aureliolo/synthorg/issues/1803)) ([954da58](https://github.com/Aureliolo/synthorg/commit/954da58c7ca613baf00ec1e4792133e0acc8c4cc))
+* default review-dep-pr to merge-as-is when clean ([#1807](https://github.com/Aureliolo/synthorg/issues/1807)) ([232f1f0](https://github.com/Aureliolo/synthorg/commit/232f1f0b3dfc6c5926ee1fd1faeb45662054b189))
+* **renovate:** close last coverage gaps + scrub stale literals + publish :latest ([#1802](https://github.com/Aureliolo/synthorg/issues/1802)) ([256a27b](https://github.com/Aureliolo/synthorg/commit/256a27bc88b8e3890a94b0fcee0144b6612e6bfc))
+* **renovate:** tighten compose sync scope + cover busybox ([#1792](https://github.com/Aureliolo/synthorg/issues/1792)) ([fb04e45](https://github.com/Aureliolo/synthorg/commit/fb04e452b09fd576ed5c6d79c253d4554dc1df75))
+* Update CLI dependencies to v2.12.2 ([#1805](https://github.com/Aureliolo/synthorg/issues/1805)) ([f70ef85](https://github.com/Aureliolo/synthorg/commit/f70ef850f517add546ae80ed6a97b8fa27bc155a))
+* Update Container dependencies ([#1804](https://github.com/Aureliolo/synthorg/issues/1804)) ([e52cac7](https://github.com/Aureliolo/synthorg/commit/e52cac7a3f2e408de63b5c53935092c4057f47e6))
+
 ## [0.8.0](https://github.com/Aureliolo/synthorg/compare/v0.7.9...v0.8.0) (2026-05-05)
 
 
