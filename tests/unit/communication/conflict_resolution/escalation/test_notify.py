@@ -73,13 +73,20 @@ class TestPostgresSubscriberLateBoundResolver:
             channel="escalations",
             reconnect_delay_seconds=1.0,
         )
-        assert subscriber._config_resolver is None
+        # Asserting the eager ``None`` capture would narrow the
+        # attribute type to ``None`` for the rest of the function, so
+        # mypy would flag the post-rebind ``is resolver`` assertion as
+        # unreachable. Read into a local instead.
+        eager_resolver: ConfigResolver | None = subscriber._config_resolver
+        assert eager_resolver is None
+
         resolver = AsyncMock(spec=ConfigResolver)
-        subscriber.set_config_resolver(resolver)
-        assert subscriber._config_resolver is resolver
-        # The kill-switch helper now consults the live resolver.
         resolver.get_bool.return_value = False
-        assert await subscriber._resolve_subscriber_enabled() is False
+        subscriber.set_config_resolver(resolver)
+        rebound_resolver: ConfigResolver | None = subscriber._config_resolver
+        assert rebound_resolver is resolver
+        # The kill-switch helper now consults the live resolver.
+        assert (await subscriber._resolve_subscriber_enabled()) is False
         resolver.get_bool.assert_awaited_once()
 
     async def test_run_loop_paused_branch_uses_paused_event(self) -> None:
@@ -109,14 +116,14 @@ class TestPostgresSubscriberLateBoundResolver:
 
         def _spy(event: str, **kwargs: object) -> None:
             debug_events.append(event)
-            return original_debug(event, **kwargs)
+            original_debug(event, **kwargs)
 
         # ``BoundLoggerLazyProxy`` serves ``debug`` via ``__getattr__``
         # (no instance dict entry until we set one). Direct assignment
         # plus ``del`` in the finally block lets ``__getattr__`` resume
         # serving fresh bound loggers for the next test, matching the
         # canonical ``_logger_info_spy`` pattern in tests/unit/settings.
-        proxy.debug = _spy
+        proxy.debug = _spy  # type: ignore[method-assign,assignment]
         try:
             task = asyncio.create_task(subscriber._run())
             try:

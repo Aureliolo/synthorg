@@ -107,6 +107,7 @@ class MessageBusBridge:
         self._poll_timeout_fallback_logged: bool = False
         self._max_errors_fallback_logged: bool = False
         self._drain_timeout_fallback_logged: bool = False
+        self._enabled_fallback_logged: bool = False
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Inject the ConfigResolver after construction.
@@ -526,6 +527,42 @@ class MessageBusBridge:
             self._tasks.clear()
             self._running = False
 
+    async def _resolve_enabled(self) -> bool:
+        """Resolve the bus-bridge kill-switch, fail-safe to ``True``.
+
+        Operators flip ``communication.bus_bridge_enabled=false`` to
+        pause WebSocket publication mid-flight without tearing down
+        the polling tasks. Resolver outage returns ``True`` because
+        silently pausing event forwarding on a settings hiccup would
+        starve every connected client. Same log-once-until-recovery
+        pattern as :meth:`_get_poll_timeout`.
+        """
+        if self._config_resolver is None:
+            return True
+        try:
+            value = await self._config_resolver.get_bool(
+                SettingNamespace.COMMUNICATION.value,
+                "bus_bridge_enabled",
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            if not self._enabled_fallback_logged:
+                logger.warning(
+                    API_BUS_BRIDGE_POLL_ERROR,
+                    error=(
+                        "failed to resolve bus_bridge_enabled;"
+                        " using fallback (logging suppressed until recovery)"
+                    ),
+                    fallback_enabled=True,
+                )
+                self._enabled_fallback_logged = True
+            return True
+        self._enabled_fallback_logged = False
+        return value
+
     async def _poll_channel(self, channel_name: str) -> None:
         """Poll a single channel and publish to Litestar.
 
@@ -537,10 +574,23 @@ class MessageBusBridge:
         front so the receive/sleep pair and the error-budget check
         observe the same values even if the operator edits the
         setting mid-iteration.
+
+        Gated by ``communication.bus_bridge_enabled`` (live,
+        per-iteration): when ``False`` each iteration short-circuits
+        before consuming a bus message; the polling task stays
+        resident so operators can re-enable without restarting.
         """
         consecutive_errors = 0
         while True:
             poll_timeout = await self._get_poll_timeout()
+            if not await self._resolve_enabled():
+                logger.debug(
+                    API_BUS_BRIDGE_POLL_ERROR,
+                    channel=channel_name,
+                    reason="paused_by_setting",
+                )
+                await asyncio.sleep(poll_timeout)
+                continue
             max_errors = await self._get_max_consecutive_errors()
             try:
                 envelope = await self._bus.receive(

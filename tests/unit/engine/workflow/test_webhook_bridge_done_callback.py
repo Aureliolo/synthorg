@@ -121,14 +121,24 @@ class TestResolveEnabled:
         assert await bridge._resolve_enabled() is True
 
     async def test_returns_resolver_value_and_clears_throttle(self) -> None:
-        """Successful resolution returns the value and clears the flag."""
+        """A successful resolver read returns the value and clears the flag."""
+        # Drive the throttle on via a fake outage first so the
+        # recovery path is exercised. Setting the bool attribute
+        # directly would let mypy narrow it to ``Literal[True]`` and
+        # the later "cleared" assertion would be flagged as
+        # unreachable, hiding the actual recovery semantics.
         resolver = AsyncMock(spec=ConfigResolver)
-        resolver.get_bool.return_value = False
+        resolver.get_bool.side_effect = RuntimeError("transient failure")
         bridge = self._make_bridge(resolver)
-        bridge._enabled_fallback_logged = True
+        assert (await bridge._resolve_enabled()) is True
+        flag_after_outage: bool = bridge._enabled_fallback_logged
+        assert flag_after_outage is True
 
-        assert await bridge._resolve_enabled() is False
-        assert bridge._enabled_fallback_logged is False
+        resolver.get_bool.side_effect = None
+        resolver.get_bool.return_value = False
+        assert (await bridge._resolve_enabled()) is False
+        flag_after_recovery: bool = bridge._enabled_fallback_logged
+        assert flag_after_recovery is False
 
     async def test_resolver_outage_logs_once_until_recovery(self) -> None:
         """Repeat outages skip the warning until a successful read."""
@@ -137,23 +147,25 @@ class TestResolveEnabled:
         bridge = self._make_bridge(resolver)
 
         with patch("synthorg.engine.workflow.webhook_bridge.logger") as patched_logger:
-            assert await bridge._resolve_enabled() is True
-            assert await bridge._resolve_enabled() is True
-            assert await bridge._resolve_enabled() is True
+            assert (await bridge._resolve_enabled()) is True
+            assert (await bridge._resolve_enabled()) is True
+            assert (await bridge._resolve_enabled()) is True
             # Three iterations, exactly one warning -- the throttle is on.
             assert patched_logger.warning.call_count == 1
-            assert bridge._enabled_fallback_logged is True
+            flag_after_outage: bool = bridge._enabled_fallback_logged
+            assert flag_after_outage is True
 
             # Recovery: a successful read clears the flag so a later
             # outage surfaces a fresh warning.
             resolver.get_bool.side_effect = None
             resolver.get_bool.return_value = True
-            assert await bridge._resolve_enabled() is True
-            assert bridge._enabled_fallback_logged is False
+            assert (await bridge._resolve_enabled()) is True
+            flag_after_recovery: bool = bridge._enabled_fallback_logged
+            assert flag_after_recovery is False
 
             resolver.get_bool.side_effect = RuntimeError("settings backend down")
             resolver.get_bool.return_value = None
-            assert await bridge._resolve_enabled() is True
+            assert (await bridge._resolve_enabled()) is True
             assert patched_logger.warning.call_count == 2
 
     async def test_set_config_resolver_late_binds(self) -> None:
@@ -163,5 +175,5 @@ class TestResolveEnabled:
         resolver.get_bool.return_value = False
         bridge.set_config_resolver(resolver)
 
-        assert await bridge._resolve_enabled() is False
+        assert (await bridge._resolve_enabled()) is False
         resolver.get_bool.assert_awaited_once()

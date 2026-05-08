@@ -32,6 +32,76 @@ class TestMessageBusBridge:
         assert event.payload["sender"] == "alice"
         assert event.payload["content"] == "Hello!"
 
+    async def test_resolve_enabled_no_resolver_returns_true(self) -> None:
+        """Fail-safe: without a resolver the bridge defaults to enabled."""
+        from litestar.channels import ChannelsPlugin
+        from litestar.channels.backends.memory import MemoryChannelsBackend
+
+        from synthorg.api.channels import ALL_CHANNELS
+        from tests.unit.api.conftest import FakeMessageBus
+
+        bus = FakeMessageBus()
+        plugin = ChannelsPlugin(
+            backend=MemoryChannelsBackend(history=5),
+            channels=ALL_CHANNELS,
+        )
+        bridge = MessageBusBridge(bus, plugin)
+        assert (await bridge._resolve_enabled()) is True
+
+    async def test_resolve_enabled_returns_resolver_value(self) -> None:
+        """The resolver value flows through unchanged when resolution succeeds."""
+        from litestar.channels import ChannelsPlugin
+        from litestar.channels.backends.memory import MemoryChannelsBackend
+
+        from synthorg.api.channels import ALL_CHANNELS
+        from tests.unit.api.conftest import FakeMessageBus
+
+        bus = FakeMessageBus()
+        plugin = ChannelsPlugin(
+            backend=MemoryChannelsBackend(history=5),
+            channels=ALL_CHANNELS,
+        )
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.return_value = False
+        bridge = MessageBusBridge(bus, plugin, config_resolver=resolver)
+
+        assert (await bridge._resolve_enabled()) is False
+        flag: bool = bridge._enabled_fallback_logged
+        assert flag is False
+
+    async def test_resolve_enabled_outage_throttles_warnings(self) -> None:
+        """A prolonged resolver outage logs once until recovery."""
+        from unittest.mock import patch
+
+        from litestar.channels import ChannelsPlugin
+        from litestar.channels.backends.memory import MemoryChannelsBackend
+
+        from synthorg.api.channels import ALL_CHANNELS
+        from tests.unit.api.conftest import FakeMessageBus
+
+        bus = FakeMessageBus()
+        plugin = ChannelsPlugin(
+            backend=MemoryChannelsBackend(history=5),
+            channels=ALL_CHANNELS,
+        )
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.side_effect = RuntimeError("settings backend down")
+        bridge = MessageBusBridge(bus, plugin, config_resolver=resolver)
+
+        with patch("synthorg.api.bus_bridge.logger") as patched_logger:
+            assert (await bridge._resolve_enabled()) is True
+            assert (await bridge._resolve_enabled()) is True
+            assert (await bridge._resolve_enabled()) is True
+            assert patched_logger.warning.call_count == 1
+            flag_during_outage: bool = bridge._enabled_fallback_logged
+            assert flag_during_outage is True
+
+            resolver.get_bool.side_effect = None
+            resolver.get_bool.return_value = True
+            assert (await bridge._resolve_enabled()) is True
+            flag_after_recovery: bool = bridge._enabled_fallback_logged
+            assert flag_after_recovery is False
+
     async def test_set_config_resolver_late_binds(self) -> None:
         """Lifecycle hook can rebind the resolver after construction.
 
@@ -54,15 +124,21 @@ class TestMessageBusBridge:
             channels=ALL_CHANNELS,
         )
         bridge = MessageBusBridge(bus, plugin)
-        assert bridge._config_resolver is None
+        # Read through a local so mypy does not narrow
+        # ``bridge._config_resolver`` to ``None`` for the rest of the
+        # function (which would flag the post-rebind ``is resolver``
+        # check as unreachable).
+        eager_resolver: ConfigResolver | None = bridge._config_resolver
+        assert eager_resolver is None
 
         resolver = AsyncMock(spec=ConfigResolver)
         resolver.get_float.return_value = 7.5
         bridge.set_config_resolver(resolver)
-        assert bridge._config_resolver is resolver
+        rebound_resolver: ConfigResolver | None = bridge._config_resolver
+        assert rebound_resolver is resolver
 
         # The poll-timeout helper now consults the live resolver.
-        assert await bridge._get_poll_timeout() == 7.5
+        assert (await bridge._get_poll_timeout()) == 7.5
         resolver.get_float.assert_awaited()
 
     def test_to_ws_event_has_timestamp(self) -> None:

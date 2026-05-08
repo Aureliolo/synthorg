@@ -48,6 +48,25 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMMUNICATION,
+        key="bus_bridge_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Live kill-switch for the API bus bridge per-channel polling"
+            " loop. When ``False`` each iteration short-circuits before"
+            " consuming a bus message; the polling task stays resident so"
+            " operators can re-enable without restarting the API. Resolved"
+            " per iteration so changes take effect on the next poll."
+        ),
+        group="Bus Bridge",
+        level=SettingLevel.ADVANCED,
+        yaml_path="communication.bus_bridge.enabled",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
         key="bus_bridge_drain_timeout_seconds",
         type=SettingType.FLOAT,
         default="10.0",
