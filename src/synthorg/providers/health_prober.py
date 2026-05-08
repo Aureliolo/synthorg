@@ -306,11 +306,9 @@ class ProviderHealthProber:
         except Exception as exc:
             logger.warning(
                 PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
-                error=(
-                    "Failed to resolve api.health_prober_enabled; defaulting to enabled"
-                ),
                 error_type=type(exc).__name__,
-                error_desc=safe_error_description(exc),
+                error=safe_error_description(exc),
+                fallback_enabled=True,
             )
             return True
 

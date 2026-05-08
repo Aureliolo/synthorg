@@ -14,7 +14,7 @@ import re
 from typing import Final
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.types import NotBlankStr
 
@@ -343,6 +343,19 @@ class ApiBridgeConfig(BaseModel):
                 )
                 raise ValueError(msg)
         return value
+
+    @model_validator(mode="after")
+    def _validate_approval_urgency_thresholds(self) -> ApiBridgeConfig:
+        if self.approval_urgency_critical_seconds >= self.approval_urgency_high_seconds:
+            msg = (
+                "approval_urgency_critical_seconds"
+                f" ({self.approval_urgency_critical_seconds}) must be strictly"
+                " less than approval_urgency_high_seconds"
+                f" ({self.approval_urgency_high_seconds}): a critical"
+                " escalation must fire sooner than a high one."
+            )
+            raise ValueError(msg)
+        return self
 
     @field_validator("error_docs_base_url")
     @classmethod

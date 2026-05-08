@@ -118,8 +118,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         loading: false,
         error: errors.length > 0 ? errors.join('; ') : null,
       }
-      const c = deriveCurrency(entries)
-      if (c) patch.currency = c
+      patch.currency = deriveCurrency(entries) ?? DEFAULT_CURRENCY
       set(patch)
     } catch (error) {
       set({ loading: false, error: getErrorMessage(error) })
@@ -134,8 +133,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // Re-check: a save may have started during the fetch
     if (get().savingKeys.size > 0) return
     const patch: Partial<SettingsState> = { entries, error: null }
-    const c = deriveCurrency(entries)
-    if (c) patch.currency = c
+    patch.currency = deriveCurrency(entries) ?? DEFAULT_CURRENCY
     set(patch)
   },
 
@@ -159,8 +157,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         }
         // Keep the standalone currency field in sync with the entry list.
         if (ns === 'budget' && key === 'currency') {
-          const c = deriveCurrency(newEntries)
-          if (c) patch.currency = c
+          patch.currency = deriveCurrency(newEntries) ?? DEFAULT_CURRENCY
         }
         return patch
       })
@@ -209,8 +206,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
           update.entries = refreshedEntries
           update.error = null
           if (ns === 'budget' && key === 'currency') {
-            const c = deriveCurrency(refreshedEntries)
-            if (c) update.currency = c
+            update.currency = deriveCurrency(refreshedEntries) ?? DEFAULT_CURRENCY
           }
         }
         return update

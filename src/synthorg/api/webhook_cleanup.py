@@ -64,12 +64,9 @@ async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
     except Exception as exc:
         logger.warning(
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
-            error=(
-                "Failed to resolve api.webhook_receipt_cleanup_enabled;"
-                " defaulting to enabled"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
+            fallback_enabled=True,
         )
         return True
 

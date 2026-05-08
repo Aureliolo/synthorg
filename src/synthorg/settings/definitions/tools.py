@@ -212,12 +212,17 @@ _r.register(
         type=SettingType.STRING,
         default="ghcr.io/aureliolo/synthorg-sandbox:latest",
         description=(
-            "Docker image used for sandbox containers. The CLI injects"
-            " a digest-pinned reference via ``SYNTHORG_SANDBOX_IMAGE``;"
-            " operators running the backend outside the CLI fall back"
-            " to the registered default. Resolved once at startup and"
-            " injected into ``DockerSandboxConfig`` via the sandbox"
-            " image-resolution cache."
+            "Docker image used for sandbox containers. Resolution"
+            " precedence at backend startup: DB override >"
+            " ``SYNTHORG_SANDBOX_IMAGE`` env var > YAML"
+            " ``tools.sandbox.docker.image`` > registered code default."
+            " The CLI injects a digest-pinned reference via the env var,"
+            " so DB / YAML overrides are mostly relevant for operators"
+            " running the backend outside the CLI. Resolved once at"
+            " startup and injected into ``DockerSandboxConfig`` via the"
+            " sandbox image-resolution cache; ``read_only_post_init``"
+            " keeps later DB writes from drifting from the resolved"
+            " value used at boot."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
@@ -236,7 +241,9 @@ _r.register(
         default="ghcr.io/aureliolo/synthorg-sidecar:latest",
         description=(
             "Docker image used for the sandbox network sidecar"
-            " container. Same resolution path as ``tools.sandbox_image``."
+            " container. Resolution precedence: DB > ``SYNTHORG_SIDECAR_IMAGE``"
+            " env > YAML ``tools.sandbox.docker.sidecar_image`` > code"
+            " default. Same shape as ``tools.sandbox_image``."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,

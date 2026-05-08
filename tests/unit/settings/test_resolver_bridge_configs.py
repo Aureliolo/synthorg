@@ -513,3 +513,37 @@ class TestSlackDefaultWebhookUrlValidator:
     def test_rejects_non_canonical_url(self, bad_url: str) -> None:
         with pytest.raises(ValidationError):
             NotificationsBridgeConfig(slack_default_webhook_url=bad_url)
+
+
+@pytest.mark.unit
+class TestApprovalUrgencyThresholdInvariant:
+    """``critical_seconds`` must be strictly less than ``high_seconds``.
+
+    Otherwise a critical escalation would fire later than (or at the same
+    time as) a high one, defeating the whole urgency hierarchy.
+    """
+
+    def test_accepts_critical_below_high(self) -> None:
+        cfg = ApiBridgeConfig(
+            approval_urgency_critical_seconds=3600.0,
+            approval_urgency_high_seconds=14_400.0,
+        )
+        assert cfg.approval_urgency_critical_seconds == 3600.0
+        assert cfg.approval_urgency_high_seconds == 14_400.0
+
+    @pytest.mark.parametrize(
+        ("critical", "high"),
+        [
+            (3600.0, 3600.0),  # equal: critical fires no sooner than high
+            (14_400.0, 3600.0),  # inverted: critical fires later than high
+        ],
+        ids=["equal", "inverted"],
+    )
+    def test_rejects_critical_not_strictly_below_high(
+        self, critical: float, high: float
+    ) -> None:
+        with pytest.raises(ValidationError):
+            ApiBridgeConfig(
+                approval_urgency_critical_seconds=critical,
+                approval_urgency_high_seconds=high,
+            )

@@ -125,12 +125,8 @@ class NotificationDispatcher:
         except Exception as exc:
             logger.warning(
                 NOTIFICATION_DISPATCHER_RESOLVE_FAILED,
-                error=(
-                    "Failed to resolve notifications.dispatcher_enabled;"
-                    " defaulting to enabled"
-                ),
                 error_type=type(exc).__name__,
-                error_desc=safe_error_description(exc),
+                error=safe_error_description(exc),
             )
             return True
 

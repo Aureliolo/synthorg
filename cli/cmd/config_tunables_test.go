@@ -117,4 +117,9 @@ func TestTunableKeys_ComposeAffectingSet(t *testing.T) {
 			t.Errorf("%s should be in composeAffectingKeys", k)
 		}
 	}
+	// SYNTHORG_NATS_URL is env-only since the parallel CLI tunable
+	// layer was removed; it must not creep back in as a tunable.
+	if composeAffectingKeys["default_nats_url"] {
+		t.Errorf("default_nats_url should NOT be in composeAffectingKeys")
+	}
 }

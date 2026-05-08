@@ -66,12 +66,9 @@ async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
     except Exception as exc:
         logger.warning(
             API_WS_TICKET_CLEANUP,
-            error=(
-                "Failed to resolve ticket_cleanup_interval_seconds;"
-                " falling back to 60.0 seconds"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
+            fallback_seconds=60.0,
         )
         return 60.0
 
@@ -99,11 +96,9 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
     except Exception as exc:
         logger.warning(
             API_WS_TICKET_CLEANUP,
-            error=(
-                "Failed to resolve lifecycle_cleanup_enabled; defaulting to enabled"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
+            fallback_enabled=True,
         )
         return True
 
@@ -140,9 +135,9 @@ async def _run_cleanup_step(
     except Exception as exc:
         logger.warning(
             event,
-            error=failure_message,
+            failure_context=failure_message,
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
 
 
@@ -192,9 +187,8 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         except Exception as exc:
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_CLEANUP,
-                error="Periodic OAuth-state cleanup failed",
                 error_type=type(exc).__name__,
-                error_desc=safe_error_description(exc),
+                error=safe_error_description(exc),
             )
         else:
             logger.info(
@@ -248,12 +242,10 @@ async def _resolve_event_stream_janitor_settings(
     except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to resolve event stream janitor settings;"
-                " falling back to defaults"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
+            fallback_idle_ttl_seconds=_DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS,
+            fallback_interval_seconds=_DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS,
         )
         return (
             _DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS,
@@ -310,12 +302,8 @@ async def _resolve_audit_retention(
     except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to resolve audit retention settings;"
-                " falling back to default retention window"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
             fallback_days=_DEFAULT_AUDIT_RETENTION_DAYS,
         )
         return _DEFAULT_AUDIT_RETENTION_DAYS, False
@@ -511,9 +499,8 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
     except Exception as exc:
         logger.warning(
             SETUP_AGENT_BOOTSTRAP_FAILED,
-            error="Agent bootstrap failed at startup (non-fatal)",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
 
 
@@ -590,12 +577,8 @@ async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
     except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to resolve approval-urgency settings for"
-                " invariant check; skipping"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
         return
     if critical >= high:
@@ -659,9 +642,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=("Failed to apply ws_auth_timeout_seconds; using built-in default"),
+            setting="api.ws_auth_timeout_seconds",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
 
     # Each WS DoS-prevention setting resolves and applies independently
@@ -685,13 +668,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         except Exception as exc:
             logger.warning(
                 API_APP_STARTUP,
-                error=(
-                    f"Failed to apply WS DoS-prevention setting {setting_key};"
-                    " using built-in default"
-                ),
                 setting=setting_key,
                 error_type=type(exc).__name__,
-                error_desc=safe_error_description(exc),
+                error=safe_error_description(exc),
             )
 
     from synthorg.api.auth.token_size import (  # noqa: PLC0415
@@ -718,9 +697,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         set_auth_token_bytes(_DEFAULT_AUTH_TOKEN_BYTES)
         logger.warning(
             API_APP_STARTUP,
-            error=("Failed to apply security.auth_token_bytes; using built-in default"),
+            setting="security.auth_token_bytes",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
             fallback_bytes=_DEFAULT_AUTH_TOKEN_BYTES,
         )
 
@@ -748,12 +727,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         set_timeout_enforcement_enabled(value=True)
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to apply engine.timeout_enforcement_enabled;"
-                " keeping enforcement on (safe default)"
-            ),
+            setting="engine.timeout_enforcement_enabled",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
             fallback_enabled=True,
         )
 
@@ -786,13 +762,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             setter(None)
             logger.warning(
                 API_APP_STARTUP,
-                error=(
-                    f"Failed to apply tools.{setting_key};"
-                    " falling back to the documented constant"
-                ),
                 setting=f"tools.{setting_key}",
                 error_type=type(exc).__name__,
-                error_desc=safe_error_description(exc),
+                error=safe_error_description(exc),
             )
         else:
             setter(image_value or None)

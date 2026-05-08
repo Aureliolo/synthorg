@@ -66,20 +66,26 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	// Precedence for --nats-url: explicit flag > SYNTHORG_NATS_URL env >
 	// compiled-in fallback. Single source of truth shared with the
 	// backend's ``communication.nats_url`` setting; no parallel
-	// CLI-only tunable layer.
+	// CLI-only tunable layer. The resolved value lives in a local
+	// variable so a SYNTHORG_NATS_URL fallback in this invocation does
+	// not leak into the package-global flag value across in-process
+	// calls (relevant in tests and any future driver that reuses the
+	// process between invocations).
+	resolvedNATSURL := workerStartNatsURL
 	if !cmd.Flags().Changed("nats-url") {
 		if envURL := strings.TrimSpace(os.Getenv("SYNTHORG_NATS_URL")); envURL != "" {
-			workerStartNatsURL = envURL
+			resolvedNATSURL = envURL
 		}
 	}
+	resolvedStreamPrefix := workerStartStreamPrefix
 	if !cmd.Flags().Changed("stream-prefix") {
-		workerStartStreamPrefix = opts.Tunables.DefaultNATSStreamPrefix
+		resolvedStreamPrefix = opts.Tunables.DefaultNATSStreamPrefix
 	}
 
 	if workerStartCount <= 0 {
 		return fmt.Errorf("--workers must be > 0, got %d", workerStartCount)
 	}
-	if err := validateNatsURL(workerStartNatsURL); err != nil {
+	if err := validateNatsURL(resolvedNATSURL); err != nil {
 		return err
 	}
 	// Validate the stream prefix up front so an explicit --stream-prefix
@@ -87,10 +93,10 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	// worker pool. The tunable path already runs through the same regex
 	// via config.ResolveTunables, but an explicit flag skips that check
 	// and would otherwise end up as an env var on the backend process.
-	if !config.IsValidStreamPrefix(workerStartStreamPrefix) {
+	if !config.IsValidStreamPrefix(resolvedStreamPrefix) {
 		return fmt.Errorf(
 			"invalid --stream-prefix %q: must match [A-Z0-9][A-Z0-9_-]*",
-			workerStartStreamPrefix,
+			resolvedStreamPrefix,
 		)
 	}
 	if err := validateContainerName(workerStartContainer); err != nil {
@@ -121,14 +127,14 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 		"--workers", strconv.Itoa(workerStartCount),
 	}
 	env := append(os.Environ(),
-		"SYNTHORG_NATS_URL="+workerStartNatsURL,
-		"SYNTHORG_NATS_STREAM_PREFIX="+workerStartStreamPrefix,
+		"SYNTHORG_NATS_URL="+resolvedNATSURL,
+		"SYNTHORG_NATS_STREAM_PREFIX="+resolvedStreamPrefix,
 		"SYNTHORG_WORKER_COUNT="+strconv.Itoa(workerStartCount),
 	)
 
 	out.KeyValue("Workers", strconv.Itoa(workerStartCount))
-	out.KeyValue("NATS URL", redactNatsURL(workerStartNatsURL))
-	out.KeyValue("Stream prefix", workerStartStreamPrefix)
+	out.KeyValue("NATS URL", redactNatsURL(resolvedNATSURL))
+	out.KeyValue("Stream prefix", resolvedStreamPrefix)
 	out.KeyValue("Container", container)
 	out.HintNextStep("Press Ctrl+C to stop workers.")
 
