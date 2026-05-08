@@ -13,7 +13,6 @@ once per session via the SDK's hidden override path
 each test clears the in-memory exporter to start fresh.
 """
 
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -29,8 +28,8 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(scope="module")
-def _tracer_setup() -> Iterator[InMemorySpanExporter]:
-    """Install a tracer provider once per module and yield its exporter."""
+def _tracer_setup() -> InMemorySpanExporter:
+    """Install a tracer provider once per module and return its exporter."""
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -38,8 +37,8 @@ def _tracer_setup() -> Iterator[InMemorySpanExporter]:
     # test environment so a real provider replaces the no-op one cached
     # at module import. This is a documented escape hatch in the SDK
     # source.
-    trace._TRACER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
-    trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]
+    trace._TRACER_PROVIDER_SET_ONCE._done = False
+    trace._TRACER_PROVIDER = None
     trace.set_tracer_provider(provider)
     # Re-import the middleware module so its module-level
     # ``_tracer = trace.get_tracer(__name__)`` re-binds against the
@@ -82,7 +81,7 @@ async def _drive_success(middleware: Any, status_code: int = 200) -> None:
         await send({"type": "http.response.body", "body": b"ok"})
 
     middleware.app = app
-    await middleware(scope, receive, send)  # type: ignore[arg-type]
+    await middleware(scope, receive, send)
 
 
 async def _drive_failure(middleware: Any, exc: Exception) -> None:
@@ -104,7 +103,7 @@ async def _drive_failure(middleware: Any, exc: Exception) -> None:
         raise exc
 
     middleware.app = app
-    await middleware(scope, receive, send)  # type: ignore[arg-type]
+    await middleware(scope, receive, send)
 
 
 async def test_middleware_emits_span_on_success(
