@@ -1,6 +1,6 @@
 """Budget event constants."""
 
-from typing import Final
+from typing import Final, LiteralString
 
 BUDGET_TRACKER_CREATED: Final[str] = "budget.tracker.created"
 BUDGET_TRACKER_CLEARED: Final[str] = "budget.tracker.cleared"
@@ -35,7 +35,7 @@ BUDGET_TIER_CLASSIFY_MISS: Final[str] = "budget.tier.classify_miss"
 BUDGET_TIER_PRESERVED: Final[str] = "budget.tier.preserved"
 
 BUDGET_RECORDS_QUERIED: Final[str] = "budget.records.queried"
-BUDGET_QUERY_OUTCOME: Final[str] = "budget.query.outcome"
+BUDGET_QUERY_OUTCOME: Final[LiteralString] = "budget.query.outcome"
 
 BUDGET_UTILIZATION_QUERIED: Final[str] = "budget.utilization.queried"
 BUDGET_UTILIZATION_ERROR: Final[str] = "budget.utilization.error"

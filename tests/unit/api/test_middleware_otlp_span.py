@@ -29,7 +29,19 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture(scope="module")
 def _tracer_setup() -> InMemorySpanExporter:
-    """Install a tracer provider once per module and return its exporter."""
+    """Install a tracer provider once per module and return its exporter.
+
+    The fixture pokes ``trace._TRACER_PROVIDER`` and
+    ``trace._TRACER_PROVIDER_SET_ONCE._done`` -- private SDK globals --
+    because OpenTelemetry refuses to override the active provider via
+    its public API. Module scope is deliberate: a function-scoped
+    install would race with the middleware module's
+    ``_tracer = trace.get_tracer(__name__)`` cache. xdist runs tests
+    via ``--dist=loadfile`` which keeps each test module on a single
+    worker, so the private-globals mutation cannot collide with other
+    OTel-instrumented test modules. If a future test file installs its
+    own provider, both fixtures must coordinate (or share this one).
+    """
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -138,10 +150,19 @@ async def test_middleware_records_exception_on_failure(
     assert len(spans) == 1
     span = spans[0]
     assert span.status.status_code == StatusCode.ERROR
-    # OTel's ``record_exception`` writes its own description in newer
-    # SDK versions, overwriting whatever ``set_status`` carried; the
-    # invariant that matters is ``ERROR`` + ``RuntimeError`` reachable
-    # in the description.
-    assert "RuntimeError" in (span.status.description or "")
+    # ``set_status_on_exception=False`` on the span ctxmgr disables
+    # OTel's default ``Status(ERROR, str(exc))`` on context exit, so
+    # the description matches what the middleware passed to
+    # ``set_status`` (just the type name, no exception message).
+    assert span.status.description == "RuntimeError"
+    attrs = dict(span.attributes or {})
+    # Exception details are attached as OTel-semconv attributes (the
+    # message goes through ``safe_error_description`` first) instead
+    # of via ``record_exception``, which would serialise the full
+    # traceback and frame locals to the OTLP exporter.
+    assert attrs.get("exception.type") == "RuntimeError"
+    assert "RuntimeError" in str(attrs.get("exception.message") or "")
+    # No ``exception`` event should be emitted -- that's the
+    # ``record_exception`` shape we deliberately avoid.
     event_names = [evt.name for evt in (span.events or ())]
-    assert "exception" in event_names
+    assert "exception" not in event_names

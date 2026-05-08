@@ -273,7 +273,7 @@ class HumanEscalationResolver:
             raise
         except TimeoutError:
             logger.warning(
-                CONFLICT_ESCALATION_QUEUED,
+                CONFLICT_ESCALATION_NOTIFY_FAILED,
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
                 timeout_seconds=_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS,
@@ -284,7 +284,7 @@ class HumanEscalationResolver:
             raise
         except Exception as exc:
             logger.warning(
-                CONFLICT_ESCALATION_QUEUED,
+                CONFLICT_ESCALATION_NOTIFY_FAILED,
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
                 error_type=type(exc).__name__,

@@ -125,3 +125,23 @@ The `scrub_event_fields` structlog processor masks every log record (covering es
 2. **`exc_info=True` rule**: any literal `exc_info=True` kwarg on a logger call is flagged, with a per-line `# lint-allow: exc-info -- <reason>` opt-out (mandatory non-empty reason). The marker must sit on the same physical line as the `exc_info=True,` keyword so reviewers and tooling can locate the opt-out without scanning the file.
 
 The matcher is the source of truth; the gate's docstring (`scripts/check_logger_exception_str_exc.py`) describes the AST shapes covered and the rationale per-rule. The script's filename is preserved (rather than renamed) so the pre-commit hook ID `no-new-logger-exception-str-exc` stays stable in `.pre-commit-config.yaml` and CI job references.
+
+### OTLP span redaction posture
+
+The structlog secret-log redaction policy above covers the **structlog sink only**: log records that flow through `synthorg.observability.get_logger`. OpenTelemetry spans are a separate transport (OTLP exporter), so the structlog `exc_info=True` ban does not transitively cover spans. Instead, the per-transport rules are:
+
+- **Span exception attributes**: never call `span.record_exception(exc)` in production code paths -- it serialises the full traceback (and frame locals) into the OTLP exporter, bypassing every redaction step the structlog sink applies. The middleware's exception handler in `src/synthorg/api/middleware.py` instead sets the OTel-semconv attributes directly:
+
+  ```python
+  span.set_attribute("exception.type", type(exc).__name__)
+  span.set_attribute("exception.message", safe_error_description(exc))
+  span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
+  ```
+
+  The message is scrubbed via `safe_error_description` so credentials embedded in exception strings (httpx response bodies, psycopg connection strings, OAuth tokens) cannot reach the OTLP exporter.
+
+- **Auto-instrumentation opt-out**: when wrapping code in `tracer.start_as_current_span(...)`, pass `record_exception=False` and `set_status_on_exception=False` so the OTel SDK's default exception-on-context-exit behaviour does not undo the redaction by stamping `str(exc)` (unscrubbed) into the span before the `set_attribute` calls run.
+
+- **Span events**: code that calls `span.add_event(name, attributes)` is responsible for applying `safe_error_description` (or equivalent scrubbing) to every attribute that may carry exception strings, request bodies, or other attacker-controllable content.
+
+The pre-commit `check_logger_exception_str_exc.py` gate does not cover OTel spans (it AST-walks logger calls only). New OTel call sites must self-police; reviewers should reject any `span.record_exception` outside test fixtures.

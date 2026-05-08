@@ -1,6 +1,6 @@
 """MCP bridge event constants."""
 
-from typing import Final
+from typing import Final, LiteralString
 
 MCP_CLIENT_CONNECTING: Final[str] = "mcp.client.connecting"
 MCP_CLIENT_CONNECTED: Final[str] = "mcp.client.connected"
@@ -54,5 +54,5 @@ MCP_HANDLER_ARGUMENT_INVALID: Final[str] = "mcp.handler.argument_invalid"
 MCP_HANDLER_SERVICE_FALLBACK: Final[str] = "mcp.handler.service_fallback"
 MCP_HANDLER_CAPABILITY_GAP: Final[str] = "mcp.handler.capability_gap"
 MCP_HANDLER_LAZY_SERVICE_INIT: Final[str] = "mcp.handler.lazy_service_init"
-MCP_HANDLER_OUTCOME: Final[str] = "mcp.handler.outcome"
+MCP_HANDLER_OUTCOME: Final[LiteralString] = "mcp.handler.outcome"
 MCP_ADMIN_OP_EXECUTED: Final[str] = "mcp.admin_op.executed"

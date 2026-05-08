@@ -25,7 +25,7 @@ from litestar.types import ASGIApp, Message, Receive, Scope, Send  # noqa: TC002
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.correlation import (
     bind_correlation_id,
     clear_correlation_ids,
@@ -400,7 +400,11 @@ class RequestLoggingMiddleware:
                     status_code = raw_status
             await original_send(message)  # pyright: ignore[reportArgumentType]
 
-        with _tracer.start_as_current_span("http.request") as span:
+        with _tracer.start_as_current_span(
+            "http.request",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
             span.set_attribute("http.request.method", method)
             span.set_attribute("http.route", path)
             span.set_attribute("synthorg.correlation_id", correlation_id)
@@ -409,12 +413,21 @@ class RequestLoggingMiddleware:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # ``record_exception`` stores the traceback on the span
-                # locally. The secret-log redaction policy that bans
-                # ``exc_info=True`` targets the structlog sink, not
-                # OpenTelemetry spans -- the OTel exporter is a
-                # separate transport with its own redaction posture.
-                span.record_exception(exc)
+                # OTel's ``record_exception`` would serialise the full
+                # traceback (including frame locals) into the span,
+                # bypassing the structlog secret-log redaction the
+                # rest of the codebase relies on. To keep the OTLP
+                # transport on the same redaction posture as the
+                # structlog sink, set OTel-semconv exception
+                # attributes directly using the scrubbed description
+                # and skip the traceback emission. See
+                # ``docs/reference/sec-prompt-safety.md`` for the
+                # transport-level redaction policy.
+                span.set_attribute("exception.type", type(exc).__name__)
+                span.set_attribute(
+                    "exception.message",
+                    safe_error_description(exc),
+                )
                 span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
                 raise
             finally:

@@ -246,9 +246,13 @@ class PushMetrics:
 
         # -- Settings mutations counter ------------------------------
         # Namespace label is bounded via ``VALID_SETTINGS_NAMESPACES``
-        # (mirrors filenames in ``settings/definitions/``). Action is
-        # intentionally NOT a label per #1775 scope -- keeps
-        # cardinality at 22 and matches the dashboard's needs.
+        # (mirrors filenames in ``settings/definitions/``). Action
+        # (set / set_many / delete / delete_namespace) is
+        # intentionally NOT a label so the dashboard slices by
+        # namespace only -- the operator-facing question is "which
+        # namespace is being mutated", and adding ``action`` would
+        # quadruple cardinality (22 namespaces x 4 actions = 88
+        # series) without a dashboard that asks for that breakdown.
         self.settings_mutations = PromCounter(
             f"{prefix}_settings_mutations_total",
             "Settings mutations by namespace",

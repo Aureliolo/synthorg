@@ -287,13 +287,19 @@ def test_record_blueprint_instantiation_rejects_unknown_outcome() -> None:
 # -- record_settings_mutation ------------------------------------------------
 
 
-def test_record_settings_mutation_increments_counter() -> None:
+@pytest.mark.parametrize(
+    "namespace",
+    [
+        "security",  # audited namespace
+        "budget",  # non-audited namespace; metric must still fire
+    ],
+)
+def test_record_settings_mutation_increments_counter(namespace: str) -> None:
     collector = PrometheusCollector()
-    collector.record_settings_mutation(namespace="security")
+    collector.record_settings_mutation(namespace=namespace)
     samples = _samples(collector, "synthorg_settings_mutations")
     assert any(
-        labels == {"namespace": "security"} and value == 1.0
-        for labels, value in samples
+        labels == {"namespace": namespace} and value == 1.0 for labels, value in samples
     )
 
 
@@ -350,6 +356,36 @@ def test_record_mcp_handler_outcome_rejects_unknown_outcome() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "error",
+        "validation_error",
+        "guardrail_violated",
+        "not_found",
+        "capability_unsupported",
+    ],
+)
+def test_record_mcp_handler_outcome_records_all_error_outcomes(outcome: str) -> None:
+    """Every bounded MCP error outcome flows through counter + histogram."""
+    collector = PrometheusCollector()
+    collector.record_mcp_handler_outcome(
+        tool="synthorg_tasks_get",
+        outcome=outcome,
+        duration_sec=0.05,
+    )
+    counter_samples = _samples(collector, "synthorg_mcp_handler_outcomes")
+    assert any(
+        labels == {"tool": "synthorg_tasks_get", "outcome": outcome} and value == 1.0
+        for labels, value in counter_samples
+    )
+    histogram_samples = _samples(collector, "synthorg_mcp_handler_duration_seconds")
+    assert any(
+        labels == {"tool": "synthorg_tasks_get", "outcome": outcome} and value == 1.0
+        for labels, value in histogram_samples
+    )
+
+
 # -- record_budget_query -----------------------------------------------------
 
 
@@ -402,6 +438,31 @@ def test_record_audit_chain_verification_valid_outcome_logs_and_increments() -> 
         rec.get("event") == SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME
         and rec.get("outcome") == "valid"
         and rec.get("entries_checked") == 42
+        for rec in logs
+    )
+
+
+def test_record_audit_chain_verification_broken_outcome_logs_and_increments() -> None:
+    from synthorg.observability.events.security import (
+        SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME,
+    )
+
+    collector = PrometheusCollector()
+    with structlog.testing.capture_logs() as logs:
+        collector.record_audit_chain_verification(
+            outcome="broken",
+            entries_checked=15,
+            first_break_position=8,
+        )
+    samples = _samples(collector, "synthorg_audit_chain_verifications")
+    assert any(
+        labels == {"outcome": "broken"} and value == 1.0 for labels, value in samples
+    )
+    assert any(
+        rec.get("event") == SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME
+        and rec.get("outcome") == "broken"
+        and rec.get("entries_checked") == 15
+        and rec.get("first_break_position") == 8
         for rec in logs
     )
 

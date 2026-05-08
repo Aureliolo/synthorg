@@ -574,7 +574,7 @@ class RecordingMixin:
 
         Args:
             outcome: One of ``"approved"`` / ``"rejected"`` /
-                ``"withdrawn"`` / ``"expired"``.
+                ``"expired"``.
 
         Raises:
             ValueError: If *outcome* is not in

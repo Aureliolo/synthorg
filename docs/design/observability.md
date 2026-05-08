@@ -316,6 +316,20 @@ All three use the `audit_chain.*` prefix (NOT `security.*`) so the
 diagnostic log can never recurse through `emit()` and deadlock the
 single-worker signing executor.
 
+#### Integrity verification
+
+`AuditChainVerifier.verify_chain()` walks the chain end-to-end (hash
+continuity + per-entry signature verification) and emits one
+`synthorg_audit_chain_verifications_total{outcome}` increment per
+call. `outcome` is `valid` when the chain is intact and `broken` on
+any mismatch. Any exception raised by the signer (crypto / network /
+key-unavailable) is also reported as `outcome="broken"` before the
+exception is re-raised, so a transient verifier outage cannot create
+a tamper-detection blind spot. The matching log event
+`security.audit_chain.verify.outcome` carries the same `outcome`
+plus `entries_checked` and `first_break_position` for offline
+incident triage.
+
 ### Uvicorn Integration
 
 Uvicorn's default access logger is **disabled** (`access_log=False`, `log_config=None`).
@@ -452,7 +466,23 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 **Audit chain + OTLP health**
 
 - `synthorg_audit_chain_appends_total{status}`, `synthorg_audit_chain_depth`, `synthorg_audit_chain_last_append_timestamp_seconds`.
+- `synthorg_audit_chain_verifications_total{outcome}`: counter incremented once per `AuditChainVerifier.verify_chain()` call. `outcome` is one of `valid` / `broken` (bounded via `VALID_AUDIT_VERIFICATION_OUTCOMES`). Any `broken` increment is alertable -- it indicates hash-chain tampering, signature corruption, or a verifier-side failure (crypto / network).
 - `synthorg_otlp_export_batches_total{kind, outcome}`, `synthorg_otlp_export_dropped_records_total{kind}`.
+
+**Decisions (approval / escalation / blueprint)**
+
+- `synthorg_approval_decisions_total{outcome}`: counter; terminal approval-gate decisions. `outcome` ∈ `approved` / `rejected` / `expired` (bounded via `VALID_APPROVAL_OUTCOMES`). Emitted from the approve / reject controller paths and the expiry sweeper in `api/approval_store.py`.
+- `synthorg_escalation_outcomes_total{outcome}`: counter; conflict-resolution escalation terminal outcomes. `outcome` ∈ `resolved` / `escalated_to_human` / `auto_resolved` / `notify_failed` / `sweeper_failed` (bounded via `VALID_ESCALATION_OUTCOMES`). Disjoint from the approval-decisions counter because the two flows have different terminal vocabularies and live in different modules.
+- `synthorg_blueprint_instantiations_total{outcome}`: counter; workflow blueprint instantiation attempts. `outcome` ∈ `success` / `validation_error` / `not_found` / `unknown_error` (bounded via `VALID_BLUEPRINT_OUTCOMES`). Use `rate(...{outcome="success"}[5m]) / rate(...[5m])` for a success-rate panel.
+
+**Configuration & MCP**
+
+- `synthorg_settings_mutations_total{namespace}`: counter; settings mutations across `set` / `set_many` / `delete` / `delete_namespace`. `namespace` is bounded by the closed set in `src/synthorg/settings/definitions/` (mirror enforced by `test_valid_settings_namespaces_matches_definitions_directory`). `action` is intentionally NOT a label -- the dashboard slices by namespace only.
+- `synthorg_mcp_handler_outcomes_total{tool, outcome}` + `synthorg_mcp_handler_duration_seconds{tool, outcome}`: counter + histogram; per MCP handler invocation. `outcome` ∈ `success` / `error` / `validation_error` / `guardrail_violated` / `not_found` / `capability_unsupported` (bounded via `VALID_MCP_HANDLER_OUTCOMES`). Distinct from the existing `tool_duration` histogram so MCP service-boundary latency does not mix with provider-bound tool latency. Buckets cap at 10s with seven sub-100ms buckets.
+
+**Budget query latency**
+
+- `synthorg_budget_query_duration_seconds{query_type}`: histogram; budget read-path latency. `query_type` ∈ `total_cost` / `agent_cost` / `project_cost` / `balance` / `available_spend` / `burn_rate` / `daily_spend` / `cost_summary` (bounded via `VALID_BUDGET_QUERY_TYPES`). Pure SQLite read path; buckets cap at 1s and a p95 over 100ms is a regression worth investigating.
 
 See the ready-to-import [Grafana dashboard](../../monitoring/grafana/synthorg-overview.json) and the [monitoring guide](../guides/monitoring.md) for PromQL queries, alert rules, and expected ranges for each metric.
 

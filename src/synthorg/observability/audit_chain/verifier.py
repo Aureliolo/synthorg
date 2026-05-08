@@ -66,7 +66,10 @@ class AuditChainVerifier:
         Checks hash continuity and verifies each signature. Emits one
         ``synthorg_audit_chain_verifications_total`` increment per call
         with ``outcome="valid"|"broken"`` so dashboards expose chain
-        tampering as a queryable rate.
+        tampering as a queryable rate. Exceptions raised by the signer
+        (crypto / network / key-unavailable) are reported as
+        ``outcome="broken"`` before re-raising so a transient verifier
+        failure cannot create a tamper-detection blind spot.
 
         Args:
             chain: Hash chain to verify.
@@ -74,7 +77,17 @@ class AuditChainVerifier:
         Returns:
             Verification result with validity and break position.
         """
-        result = await self._verify_chain_inner(chain)
+        try:
+            result = await self._verify_chain_inner(chain)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            record_audit_chain_verification(
+                outcome="broken",
+                entries_checked=0,
+                first_break_position=None,
+            )
+            raise
         record_audit_chain_verification(
             outcome="valid" if result.valid else "broken",
             entries_checked=result.entries_checked,

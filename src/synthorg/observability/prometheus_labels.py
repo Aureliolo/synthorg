@@ -248,11 +248,13 @@ VALID_DISCONNECT_REASONS: Final[frozenset[str]] = frozenset(
 )
 
 # -- Approval / escalation / blueprint / settings / MCP / budget / audit ---
-# Bounded label vocabularies for the metrics added by #1775. The settings
-# namespace allowlist mirrors the filenames in
-# ``src/synthorg/settings/definitions/`` -- a parity test under
-# ``tests/unit/settings/`` asserts the two stay in lockstep so adding a
-# new namespace fails fast in tests.
+# Bounded label vocabularies for the secondary-domain observability
+# metrics (approvals, escalations, blueprint instantiations, settings
+# mutations, MCP handler outcomes, budget queries, audit-chain
+# integrity verifications). The settings namespace allowlist mirrors
+# the filenames in ``src/synthorg/settings/definitions/`` -- a parity
+# test under ``tests/unit/observability/`` asserts the two stay in
+# lockstep so adding a new namespace fails fast in tests.
 VALID_APPROVAL_OUTCOMES: Final[frozenset[str]] = frozenset(
     {"approved", "rejected", "expired"}
 )
