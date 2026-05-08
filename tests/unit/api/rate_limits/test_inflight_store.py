@@ -197,12 +197,42 @@ class TestGcSweep:
         try:
             # Create a lock entry without a matching counter (simulates
             # a cancelled acquire that created the lock lazily but never
-            # materialised the counter).
+            # materialised the counter). ``_get_lock`` bumps the ref
+            # count, so we drop it before sweeping -- otherwise the
+            # ref-counted GC correctly preserves the lock.
             _ = await store._get_lock("op:orphan")
+            await store._release_lock_ref("op:orphan")
             assert "op:orphan" in store._locks
             assert "op:orphan" not in store._counters
             await store._gc_cold_buckets()
             # Orphan locks that are not currently held must be dropped.
             assert "op:orphan" not in store._locks
         finally:
+            await store.close()
+
+    async def test_lock_held_via_ref_is_not_reaped(self) -> None:
+        """TOCTOU regression: ``_get_lock`` ref pin survives a GC sweep.
+
+        Without the ref count, ``_gc_cold_buckets`` would evict an
+        unlocked, zero-counter bucket between ``_get_lock`` returning
+        and the caller's ``async with lock`` -- the next
+        ``_get_lock(same_key)`` would mint a fresh ``asyncio.Lock``,
+        and two concurrent callers would hold *different* locks for
+        the same key.
+        """
+        store = InMemoryInflightStore()
+        try:
+            first = await store._get_lock("op:toctou")
+            # Sweep BEFORE the caller enters ``async with``. Under the
+            # broken (no ref) implementation the lock would be evicted
+            # here. Under the fix, the ref keeps it pinned.
+            await store._gc_cold_buckets()
+            second = await store._get_lock("op:toctou")
+            assert first is second, (
+                "regression: _gc_cold_buckets evicted an in-flight lock"
+            )
+        finally:
+            # Match the two _get_lock increments with two releases.
+            await store._release_lock_ref("op:toctou")
+            await store._release_lock_ref("op:toctou")
             await store.close()
