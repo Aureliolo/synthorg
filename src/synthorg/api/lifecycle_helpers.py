@@ -656,13 +656,12 @@ async def _apply_notification_dispatcher_config(
         notif_bridge = await app_state.config_resolver.get_notifications_bridge_config()
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to resolve notifications bridge config;"
-                " keeping dispatcher default timeouts"
-            ),
+            setting="notifications.bridge_config",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return
     if not (app_state.has_notification_dispatcher and effective_config is not None):
@@ -679,13 +678,12 @@ async def _apply_notification_dispatcher_config(
         await old_dispatcher.aclose()
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to close pre-startup notification"
-                " dispatcher sinks after rebuild"
-            ),
+            event_context="old_notification_dispatcher_aclose",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 

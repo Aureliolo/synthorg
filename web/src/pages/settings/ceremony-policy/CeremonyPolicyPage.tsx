@@ -277,13 +277,13 @@ export default function CeremonyPolicyPage() {
   const handleSave = useCallback(async () => {
     setSaving(true)
     setSaveError(null)
-    // Defence-in-depth: ``updateSetting`` follows the store-CRUD
-    // contract and never throws, so ``Promise.all`` should always
-    // resolve. The try/finally guards against an unrelated future
-    // rejection (e.g. a JS runtime error in the call site) leaving
-    // the page stuck in the "saving" state.
+    // ``updateSetting`` follows the store-CRUD contract (never throws,
+    // returns ``null`` on failure). ``Promise.allSettled`` is used
+    // anyway as defence-in-depth -- a future regression that breaks
+    // the no-throw contract would otherwise skip the per-result
+    // inspection and propagate an unhandled rejection.
     try {
-      const results = await Promise.all([
+      const settled = await Promise.allSettled([
         updateSetting('coordination', 'ceremony_strategy', strategy),
         updateSetting('coordination', 'ceremony_strategy_config', JSON.stringify(strategyConfig)),
         updateSetting('coordination', 'ceremony_velocity_calculator', velocityCalculator),
@@ -291,20 +291,24 @@ export default function CeremonyPolicyPage() {
         updateSetting('coordination', 'ceremony_transition_threshold', String(transitionThreshold)),
         updateSetting('coordination', 'ceremony_policy_overrides', JSON.stringify(ceremonyOverrides)),
       ])
-      if (results.includes(null)) {
-        const failedCount = results.filter((r) => r === null).length
+      const failedCount = settled.filter(
+        (r) => r.status === 'rejected' || r.value == null,
+      ).length
+      if (failedCount > 0) {
         setSaveError(`${failedCount} ceremony setting(s) failed to save`)
         return
       }
       setIsDirty(false)
-      addToast({ variant: 'success', title: 'Ceremony policy saved' })
+      // No aggregate success toast here: the store emits one per
+      // mutation per the CRUD contract, so an aggregate at this
+      // level would double up.
       fetchResolvedPolicy()
     } finally {
       setSaving(false)
     }
   }, [
     strategy, strategyConfig, velocityCalculator, autoTransition, transitionThreshold,
-    ceremonyOverrides, updateSetting, addToast, fetchResolvedPolicy,
+    ceremonyOverrides, updateSetting, fetchResolvedPolicy,
   ])
 
   // Handle per-ceremony override changes

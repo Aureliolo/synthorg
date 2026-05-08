@@ -42,7 +42,6 @@ import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from './settings/utils'
 
-import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
 
 
@@ -226,11 +225,9 @@ export default function SettingsPage() {
       }).length
       if (restartCount > 0) setRestartBannerCount(restartCount)
 
-      // Per-failure error toasts already fired in the store; emit only
-      // an aggregate success toast here.
-      if (failedKeys.size === 0) {
-        useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
-      }
+      // No aggregate success toast: the store fires one per mutation
+      // per the CRUD contract, so an aggregate at this level would
+      // double up.
       return failedKeys
     },
     [updateSetting, setDirtyValues, entries],

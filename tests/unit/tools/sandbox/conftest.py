@@ -1,6 +1,6 @@
 """Fixtures for sandbox tests."""
 
-from collections.abc import Generator
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -16,7 +16,7 @@ from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 @pytest.fixture(autouse=True)
 def _isolate_sandbox_image_resolution(
     monkeypatch: pytest.MonkeyPatch,
-) -> Generator[None]:
+) -> Iterator[None]:
     """Reset the resolved-image cache + env around each sandbox test.
 
     ``DockerSandboxConfig.image`` reads from a process-singleton cache

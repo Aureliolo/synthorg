@@ -179,6 +179,17 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         }
         return patch
       })
+      // Success toast per the store-CRUD contract. Batch callers
+      // (saveSettingsBatch, CeremonyPolicyPage) intentionally do NOT
+      // emit a separate aggregated success toast on top -- the store
+      // already fires one per mutation, so an aggregated toast would
+      // double up. The trade-off is N toasts on a batch save vs.
+      // contract drift; the convention picks contract drift as the
+      // worse failure mode.
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Updated ${sanitizeForLog(compositeKey)}`,
+      })
       return updated
     } catch (error) {
       const errorMessage = getErrorMessage(error)
@@ -233,10 +244,12 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     }
     // Reset succeeded -- refetch entries to get the resolved default.
     let refreshedEntries: SettingEntry[] | undefined
+    let refreshFailed = false
     try {
       refreshedEntries = await fetchAllSettingsEntries()
     } catch (err) {
       // Reset applied but refetch failed -- UI is stale until next poll cycle
+      refreshFailed = true
       log.warn('Post-reset refetch failed; data will refresh at next poll', err)
     } finally {
       set((state) => {
@@ -251,11 +264,25 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
           if (ns === 'budget' && key === 'currency') {
             update.currency = deriveCurrency(refreshedEntries) ?? DEFAULT_CURRENCY
           }
+        } else if (refreshFailed) {
+          update.error =
+            'Settings were reset, but the updated values could not be reloaded yet.'
         }
         return update
       })
     }
-    return true
+    // Return false on refresh failure so callers can keep dirty state
+    // and avoid clearing UI on stale data; the reset itself succeeded
+    // server-side, but the local view did not catch up. Callers that
+    // need the literal "server-side mutation succeeded" signal can
+    // inspect ``saveError`` instead.
+    if (!refreshFailed) {
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Reset ${sanitizeForLog(compositeKey)}`,
+      })
+    }
+    return !refreshFailed
   },
 
   updateFromWsEvent: (event) => {

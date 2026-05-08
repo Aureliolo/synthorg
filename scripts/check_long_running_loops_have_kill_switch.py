@@ -114,21 +114,24 @@ def _walk_current_scope(node: ast.AST) -> Iterable[ast.AST]:
     a ``while True`` would make the outer function look long-running,
     or an inner ``_resolve_*_enabled()`` call would make an unguarded
     outer loop look compliant.
+
+    Yields nodes in source order (top-to-bottom, depth-first) so callers
+    that care about lexical sequence -- in particular
+    ``_calls_kill_switch_resolver``'s assign-then-test pattern, which
+    must only credit ``Assign`` nodes that appear before the ``If``
+    consuming the assigned name -- can rely on iteration order.
     """
-    stack: list[ast.AST] = [node]
     nested_scopes = (
         ast.FunctionDef,
         ast.AsyncFunctionDef,
         ast.ClassDef,
         ast.Lambda,
     )
-    while stack:
-        current = stack.pop()
-        yield current
-        for child in ast.iter_child_nodes(current):
-            if child is not node and isinstance(child, nested_scopes):
-                continue
-            stack.append(child)
+    yield node
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, nested_scopes):
+            continue
+        yield from _walk_current_scope(child)
 
 
 _RESOLVER_RECEIVER_NAMES = frozenset(

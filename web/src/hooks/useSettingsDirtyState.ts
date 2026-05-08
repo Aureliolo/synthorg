@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
-import { useToastStore } from '@/stores/toast'
 import { saveSettingsBatch } from '@/pages/settings/utils'
 
 export interface UseSettingsDirtyStateReturn {
@@ -81,16 +80,9 @@ export function useSettingsDirtyState(
         return next
       })
 
-      if (failedKeys.size === 0) {
-        useToastStore.getState().add({
-          variant: 'success',
-          title: 'Settings saved',
-        })
-      }
-      // No aggregate error toast on partial / total failure: the
-      // store already emitted one per failed key (per the
-      // store-CRUD contract), so an aggregate would just stack on
-      // top of the per-call toasts.
+      // No aggregate toast (success or failure) on batch saves: the
+      // store fires one toast per mutation per the CRUD contract,
+      // so an aggregate at this level would just stack on top.
     } finally {
       isSavingRef.current = false
     }
