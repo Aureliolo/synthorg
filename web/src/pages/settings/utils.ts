@@ -6,6 +6,41 @@ import { sanitizeForLog } from '@/utils/logging'
 const log = createLogger('settings')
 
 /**
+ * Allowed setting namespaces, kept in lockstep with the
+ * ``SettingNamespace`` union in ``@/api/types/settings``. The
+ * Set-of-string lookup lets ``saveSettingsBatch`` validate a composite
+ * key's namespace before casting through ``as SettingNamespace`` and
+ * dispatching the API call -- so a malformed dirty-draft entry
+ * (manual code-mode input, stale localStorage from an older schema,
+ * fuzz noise) cannot reach the network with a literally-impossible
+ * namespace.
+ */
+const VALID_SETTING_NAMESPACES: ReadonlySet<string> = new Set<SettingNamespace>([
+  'api',
+  'client',
+  'company',
+  'providers',
+  'memory',
+  'budget',
+  'security',
+  'coordination',
+  'observability',
+  'backup',
+  'engine',
+  'communication',
+  'a2a',
+  'integrations',
+  'meta',
+  'notifications',
+  'simulations',
+  'tools',
+  'settings',
+  'hr',
+  'workers',
+  'telemetry',
+])
+
+/**
  * Fuzzy subsequence match: returns true if every character of `needle`
  * appears in `haystack` in order. E.g. "prt" matches "server_port".
  */
@@ -95,8 +130,21 @@ export async function saveSettingsBatch(
       })
       return Promise.reject(new Error(`Malformed key: ${compositeKey}`))
     }
-    const ns = compositeKey.slice(0, slashIdx) as SettingNamespace
+    const nsRaw = compositeKey.slice(0, slashIdx)
     const key = compositeKey.slice(slashIdx + 1)
+    if (key.length === 0) {
+      log.error('Empty key in composite', {
+        compositeKey: sanitizeForLog(compositeKey),
+      })
+      return Promise.reject(new Error(`Empty key: ${compositeKey}`))
+    }
+    if (!VALID_SETTING_NAMESPACES.has(nsRaw)) {
+      log.error('Unknown namespace in composite key', {
+        compositeKey: sanitizeForLog(compositeKey),
+      })
+      return Promise.reject(new Error(`Unknown namespace: ${compositeKey}`))
+    }
+    const ns = nsRaw as SettingNamespace
     return updateSetting(ns, key, dirtyValues.get(compositeKey)!)
   })
   const results = await Promise.allSettled(promises)

@@ -20,7 +20,9 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.integrations import (
     WEBHOOK_BRIDGE_EVENT_FORWARDED,
+    WEBHOOK_BRIDGE_PAUSED,
     WEBHOOK_BRIDGE_POLL_ERROR,
+    WEBHOOK_BRIDGE_RESOLVE_FAILED,
     WEBHOOK_BRIDGE_STARTED,
     WEBHOOK_BRIDGE_STOPPED,
 )
@@ -61,7 +63,11 @@ class WebhookEventBridge:
         self._scheduler = ceremony_scheduler
         self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager lifecycle lock per ``docs/reference/lifecycle-sync.md``;
+        # ``asyncio.Lock`` is loop-agnostic until first ``acquire()``,
+        # so app-wire-time construction is safe and prevents a racing
+        # ``stop()`` from observing a half-published lock attribute.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         # Resolver-failure warnings are log-once per run of failures
         # to keep the polling loop from flooding logs during a
         # prolonged settings outage. Flags reset on the first
@@ -237,7 +243,7 @@ class WebhookEventBridge:
         except Exception as exc:
             if not self._enabled_fallback_logged:
                 logger.warning(
-                    WEBHOOK_BRIDGE_POLL_ERROR,
+                    WEBHOOK_BRIDGE_RESOLVE_FAILED,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                     fallback_enabled=True,
@@ -261,7 +267,7 @@ class WebhookEventBridge:
         consecutive_errors = 0
         while True:
             if not await self._resolve_enabled():
-                logger.debug(WEBHOOK_BRIDGE_POLL_ERROR, reason="paused_by_setting")
+                logger.debug(WEBHOOK_BRIDGE_PAUSED, reason="paused_by_setting")
                 await asyncio.sleep(await self._get_poll_timeout())
                 continue
             poll_timeout = await self._get_poll_timeout()

@@ -20,12 +20,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.communication.conflict_resolution.escalation import notify as notify_mod
+from synthorg.communication.conflict_resolution.escalation.in_memory_store import (
+    InMemoryEscalationStore,
+)
 from synthorg.communication.conflict_resolution.escalation.notify import (
     NoopEscalationNotifySubscriber,
     PostgresEscalationNotifySubscriber,
-)
-from synthorg.communication.conflict_resolution.escalation.protocol import (
-    EscalationQueueStore,
 )
 from synthorg.communication.conflict_resolution.escalation.registry import (
     PendingFuturesRegistry,
@@ -65,7 +65,7 @@ class TestPostgresSubscriberLateBoundResolver:
     """
 
     async def test_set_config_resolver_replaces_eager_none(self) -> None:
-        repo = AsyncMock(spec=EscalationQueueStore)
+        repo = AsyncMock(spec=InMemoryEscalationStore)
         registry = AsyncMock(spec=PendingFuturesRegistry)
         subscriber = PostgresEscalationNotifySubscriber(
             repo,
@@ -91,7 +91,7 @@ class TestPostgresSubscriberLateBoundResolver:
 
     async def test_run_loop_paused_branch_uses_paused_event(self) -> None:
         """When the kill-switch is False the debug log uses the PAUSED event."""
-        repo = AsyncMock(spec=EscalationQueueStore)
+        repo = AsyncMock(spec=InMemoryEscalationStore)
         registry = AsyncMock(spec=PendingFuturesRegistry)
         resolver = AsyncMock(spec=ConfigResolver)
         gate_consulted = asyncio.Event()
@@ -147,7 +147,7 @@ class TestPostgresSubscriberLateBoundResolver:
 class TestPostgresSubscriberValidation:
     async def test_invalid_channel_rejected(self) -> None:
         """Defence-in-depth: hand-constructed unsafe channel raises."""
-        repo = AsyncMock(spec=EscalationQueueStore)
+        repo = AsyncMock(spec=InMemoryEscalationStore)
         registry = AsyncMock(spec=PendingFuturesRegistry)
         # The constructor must REJECT this literal, so it has to appear
         # verbatim on the channel= argument; the trailing marker keeps
@@ -162,7 +162,7 @@ class TestPostgresSubscriberValidation:
             )
 
     async def test_negative_reconnect_delay_rejected(self) -> None:
-        repo = AsyncMock(spec=EscalationQueueStore)
+        repo = AsyncMock(spec=InMemoryEscalationStore)
         registry = AsyncMock(spec=PendingFuturesRegistry)
         with pytest.raises(ValueError, match="reconnect_delay_seconds"):
             PostgresEscalationNotifySubscriber(
@@ -180,7 +180,7 @@ class TestPostgresSubscriberLifecycle:
         spawn a fresh task while the orphan loop still holds the
         LISTEN connection.
         """
-        repo = AsyncMock(spec=EscalationQueueStore)
+        repo = AsyncMock(spec=InMemoryEscalationStore)
         registry = AsyncMock(spec=PendingFuturesRegistry)
         subscriber = PostgresEscalationNotifySubscriber(
             repo,
@@ -247,7 +247,7 @@ class TestPostgresSubscriberDoneCallback:
     async def test_start_registers_log_task_exceptions(self) -> None:
         from unittest.mock import patch
 
-        repo = AsyncMock(spec=EscalationQueueStore)
+        repo = AsyncMock(spec=InMemoryEscalationStore)
         registry = AsyncMock(spec=PendingFuturesRegistry)
         subscriber = PostgresEscalationNotifySubscriber(
             repo,

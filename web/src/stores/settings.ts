@@ -270,16 +270,24 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       set((state) => {
         const newSaving = new Set(state.savingKeys)
         newSaving.delete(compositeKey)
+        // ``hasOtherSaves`` is computed from the post-delete set so a
+        // concurrent ``updateSetting()`` / ``resetSetting()`` started
+        // mid-flight (and not yet drained) prevents this older
+        // snapshot from clobbering the newer in-flight result. The
+        // refetch already merged the reset value, so per-key correctness
+        // is preserved; we only avoid replacing the whole ``entries``
+        // array under contention.
+        const hasOtherSaves = newSaving.size > 0
         const update: Partial<SettingsState> = {
           savingKeys: newSaving,
         }
-        if (refreshedEntries) {
+        if (refreshedEntries && !hasOtherSaves) {
           update.entries = refreshedEntries
           update.error = null
           if (ns === 'budget' && key === 'currency') {
             update.currency = deriveCurrency(refreshedEntries) ?? DEFAULT_CURRENCY
           }
-        } else if (refreshFailed) {
+        } else if (refreshFailed || hasOtherSaves) {
           update.error =
             'Settings were reset, but the updated values could not be reloaded yet.'
         }

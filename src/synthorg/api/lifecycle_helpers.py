@@ -778,12 +778,12 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to apply ws_ticket_max_pending_per_user; using built-in default"
-            ),
+            setting="api.ws_ticket_max_pending_per_user",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
     try:
@@ -916,13 +916,12 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to resolve audit_chain_signing_timeout_seconds;"
-                " keeping sink default"
-            ),
+            setting="observability.audit_chain_signing_timeout_seconds",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
     else:
         from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
@@ -938,14 +937,13 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                     _handler.set_signing_timeout_seconds(signing_timeout)
                 except MemoryError, RecursionError:
                     raise
-                except Exception:
+                except Exception as exc:
                     logger.warning(
                         API_APP_STARTUP,
-                        error=(
-                            "Failed to apply"
-                            " audit_chain_signing_timeout_seconds"
-                            " to handler"
-                        ),
+                        setting=("observability.audit_chain_signing_timeout_seconds"),
+                        phase="apply_to_handler",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
     await _apply_notification_dispatcher_config(app_state, effective_config)
@@ -954,16 +952,19 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
 
 
 async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:
-    """Resolve the OAuth idempotency retention window, fail-safe to 600s.
+    """Resolve the OAuth idempotency retention window.
 
-    A settings-backend outage must not stop the OAuth state cleanup loop;
-    the table would otherwise grow unbounded as consumed-but-stale rows
-    accumulate.  10 minutes covers the documented redelivery envelope of
-    the major IdPs and is the value the loop ran with before the setting
-    was introduced.
+    Falls back to the registered default when the resolver is
+    unavailable or the read fails. A settings-backend outage must not
+    stop the OAuth state cleanup loop; the table would otherwise grow
+    unbounded as consumed-but-stale rows accumulate.
     """
+    fallback = registered_default_float(
+        SettingNamespace.INTEGRATIONS.value,
+        "oauth_idempotency_retention_seconds",
+    )
     if not app_state.has_config_resolver:
-        return 600.0
+        return fallback
     try:
         return await app_state.config_resolver.get_float(
             SettingNamespace.INTEGRATIONS.value,
@@ -976,11 +977,9 @@ async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:
     except Exception as exc:
         logger.warning(
             PERSISTENCE_OAUTH_STATE_CLEANUP,
-            error=(
-                "Failed to resolve oauth_idempotency_retention_seconds;"
-                " falling back to 600.0 seconds"
-            ),
+            setting="integrations.oauth_idempotency_retention_seconds",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
+            fallback_seconds=fallback,
         )
-        return 600.0
+        return fallback

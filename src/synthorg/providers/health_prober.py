@@ -24,6 +24,8 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_SUCCESS,
     PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
     PROVIDER_HEALTH_PROBER_PAUSED,
+    PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
+    PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED,
     PROVIDER_HEALTH_PROBER_STARTED,
     PROVIDER_HEALTH_PROBER_STOPPED,
 )
@@ -153,6 +155,7 @@ class ProviderHealthProber:
         "_health_tracker",
         "_interval",
         "_lifecycle_lock",
+        "_resolve_failed_logged",
         "_stop_drain_timeout_seconds",
         "_stop_event",
         "_stop_failed",
@@ -181,15 +184,20 @@ class ProviderHealthProber:
         # so the lifecycle drain timeout and probe-cycle interval can
         # be driven on virtual time instead of wall time.
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task[None] | None = None
         # Per ``docs/reference/lifecycle-sync.md`` the lifecycle lock,
         # stop event, drain timeout, and unrestartable flag are
         # constructed eagerly so a racing ``stop()`` cannot observe a
         # half-published lock attribute.
-        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init -- see above.
+        self._task: asyncio.Task[None] | None = None
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._stop_failed: bool = False
         self._stop_drain_timeout_seconds: float = 30.0
+        # Resolver-failure warnings are log-once per failure run so a
+        # prolonged settings outage cannot flood logs with one warning
+        # per cycle. The flag clears on the first successful resolution
+        # so a re-failure surfaces a fresh warning.
+        self._resolve_failed_logged: bool = False
 
     async def start(self) -> None:
         """Start the background probe loop.
@@ -294,9 +302,19 @@ class ProviderHealthProber:
         provider HTTP probing mid-flight without tearing down the loop.
         A settings-backend outage must not silently pause observability,
         so any resolver failure resolves to enabled.
+
+        Resolver-failure warnings are throttled via
+        ``_resolve_failed_logged`` -- a prolonged outage emits a single
+        ``PROVIDER_HEALTH_PROBER_RESOLVE_FAILED`` warning, and the next
+        successful read clears the flag and emits one
+        ``PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED`` info before
+        resuming silent operation. Without this guard a short probe
+        interval against a degraded settings backend would tile dashboards
+        with cycle-failed events that are actually clean fallback
+        cycles.
         """
         try:
-            return await self._config_resolver.get_bool(
+            value = await self._config_resolver.get_bool(
                 SettingNamespace.API.value, "health_prober_enabled"
             )
         except asyncio.CancelledError:
@@ -304,13 +322,19 @@ class ProviderHealthProber:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(
-                PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                fallback_enabled=True,
-            )
+            if not self._resolve_failed_logged:
+                logger.warning(
+                    PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    fallback_enabled=True,
+                )
+                self._resolve_failed_logged = True
             return True
+        if self._resolve_failed_logged:
+            logger.info(PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED)
+            self._resolve_failed_logged = False
+        return value
 
     async def _run_loop(self) -> None:
         """Main loop: probe all, then sleep until next cycle or stop.

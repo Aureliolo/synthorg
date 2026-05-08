@@ -41,6 +41,27 @@ class _CleanupOutcome(NamedTuple):
 logger = get_logger(__name__)
 
 
+class _ResolverThrottleState:
+    """Per-process throttle flags for webhook-cleanup resolver helpers.
+
+    A mutable singleton lives at module scope so the
+    log-once-until-recovery semantics survive across loop ticks (the
+    helpers are module-level functions, not class methods, so there is
+    no ``self`` to attach the flag to). Wrapping the flags in a class
+    rather than declaring two ``bool`` module-level globals keeps
+    PLW0603 quiet -- attribute writes on an existing instance do not
+    require ``global``. Tests reset state via
+    ``_resolver_throttle.cleanup_*_failed = False`` when exercising
+    repeated-outage paths.
+    """
+
+    cleanup_enabled_failed: bool = False
+    cleanup_tick_failed: bool = False
+
+
+_resolver_throttle = _ResolverThrottleState()
+
+
 async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
     """Resolve the webhook-cleanup kill-switch, fail-safe to ``True``.
 
@@ -49,11 +70,16 @@ async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
     lifespan task.  A settings-backend outage must not silently flip
     the sweep off (receipts would accumulate forever) -- prefer
     enabled on resolver failure and surface the error.
+
+    Repeated outages are throttled via
+    ``_resolver_throttle.cleanup_enabled_failed`` so a prolonged
+    settings hiccup logs one warning per failure run instead of one per
+    loop tick.
     """
     if not app_state.has_config_resolver:
         return True
     try:
-        return await app_state.config_resolver.get_bool(
+        value = await app_state.config_resolver.get_bool(
             SettingNamespace.API.value, "webhook_receipt_cleanup_enabled"
         )
     except asyncio.CancelledError:
@@ -61,14 +87,18 @@ async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.warning(
-            PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
-            reason="kill_switch_resolution_failed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            fallback_enabled=True,
-        )
+        if not _resolver_throttle.cleanup_enabled_failed:
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+                reason="kill_switch_resolution_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback_enabled=True,
+            )
+            _resolver_throttle.cleanup_enabled_failed = True
         return True
+    _resolver_throttle.cleanup_enabled_failed = False
+    return value
 
 
 async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
@@ -257,9 +287,12 @@ async def _resolve_webhook_receipt_cleanup_tick_seconds(app_state: AppState) -> 
     (``integrations.webhook_receipt_cleanup_tick_seconds``) when the
     resolver is unavailable or the read fails.  Operators tune the
     *window* (per-connection or global
-    ``integrations.webhook_receipt_retention_days``) rather than the
+    ``integrations.webhooks.receipt_retention_days``) rather than the
     *cadence*; the cadence remains a setting so a sluggish persistence
     backend can be given a longer interval without code changes.
+
+    Repeated outages are throttled via
+    ``_resolver_throttle.cleanup_tick_failed``.
     """
     fallback = registered_default_float(
         SettingNamespace.INTEGRATIONS.value,
@@ -268,7 +301,7 @@ async def _resolve_webhook_receipt_cleanup_tick_seconds(app_state: AppState) -> 
     if not app_state.has_config_resolver:
         return fallback
     try:
-        return await app_state.config_resolver.get_float(
+        value = await app_state.config_resolver.get_float(
             SettingNamespace.INTEGRATIONS.value,
             "webhook_receipt_cleanup_tick_seconds",
         )
@@ -277,14 +310,18 @@ async def _resolve_webhook_receipt_cleanup_tick_seconds(app_state: AppState) -> 
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.warning(
-            PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
-            reason="tick_seconds_resolution_failed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            fallback_seconds=fallback,
-        )
+        if not _resolver_throttle.cleanup_tick_failed:
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+                reason="tick_seconds_resolution_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback_seconds=fallback,
+            )
+            _resolver_throttle.cleanup_tick_failed = True
         return fallback
+    _resolver_throttle.cleanup_tick_failed = False
+    return value
 
 
 async def _webhook_receipt_cleanup_loop(
