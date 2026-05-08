@@ -184,12 +184,20 @@ class TestHealthProberKillSwitch:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The loop must consult the helper and skip ``_probe_all`` when False."""
+        # Synchronise on the actual gate read instead of a wall-clock
+        # ``asyncio.sleep`` so the test exits as soon as one iteration
+        # has been observed. ``_run_loop`` blocks the rest of the
+        # iteration in ``asyncio.wait_for(stop_event.wait(), timeout=...)``
+        # which is interrupted immediately by ``stop_event.set()``.
+        gate_consulted = asyncio.Event()
+
+        async def _gate(*_args: object, **_kwargs: object) -> bool:
+            gate_consulted.set()
+            return False
+
         resolver = AsyncMock(spec=ConfigResolver)
-        resolver.get_bool.return_value = False
+        resolver.get_bool.side_effect = _gate
         prober = self._make_prober(resolver)
-        # ``_interval`` is the per-cycle ceiling; ``stop_event.set()``
-        # wakes the loop immediately regardless of the timeout, so 1s
-        # is fine and the test still finishes in tens of milliseconds.
         prober._interval = 1
 
         probe_calls = 0
@@ -203,10 +211,10 @@ class TestHealthProberKillSwitch:
         monkeypatch.setattr(ProviderHealthProber, "_probe_all", _fake_probe_all)
 
         task = asyncio.create_task(prober._run_loop())
-        # Let several loop iterations happen so a missed gate would be
-        # caught (`_probe_all` would be called every cycle).
-        await asyncio.sleep(0.05)
-        prober._stop_event.set()
+        try:
+            await asyncio.wait_for(gate_consulted.wait(), timeout=1.0)
+        finally:
+            prober._stop_event.set()
         await asyncio.wait_for(task, timeout=1.0)
 
         assert probe_calls == 0
@@ -216,22 +224,26 @@ class TestHealthProberKillSwitch:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Sanity: when the helper returns True, the loop probes."""
-        resolver = AsyncMock(spec=ConfigResolver)
-        resolver.get_bool.return_value = True
-        prober = self._make_prober(resolver)
-        prober._interval = 1
-
+        probe_invoked = asyncio.Event()
         probe_calls = 0
 
         async def _fake_probe_all(self: ProviderHealthProber) -> None:
             nonlocal probe_calls
             probe_calls += 1
+            probe_invoked.set()
+
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.return_value = True
+        prober = self._make_prober(resolver)
+        prober._interval = 1
 
         monkeypatch.setattr(ProviderHealthProber, "_probe_all", _fake_probe_all)
 
         task = asyncio.create_task(prober._run_loop())
-        await asyncio.sleep(0.05)
-        prober._stop_event.set()
+        try:
+            await asyncio.wait_for(probe_invoked.wait(), timeout=1.0)
+        finally:
+            prober._stop_event.set()
         await asyncio.wait_for(task, timeout=1.0)
 
         assert probe_calls >= 1

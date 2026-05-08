@@ -67,7 +67,7 @@ export interface Connection {
   /**
    * Per-connection override for the webhook-receipt retention window
    * (days). `null` falls back to the global
-   * `integrations.webhook_receipt_retention_days` setting; `0` opts
+   * `integrations.webhooks.receipt_retention_days` setting; `0` opts
    * this connection out of the cleanup sweep entirely.
    */
   readonly webhook_receipt_retention_days: number | null

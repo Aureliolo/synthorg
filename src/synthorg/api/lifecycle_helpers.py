@@ -685,6 +685,8 @@ async def _apply_sandbox_image_cache(app_state: AppState) -> None:
             image_value = await app_state.config_resolver.get_str(
                 SettingNamespace.TOOLS.value, setting_key
             )
+        except asyncio.CancelledError:
+            raise
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -717,6 +719,8 @@ async def _apply_notification_dispatcher_config(
     notif_bridge: NotificationsBridgeConfig | None
     try:
         notif_bridge = await app_state.config_resolver.get_notifications_bridge_config()
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
@@ -893,6 +897,10 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         )
     if app_state.webhook_event_bridge is not None:
         app_state.webhook_event_bridge.set_config_resolver(
+            app_state.config_resolver,
+        )
+    if app_state.escalation_notify_subscriber is not None:
+        app_state.escalation_notify_subscriber.set_config_resolver(
             app_state.config_resolver,
         )
     _bus = app_state.message_bus if app_state.has_message_bus else None

@@ -68,6 +68,7 @@ class WebhookEventBridge:
         # successful resolution so a later failure is visible again.
         self._poll_timeout_fallback_logged: bool = False
         self._max_errors_fallback_logged: bool = False
+        self._enabled_fallback_logged: bool = False
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Inject the ConfigResolver after construction.
@@ -225,7 +226,7 @@ class WebhookEventBridge:
         if self._config_resolver is None:
             return True
         try:
-            return await self._config_resolver.get_bool(
+            value = await self._config_resolver.get_bool(
                 SettingNamespace.COMMUNICATION.value,
                 "webhook_bridge_enabled",
             )
@@ -234,13 +235,17 @@ class WebhookEventBridge:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(
-                WEBHOOK_BRIDGE_POLL_ERROR,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                fallback_enabled=True,
-            )
+            if not self._enabled_fallback_logged:
+                logger.warning(
+                    WEBHOOK_BRIDGE_POLL_ERROR,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    fallback_enabled=True,
+                )
+                self._enabled_fallback_logged = True
             return True
+        self._enabled_fallback_logged = False
+        return value
 
     async def _poll_loop(self) -> None:
         """Poll ``#webhooks`` and forward events.

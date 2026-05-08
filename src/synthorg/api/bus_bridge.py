@@ -108,6 +108,20 @@ class MessageBusBridge:
         self._max_errors_fallback_logged: bool = False
         self._drain_timeout_fallback_logged: bool = False
 
+    def set_config_resolver(self, resolver: ConfigResolver) -> None:
+        """Inject the ConfigResolver after construction.
+
+        ``MessageBusBridge`` is built at app-wire time
+        (:func:`synthorg.api.app.create_app`), but in the auto-wire
+        startup path ``app_state.config_resolver`` is not available at
+        that moment so the eager constructor capture is ``None``. The
+        lifecycle hook calls this setter once the resolver is wired so
+        polling-loop reads of the operator-tuned poll timeout, error
+        budget, and drain deadline honour the live setting instead of
+        the registered default.
+        """
+        self._config_resolver = resolver
+
     async def _get_poll_timeout(self) -> float:
         """Resolve the current poll timeout, falling back to the constant.
 

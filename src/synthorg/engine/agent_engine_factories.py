@@ -63,9 +63,8 @@ class AgentEngineFactoriesMixin:
         ``EngineBridgeConfig.approval_interrupt_timeout_seconds`` via the
         engine's ``approval_interrupt_timeout_seconds`` constructor kwarg
         (projected onto ``self._approval_interrupt_timeout_seconds``).
-        When the engine is built without that kwarg the gate falls back
-        to its own 300s default so callers that bypass the bridge config
-        keep working.
+        When the engine is built without that kwarg, the gate uses its
+        own built-in default interrupt timeout.
         """
         if self._approval_store is None:
             return None

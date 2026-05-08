@@ -105,7 +105,7 @@ _r.register(
             "Wall-clock interval between webhook-receipt sweep ticks."
             " Receipts are retained in days; a daily sweep is the right"
             " granularity. Operators tune the *window*"
-            " (``integrations.webhook_receipt_retention_days`` or the"
+            " (``integrations.webhooks.receipt_retention_days`` or the"
             " per-connection override) rather than the *cadence*."
             " Default 24h. Resolved per-tick by"
             " ``_resolve_webhook_receipt_cleanup_tick_seconds``, so"

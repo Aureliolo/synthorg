@@ -32,7 +32,9 @@ from synthorg.communication.conflict_resolution.escalation.registry import (
 )
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+    CONFLICT_ESCALATION_SUBSCRIBER_PAUSED,
 )
+from synthorg.settings.resolver import ConfigResolver
 
 pytestmark = pytest.mark.unit
 
@@ -43,6 +45,96 @@ class TestNoopSubscriber:
         subscriber = NoopEscalationNotifySubscriber()
         await subscriber.start()
         await subscriber.stop()
+
+    async def test_set_config_resolver_is_noop(self) -> None:
+        """The Noop subscriber accepts the rebind without effect."""
+        subscriber = NoopEscalationNotifySubscriber()
+        resolver = AsyncMock(spec=ConfigResolver)
+        subscriber.set_config_resolver(resolver)
+
+
+class TestPostgresSubscriberLateBoundResolver:
+    """Late-binding the resolver after construction enables runtime gating.
+
+    On the auto-wire startup path ``app_state.config_resolver`` is not
+    available when the subscriber is built, so the constructor captures
+    ``None``. The lifecycle hook then calls ``set_config_resolver`` once
+    the resolver is wired -- after which the loop body's
+    ``communication.escalation_notify_subscriber_enabled`` reads honour
+    the live operator-tuned value.
+    """
+
+    async def test_set_config_resolver_replaces_eager_none(self) -> None:
+        repo = AsyncMock(spec=EscalationQueueStore)
+        registry = AsyncMock(spec=PendingFuturesRegistry)
+        subscriber = PostgresEscalationNotifySubscriber(
+            repo,
+            registry,
+            channel="escalations",
+            reconnect_delay_seconds=1.0,
+        )
+        assert subscriber._config_resolver is None
+        resolver = AsyncMock(spec=ConfigResolver)
+        subscriber.set_config_resolver(resolver)
+        assert subscriber._config_resolver is resolver
+        # The kill-switch helper now consults the live resolver.
+        resolver.get_bool.return_value = False
+        assert await subscriber._resolve_subscriber_enabled() is False
+        resolver.get_bool.assert_awaited_once()
+
+    async def test_run_loop_paused_branch_uses_paused_event(self) -> None:
+        """When the kill-switch is False the debug log uses the PAUSED event."""
+        repo = AsyncMock(spec=EscalationQueueStore)
+        registry = AsyncMock(spec=PendingFuturesRegistry)
+        resolver = AsyncMock(spec=ConfigResolver)
+        gate_consulted = asyncio.Event()
+
+        async def _gate(*_a: object, **_k: object) -> bool:
+            gate_consulted.set()
+            return False
+
+        resolver.get_bool.side_effect = _gate
+        subscriber = PostgresEscalationNotifySubscriber(
+            repo,
+            registry,
+            channel="escalations",
+            reconnect_delay_seconds=1.0,
+            config_resolver=resolver,
+        )
+        subscriber._reconnect_delay = 0.01
+
+        debug_events: list[str] = []
+        proxy = notify_mod.logger
+        original_debug = proxy.debug
+
+        def _spy(event: str, **kwargs: object) -> None:
+            debug_events.append(event)
+            return original_debug(event, **kwargs)
+
+        # ``BoundLoggerLazyProxy`` serves ``debug`` via ``__getattr__``
+        # (no instance dict entry until we set one). Direct assignment
+        # plus ``del`` in the finally block lets ``__getattr__`` resume
+        # serving fresh bound loggers for the next test, matching the
+        # canonical ``_logger_info_spy`` pattern in tests/unit/settings.
+        proxy.debug = _spy
+        try:
+            task = asyncio.create_task(subscriber._run())
+            try:
+                await asyncio.wait_for(gate_consulted.wait(), timeout=1.0)
+            finally:
+                subscriber._stop_event.set()
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=1.0)
+        finally:
+            with contextlib.suppress(AttributeError):
+                del proxy.debug
+
+        assert CONFLICT_ESCALATION_SUBSCRIBER_PAUSED in debug_events, (
+            "PAUSED event must fire on operator-controlled pause"
+        )
+        assert CONFLICT_ESCALATION_SUBSCRIBER_FAILED not in debug_events, (
+            "FAILED must not fire for the paused-by-setting path"
+        )
 
 
 class TestPostgresSubscriberValidation:

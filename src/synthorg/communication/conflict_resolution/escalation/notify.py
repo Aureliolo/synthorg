@@ -22,6 +22,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+    CONFLICT_ESCALATION_SUBSCRIBER_PAUSED,
     CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
     CONFLICT_ESCALATION_SUBSCRIBER_STOPPED,
 )
@@ -67,6 +68,15 @@ class EscalationNotifySubscriber(Protocol):
         """Stop subscribing and release resources.  Must be idempotent."""
         ...
 
+    def set_config_resolver(self, resolver: ConfigResolver) -> None:
+        """Inject the ConfigResolver after construction.
+
+        The auto-wire startup path builds the subscriber before the
+        resolver is available; the API lifecycle hook calls this once
+        the resolver is ready so live kill-switch reads are honoured.
+        """
+        ...
+
 
 class NoopEscalationNotifySubscriber:
     """No-op subscriber for single-worker / in-memory deployments."""
@@ -77,6 +87,10 @@ class NoopEscalationNotifySubscriber:
 
     async def stop(self) -> None:
         """Noop."""
+        return
+
+    def set_config_resolver(self, resolver: ConfigResolver) -> None:  # noqa: ARG002
+        """Noop -- the no-op subscriber has no kill-switch to gate."""
         return
 
 
@@ -171,6 +185,20 @@ class PostgresEscalationNotifySubscriber:
         # remains observable on the next ``start()`` call.
         self._stop_failed: bool = False
         self._stop_drain_timeout_seconds: float = 30.0
+
+    def set_config_resolver(self, resolver: ConfigResolver) -> None:
+        """Inject the ConfigResolver after construction.
+
+        ``EscalationNotifySubscriber`` is created at app-wire time
+        (:func:`synthorg.api.app.create_app`), but in the auto-wire
+        startup path ``app_state.config_resolver`` is not yet available
+        at that moment. The startup hook calls this setter after the
+        resolver is built and before :meth:`start` so the loop body's
+        ``communication.escalation_notify_subscriber_enabled``
+        kill-switch reads honour the live operator-tuned value instead
+        of falling through to the registered default.
+        """
+        self._config_resolver = resolver
 
     async def start(self) -> None:
         """Schedule the background subscriber loop.
@@ -363,7 +391,7 @@ class PostgresEscalationNotifySubscriber:
                     )
             else:
                 logger.debug(
-                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                    CONFLICT_ESCALATION_SUBSCRIBER_PAUSED,
                     channel=self._channel,
                     reason="paused_by_setting",
                 )

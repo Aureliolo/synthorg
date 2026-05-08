@@ -1,6 +1,7 @@
 """Tests for message bus bridge."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -8,6 +9,7 @@ from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.ws_models import WsEventType
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message
+from synthorg.settings.resolver import ConfigResolver
 
 
 @pytest.mark.unit
@@ -29,6 +31,39 @@ class TestMessageBusBridge:
         assert event.channel == "messages"
         assert event.payload["sender"] == "alice"
         assert event.payload["content"] == "Hello!"
+
+    async def test_set_config_resolver_late_binds(self) -> None:
+        """Lifecycle hook can rebind the resolver after construction.
+
+        On the auto-wire startup path the resolver is not available
+        when the bridge is constructed, so the constructor captures
+        ``None``. The startup hook then calls this setter once the
+        resolver is wired so subsequent ``_get_poll_timeout`` /
+        ``_get_max_consecutive_errors`` / ``_get_stop_drain_timeout``
+        reads honour the live operator-tuned values.
+        """
+        from litestar.channels import ChannelsPlugin
+        from litestar.channels.backends.memory import MemoryChannelsBackend
+
+        from synthorg.api.channels import ALL_CHANNELS
+        from tests.unit.api.conftest import FakeMessageBus
+
+        bus = FakeMessageBus()
+        plugin = ChannelsPlugin(
+            backend=MemoryChannelsBackend(history=5),
+            channels=ALL_CHANNELS,
+        )
+        bridge = MessageBusBridge(bus, plugin)
+        assert bridge._config_resolver is None
+
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_float.return_value = 7.5
+        bridge.set_config_resolver(resolver)
+        assert bridge._config_resolver is resolver
+
+        # The poll-timeout helper now consults the live resolver.
+        assert await bridge._get_poll_timeout() == 7.5
+        resolver.get_float.assert_awaited()
 
     def test_to_ws_event_has_timestamp(self) -> None:
         msg = Message.model_validate(

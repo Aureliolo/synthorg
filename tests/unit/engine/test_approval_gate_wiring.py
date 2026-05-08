@@ -35,8 +35,10 @@ class TestApprovalGateTimeoutWiring:
     def test_omitted_timeout_falls_back_to_gate_default(self) -> None:
         """Without the kwarg the gate keeps its built-in 300s default.
 
-        Back-compat: tests that don't yet thread the bridge config keep
-        working unchanged. Production paths thread the resolved value.
+        Verifies the constructor fallback: when the engine is built
+        without ``approval_interrupt_timeout_seconds``, the gate uses
+        its own 300s default rather than failing or relying on a
+        bridge-config-supplied value.
         """
         provider = MockCompletionProvider([])
         approval_store = AsyncMock(spec=ApprovalStore)
