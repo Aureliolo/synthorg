@@ -598,6 +598,97 @@ async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
         raise ValueError(msg)
 
 
+async def _apply_sandbox_image_cache(app_state: AppState) -> None:
+    """Populate the sandbox / sidecar image-resolution cache from settings.
+
+    Called once per startup so ``DockerSandboxConfig`` field defaults
+    stop reading ``os.environ`` directly. ``env_var_override`` on the
+    registered settings preserves the historical
+    ``SYNTHORG_SANDBOX_IMAGE`` / ``SYNTHORG_SIDECAR_IMAGE`` workflow
+    without bypassing the canonical DB > env > YAML > default chain.
+
+    Resolver failures clear the cache to ``None`` so the field default
+    falls through to the documented constant; whitespace-only resolver
+    results are normalised to ``None`` in the caller (the setter also
+    normalises, but stripping here makes the intent explicit).
+    """
+    from synthorg.tools.sandbox._image_resolution import (  # noqa: PLC0415
+        set_resolved_sandbox_image,
+        set_resolved_sidecar_image,
+    )
+
+    for setting_key, setter in (
+        ("sandbox_image", set_resolved_sandbox_image),
+        ("sidecar_image", set_resolved_sidecar_image),
+    ):
+        try:
+            image_value = await app_state.config_resolver.get_str(
+                SettingNamespace.TOOLS.value, setting_key
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            setter(None)
+            logger.warning(
+                API_APP_STARTUP,
+                setting=f"tools.{setting_key}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        else:
+            stripped = image_value.strip() if image_value is not None else None
+            setter(stripped or None)
+
+
+async def _apply_notification_dispatcher_config(
+    app_state: AppState,
+    effective_config: RootConfig | None,
+) -> None:
+    """Rebuild the notification dispatcher with operator-tuned timeouts.
+
+    Reads the notifications bridge config from the resolver, then if a
+    dispatcher already exists on ``app_state``, builds a fresh one with
+    the resolved timeouts and swaps it in. Closes the previous
+    dispatcher's sinks after the swap. Resolver outage keeps the
+    pre-startup dispatcher in place (default timeouts).
+    """
+    try:
+        notif_bridge = await app_state.config_resolver.get_notifications_bridge_config()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            error=(
+                "Failed to resolve notifications bridge config;"
+                " keeping dispatcher default timeouts"
+            ),
+        )
+        return
+    if not (app_state.has_notification_dispatcher and effective_config is not None):
+        return
+    new_dispatcher = build_notification_dispatcher(
+        effective_config.notifications,
+        bridge_config=notif_bridge,
+        config_resolver=app_state.config_resolver,
+    )
+    old_dispatcher = app_state.swap_notification_dispatcher(new_dispatcher)
+    if old_dispatcher is None:
+        return
+    try:
+        await old_dispatcher.aclose()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            error=(
+                "Failed to close pre-startup notification"
+                " dispatcher sinks after rebuild"
+            ),
+        )
+
+
 async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     app_state: AppState,
     effective_config: RootConfig | None,
@@ -733,47 +824,7 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             fallback_enabled=True,
         )
 
-    # Populate the sandbox image-resolution cache from the resolver so
-    # ``DockerSandboxConfig`` field defaults stop reading
-    # ``os.environ`` directly. ``env_var_override`` on the registered
-    # settings preserves the historical ``SYNTHORG_SANDBOX_IMAGE`` /
-    # ``SYNTHORG_SIDECAR_IMAGE`` workflow without bypassing the
-    # canonical DB > env > YAML > default chain.
-    from synthorg.tools.sandbox._image_resolution import (  # noqa: PLC0415
-        set_resolved_sandbox_image,
-        set_resolved_sidecar_image,
-    )
-
-    for setting_key, setter in (
-        ("sandbox_image", set_resolved_sandbox_image),
-        ("sidecar_image", set_resolved_sidecar_image),
-    ):
-        try:
-            image_value = await app_state.config_resolver.get_str(
-                SettingNamespace.TOOLS.value, setting_key
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            # Cache stays unset on resolver failure so the field
-            # default falls through to the documented constant. Log so
-            # operators see the resolver hiccup rather than silently
-            # defaulting.
-            setter(None)
-            logger.warning(
-                API_APP_STARTUP,
-                setting=f"tools.{setting_key}",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        else:
-            # Strip in the caller so a whitespace-only resolver result
-            # never reaches the cache. The setter also normalises, but
-            # making the intent explicit here matches the documented
-            # contract that the cache holds either a real image
-            # reference or ``None``.
-            stripped = image_value.strip() if image_value is not None else None
-            setter(stripped or None)
+    await _apply_sandbox_image_cache(app_state)
 
     if app_state.oauth_token_manager is not None:
         app_state.oauth_token_manager.set_config_resolver(
@@ -828,39 +879,7 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                         ),
                     )
 
-    try:
-        notif_bridge = await app_state.config_resolver.get_notifications_bridge_config()
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_APP_STARTUP,
-            error=(
-                "Failed to resolve notifications bridge config;"
-                " keeping dispatcher default timeouts"
-            ),
-        )
-    else:
-        if app_state.has_notification_dispatcher and effective_config is not None:
-            _new_dispatcher = build_notification_dispatcher(
-                effective_config.notifications,
-                bridge_config=notif_bridge,
-                config_resolver=app_state.config_resolver,
-            )
-            _old_dispatcher = app_state.swap_notification_dispatcher(_new_dispatcher)
-            if _old_dispatcher is not None:
-                try:
-                    await _old_dispatcher.aclose()
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    logger.warning(
-                        API_APP_STARTUP,
-                        error=(
-                            "Failed to close pre-startup notification"
-                            " dispatcher sinks after rebuild"
-                        ),
-                    )
+    await _apply_notification_dispatcher_config(app_state, effective_config)
 
     app_state.mark_bridge_config_applied()
 

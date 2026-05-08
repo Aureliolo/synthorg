@@ -57,6 +57,15 @@ class NotificationDispatcher:
     Args:
         sinks: Initial set of notification sinks.
         min_severity: Minimum severity to dispatch.
+        config_resolver: Optional ``ConfigResolver`` providing the
+            runtime kill-switch (``notifications.dispatcher_enabled``).
+            Set to ``None`` for the back-compat path used by test
+            fixtures and early-boot construction sites; in that mode
+            the dispatcher always delivers and the kill-switch is
+            inert. When set, ``dispatch()`` re-reads the flag per
+            call and short-circuits when the operator flips it to
+            ``false``, fail-safing to ``True`` on resolver outage so
+            a degraded settings backend cannot silence the surface.
     """
 
     __slots__ = (

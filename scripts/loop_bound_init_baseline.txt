@@ -34,8 +34,8 @@ src/synthorg/meta/chief_of_staff/monitor.py:82:OrgInflectionMonitor:_stop_event:
 src/synthorg/meta/chief_of_staff/monitor.py:83:OrgInflectionMonitor:_lifecycle_lock:Lock
 src/synthorg/notifications/adapters/ntfy.py:116:NtfyNotificationSink:_lifecycle_lock:Lock
 src/synthorg/notifications/adapters/slack.py:104:SlackNotificationSink:_lifecycle_lock:Lock
-src/synthorg/notifications/dispatcher.py:104:NotificationDispatcher:_dispatch_idle:Event
-src/synthorg/notifications/dispatcher.py:83:NotificationDispatcher:_lifecycle_lock:Lock
+src/synthorg/notifications/dispatcher.py:113:NotificationDispatcher:_dispatch_idle:Event
+src/synthorg/notifications/dispatcher.py:92:NotificationDispatcher:_lifecycle_lock:Lock
 src/synthorg/providers/health_prober.py:184:ProviderHealthProber:_stop_event:Event
 src/synthorg/providers/health_prober.py:190:ProviderHealthProber:_lifecycle_lock:Lock
 src/synthorg/settings/dispatcher.py:104:SettingsChangeDispatcher:_lifecycle_lock:Lock

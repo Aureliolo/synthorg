@@ -1,6 +1,7 @@
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { createLogger } from '@/lib/logger'
 import { SETTING_DEPENDENCIES } from '@/utils/constants'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('settings')
 
@@ -89,7 +90,9 @@ export async function saveSettingsBatch(
   const promises = keys.map((compositeKey) => {
     const slashIdx = compositeKey.indexOf('/')
     if (slashIdx < 1) {
-      log.error(`Malformed composite key: "${compositeKey}"`)
+      log.error('Malformed composite key', {
+        compositeKey: sanitizeForLog(compositeKey),
+      })
       return Promise.reject(new Error(`Malformed key: ${compositeKey}`))
     }
     const ns = compositeKey.slice(0, slashIdx) as SettingNamespace
@@ -103,11 +106,18 @@ export async function saveSettingsBatch(
     const compositeKey = keys[i]!
     if (result.status === 'rejected') {
       failedKeys.add(compositeKey)
-      log.error(`Failed to save "${compositeKey}":`, result.reason)
-    } else if (result.value === null) {
+      log.error('Failed to save setting', {
+        compositeKey: sanitizeForLog(compositeKey),
+        reason: sanitizeForLog(result.reason),
+      })
+    } else if (result.value == null) {
       // Store already logged + emitted the error toast. We just
       // need to record the failure so the caller can keep the
-      // dirty draft and skip post-save side effects.
+      // dirty draft and skip post-save side effects. ``== null``
+      // (loose) catches both ``null`` (the canonical sentinel
+      // contract) and ``undefined`` (defensive: a future store
+      // refactor that returns ``undefined`` instead of ``null``
+      // shouldn't silently look like success).
       failedKeys.add(compositeKey)
     }
   }

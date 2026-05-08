@@ -131,12 +131,50 @@ def _walk_current_scope(node: ast.AST) -> Iterable[ast.AST]:
             stack.append(child)
 
 
+_RESOLVER_RECEIVER_NAMES = frozenset(
+    {
+        "config_resolver",
+        "_config_resolver",
+        "resolver",
+        "_resolver",
+    }
+)
+
+
+def _is_resolver_receiver(node: ast.AST) -> bool:
+    """Return True if ``node`` looks like a ConfigResolver instance.
+
+    Accepts the canonical receiver shapes that appear in
+    ``synthorg/`` kill-switch resolver helpers:
+
+    * ``config_resolver`` (free-function helpers like
+      ``_resolve_lifecycle_cleanup_enabled``)
+    * ``self._config_resolver`` / ``self.config_resolver`` (instance
+      method form, e.g. ``NotificationDispatcher._resolve_enabled``)
+    * ``app_state.config_resolver`` (helpers that take ``app_state``)
+    * ``something.resolver`` / ``something._resolver`` (defensive: a
+      wrapper service exposing the resolver under those attribute
+      names)
+
+    Tightening the check this way prevents an unrelated
+    ``foo.get_bool(<ns>, "x_enabled")`` call from accidentally
+    satisfying the gate just because the literal ends in ``_enabled``.
+    """
+    if isinstance(node, ast.Name):
+        return node.id in _RESOLVER_RECEIVER_NAMES
+    if isinstance(node, ast.Attribute):
+        return node.attr in _RESOLVER_RECEIVER_NAMES
+    return False
+
+
 def _calls_kill_switch_resolver(node: ast.AST) -> bool:
     """Return True if any descendant Call references the kill-switch idiom.
 
     Three accepted shapes:
 
-    * ``...config_resolver.get_bool(<ns>, "<key>_enabled")``
+    * ``<resolver>.get_bool(<ns>, "<key>_enabled")`` where ``<resolver>``
+      is one of the canonical receiver names (see
+      ``_is_resolver_receiver``).
     * ``await self._resolve_enabled()`` / ``_resolve_<x>_enabled()``
     * ``await _resolve_<x>_enabled(<arg>)`` (free-function form,
       e.g. ``_resolve_lifecycle_cleanup_enabled``)
@@ -146,11 +184,15 @@ def _calls_kill_switch_resolver(node: ast.AST) -> bool:
             continue
         func = sub.func
         if isinstance(func, ast.Attribute):
-            if func.attr == "get_bool" and any(
-                isinstance(a, ast.Constant)
-                and isinstance(a.value, str)
-                and a.value.endswith("_enabled")
-                for a in sub.args
+            if (
+                func.attr == "get_bool"
+                and _is_resolver_receiver(func.value)
+                and any(
+                    isinstance(a, ast.Constant)
+                    and isinstance(a.value, str)
+                    and a.value.endswith("_enabled")
+                    for a in sub.args
+                )
             ):
                 return True
             if func.attr.startswith("_resolve_") and func.attr.endswith("_enabled"):
@@ -302,7 +344,10 @@ def _run(repo_root: Path, baseline_path: Path, *, update_baseline: bool) -> int:
         print(
             "\nFix: gate the loop body on a ``ConfigResolver.get_bool"
             "(<ns>, '<x>_enabled')`` re-read (fail-safe to enabled), or"
-            f" add ``# lint-allow: {GATE_NAME} -- <reason>`` to the def line.",
+            f" add ``# lint-allow: {GATE_NAME} -- <reason>`` on the"
+            " ``while`` line itself or one of the two preceding"
+            " source lines (the suppression check is per-loop, not"
+            " per-function).",
         )
         return 1
     if stale:

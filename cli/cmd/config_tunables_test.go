@@ -145,4 +145,10 @@ func TestRemovedTunable_DefaultNATSURLRejected(t *testing.T) {
 	if err := resetConfigValue(&state, removedKey); err == nil {
 		t.Errorf("resetConfigValue should reject removed key %q", removedKey)
 	}
+	// envVarForKey backs the env-var plumbing the live tunables use;
+	// ensuring it returns "" prevents the removed key from lingering
+	// as a back-channel even after the apply/reset paths reject it.
+	if env := envVarForKey(removedKey); env != "" {
+		t.Errorf("envVarForKey(%q) = %q, want \"\" (no env-var mapping)", removedKey, env)
+	}
 }
