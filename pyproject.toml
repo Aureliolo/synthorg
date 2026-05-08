@@ -16,7 +16,7 @@ dependencies = [
     "aiodocker==0.26.0",
     "aiosqlite==0.22.1",
     "argon2-cffi==25.1.0",
-    "cryptography==47.0.0",
+    "cryptography==48.0.0",
     "faker==40.15.0",
     "httpx==0.28.1",
     "jinja2==3.1.6",
@@ -105,7 +105,7 @@ fine-tune-cpu = [
 ]
 dev = [
     "commitizen==4.15.0",
-    "mypy==1.20.2",
+    "mypy==2.0.0",
     "pre-commit==4.6.0",
     "pip-audit==2.10.0",
     "pre-commit-uv==4.2.1",
