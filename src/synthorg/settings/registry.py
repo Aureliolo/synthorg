@@ -138,14 +138,31 @@ def registered_default_int(namespace: str, key: str) -> int:
     duplicating the literal in caller code -- the registry is the
     single source of truth, so consumer-side fallbacks (e.g. resolver
     outage paths) read the same value the resolver would have served
-    on the happy path.
+    on the happy path.  Raises :class:`SettingsRegistryError` if the
+    registered default is not a parseable integer string (chains the
+    underlying ``ValueError`` as the cause).
     """
-    return int(_registered_default_str(namespace, key))
+    raw = _registered_default_str(namespace, key)
+    try:
+        return int(raw)
+    except ValueError as exc:
+        msg = f"setting {namespace}.{key} default {raw!r} is not an integer string"
+        raise SettingsRegistryError(msg) from exc
 
 
 def registered_default_float(namespace: str, key: str) -> float:
-    """Return the registered default for ``(namespace, key)`` coerced to ``float``."""
-    return float(_registered_default_str(namespace, key))
+    """Return the registered default for ``(namespace, key)`` coerced to ``float``.
+
+    Raises :class:`SettingsRegistryError` if the registered default is
+    not a parseable float string (chains the underlying ``ValueError``
+    as the cause).
+    """
+    raw = _registered_default_str(namespace, key)
+    try:
+        return float(raw)
+    except ValueError as exc:
+        msg = f"setting {namespace}.{key} default {raw!r} is not a float string"
+        raise SettingsRegistryError(msg) from exc
 
 
 def registered_default_bool(namespace: str, key: str) -> bool:

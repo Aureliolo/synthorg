@@ -844,33 +844,47 @@ func TestResolveNATSURL(t *testing.T) {
 
 // TestResolveNATSURL_InvalidURLPropagatesToValidation confirms that a
 // malformed SYNTHORG_NATS_URL is rejected by the real compose generation
-// path (ParamsFromState -> Generate), not just by ValidateNATSURL in
-// isolation. Exercising Generate ensures we catch the case where a future
-// refactor removes the validation call from the compose pipeline -- the
-// value would still pass ValidateNATSURL on its own, but the regression
-// would land an http:// URL in compose.yml unnoticed.
+// path (ParamsFromState then Generate), not just by ValidateNATSURL in
+// isolation. The valid control case must succeed; without that control,
+// the test would pass for any unrelated pipeline failure (a missing
+// field, a bad image tag) and silently miss the actual regression --
+// a future refactor that drops ValidateNATSURL from the pipeline.
 func TestResolveNATSURL_InvalidURLPropagatesToValidation(t *testing.T) {
-	t.Setenv("SYNTHORG_NATS_URL", "http://not-a-nats-url:4222")
-	s := config.State{
-		DataDir:            t.TempDir(),
-		ImageTag:           "v1.0.0",
-		BackendPort:        9000,
-		WebPort:            4000,
-		LogLevel:           "info",
-		JWTSecret:          "secret",
-		SettingsKey:        "settings-key",
-		CursorSecret:       "test-cursor-secret-stable-value",
-		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
-		BusBackend:         "external",
-	}
-	params, err := ParamsFromState(s)
-	if err == nil {
-		if _, err = Generate(params); err == nil {
-			t.Fatal("expected Generate to reject http:// SYNTHORG_NATS_URL, got nil")
+	makeState := func() config.State {
+		return config.State{
+			DataDir:            t.TempDir(),
+			ImageTag:           "v1.0.0",
+			BackendPort:        9000,
+			WebPort:            4000,
+			LogLevel:           "info",
+			JWTSecret:          "secret",
+			SettingsKey:        "settings-key",
+			CursorSecret:       "test-cursor-secret-stable-value",
+			PersistenceBackend: "sqlite",
+			MemoryBackend:      "mem0",
+			BusBackend:         "nats",
 		}
 	}
-	if err == nil {
-		t.Fatal("expected an error from the compose pipeline, got nil")
-	}
+
+	t.Run("valid_control", func(t *testing.T) {
+		t.Setenv("SYNTHORG_NATS_URL", "nats://127.0.0.1:4222")
+		params, err := ParamsFromState(makeState())
+		if err != nil {
+			t.Fatalf("ParamsFromState rejected valid SYNTHORG_NATS_URL: %v", err)
+		}
+		if _, err := Generate(params); err != nil {
+			t.Fatalf("Generate rejected valid SYNTHORG_NATS_URL: %v", err)
+		}
+	})
+
+	t.Run("invalid_http_scheme", func(t *testing.T) {
+		t.Setenv("SYNTHORG_NATS_URL", "http://not-a-nats-url:4222")
+		params, paramsErr := ParamsFromState(makeState())
+		if paramsErr != nil {
+			return // ParamsFromState rejecting the bad URL is also an acceptable failure mode
+		}
+		if _, err := Generate(params); err == nil {
+			t.Fatal("expected Generate to reject http:// SYNTHORG_NATS_URL, got nil")
+		}
+	})
 }
