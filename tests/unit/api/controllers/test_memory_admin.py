@@ -549,3 +549,27 @@ class TestCheckDocumentsBoundaries:
             min_recommended=50,
         )
         assert check.status == "fail"
+
+    def test_count_at_required_threshold_does_not_fail(
+        self,
+        tmp_path: object,
+    ) -> None:
+        """A corpus exactly at ``min_required`` clears the hard floor.
+
+        The fail branch uses a strict ``<`` so a count equal to
+        ``min_required`` must NOT fail; it still warns because it
+        sits below ``min_recommended``.
+        """
+        from pathlib import Path
+
+        from synthorg.api.controllers.memory import _check_documents
+
+        src = Path(str(tmp_path))
+        for i in range(10):
+            (src / f"doc-{i:02d}.md").write_text("x")
+        check = _check_documents(
+            str(src),
+            min_required=10,
+            min_recommended=50,
+        )
+        assert check.status == "warn"

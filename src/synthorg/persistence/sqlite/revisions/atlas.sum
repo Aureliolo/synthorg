@@ -1,4 +1,4 @@
-h1:x9yUOLf+z/FrDqIsE5Un4PjVdq0XUt6V1QQBdqfnBjI=
+h1:8V2gomVLTHaeQyj+k3GH+d6H5VwGv8nxiwxC6bL/nis=
 00000000000000_baseline.sql h1:iPb7ksO7gknp0bpuhi5BQ9+ZBqxHTUTp+ac0h+09Hbs=
 20260421184322_pst1_parity_and_indices.sql h1:6en6dccn5vUE2WGc8uzh+v63FGR0is0RBmh/ZNcWep0=
 20260422081430_add_approvals_task_id_index.sql h1:ToNSiidJVRigL2ASpnZ2IQEH+Bglh9rYo+Hf4Bl0BuI=
@@ -10,3 +10,4 @@ h1:x9yUOLf+z/FrDqIsE5Un4PjVdq0XUt6V1QQBdqfnBjI=
 20260501092212_add_connections_webhook_retention_days.sql h1:nFEZkA5F3old2MAuPs1mkCHgNtsJoEU/InTcIBGVbOY=
 20260503181821_json_check_constraints.sql h1:k5O4V24kDewsDyjtXArYm7X2RYBGpWTOqs8Vgcza4kA=
 20260508182437_oauth_state_consumed.sql h1:VjbEzRkw29oFuWk4UmuiyAu9SrVfoGInErF5myRIrAM=
+20260508204132_perf_indices_cost_decision.sql h1:HHleqVBKcTTLJ+BcVn3CTs4ORFuhHcCRqlt4uHhrNzo=

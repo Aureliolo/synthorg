@@ -181,20 +181,35 @@ class SinkInfoResponse(BaseModel):
 def _sink_identifier(sink: SinkConfig) -> str:
     """Return the stable API identifier for a ``SinkConfig``.
 
-    Console sinks use the fixed ``CONSOLE_SINK_ID`` token, FILE sinks
-    use their ``file_path``, and custom shipping sinks (SYSLOG, HTTP,
-    ...) -- which carry ``file_path=None`` -- fall back to a
-    non-empty ``unnamed-<sink_type>`` token. Centralising the logic
-    keeps ``_sink_to_response`` and ``_append_disabled_defaults`` in
-    lockstep so a future non-FILE default cannot drift between the
-    construction site and the disabled-defaults expansion.
+    Console sinks use the fixed ``CONSOLE_SINK_ID`` token. FILE sinks
+    use their ``file_path``. Custom shipping sinks derive a stable
+    per-instance discriminator from the endpoint they target so two
+    HTTP / SYSLOG / OTLP sinks of the same type don't collide on a
+    single ``unnamed-<type>`` key (which would corrupt the active-set
+    membership test in :func:`_append_disabled_defaults` and the wire
+    sort key in the listing endpoint):
+
+    * ``SYSLOG``: ``syslog:<host>:<port>``
+    * ``HTTP``: ``http:<url>``
+    * ``OTLP``: ``otlp:<endpoint>``
+
+    A sink without any of those endpoint fields is invalid per
+    :meth:`SinkConfig._validate_sink_type_fields`; the
+    ``unnamed-<type>`` fallback only fires defensively against a
+    future sink type that hasn't been wired here yet, never on
+    well-formed config.
     """
-    raw_identifier = (
-        CONSOLE_SINK_ID
-        if sink.sink_type == SinkType.CONSOLE
-        else (sink.file_path or "")
-    )
-    return raw_identifier or f"unnamed-{sink.sink_type.value}"
+    if sink.sink_type == SinkType.CONSOLE:
+        return CONSOLE_SINK_ID
+    if sink.file_path:
+        return sink.file_path
+    if sink.sink_type == SinkType.SYSLOG and sink.syslog_host:
+        return f"syslog:{sink.syslog_host}:{sink.syslog_port}"
+    if sink.sink_type == SinkType.HTTP and sink.http_url:
+        return f"http:{sink.http_url}"
+    if sink.sink_type == SinkType.OTLP and sink.otlp_endpoint:
+        return f"otlp:{sink.otlp_endpoint}"
+    return f"unnamed-{sink.sink_type.value}"
 
 
 def _sink_to_response(
