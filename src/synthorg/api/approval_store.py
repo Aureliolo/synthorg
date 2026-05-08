@@ -348,6 +348,8 @@ class ApprovalStore:
         page_size = 100
         result: list[ApprovalItem] = []
         offset = 0
+        # lint-allow: long-running-loop-kill-switch -- bounded paginated scan
+        # (breaks on empty page below); one-shot drain, not a service loop.
         while True:
             # Repo I/O outside the store lock so concurrent get() /
             # save() callers are never blocked by a long scan.
