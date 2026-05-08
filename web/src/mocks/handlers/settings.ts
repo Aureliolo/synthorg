@@ -4,13 +4,14 @@ import type {
   getNamespaceSchema,
   getNamespaceSettings,
   getSchema,
+  listSinks,
   testSinkConfig,
   updateSetting,
 } from '@/api/endpoints/settings'
-import type { SettingEntry, SinkInfo } from '@/api/types/settings'
+import type { SettingEntry } from '@/api/types/settings'
 import {
   emptyPage,
-  emptyPaginatedEnvelope,
+  paginatedEnvelopeFor,
   paginatedFor,
   successFor,
   voidSuccess,
@@ -64,7 +65,7 @@ export const settingsHandlers = [
     ),
   ),
   http.get('/api/v1/settings/observability/sinks', () =>
-    HttpResponse.json(emptyPaginatedEnvelope<SinkInfo>()),
+    HttpResponse.json(paginatedEnvelopeFor<typeof listSinks>()),
   ),
   http.post('/api/v1/settings/observability/sinks/_test', async ({ request }) => {
     await request.json()

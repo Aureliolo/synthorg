@@ -9,9 +9,11 @@ import type {
   getPresetOverride,
   getProvider,
   getProviderHealth,
+  getProviderModels,
   getProviderRateLimits,
   listPresets,
   listProviderAudit,
+  listProviders,
   probeLocal,
   removeAllowlistEntry,
   rotateProviderCredentials,
@@ -28,11 +30,10 @@ import type {
   PresetOverride,
   ProviderAuditEvent,
   ProviderConfig,
-  ProviderModelResponse,
   RateLimitsConfig,
 } from '@/api/types/providers'
 import {
-  emptyPaginatedEnvelope,
+  paginatedEnvelopeFor,
   paginatedFor,
   successFor,
   voidSuccess,
@@ -150,7 +151,7 @@ function buildPullStream(): ReadableStream<Uint8Array> {
 
 export const providersHandlers = [
   http.get('/api/v1/providers', () =>
-    HttpResponse.json(emptyPaginatedEnvelope<ProviderConfig>()),
+    HttpResponse.json(paginatedEnvelopeFor<typeof listProviders>()),
   ),
   http.get('/api/v1/providers/presets', () =>
     HttpResponse.json(successFor<typeof listPresets>([])),
@@ -191,7 +192,7 @@ export const providersHandlers = [
     HttpResponse.json(successFor<typeof getProvider>(buildProvider())),
   ),
   http.get('/api/v1/providers/:name/models', () =>
-    HttpResponse.json(emptyPaginatedEnvelope<ProviderModelResponse>()),
+    HttpResponse.json(paginatedEnvelopeFor<typeof getProviderModels>()),
   ),
   http.get('/api/v1/providers/:name/health', () =>
     HttpResponse.json(

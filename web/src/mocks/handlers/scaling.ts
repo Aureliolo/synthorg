@@ -1,21 +1,21 @@
 import { http, HttpResponse } from 'msw'
 import type {
   ScalingDecisionResponse,
-  ScalingSignalResponse,
-  ScalingStrategyResponse,
   getScalingDecisions,
+  getScalingSignals,
+  getScalingStrategies,
   triggerScalingEvaluation,
 } from '@/api/endpoints/scaling'
 import {
   emptyPage,
-  emptyPaginatedEnvelope,
+  paginatedEnvelopeFor,
   paginatedFor,
   successFor,
 } from './helpers'
 
 export const scalingHandlers = [
   http.get('/api/v1/scaling/strategies', () =>
-    HttpResponse.json(emptyPaginatedEnvelope<ScalingStrategyResponse>()),
+    HttpResponse.json(paginatedEnvelopeFor<typeof getScalingStrategies>()),
   ),
   http.get('/api/v1/scaling/decisions', () =>
     HttpResponse.json(
@@ -25,7 +25,7 @@ export const scalingHandlers = [
     ),
   ),
   http.get('/api/v1/scaling/signals', () =>
-    HttpResponse.json(emptyPaginatedEnvelope<ScalingSignalResponse>()),
+    HttpResponse.json(paginatedEnvelopeFor<typeof getScalingSignals>()),
   ),
   http.post('/api/v1/scaling/evaluate', () =>
     HttpResponse.json(successFor<typeof triggerScalingEvaluation>([])),

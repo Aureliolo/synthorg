@@ -309,15 +309,18 @@ class TestSetupAgentModelUpdate:
             data = resp.json()["data"]
             assert data["model_provider"] == "test-provider"
             assert data["model_id"] == "test-small-001"
+            updated_name = data["name"]
 
             # Verify persistence: GET agents and check the update stuck.
-            # Locate the updated agent by content rather than index
-            # so the assertion does not assume any particular list order.
+            # Anchor on the updated agent's name so the assertion cannot
+            # accidentally pass via a different agent that already
+            # carries the same provider/model pair.
             get_resp = test_client.get("/api/v1/setup/agents")
             assert get_resp.status_code == 200
             agents = get_resp.json()["data"]
             assert any(
-                a["model_provider"] == "test-provider"
+                a["name"] == updated_name
+                and a["model_provider"] == "test-provider"
                 and a["model_id"] == "test-small-001"
                 for a in agents
             )

@@ -65,6 +65,34 @@ async def _seed_cost_records(backend: SQLitePersistenceBackend, n: int) -> None:
         )
 
 
+# aiosqlite has no equivalent of psycopg's ``sql.SQL`` /
+# ``sql.Identifier`` safe-composition primitives, so we hand back full
+# pre-built statements through hardcoded allowlists keyed on the test
+# inputs. The keys are the same strings the test bodies pass so call
+# sites stay readable; the planner sees only the values, which never
+# embed call-site data.
+_ALLOWED_ANALYZE_STMTS: dict[str, str] = {
+    "cost_records": "ANALYZE cost_records",
+    "decision_records": "ANALYZE decision_records",
+}
+
+_ALLOWED_EXPLAIN_STMTS: dict[str, str] = {
+    "SELECT * FROM cost_records WHERE agent_id = ? ORDER BY timestamp DESC LIMIT 50": (
+        "EXPLAIN QUERY PLAN SELECT * FROM cost_records "
+        "WHERE agent_id = ? ORDER BY timestamp DESC LIMIT 50"
+    ),
+    "SELECT * FROM cost_records WHERE task_id = ? ORDER BY timestamp DESC LIMIT 50": (
+        "EXPLAIN QUERY PLAN SELECT * FROM cost_records "
+        "WHERE task_id = ? ORDER BY timestamp DESC LIMIT 50"
+    ),
+    "SELECT * FROM decision_records WHERE task_id = ? "
+    "ORDER BY recorded_at ASC, id ASC LIMIT 50": (
+        "EXPLAIN QUERY PLAN SELECT * FROM decision_records "
+        "WHERE task_id = ? ORDER BY recorded_at ASC, id ASC LIMIT 50"
+    ),
+}
+
+
 async def _explain_plan(
     backend: SQLitePersistenceBackend,
     sql: str,
@@ -74,8 +102,12 @@ async def _explain_plan(
     db = backend._db
     assert db is not None, "fixture must connect the backend before EXPLAIN"
     if analyze is not None:
-        await db.execute(f"ANALYZE {analyze}")
-    cursor = await db.execute(f"EXPLAIN QUERY PLAN {sql}", params)
+        analyze_stmt = _ALLOWED_ANALYZE_STMTS.get(analyze)
+        assert analyze_stmt is not None, f"Unexpected ANALYZE target: {analyze}"
+        await db.execute(analyze_stmt)
+    explain_stmt = _ALLOWED_EXPLAIN_STMTS.get(sql)
+    assert explain_stmt is not None, f"Unexpected EXPLAIN query shape: {sql}"
+    cursor = await db.execute(explain_stmt, params)
     rows = await cursor.fetchall()
     return "\n".join(str(tuple(row)) for row in rows)
 

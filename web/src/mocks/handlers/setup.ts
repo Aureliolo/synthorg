@@ -3,9 +3,11 @@ import type {
   completeSetup,
   createAgent,
   createCompany,
+  getAgents,
   getAvailableLocales,
   getNameLocales,
   getSetupStatus,
+  listPersonalityPresets,
   listTemplates,
   randomizeAgentName,
   saveNameLocales,
@@ -14,11 +16,10 @@ import type {
   updateAgentPersonality,
 } from '@/api/endpoints/setup'
 import type {
-  PersonalityPresetInfo,
   SetupAgentSummary,
   SetupStatusResponse,
 } from '@/api/types/setup'
-import { apiSuccess, emptyPaginatedEnvelope, successFor } from './helpers'
+import { apiSuccess, paginatedEnvelopeFor, successFor } from './helpers'
 
 export function buildAgentSummary(
   overrides: Partial<SetupAgentSummary> = {},
@@ -113,7 +114,7 @@ export const setupHandlers = [
     )
   }),
   http.get('/api/v1/setup/agents', () =>
-    HttpResponse.json(emptyPaginatedEnvelope<SetupAgentSummary>()),
+    HttpResponse.json(paginatedEnvelopeFor<typeof getAgents>()),
   ),
   http.put('/api/v1/setup/agents/:index/model', async ({ request }) => {
     const body = (await request.json()) as {
@@ -151,7 +152,7 @@ export const setupHandlers = [
     )
   }),
   http.get('/api/v1/setup/personality-presets', () =>
-    HttpResponse.json(emptyPaginatedEnvelope<PersonalityPresetInfo>()),
+    HttpResponse.json(paginatedEnvelopeFor<typeof listPersonalityPresets>()),
   ),
   http.get('/api/v1/setup/name-locales/available', () =>
     HttpResponse.json(
