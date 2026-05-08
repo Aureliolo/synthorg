@@ -69,10 +69,21 @@ export function buildControllerDisabledMap(
   return map
 }
 
-/** Save a batch of dirty settings via parallel PUTs. Returns the set of failed composite keys. */
+/** Save a batch of dirty settings via parallel PUTs.
+ *
+ * Returns the set of failed composite keys. The store-CRUD contract
+ * for ``updateSetting`` is no-throw: each call resolves either with
+ * the updated entry (success) or ``null`` (failure, error toast
+ * already emitted by the store). ``Promise.allSettled`` defends
+ * against any unexpected rejection that escapes the store.
+ */
 export async function saveSettingsBatch(
   dirtyValues: ReadonlyMap<string, string>,
-  updateSetting: (ns: SettingNamespace, key: string, value: string) => Promise<unknown>,
+  updateSetting: (
+    ns: SettingNamespace,
+    key: string,
+    value: string,
+  ) => Promise<unknown | null>,
 ): Promise<Set<string>> {
   const keys = [...dirtyValues.keys()]
   const promises = keys.map((compositeKey) => {
@@ -83,7 +94,7 @@ export async function saveSettingsBatch(
     }
     const ns = compositeKey.slice(0, slashIdx) as SettingNamespace
     const key = compositeKey.slice(slashIdx + 1)
-    return updateSetting(ns, key, dirtyValues.get(compositeKey)!).then(() => undefined)
+    return updateSetting(ns, key, dirtyValues.get(compositeKey)!)
   })
   const results = await Promise.allSettled(promises)
   const failedKeys = new Set<string>()
@@ -93,6 +104,11 @@ export async function saveSettingsBatch(
     if (result.status === 'rejected') {
       failedKeys.add(compositeKey)
       log.error(`Failed to save "${compositeKey}":`, result.reason)
+    } else if (result.value === null) {
+      // Store already logged + emitted the error toast. We just
+      // need to record the failure so the caller can keep the
+      // dirty draft and skip post-save side effects.
+      failedKeys.add(compositeKey)
     }
   }
   return failedKeys

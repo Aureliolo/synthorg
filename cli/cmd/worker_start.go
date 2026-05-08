@@ -66,13 +66,22 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	// Precedence for --nats-url: explicit flag > SYNTHORG_NATS_URL env >
 	// compiled-in fallback. Single source of truth shared with the
 	// backend's ``communication.nats_url`` setting; no parallel
-	// CLI-only tunable layer. The resolved value lives in a local
-	// variable so a SYNTHORG_NATS_URL fallback in this invocation does
-	// not leak into the package-global flag value across in-process
-	// calls (relevant in tests and any future driver that reuses the
-	// process between invocations).
-	resolvedNATSURL := workerStartNatsURL
-	if !cmd.Flags().Changed("nats-url") {
+	// CLI-only tunable layer.
+	//
+	// Reused-process safety: pflag's StringVar binds to a package
+	// global. A previous explicit ``--nats-url=foo`` invocation
+	// leaves ``workerStartNatsURL == "foo"`` after the command
+	// returns, so a later invocation that omits the flag would
+	// inherit ``"foo"`` instead of falling back to the compiled
+	// default. Initialise the omitted-flag branch from
+	// ``config.DefaultNATSURLValue`` directly so the env override
+	// (or the documented default) wins, regardless of what the
+	// previous invocation passed.
+	var resolvedNATSURL string
+	if cmd.Flags().Changed("nats-url") {
+		resolvedNATSURL = workerStartNatsURL
+	} else {
+		resolvedNATSURL = config.DefaultNATSURLValue
 		if envURL := strings.TrimSpace(os.Getenv("SYNTHORG_NATS_URL")); envURL != "" {
 			resolvedNATSURL = envURL
 		}

@@ -65,6 +65,7 @@ class NotificationDispatcher:
         "_dispatch_inflight",
         "_lifecycle_lock",
         "_min_severity",
+        "_resolve_failed_logged",
         "_sinks",
         "_started",
         "_stopping",
@@ -86,6 +87,11 @@ class NotificationDispatcher:
         # back-compat path: legacy callers (test fixtures, early-boot
         # construction sites) get a dispatcher that always delivers.
         self._config_resolver: ConfigResolver | None = config_resolver
+        # Suppress duplicate resolver-failure warnings: log the first
+        # failure of a streak, stay quiet until the resolver recovers.
+        # Otherwise a degraded settings backend produces one warning
+        # per dispatch call (potentially many per second).
+        self._resolve_failed_logged: bool = False
         # Dispatch gate: ``aclose`` flips ``_stopping`` so any
         # ``dispatch`` that arrives during shutdown short-circuits
         # before touching ``sink.send``; ``_dispatch_inflight`` +
@@ -115,7 +121,7 @@ class NotificationDispatcher:
         if self._config_resolver is None:
             return True
         try:
-            return await self._config_resolver.get_bool(
+            value = await self._config_resolver.get_bool(
                 SettingNamespace.NOTIFICATIONS.value, "dispatcher_enabled"
             )
         except asyncio.CancelledError:
@@ -123,12 +129,16 @@ class NotificationDispatcher:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(
-                NOTIFICATION_DISPATCHER_RESOLVE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            if not self._resolve_failed_logged:
+                logger.warning(
+                    NOTIFICATION_DISPATCHER_RESOLVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                self._resolve_failed_logged = True
             return True
+        self._resolve_failed_logged = False
+        return value
 
     def register(self, sink: NotificationSink) -> None:
         """Register an additional sink.

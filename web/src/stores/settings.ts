@@ -5,8 +5,9 @@ import * as settingsApi from '@/api/endpoints/settings'
 import type { SettingDefinition, SettingEntry, SettingNamespace } from '@/api/types/settings'
 import type { WsEvent } from '@/api/types/websocket'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 
 const log = createLogger('settings')
 
@@ -58,10 +59,26 @@ interface SettingsState {
   fetchSettingsData: () => Promise<void>
   /** Lightweight re-fetch of entries only (for polling). */
   refreshEntries: () => Promise<void>
-  /** Update a single setting value. Returns the updated entry on success. */
-  updateSetting: (ns: SettingNamespace, key: string, value: string) => Promise<SettingEntry>
-  /** Reset a setting to its default value. */
-  resetSetting: (ns: SettingNamespace, key: string) => Promise<void>
+  /**
+   * Update a single setting value.
+   *
+   * Follows the store-CRUD contract: never throws. Returns the updated
+   * entry on success, ``null`` on failure (after logging and emitting
+   * an error toast). Callers MUST NOT wrap in try/catch; check the
+   * return value for ``null`` instead.
+   */
+  updateSetting: (
+    ns: SettingNamespace,
+    key: string,
+    value: string,
+  ) => Promise<SettingEntry | null>
+  /**
+   * Reset a setting to its default value.
+   *
+   * Returns ``true`` on success, ``false`` on failure (after logging
+   * and emitting an error toast). Callers MUST NOT wrap in try/catch.
+   */
+  resetSetting: (ns: SettingNamespace, key: string) => Promise<boolean>
   /** Handle a WebSocket event on the system channel. */
   updateFromWsEvent: (event: WsEvent) => void
 }
@@ -163,12 +180,23 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       })
       return updated
     } catch (error) {
+      log.error(`Update setting ${compositeKey} failed:`, getErrorMessage(error))
       set((state) => {
         const newSaving = new Set(state.savingKeys)
         newSaving.delete(compositeKey)
         return { savingKeys: newSaving, saveError: getErrorMessage(error) }
       })
-      throw error
+      // Error toast lives in the store so callers stop wrapping
+      // mutation calls in try/catch. Bulk-save callers
+      // (saveSettingsBatch) suppress their own aggregated error
+      // toast when the per-call toast already fired; see
+      // pages/settings/utils.ts for the dedupe handling.
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(error, `Failed to update ${compositeKey}`),
+        description: getErrorMessage(error),
+      })
+      return null
     }
   },
 
@@ -181,12 +209,18 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     try {
       await settingsApi.resetSetting(ns, key)
     } catch (error) {
+      log.error(`Reset setting ${compositeKey} failed:`, getErrorMessage(error))
       set((state) => {
         const newSaving = new Set(state.savingKeys)
         newSaving.delete(compositeKey)
         return { savingKeys: newSaving, saveError: getErrorMessage(error) }
       })
-      throw error
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(error, `Failed to reset ${compositeKey}`),
+        description: getErrorMessage(error),
+      })
+      return false
     }
     // Reset succeeded -- refetch entries to get the resolved default.
     let refreshedEntries: SettingEntry[] | undefined
@@ -212,6 +246,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         return update
       })
     }
+    return true
   },
 
   updateFromWsEvent: (event) => {

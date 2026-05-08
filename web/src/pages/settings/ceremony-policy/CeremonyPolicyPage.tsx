@@ -14,7 +14,6 @@ import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
 import { CEREMONY_STRATEGY_TYPES, STRATEGY_DEFAULT_VELOCITY_CALC, VELOCITY_CALC_TYPES } from '@/utils/constants'
-import { getErrorMessage } from '@/utils/errors'
 import { StrategyPicker } from './StrategyPicker'
 import { StrategyChangeWarning } from './StrategyChangeWarning'
 import { StrategyConfigPanel } from './StrategyConfigPanel'
@@ -269,28 +268,32 @@ export default function CeremonyPolicyPage() {
   // Save handler: persist all ceremony settings.
   // Individual calls are used because the settings service does not support
   // batch updates -- each key is an independent PUT /settings/{ns}/{key}.
+  // ``updateSetting`` follows the store-CRUD contract: never throws,
+  // returns ``null`` on failure (with the per-call error toast already
+  // emitted by the store). We treat any ``null`` result as a partial
+  // failure, keep the page dirty so the user can retry, and skip
+  // ``fetchResolvedPolicy`` (the resolved view would race with the
+  // half-saved state).
   const handleSave = useCallback(async () => {
     setSaving(true)
     setSaveError(null)
-    try {
-      await Promise.all([
-        updateSetting('coordination', 'ceremony_strategy', strategy),
-        updateSetting('coordination', 'ceremony_strategy_config', JSON.stringify(strategyConfig)),
-        updateSetting('coordination', 'ceremony_velocity_calculator', velocityCalculator),
-        updateSetting('coordination', 'ceremony_auto_transition', String(autoTransition)),
-        updateSetting('coordination', 'ceremony_transition_threshold', String(transitionThreshold)),
-        updateSetting('coordination', 'ceremony_policy_overrides', JSON.stringify(ceremonyOverrides)),
-      ])
-      setIsDirty(false)
-      addToast({ variant: 'success', title: 'Ceremony policy saved' })
-      fetchResolvedPolicy()
-    } catch (err) {
-      const msg = getErrorMessage(err)
-      setSaveError(msg)
-      addToast({ variant: 'error', title: 'Failed to save ceremony policy', description: msg })
-    } finally {
-      setSaving(false)
+    const results = await Promise.all([
+      updateSetting('coordination', 'ceremony_strategy', strategy),
+      updateSetting('coordination', 'ceremony_strategy_config', JSON.stringify(strategyConfig)),
+      updateSetting('coordination', 'ceremony_velocity_calculator', velocityCalculator),
+      updateSetting('coordination', 'ceremony_auto_transition', String(autoTransition)),
+      updateSetting('coordination', 'ceremony_transition_threshold', String(transitionThreshold)),
+      updateSetting('coordination', 'ceremony_policy_overrides', JSON.stringify(ceremonyOverrides)),
+    ])
+    setSaving(false)
+    if (results.includes(null)) {
+      const failedCount = results.filter((r) => r === null).length
+      setSaveError(`${failedCount} ceremony setting(s) failed to save`)
+      return
     }
+    setIsDirty(false)
+    addToast({ variant: 'success', title: 'Ceremony policy saved' })
+    fetchResolvedPolicy()
   }, [
     strategy, strategyConfig, velocityCalculator, autoTransition, transitionThreshold,
     ceremonyOverrides, updateSetting, addToast, fetchResolvedPolicy,

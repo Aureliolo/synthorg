@@ -123,3 +123,26 @@ func TestTunableKeys_ComposeAffectingSet(t *testing.T) {
 		t.Errorf("default_nats_url should NOT be in composeAffectingKeys")
 	}
 }
+
+// TestRemovedTunable_DefaultNATSURLRejected guards against re-introducing
+// "default_nats_url" as a config-set tunable. SYNTHORG_NATS_URL is the
+// single env-only source of truth shared with the backend; if a future
+// PR mistakenly re-adds the parallel CLI tunable, this test fails by
+// enumerating every entry point (key list + apply + reset).
+func TestRemovedTunable_DefaultNATSURLRejected(t *testing.T) {
+	const removedKey = "default_nats_url"
+	state := config.DefaultState()
+
+	if slices.Contains(supportedConfigKeys, removedKey) {
+		t.Errorf("%s should NOT be present in supportedConfigKeys", removedKey)
+	}
+	if slices.Contains(gettableConfigKeys, removedKey) {
+		t.Errorf("%s should NOT be present in gettableConfigKeys", removedKey)
+	}
+	if err := applyConfigValue(&state, removedKey, "nats://example:4222"); err == nil {
+		t.Errorf("applyConfigValue should reject removed key %q", removedKey)
+	}
+	if err := resetConfigValue(&state, removedKey); err == nil {
+		t.Errorf("resetConfigValue should reject removed key %q", removedKey)
+	}
+}

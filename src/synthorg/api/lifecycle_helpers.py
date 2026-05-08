@@ -767,7 +767,13 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                 error=safe_error_description(exc),
             )
         else:
-            setter(image_value or None)
+            # Strip in the caller so a whitespace-only resolver result
+            # never reaches the cache. The setter also normalises, but
+            # making the intent explicit here matches the documented
+            # contract that the cache holds either a real image
+            # reference or ``None``.
+            stripped = image_value.strip() if image_value is not None else None
+            setter(stripped or None)
 
     if app_state.oauth_token_manager is not None:
         app_state.oauth_token_manager.set_config_resolver(

@@ -1,10 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { createLogger } from '@/lib/logger'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { useToastStore } from '@/stores/toast'
 import { saveSettingsBatch } from '@/pages/settings/utils'
-
-const log = createLogger('useSettingsDirtyState')
 
 export interface UseSettingsDirtyStateReturn {
   dirtyValues: Map<string, string>
@@ -23,7 +20,7 @@ export function useSettingsDirtyState(
     ns: SettingNamespace,
     key: string,
     value: string,
-  ) => Promise<unknown>,
+  ) => Promise<unknown | null>,
 ): UseSettingsDirtyStateReturn {
   const [dirtyValues, setDirtyValues] = useState<Map<string, string>>(
     () => new Map(),
@@ -89,23 +86,11 @@ export function useSettingsDirtyState(
           variant: 'success',
           title: 'Settings saved',
         })
-      } else {
-        useToastStore.getState().add({
-          variant: 'error',
-          title: `${failedKeys.size} setting(s) failed to save`,
-        })
       }
-    } catch (err) {
-      log.error(
-        'Unexpected error in handleSave:',
-        err,
-      )
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Could not save settings',
-        description:
-          'Refresh the page and try again, or check the setting value for validation errors.',
-      })
+      // No aggregate error toast on partial / total failure: the
+      // store already emitted one per failed key (per the
+      // store-CRUD contract), so an aggregate would just stack on
+      // top of the per-call toasts.
     } finally {
       isSavingRef.current = false
     }

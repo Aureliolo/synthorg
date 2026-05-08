@@ -12,7 +12,6 @@ import {
   Wallet,
 } from 'lucide-react'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
-import { createLogger } from '@/lib/logger'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -46,7 +45,6 @@ import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from '.
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
 
-const log = createLogger('settings')
 
 type ViewMode = 'gui' | 'code'
 
@@ -207,47 +205,33 @@ export default function SettingsPage() {
 
   const handleCodeSave = useCallback(
     async (changes: Map<string, string>): Promise<Set<string>> => {
-      try {
-        const failedKeys = await saveSettingsBatch(changes, updateSetting)
+      const failedKeys = await saveSettingsBatch(changes, updateSetting)
 
-        // Clear GUI drafts for keys successfully saved from code mode
-        setDirtyValues((prev) => {
-          const next = new Map(prev)
-          for (const key of changes.keys()) {
-            if (!failedKeys.has(key)) next.delete(key)
-          }
-          return next
-        })
-
-        // Count restart-required settings among successful saves
-        const restartCount = [...changes.keys()].filter((ck) => {
-          if (failedKeys.has(ck)) return false
-          const entry = entries.find(
-            (e) => `${e.definition.namespace}/${e.definition.key}` === ck,
-          )
-          return entry?.definition.restart_required === true
-        }).length
-        if (restartCount > 0) setRestartBannerCount(restartCount)
-
-        if (failedKeys.size === 0) {
-          useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
-        } else {
-          useToastStore.getState().add({
-            variant: 'error',
-            title: `${failedKeys.size} setting(s) failed to save`,
-          })
+      // Clear GUI drafts for keys successfully saved from code mode
+      setDirtyValues((prev) => {
+        const next = new Map(prev)
+        for (const key of changes.keys()) {
+          if (!failedKeys.has(key)) next.delete(key)
         }
-        return failedKeys
-      } catch (err) {
-        log.error('Unexpected error in handleCodeSave:', err)
-        useToastStore.getState().add({
-          variant: 'error',
-          title: 'Could not save settings',
-          description:
-            'Refresh the page and try again, or check the setting value for validation errors.',
-        })
-        return new Set(changes.keys())
+        return next
+      })
+
+      // Count restart-required settings among successful saves
+      const restartCount = [...changes.keys()].filter((ck) => {
+        if (failedKeys.has(ck)) return false
+        const entry = entries.find(
+          (e) => `${e.definition.namespace}/${e.definition.key}` === ck,
+        )
+        return entry?.definition.restart_required === true
+      }).length
+      if (restartCount > 0) setRestartBannerCount(restartCount)
+
+      // Per-failure error toasts already fired in the store; emit only
+      // an aggregate success toast here.
+      if (failedKeys.size === 0) {
+        useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
       }
+      return failedKeys
     },
     [updateSetting, setDirtyValues, entries],
   )
