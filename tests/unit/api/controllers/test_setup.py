@@ -783,8 +783,25 @@ class TestSetupAgentsList:
                 collected.extend(page["data"])
                 cursor = page["pagination"]["next_cursor"]
             # Strict equality (not length) so the test fails on
-            # duplicates, gaps, or reordering across pages.
-            full = test_client.get("/api/v1/setup/agents").json()["data"]
+            # duplicates, gaps, or reordering across pages.  Build
+            # ``full`` by walking pagination at a high limit so the
+            # oracle is the entire dataset rather than the first
+            # ``DEFAULT_LIMIT``-sized page; the previous single-GET
+            # version compared two truncated views once the agent
+            # count exceeded the default page size.
+            full: list[dict[str, Any]] = []
+            full_cursor: str | None = None
+            while True:
+                qs = (
+                    "?limit=200"
+                    if full_cursor is None
+                    else f"?limit=200&cursor={full_cursor}"
+                )
+                page = test_client.get(f"/api/v1/setup/agents{qs}").json()
+                full.extend(page["data"])
+                full_cursor = page["pagination"]["next_cursor"]
+                if full_cursor is None:
+                    break
             assert collected == full
         finally:
             app_state._provider_management = original

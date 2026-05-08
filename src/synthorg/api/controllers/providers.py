@@ -255,7 +255,13 @@ class ProviderController(Controller):
             operation="read",
             extra_log_kwargs={"name": name},
         )
-        return ApiResponse(data=to_provider_response(provider, name=name))
+        # ``name=None`` keeps the list-only ``ProviderResponse.name``
+        # field out of the wire envelope on single-resource responses
+        # (the URL already identifies the provider).  Setting ``name``
+        # here would silently expand the non-paginated schema to carry
+        # the field, breaking the dict-by-name contract on the
+        # frontend that distinguishes list vs single-resource shape.
+        return ApiResponse(data=to_provider_response(provider, name=None))
 
     @get(
         "/{name:str}/models",
@@ -408,7 +414,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config, name=data.name))
+        return ApiResponse(data=to_provider_response(config, name=None))
 
     @post(
         "/from-preset",
@@ -459,7 +465,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config, name=data.name))
+        return ApiResponse(data=to_provider_response(config, name=None))
 
     @put(
         "/{name:str}",
@@ -509,7 +515,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config, name=name))
+        return ApiResponse(data=to_provider_response(config, name=None))
 
     @delete(
         "/{name:str}",
@@ -1030,7 +1036,7 @@ class ProviderController(Controller):
                 provider=name,
             )
             raise ConflictError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(updated, name=name))
+        return ApiResponse(data=to_provider_response(updated, name=None))
 
     @post(
         "/{name:str}/models/sync",
@@ -1153,7 +1159,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(updated, name=name))
+        return ApiResponse(data=to_provider_response(updated, name=None))
 
     # ── Preset overrides ────────────────────────────────────────
 
