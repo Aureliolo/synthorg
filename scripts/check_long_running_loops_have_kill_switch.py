@@ -64,17 +64,25 @@ class Violation:
     class_name: str | None = None
 
     def key(self) -> str:
-        """Stable single-line baseline form.
+        """Stable single-line baseline form keyed per loop.
 
-        Module-level functions: ``<rel-path>:<func>``.
-        Methods: ``<rel-path>:<class>:<func>`` so identically-named
-        methods on different classes in the same file produce distinct
-        keys (otherwise a brand-new violation in a sibling class is
-        masked by the first entry that lands).
+        Module-level functions: ``<rel-path>:<func>:<lineno>``.
+        Methods: ``<rel-path>:<class>:<func>:<lineno>``.
+
+        ``lineno`` is the ``while``-loop's own line, not the enclosing
+        function's. Including it means a baselined function with one
+        unguarded loop cannot silently absorb a new unguarded sibling
+        loop -- the new key (different lineno) lands as a fresh
+        violation. Line shifts caused by unrelated edits surface as
+        stale-baseline warnings (gate still passes; operator
+        regenerates).
         """
-        if self.class_name is None:
-            return f"{self.file}:{self.function}"
-        return f"{self.file}:{self.class_name}:{self.function}"
+        prefix = (
+            f"{self.file}:{self.function}"
+            if self.class_name is None
+            else f"{self.file}:{self.class_name}:{self.function}"
+        )
+        return f"{prefix}:{self.lineno}"
 
 
 def _is_long_running_while(node: ast.AST) -> bool:
@@ -186,7 +194,14 @@ def _iter_async_funcs(
 
 
 def _scan_file(path: Path, repo_root: Path) -> list[Violation]:
-    """Return the violations present in ``path``."""
+    """Return the violations present in ``path``.
+
+    Emits one ``Violation`` per long-running ``while`` that lacks a
+    kill-switch, not one per enclosing function. Without this, a
+    function with one baselined unguarded loop could silently absorb a
+    second unguarded sibling loop -- the per-loop ``lineno`` in
+    ``Violation.key()`` is the discriminator that catches that case.
+    """
     text = path.read_text(encoding="utf-8")
     try:
         tree = ast.parse(text, filename=str(path))
@@ -196,24 +211,26 @@ def _scan_file(path: Path, repo_root: Path) -> list[Violation]:
     rel = path.relative_to(repo_root).as_posix()
     violations: list[Violation] = []
     for func, class_name in _iter_async_funcs(tree):
-        whiles = [w for w in _walk_current_scope(func) if _is_long_running_while(w)]
+        whiles: list[ast.While] = [
+            w
+            for w in _walk_current_scope(func)
+            if isinstance(w, ast.While) and _is_long_running_while(w)
+        ]
         if not whiles:
-            continue
-        # Every long-running while in the function must call the
-        # kill-switch resolver; a single guarded loop must not mask an
-        # unguarded sibling in the same body.
-        if all(_calls_kill_switch_resolver(w) for w in whiles):
             continue
         if _has_suppression(source_lines, func):
             continue
-        violations.append(
-            Violation(
-                file=rel,
-                function=func.name,
-                lineno=func.lineno,
-                class_name=class_name,
-            ),
-        )
+        for w in whiles:
+            if _calls_kill_switch_resolver(w):
+                continue
+            violations.append(
+                Violation(
+                    file=rel,
+                    function=func.name,
+                    lineno=w.lineno,
+                    class_name=class_name,
+                ),
+            )
     return violations
 
 
@@ -239,10 +256,13 @@ def _write_baseline(path: Path, keys: Iterable[str]) -> None:
     sorted_keys = sorted(set(keys))
     header = (
         "# Frozen long-running loops without a kill-switch.\n"
-        "# One ``<relpath>:<func>`` (module-level) or\n"
-        "# ``<relpath>:<class>:<func>`` (method) per line. New violations\n"
-        "# not on this list fail the gate; entries here that no longer\n"
-        "# match the scan emit a stale-baseline warning.\n"
+        "# One ``<relpath>:<func>:<lineno>`` (module-level) or\n"
+        "# ``<relpath>:<class>:<func>:<lineno>`` (method) per line.\n"
+        "# ``<lineno>`` is the while-loop's own line so a baselined\n"
+        "# function cannot silently absorb a new unguarded sibling loop.\n"
+        "# New violations not on this list fail the gate; entries here\n"
+        "# that no longer match the scan emit a stale-baseline warning\n"
+        "# (gate still passes; regenerate via --update-baseline).\n"
     )
     body = "\n".join(sorted_keys)
     path.write_text(header + body + ("\n" if sorted_keys else ""), encoding="utf-8")

@@ -298,7 +298,15 @@ Pre-existing not-yet-pause-able loops live in
 fails when a NEW loop missing the kill-switch lands.
 
 Enforced by `scripts/check_long_running_loops_have_kill_switch.py`
-(pre-push + CI).
+(pre-push + CI). Scope: the gate scans every long-running
+`while True:` / `while not <stop_event>.is_set():` inside an
+`async def` under `src/synthorg/`, so the loop-bodied surfaces above
+(`_ticket_cleanup_loop`, `ProviderHealthProber._run_loop`,
+`_webhook_receipt_cleanup_loop`) are lint-enforced. Per-call
+non-loop surfaces such as `NotificationDispatcher.dispatch` are
+covered by project convention and reviewed by CodeRabbit /
+human review, but they sit outside the AST gate's
+loop-shaped detection.
 
 ## Sandbox image cache
 
