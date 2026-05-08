@@ -250,9 +250,9 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
             connection_name=conn.name,
             note="mark_consumed CAS lost; concurrent callback already stamped state",
         )
-
-    logger.info(
-        OAUTH_FLOW_COMPLETED,
-        connection_name=conn.name,
-    )
+    else:
+        logger.info(
+            OAUTH_FLOW_COMPLETED,
+            connection_name=conn.name,
+        )
     return conn.name

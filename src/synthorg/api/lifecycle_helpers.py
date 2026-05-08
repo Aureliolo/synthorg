@@ -180,8 +180,13 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         # observability boundary -- the repo-level log only fires when
         # ``removed > 0`` (silent on no-op), so a lifecycle log gives
         # operators an unconditional "sweep ran" signal.
+        oauth_retention_seconds = await _resolve_oauth_idempotency_retention(
+            app_state,
+        )
         try:
-            oauth_removed = await app_state.persistence.oauth_states.cleanup_expired()
+            oauth_removed = await app_state.persistence.oauth_states.cleanup_expired(
+                oauth_retention_seconds,
+            )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -204,8 +209,12 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         )
 
 
-_DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS: Final[float] = 86400.0
-_DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS: Final[float] = 300.0
+_DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS: Final[float] = (
+    86400.0  # lint-allow: magic-numbers -- bootstrap
+)
+_DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS: Final[float] = (
+    300.0  # lint-allow: magic-numbers -- bootstrap
+)
 
 
 async def _resolve_event_stream_janitor_settings(
@@ -269,7 +278,7 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
         await _run_cleanup_tick(app_state)
 
 
-_DEFAULT_AUDIT_RETENTION_DAYS = 730
+_DEFAULT_AUDIT_RETENTION_DAYS = 730  # lint-allow: magic-numbers -- bootstrap
 
 
 async def _resolve_audit_retention(
@@ -352,7 +361,9 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     )
 
 
-_AUDIT_RETENTION_TICK_SECONDS: Final[float] = 86_400.0
+_AUDIT_RETENTION_TICK_SECONDS: Final[float] = (
+    86_400.0  # lint-allow: magic-numbers -- bootstrap
+)
 """Audit retention sweep cadence (24h). Hardcoded by design: retention is
 not a hot path and operators tune the *window* (``security.audit_retention_days``)
 rather than the *cadence*."""
@@ -833,3 +844,36 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                     )
 
     app_state.mark_bridge_config_applied()
+
+
+async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:
+    """Resolve the OAuth idempotency retention window, fail-safe to 600s.
+
+    A settings-backend outage must not stop the OAuth state cleanup loop;
+    the table would otherwise grow unbounded as consumed-but-stale rows
+    accumulate.  10 minutes covers the documented redelivery envelope of
+    the major IdPs and is the value the loop ran with before the setting
+    was introduced.
+    """
+    if not app_state.has_config_resolver:
+        return 600.0
+    try:
+        return await app_state.config_resolver.get_float(
+            SettingNamespace.INTEGRATIONS.value,
+            "oauth_idempotency_retention_seconds",
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            PERSISTENCE_OAUTH_STATE_CLEANUP,
+            error=(
+                "Failed to resolve oauth_idempotency_retention_seconds;"
+                " falling back to 600.0 seconds"
+            ),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+        return 600.0

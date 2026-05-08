@@ -140,11 +140,11 @@ class OAuthStateRepository(Protocol):
         """
         ...
 
-    async def cleanup_expired(self) -> int:
+    async def cleanup_expired(self, retention_seconds: float) -> int:
         """Delete all expired states.
 
-        Also reaps consumed-but-stale rows whose retention window
-        has elapsed so the idempotency table does not grow
+        Also reaps consumed-but-stale rows older than
+        ``retention_seconds`` so the idempotency table does not grow
         unbounded.
 
         Returns:

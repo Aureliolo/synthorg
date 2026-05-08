@@ -28,15 +28,6 @@ from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 
 logger = get_logger(__name__)
 
-# Idempotent-replay retention for consumed OAuth states. Retains rows
-# long enough to absorb realistic IdP redelivery windows (provider
-# retries, browser back/forward navigation, CDN replays) without
-# leaking the table indefinitely. 10 minutes covers the documented
-# retry envelopes for the major providers we integrate with.
-_OAUTH_IDEMPOTENCY_RETENTION_SECONDS: float = (
-    600.0  # lint-allow: magic-numbers -- bootstrap
-)
-
 
 _SELECT_COLS = (
     "state_token, connection_name, pkce_verifier, "
@@ -243,26 +234,23 @@ class SQLiteOAuthStateRepository:
                 raise QueryError(msg) from exc
         return updated
 
-    async def cleanup_expired(self) -> int:
+    async def cleanup_expired(self, retention_seconds: float) -> int:
         """Delete expired and stale-consumed OAuth states.
 
         Reaps two row classes:
         * ``expires_at <= now`` -- the in-flight window has elapsed.
         * ``consumed_at IS NOT NULL AND consumed_at <= now -
-          retention`` -- the row is past the idempotent-replay
+          retention_seconds`` -- the row is past the idempotent-replay
           retention window.
 
-        The retention window is fixed at the module-level constant
-        ``_OAUTH_IDEMPOTENCY_RETENTION_SECONDS`` (10 minutes); not
-        operator-tunable today. The constant lives in this module so
-        each repo stays self-contained; the callback handler in
-        ``integrations.oauth.callback_handler`` does not own the
-        retention budget.
+        The retention budget is resolved from the
+        ``integrations.oauth_idempotency_retention_seconds`` setting
+        by the lifecycle cleanup loop and passed in here.
         """
         now = datetime.now(UTC)
         cutoff_iso = format_iso_utc(now)
         consumed_cutoff_iso = format_iso_utc(
-            now - timedelta(seconds=_OAUTH_IDEMPOTENCY_RETENTION_SECONDS),
+            now - timedelta(seconds=retention_seconds),
         )
         async with self._write_lock:
             try:

@@ -929,7 +929,12 @@ CREATE TABLE oauth_states (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     consumed_at TEXT,
-    connection_name_returned TEXT
+    connection_name_returned TEXT,
+    CONSTRAINT oauth_states_consumed_pair CHECK (
+        (consumed_at IS NULL AND connection_name_returned IS NULL)
+        OR
+        (consumed_at IS NOT NULL AND connection_name_returned IS NOT NULL)
+    )
 );
 
 CREATE INDEX idx_oauth_states_expires ON oauth_states(expires_at);

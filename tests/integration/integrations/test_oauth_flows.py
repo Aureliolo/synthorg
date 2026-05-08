@@ -19,11 +19,13 @@ import pytest
 import structlog.testing
 
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
     ConnectionType,
     OAuthState,
+    OAuthToken,
 )
 from synthorg.integrations.errors import (
     InvalidStateError,
@@ -41,6 +43,7 @@ from synthorg.integrations.oauth.pkce import (
     encrypt_pkce_verifier,
     generate_code_verifier,
 )
+from synthorg.persistence.connection_protocol import OAuthStateRepository
 from tests._shared.fake_clock import FakeClock
 
 
@@ -48,10 +51,9 @@ def _mock_token_response(
     json_body: dict[str, Any],
     status_code: int = 200,
 ) -> MagicMock:
-    resp = MagicMock()
+    resp = MagicMock(spec=httpx.Response)
     resp.status_code = status_code
     resp.json.return_value = json_body
-    resp.raise_for_status = MagicMock()
     resp.is_error = status_code >= 400
     return resp
 
@@ -81,7 +83,7 @@ class TestAuthorizationCodeFlow:
                 "scope": "read",
             }
         )
-        client_mock = AsyncMock()
+        client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.return_value = resp
 
         async def _enter(self: Any) -> AsyncMock:
@@ -116,7 +118,7 @@ class TestAuthorizationCodeFlow:
         flow = AuthorizationCodeFlow()
         resp = _mock_token_response({})  # no access_token
 
-        client_mock = AsyncMock()
+        client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.return_value = resp
 
         async def _enter(self: Any) -> AsyncMock:
@@ -152,10 +154,9 @@ class TestCallbackHandler:
             created_at=now,
             expires_at=now + timedelta(hours=1),
         )
-        state_repo = MagicMock()
-        state_repo.get = AsyncMock(return_value=state)
-        state_repo.delete = AsyncMock()
-        state_repo.mark_consumed = AsyncMock(return_value=True)
+        state_repo = MagicMock(spec=OAuthStateRepository)
+        state_repo.get.return_value = state
+        state_repo.mark_consumed.return_value = True
 
         stored_tokens: dict[str, str] = {}
 
@@ -169,31 +170,24 @@ class TestCallbackHandler:
             if refresh_token:
                 stored_tokens["refresh"] = refresh_token
 
-        catalog = MagicMock()
-        catalog.get_or_raise = AsyncMock(
-            return_value=Connection(
-                name=NotBlankStr("conn-1"),
-                connection_type=ConnectionType.OAUTH_APP,
-                auth_method=AuthMethod.OAUTH2,
-            ),
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.get_or_raise.return_value = Connection(
+            name=NotBlankStr("conn-1"),
+            connection_type=ConnectionType.OAUTH_APP,
+            auth_method=AuthMethod.OAUTH2,
         )
-        catalog.get_credentials = AsyncMock(
-            return_value={
-                "token_url": "https://example.com/token",
-                "client_id": "cid",
-                "client_secret": "csec",
-            },
-        )
-        catalog.store_oauth_tokens = AsyncMock(side_effect=_store)
-        catalog.update = AsyncMock()
+        catalog.get_credentials.return_value = {
+            "token_url": "https://example.com/token",
+            "client_id": "cid",
+            "client_secret": "csec",
+        }
+        catalog.store_oauth_tokens.side_effect = _store
 
-        fake_flow = MagicMock()
-        fake_flow.exchange_code = AsyncMock(
-            return_value=MagicMock(
-                access_token="new-access",
-                refresh_token="new-refresh",
-                expires_at=now + timedelta(seconds=3600),
-            ),
+        fake_flow = MagicMock(spec=AuthorizationCodeFlow)
+        fake_flow.exchange_code.return_value = OAuthToken(
+            access_token="new-access",
+            refresh_token="new-refresh",
+            expires_at=now + timedelta(seconds=3600),
         )
 
         result = await handle_oauth_callback(
@@ -216,10 +210,9 @@ class TestCallbackHandler:
             created_at=past - timedelta(hours=1),
             expires_at=past,
         )
-        state_repo = MagicMock()
-        state_repo.get = AsyncMock(return_value=state)
-        state_repo.delete = AsyncMock()
-        catalog = MagicMock()
+        state_repo = MagicMock(spec=OAuthStateRepository)
+        state_repo.get.return_value = state
+        catalog = MagicMock(spec=ConnectionCatalog)
         with pytest.raises(InvalidStateError):
             await handle_oauth_callback(
                 state_param="state-expired",
@@ -236,18 +229,15 @@ class TestCallbackHandler:
             pkce_verifier=NotBlankStr("verifier"),
             expires_at=now + timedelta(hours=1),
         )
-        state_repo = MagicMock()
-        state_repo.get = AsyncMock(return_value=state)
-        state_repo.delete = AsyncMock()
-        catalog = MagicMock()
-        catalog.get_or_raise = AsyncMock(
-            return_value=Connection(
-                name=NotBlankStr("conn-1"),
-                connection_type=ConnectionType.OAUTH_APP,
-                auth_method=AuthMethod.OAUTH2,
-            ),
+        state_repo = MagicMock(spec=OAuthStateRepository)
+        state_repo.get.return_value = state
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.get_or_raise.return_value = Connection(
+            name=NotBlankStr("conn-1"),
+            connection_type=ConnectionType.OAUTH_APP,
+            auth_method=AuthMethod.OAUTH2,
         )
-        catalog.get_credentials = AsyncMock(return_value={})
+        catalog.get_credentials.return_value = {}
         with pytest.raises(TokenExchangeFailedError):
             await handle_oauth_callback(
                 state_param="state-missing",
@@ -262,13 +252,6 @@ class TestCallbackReplay:
     """Redelivered callbacks return the original connection name unchanged."""
 
     async def test_replay_returns_connection_without_re_exchange(self) -> None:
-        from synthorg.integrations.connections.catalog import (
-            ConnectionCatalog,
-        )
-        from synthorg.persistence.connection_protocol import (
-            OAuthStateRepository,
-        )
-
         now = datetime.now(UTC)
         # Already-consumed state row: a successful prior callback
         # stamped these two fields atomically via ``mark_consumed``.
@@ -283,18 +266,11 @@ class TestCallbackReplay:
             connection_name_returned=NotBlankStr("conn-1"),
         )
         state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get = AsyncMock(return_value=state)
-        state_repo.delete = AsyncMock()
-        state_repo.mark_consumed = AsyncMock()
+        state_repo.get.return_value = state
 
         catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_or_raise = AsyncMock()
-        catalog.get_credentials = AsyncMock()
-        catalog.store_oauth_tokens = AsyncMock()
-        catalog.update = AsyncMock()
 
         fake_flow = MagicMock(spec=AuthorizationCodeFlow)
-        fake_flow.exchange_code = AsyncMock()
 
         result = await handle_oauth_callback(
             state_param="state-replay",
@@ -316,13 +292,6 @@ class TestCallbackReplay:
     async def test_fresh_callback_marks_consumed_and_does_not_delete(
         self,
     ) -> None:
-        from synthorg.integrations.connections.catalog import (
-            ConnectionCatalog,
-        )
-        from synthorg.persistence.connection_protocol import (
-            OAuthStateRepository,
-        )
-
         now = datetime.now(UTC)
         state = OAuthState(
             state_token=NotBlankStr("state-fresh"),
@@ -334,35 +303,26 @@ class TestCallbackReplay:
             expires_at=now + timedelta(hours=1),
         )
         state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get = AsyncMock(return_value=state)
-        state_repo.delete = AsyncMock()
-        state_repo.mark_consumed = AsyncMock(return_value=True)
+        state_repo.get.return_value = state
+        state_repo.mark_consumed.return_value = True
 
         catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_or_raise = AsyncMock(
-            return_value=Connection(
-                name=NotBlankStr("conn-2"),
-                connection_type=ConnectionType.OAUTH_APP,
-                auth_method=AuthMethod.OAUTH2,
-            ),
+        catalog.get_or_raise.return_value = Connection(
+            name=NotBlankStr("conn-2"),
+            connection_type=ConnectionType.OAUTH_APP,
+            auth_method=AuthMethod.OAUTH2,
         )
-        catalog.get_credentials = AsyncMock(
-            return_value={
-                "token_url": "https://example.com/token",
-                "client_id": "cid",
-                "client_secret": "csec",
-            },
-        )
-        catalog.store_oauth_tokens = AsyncMock()
-        catalog.update = AsyncMock()
+        catalog.get_credentials.return_value = {
+            "token_url": "https://example.com/token",
+            "client_id": "cid",
+            "client_secret": "csec",
+        }
 
         fake_flow = MagicMock(spec=AuthorizationCodeFlow)
-        fake_flow.exchange_code = AsyncMock(
-            return_value=MagicMock(
-                access_token="acc",
-                refresh_token="ref",
-                expires_at=now + timedelta(seconds=3600),
-            ),
+        fake_flow.exchange_code.return_value = OAuthToken(
+            access_token="acc",
+            refresh_token="ref",
+            expires_at=now + timedelta(seconds=3600),
         )
 
         result = await handle_oauth_callback(
@@ -395,7 +355,7 @@ class TestClientCredentialsFlow:
                 "scope": "read write",
             }
         )
-        client_mock = AsyncMock()
+        client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.return_value = resp
 
         async def _enter(self: Any) -> AsyncMock:
@@ -447,7 +407,7 @@ class TestDeviceFlow:
                 "expires_in": 1800,
             }
         )
-        client_mock = AsyncMock()
+        client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.side_effect = [
             start_resp,
             pending_resp,
@@ -617,7 +577,7 @@ class TestOAuthLogRedaction:
 
     @staticmethod
     def _mock_client() -> AsyncMock:
-        client_mock = AsyncMock()
+        client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.side_effect = _leaky_http_error(_LEAKY_BODY)
         return client_mock
 
@@ -750,7 +710,7 @@ class TestOAuthLogRedaction:
             redirect_uri="https://app.example.com/cb",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
-        client_mock = AsyncMock()
+        client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.side_effect = _leaky_http_error(_LEAKY_BODY)
 
         async def _enter(_self: Any) -> AsyncMock:

@@ -30,15 +30,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Idempotent-replay retention for consumed OAuth states. See
-# ``persistence/sqlite/oauth_state_repo.py`` for the rationale; the
-# value is duplicated here so each repo stays self-contained and
-# operators can tune backends independently if needed.
-_OAUTH_IDEMPOTENCY_RETENTION_SECONDS: float = (
-    600.0  # lint-allow: magic-numbers -- bootstrap
-)
-
-
 _SELECT_COLS = (
     "state_token, connection_name, pkce_verifier, "
     "scopes_requested, redirect_uri, created_at, expires_at, "
@@ -229,16 +220,14 @@ class PostgresOAuthStateRepository:
             raise QueryError(msg) from exc
         return updated
 
-    async def cleanup_expired(self) -> int:
+    async def cleanup_expired(self, retention_seconds: float) -> int:
         """Delete expired and stale-consumed OAuth states.
 
         See :meth:`SQLiteOAuthStateRepository.cleanup_expired` for
         the retention contract.
         """
         now = datetime.now(UTC)
-        consumed_cutoff = now - timedelta(
-            seconds=_OAUTH_IDEMPOTENCY_RETENTION_SECONDS,
-        )
+        consumed_cutoff = now - timedelta(seconds=retention_seconds)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

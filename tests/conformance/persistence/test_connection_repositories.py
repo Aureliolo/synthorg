@@ -376,7 +376,7 @@ class TestOAuthStateRepository:
         )
         await backend.oauth_states.save(expired)
 
-        removed = await backend.oauth_states.cleanup_expired()
+        removed = await backend.oauth_states.cleanup_expired(600.0)
 
         assert removed == 1
         assert await backend.oauth_states.get(NotBlankStr("alive")) is not None
@@ -458,7 +458,7 @@ class TestOAuthStateRepository:
         await backend.oauth_states.save(stale_consumed)
         await backend.oauth_states.save(fresh_consumed)
 
-        removed = await backend.oauth_states.cleanup_expired()
+        removed = await backend.oauth_states.cleanup_expired(600.0)
 
         assert removed == 1
         assert await backend.oauth_states.get(NotBlankStr("stale")) is None
