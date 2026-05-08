@@ -740,9 +740,26 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
           yq --version
       - name: Audit
+        id: audit
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
         run: bash scripts/audit_branch_protection.sh
+
+      # The job-level `continue-on-error: true` above silences the audit
+      # step's failure entirely during the #1555 stabilization window,
+      # which means real drift could ship invisibly. Surface a warning
+      # annotation when the audit detected drift; the warning shows up
+      # in the run summary and check-run UI even though the job stays
+      # green per #1555. Promote the job to blocking once #1555 closes
+      # the 30-day zero-drift window.
+      - name: Report drift outcome
+        if: always()
+        env:
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          if [ "$AUDIT_OUTCOME" = "failure" ]; then
+            echo "::warning::Branch-protection drift detected -- see Audit step log. Job stays green via job-level continue-on-error during the #1555 stabilization window; promote to blocking once the spec has survived 30 days of zero-drift runs."
+          fi
 
   # ── Gate: all required checks passed ──
   ci-pass:

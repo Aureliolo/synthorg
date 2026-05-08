@@ -261,34 +261,56 @@ jobs:
           go-version-file: cli/go.mod
           cache: false
 
-      - name: Run fuzz tests (30s per target)
-        id: fuzz_run
-        continue-on-error: true
+      # Two steps: discovery and execution are split so compile errors
+      # in fuzz targets fail the matrix cell loudly. The prior single
+      # step had a job-level `continue-on-error: true` that silenced
+      # both fuzzer-found crashes (intentional, advisory only) AND
+      # `go test -list` compile failures (unintentional, real bugs).
+      # Discovery runs without continue-on-error; execution keeps it.
+      - name: List fuzz targets
+        id: fuzz_list
         working-directory: cli
+        env:
+          PKG: ${{ matrix.package }}
         run: |
           set -euo pipefail
-          # Run each Fuzz* function in the package for 30s.
-          # go test -fuzz only supports one fuzz target at a time,
-          # so we discover and iterate.
-          #
-          # Discover fuzz targets. go test -list exits non-zero on compile
-          # errors; let that propagate so broken packages aren't silently
-          # skipped.
-          LIST_OUTPUT=$(go test -list 'Fuzz.*' ${{ matrix.package }} 2>&1) || {
-            echo "::error::go test -list failed for ${{ matrix.package }}"
+          # go test -list exits non-zero on compile errors; let that
+          # propagate so broken packages aren't silently skipped.
+          LIST_OUTPUT=$(go test -list 'Fuzz.*' "$PKG" 2>&1) || {
+            echo "::error::go test -list failed for $PKG (compile error?)"
             echo "$LIST_OUTPUT"
             exit 1
           }
           FUZZ_TARGETS=$(echo "$LIST_OUTPUT" | grep '^Fuzz' || true)
-          if [ -z "$FUZZ_TARGETS" ]; then
-            echo "No fuzz targets found in ${{ matrix.package }}"
-            exit 0
-          fi
-          for target in $FUZZ_TARGETS; do
+          # Multi-line GITHUB_OUTPUT requires a heredoc-style delimiter;
+          # see https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#multiline-strings
+          {
+            echo "targets<<TARGETS_EOF"
+            echo "$FUZZ_TARGETS"
+            echo "TARGETS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run fuzz tests (30s per target)
+        id: fuzz_run
+        if: steps.fuzz_list.outputs.targets != ''
+        continue-on-error: true
+        working-directory: cli
+        env:
+          # Pass via env (not direct ${{ }} interpolation) so multi-line
+          # values survive without GitHub Actions expression-syntax
+          # escaping pitfalls.
+          FUZZ_TARGETS: ${{ steps.fuzz_list.outputs.targets }}
+          PKG: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          # Run each Fuzz* function in the package for 30s. go test
+          # -fuzz only supports one fuzz target at a time, so iterate.
+          while IFS= read -r target; do
+            [ -z "$target" ] && continue
             echo "::group::Fuzzing $target"
-            go test -fuzz="^${target}$" -fuzztime=30s ${{ matrix.package }}
+            go test -fuzz="^${target}$" -fuzztime=30s "$PKG"
             echo "::endgroup::"
-          done
+          done <<< "$FUZZ_TARGETS"
 
       - name: Report fuzz outcome
         if: always()

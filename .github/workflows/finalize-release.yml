@@ -146,13 +146,56 @@ jobs:
             exit 0
           fi
 
-          # Both succeeded -- check if release exists and is still a draft
-          if ! IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --json isDraft --jq '.isDraft' 2>/dev/null); then
-            echo "Release $TAG not found -- nothing to publish."
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # Both upstream workflows succeeded -- now confirm the draft
+          # release exists and is still a draft. Three distinct outcomes
+          # to disambiguate:
+          #
+          # 1. Success: read isDraft and continue.
+          # 2. "Not found" 404: release-please may legitimately not have
+          #    cut the release yet, OR a brand-new release page may be
+          #    surfacing transient 404s while the API catches up. Poll
+          #    for a bounded window before deciding which it is. With
+          #    both upstream workflows already complete, there is no
+          #    later `workflow_run` event to retry on, so a premature
+          #    "skip on first 404" can leave the commit `pending`
+          #    forever. After the retry budget is exhausted, treat the
+          #    miss as a genuine skip (release-please simply has not run
+          #    yet) and let the next push or finalize cycle pick it up.
+          # 3. Other failure (auth / rate limit / 5xx / DNS): fail the
+          #    job non-zero so the run is visible and can be retried,
+          #    rather than silently writing proceed=false.
+          IS_DRAFT=""
+          MISS_RETRIES=6              # 6 attempts
+          MISS_BACKOFF_BASE=5         # seconds: 5, 10, 15, 20, 25, 30 (105s total)
+          attempt=0
+          while [ "$attempt" -lt "$MISS_RETRIES" ]; do
+            attempt=$((attempt + 1))
+            release_err=$(mktemp)
+            if IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                --json isDraft --jq '.isDraft' 2>"$release_err"); then
+              rm -f "$release_err"
+              break
+            fi
+            if grep -qiE 'not found|could not resolve|HTTP 404' "$release_err"; then
+              rm -f "$release_err"
+              if [ "$attempt" -lt "$MISS_RETRIES" ]; then
+                sleep_for=$((MISS_BACKOFF_BASE * attempt))
+                echo "Release $TAG not found yet (attempt $attempt/$MISS_RETRIES); sleeping ${sleep_for}s before retry."
+                sleep "$sleep_for"
+                continue
+              fi
+              # Retries exhausted -- release-please hasn't cut the
+              # release; legitimate skip (the next push or scheduled
+              # cycle will pick it up).
+              echo "Release $TAG not found after $MISS_RETRIES attempts -- nothing to publish."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::gh release view failed for $TAG (transient API/auth error)"
+            cat "$release_err" >&2
+            rm -f "$release_err"
+            exit 1
+          done
 
           if [ "$IS_DRAFT" != "true" ]; then
             echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published."
@@ -374,7 +417,13 @@ jobs:
             # API once and filtering the JSON locally keeps the failure
             # signal observable while preserving best-effort semantics.
             PR_NUMBER=""
-            if PR_API_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" 2>/dev/null); then
+            # No `2>/dev/null` on either gh call below: stderr from
+            # auth / permission / rate-limit failures should surface in
+            # the run log so the upstream cause is debuggable. The
+            # explicit if/else branches handle the non-zero exit
+            # cleanly with a `::warning::`; we don't want to silently
+            # drop the explanation alongside.
+            if PR_API_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls"); then
               PR_NUMBER=$(printf '%s' "$PR_API_OUTPUT" \
                 | jq -r '.[] | select(.head.ref | startswith("release-please--branches--main")) | .number' \
                 | head -n1)
@@ -382,7 +431,26 @@ jobs:
               echo "::warning::gh api commits/${HEAD_SHA}/pulls failed; skipping Highlights propagation."
             fi
             if [ -n "$PR_NUMBER" ]; then
-              PR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>/dev/null || true)
+              # Split the call into capture + classify so an auth /
+              # rate-limit failure surfaces a `::warning::` distinct
+              # from "PR was deleted" (legitimate skip). The previous
+              # `|| true` swallowed all non-zero exits and conflated
+              # the two -- a regression that would silently lose
+              # Highlights every release until someone noticed.
+              if PR_VIEW_OUTPUT=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>&1); then
+                PR_BODY="$PR_VIEW_OUTPUT"
+              else
+                PR_BODY=""
+                # `gh pr view` returns non-zero on both 404 (PR
+                # genuinely deleted) and on auth / rate-limit / 5xx
+                # failures. Distinguish via stderr fingerprint.
+                if printf '%s' "$PR_VIEW_OUTPUT" | grep -qiE 'not found|could not resolve'; then
+                  echo "::notice::release-please PR #${PR_NUMBER} no longer exists; skipping Highlights propagation."
+                else
+                  echo "::warning::gh pr view #${PR_NUMBER} failed (auth / rate-limit / API error); skipping Highlights propagation."
+                  echo "::warning::stderr: ${PR_VIEW_OUTPUT}"
+                fi
+              fi
               if [ -n "$PR_BODY" ]; then
                 # Find marker line numbers via exact whole-line match
                 # (`grep -nFx`): -n adds line numbers, -F treats the
@@ -558,6 +626,12 @@ jobs:
           if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false; then
             echo "Release $TAG published successfully."
           else
+            # `2>/dev/null` is intentional: this is the publish-race
+            # fallback. `|| echo "unknown"` provides an explicit
+            # sentinel for the not-found case; if the call fails for a
+            # different reason the surrounding logic still treats
+            # `unknown` as "could not confirm publish" and surfaces an
+            # error in the next branch.
             IS_DRAFT_NOW=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
               --json isDraft --jq '.isDraft' 2>/dev/null || echo "unknown")
             if [ "$IS_DRAFT_NOW" = "false" ]; then
@@ -587,7 +661,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Safety: verify the stable release is actually published
+          # Safety: verify the stable release is actually published.
+          # `2>/dev/null` + `|| echo "not_found"` is intentional: the
+          # next check requires `IS_DRAFT == "false"` to proceed, so
+          # ANY non-success outcome (genuine 404, transient API error,
+          # auth failure) safely falls through to the abort branch.
           IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
             --json isDraft --jq '.isDraft' 2>/dev/null || echo "not_found")
           if [ "$IS_DRAFT" != "false" ]; then
@@ -600,21 +678,68 @@ jobs:
           # 1. Delete all dev releases (draft, pre-release, or published) + their tags.
           #    Use the API directly to ensure drafts are included.
           #    Strict regex: only match vX.Y.Z-dev.N (never stable tags).
-          gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name' \
-          | while read -r dev_tag; do
-              echo "Deleting dev release + tag: $dev_tag"
-              gh release delete "$dev_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-            done
+          # Capture the API output to a variable BEFORE feeding mapfile.
+          # `mapfile < <(cmd)` does NOT propagate cmd's exit code: a
+          # failed `gh api` (auth, rate-limit, 5xx) closes the FD with
+          # empty input and mapfile exits 0, leaving the failure-
+          # tracking array empty and the cleanup silently no-op. The
+          # explicit `|| { exit 1 }` here makes a real API failure loud.
+          # `mapfile <<< "$VAR"` (here-string, no subshell) keeps the
+          # failure-tracking array in scope, which was the original
+          # reason for moving away from `cmd | while read`.
+          if ! GH_RELEASES_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name'); then
+            echo "::error::Failed to list dev releases for cleanup (gh api non-zero exit)"
+            exit 1
+          fi
+          if [ -z "$GH_RELEASES_OUTPUT" ]; then
+            dev_releases=()
+          else
+            mapfile -t dev_releases <<< "$GH_RELEASES_OUTPUT"
+          fi
+          release_failures=()
+          for dev_tag in "${dev_releases[@]}"; do
+            echo "Deleting dev release + tag: $dev_tag"
+            if ! gh release delete "$dev_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; then
+              echo "::warning::Failed to delete dev release $dev_tag"
+              release_failures+=("$dev_tag")
+            fi
+          done
 
           # 2. Delete orphan dev tags (tags without a release, e.g. from failed builds).
-          gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
-          | sed 's|^refs/tags/||' \
-          | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$' || true; } \
-          | while read -r dev_tag; do
-              echo "Deleting orphan dev tag: $dev_tag"
-              gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$dev_tag" || true
-            done
+          # Same explicit-capture pattern as above. `set -o pipefail`
+          # (from the earlier `set -euo pipefail`) makes the `gh api |
+          # sed | grep` pipeline fail loudly if any stage other than
+          # the trailing `grep || true` (which is allowed to find no
+          # matches) fails.
+          if ! GH_TAGS_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
+            | sed 's|^refs/tags/||' \
+            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$' || true; }); then
+            echo "::error::Failed to list orphan dev tags for cleanup (gh api or sed non-zero exit)"
+            exit 1
+          fi
+          if [ -z "$GH_TAGS_OUTPUT" ]; then
+            orphan_tags=()
+          else
+            mapfile -t orphan_tags <<< "$GH_TAGS_OUTPUT"
+          fi
+          tag_failures=()
+          for dev_tag in "${orphan_tags[@]}"; do
+            echo "Deleting orphan dev tag: $dev_tag"
+            if ! gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$dev_tag"; then
+              echo "::warning::Failed to delete orphan dev tag $dev_tag"
+              tag_failures+=("$dev_tag")
+            fi
+          done
+
+          # Per-tag warnings above preserve diagnostics for partial-success
+          # cleanups; a non-empty failure list fails the job so the
+          # existing report-failure tracking-issue lane fires (delete is
+          # idempotent so manual rerun is safe).
+          if [ ${#release_failures[@]} -gt 0 ] || [ ${#tag_failures[@]} -gt 0 ]; then
+            echo "::error::Dev cleanup had failures: releases=${release_failures[*]:-none} tags=${tag_failures[*]:-none}"
+            exit 1
+          fi
 
           echo "Dev pre-release cleanup complete"
 
