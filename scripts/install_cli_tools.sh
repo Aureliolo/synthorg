@@ -52,7 +52,7 @@ if command -v golangci-lint >/dev/null 2>&1; then
 fi
 
 echo "Installing golangci-lint ${GOLANGCI_LINT_VERSION}..."
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.1
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
 # `go install` writes to GOBIN if set, otherwise GOPATH/bin. Record the actual
 # install target so the PATH-error and version-check branches below can both
