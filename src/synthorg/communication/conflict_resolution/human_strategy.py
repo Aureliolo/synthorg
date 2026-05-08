@@ -61,6 +61,7 @@ from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_RESOLVED,
     CONFLICT_ESCALATION_TIMEOUT,
 )
+from synthorg.observability.metrics_hub import record_escalation_outcome
 
 logger = get_logger(__name__)
 
@@ -278,6 +279,7 @@ class HumanEscalationResolver:
                 timeout_seconds=_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS,
                 note="notification_dispatch_timeout",
             )
+            record_escalation_outcome(outcome="notify_failed")
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -289,6 +291,7 @@ class HumanEscalationResolver:
                 error=safe_error_description(exc),
                 note="notification_dispatch_failed",
             )
+            record_escalation_outcome(outcome="notify_failed")
 
     async def _handle_timeout_cleanup(
         self,
@@ -539,6 +542,7 @@ class HumanEscalationResolver:
             "Conflict remains ESCALATED_TO_HUMAN; operators may still decide "
             "via the REST API."
         )
+        record_escalation_outcome(outcome="escalated_to_human")
         return ConflictResolution(
             conflict_id=conflict.id,
             outcome=ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
@@ -555,6 +559,7 @@ class HumanEscalationResolver:
             "Escalation resolver was cancelled before a human decision "
             "could be collected."
         )
+        record_escalation_outcome(outcome="escalated_to_human")
         return ConflictResolution(
             conflict_id=conflict.id,
             outcome=ConflictResolutionOutcome.ESCALATED_TO_HUMAN,

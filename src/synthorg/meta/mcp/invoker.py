@@ -5,6 +5,7 @@ registered handler functions, with structured error mapping.
 """
 
 import json
+import time
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
 
@@ -18,6 +19,7 @@ from synthorg.observability.events.mcp import (
     MCP_SERVER_INVOKE_START,
     MCP_SERVER_INVOKE_SUCCESS,
 )
+from synthorg.observability.metrics_hub import record_mcp_handler_outcome
 from synthorg.tools.base import ToolExecutionResult
 
 if TYPE_CHECKING:
@@ -98,6 +100,7 @@ class MCPToolInvoker:
             MCP_SERVER_INVOKE_START,
             tool_name=tool_name,
         )
+        invocation_start = time.perf_counter()
 
         # Look up tool definition.
         try:
@@ -107,6 +110,11 @@ class MCPToolInvoker:
                 MCP_SERVER_INVOKE_FAILED,
                 tool_name=tool_name,
                 error="tool not found",
+            )
+            record_mcp_handler_outcome(
+                tool=tool_name,
+                outcome="not_found",
+                duration_sec=time.perf_counter() - invocation_start,
             )
             return ToolExecutionResult(
                 content=json.dumps({"error": f"Unknown tool: {tool_name}"}),
@@ -120,6 +128,11 @@ class MCPToolInvoker:
                 MCP_SERVER_INVOKE_FAILED,
                 tool_name=tool_name,
                 error="handler not found",
+            )
+            record_mcp_handler_outcome(
+                tool=tool_name,
+                outcome="not_found",
+                duration_sec=time.perf_counter() - invocation_start,
             )
             return ToolExecutionResult(
                 content=json.dumps({"error": f"No handler for tool: {tool_name}"}),
@@ -156,6 +169,11 @@ class MCPToolInvoker:
                     error_type="ArgumentValidationError",
                     error=detail,
                 )
+                record_mcp_handler_outcome(
+                    tool=tool_name,
+                    outcome="validation_error",
+                    duration_sec=time.perf_counter() - invocation_start,
+                )
                 return ToolExecutionResult(
                     content=json.dumps(
                         {
@@ -189,6 +207,11 @@ class MCPToolInvoker:
                     tool_name=tool_name,
                     error_type="ArgumentValidationError",
                     error=detail,
+                )
+                record_mcp_handler_outcome(
+                    tool=tool_name,
+                    outcome="validation_error",
+                    duration_sec=time.perf_counter() - invocation_start,
                 )
                 return ToolExecutionResult(
                     content=json.dumps(
@@ -235,6 +258,11 @@ class MCPToolInvoker:
                 error_type=error_type,
                 error=safe_error_description(exc),
             )
+            record_mcp_handler_outcome(
+                tool=tool_name,
+                outcome="error",
+                duration_sec=time.perf_counter() - invocation_start,
+            )
             return ToolExecutionResult(
                 content=json.dumps(
                     {
@@ -251,5 +279,10 @@ class MCPToolInvoker:
         logger.debug(
             MCP_SERVER_INVOKE_SUCCESS,
             tool_name=tool_name,
+        )
+        record_mcp_handler_outcome(
+            tool=tool_name,
+            outcome="success",
+            duration_sec=time.perf_counter() - invocation_start,
         )
         return ToolExecutionResult(content=result)

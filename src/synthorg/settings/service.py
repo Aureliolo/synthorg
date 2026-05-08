@@ -29,6 +29,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_VALUE_SET,
     SETTINGS_VERSION_CONFLICT,
 )
+from synthorg.observability.metrics_hub import record_settings_mutation
 from synthorg.settings.config_bridge import extract_from_config
 from synthorg.settings.enums import SettingsImportSource, SettingSource, SettingType
 from synthorg.settings.errors import (
@@ -822,6 +823,7 @@ class SettingsService:
 
         self._invalidate_cache(namespace, key)
         logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
+        record_settings_mutation(namespace=namespace)
         _emit_security_setting_changed(namespace, key=key, action_type="set")
         await self._publish_change(namespace, key, definition)
 
@@ -895,6 +897,7 @@ class SettingsService:
         for namespace, key, definition in definitions:
             self._invalidate_cache(namespace, key)
             logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
+            record_settings_mutation(namespace=namespace)
             _emit_security_setting_changed(
                 namespace,
                 key=key,
@@ -1041,6 +1044,7 @@ class SettingsService:
             namespace=namespace,
             key=key,
         )
+        record_settings_mutation(namespace=namespace)
         _emit_security_setting_changed(namespace, key=key, action_type="delete")
 
         await self._publish_change(namespace, key, definition)
@@ -1134,6 +1138,7 @@ class SettingsService:
             namespace=namespace,
             count=deleted,
         )
+        record_settings_mutation(namespace=namespace)
         _emit_security_setting_changed(
             namespace,
             action_type="delete_namespace",

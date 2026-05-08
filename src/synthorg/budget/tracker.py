@@ -11,6 +11,7 @@ persistence integration is planned.
 
 import asyncio
 import math
+import time
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, NamedTuple
@@ -49,6 +50,7 @@ from synthorg.observability.events.budget import (
     BUDGET_TRACKER_CLEARED,
     BUDGET_TRACKER_CREATED,
 )
+from synthorg.observability.metrics_hub import record_budget_query
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -344,11 +346,17 @@ class CostTracker(CostTrackerSummaryMixin):
             ValueError: If both *start* and *end* are given and
                 ``start >= end``.
         """
+        query_start = time.perf_counter()
         _validate_time_range(start, end)
         logger.debug(BUDGET_TOTAL_COST_QUERIED, start=start, end=end)
         snapshot = await self._snapshot()
         filtered = _filter_records(snapshot, start=start, end=end)
-        return _aggregate(filtered).cost
+        result = _aggregate(filtered).cost
+        record_budget_query(
+            query_type="total_cost",
+            duration_sec=time.perf_counter() - query_start,
+        )
+        return result
 
     async def get_agent_cost(
         self,
@@ -371,6 +379,7 @@ class CostTracker(CostTrackerSummaryMixin):
             ValueError: If both *start* and *end* are given and
                 ``start >= end``.
         """
+        query_start = time.perf_counter()
         _validate_time_range(start, end)
         logger.debug(
             BUDGET_AGENT_COST_QUERIED,
@@ -385,7 +394,12 @@ class CostTracker(CostTrackerSummaryMixin):
             start=start,
             end=end,
         )
-        return _aggregate(filtered).cost
+        result = _aggregate(filtered).cost
+        record_budget_query(
+            query_type="agent_cost",
+            duration_sec=time.perf_counter() - query_start,
+        )
+        return result
 
     async def get_project_cost(
         self,
@@ -408,6 +422,7 @@ class CostTracker(CostTrackerSummaryMixin):
             ValueError: If both *start* and *end* are given and
                 ``start >= end``.
         """
+        query_start = time.perf_counter()
         _validate_time_range(start, end)
         logger.debug(
             BUDGET_PROJECT_COST_QUERIED,
@@ -422,7 +437,12 @@ class CostTracker(CostTrackerSummaryMixin):
             start=start,
             end=end,
         )
-        return _aggregate(filtered).cost
+        result = _aggregate(filtered).cost
+        record_budget_query(
+            query_type="project_cost",
+            duration_sec=time.perf_counter() - query_start,
+        )
+        return result
 
     async def get_project_records(
         self,

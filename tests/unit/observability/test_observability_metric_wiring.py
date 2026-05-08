@@ -214,3 +214,229 @@ async def test_rebuild_label_snapshot_partial_when_department_service_fails() ->
         and rec.get("component") == "department_service"
         for rec in logs
     )
+
+
+# -- record_approval_decision ------------------------------------------------
+
+
+def test_record_approval_decision_increments_counter() -> None:
+    collector = PrometheusCollector()
+    collector.record_approval_decision(outcome="approved")
+    samples = _samples(collector, "synthorg_approval_decisions")
+    assert any(
+        labels == {"outcome": "approved"} and value == 1.0 for labels, value in samples
+    )
+
+
+def test_record_approval_decision_rejects_unknown_outcome() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_approval_decision(outcome="bogus")
+
+
+# -- record_escalation_outcome -----------------------------------------------
+
+
+def test_record_escalation_outcome_increments_counter() -> None:
+    collector = PrometheusCollector()
+    collector.record_escalation_outcome(outcome="resolved")
+    samples = _samples(collector, "synthorg_escalation_outcomes")
+    assert any(
+        labels == {"outcome": "resolved"} and value == 1.0 for labels, value in samples
+    )
+
+
+def test_record_escalation_outcome_rejects_unknown_outcome() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_escalation_outcome(outcome="bogus")
+
+
+# -- record_blueprint_instantiation ------------------------------------------
+
+
+def test_record_blueprint_instantiation_increments_counter_and_logs() -> None:
+    from synthorg.observability.events.blueprint import BLUEPRINT_INSTANTIATE_OUTCOME
+
+    collector = PrometheusCollector()
+    with structlog.testing.capture_logs() as logs:
+        collector.record_blueprint_instantiation(
+            outcome="success",
+            blueprint_name="feature-pipeline",
+            duration_sec=0.42,
+        )
+    samples = _samples(collector, "synthorg_blueprint_instantiations")
+    assert any(
+        labels == {"outcome": "success"} and value == 1.0 for labels, value in samples
+    )
+    assert any(
+        rec.get("event") == BLUEPRINT_INSTANTIATE_OUTCOME
+        and rec.get("outcome") == "success"
+        and rec.get("blueprint_name") == "feature-pipeline"
+        and rec.get("duration_sec") == 0.42
+        for rec in logs
+    )
+
+
+def test_record_blueprint_instantiation_rejects_unknown_outcome() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_blueprint_instantiation(outcome="bogus")
+
+
+# -- record_settings_mutation ------------------------------------------------
+
+
+def test_record_settings_mutation_increments_counter() -> None:
+    collector = PrometheusCollector()
+    collector.record_settings_mutation(namespace="security")
+    samples = _samples(collector, "synthorg_settings_mutations")
+    assert any(
+        labels == {"namespace": "security"} and value == 1.0
+        for labels, value in samples
+    )
+
+
+def test_record_settings_mutation_rejects_unknown_namespace() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_settings_mutation(namespace="bogus_ns")
+
+
+# -- record_mcp_handler_outcome ----------------------------------------------
+
+
+def test_record_mcp_handler_outcome_increments_counter_and_observes_histogram() -> None:
+    from synthorg.observability.events.mcp import MCP_HANDLER_OUTCOME
+
+    collector = PrometheusCollector()
+    with structlog.testing.capture_logs() as logs:
+        collector.record_mcp_handler_outcome(
+            tool="synthorg_messages_get",
+            outcome="success",
+            duration_sec=0.123,
+        )
+    counter_samples = _samples(collector, "synthorg_mcp_handler_outcomes")
+    assert any(
+        labels == {"tool": "synthorg_messages_get", "outcome": "success"}
+        and value == 1.0
+        for labels, value in counter_samples
+    )
+    # Histogram emits {family}_count series with same labels; assert presence.
+    histogram_samples = _samples(collector, "synthorg_mcp_handler_duration_seconds")
+    assert any(
+        labels == {"tool": "synthorg_messages_get", "outcome": "success"}
+        and value == 1.0
+        for labels, value in histogram_samples
+        # ``_count`` carries the observation-count; ``_sum`` carries the
+        # accumulated time; both have the same labels.
+    )
+    assert any(
+        rec.get("event") == MCP_HANDLER_OUTCOME
+        and rec.get("tool") == "synthorg_messages_get"
+        and rec.get("outcome") == "success"
+        and rec.get("duration_sec") == 0.123
+        for rec in logs
+    )
+
+
+def test_record_mcp_handler_outcome_rejects_unknown_outcome() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_mcp_handler_outcome(
+            tool="any_tool",
+            outcome="bogus",
+            duration_sec=0.0,
+        )
+
+
+# -- record_budget_query -----------------------------------------------------
+
+
+def test_record_budget_query_observes_histogram_and_logs() -> None:
+    from synthorg.observability.events.budget import BUDGET_QUERY_OUTCOME
+
+    collector = PrometheusCollector()
+    with structlog.testing.capture_logs() as logs:
+        collector.record_budget_query(
+            query_type="total_cost",
+            duration_sec=0.005,
+        )
+    samples = _samples(collector, "synthorg_budget_query_duration_seconds")
+    assert any(
+        labels == {"query_type": "total_cost"} and value == 1.0
+        for labels, value in samples
+    )
+    assert any(
+        rec.get("event") == BUDGET_QUERY_OUTCOME
+        and rec.get("query_type") == "total_cost"
+        for rec in logs
+    )
+
+
+def test_record_budget_query_rejects_unknown_query_type() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_budget_query(query_type="bogus", duration_sec=0.0)
+
+
+# -- record_audit_chain_verification -----------------------------------------
+
+
+def test_record_audit_chain_verification_valid_outcome_logs_and_increments() -> None:
+    from synthorg.observability.events.security import (
+        SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME,
+    )
+
+    collector = PrometheusCollector()
+    with structlog.testing.capture_logs() as logs:
+        collector.record_audit_chain_verification(
+            outcome="valid",
+            entries_checked=42,
+        )
+    samples = _samples(collector, "synthorg_audit_chain_verifications")
+    assert any(
+        labels == {"outcome": "valid"} and value == 1.0 for labels, value in samples
+    )
+    assert any(
+        rec.get("event") == SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME
+        and rec.get("outcome") == "valid"
+        and rec.get("entries_checked") == 42
+        for rec in logs
+    )
+
+
+def test_record_audit_chain_verification_rejects_unknown_outcome() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_audit_chain_verification(
+            outcome="bogus",
+            entries_checked=0,
+        )
+
+
+# -- VALID_SETTINGS_NAMESPACES parity ----------------------------------------
+
+
+def test_valid_settings_namespaces_matches_definitions_directory() -> None:
+    """Allowlist mirrors the closed set of files under settings/definitions/.
+
+    Adding a new namespace file without updating the allowlist would
+    silently drop its mutations from the metric. Failing this test is the
+    intended forcing function.
+    """
+    import pkgutil
+
+    from synthorg.observability.prometheus_labels import VALID_SETTINGS_NAMESPACES
+    from synthorg.settings import definitions as _settings_definitions
+
+    discovered = frozenset(
+        info.name
+        for info in pkgutil.iter_modules(_settings_definitions.__path__)
+        if not info.name.startswith("_")
+    )
+    assert discovered == VALID_SETTINGS_NAMESPACES, (
+        "VALID_SETTINGS_NAMESPACES drift: "
+        f"missing={discovered - VALID_SETTINGS_NAMESPACES} "
+        f"extra={VALID_SETTINGS_NAMESPACES - discovered}"
+    )

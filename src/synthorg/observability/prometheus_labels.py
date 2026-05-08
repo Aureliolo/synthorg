@@ -20,15 +20,22 @@ from synthorg.providers.errors import ProviderErrorLabel
 __all__ = [
     "TRANSIENT_PROVIDER_ERROR_CLASSES",
     "VALID_API_ERROR_CATEGORIES",
+    "VALID_APPROVAL_OUTCOMES",
     "VALID_AUDIT_APPEND_STATUSES",
+    "VALID_AUDIT_VERIFICATION_OUTCOMES",
+    "VALID_BLUEPRINT_OUTCOMES",
+    "VALID_BUDGET_QUERY_TYPES",
     "VALID_CACHE_NAMES",
     "VALID_CACHE_OUTCOMES",
     "VALID_DISCONNECT_REASONS",
     "VALID_DISCONNECT_TRANSPORTS",
+    "VALID_ESCALATION_OUTCOMES",
     "VALID_IDENTITY_CHANGE_TYPES",
+    "VALID_MCP_HANDLER_OUTCOMES",
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
     "VALID_PROVIDER_ERROR_CLASSES",
+    "VALID_SETTINGS_NAMESPACES",
     "VALID_STATUS_CLASSES",
     "VALID_TASK_OUTCOMES",
     "VALID_TOKEN_DIRECTIONS",
@@ -238,6 +245,79 @@ VALID_DISCONNECT_TRANSPORTS: Final[frozenset[str]] = frozenset(
 )
 VALID_DISCONNECT_REASONS: Final[frozenset[str]] = frozenset(
     {"client_initiated", "transport_error", "cancelled", "timeout"}
+)
+
+# -- Approval / escalation / blueprint / settings / MCP / budget / audit ---
+# Bounded label vocabularies for the metrics added by #1775. The settings
+# namespace allowlist mirrors the filenames in
+# ``src/synthorg/settings/definitions/`` -- a parity test under
+# ``tests/unit/settings/`` asserts the two stay in lockstep so adding a
+# new namespace fails fast in tests.
+VALID_APPROVAL_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"approved", "rejected", "expired"}
+)
+VALID_ESCALATION_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {
+        "resolved",
+        "escalated_to_human",
+        "auto_resolved",
+        "notify_failed",
+        "sweeper_failed",
+    }
+)
+VALID_BLUEPRINT_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"success", "validation_error", "not_found", "unknown_error"}
+)
+VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
+    {
+        "a2a",
+        "api",
+        "backup",
+        "budget",
+        "client",
+        "communication",
+        "company",
+        "coordination",
+        "engine",
+        "hr",
+        "integrations",
+        "memory",
+        "meta",
+        "notifications",
+        "observability",
+        "providers",
+        "security",
+        "settings_ns",
+        "simulations",
+        "telemetry",
+        "tools",
+        "workers",
+    }
+)
+VALID_MCP_HANDLER_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {
+        "success",
+        "error",
+        "validation_error",
+        "guardrail_violated",
+        "not_found",
+        "capability_unsupported",
+    }
+)
+VALID_BUDGET_QUERY_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "balance",
+        "available_spend",
+        "burn_rate",
+        "daily_spend",
+        "cost_summary",
+        "total_cost",
+        "agent_cost",
+        "project_cost",
+    }
+)
+VALID_AUDIT_VERIFICATION_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"valid", "broken"}
 )
 
 

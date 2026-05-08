@@ -25,9 +25,10 @@ from synthorg.engine.review.models import (
     ReviewStageResult,
     ReviewVerdict,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.review_pipeline import (
     REVIEW_STAGE_DECIDED,
+    REVIEW_STAGE_LOOKUP_FAILED,
     REVIEW_TASK_LOOKUP_FAILED,
 )
 
@@ -97,11 +98,21 @@ class ReviewController(Controller):
             raise ServiceUnavailableError(msg)
         try:
             task = await app_state.task_engine.get_task(task_id)
-        except KeyError, ValueError:
+        except (KeyError, ValueError) as exc:
             # Coalesce the task-engine miss into the same None-sentinel
             # the helper raises on so both the engine-throws-KeyError
             # path and the engine-returns-None path emit one stable
-            # 404 envelope with ``ErrorCode.TASK_NOT_FOUND``.
+            # 404 envelope with ``ErrorCode.TASK_NOT_FOUND``. Surface the
+            # original exception type + scrubbed message before the
+            # coalesce so the audit trail does not lose root cause when
+            # the engine throws a non-empty miss.
+            logger.warning(
+                REVIEW_STAGE_LOOKUP_FAILED,
+                stage="run_pipeline",
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             task = None
         task = require_resource_or_404(
             task,
@@ -152,10 +163,17 @@ class ReviewController(Controller):
             raise ServiceUnavailableError(msg)
         try:
             task = await app_state.task_engine.get_task(task_id)
-        except KeyError, ValueError:
+        except (KeyError, ValueError) as exc:
             # Same coalescing pattern as ``run_pipeline`` -- both the
             # engine-throws and engine-returns-None paths emit one
             # stable 404 envelope through the helper.
+            logger.warning(
+                REVIEW_STAGE_LOOKUP_FAILED,
+                stage="decide_stage",
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             task = None
         task = require_resource_or_404(
             task,

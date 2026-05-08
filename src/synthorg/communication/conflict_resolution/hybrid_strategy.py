@@ -39,6 +39,7 @@ from synthorg.observability.events.conflict import (
     CONFLICT_HYBRID_REVIEW,
     CONFLICT_STRATEGY_ERROR,
 )
+from synthorg.observability.metrics_hub import record_escalation_outcome
 
 logger = get_logger(__name__)
 
@@ -126,6 +127,7 @@ class HybridResolver:
                 conflict_id=conflict.id,
                 winner=winning_agent_id,
             )
+            record_escalation_outcome(outcome="auto_resolved")
             return ConflictResolution(
                 conflict_id=conflict.id,
                 outcome=ConflictResolutionOutcome.RESOLVED_BY_HYBRID,

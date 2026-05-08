@@ -22,3 +22,11 @@ BLUEPRINT_INSTANTIATE_SUCCESS: Final[str] = "workflow.blueprint.instantiate.succ
 
 BLUEPRINT_INSTANTIATE_FAILED: Final[str] = "workflow.blueprint.instantiate.failed"
 """Workflow creation from blueprint failed."""
+
+BLUEPRINT_INSTANTIATE_OUTCOME: Final[str] = "workflow.blueprint.instantiate.outcome"
+"""Terminal blueprint instantiation event used as the metric chokepoint.
+
+Emitted exactly once per instantiation attempt regardless of outcome
+(success / validation_error / not_found / unknown_error) so the
+matching Counter never double-counts. Carries ``blueprint_name``,
+``outcome``, and ``duration_sec``."""

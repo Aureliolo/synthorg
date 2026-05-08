@@ -251,3 +251,96 @@ def record_client_disconnect(*, transport: str, reason: str) -> None:
     if collector is None:
         return
     collector.record_client_disconnect(transport=transport, reason=reason)
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_approval_decision")
+def record_approval_decision(*, outcome: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_approval_decision`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_approval_decision(outcome=outcome)
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_escalation_outcome")
+def record_escalation_outcome(*, outcome: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_escalation_outcome`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_escalation_outcome(outcome=outcome)
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_blueprint_instantiation")
+def record_blueprint_instantiation(
+    *,
+    outcome: str,
+    blueprint_name: str | None = None,
+    duration_sec: float | None = None,
+) -> None:
+    """Forward to :meth:`PrometheusCollector.record_blueprint_instantiation`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_blueprint_instantiation(
+        outcome=outcome,
+        blueprint_name=blueprint_name,
+        duration_sec=duration_sec,
+    )
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_settings_mutation")
+def record_settings_mutation(*, namespace: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_settings_mutation`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_settings_mutation(namespace=namespace)
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_mcp_handler_outcome")
+def record_mcp_handler_outcome(
+    *,
+    tool: str,
+    outcome: str,
+    duration_sec: float,
+) -> None:
+    """Forward to :meth:`PrometheusCollector.record_mcp_handler_outcome`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_mcp_handler_outcome(
+        tool=tool,
+        outcome=outcome,
+        duration_sec=duration_sec,
+    )
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_budget_query")
+def record_budget_query(*, query_type: str, duration_sec: float) -> None:
+    """Forward to :meth:`PrometheusCollector.record_budget_query`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_budget_query(
+        query_type=query_type,
+        duration_sec=duration_sec,
+    )
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_audit_chain_verification")
+def record_audit_chain_verification(
+    *,
+    outcome: str,
+    entries_checked: int,
+    first_break_position: int | None = None,
+) -> None:
+    """Forward to :meth:`PrometheusCollector.record_audit_chain_verification`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_audit_chain_verification(
+        outcome=outcome,
+        entries_checked=entries_checked,
+        first_break_position=first_break_position,
+    )

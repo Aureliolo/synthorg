@@ -271,6 +271,14 @@ class PrometheusCollector(RecordingMixin):
         self._cache_operations = self._push.cache_operations
         self._api_error_classification = self._push.api_error_classification
         self._client_disconnects = self._push.client_disconnects
+        self._approval_decisions = self._push.approval_decisions
+        self._escalation_outcomes = self._push.escalation_outcomes
+        self._blueprint_instantiations = self._push.blueprint_instantiations
+        self._settings_mutations = self._push.settings_mutations
+        self._mcp_handler_outcomes = self._push.mcp_handler_outcomes
+        self._mcp_handler_duration = self._push.mcp_handler_duration
+        self._budget_query_duration = self._push.budget_query_duration
+        self._audit_chain_verifications = self._push.audit_chain_verifications
 
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
