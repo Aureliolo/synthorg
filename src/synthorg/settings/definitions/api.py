@@ -793,6 +793,7 @@ _r.register(
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,
+        yaml_path="api.lifecycle_cleanup_enabled",
     )
 )
 
@@ -812,6 +813,7 @@ _r.register(
         ),
         group="Providers",
         level=SettingLevel.ADVANCED,
+        yaml_path="api.health_prober_enabled",
     )
 )
 
@@ -831,6 +833,7 @@ _r.register(
         ),
         group="Webhooks",
         level=SettingLevel.ADVANCED,
+        yaml_path="api.webhook_receipt_cleanup_enabled",
     )
 )
 
@@ -853,6 +856,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
+        yaml_path="api.rate_limiter_enabled",
     )
 )
 

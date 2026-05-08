@@ -247,7 +247,7 @@ class NotificationDispatcher:
                 error=safe_error_description(exc),
             )
 
-    async def dispatch(self, notification: Notification) -> None:
+    async def dispatch(self, notification: Notification) -> None:  # noqa: C901
         """Deliver a notification to all registered sinks.
 
         Best-effort: individual sink errors are logged and
@@ -263,17 +263,15 @@ class NotificationDispatcher:
             notification: The notification to deliver.
         """
         # Shutdown gate: once ``aclose`` flips ``_stopping``, no new
-        # dispatches reach the sinks. The check is sync so it cannot
-        # interleave with ``aclose`` between this point and the
-        # counter bump below.
-        if self._stopping:
-            logger.debug(
-                NOTIFICATION_FILTERED,
-                notification_id=notification.id,
-                detail="dispatcher_stopping",
-            )
+        # dispatches reach the sinks. Re-checked after the resolver
+        # ``await`` because ``aclose`` can suspend the dispatch task
+        # between the two checks and close the sinks.
+        if self._is_stopping(notification):
             return
-        if not await self._resolve_enabled():
+        enabled = await self._resolve_enabled()
+        if self._is_stopping(notification):
+            return
+        if not enabled:
             logger.debug(
                 NOTIFICATION_DISPATCHER_PAUSED,
                 notification_id=notification.id,
@@ -317,6 +315,22 @@ class NotificationDispatcher:
                 self._dispatch_idle.set()
 
         self._log_result(notification, errors)
+
+    def _is_stopping(self, notification: Notification) -> bool:
+        """Return True (and log) when the dispatcher is shutting down.
+
+        Caller bails out on True. Extracted so the dispatch path can
+        re-check the shutdown gate after every ``await`` -- ``aclose``
+        can flip ``_stopping`` while the dispatcher task is suspended.
+        """
+        if self._stopping:
+            logger.debug(
+                NOTIFICATION_FILTERED,
+                notification_id=notification.id,
+                detail="dispatcher_stopping",
+            )
+            return True
+        return False
 
     def _should_filter(self, notification: Notification) -> bool:
         """Return True if the notification is below min_severity."""

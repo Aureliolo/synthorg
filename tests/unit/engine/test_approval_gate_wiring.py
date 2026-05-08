@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.api.approval_store import ApprovalStore
 from synthorg.engine.agent_engine import AgentEngine
 
 from .conftest import MockCompletionProvider
@@ -23,7 +23,7 @@ class TestApprovalGateTimeoutWiring:
     def test_explicit_timeout_propagates_to_gate(self) -> None:
         """A non-default timeout reaches the gate's interrupt-timeout field."""
         provider = MockCompletionProvider([])
-        approval_store = AsyncMock(spec=ApprovalStoreProtocol)
+        approval_store = AsyncMock(spec=ApprovalStore)
         engine = AgentEngine(
             provider=provider,
             approval_store=approval_store,
@@ -39,7 +39,7 @@ class TestApprovalGateTimeoutWiring:
         working unchanged. Production paths thread the resolved value.
         """
         provider = MockCompletionProvider([])
-        approval_store = AsyncMock(spec=ApprovalStoreProtocol)
+        approval_store = AsyncMock(spec=ApprovalStore)
         engine = AgentEngine(
             provider=provider,
             approval_store=approval_store,

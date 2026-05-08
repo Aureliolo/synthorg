@@ -66,4 +66,8 @@ describe('resolveLocale', () => {
   it('falls back to APP_LOCALE_FALLBACK on null inputs', () => {
     expect(resolveLocale(null, null)).toBe(APP_LOCALE_FALLBACK)
   })
+
+  it('falls back to APP_LOCALE_FALLBACK when the browser reports a malformed locale', () => {
+    expect(resolveLocale(null, 'not a locale')).toBe(APP_LOCALE_FALLBACK)
+  })
 })

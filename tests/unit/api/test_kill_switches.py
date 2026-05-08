@@ -283,8 +283,8 @@ class TestWebhookCleanupKillSwitch:
         """The loop body must short-circuit (no DB list_all) when disabled."""
         resolver = AsyncMock(spec=ConfigResolver)
         resolver.get_bool.return_value = False
-        list_all_mock = AsyncMock(spec=ConnectionRepository.list_all, return_value=())
-        connections_repo = SimpleNamespace(list_all=list_all_mock)
+        connections_repo = AsyncMock(spec=ConnectionRepository)
+        connections_repo.list_all.return_value = ()
         persistence = SimpleNamespace(connections=connections_repo)
         app_state = cast(
             AppState,
@@ -318,8 +318,8 @@ class TestWebhookCleanupKillSwitch:
         resolver = AsyncMock(spec=ConfigResolver)
         resolver.get_bool.return_value = True
         resolver.get_int.return_value = 30
-        list_all_mock = AsyncMock(spec=ConnectionRepository.list_all, return_value=())
-        connections_repo = SimpleNamespace(list_all=list_all_mock)
+        connections_repo = AsyncMock(spec=ConnectionRepository)
+        connections_repo.list_all.return_value = ()
         persistence = SimpleNamespace(connections=connections_repo)
         app_state = cast(
             AppState,

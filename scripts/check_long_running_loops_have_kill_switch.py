@@ -61,15 +61,20 @@ class Violation:
     file: str
     function: str
     lineno: int
+    class_name: str | None = None
 
     def key(self) -> str:
-        """Stable single-line baseline form: ``<rel-path>:<func>``.
+        """Stable single-line baseline form.
 
-        Line numbers churn with unrelated edits, so the baseline keys
-        on the function name only -- two loops in the same file with
-        the same name are vanishingly rare.
+        Module-level functions: ``<rel-path>:<func>``.
+        Methods: ``<rel-path>:<class>:<func>`` so identically-named
+        methods on different classes in the same file produce distinct
+        keys (otherwise a brand-new violation in a sibling class is
+        masked by the first entry that lands).
         """
-        return f"{self.file}:{self.function}"
+        if self.class_name is None:
+            return f"{self.file}:{self.function}"
+        return f"{self.file}:{self.class_name}:{self.function}"
 
 
 def _is_long_running_while(node: ast.AST) -> bool:
@@ -129,13 +134,29 @@ def _has_suppression(source_lines: list[str], func: ast.AsyncFunctionDef) -> boo
     function header, or a leading comment block without being picky
     about exact placement.
     """
-    candidate_lines = []
-    if func.lineno - 2 >= 1:
-        candidate_lines.append(source_lines[func.lineno - 2])
-    if func.lineno - 1 >= 1:
-        candidate_lines.append(source_lines[func.lineno - 1])
-    candidate_lines.append(source_lines[func.lineno - 1])
+    candidate_lines = source_lines[max(0, func.lineno - 3) : func.lineno]
     return any(SUPPRESSION_RE.search(line) for line in candidate_lines)
+
+
+def _iter_async_funcs(
+    tree: ast.AST,
+    class_name: str | None = None,
+) -> Iterable[tuple[ast.AsyncFunctionDef, str | None]]:
+    """Yield each async function paired with its directly enclosing class name.
+
+    Walks the AST recursively, resetting the class context on every
+    ``ClassDef`` encountered. Functions defined at module scope or
+    nested in another function (closure helpers) yield ``None``;
+    methods defined directly under a class yield that class's name.
+    """
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.ClassDef):
+            yield from _iter_async_funcs(node, node.name)
+        elif isinstance(node, ast.AsyncFunctionDef):
+            yield node, class_name
+            yield from _iter_async_funcs(node, class_name)
+        else:
+            yield from _iter_async_funcs(node, class_name)
 
 
 def _scan_file(path: Path, repo_root: Path) -> list[Violation]:
@@ -148,22 +169,24 @@ def _scan_file(path: Path, repo_root: Path) -> list[Violation]:
     source_lines = text.splitlines()
     rel = path.relative_to(repo_root).as_posix()
     violations: list[Violation] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.AsyncFunctionDef):
-            continue
-        # Look for any while-loop in the immediate body that matches.
-        whiles = [w for w in ast.walk(node) if _is_long_running_while(w)]
+    for func, class_name in _iter_async_funcs(tree):
+        whiles = [w for w in ast.walk(func) if _is_long_running_while(w)]
         if not whiles:
             continue
-        # Pick the outermost while; the kill-switch must guard the
-        # iteration body, so a check anywhere inside that loop counts.
-        outer = whiles[0]
-        if _calls_kill_switch_resolver(outer):
+        # Every long-running while in the function must call the
+        # kill-switch resolver; a single guarded loop must not mask an
+        # unguarded sibling in the same body.
+        if all(_calls_kill_switch_resolver(w) for w in whiles):
             continue
-        if _has_suppression(source_lines, node):
+        if _has_suppression(source_lines, func):
             continue
         violations.append(
-            Violation(file=rel, function=node.name, lineno=node.lineno),
+            Violation(
+                file=rel,
+                function=func.name,
+                lineno=func.lineno,
+                class_name=class_name,
+            ),
         )
     return violations
 
@@ -190,9 +213,10 @@ def _write_baseline(path: Path, keys: Iterable[str]) -> None:
     sorted_keys = sorted(set(keys))
     header = (
         "# Frozen long-running loops without a kill-switch.\n"
-        "# One ``<relpath>:<func>`` per line. New violations not on this\n"
-        "# list fail the gate; entries here that no longer match the\n"
-        "# scan emit a stale-baseline warning.\n"
+        "# One ``<relpath>:<func>`` (module-level) or\n"
+        "# ``<relpath>:<class>:<func>`` (method) per line. New violations\n"
+        "# not on this list fail the gate; entries here that no longer\n"
+        "# match the scan emit a stale-baseline warning.\n"
     )
     body = "\n".join(sorted_keys)
     path.write_text(header + body + ("\n" if sorted_keys else ""), encoding="utf-8")

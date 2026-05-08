@@ -259,7 +259,7 @@ without restarting the process. The canonical shape:
            return await config_resolver.get_bool(<ns>, "<x>_enabled")
        except asyncio.CancelledError:
            raise
-       except MemoryError | RecursionError:
+       except MemoryError, RecursionError:
            raise
        except Exception as exc:
            logger.warning(<event>, error_type=type(exc).__name__,

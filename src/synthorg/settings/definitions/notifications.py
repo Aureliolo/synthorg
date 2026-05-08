@@ -118,5 +118,6 @@ _r.register(
         ),
         group="Dispatcher",
         level=SettingLevel.ADVANCED,
+        yaml_path="notifications.dispatcher_enabled",
     )
 )

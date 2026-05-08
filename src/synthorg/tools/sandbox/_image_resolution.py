@@ -40,20 +40,25 @@ _resolved_sidecar_image: str | None = None
 
 
 def set_resolved_sandbox_image(value: str | None) -> None:
-    """Set the resolved sandbox image; ``None`` clears the cache.
+    """Set the resolved sandbox image; ``None`` or blank clears the cache.
 
     Called once at startup by ``_apply_bridge_config`` after resolving
     ``tools.sandbox_image`` through ``ConfigResolver``. Tests use the
     same setter (with ``None`` on teardown) to override the cache.
+    Whitespace-only inputs are normalised to ``None`` so the getter's
+    fallback constant fires instead of returning an invalid image
+    reference.
     """
     global _resolved_sandbox_image  # noqa: PLW0603 -- module-level cache
-    _resolved_sandbox_image = value
+    normalized = value.strip() if value is not None else None
+    _resolved_sandbox_image = normalized or None
 
 
 def set_resolved_sidecar_image(value: str | None) -> None:
-    """Set the resolved sidecar image; ``None`` clears the cache."""
+    """Set the resolved sidecar image; ``None`` or blank clears the cache."""
     global _resolved_sidecar_image  # noqa: PLW0603 -- module-level cache
-    _resolved_sidecar_image = value
+    normalized = value.strip() if value is not None else None
+    _resolved_sidecar_image = normalized or None
 
 
 def get_resolved_sandbox_image() -> str:
