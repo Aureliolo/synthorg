@@ -580,17 +580,35 @@ func TestParamsFromState(t *testing.T) {
 // ParamsFromState to fail fast instead of silently falling back to
 // compiled-in defaults. A silent fallback would emit a compose.yml
 // built from defaults that masks the broken override.
+//
+// The valid-control case must succeed; without it the invalid-host
+// branch could pass on any unrelated pipeline failure (a missing
+// required field, a downstream tunable validation rejecting a
+// different value) and silently miss a regression that drops the
+// IsValidRegistryHost check from the resolution path.
 func TestParamsFromState_InvalidTunableReturnsError(t *testing.T) {
-	t.Setenv("SYNTHORG_REGISTRY_HOST", "not valid host") // rejected by IsValidRegistryHost
-	s := config.State{
-		ImageTag:    "v1.0.0",
-		BackendPort: 3001,
-		WebPort:     3000,
-		LogLevel:    "info",
+	makeState := func() config.State {
+		return config.State{
+			ImageTag:    "v1.0.0",
+			BackendPort: 3001,
+			WebPort:     3000,
+			LogLevel:    "info",
+		}
 	}
-	if _, err := ParamsFromState(s); err == nil {
-		t.Fatal("ParamsFromState: want error for invalid SYNTHORG_REGISTRY_HOST, got nil")
-	}
+
+	t.Run("valid_control", func(t *testing.T) {
+		t.Setenv("SYNTHORG_REGISTRY_HOST", "ghcr.io")
+		if _, err := ParamsFromState(makeState()); err != nil {
+			t.Fatalf("ParamsFromState rejected valid SYNTHORG_REGISTRY_HOST: %v", err)
+		}
+	})
+
+	t.Run("invalid_host", func(t *testing.T) {
+		t.Setenv("SYNTHORG_REGISTRY_HOST", "not valid host")
+		if _, err := ParamsFromState(makeState()); err == nil {
+			t.Fatal("ParamsFromState: want error for invalid SYNTHORG_REGISTRY_HOST, got nil")
+		}
+	})
 }
 
 func assertContains(t *testing.T, s, substr string) {
