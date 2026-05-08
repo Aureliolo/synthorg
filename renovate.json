@@ -98,8 +98,9 @@
       "labels": ["dependencies", "type:chore", "scope:docker"]
     },
     {
-      "description": "CI tool dependencies (Actions SHAs + binary tools)",
+      "description": "CI tool dependencies (Actions SHAs + binary tools). golangci-lint-action is excluded so the earlier CLI-group rule wins; without this exclude Renovate's later-rule-overrides-earlier-rule semantics would reassign it back to ci-tools.",
       "matchManagers": ["github-actions"],
+      "excludeDepNames": ["golangci/golangci-lint-action"],
       "groupName": "CI tool dependencies",
       "groupSlug": "ci-tools",
       "commitMessagePrefix": "ci:",
@@ -229,7 +230,7 @@
       "description": "Testcontainers image pins in Python integration tests. Anchored on a `# renovate: datasource=docker depName=...` marker on the line above a `DockerContainer(\"name:tag\")` (or any `Foo(\"name:tag\")`) call. Renovate cannot scan Python source strings without this; without coverage, the testcontainers pin in tests/integration/communication/test_bus_nats.py drifts away from the upstream image and the test silently runs against an outdated runtime.",
       "managerFilePatterns": ["/tests/.*\\.py$/"],
       "matchStrings": [
-        "# renovate: datasource=docker depName=(?<depName>[^\\s]+)\\s*\\n\\s+[A-Za-z_]+\\(\\s*\"[^\"]*:(?<currentValue>[^\"]+)\"\\s*\\)"
+        "# renovate: datasource=docker depName=(?<depName>[^\\s]+)\\s*\\n\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*)?[A-Za-z_][A-Za-z0-9_]*\\(\\s*\"[^\"]*:(?<currentValue>[^\"@\\s]+)\"\\s*\\)"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
