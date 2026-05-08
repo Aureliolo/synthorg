@@ -189,14 +189,25 @@ jobs:
           # 2. Create a draft pre-release pointing at the tag. The draft
           #    follows the same lifecycle as stable releases: Docker + CLI
           #    workflows attach assets, then finalize-release publishes
-          #    once both succeed. Clean up the tag on failure.
+          #    once both succeed.
+          #
+          #    On failure we deliberately do NOT delete the tag. Step 1
+          #    already pushed the ref, which fired downstream `tags: v*`
+          #    workflows (cli.yml, docker.yml). Deleting the ref now
+          #    would race their actions/checkout step and 404 on
+          #    `refs/tags/$DEV_TAG`, surfacing a false-positive red on
+          #    main even when the squash content is clean (#1818). The
+          #    orphan tag is harmless: the "Clean up old dev pre-
+          #    releases" step below + finalize-release.yml's stable-
+          #    release sweep garbage-collect it later, and finalize-
+          #    release.yml correctly skip-publishes a tag with no draft.
           if ! gh release create "$DEV_TAG" \
             --draft \
             --prerelease \
             --title "$DEV_TAG" \
             --notes-file "$NOTES_FILE"; then
-            echo "::warning::Release creation failed, cleaning up tag"
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" || true
+            echo "::error::Release creation failed for $DEV_TAG"
+            echo "::warning::Tag preserved to avoid racing downstream workflows (#1818)"
             exit 1
           fi
 
@@ -215,6 +226,30 @@ jobs:
               echo "Deleting old dev release: $tag"
               gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
             done
+
+      # Regression guard for #1818. The dev tag was created near the
+      # top of this job; if anything in the run between then and now
+      # deleted it, downstream Docker / CLI workflows triggered by the
+      # initial tag push are about to 404 on actions/checkout. Surface
+      # the deletion as a hard job failure so the existing report-
+      # failure job opens the dev-release-regression tracking issue
+      # with the run URL, instead of debugging from downstream symptoms.
+      - name: Verify minted tag survived the run
+        if: >-
+          steps.check-tag.outputs.skip != 'true'
+          && steps.version.outputs.skip != 'true'
+          && steps.tag-exists.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEV_TAG: ${{ steps.version.outputs.dev_tag }}
+        run: |
+          set -euo pipefail
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" \
+               >/dev/null 2>&1; then
+            echo "::error::Tag $DEV_TAG was deleted during this run -- downstream Docker/CLI workflows are about to 404 on actions/checkout. Investigate dev-release.yml."
+            exit 1
+          fi
+          echo "Tag $DEV_TAG present at end-of-run."
 
   report-failure:
     name: Open / update tracking issue on dev-release failure

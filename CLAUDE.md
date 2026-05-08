@@ -114,6 +114,7 @@ Existing gate inventory (all under `scripts/`):
 - `check_schema_drift.py`
 - `check_setting_to_startup_trace.py`
 - `check_web_design_system.py`
+- `check_workflow_tag_lifecycle.py`
 
 Wire each new gate into `.pre-commit-config.yaml` (pre-commit or
 pre-push stage as fits) so it runs locally and in CI; per-line opt-outs
