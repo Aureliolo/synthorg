@@ -98,7 +98,7 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - name: Run CodSpeed Python benchmarks
-        uses: CodSpeedHQ/action@c381be0bfd20e844fb45594f6aa182ffcd94545c # v4.15.0
+        uses: CodSpeedHQ/action@3194d9a39c4d46684cb44bf7207fc56626aad8fd # v4.15.1
         with:
           mode: simulation
           # -n0 overrides the project-wide -n=8 in pyproject.toml addopts;
@@ -133,7 +133,7 @@ jobs:
         run: npm --prefix web ci --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
       - name: Run CodSpeed Web benchmarks
-        uses: CodSpeedHQ/action@c381be0bfd20e844fb45594f6aa182ffcd94545c # v4.15.0
+        uses: CodSpeedHQ/action@3194d9a39c4d46684cb44bf7207fc56626aad8fd # v4.15.1
         with:
           mode: simulation
           run: npm --prefix web run bench
