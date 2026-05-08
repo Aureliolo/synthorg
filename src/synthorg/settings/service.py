@@ -4,6 +4,7 @@ Provides the central service layer that merges setting values from
 four sources in priority order: DB > env > YAML > code defaults.
 """
 
+import asyncio
 import json
 import os
 import re
@@ -296,18 +297,22 @@ class SettingsService:
         # Source-of-resolution audit: every (namespace, key) emits one
         # INFO SETTINGS_VALUE_RESOLVED on the first cold read of the
         # process so operators can see which source won at startup.
-        # Subsequent resolutions stay at DEBUG. The check+add pair is
-        # purely CPU-bound and asyncio cannot interleave it (no
-        # awaits between the membership test and the set mutation),
-        # so no lock is required for cooperative concurrency.
+        # Subsequent resolutions stay at DEBUG. ``_resolution_lock``
+        # gates the membership-test + add window so concurrent
+        # first-reads for the same key promote exactly one entry to
+        # INFO; without it, two coroutines that miss the cache and
+        # interleave around an ``await`` in their resolver chain can
+        # both observe the key as not-yet-logged and emit duplicate
+        # INFO lines.
         self._resolution_logged: set[tuple[str, str]] = set()
+        self._resolution_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def registry(self) -> SettingsRegistry:
         """Read-only access to the registry for callers that need definitions."""
         return self._registry
 
-    def _emit_resolved(
+    async def _emit_resolved(
         self,
         definition: SettingDefinition,
         source: str,
@@ -319,11 +324,17 @@ class SettingsService:
         process so operators can audit which source supplied each
         configuration value at startup.  Subsequent resolutions for
         the same pair stay at DEBUG to avoid log spam.
+
+        ``_resolution_lock`` gates the membership-test + add so
+        concurrent first-reads for the same key produce a single
+        INFO line; the actual log emission runs outside the lock to
+        keep the critical section CPU-bound.
         """
         cache_key = (definition.namespace, definition.key)
-        first_read = cache_key not in self._resolution_logged
-        if first_read:
-            self._resolution_logged.add(cache_key)
+        async with self._resolution_lock:
+            first_read = cache_key not in self._resolution_logged
+            if first_read:
+                self._resolution_logged.add(cache_key)
         log = logger.info if first_read else logger.debug
         log(
             SETTINGS_VALUE_RESOLVED,
@@ -443,10 +454,10 @@ class SettingsService:
                 # is a single-opcode operation and safe without locking.
                 if not definition.sensitive:
                     self._cache[cache_key] = setting_value
-                self._emit_resolved(definition, source="db")
+                await self._emit_resolved(definition, source="db")
                 return setting_value
 
-        fallback = self._resolve_fallback(definition)
+        fallback = await self._resolve_fallback(definition)
         # Read-only-post-init: cache the first-read snapshot so
         # subsequent ``/settings`` queries and ``SETTINGS_VALUE_RESOLVED``
         # events report the *same* value the runtime captured at boot.
@@ -508,7 +519,7 @@ class SettingsService:
 
         entries: list[SettingEntry] = []
         for defn in definitions:
-            entry = self._resolve_with_db_lookup(defn, db_lookup.get(defn.key))
+            entry = await self._resolve_with_db_lookup(defn, db_lookup.get(defn.key))
             entries.append(entry)
         return tuple(entries)
 
@@ -533,7 +544,7 @@ class SettingsService:
         entries: list[SettingEntry] = []
         for defn in definitions:
             db_hit = db_lookup.get((defn.namespace, defn.key))
-            entry = self._resolve_with_db_lookup(defn, db_hit)
+            entry = await self._resolve_with_db_lookup(defn, db_hit)
             entries.append(entry)
         return tuple(entries)
 
@@ -586,16 +597,16 @@ class SettingsService:
         db_lookup: dict[tuple[str, str], tuple[str, str]] = {
             (ns, k): (v, ts) for ns, k, v, ts in db_rows
         }
-        entries = tuple(
-            self._resolve_with_db_lookup(
+        resolved: list[SettingEntry] = []
+        for defn in page_defs:
+            entry = await self._resolve_with_db_lookup(
                 defn,
                 db_lookup.get((defn.namespace, defn.key)),
             )
-            for defn in page_defs
-        )
-        return entries, has_more
+            resolved.append(entry)
+        return tuple(resolved), has_more
 
-    def _resolve_fallback(
+    async def _resolve_fallback(
         self,
         definition: SettingDefinition,
     ) -> SettingValue:
@@ -610,7 +621,7 @@ class SettingsService:
         )
         env_val = os.environ.get(env_name)
         if env_val is not None:
-            self._emit_resolved(definition, source="env")
+            await self._emit_resolved(definition, source="env")
             return SettingValue(
                 namespace=ns,
                 key=key,
@@ -621,7 +632,7 @@ class SettingsService:
         if definition.yaml_path is not None:
             yaml_val = extract_from_config(self._config, definition.yaml_path)
             if yaml_val is not None:
-                self._emit_resolved(definition, source="yaml")
+                await self._emit_resolved(definition, source="yaml")
                 return SettingValue(
                     namespace=ns,
                     key=key,
@@ -634,7 +645,7 @@ class SettingsService:
         # will raise ValueError on empty, giving a clear error at the
         # consumer layer rather than here).
         default = definition.default if definition.default is not None else ""
-        self._emit_resolved(definition, source="default")
+        await self._emit_resolved(definition, source="default")
         return SettingValue(
             namespace=ns,
             key=key,
@@ -642,7 +653,7 @@ class SettingsService:
             source=SettingSource.DEFAULT,
         )
 
-    def _resolve_with_db_lookup(
+    async def _resolve_with_db_lookup(
         self,
         definition: SettingDefinition,
         db_hit: tuple[str, str] | None,
@@ -694,7 +705,7 @@ class SettingsService:
                         updated_at=updated_at,
                     )
             display = _SENSITIVE_MASK if definition.sensitive else value
-            self._emit_resolved(definition, source="db")
+            await self._emit_resolved(definition, source="db")
             return SettingEntry(
                 definition=definition,
                 value=display,
@@ -703,7 +714,7 @@ class SettingsService:
             )
 
         # Fallback: env > YAML > default
-        fallback = self._resolve_fallback(definition)
+        fallback = await self._resolve_fallback(definition)
         display = _SENSITIVE_MASK if definition.sensitive else fallback.value
         return SettingEntry(
             definition=definition,
