@@ -301,7 +301,16 @@ List concrete actions to take, grouped by timing:
 
 ## Phase 7: User Decision
 
-After presenting all PR reports, use AskUserQuestion to ask how to proceed. Tailor options based on what was found.
+After presenting all PR reports, route each PR by its triage state. Only invoke AskUserQuestion when there is a real decision to make.
+
+**Default: clean PRs auto-merge without prompting.** A PR is "clean" when ALL of the following hold:
+- CI is fully green (no `FAILURE` / `CANCELLED` / `TIMED_OUT` checks; pending is allowed only when the remaining checks are non-blocking advisory checks the user has previously accepted as non-gating).
+- Phase 3 cross-reference produced **zero** "must fix" / "should adopt" / "remove workaround" items (i.e. no entries under the Recommendations report's "Before merge" / "With merge" sections).
+- The PR is not a major version bump that warranted a migration-guide review (major bumps always go through the per-PR prompt even when changelog scan is clean, because the surface area is too large for a silent default).
+
+For a clean PR, skip the per-PR AskUserQuestion entirely. Announce the action in plain text (`"PR #<N> is clean (CI green, no actionable items); merging as-is."`), then run Phase 8's "Merge as-is" path. The user can still interrupt before the merge is finalised; the skill's job is to not ask redundant questions.
+
+For a PR that is NOT clean (CI failing, actionable items present, or major bump), proceed to the prompts below.
 
 **Multi-PR overlap question (only when ≥ 2 PRs share source or config files, per Phase 5):**
 
@@ -319,9 +328,9 @@ Options:
 
 Carry the chosen strategy into Phase 8: it dictates merge order and whether Phase 8 invokes `--auto` (parallel-safe) vs blocking on each merge (sequential).
 
-**Per-PR triage (always run):**
+**Per-PR triage (only when the PR is NOT clean per the default rule above):**
 
-If there are actionable items (config improvements, new features to adopt, workarounds to remove), ask per-PR (or batched if multiple simple PRs):
+For PRs with actionable items, failing CI, or a major bump that needs explicit confirmation, ask per-PR (or batched if multiple simple PRs):
 
 ```text
 "What should we do with PR #<N> (<package> <from>→<to>)?"
@@ -336,20 +345,11 @@ Options:
 **If CI is failing on a PR**, replace "Merge as-is" with:
 - **"Fix CI and merge"**: Investigate the failure, fix it, then merge
 
-**If multiple PRs are all clean (no actionable items AND CI is passing):**
+**Multiple clean PRs: no batch question, just announce + merge.**
 
-A PR is only eligible for batch merging when it has both no actionable changelog items AND all CI checks are passing. PRs with failing CI must always be routed to the per-PR flow, regardless of changelog cleanliness.
+When multiple PRs in the batch all qualify as clean (per the default rule at the top of this phase), the skill auto-merges them as a group. Announce in plain text (`"PRs #X, #Y, #Z are all clean (CI green, no actionable items); merging all as-is."`), then run Phase 8's "Merge as-is" path on each in sequence (or `--auto` in parallel for disjoint file sets per Phase 5). No AskUserQuestion is invoked.
 
-Batch them into one question:
-
-```text
-"PRs #X, #Y, #Z all look clean after changelog review (CI passing). Merge all?"
-```
-
-Options:
-- **"Merge all"**: Ship them all
-- **"Let me review individually"**: Break out per-PR decisions
-- **"Skip for now"**: Come back later
+The previous behaviour (asking "Merge all? / review individually / skip for now") was a redundant confirmation step for cases where the skill has already proven there is nothing to decide; it's now gone.
 
 ## Phase 8: Execute Decisions
 
