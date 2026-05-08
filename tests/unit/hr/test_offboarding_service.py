@@ -498,3 +498,35 @@ class TestOffboardingServiceFullPipeline:
         )
         record = await service.offboard(request)
         assert record.team_notification_sent is False
+
+
+@pytest.mark.unit
+class TestOffboardingServiceDefaults:
+    """Default strategies are wired when constructor params are omitted."""
+
+    async def test_omitted_strategies_default_to_concrete_impls(self) -> None:
+        from synthorg.hr.full_snapshot_strategy import FullSnapshotStrategy
+        from synthorg.hr.queue_return_strategy import QueueReturnStrategy
+
+        registry = AgentRegistryService()
+        service = OffboardingService(registry=registry)
+
+        # Concrete defaults preserve the pluggable-subsystem seam:
+        # production wiring can construct ``OffboardingService`` with
+        # nothing but the registry while tests retain the override
+        # path for fakes.
+        assert isinstance(service._reassignment_strategy, QueueReturnStrategy)
+        assert isinstance(service._archival_strategy, FullSnapshotStrategy)
+
+    async def test_explicit_strategies_override_defaults(self) -> None:
+        registry = AgentRegistryService()
+        reassignment = FakeReassignmentStrategy()
+        archival = FakeArchivalStrategy()
+        service = OffboardingService(
+            registry=registry,
+            reassignment_strategy=reassignment,
+            archival_strategy=archival,
+        )
+
+        assert service._reassignment_strategy is reassignment
+        assert service._archival_strategy is archival

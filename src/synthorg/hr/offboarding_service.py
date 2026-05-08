@@ -19,7 +19,9 @@ from synthorg.hr.errors import (
     OffboardingError,
     TaskReassignmentError,
 )
+from synthorg.hr.full_snapshot_strategy import FullSnapshotStrategy
 from synthorg.hr.models import FiringRequest, OffboardingRecord
+from synthorg.hr.queue_return_strategy import QueueReturnStrategy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_FIRING_ARCHIVAL_FAILED,
@@ -54,8 +56,15 @@ class OffboardingService:
 
     Args:
         registry: Agent registry for status updates.
-        reassignment_strategy: Strategy for task reassignment.
-        archival_strategy: Strategy for memory archival.
+        reassignment_strategy: Strategy for task reassignment. When
+            ``None``, defaults to :class:`QueueReturnStrategy` so
+            production wiring does not have to import the concrete
+            class. Override to swap in an alternative reassignment
+            policy (e.g. specific-agent transfer, reject-on-fail).
+        archival_strategy: Strategy for memory archival. When
+            ``None``, defaults to :class:`FullSnapshotStrategy`.
+            Override to swap in selective archival or summary-only
+            policies.
         memory_backend: Optional hot memory store.
         archival_store: Optional cold archival storage.
         org_memory_backend: Optional org memory for promotion.
@@ -67,8 +76,8 @@ class OffboardingService:
         self,
         *,
         registry: AgentRegistryService,
-        reassignment_strategy: TaskReassignmentStrategy,
-        archival_strategy: MemoryArchivalStrategy,
+        reassignment_strategy: TaskReassignmentStrategy | None = None,
+        archival_strategy: MemoryArchivalStrategy | None = None,
         memory_backend: MemoryBackend | None = None,
         archival_store: ArchivalStore | None = None,
         org_memory_backend: OrgMemoryBackend | None = None,
@@ -76,8 +85,16 @@ class OffboardingService:
         task_repository: TaskRepository | None = None,
     ) -> None:
         self._registry = registry
-        self._reassignment_strategy = reassignment_strategy
-        self._archival_strategy = archival_strategy
+        self._reassignment_strategy: TaskReassignmentStrategy = (
+            reassignment_strategy
+            if reassignment_strategy is not None
+            else QueueReturnStrategy()
+        )
+        self._archival_strategy: MemoryArchivalStrategy = (
+            archival_strategy
+            if archival_strategy is not None
+            else FullSnapshotStrategy()
+        )
         self._memory_backend = memory_backend
         self._archival_store = archival_store
         self._org_memory_backend = org_memory_backend
