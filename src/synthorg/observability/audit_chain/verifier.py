@@ -12,6 +12,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE,
     SECURITY_AUDIT_CHAIN_VERIFY_START,
 )
+from synthorg.observability.metrics_hub import record_audit_chain_verification
 
 logger = get_logger(__name__)
 
@@ -62,7 +63,13 @@ class AuditChainVerifier:
     async def verify_chain(self, chain: HashChain) -> ChainVerificationResult:
         """Verify the entire hash chain.
 
-        Checks hash continuity and verifies each signature.
+        Checks hash continuity and verifies each signature. Emits one
+        ``synthorg_audit_chain_verifications_total`` increment per call
+        with ``outcome="valid"|"broken"`` so dashboards expose chain
+        tampering as a queryable rate. Exceptions raised by the signer
+        (crypto / network / key-unavailable) are reported as
+        ``outcome="broken"`` before re-raising so a transient verifier
+        failure cannot create a tamper-detection blind spot.
 
         Args:
             chain: Hash chain to verify.
@@ -70,6 +77,29 @@ class AuditChainVerifier:
         Returns:
             Verification result with validity and break position.
         """
+        try:
+            result = await self._verify_chain_inner(chain)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            record_audit_chain_verification(
+                outcome="broken",
+                entries_checked=0,
+                first_break_position=None,
+            )
+            raise
+        record_audit_chain_verification(
+            outcome="valid" if result.valid else "broken",
+            entries_checked=result.entries_checked,
+            first_break_position=result.first_break_position,
+        )
+        return result
+
+    async def _verify_chain_inner(
+        self,
+        chain: HashChain,
+    ) -> ChainVerificationResult:
+        """Core verification body; metric emission lives in ``verify_chain``."""
         logger.debug(
             SECURITY_AUDIT_CHAIN_VERIFY_START,
             entry_count=len(chain.entries),

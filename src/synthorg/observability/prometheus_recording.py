@@ -20,28 +20,40 @@ from synthorg.observability import get_logger
 if TYPE_CHECKING:
     from prometheus_client import Counter as PromCounter
     from prometheus_client import Gauge, Histogram
+from synthorg.observability.events.blueprint import BLUEPRINT_INSTANTIATE_OUTCOME
+from synthorg.observability.events.budget import BUDGET_QUERY_OUTCOME
+from synthorg.observability.events.mcp import MCP_HANDLER_OUTCOME
 from synthorg.observability.events.metrics import (
     API_REQUEST_VALIDATION_FAILED,
     CLIENT_DISCONNECTED,
     METRICS_COORDINATION_RECORDED,
     METRICS_SCRAPE_FAILED,
 )
+from synthorg.observability.events.security import SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME
 from synthorg.observability.prometheus_labels import (
     VALID_API_ERROR_CATEGORIES,
+    VALID_APPROVAL_OUTCOMES,
     VALID_AUDIT_APPEND_STATUSES,
+    VALID_AUDIT_VERIFICATION_OUTCOMES,
+    VALID_BLUEPRINT_OUTCOMES,
+    VALID_BUDGET_QUERY_TYPES,
     VALID_CACHE_NAMES,
     VALID_CACHE_OUTCOMES,
     VALID_DISCONNECT_REASONS,
     VALID_DISCONNECT_TRANSPORTS,
+    VALID_ESCALATION_OUTCOMES,
     VALID_IDENTITY_CHANGE_TYPES,
+    VALID_MCP_HANDLER_OUTCOMES,
     VALID_OTLP_KINDS,
     VALID_OTLP_OUTCOMES,
     VALID_PROVIDER_ERROR_CLASSES,
+    VALID_SETTINGS_NAMESPACES,
     VALID_STATUS_CLASSES,
     VALID_TASK_OUTCOMES,
     VALID_TOOL_OUTCOMES,
     VALID_VERDICTS,
     VALID_WORKFLOW_EXECUTION_STATUSES,
+    normalize_mcp_tool_label,
     require_finite,
     require_label,
     require_non_negative,
@@ -86,6 +98,14 @@ class RecordingMixin:
     _agent_identity_changes: PromCounter
     _workflow_execution_duration: Histogram
     _client_disconnects: PromCounter
+    _approval_decisions: PromCounter
+    _escalation_outcomes: PromCounter
+    _blueprint_instantiations: PromCounter
+    _settings_mutations: PromCounter
+    _mcp_handler_outcomes: PromCounter
+    _mcp_handler_duration: Histogram
+    _budget_query_duration: Histogram
+    _audit_chain_verifications: PromCounter
 
     def record_security_verdict(self, verdict: str) -> None:
         """Increment the security verdict counter.
@@ -548,4 +568,206 @@ class RecordingMixin:
             CLIENT_DISCONNECTED,
             transport=transport,
             reason=reason,
+        )
+
+    def record_approval_decision(self, *, outcome: str) -> None:
+        """Increment the approval-decision counter.
+
+        Args:
+            outcome: One of ``"approved"`` / ``"rejected"`` /
+                ``"expired"``.
+
+        Raises:
+            ValueError: If *outcome* is not in
+                :data:`VALID_APPROVAL_OUTCOMES`.
+        """
+        require_label("approval outcome", outcome, VALID_APPROVAL_OUTCOMES)
+        self._approval_decisions.labels(outcome=outcome).inc()
+
+    def record_escalation_outcome(self, *, outcome: str) -> None:
+        """Increment the escalation-outcome counter.
+
+        Args:
+            outcome: One of ``"resolved"`` / ``"escalated_to_human"``
+                / ``"auto_resolved"`` / ``"notify_failed"`` /
+                ``"sweeper_failed"``.
+
+        Raises:
+            ValueError: If *outcome* is not in
+                :data:`VALID_ESCALATION_OUTCOMES`.
+        """
+        require_label("escalation outcome", outcome, VALID_ESCALATION_OUTCOMES)
+        self._escalation_outcomes.labels(outcome=outcome).inc()
+
+    def record_blueprint_instantiation(
+        self,
+        *,
+        outcome: str,
+        blueprint_name: str | None = None,
+        duration_sec: float | None = None,
+    ) -> None:
+        """Increment the blueprint-instantiation counter.
+
+        Args:
+            outcome: One of :data:`VALID_BLUEPRINT_OUTCOMES`.
+            blueprint_name: Blueprint slug (logged, not labelled --
+                cardinality is held by the bounded outcome label).
+            duration_sec: Wall-clock duration of the instantiation
+                (logged, not observed -- this counter is success-rate
+                focused; use ``synthorg_workflow_execution_seconds``
+                for runtime quantiles).
+
+        Raises:
+            ValueError: If *outcome* is not in
+                :data:`VALID_BLUEPRINT_OUTCOMES` or *duration_sec* is
+                negative.
+        """
+        require_label("blueprint outcome", outcome, VALID_BLUEPRINT_OUTCOMES)
+        if duration_sec is not None:
+            require_non_negative(
+                "record_blueprint_instantiation: duration_sec",
+                duration_sec,
+            )
+        self._blueprint_instantiations.labels(outcome=outcome).inc()
+        logger.info(
+            BLUEPRINT_INSTANTIATE_OUTCOME,
+            blueprint_name=blueprint_name,
+            outcome=outcome,
+            duration_sec=duration_sec,
+        )
+
+    def record_settings_mutation(self, *, namespace: str) -> None:
+        """Increment the settings-mutation counter.
+
+        Args:
+            namespace: One of :data:`VALID_SETTINGS_NAMESPACES`
+                (mirrors filenames in ``settings/definitions/``).
+
+        Raises:
+            ValueError: If *namespace* is not registered.
+        """
+        require_label("settings namespace", namespace, VALID_SETTINGS_NAMESPACES)
+        self._settings_mutations.labels(namespace=namespace).inc()
+
+    def record_mcp_handler_outcome(
+        self,
+        *,
+        tool: str,
+        outcome: str,
+        duration_sec: float,
+    ) -> None:
+        """Record an MCP handler invocation's outcome and latency.
+
+        Increments :attr:`_mcp_handler_outcomes` and observes
+        :attr:`_mcp_handler_duration` in one call so the two stay in
+        lockstep (every observed duration has a matching outcome
+        sample). The structured-log mirror at DEBUG carries the same
+        kwargs so an offline correlation is possible if Prometheus is
+        unavailable.
+
+        ``tool`` is normalised through
+        :func:`~synthorg.observability.prometheus_labels.normalize_mcp_tool_label`
+        against the MCP registry snapshot seeded at invoker
+        construction. Unregistered tool names (e.g. fabricated by a
+        misbehaving MCP client to inflate cardinality) are folded to
+        :data:`~synthorg.observability.prometheus_labels.MCP_UNKNOWN_TOOL_LABEL`
+        before reaching the Prometheus children.
+
+        Args:
+            tool: MCP handler tool name (e.g. ``synthorg_messages_get``).
+            outcome: One of :data:`VALID_MCP_HANDLER_OUTCOMES`.
+            duration_sec: Wall-clock handler duration.
+
+        Raises:
+            ValueError: If *outcome* is invalid or *duration_sec* is
+                negative.
+        """
+        require_label("MCP handler outcome", outcome, VALID_MCP_HANDLER_OUTCOMES)
+        require_non_negative(
+            "record_mcp_handler_outcome: duration_sec",
+            duration_sec,
+        )
+        bounded_tool = normalize_mcp_tool_label(tool)
+        self._mcp_handler_outcomes.labels(tool=bounded_tool, outcome=outcome).inc()
+        self._mcp_handler_duration.labels(tool=bounded_tool, outcome=outcome).observe(
+            duration_sec
+        )
+        logger.debug(
+            MCP_HANDLER_OUTCOME,
+            tool=tool,
+            outcome=outcome,
+            duration_sec=duration_sec,
+        )
+
+    def record_budget_query(
+        self,
+        *,
+        query_type: str,
+        duration_sec: float,
+    ) -> None:
+        """Observe a budget read-path query in the latency histogram.
+
+        Args:
+            query_type: One of :data:`VALID_BUDGET_QUERY_TYPES`.
+            duration_sec: Wall-clock query duration.
+
+        Raises:
+            ValueError: If *query_type* is unknown or
+                *duration_sec* is negative.
+        """
+        require_label("budget query_type", query_type, VALID_BUDGET_QUERY_TYPES)
+        require_non_negative("record_budget_query: duration_sec", duration_sec)
+        self._budget_query_duration.labels(query_type=query_type).observe(
+            duration_sec,
+        )
+        logger.debug(
+            BUDGET_QUERY_OUTCOME,
+            query_type=query_type,
+            duration_sec=duration_sec,
+        )
+
+    def record_audit_chain_verification(
+        self,
+        *,
+        outcome: str,
+        entries_checked: int,
+        first_break_position: int | None = None,
+    ) -> None:
+        """Record an audit chain integrity verification.
+
+        Increments once per ``verify_chain()`` call regardless of
+        chain depth, so dashboards can compute a true per-call
+        ``broken`` rate via
+        ``rate(synthorg_audit_chain_verifications_total{outcome="broken"}[1h])``.
+
+        Args:
+            outcome: ``"valid"`` or ``"broken"``.
+            entries_checked: Number of chain entries verified.
+            first_break_position: Position of the first broken link
+                (logged for offline incident triage; not labelled).
+
+        Raises:
+            ValueError: If *outcome* is invalid or *entries_checked*
+                is negative.
+        """
+        require_label(
+            "audit verification outcome",
+            outcome,
+            VALID_AUDIT_VERIFICATION_OUTCOMES,
+        )
+        require_non_negative(
+            "record_audit_chain_verification: entries_checked",
+            entries_checked,
+        )
+        if first_break_position is not None:
+            require_non_negative(
+                "record_audit_chain_verification: first_break_position",
+                first_break_position,
+            )
+        self._audit_chain_verifications.labels(outcome=outcome).inc()
+        logger.info(
+            SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME,
+            outcome=outcome,
+            entries_checked=entries_checked,
+            first_break_position=first_break_position,
         )

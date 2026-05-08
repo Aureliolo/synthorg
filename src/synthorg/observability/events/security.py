@@ -1,6 +1,6 @@
 """Security event constants."""
 
-from typing import Final
+from typing import Final, LiteralString
 
 SECURITY_EVALUATE_START: Final[str] = "security.evaluate.start"
 SECURITY_EVALUATE_COMPLETE: Final[str] = "security.evaluate.complete"
@@ -54,6 +54,9 @@ SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE: Final[str] = (
     "security.audit_chain.verify.complete"
 )
 SECURITY_AUDIT_CHAIN_BREAK_DETECTED: Final[str] = "security.audit_chain.break_detected"
+SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME: Final[LiteralString] = (
+    "security.audit_chain.verify.outcome"
+)
 SECURITY_TIMESTAMP_FALLBACK: Final[str] = "security.timestamp.fallback"
 SECURITY_TIMESTAMP_REQUESTED: Final[str] = "security.timestamp.requested"
 SECURITY_TIMESTAMP_GRANTED: Final[str] = "security.timestamp.granted"

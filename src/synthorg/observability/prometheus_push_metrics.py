@@ -207,3 +207,114 @@ class PushMetrics:
             ["transport", "reason"],
             registry=registry,
         )
+
+        # -- Approval decisions counter ------------------------------
+        # Outcome label is bounded via ``VALID_APPROVAL_OUTCOMES``.
+        # Cardinality fixed at 4 series.
+        self.approval_decisions = PromCounter(
+            f"{prefix}_approval_decisions_total",
+            "Approval-gate terminal decisions by outcome",
+            ["outcome"],
+            registry=registry,
+        )
+
+        # -- Escalation outcomes counter -----------------------------
+        # Outcome label is bounded via ``VALID_ESCALATION_OUTCOMES``.
+        # Disjoint from ``approval_decisions`` because the two flows
+        # have different terminal vocabularies and live in different
+        # modules; combining them under one Counter with a ``kind``
+        # label would force a synthetic taxonomy on dashboards.
+        self.escalation_outcomes = PromCounter(
+            f"{prefix}_escalation_outcomes_total",
+            "Conflict-resolution escalation terminal outcomes",
+            ["outcome"],
+            registry=registry,
+        )
+
+        # -- Workflow blueprint instantiation counter ----------------
+        # Single neutral terminal counter so dashboards can compute
+        # success rate as
+        # ``rate(.._total{outcome="success"}) / rate(.._total)``
+        # without double-counting. Outcome is bounded via
+        # ``VALID_BLUEPRINT_OUTCOMES``.
+        self.blueprint_instantiations = PromCounter(
+            f"{prefix}_blueprint_instantiations_total",
+            "Workflow blueprint instantiation attempts by outcome",
+            ["outcome"],
+            registry=registry,
+        )
+
+        # -- Settings mutations counter ------------------------------
+        # Namespace label is bounded via ``VALID_SETTINGS_NAMESPACES``
+        # (mirrors filenames in ``settings/definitions/``). Action
+        # (set / set_many / delete / delete_namespace) is
+        # intentionally NOT a label so the dashboard slices by
+        # namespace only -- the operator-facing question is "which
+        # namespace is being mutated", and adding ``action`` would
+        # quadruple cardinality (22 namespaces x 4 actions = 88
+        # series) without a dashboard that asks for that breakdown.
+        self.settings_mutations = PromCounter(
+            f"{prefix}_settings_mutations_total",
+            "Settings mutations by namespace",
+            ["namespace"],
+            registry=registry,
+        )
+
+        # -- MCP handler outcome counter + latency histogram ---------
+        # Tighter low-end resolution than the existing
+        # ``tool_duration`` histogram (which extends to 120s for
+        # provider-bound tools). MCP handlers are service-boundary
+        # calls, mostly sub-second; the bucket span below covers
+        # 1ms to 10s with seven sub-100ms buckets.
+        self.mcp_handler_outcomes = PromCounter(
+            f"{prefix}_mcp_handler_outcomes_total",
+            "MCP handler invocations by tool and outcome",
+            ["tool", "outcome"],
+            registry=registry,
+        )
+        self.mcp_handler_duration = Histogram(
+            f"{prefix}_mcp_handler_duration_seconds",
+            "MCP handler invocation duration by tool and outcome",
+            ["tool", "outcome"],
+            buckets=(
+                0.001,
+                0.005,
+                0.01,
+                0.025,
+                0.05,
+                0.1,
+                0.25,
+                0.5,
+                1.0,
+                2.5,
+                5.0,
+                10.0,
+            ),
+            registry=registry,
+        )
+
+        # -- Budget query latency histogram --------------------------
+        # Pure read-path, SQLite-bound; p95 should be sub-25ms. The
+        # bucket span below caps at 1s to keep the dashboard's p95/p99
+        # series meaningful (a budget query that takes >1s is itself
+        # a regression worth alerting on).
+        self.budget_query_duration = Histogram(
+            f"{prefix}_budget_query_duration_seconds",
+            "Budget read-path query duration by query type",
+            ["query_type"],
+            buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
+            registry=registry,
+        )
+
+        # -- Audit chain integrity verification counter --------------
+        # Outcome is bounded via ``VALID_AUDIT_VERIFICATION_OUTCOMES``
+        # (``valid`` / ``broken``). Increments once per
+        # ``verify_chain()`` call -- a panel querying
+        # ``increase(.._total{outcome="broken"}[1h])`` is the alert
+        # signal for chain tampering / corruption.
+        self.audit_chain_verifications = PromCounter(
+            f"{prefix}_audit_chain_verifications_total",
+            "Audit chain integrity verifications by outcome",
+            ["outcome"],
+            registry=registry,
+        )

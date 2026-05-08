@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 from opentelemetry import trace as _ot_trace
 from opentelemetry.trace import Status, StatusCode
 
+from synthorg.observability import safe_error_description
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
@@ -58,7 +60,17 @@ async def llm_span(
     exception re-raises.
     """
     tracer = tracer or get_tracer()
-    with tracer.start_as_current_span(f"chat {model}") as span:
+    # ``record_exception=False, set_status_on_exception=False`` keep the
+    # OTel SDK from auto-serialising frame-locals into the OTLP exporter
+    # via its built-in exception handler. The except branch sets the
+    # OTel-semconv exception attributes from the scrubbed description
+    # so this transport stays on the same redaction posture as
+    # structlog. See ``docs/reference/sec-prompt-safety.md``.
+    with tracer.start_as_current_span(
+        f"chat {model}",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         span.set_attribute("gen_ai.system", provider)
         span.set_attribute("gen_ai.request.model", model)
         if input_tokens is not None:
@@ -68,8 +80,12 @@ async def llm_span(
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            span.record_exception(exc)
-            span.set_status(Status(StatusCode.ERROR, str(exc)))
+            span.set_attribute("exception.type", type(exc).__name__)
+            span.set_attribute(
+                "exception.message",
+                safe_error_description(exc),
+            )
+            span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
             raise
 
 
@@ -92,7 +108,14 @@ async def tool_span(
     operators can filter by outcome in the tracing UI.
     """
     tracer = tracer or get_tracer()
-    with tracer.start_as_current_span(f"tool {tool_name}") as span:
+    # See the ``llm_span`` block above for the OTLP redaction
+    # rationale: the SDK's auto-exception handler is disabled and the
+    # except branch writes scrubbed OTel-semconv attributes directly.
+    with tracer.start_as_current_span(
+        f"tool {tool_name}",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         span.set_attribute("tool.name", tool_name)
         span.set_attribute("tool.call_id", tool_call_id)
         try:
@@ -100,6 +123,10 @@ async def tool_span(
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            span.record_exception(exc)
-            span.set_status(Status(StatusCode.ERROR, str(exc)))
+            span.set_attribute("exception.type", type(exc).__name__)
+            span.set_attribute(
+                "exception.message",
+                safe_error_description(exc),
+            )
+            span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
             raise

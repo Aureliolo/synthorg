@@ -22,8 +22,10 @@ from litestar import Request
 from litestar.datastructures import MutableScopeHeaders
 from litestar.enums import ScopeType
 from litestar.types import ASGIApp, Message, Receive, Scope, Send  # noqa: TC002
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.correlation import (
     bind_correlation_id,
     clear_correlation_ids,
@@ -336,12 +338,23 @@ def _record_request_metric(
         )
 
 
+_tracer = trace.get_tracer(__name__)
+
+
 class RequestLoggingMiddleware:
     """ASGI middleware that logs request start and completion.
 
     Uses ``time.perf_counter()`` for high-resolution duration
     measurement.  Only logs HTTP requests (non-HTTP scopes like
     WebSocket and lifespan are passed through without logging).
+
+    Each HTTP request is also wrapped in an OpenTelemetry span
+    (``http.request``) carrying OTel-semconv attributes
+    (``http.request.method``, ``http.route``,
+    ``http.response.status_code``) plus the ``synthorg.correlation_id``
+    so distributed traces line up with the structured-log stream. When
+    no tracer provider is configured (default), ``get_tracer`` returns
+    a no-op tracer and the span is essentially free.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -362,7 +375,8 @@ class RequestLoggingMiddleware:
         method = request.method
         path = str(request.url.path)
 
-        bind_correlation_id(request_id=generate_correlation_id())
+        correlation_id = generate_correlation_id()
+        bind_correlation_id(request_id=correlation_id)
         logger.info(API_REQUEST_STARTED, method=method, path=path)
         start = time.perf_counter()
 
@@ -386,11 +400,43 @@ class RequestLoggingMiddleware:
                     status_code = raw_status
             await original_send(message)  # pyright: ignore[reportArgumentType]
 
-        try:
-            await self.app(scope, receive, capture_send)
-        finally:
-            elapsed_sec = time.perf_counter() - start
-            duration_ms = round(elapsed_sec * 1000, 2)
-            _log_request_completion(method, path, status_code, duration_ms)
-            _record_request_metric(scope, method, status_code, elapsed_sec)
-            clear_correlation_ids()
+        with _tracer.start_as_current_span(
+            "http.request",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute("http.request.method", method)
+            span.set_attribute("synthorg.correlation_id", correlation_id)
+            try:
+                await self.app(scope, receive, capture_send)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # OTel's ``record_exception`` would serialise the full
+                # traceback (including frame locals) into the span,
+                # bypassing the structlog secret-log redaction the
+                # rest of the codebase relies on. To keep the OTLP
+                # transport on the same redaction posture as the
+                # structlog sink, set OTel-semconv exception
+                # attributes directly using the scrubbed description
+                # and skip the traceback emission. See
+                # ``docs/reference/sec-prompt-safety.md`` for the
+                # transport-level redaction policy.
+                span.set_attribute("exception.type", type(exc).__name__)
+                span.set_attribute(
+                    "exception.message",
+                    safe_error_description(exc),
+                )
+                span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
+                raise
+            finally:
+                span.set_attribute("http.route", _resolve_route_template(scope))
+                if status_code is not None:
+                    span.set_attribute("http.response.status_code", status_code)
+                    if status_code >= 500:  # noqa: PLR2004
+                        span.set_status(Status(StatusCode.ERROR))
+                elapsed_sec = time.perf_counter() - start
+                duration_ms = round(elapsed_sec * 1000, 2)
+                _log_request_completion(method, path, status_code, duration_ms)
+                _record_request_metric(scope, method, status_code, elapsed_sec)
+                clear_correlation_ids()

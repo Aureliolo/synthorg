@@ -1,12 +1,13 @@
 """Review pipeline and intake engine event constants."""
 
-from typing import Final
+from typing import Final, LiteralString
 
 REVIEW_PIPELINE_STARTED: Final[str] = "review.pipeline.started"
 REVIEW_PIPELINE_STAGE_COMPLETED: Final[str] = "review.pipeline.stage.completed"
 REVIEW_PIPELINE_COMPLETED: Final[str] = "review.pipeline.completed"
 REVIEW_STAGE_DECIDED: Final[str] = "review.stage.decided"
 REVIEW_TASK_LOOKUP_FAILED: Final[str] = "review.task.lookup_failed"
+REVIEW_STAGE_LOOKUP_FAILED: Final[LiteralString] = "review.stage.lookup.failed"
 INTAKE_REQUEST_RECEIVED: Final[str] = "intake.request.received"
 INTAKE_REQUEST_ACCEPTED: Final[str] = "intake.request.accepted"
 INTAKE_REQUEST_REJECTED: Final[str] = "intake.request.rejected"

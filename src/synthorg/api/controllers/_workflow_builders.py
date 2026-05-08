@@ -37,6 +37,7 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_NOT_FOUND,
     WORKFLOW_DEF_VERSION_CONFLICT,
 )
+from synthorg.observability.metrics_hub import record_blueprint_instantiation
 from synthorg.versioning import VersioningService
 
 if TYPE_CHECKING:
@@ -288,6 +289,10 @@ async def load_blueprint_or_error(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        record_blueprint_instantiation(
+            outcome="not_found",
+            blueprint_name=blueprint_name,
+        )
         return Response(
             content=ApiResponse[WorkflowDefinition](
                 error=f"Blueprint not found: {blueprint_name}",
@@ -300,6 +305,10 @@ async def load_blueprint_or_error(
             blueprint_name=blueprint_name,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
+        )
+        record_blueprint_instantiation(
+            outcome="validation_error",
+            blueprint_name=blueprint_name,
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](

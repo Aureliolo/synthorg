@@ -65,6 +65,7 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_NOT_FOUND,
     WORKFLOW_DEF_VERSION_CONFLICT,
 )
+from synthorg.observability.metrics_hub import record_blueprint_instantiation
 
 logger = get_logger(__name__)
 
@@ -227,6 +228,10 @@ class WorkflowController(Controller):
         logger.info(
             BLUEPRINT_INSTANTIATE_SUCCESS,
             definition_id=definition.id,
+            blueprint_name=data.blueprint_name,
+        )
+        record_blueprint_instantiation(
+            outcome="success",
             blueprint_name=data.blueprint_name,
         )
         return Response(

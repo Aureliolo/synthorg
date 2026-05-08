@@ -40,6 +40,7 @@ from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_CANCELLED,
     CONFLICT_ESCALATION_RESOLVED,
 )
+from synthorg.observability.metrics_hub import record_escalation_outcome
 
 logger = get_logger(__name__)
 
@@ -319,6 +320,7 @@ class EscalationsController(Controller):
                 else "persisted_only_no_live_resolver"
             ),
         )
+        record_escalation_outcome(outcome="resolved")
         return ApiResponse[EscalationResponse](data=_to_response(updated))
 
     @post(

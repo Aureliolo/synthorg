@@ -633,6 +633,176 @@
           "gridPos": {"h": 4, "w": 24, "x": 0, "y": 35}
         }
       ]
+    },
+    {
+      "type": "row",
+      "id": 800,
+      "title": "Decisions",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 40},
+      "panels": [
+        {
+          "type": "timeseries",
+          "id": 801,
+          "title": "Approval decisions / sec",
+          "description": "synthorg_approval_decisions_total partitioned by outcome (approved / rejected / expired). Counter is incremented from api/controllers/approvals.py and api/approval_store.py.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (outcome) (rate(synthorg_approval_decisions_total[5m]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 41}
+        },
+        {
+          "type": "timeseries",
+          "id": 802,
+          "title": "Escalation outcomes / sec",
+          "description": "synthorg_escalation_outcomes_total partitioned by outcome (resolved / escalated_to_human / auto_resolved / notify_failed / sweeper_failed). Disjoint from the approval-decisions counter; emitted from the conflict-resolution + escalation modules.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (outcome) (rate(synthorg_escalation_outcomes_total[5m]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 41}
+        },
+        {
+          "type": "timeseries",
+          "id": 803,
+          "title": "Blueprint instantiations / sec",
+          "description": "synthorg_blueprint_instantiations_total partitioned by outcome (success / validation_error / not_found / unknown_error). Use rate(.._total{outcome=\"success\"}) / rate(.._total) for a success-rate panel.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (outcome) (rate(synthorg_blueprint_instantiations_total[5m]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 41}
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "id": 810,
+      "title": "Configuration & MCP",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 49},
+      "panels": [
+        {
+          "type": "timeseries",
+          "id": 811,
+          "title": "Settings mutations / sec by namespace",
+          "description": "synthorg_settings_mutations_total. Namespace label mirrors filenames in src/synthorg/settings/definitions/. Spikes correlate with operator-driven configuration changes.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (namespace) (rate(synthorg_settings_mutations_total[5m]))",
+              "legendFormat": "{{namespace}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 50}
+        },
+        {
+          "type": "stat",
+          "id": 812,
+          "title": "MCP handler success rate",
+          "description": "rate(synthorg_mcp_handler_outcomes_total{outcome=\"success\"}[5m]) / rate(synthorg_mcp_handler_outcomes_total[5m]). Drops below ~0.99 indicate handler regressions.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum(rate(synthorg_mcp_handler_outcomes_total{outcome=\"success\"}[5m])) / clamp_min(sum(rate(synthorg_mcp_handler_outcomes_total[5m])), 1)",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": 0}, {"color": "yellow", "value": 0.95}, {"color": "green", "value": 0.99}]}}},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 50}
+        },
+        {
+          "type": "timeseries",
+          "id": 813,
+          "title": "MCP handler p95 latency by tool",
+          "description": "histogram_quantile(0.95, rate(synthorg_mcp_handler_duration_seconds_bucket[5m])) split by tool. The buckets cap at 10s; an MCP handler in the top bucket signals a service-boundary regression.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.95, sum by (le, tool) (rate(synthorg_mcp_handler_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{tool}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 58}
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "id": 820,
+      "title": "Audit & Performance",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 66},
+      "panels": [
+        {
+          "type": "timeseries",
+          "id": 821,
+          "title": "Audit chain append rate by status",
+          "description": "synthorg_audit_chain_appends_total partitioned by status (signed / fallback / error). Sustained 'error' rate indicates a TSA / signing infrastructure outage.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (status) (rate(synthorg_audit_chain_appends_total[5m]))",
+              "legendFormat": "{{status}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 67}
+        },
+        {
+          "type": "stat",
+          "id": 822,
+          "title": "Audit chain integrity (last hour, broken)",
+          "description": "increase(synthorg_audit_chain_verifications_total{outcome=\"broken\"}[1h]). Any non-zero value is an alertable incident: hash-chain tampering, signature corruption, or storage drift. The 'valid' outcome is intentionally excluded so healthy verification traffic does not trip the threshold.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum(increase(synthorg_audit_chain_verifications_total{outcome=\"broken\"}[1h]))",
+              "legendFormat": "broken",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "red", "value": 1}]}}},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 67}
+        },
+        {
+          "type": "timeseries",
+          "id": 823,
+          "title": "Budget query p95 latency by query type",
+          "description": "histogram_quantile(0.95, rate(synthorg_budget_query_duration_seconds_bucket[5m])) split by query_type (total_cost / agent_cost / project_cost / ...). Budget reads are SQLite-bound; p95 over 100ms is a regression.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.95, sum by (le, query_type) (rate(synthorg_budget_query_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{query_type}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 67}
+        }
+      ]
     }
   ],
   "refresh": "30s",

@@ -58,6 +58,7 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.approval_gate import (
     APPROVAL_STATUS_TRANSITIONED,
 )
+from synthorg.observability.metrics_hub import record_approval_decision
 
 if TYPE_CHECKING:
     from synthorg.persistence.approval_protocol import ApprovalRepository
@@ -452,6 +453,7 @@ class ApprovalStore:
                     to_status=ApprovalStatus.EXPIRED.value,
                 )
                 logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
+                record_approval_decision(outcome="expired")
                 self._fire_expire_callback(expired)
             result.extend(item for item in page_result if item.id not in lost_race_ids)
             result.extend(refetched_rows)
@@ -738,6 +740,7 @@ class ApprovalStore:
                 API_APPROVAL_EXPIRED,
                 approval_id=item.id,
             )
+            record_approval_decision(outcome="expired")
             if self._on_expire is not None:
                 try:
                     self._on_expire(expired)

@@ -24,6 +24,7 @@ from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_SWEEPER_STARTED,
     CONFLICT_ESCALATION_SWEEPER_STOPPED,
 )
+from synthorg.observability.metrics_hub import record_escalation_outcome
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
 if TYPE_CHECKING:
@@ -290,6 +291,7 @@ class EscalationExpirationSweeper:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+                record_escalation_outcome(outcome="sweeper_failed")
             try:
                 await asyncio.wait_for(
                     stop_event.wait(),

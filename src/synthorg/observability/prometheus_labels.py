@@ -18,17 +18,25 @@ from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.providers.errors import ProviderErrorLabel
 
 __all__ = [
+    "MCP_UNKNOWN_TOOL_LABEL",
     "TRANSIENT_PROVIDER_ERROR_CLASSES",
     "VALID_API_ERROR_CATEGORIES",
+    "VALID_APPROVAL_OUTCOMES",
     "VALID_AUDIT_APPEND_STATUSES",
+    "VALID_AUDIT_VERIFICATION_OUTCOMES",
+    "VALID_BLUEPRINT_OUTCOMES",
+    "VALID_BUDGET_QUERY_TYPES",
     "VALID_CACHE_NAMES",
     "VALID_CACHE_OUTCOMES",
     "VALID_DISCONNECT_REASONS",
     "VALID_DISCONNECT_TRANSPORTS",
+    "VALID_ESCALATION_OUTCOMES",
     "VALID_IDENTITY_CHANGE_TYPES",
+    "VALID_MCP_HANDLER_OUTCOMES",
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
     "VALID_PROVIDER_ERROR_CLASSES",
+    "VALID_SETTINGS_NAMESPACES",
     "VALID_STATUS_CLASSES",
     "VALID_TASK_OUTCOMES",
     "VALID_TOKEN_DIRECTIONS",
@@ -37,8 +45,11 @@ __all__ = [
     "VALID_WORKFLOW_EXECUTION_STATUSES",
     "_LabelSnapshot",
     "_reset_label_snapshot_for_tests",
+    "_reset_mcp_tool_names_for_tests",
     "_snapshot_lock",
     "is_known_agent_id",
+    "normalize_mcp_tool_label",
+    "register_mcp_tool_names",
     "require_finite",
     "require_label",
     "require_label_summary",
@@ -240,6 +251,81 @@ VALID_DISCONNECT_REASONS: Final[frozenset[str]] = frozenset(
     {"client_initiated", "transport_error", "cancelled", "timeout"}
 )
 
+# -- Approval / escalation / blueprint / settings / MCP / budget / audit ---
+# Bounded label vocabularies for the secondary-domain observability
+# metrics (approvals, escalations, blueprint instantiations, settings
+# mutations, MCP handler outcomes, budget queries, audit-chain
+# integrity verifications). The settings namespace allowlist mirrors
+# the filenames in ``src/synthorg/settings/definitions/`` -- a parity
+# test under ``tests/unit/observability/`` asserts the two stay in
+# lockstep so adding a new namespace fails fast in tests.
+VALID_APPROVAL_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"approved", "rejected", "expired"}
+)
+VALID_ESCALATION_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {
+        "resolved",
+        "escalated_to_human",
+        "auto_resolved",
+        "notify_failed",
+        "sweeper_failed",
+    }
+)
+VALID_BLUEPRINT_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"success", "validation_error", "not_found", "unknown_error"}
+)
+VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
+    {
+        "a2a",
+        "api",
+        "backup",
+        "budget",
+        "client",
+        "communication",
+        "company",
+        "coordination",
+        "engine",
+        "hr",
+        "integrations",
+        "memory",
+        "meta",
+        "notifications",
+        "observability",
+        "providers",
+        "security",
+        "settings_ns",
+        "simulations",
+        "telemetry",
+        "tools",
+        "workers",
+    }
+)
+VALID_MCP_HANDLER_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {
+        "success",
+        "error",
+        "validation_error",
+        "guardrail_violated",
+        "not_found",
+        "capability_unsupported",
+    }
+)
+VALID_BUDGET_QUERY_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "balance",
+        "available_spend",
+        "burn_rate",
+        "daily_spend",
+        "cost_summary",
+        "total_cost",
+        "agent_cost",
+        "project_cost",
+    }
+)
+VALID_AUDIT_VERIFICATION_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"valid", "broken"}
+)
+
 
 # -- Snapshot-backed registry-bound label validation -----------------------
 # Push-time ``record_*`` methods on the Prometheus collector are
@@ -401,6 +487,51 @@ def validate_tool_name(value: str) -> None:
     """
     snapshot = _snapshot
     require_label_summary("tool_name", value, snapshot.tool_names)
+
+
+MCP_UNKNOWN_TOOL_LABEL: Final[str] = "__unknown__"
+
+_mcp_tool_names: frozenset[str] = frozenset()
+
+
+def register_mcp_tool_names(names: frozenset[str]) -> None:
+    """Seed the bounded MCP tool-name allowlist for cardinality control.
+
+    The MCP handler registry is closed at startup
+    (:meth:`DomainToolRegistry.freeze`); call this once with the
+    frozen set of registered tool names so
+    :func:`normalize_mcp_tool_label` can substitute
+    :data:`MCP_UNKNOWN_TOOL_LABEL` for any caller-supplied tool that
+    is not in the registry. Without this seed,
+    ``record_mcp_handler_outcome`` would emit arbitrary tool strings
+    as Prometheus labels, exploding cardinality on malformed
+    requests.
+    """
+    global _mcp_tool_names  # noqa: PLW0603
+    _mcp_tool_names = names
+
+
+def _reset_mcp_tool_names_for_tests() -> None:
+    """Reset the MCP tool-name allowlist to bootstrap. Test-only."""
+    global _mcp_tool_names  # noqa: PLW0603
+    _mcp_tool_names = frozenset()
+
+
+def normalize_mcp_tool_label(value: str) -> str:
+    """Return *value* if registered, else :data:`MCP_UNKNOWN_TOOL_LABEL`.
+
+    Bootstrap pass-through: when the allowlist is empty (the
+    invoker has not called :func:`register_mcp_tool_names` yet) the
+    raw value is returned. The MCP invoker registers the snapshot
+    at construction time before any request can fire, so the
+    bootstrap window is closed in practice; the pass-through exists
+    for tests that exercise the recording function in isolation.
+    """
+    if not _mcp_tool_names:
+        return value
+    if value in _mcp_tool_names:
+        return value
+    return MCP_UNKNOWN_TOOL_LABEL
 
 
 def is_known_agent_id(value: str) -> bool:

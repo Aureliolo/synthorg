@@ -66,6 +66,7 @@ from synthorg.observability.events.security import (
     SECURITY_APPROVAL_REJECTED,
     SECURITY_AUTH_FAILED,
 )
+from synthorg.observability.metrics_hub import record_approval_decision
 from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
@@ -481,6 +482,7 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         # operator-facing display channel without re-parsing.
         decided_by_user_id=decided_by_user_id,
     )
+    record_approval_decision(outcome="approved" if approved else "rejected")
 
     _publish_approval_event(request, ws_event, saved)
     _log_approval_decision(
