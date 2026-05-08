@@ -75,6 +75,15 @@
       "labels": ["dependencies", "type:chore", "scope:cli"]
     },
     {
+      "description": "Go toolchain coupling: the `golang` Dockerfile base image (docker/sidecar/Dockerfile FROM line) ships the toolchain that compiles cli/go.mod and docker/sidecar/go.mod. When go.mod's `go X.Y.Z` directive bumps to a newer patch (e.g. for a stdlib CVE fix), the Dockerfile pin must also move to a digest that ships X.Y.Z; otherwise CI's `GOTOOLCHAIN=local` reproducibility setting refuses with `go.mod requires go >= X.Y.Z (running go X.Y.Z-1; GOTOOLCHAIN=local)`. Pull the `golang` Dockerfile dep into the CLI group so both updates land in one PR with a coherent commit boundary.",
+      "matchManagers": ["dockerfile"],
+      "matchDepNames": ["golang"],
+      "groupName": "CLI dependencies",
+      "groupSlug": "cli",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:cli"]
+    },
+    {
       "description": "Container dependencies (all Dockerfile and Docker Compose images)",
       "matchManagers": ["dockerfile", "docker-compose"],
       "groupName": "Container dependencies",
