@@ -226,9 +226,17 @@ repos:
       - id: workflow-tag-lifecycle
         name: block tag CREATE+conditional-DELETE in same workflow (#1818)
         entry: uv
-        args: [run, python, scripts/check_workflow_tag_lifecycle.py]
+        args: [run, python, scripts/check_workflow_tag_lifecycle.py, --scan-all]
         language: system
         files: ^(\.github/workflows/.*\.ya?ml|scripts/check_workflow_tag_lifecycle\.py|\.pre-commit-config\.yaml)$
+        # pass_filenames: false so the hook always re-scans every
+        # workflow YAML regardless of which file in `files:` triggered
+        # it. Without this, an edit limited to the checker script or
+        # to .pre-commit-config.yaml would invoke the script with only
+        # those non-workflow paths; the script would skip them on the
+        # ``.yml/.yaml`` suffix filter and exit 0 with zero workflows
+        # actually scanned, letting a weakened gate land unchecked.
+        pass_filenames: false
 
       - id: doc-drift-counts
         name: doc count floors (event modules)

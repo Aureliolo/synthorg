@@ -56,8 +56,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _WORKFLOWS_ROOT = _REPO_ROOT / ".github" / "workflows"
 
 # CREATE: ``gh api`` invocation hitting the ``/git/refs`` endpoint with
-# an ``-f ref="refs/tags/...`` flag. ``gh api`` infers POST when a
-# ``-f`` flag is present, so this captures the create-ref shape.
+# a ``-f ref="refs/tags/...`` or ``-F ref=refs/tags/...`` flag. ``gh
+# api`` infers POST when any field flag is present, so this captures
+# the create-ref shape regardless of which field-flag form is used.
 #
 # Tolerance built into the pattern:
 #
@@ -65,12 +66,16 @@ _WORKFLOWS_ROOT = _REPO_ROOT / ".github" / "workflows"
 #   (followed by quote / whitespace / EOL), NOT a path segment as in
 #   ``git/refs/tags/...``. This excludes the DELETE shape, which always
 #   has a trailing path component.
+# - ``-[fF]`` matches both ``-f`` (raw string field) and ``-F`` (typed
+#   field); both flags POST to the same endpoint and both produce a
+#   working tag-create call, so missing one would let any future
+#   workflow bypass the gate by switching flag form.
 # - Backslash-newline continuations (``(?:[^\n]|\\\n)``) are tolerated
 #   between every pair of tokens so a multi-line invocation cannot
 #   bypass the gate just by wrapping. The 500 / 300 char windows cap
-#   pairing distance so an unrelated downstream ``-f`` cannot bind to
-#   a distant ``git/refs`` reference in the same run block.
-# - Argument order is not fixed: ``-f ref=refs/tags/...`` may appear
+#   pairing distance so an unrelated downstream ``-[fF]`` cannot bind
+#   to a distant ``git/refs`` reference in the same run block.
+# - Argument order is not fixed: ``-[fF] ref=refs/tags/...`` may appear
 #   either AFTER the endpoint (the common form) or BEFORE it. Both
 #   orderings hit the same POST endpoint, so both are matched.
 # - Anchored on ``refs/tags/`` so a heads-ref create (``refs/heads/...``)
@@ -78,9 +83,9 @@ _WORKFLOWS_ROOT = _REPO_ROOT / ".github" / "workflows"
 _TAG_CREATE_RE = re.compile(
     r"gh\s+api(?:[^\n]|\\\n){0,500}?"
     r"(?:"
-    r"git/refs[^/\w](?:[^\n]|\\\n){0,300}?-f\s+ref=[\"']?refs/tags/"
+    r"git/refs[^/\w](?:[^\n]|\\\n){0,300}?-[fF]\s+ref=[\"']?refs/tags/"
     r"|"
-    r"-f\s+ref=[\"']?refs/tags/(?:[^\n]|\\\n){0,300}?git/refs[^/\w]"
+    r"-[fF]\s+ref=[\"']?refs/tags/(?:[^\n]|\\\n){0,300}?git/refs[^/\w]"
     r")",
     re.MULTILINE,
 )

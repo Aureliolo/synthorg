@@ -101,6 +101,31 @@ class TestCreateMatching:
         creates, _deletes = _scan(tmp_path, content)
         assert len(creates) == 1
 
+    def test_typed_field_capital_f_flag(self, tmp_path: Path) -> None:
+        """``-F ref=`` (typed field) is the same POST; gate must catch it."""
+        content = (
+            "jobs:\n"
+            "  x:\n"
+            "    steps:\n"
+            "      - run: |\n"
+            "          gh api repos/foo/bar/git/refs \\\n"
+            "            -F ref=refs/tags/v1 \\\n"
+            "            -F sha=$GITHUB_SHA\n"
+        )
+        creates, _deletes = _scan(tmp_path, content)
+        assert len(creates) == 1
+
+    def test_typed_field_capital_f_reversed_order(self, tmp_path: Path) -> None:
+        """``-F ref=`` BEFORE the endpoint still matches."""
+        content = (
+            "jobs:\n"
+            "  x:\n"
+            "    steps:\n"
+            "      - run: gh api -F ref=refs/tags/v1 repos/foo/bar/git/refs\n"
+        )
+        creates, _deletes = _scan(tmp_path, content)
+        assert len(creates) == 1
+
 
 class TestCreateNonMatches:
     """The CREATE regex doesn't trip on look-alikes."""

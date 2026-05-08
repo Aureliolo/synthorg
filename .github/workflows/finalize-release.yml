@@ -146,31 +146,56 @@ jobs:
             exit 0
           fi
 
-          # Both succeeded -- check if release exists and is still a draft.
-          # Capture stderr separately so a transient auth / rate-limit /
-          # API failure (which retries via the next workflow_run event)
-          # is distinguishable from a genuinely missing draft (where
-          # release-please hasn't created the release yet, and we
-          # legitimately should skip publication). Bundling both into
-          # `proceed=false` would silently swallow API errors -- and
-          # since both upstream workflows are already complete by this
-          # point, there may be no later `workflow_run` to retry.
-          release_err=$(mktemp)
-          if IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --json isDraft --jq '.isDraft' 2>"$release_err"); then
-            : # success -- fall through to draft / published checks below
-          elif grep -qiE 'not found|could not resolve|HTTP 404' "$release_err"; then
-            echo "Release $TAG not found -- nothing to publish."
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-            rm -f "$release_err"
-            exit 0
-          else
+          # Both upstream workflows succeeded -- now confirm the draft
+          # release exists and is still a draft. Three distinct outcomes
+          # to disambiguate:
+          #
+          # 1. Success: read isDraft and continue.
+          # 2. "Not found" 404: release-please may legitimately not have
+          #    cut the release yet, OR a brand-new release page may be
+          #    surfacing transient 404s while the API catches up. Poll
+          #    for a bounded window before deciding which it is. With
+          #    both upstream workflows already complete, there is no
+          #    later `workflow_run` event to retry on, so a premature
+          #    "skip on first 404" can leave the commit `pending`
+          #    forever. After the retry budget is exhausted, treat the
+          #    miss as a genuine skip (release-please simply has not run
+          #    yet) and let the next push or finalize cycle pick it up.
+          # 3. Other failure (auth / rate limit / 5xx / DNS): fail the
+          #    job non-zero so the run is visible and can be retried,
+          #    rather than silently writing proceed=false.
+          IS_DRAFT=""
+          MISS_RETRIES=6              # 6 attempts
+          MISS_BACKOFF_BASE=5         # seconds: 5, 10, 15, 20, 25, 30 (105s total)
+          attempt=0
+          while [ "$attempt" -lt "$MISS_RETRIES" ]; do
+            attempt=$((attempt + 1))
+            release_err=$(mktemp)
+            if IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                --json isDraft --jq '.isDraft' 2>"$release_err"); then
+              rm -f "$release_err"
+              break
+            fi
+            if grep -qiE 'not found|could not resolve|HTTP 404' "$release_err"; then
+              rm -f "$release_err"
+              if [ "$attempt" -lt "$MISS_RETRIES" ]; then
+                sleep_for=$((MISS_BACKOFF_BASE * attempt))
+                echo "Release $TAG not found yet (attempt $attempt/$MISS_RETRIES); sleeping ${sleep_for}s before retry."
+                sleep "$sleep_for"
+                continue
+              fi
+              # Retries exhausted -- release-please hasn't cut the
+              # release; legitimate skip (the next push or scheduled
+              # cycle will pick it up).
+              echo "Release $TAG not found after $MISS_RETRIES attempts -- nothing to publish."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "::error::gh release view failed for $TAG (transient API/auth error)"
             cat "$release_err" >&2
             rm -f "$release_err"
             exit 1
-          fi
-          rm -f "$release_err"
+          done
 
           if [ "$IS_DRAFT" != "true" ]; then
             echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published."
