@@ -1,20 +1,40 @@
 /** Workflow definition, execution, versioning and blueprint types. */
 
-export type WorkflowNodeType =
-  | 'start'
-  | 'end'
-  | 'task'
-  | 'agent_assignment'
-  | 'conditional'
-  | 'parallel_split'
-  | 'parallel_join'
-  | 'subworkflow'
+export const WORKFLOW_NODE_TYPES = [
+  'start',
+  'end',
+  'task',
+  'agent_assignment',
+  'conditional',
+  'parallel_split',
+  'parallel_join',
+  'subworkflow',
+] as const
 
-export type WorkflowEdgeType =
-  | 'sequential'
-  | 'conditional_true'
-  | 'conditional_false'
-  | 'parallel_branch'
+export type WorkflowNodeType = (typeof WORKFLOW_NODE_TYPES)[number]
+
+export const WORKFLOW_EDGE_TYPES = [
+  'sequential',
+  'conditional_true',
+  'conditional_false',
+  'parallel_branch',
+] as const
+
+export type WorkflowEdgeType = (typeof WORKFLOW_EDGE_TYPES)[number]
+
+export function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
+  return (
+    typeof value === 'string'
+    && (WORKFLOW_NODE_TYPES as readonly string[]).includes(value)
+  )
+}
+
+export function isWorkflowEdgeType(value: unknown): value is WorkflowEdgeType {
+  return (
+    typeof value === 'string'
+    && (WORKFLOW_EDGE_TYPES as readonly string[]).includes(value)
+  )
+}
 
 export interface WorkflowNodeData {
   readonly id: string
