@@ -26,13 +26,13 @@ uv sync --group docs                                # docs toolchain (zensical +
 uv run ruff check src/ tests/ --fix                 # lint + auto-fix
 uv run ruff format src/ tests/                      # format
 uv run mypy src/ tests/                             # strict type-check
-uv run python -m pytest tests/ -m unit -n 8 --dist=loadfile         # unit
-uv run python -m pytest tests/ -m integration -n 8 --dist=loadfile  # integration
-uv run python -m pytest tests/ -m e2e -n 8 --dist=loadfile          # e2e
-uv run python -m pytest tests/ -n 8 --dist=loadfile --ignore=tests/benchmarks/ --cov=synthorg --cov-fail-under=80
+uv run python -m pytest tests/ -m unit                                              # -n 8 --dist=loadfile via pyproject addopts
+uv run python -m pytest tests/ -m integration
+uv run python -m pytest tests/ -m e2e
+uv run python -m pytest tests/ --ignore=tests/benchmarks/ --cov=synthorg --cov-fail-under=80
 uv run python -m pytest tests/benchmarks/ --codspeed -n0
-HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n 8 --dist=loadfile -k properties
-HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit -n 8 --dist=loadfile --timeout=0
+HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -k properties
+HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit --timeout=0
 uv run pre-commit run --all-files
 atlas migrate diff --env sqlite <name>              # or --env postgres
 PYTHONPATH=. uv run zensical build                  # docs
@@ -80,7 +80,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 ## Testing (detail in [conventions.md](docs/reference/conventions.md))
 
 - Markers: `@pytest.mark.{unit,integration,e2e,slow}`. Async `auto`. Timeout 30s global. Coverage 80% min.
-- Always `pytest-xdist -n 8 --dist=loadfile` (`loadfile` prevents 3.14+Windows ProactorEventLoop leak).
+- xdist `-n 8 --dist=loadfile` auto-applied via pyproject `addopts` (`loadfile` prevents 3.14+Windows ProactorEventLoop leak).
 - Windows: unit tests use `WindowsSelectorEventLoopPolicy` (3.14 IOCP teardown race). Subprocess tests override back.
 - Mock-spec: every Mock declares `spec=ConcreteClass`; baseline at `scripts/mock_spec_baseline.txt`.
 - FakeClock from `tests._shared.fake_clock`; inject via `clock=`.
