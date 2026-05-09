@@ -1,5 +1,7 @@
 """Memory namespace setting definitions."""
 
+from typing import Final
+
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -170,5 +172,77 @@ _r.register(
         min_value=64,
         max_value=4096,
         yaml_path="memory.fine_tune.chunk_size",
+    )
+)
+
+# ── Fine-tune preflight thresholds ──────────────────────────────
+# Module-level defaults exported as ``Final[int]`` so the memory
+# controller imports them without re-introducing bare numeric
+# literals in business logic.  ``definitions/`` is allowlisted by
+# the no-magic-numbers gate, which is the canonical home for every
+# numeric tuning knob in the codebase.
+
+FINE_TUNE_DEFAULT_BATCH_SIZE: Final[int] = 16
+"""Fallback batch size used when no VRAM tier matches (CPU-only / sub-threshold)."""
+
+FINE_TUNE_MIN_DOCS_REQUIRED: Final[int] = 10
+"""Hard floor on source-corpus document count for embedding fine-tune."""
+
+FINE_TUNE_MIN_DOCS_RECOMMENDED: Final[int] = 50
+"""Soft minimum: corpora below this size emit a preflight warn band."""
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_default_batch_size",
+        type=SettingType.INTEGER,
+        default=str(FINE_TUNE_DEFAULT_BATCH_SIZE),
+        description=(
+            "Fallback batch size for embedding fine-tune when the VRAM"
+            " tier table does not produce a match (CPU-only or"
+            " sub-threshold GPU)."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=1024,
+        yaml_path="memory.fine_tune.default_batch_size",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_min_docs_required",
+        type=SettingType.INTEGER,
+        default=str(FINE_TUNE_MIN_DOCS_REQUIRED),
+        description=(
+            "Hard floor on source-corpus document count for embedding"
+            " fine-tune. Preflight rejects corpora below this size."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=1_000,
+        yaml_path="memory.fine_tune.min_docs_required",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_min_docs_recommended",
+        type=SettingType.INTEGER,
+        default=str(FINE_TUNE_MIN_DOCS_RECOMMENDED),
+        description=(
+            "Soft minimum on source-corpus document count for embedding"
+            " fine-tune. Preflight emits a warn band for corpora at or"
+            " below this size."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=10_000,
+        yaml_path="memory.fine_tune.min_docs_recommended",
     )
 )

@@ -8,7 +8,12 @@ from litestar import Controller, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
+from synthorg.api.dto import (
+    DEFAULT_LIMIT,
+    ApiResponse,
+    PaginatedResponse,
+    PaginationMeta,
+)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -27,6 +32,7 @@ from synthorg.observability.events.hr import (
     HR_SCALING_PRIORITY_ORDER_UPDATED,
     HR_SCALING_STRATEGY_TOGGLED,
 )
+from synthorg.settings.definitions.api import SCALING_STRATEGY_PRIORITY_FALLBACK
 
 logger = get_logger(__name__)
 
@@ -151,14 +157,18 @@ class ScalingController(Controller):
     async def list_strategies(
         self,
         state: State,
-    ) -> ApiResponse[tuple[ScalingStrategyResponse, ...]]:
-        """List all scaling strategies with their current status.
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[ScalingStrategyResponse]:
+        """List all scaling strategies with their current status, paginated by name.
 
         Args:
             state: Application state.
+            cursor: Opaque cursor from a previous page.
+            limit: Page size.
 
         Returns:
-            Strategy list with enabled/priority info.
+            Paginated strategy list with enabled/priority info.
         """
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
@@ -167,29 +177,45 @@ class ScalingController(Controller):
                 HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="list_strategies",
             )
-            return ApiResponse(data=())
+            return PaginatedResponse[ScalingStrategyResponse](
+                data=(),
+                pagination=PaginationMeta(
+                    limit=limit,
+                    next_cursor=None,
+                    has_more=False,
+                ),
+            )
 
         config = scaling.config
         configured_order = {
             name.value: idx for idx, name in enumerate(config.priority_order)
         }
 
-        strategies = tuple(
+        ordered = tuple(
             ScalingStrategyResponse(
                 name=str(s.name),
                 enabled=scaling.is_strategy_enabled(str(s.name)),
-                priority=configured_order.get(str(s.name), 999),
+                priority=configured_order.get(
+                    str(s.name),
+                    SCALING_STRATEGY_PRIORITY_FALLBACK,
+                ),
             )
-            for s in scaling.strategies
+            for s in sorted(scaling.strategies, key=lambda s: str(s.name))
         )
-        return ApiResponse(data=strategies)
+        page, meta = paginate_cursor(
+            ordered,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse[ScalingStrategyResponse](data=page, pagination=meta)
 
     @get("/decisions", guards=[require_read_access])
     async def list_decisions(
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[ScalingDecisionResponse]:
         """List recent scaling decisions.
 
@@ -208,7 +234,7 @@ class ScalingController(Controller):
                 HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="list_decisions",
             )
-            return PaginatedResponse(
+            return PaginatedResponse[ScalingDecisionResponse](
                 data=(),
                 pagination=PaginationMeta(
                     limit=limit,
@@ -229,20 +255,24 @@ class ScalingController(Controller):
             cursor=cursor,
             secret=state.app_state.cursor_secret,
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        return PaginatedResponse[ScalingDecisionResponse](data=page, pagination=meta)
 
     @get("/signals", guards=[require_read_access])
     async def list_signals(
         self,
         state: State,
-    ) -> ApiResponse[tuple[ScalingSignalResponse, ...]]:
-        """Get current signal values for dashboard display.
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[ScalingSignalResponse]:
+        """Get current signal values for dashboard display, paginated by name.
 
         Args:
             state: Application state.
+            cursor: Opaque cursor from a previous page.
+            limit: Page size.
 
         Returns:
-            Current signal values from all sources.
+            Paginated signal values from all sources.
         """
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
@@ -251,7 +281,14 @@ class ScalingController(Controller):
                 HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="list_signals",
             )
-            return ApiResponse(data=())
+            return PaginatedResponse[ScalingSignalResponse](
+                data=(),
+                pagination=PaginationMeta(
+                    limit=limit,
+                    next_cursor=None,
+                    has_more=False,
+                ),
+            )
 
         # Read live signals from the most recently built context. We
         # fall back to decision history when no context has been built
@@ -279,7 +316,14 @@ class ScalingController(Controller):
                     if name_str not in seen:
                         seen.add(name_str)
                         signals.append(_signal_to_response(signal))
-        return ApiResponse(data=tuple(signals))
+        ordered = tuple(sorted(signals, key=lambda s: str(s.name)))
+        page, meta = paginate_cursor(
+            ordered,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse[ScalingSignalResponse](data=page, pagination=meta)
 
     @post(
         "/evaluate",
@@ -391,7 +435,10 @@ class ScalingController(Controller):
             data=ScalingStrategyResponse(
                 name=strategy_name,
                 enabled=scaling.is_strategy_enabled(strategy_name),
-                priority=configured_order.get(strategy_name, 999),
+                priority=configured_order.get(
+                    strategy_name,
+                    SCALING_STRATEGY_PRIORITY_FALLBACK,
+                ),
             ),
         )
 

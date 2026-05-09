@@ -10,6 +10,7 @@ from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import ImprovementProposal, RolloutResult
 from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.meta.telemetry.emitter import HttpAnalyticsEmitter
+from tests._shared.fake_clock import FakeClock
 
 from .conftest import BUILTIN_RULE_NAMES
 
@@ -38,7 +39,12 @@ class TestEmitterBuffering:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock):
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ):
             await emitter.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
@@ -51,7 +57,12 @@ class TestEmitterBuffering:
         sample_rollout_result: RolloutResult,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock):
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ):
             await emitter.emit_rollout(
                 sample_rollout_result,
                 proposal=sample_proposal,
@@ -76,7 +87,12 @@ class TestEmitterBuffering:
             self_improvement_config=si,
             builtin_rule_names=BUILTIN_RULE_NAMES,
         )
-        with patch.object(em, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            em,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             for _ in range(3):
                 await em.emit_decision(
                     sample_outcome,
@@ -92,7 +108,12 @@ class TestEmitterBuffering:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             await emitter.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
@@ -106,7 +127,12 @@ class TestEmitterBuffering:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock):
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ):
             assert emitter._flush_task is None
             await emitter.emit_decision(
                 sample_outcome,
@@ -125,7 +151,12 @@ class TestEmitterFlush:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             await emitter.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
@@ -138,7 +169,12 @@ class TestEmitterFlush:
         self,
         emitter: HttpAnalyticsEmitter,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             await emitter.flush()
             mock_send.assert_not_awaited()
 
@@ -148,7 +184,12 @@ class TestEmitterFlush:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             await emitter.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
@@ -169,7 +210,12 @@ class TestEmitterFlush:
             self_improvement_config=self_improvement_config,
             builtin_rule_names=BUILTIN_RULE_NAMES,
         )
-        with patch.object(em, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            em,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             async with em as emitter:
                 await emitter.emit_decision(
                     sample_outcome,
@@ -378,3 +424,64 @@ class TestEmitterCloseEnqueueRace:
             assert em.pending_count == 0
         finally:
             await em._client.aclose()
+
+
+class TestEmitterClockSeam:
+    """FakeClock drives flush-throttle bookkeeping deterministically."""
+
+    async def test_init_records_clock_monotonic(
+        self,
+        analytics_config: CrossDeploymentAnalyticsConfig,
+        self_improvement_config: SelfImprovementConfig,
+    ) -> None:
+        """``__init__`` reads ``_last_flush_at`` from the injected clock."""
+        fake = FakeClock()
+        fake.advance(42.5)
+        em = HttpAnalyticsEmitter(
+            analytics_config=analytics_config,
+            self_improvement_config=self_improvement_config,
+            builtin_rule_names=BUILTIN_RULE_NAMES,
+            clock=fake,
+        )
+        try:
+            assert em._last_flush_at == 42.5
+        finally:
+            await em._client.aclose()
+
+    async def test_flush_updates_last_flush_at_via_clock(
+        self,
+        analytics_config: CrossDeploymentAnalyticsConfig,
+        self_improvement_config: SelfImprovementConfig,
+        sample_outcome: ProposalOutcome,
+        sample_proposal: ImprovementProposal,
+    ) -> None:
+        """``flush()`` advances ``_last_flush_at`` to the new clock reading."""
+        fake = FakeClock()
+        em = HttpAnalyticsEmitter(
+            analytics_config=analytics_config,
+            self_improvement_config=self_improvement_config,
+            builtin_rule_names=BUILTIN_RULE_NAMES,
+            clock=fake,
+        )
+        # ``emit_decision`` may start the periodic ``_flush_task`` via
+        # ``_enqueue``; closing only ``_client`` would leave that task
+        # running across tests because ``_closed`` would never be set.
+        # ``aclose()`` flips the kill switch and awaits cancellation
+        # before tearing down the HTTP client.
+        try:
+            with patch.object(
+                em,
+                "_send_batch",
+                new_callable=AsyncMock,
+                spec=HttpAnalyticsEmitter._send_batch,
+            ):
+                start = em._last_flush_at
+                fake.advance(7.5)
+                await em.emit_decision(
+                    sample_outcome,
+                    proposal=sample_proposal,
+                )
+                await em.flush()
+                assert em._last_flush_at == start + 7.5
+        finally:
+            await em.aclose()

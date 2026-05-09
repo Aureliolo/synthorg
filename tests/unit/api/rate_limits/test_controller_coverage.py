@@ -141,6 +141,11 @@ _GUARDED_ENDPOINTS: tuple[tuple[Path, str, str], ...] = (
         "interrupts.resume",
     ),
     (
+        _CONTROLLERS_DIR / "events.py",
+        "stream",
+        "events.stream",
+    ),
+    (
         _CONTROLLERS_DIR / "autonomy.py",
         "update_autonomy",
         "agents.autonomy_change",

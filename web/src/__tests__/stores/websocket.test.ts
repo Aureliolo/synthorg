@@ -422,12 +422,63 @@ const connectPromise = useWebSocketStore.getState().connect()
       ws.simulateClose()
       expect(useWebSocketStore.getState().connected).toBe(false)
 
-      // Advance timer to trigger reconnect (base delay = 1000ms)
-      await vi.advanceTimersByTimeAsync(1000)
+      // Advance timer past the +/-20% jitter ceiling on top of the
+      // 1000ms base delay so the reconnect timer fires regardless of
+      // which value Math.random produced.
+      await vi.advanceTimersByTimeAsync(1200)
 
       // A new WebSocket should have been created
       expect(MockWebSocket.instances.length).toBeGreaterThan(1)
     })
+
+    it.each([
+      // Math.random() result -> expected delay (ms) for base=1000ms, jitter [0.8, 1.2)
+      { random: 0, expected: 800, label: 'lower bound' },
+      { random: 0.5, expected: 1000, label: 'midpoint' },
+      // Math.random() returns values in [0, 1); use 0.999 to lock in the
+      // upper-bound multiplier without overshooting the spec.
+      { random: 0.999, expected: 1200, label: 'upper bound' },
+    ])(
+      'applies +/-20% jitter to the reconnect delay ($label)',
+      async ({ random, expected }) => {
+        const mathRandom = vi.spyOn(Math, 'random').mockReturnValue(random)
+        // Hoist the spy declaration above the ``try`` so the
+        // ``finally`` block can restore it; the previous shape left
+        // the spy in scope only inside ``try`` and never undid it,
+        // which leaked across tests because vitest config does not
+        // enable ``restoreMocks`` and the global ``afterEach`` does
+        // not call ``vi.restoreAllMocks()``.
+        const setTimeoutSpy = vi.spyOn(window, 'setTimeout')
+        try {
+          const connectPromise = useWebSocketStore.getState().connect()
+          await vi.runAllTimersAsync()
+          await connectPromise
+
+          const ws = MockWebSocket.latest()!
+          ws.simulateOpen()
+
+          setTimeoutSpy.mockClear()
+          ws.simulateClose()
+
+          // The first ``setTimeout`` after the close is the reconnect
+          // timer; subsequent calls (toast queue, etc.) are not the
+          // one we care about. With Math.random stubbed, the delay is
+          // deterministic at base*(MIN + random * (MAX - MIN)).
+          const reconnectCall = setTimeoutSpy.mock.calls.find(
+            ([, ms]) => typeof ms === 'number' && ms >= 700 && ms <= 1300,
+          )
+          expect(reconnectCall).toBeDefined()
+          const delay = reconnectCall?.[1] as number
+          // Allow +/-1ms slack for floating-point rounding through
+          // Math.round() and the post-clamp Math.max(1, ...).
+          expect(delay).toBeGreaterThanOrEqual(expected - 1)
+          expect(delay).toBeLessThanOrEqual(expected + 1)
+        } finally {
+          setTimeoutSpy.mockRestore()
+          mathRandom.mockRestore()
+        }
+      },
+    )
 
     it('does not reconnect on intentional disconnect', async () => {
 const connectPromise = useWebSocketStore.getState().connect()

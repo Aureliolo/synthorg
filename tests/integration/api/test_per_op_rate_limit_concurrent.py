@@ -307,7 +307,10 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
             release.wait(_HOLD_TIMEOUT_SECONDS)
             return ()
 
-        def _held_batch_size() -> int:
+        def _held_batch_size(*_args: Any, **_kwargs: Any) -> int:
+            # Accept and ignore any kwargs the production helper grows
+            # (currently ``default_batch_size``) so the patch stays
+            # signature-tolerant across controller changes.
             return 1
 
         # The handler invokes two helpers via ``asyncio.to_thread``;

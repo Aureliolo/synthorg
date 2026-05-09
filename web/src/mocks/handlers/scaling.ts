@@ -6,11 +6,16 @@ import type {
   getScalingStrategies,
   triggerScalingEvaluation,
 } from '@/api/endpoints/scaling'
-import { emptyPage, paginatedFor, successFor } from './helpers'
+import {
+  emptyPage,
+  paginatedEnvelopeFor,
+  paginatedFor,
+  successFor,
+} from './helpers'
 
 export const scalingHandlers = [
   http.get('/api/v1/scaling/strategies', () =>
-    HttpResponse.json(successFor<typeof getScalingStrategies>([])),
+    HttpResponse.json(paginatedEnvelopeFor<typeof getScalingStrategies>()),
   ),
   http.get('/api/v1/scaling/decisions', () =>
     HttpResponse.json(
@@ -20,7 +25,7 @@ export const scalingHandlers = [
     ),
   ),
   http.get('/api/v1/scaling/signals', () =>
-    HttpResponse.json(successFor<typeof getScalingSignals>([])),
+    HttpResponse.json(paginatedEnvelopeFor<typeof getScalingSignals>()),
   ),
   http.post('/api/v1/scaling/evaluate', () =>
     HttpResponse.json(successFor<typeof triggerScalingEvaluation>([])),

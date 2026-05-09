@@ -5,7 +5,6 @@ contract, mapping between domain models and LiteLLM's chat-completion
 API.
 """
 
-import time
 from collections.abc import (
     Mapping,  # noqa: TC003  # runtime annotation on driver method
 )
@@ -44,6 +43,7 @@ from litellm.exceptions import (
     Timeout as LiteLLMTimeout,
 )
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_AUTH_ERROR,
@@ -139,6 +139,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         config: ProviderConfig,
         *,
         connection_catalog: Any | None = None,
+        clock: Clock | None = None,
     ) -> None:
         retry_handler = (
             RetryHandler(config.retry) if config.retry.max_retries > 0 else None
@@ -154,6 +155,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         self._provider_name = provider_name
         self._config = config
         self._connection_catalog = connection_catalog
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._resolved_credentials: dict[str, str] | None = None
         # Cached credentials expire after ``_CREDENTIAL_CACHE_TTL`` so
         # rotating/OAuth tokens are re-fetched from the catalog
@@ -179,7 +181,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             PROVIDER_CONNECTION_RESOLVED,
         )
 
-        now = time.monotonic()
+        now = self._clock.monotonic()
         # Never serve cached OAuth credentials -- the token manager
         # can rotate them at any moment and a stale bearer token
         # would just fail auth on the next request with no way for

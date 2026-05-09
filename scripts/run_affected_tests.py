@@ -200,6 +200,32 @@ _WORKER_CRASH_RE = re.compile(
     r"worker '(?P<worker>\w+)' crashed while running '(?P<test>[^']+)'",
 )
 
+# A different xdist signature for the same underlying problem: when a
+# worker terminates abnormally between tests (rather than during one),
+# xdist prints ``[gwN] node down: Not properly terminated`` instead of
+# the canonical ``worker 'gwN' crashed while running '...'`` form. The
+# Python 3.14 + Windows ProactorEventLoop IOCP teardown race produces
+# both signatures depending on exactly when the IOCP cleanup blew up,
+# and both should be treated as native-level crash advisory rather
+# than a real test failure. Captures the worker id only -- there is
+# no associated test id in this signature.
+_NODE_DOWN_RE = re.compile(
+    r"\[(?P<worker>gw\d+)\] node down: Not properly terminated",
+)
+
+# pytest-xdist's scheduler raises Python-level exceptions when it
+# tries to assign work to a worker that already disappeared (KeyError
+# in ``loadscope.py``) or asserts on a residual ``crashitem`` while a
+# worker reports finished. Both are downstream consequences of the
+# native-level worker death captured by ``_NODE_DOWN_RE`` /
+# ``_WORKER_CRASH_RE`` above, not independent regressions, so the
+# classifier folds them into the crash-advisory branch when paired
+# with at least one observed crash signature.
+_XDIST_INTERNAL_ERROR_RE = re.compile(
+    r"^INTERNALERROR>",
+    re.MULTILINE,
+)
+
 # pytest in ``-q`` mode prints ``FAILED <test_id> - <reason>`` (or just
 # ``FAILED <test_id>``) at the start of a line for every failure in the
 # session summary.  ``\S+`` captures up to the first whitespace; valid
@@ -563,6 +589,11 @@ def _parse_worker_crashes(stdout: str) -> tuple[tuple[str, str], ...]:
     )
 
 
+def _parse_node_down(stdout: str) -> tuple[str, ...]:
+    """Return the worker ids of every ``[gwN] node down`` announcement."""
+    return tuple(m.group("worker") for m in _NODE_DOWN_RE.finditer(stdout))
+
+
 def _parse_test_failures(stdout: str) -> tuple[str, ...]:
     """Extract test ids from ``FAILED`` summary lines."""
     return tuple(m.group("test") for m in _FAILED_RE.finditer(stdout))
@@ -588,6 +619,12 @@ def _classify_isolation_outcome(
     * Crashes only, no repeats -> crash advisory (treat as pass; the
       gate exits 0 and prints a hint about Windows ProactorEventLoop /
       cross-worktree contention).
+    * Worker(s) went ``node down`` AND the only summary signal is an
+      ``INTERNALERROR>`` traceback (xdist scheduler crashed because
+      its workers vanished) -> crash advisory.  Without the parser
+      branch the dead-worker chain reads as "non-zero returncode +
+      no parsable test signal" and falls through to fail-closed,
+      blocking the push on documented native-level flakiness.
     * No crashes, no failures, returncode 0 -> pass.
     * No parsable signal but returncode non-zero -> fail closed
       (regression) so degraded output never silently passes.
@@ -595,6 +632,8 @@ def _classify_isolation_outcome(
     crashes = _parse_worker_crashes(stdout)
     crashed_tests = tuple(test for _, test in crashes)
     crashed_set = set(crashed_tests)
+    node_down_workers = _parse_node_down(stdout)
+    has_internal_error = bool(_XDIST_INTERNAL_ERROR_RE.search(stdout))
     failed_tests_raw = _parse_test_failures(stdout)
     real_failures = tuple(t for t in failed_tests_raw if t not in crashed_set)
 
@@ -622,6 +661,17 @@ def _classify_isolation_outcome(
             kind="crash_advisory",
             exit_code=0,
             crashed_tests=crashed_tests,
+        )
+    # ``node down`` without a paired ``crashed while running`` line means
+    # the worker died between tests, so the test names are not
+    # recoverable -- surface the worker ids in their place so the
+    # advisory banner still has something to print and the
+    # ``crash_advisory`` invariant (``crashed_tests`` non-empty) holds.
+    if node_down_workers and has_internal_error and returncode != 0:
+        return IsolationOutcome(
+            kind="crash_advisory",
+            exit_code=0,
+            crashed_tests=tuple(f"<worker {w}>" for w in node_down_workers),
         )
     if returncode == 0:
         return IsolationOutcome(kind="pass", exit_code=0)

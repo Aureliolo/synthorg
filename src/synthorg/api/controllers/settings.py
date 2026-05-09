@@ -1,6 +1,7 @@
 """Settings controller -- CRUD for runtime-editable settings."""
 
 import asyncio
+import hashlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Self
 
@@ -20,15 +21,20 @@ from pydantic import (
 from synthorg.api.boundary import parse_typed
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.cursor import decode_keyset_cursor
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_keyset_meta,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
@@ -50,6 +56,7 @@ from synthorg.observability.sink_config_builder import (
     build_log_config_from_settings,
 )
 from synthorg.security.config import SecurityConfig
+from synthorg.settings.definitions.api import SINK_IDENTIFIER_FINGERPRINT_LENGTH
 from synthorg.settings.enums import SettingNamespace, SettingsImportSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
@@ -143,48 +150,114 @@ class SecurityConfigImportRequest(BaseModel):
     config: dict[str, Any]
 
 
-def _sink_to_dict(
+class SinkRotationResponse(BaseModel):
+    """Rotation policy summary for a file sink."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    strategy: NotBlankStr
+    max_bytes: int = Field(ge=0)
+    backup_count: int = Field(ge=0)
+
+
+class SinkInfoResponse(BaseModel):
+    """Single observability-sink summary returned by /settings/observability/sinks.
+
+    Mirrors the frontend ``SinkInfo`` interface field-for-field so the
+    pagination wire envelope stays typed end-to-end instead of leaking
+    a ``dict[str, Any]``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    identifier: NotBlankStr
+    sink_type: NotBlankStr
+    level: NotBlankStr
+    json_format: bool
+    rotation: SinkRotationResponse | None = None
+    is_default: bool
+    enabled: bool
+    routing_prefixes: tuple[str, ...] = ()
+
+
+def _hash_sink_target(target: str) -> str:
+    """Return a stable, non-reversible fingerprint for a sink destination.
+
+    Used by :func:`_sink_identifier` to derive a per-instance API
+    identifier without exposing the raw destination string (which can
+    embed credentials, query tokens, or auth-bearing path segments
+    for HTTP / OTLP sinks, and operator filesystem layout for FILE
+    sinks).  The fingerprint length is centralised in
+    :data:`SINK_IDENTIFIER_FINGERPRINT_LENGTH` so the wire-format
+    contract changes in one place.
+    """
+    return hashlib.sha256(target.encode("utf-8")).hexdigest()[
+        :SINK_IDENTIFIER_FINGERPRINT_LENGTH
+    ]
+
+
+def _sink_identifier(sink: SinkConfig) -> str:
+    """Return the stable API identifier for a ``SinkConfig``.
+
+    Console sinks use the fixed ``CONSOLE_SINK_ID`` token. Every other
+    sink derives a type-prefixed SHA-256 fingerprint over its target:
+
+    * ``FILE``:   ``file:<sha256(file_path)[:16]>``
+    * ``SYSLOG``: ``syslog:<sha256("host:port")[:16]>``
+    * ``HTTP``:   ``http:<sha256(url)[:16]>``
+    * ``OTLP``:   ``otlp:<sha256(endpoint)[:16]>``
+
+    The hash both prevents the public envelope from leaking embedded
+    credentials / query tokens and gives identical destinations the
+    same identifier, so the active-set membership test in
+    :func:`_append_disabled_defaults` and the cursor sort key in the
+    listing endpoint stay collision-free on operator-supplied input.
+
+    A sink without any of those endpoint fields is invalid per
+    :meth:`SinkConfig._validate_sink_type_fields`; the
+    ``unnamed-<type>`` fallback only fires defensively against a
+    future sink type that hasn't been wired here yet, never on
+    well-formed config.
+    """
+    if sink.sink_type == SinkType.CONSOLE:
+        return CONSOLE_SINK_ID
+    if sink.file_path:
+        return f"file:{_hash_sink_target(sink.file_path)}"
+    if sink.sink_type == SinkType.SYSLOG and sink.syslog_host:
+        target = f"{sink.syslog_host}:{sink.syslog_port}"
+        return f"syslog:{_hash_sink_target(target)}"
+    if sink.sink_type == SinkType.HTTP and sink.http_url:
+        return f"http:{_hash_sink_target(sink.http_url)}"
+    if sink.sink_type == SinkType.OTLP and sink.otlp_endpoint:
+        return f"otlp:{_hash_sink_target(sink.otlp_endpoint)}"
+    return f"unnamed-{sink.sink_type.value}"
+
+
+def _sink_to_response(
     sink: SinkConfig,
     *,
     is_default: bool,
     enabled: bool = True,
     routing_prefixes: tuple[str, ...] | None = None,
-) -> dict[str, Any]:
-    """Convert a SinkConfig to a plain dict for API responses.
-
-    Args:
-        sink: Sink configuration to convert.
-        is_default: Whether this is a default (built-in) sink.
-        enabled: Whether the sink is currently active.
-        routing_prefixes: Custom routing prefixes (if routing overrides apply).
-
-    Returns:
-        Dict representation with all sink fields.
-    """
-    identifier: str
-    if sink.sink_type == SinkType.CONSOLE:
-        identifier = CONSOLE_SINK_ID
-    else:
-        identifier = sink.file_path or ""
-
-    rotation: dict[str, Any] | None = None
-    if sink.rotation is not None:
-        rotation = {
-            "strategy": sink.rotation.strategy.value,
-            "max_bytes": sink.rotation.max_bytes,
-            "backup_count": sink.rotation.backup_count,
-        }
-
-    return {
-        "identifier": identifier,
-        "sink_type": sink.sink_type.value,
-        "level": sink.level.value,
-        "json_format": sink.json_format,
-        "rotation": rotation,
-        "is_default": is_default,
-        "enabled": enabled,
-        "routing_prefixes": list(routing_prefixes) if routing_prefixes else [],
-    }
+) -> SinkInfoResponse:
+    """Convert a SinkConfig to the typed API response model."""
+    identifier = _sink_identifier(sink)
+    return SinkInfoResponse(
+        identifier=NotBlankStr(identifier),
+        sink_type=NotBlankStr(sink.sink_type.value),
+        level=NotBlankStr(sink.level.value),
+        json_format=sink.json_format,
+        rotation=SinkRotationResponse(
+            strategy=NotBlankStr(sink.rotation.strategy.value),
+            max_bytes=sink.rotation.max_bytes,
+            backup_count=sink.rotation.backup_count,
+        )
+        if sink.rotation is not None
+        else None,
+        is_default=is_default,
+        enabled=enabled,
+        routing_prefixes=routing_prefixes or (),
+    )
 
 
 def _validate_namespace(namespace: str) -> None:
@@ -295,7 +368,7 @@ class SettingsController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[SettingEntry]:
         """List settings with resolved values, keyset-paginated.
 
@@ -518,19 +591,23 @@ class SettingsController(Controller):
     async def list_sinks(
         self,
         state: State,
-    ) -> ApiResponse[list[dict[str, Any]]]:
-        """Return merged view of all configured log sinks.
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[SinkInfoResponse]:
+        """Return merged view of all configured log sinks, paginated.
 
         Reads ``sink_overrides``, ``custom_sinks``, ``root_log_level``,
         and ``enable_correlation`` from settings, merges them with
         DEFAULT_SINKS via the sink config builder, and returns a flat
-        list of all active sinks.
+        list of all active sinks ordered by ``identifier``.
 
         Args:
             state: Application state.
+            cursor: Opaque cursor from a previous page.
+            limit: Page size.
 
         Returns:
-            List of sink configuration dicts.
+            Paginated typed sink-info responses.
         """
         app_state: AppState = state.app_state
         svc = app_state.settings_service
@@ -552,18 +629,33 @@ class SettingsController(Controller):
                 custom_sinks_json=custom_json,
             )
         except ValueError as exc:
+            # ``overrides_json`` / ``custom_json`` are operator-supplied
+            # blobs that may contain filesystem paths, HTTP / OTLP
+            # endpoints with embedded query tokens, or syslog auth
+            # material. Logging them verbatim turns a parse failure
+            # into a secret-leak vector. Emit only coarse metadata so
+            # the sink count + presence are still observable.
             logger.warning(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                sink_overrides=overrides_json,
-                custom_sinks=custom_json,
+                has_sink_overrides=overrides_json != "{}",
+                sink_overrides_length=len(overrides_json),
+                has_custom_sinks=custom_json != "[]",
+                custom_sinks_length=len(custom_json),
             )
-            return ApiResponse(data=_defaults_only_sinks())
+            sinks = _defaults_only_sinks()
+        else:
+            sinks = _append_disabled_defaults(_build_sink_list(result))
 
-        sinks = _build_sink_list(result)
-        _append_disabled_defaults(sinks)
-        return ApiResponse(data=sinks)
+        ordered = tuple(sorted(sinks, key=lambda s: s.identifier))
+        page, meta = paginate_cursor(
+            ordered,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse[SinkInfoResponse](data=page, pagination=meta)
 
     @post(
         "/observability/sinks/_test",
@@ -845,16 +937,16 @@ def _parse_root_level(raw: str) -> LogLevel:
 
 def _build_sink_list(
     result: SinkBuildResult,
-) -> list[dict[str, Any]]:
+) -> list[SinkInfoResponse]:
     """Build the active sink list from a SinkBuildResult.
 
     Args:
         result: SinkBuildResult from the config builder.
 
     Returns:
-        List of sink dicts for all active sinks.
+        Typed sink-info responses for all active sinks.
     """
-    sinks: list[dict[str, Any]] = []
+    sinks: list[SinkInfoResponse] = []
     for sink in result.config.sinks:
         file_path = sink.file_path
         is_default = (
@@ -864,7 +956,7 @@ def _build_sink_list(
             result.routing_overrides.get(file_path) if file_path is not None else None
         )
         sinks.append(
-            _sink_to_dict(
+            _sink_to_response(
                 sink,
                 is_default=is_default,
                 routing_prefixes=routing,
@@ -874,40 +966,40 @@ def _build_sink_list(
 
 
 def _append_disabled_defaults(
-    sinks: list[dict[str, Any]],
-) -> None:
-    """Append disabled default sinks not present in the active list.
+    sinks: list[SinkInfoResponse],
+) -> list[SinkInfoResponse]:
+    """Return ``sinks`` extended with disabled-default entries.
 
-    Mutates *sinks* in place, adding entries for any default sink
-    that was removed by overrides.
+    The active list is left untouched; the returned value carries the
+    original entries followed by any default sink that was removed by
+    overrides, materialised as ``enabled=False`` responses. Identifier
+    matching uses :func:`_sink_identifier` so the active-set membership
+    test stays in lockstep with how default sinks are rendered on the
+    wire.
 
     Args:
-        sinks: Mutable list of active sink dicts.
-    """
-    active_ids = {s["identifier"] for s in sinks}
-    for default_sink in DEFAULT_SINKS:
-        identifier = (
-            CONSOLE_SINK_ID
-            if default_sink.sink_type == SinkType.CONSOLE
-            else (default_sink.file_path or "")
-        )
-        if identifier not in active_ids:
-            sinks.append(
-                _sink_to_dict(
-                    default_sink,
-                    is_default=True,
-                    enabled=False,
-                )
-            )
-
-
-def _defaults_only_sinks() -> list[dict[str, Any]]:
-    """Return all DEFAULT_SINKS as enabled dicts (fallback path).
+        sinks: Active sink responses (read-only -- never mutated).
 
     Returns:
-        List of sink dicts with all defaults enabled.
+        A new list with the active entries plus any synthesised
+        disabled-default entries.
     """
-    return [_sink_to_dict(sink, is_default=True) for sink in DEFAULT_SINKS]
+    active_ids = {s.identifier for s in sinks}
+    disabled_defaults = [
+        _sink_to_response(default_sink, is_default=True, enabled=False)
+        for default_sink in DEFAULT_SINKS
+        if _sink_identifier(default_sink) not in active_ids
+    ]
+    return [*sinks, *disabled_defaults]
+
+
+def _defaults_only_sinks() -> list[SinkInfoResponse]:
+    """Return all DEFAULT_SINKS as enabled responses (fallback path).
+
+    Returns:
+        Typed sink-info responses with all defaults enabled.
+    """
+    return [_sink_to_response(sink, is_default=True) for sink in DEFAULT_SINKS]
 
 
 def _sanitize_error(raw: str) -> str:

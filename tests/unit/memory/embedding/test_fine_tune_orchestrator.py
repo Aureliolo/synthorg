@@ -18,6 +18,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRunConfig,
 )
 from synthorg.memory.embedding.fine_tune_orchestrator import (
+    _PROGRESS_THROTTLE_SEC,
     FineTuneOrchestrator,
 )
 from synthorg.memory.errors import FineTuneCancelledError
@@ -25,6 +26,7 @@ from synthorg.persistence.sqlite.fine_tune_repo import (
     SQLiteFineTuneCheckpointRepository,
     SQLiteFineTuneRunRepository,
 )
+from tests._shared.fake_clock import FakeClock
 
 _SCHEMA_PATH = Path("src/synthorg/persistence/sqlite/schema.sql")
 
@@ -194,6 +196,66 @@ class TestOrchestratorRecovery:
         fetched = await run_repo.get_run("stale-run")
         assert fetched is not None
         assert fetched.stage == FineTuneStage.FAILED
+
+
+# -- Progress throttle (Clock seam) ----------------------------------
+
+
+@pytest.mark.unit
+class TestProgressThrottleClockSeam:
+    """FakeClock controls when ``_make_progress_cb`` lets emits through."""
+
+    async def test_throttle_uses_injected_clock(
+        self,
+        run_repo: SQLiteFineTuneRunRepository,
+        cp_repo: SQLiteFineTuneCheckpointRepository,
+    ) -> None:
+        fake = FakeClock()
+        orchestrator = FineTuneOrchestrator(
+            run_repo=run_repo,
+            checkpoint_repo=cp_repo,
+            clock=fake,
+        )
+        now = datetime.now(tz=UTC)
+        run = FineTuneRun(
+            id="throttle-run",
+            stage=FineTuneStage.TRAINING,
+            progress=0.0,
+            config=FineTuneRunConfig(
+                source_dir="/docs",
+                base_model="test-model",
+                output_dir="/out",
+            ),
+            started_at=now,
+            updated_at=now,
+        )
+        emit_count = 0
+
+        def _spy_emit(event_type: str, _run: FineTuneRun) -> None:
+            nonlocal emit_count
+            emit_count += 1
+
+        with patch.object(orchestrator, "_emit_ws", side_effect=_spy_emit):
+            cb = orchestrator._make_progress_cb(run)
+            # First call: clock.monotonic()=0, last_emit=0, throttled.
+            cb(0.05)
+            await asyncio.sleep(0)
+            assert emit_count == 0
+            # Below the throttle window: still throttled.
+            fake.advance(_PROGRESS_THROTTLE_SEC * 0.5)
+            cb(0.10)
+            await asyncio.sleep(0)
+            assert emit_count == 0
+            # Crossing the boundary: emit lands.
+            fake.advance(_PROGRESS_THROTTLE_SEC * 0.6)
+            cb(0.20)
+            await asyncio.sleep(0)
+            assert emit_count == 1
+            # Subsequent call within the new window: throttled again.
+            fake.advance(_PROGRESS_THROTTLE_SEC * 0.5)
+            cb(0.25)
+            await asyncio.sleep(0)
+            assert emit_count == 1
 
 
 # -- Status -----------------------------------------------------------

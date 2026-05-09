@@ -415,6 +415,14 @@ class ProviderResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    # Provider identifier. Populated by paginated list responses
+    # (``list_providers`` walks the configs dict by key and threads the
+    # name through ``to_provider_response(name=...)``) so cursor
+    # consumers can rebuild the dict-by-name index without relying on
+    # collection ordering. Single-provider GET-by-path responses leave
+    # this ``None`` because the URL already carries the identifier;
+    # consumers should fall back to the path parameter in that case.
+    name: NotBlankStr | None = None
     driver: NotBlankStr
     litellm_provider: NotBlankStr | None = None
     auth_type: AuthType
@@ -589,7 +597,11 @@ class ProbeLocalResponse(BaseModel):
         return dict(value)
 
 
-def to_provider_response(config: ProviderConfig) -> ProviderResponse:
+def to_provider_response(
+    config: ProviderConfig,
+    *,
+    name: str | None,
+) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
 
     Strips all secrets and provides boolean credential indicators.
@@ -598,6 +610,14 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
 
     Args:
         config: Provider configuration (may contain secrets).
+        name: Provider identifier. Pass the provider name for paginated
+            list responses (so each item carries its own name
+            independently of collection ordering). Pass ``None`` on
+            single-provider GET-by-path responses where the URL
+            already carries the identifier. The argument is required
+            (no default) so a future list endpoint cannot silently
+            omit it and break the dict-by-name reconstruction
+            contract on the frontend with ``name=None`` items.
 
     Returns:
         Safe response DTO with secrets stripped.
@@ -618,6 +638,7 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     # ProviderResponse DTO.  Cloud providers default them to False.
     local_preset = preset if isinstance(preset, LocalPreset) else None
     return ProviderResponse(
+        name=name,
         driver=config.driver,
         litellm_provider=config.litellm_provider,
         auth_type=config.auth_type,

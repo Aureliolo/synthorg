@@ -1,8 +1,10 @@
 import { createLogger } from '@/lib/logger'
 import { getCsrfToken } from '@/utils/csrf'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
+import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
 import {
   apiClient,
+  paginateAll,
   unwrap,
   unwrapPaginated,
   unwrapVoid,
@@ -42,11 +44,26 @@ import type {
 const log = createLogger('providers-api')
 
 export async function listProviders(): Promise<Record<string, ProviderConfig>> {
-  const response = await apiClient.get<ApiResponse<Record<string, ProviderConfig>>>('/providers')
-  const raw = unwrap<Record<string, ProviderConfig>>(response)
-  const result: Record<string, ProviderConfig> = Object.create(null) as Record<string, ProviderConfig>
-  for (const [key, provider] of Object.entries(raw)) {
+  const all = await paginateAll<ProviderConfig>(async (cursor) => {
+    const params = new URLSearchParams()
+    if (cursor) params.set('cursor', cursor)
+    const qs = params.toString()
+    const url = qs ? `/providers?${qs}` : '/providers'
+    const response = await apiClient.get<PaginatedResponse<ProviderConfig>>(url)
+    return unwrapPaginated<ProviderConfig>(response)
+  })
+  const result: Record<string, ProviderConfig> = Object.create(null)
+  for (const provider of all) {
+    const key = provider.name
+    // Prototype-pollution keys are silently dropped (defence-in-depth
+    // against a hostile or buggy backend); a missing ``name`` is
+    // logged because the wire contract guarantees one on every
+    // paginated entry, so its absence is a regression worth surfacing.
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+    if (!key) {
+      log.warn('Skipping provider with missing name in paginated response')
+      continue
+    }
     result[key] = provider
   }
   return result
@@ -58,8 +75,15 @@ export async function getProvider(name: string): Promise<ProviderConfig> {
 }
 
 export async function getProviderModels(name: string): Promise<ProviderModelResponse[]> {
-  const response = await apiClient.get<ApiResponse<ProviderModelResponse[]>>(`/providers/${encodeURIComponent(name)}/models`)
-  return unwrap(response)
+  return paginateAll<ProviderModelResponse>(async (cursor) => {
+    const params = new URLSearchParams()
+    if (cursor) params.set('cursor', cursor)
+    const qs = params.toString()
+    const base = `/providers/${encodeURIComponent(name)}/models`
+    const url = qs ? `${base}?${qs}` : base
+    const response = await apiClient.get<PaginatedResponse<ProviderModelResponse>>(url)
+    return unwrapPaginated<ProviderModelResponse>(response)
+  })
 }
 
 export async function getProviderHealth(name: string): Promise<ProviderHealthSummary> {
@@ -198,16 +222,24 @@ export async function pullModel(
   const url = `${baseUrl}/providers/${encodeURIComponent(name)}/models/pull`
 
   const csrfToken = getCsrfToken()
-  const response = await fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+  // Pull-model is a long-running SSE stream but the *initial* POST that
+  // opens the stream is safe to retry on 429. Each call resolves the
+  // model once on the server (idempotent re-pull behaviour) so we opt
+  // into retry explicitly even though POST is non-idempotent by default.
+  const response = await fetchWithRetryAfter(
+    url,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      },
+      body: JSON.stringify({ model_name: modelName } satisfies PullModelRequest),
+      signal,
     },
-    body: JSON.stringify({ model_name: modelName } satisfies PullModelRequest),
-    signal,
-  })
+    { idempotent: true },
+  )
 
   if (!response.ok || !response.body) {
     if (response.status === 401 && !IS_DEV_AUTH_BYPASS) {

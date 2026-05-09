@@ -1,13 +1,11 @@
-import { apiClient, unwrap } from '../client'
-import type { ApiResponse } from '../types/http'
+import { apiClient, paginateAll, unwrap, unwrapPaginated } from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   AvailableLocalesResponse,
   PersonalityPresetInfo,
-  PersonalityPresetsListResponse,
   SetupAgentRequest,
   SetupAgentResponse,
   SetupAgentSummary,
-  SetupAgentsListResponse,
   SetupCompanyRequest,
   SetupCompanyResponse,
   SetupNameLocalesRequest,
@@ -40,8 +38,14 @@ export async function createAgent(data: SetupAgentRequest): Promise<SetupAgentRe
 }
 
 export async function getAgents(): Promise<readonly SetupAgentSummary[]> {
-  const response = await apiClient.get<ApiResponse<SetupAgentsListResponse>>('/setup/agents')
-  return unwrap(response).agents
+  return paginateAll<SetupAgentSummary>(async (cursor) => {
+    const params = new URLSearchParams()
+    if (cursor) params.set('cursor', cursor)
+    const qs = params.toString()
+    const url = qs ? `/setup/agents?${qs}` : '/setup/agents'
+    const response = await apiClient.get<PaginatedResponse<SetupAgentSummary>>(url)
+    return unwrapPaginated<SetupAgentSummary>(response)
+  })
 }
 
 export async function updateAgentModel(
@@ -99,8 +103,14 @@ export async function updateAgentPersonality(
 }
 
 export async function listPersonalityPresets(): Promise<readonly PersonalityPresetInfo[]> {
-  const response = await apiClient.get<ApiResponse<PersonalityPresetsListResponse>>('/setup/personality-presets')
-  return unwrap(response).presets
+  return paginateAll<PersonalityPresetInfo>(async (cursor) => {
+    const params = new URLSearchParams()
+    if (cursor) params.set('cursor', cursor)
+    const qs = params.toString()
+    const url = qs ? `/setup/personality-presets?${qs}` : '/setup/personality-presets'
+    const response = await apiClient.get<PaginatedResponse<PersonalityPresetInfo>>(url)
+    return unwrapPaginated<PersonalityPresetInfo>(response)
+  })
 }
 
 export async function getAvailableLocales(): Promise<AvailableLocalesResponse> {

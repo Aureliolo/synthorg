@@ -7,7 +7,9 @@ import pytest
 
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.api.rate_limits.policies import (
+    INFLIGHT_POLICIES,
     RATE_LIMIT_POLICIES,
+    per_op_concurrency_from_policy,
     per_op_rate_limit_from_policy,
 )
 
@@ -151,6 +153,11 @@ _EXPENSIVE_ENDPOINT_POLICY_DEFAULTS: dict[str, tuple[int, int]] = {
     "clients.create": (10, 60),
     "collaboration.override": (20, 60),
     "company.reorder_departments": (10, 60),
+    # SSE event-stream gate. Exercised end-to-end by the generic
+    # per_op_rate_limit middleware tests; the value is pinned here so
+    # a tuning bump trips a single assertion instead of silently
+    # widening the cap.
+    "events.stream": (60, 60),
     "interrupts.resume": (60, 60),
     "messages.delete": (100, 3600),
     "meta.ingest_events": (60, 60),
@@ -183,3 +190,88 @@ class TestExpensiveEndpointPolicies:
         assert RATE_LIMIT_POLICIES[operation] == bounds
         guard = per_op_rate_limit_from_policy(operation, key="user")
         assert callable(guard)
+
+
+# Documented defaults for inflight-capped endpoints whose decorators
+# call ``per_op_concurrency_from_policy``.  Listed here so a future
+# tuning change updates one line, not assertions in multiple tests.
+_INFLIGHT_ENDPOINT_DEFAULTS: dict[str, int] = {
+    "events.stream": 4,
+    "memory.checkpoint_deploy": 1,
+    "memory.checkpoint_rollback": 1,
+    "memory.fine_tune": 1,
+    "providers.discover_models": 2,
+    "providers.pull_model": 2,
+}
+
+
+class TestInflightRegistryStructure:
+    """Invariants for the inflight registry parallel to the rate-limit one."""
+
+    def test_is_mapping_proxy(self) -> None:
+        assert isinstance(INFLIGHT_POLICIES, MappingProxyType)
+
+    def test_is_immutable(self) -> None:
+        with pytest.raises(TypeError):
+            INFLIGHT_POLICIES["x.new"] = 1  # type: ignore[index]
+
+    def test_every_value_is_positive(self) -> None:
+        for operation, max_inflight in INFLIGHT_POLICIES.items():
+            assert max_inflight > 0, (
+                f"inflight policy {operation!r} has non-positive "
+                f"max_inflight {max_inflight!r}"
+            )
+
+    def test_every_key_is_canonical(self) -> None:
+        for operation in INFLIGHT_POLICIES:
+            assert _CANONICAL_KEY_RE.match(operation), (
+                f"inflight policy key {operation!r} is not in "
+                "canonical <domain>.<action> form"
+            )
+
+    def test_registry_is_non_empty(self) -> None:
+        assert len(INFLIGHT_POLICIES) > 0
+
+
+class TestPerOpConcurrencyFromPolicy:
+    """Behaviour of the helper that builds inflight ``opt`` from the registry."""
+
+    def test_known_policy_builds_opt(self) -> None:
+        annotation = per_op_concurrency_from_policy("events.stream")
+        # The annotation is the route-handler ``opt`` dict shape; its
+        # internal key is implementation-detail but it must be a single
+        # entry pointing at a tuple of ``(operation, max_inflight, key)``.
+        assert isinstance(annotation, dict)
+        assert len(annotation) == 1
+        ((_, payload),) = annotation.items()
+        assert payload[0] == "events.stream"
+        assert payload[1] == INFLIGHT_POLICIES["events.stream"]
+
+    def test_unknown_policy_raises_keyerror(self) -> None:
+        with pytest.raises(KeyError, match="No inflight policy"):
+            per_op_concurrency_from_policy("not.a.real.op")
+
+    def test_unknown_policy_error_points_at_policies_module(self) -> None:
+        with pytest.raises(KeyError) as excinfo:
+            per_op_concurrency_from_policy("also.missing")
+        assert "synthorg.api.rate_limits.policies" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected_max"),
+    sorted(_INFLIGHT_ENDPOINT_DEFAULTS.items()),
+)
+class TestInflightEndpointPolicies:
+    """Each inflight-capped endpoint resolves through the registry."""
+
+    def test_registered_with_documented_default(
+        self,
+        operation: str,
+        expected_max: int,
+    ) -> None:
+        assert operation in INFLIGHT_POLICIES, (
+            f"Expected {operation!r} in the inflight registry."
+        )
+        assert INFLIGHT_POLICIES[operation] == expected_max
+        annotation = per_op_concurrency_from_policy(operation, key="user")
+        assert isinstance(annotation, dict)

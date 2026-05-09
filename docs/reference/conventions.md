@@ -51,9 +51,11 @@ Controllers return one of three shapes:
   "success": true}`.
 * `PaginatedResponse[T]`: list endpoints that return a page of items
   plus pagination metadata. Wraps `ApiResponse[T]` and adds a
-  `pagination` envelope ({`limit`, `offset`, `total`, `next_cursor`,
-  `has_more`}). Required for any controller method whose return type
-  is a collection. Opaque cursor pagination is the project default.
+  `pagination` envelope ({`limit`, `next_cursor`, `has_more`}).
+  Required for any controller method whose return type is a
+  collection. Opaque HMAC-signed cursor pagination is the project
+  default; clients walk pages via the `next_cursor` token rather than
+  offset arithmetic. There is no `total` count on the wire.
 * `Response[ApiResponse[T]]`: only when status code or response
   headers must be customized (e.g. setting a `Location` header on a
   201, attaching a `Retry-After` header on a 429).

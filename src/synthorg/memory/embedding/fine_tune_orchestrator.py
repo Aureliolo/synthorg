@@ -7,12 +7,12 @@ of failed runs from the last completed stage.
 
 import asyncio
 import json
-import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import (
     FineTuneStage,
@@ -77,7 +77,7 @@ class FineTuneOrchestrator:
         llm_provider: Optional LLM provider for data generation.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- pluggable dependencies threaded for testability
         self,
         *,
         run_repo: FineTuneRunRepository,
@@ -85,12 +85,14 @@ class FineTuneOrchestrator:
         settings_service: object | None = None,
         channels_plugin: ChannelsPlugin | None = None,
         llm_provider: object | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._run_repo = run_repo
         self._checkpoint_repo = checkpoint_repo
         self._settings_service = settings_service
         self._channels_plugin = channels_plugin
         self._llm_provider = llm_provider
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._current_task: asyncio.Task[None] | None = None
         self._cancellation: CancellationToken | None = None
         self._current_run: FineTuneRun | None = None
@@ -596,6 +598,15 @@ class FineTuneOrchestrator:
         run_id = run.id
         last_emit = 0.0
         loop = asyncio.get_running_loop()
+        # Bind the clock once outside the worker-thread closure so each
+        # callback invocation reads through a stable attribute.
+        # ``SystemClock.monotonic`` delegates to ``time.monotonic``
+        # (thread-safe) so production callbacks invoked from worker
+        # threads are correct. Tests that drive ``_cb`` directly must
+        # invoke it from the test thread (the FakeClock's ``_now``
+        # field is not synchronised); the production stage runners
+        # only ever call back from one worker thread per stage.
+        clock = self._clock
 
         def _update_on_loop(progress: float) -> None:
             """Apply progress update (runs on event loop thread)."""
@@ -621,7 +632,7 @@ class FineTuneOrchestrator:
 
         def _cb(progress: float) -> None:
             nonlocal last_emit
-            now = time.monotonic()
+            now = clock.monotonic()
             if now - last_emit < _PROGRESS_THROTTLE_SEC:
                 return
             last_emit = now

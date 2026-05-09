@@ -2,14 +2,20 @@
 
 from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
-from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.providers.drivers.litellm_driver import (
+    _CREDENTIAL_CACHE_TTL,
+    LiteLLMDriver,
+)
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import ChatMessage
+from tests._shared.fake_clock import FakeClock
 
 
 def _make_config(
@@ -153,3 +159,98 @@ class TestLiteLLMDriverAuth:
         kwargs = _build_kwargs(config)
         assert "api_key" not in kwargs
         assert "auth_token" not in kwargs
+
+
+@pytest.mark.unit
+class TestLiteLLMDriverCredentialCacheClock:
+    """FakeClock drives credential-cache TTL boundaries deterministically."""
+
+    async def test_cache_hit_within_ttl(self) -> None:
+        config = _make_config(
+            auth_type=AuthType.API_KEY,
+            api_key="sk-cached",
+            connection_name="conn-1",
+        )
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials.return_value = {"api_key": "sk-cached"}
+        fake = FakeClock()
+        driver = LiteLLMDriver(
+            "test-provider",
+            config,
+            connection_catalog=catalog,
+            clock=fake,
+        )
+        await driver._ensure_credentials_resolved()
+        # Inside the TTL window the catalog is not consulted again.
+        fake.advance(_CREDENTIAL_CACHE_TTL - 1.0)
+        await driver._ensure_credentials_resolved()
+        assert catalog.get_credentials.await_count == 1
+
+    async def test_cache_miss_after_ttl(self) -> None:
+        config = _make_config(
+            auth_type=AuthType.API_KEY,
+            api_key="sk-cached",
+            connection_name="conn-1",
+        )
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials.return_value = {"api_key": "sk-cached"}
+        fake = FakeClock()
+        driver = LiteLLMDriver(
+            "test-provider",
+            config,
+            connection_catalog=catalog,
+            clock=fake,
+        )
+        await driver._ensure_credentials_resolved()
+        # Crossing the TTL boundary forces a refetch.
+        fake.advance(_CREDENTIAL_CACHE_TTL + 0.01)
+        await driver._ensure_credentials_resolved()
+        assert catalog.get_credentials.await_count == 2
+
+    async def test_cache_boundary_at_exactly_ttl(self) -> None:
+        """At exactly T=TTL the cache must refetch (TTL is exclusive upper bound).
+
+        Locks in the ``<`` comparison at ``litellm_driver.py:191``
+        (``(now - cached_at) < _CREDENTIAL_CACHE_TTL``) so a future
+        change to ``<=`` would surface as a test failure rather than
+        a silent off-by-one.
+        """
+        config = _make_config(
+            auth_type=AuthType.API_KEY,
+            api_key="sk-cached",
+            connection_name="conn-1",
+        )
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials.return_value = {"api_key": "sk-cached"}
+        fake = FakeClock()
+        driver = LiteLLMDriver(
+            "test-provider",
+            config,
+            connection_catalog=catalog,
+            clock=fake,
+        )
+        await driver._ensure_credentials_resolved()
+        # ``<`` means at exactly T=TTL the diff equals TTL and falls
+        # through to the catalog refetch.
+        fake.advance(_CREDENTIAL_CACHE_TTL)
+        await driver._ensure_credentials_resolved()
+        assert catalog.get_credentials.await_count == 2
+
+    async def test_oauth_never_cached(self) -> None:
+        """OAuth credentials always refetch regardless of clock advance."""
+        config = _make_config(
+            auth_type=AuthType.OAUTH,
+            connection_name="conn-oauth",
+        )
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials.return_value = {"access_token": "live"}
+        fake = FakeClock()
+        driver = LiteLLMDriver(
+            "test-provider",
+            config,
+            connection_catalog=catalog,
+            clock=fake,
+        )
+        await driver._ensure_credentials_resolved()
+        await driver._ensure_credentials_resolved()
+        assert catalog.get_credentials.await_count == 2

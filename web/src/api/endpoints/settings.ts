@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import { apiClient, paginateAll, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type { SettingDefinition, SettingEntry, SettingNamespace, SinkInfo, TestSinkResult, UpdateSettingRequest } from '../types/settings'
 
@@ -48,8 +48,14 @@ export async function resetSetting(namespace: SettingNamespace, key: string): Pr
 }
 
 export async function listSinks(): Promise<SinkInfo[]> {
-  const response = await apiClient.get<ApiResponse<SinkInfo[]>>('/settings/observability/sinks')
-  return unwrap(response)
+  return paginateAll<SinkInfo>(async (cursor) => {
+    const params = new URLSearchParams()
+    if (cursor) params.set('cursor', cursor)
+    const qs = params.toString()
+    const url = qs ? `/settings/observability/sinks?${qs}` : '/settings/observability/sinks'
+    const response = await apiClient.get<PaginatedResponse<SinkInfo>>(url)
+    return unwrapPaginated<SinkInfo>(response)
+  })
 }
 
 export async function testSinkConfig(data: {

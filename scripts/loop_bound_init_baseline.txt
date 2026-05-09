@@ -29,7 +29,7 @@ src/synthorg/integrations/oauth/token_manager.py:70:OAuthTokenManager:_lifecycle
 src/synthorg/integrations/rate_limiting/shared_state.py:71:SharedRateLimitCoordinator:_window_lock:Lock
 src/synthorg/integrations/rate_limiting/shared_state.py:80:SharedRateLimitCoordinator:_lifecycle_lock:Lock
 src/synthorg/integrations/tunnel/ngrok_adapter.py:76:NgrokAdapter:_lifecycle_lock:Lock
-src/synthorg/memory/embedding/fine_tune_orchestrator.py:97:FineTuneOrchestrator:_op_lock:Lock
+src/synthorg/memory/embedding/fine_tune_orchestrator.py:99:FineTuneOrchestrator:_op_lock:Lock
 src/synthorg/meta/chief_of_staff/monitor.py:82:OrgInflectionMonitor:_stop_event:Event
 src/synthorg/meta/chief_of_staff/monitor.py:83:OrgInflectionMonitor:_lifecycle_lock:Lock
 src/synthorg/notifications/adapters/ntfy.py:116:NtfyNotificationSink:_lifecycle_lock:Lock

@@ -25,12 +25,12 @@ from synthorg.api.controllers.setup_helpers import (
 )
 from synthorg.api.controllers.setup_models import (
     PersonalityPresetInfoResponse,
-    PersonalityPresetsListResponse,
     SetupAgentSummary,
     UpdateAgentPersonalityRequest,
 )
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo, require_read_access
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
@@ -140,20 +140,25 @@ class SetupPersonalityController(Controller):
     )
     async def list_personality_presets(
         self,
-        state: State,  # noqa: ARG002
-    ) -> ApiResponse[PersonalityPresetsListResponse]:
-        """List all available personality presets.
+        state: State,
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[PersonalityPresetInfoResponse]:
+        """List all available personality presets, paginated by name.
 
         Args:
             state: Application state.
+            cursor: Opaque cursor from a previous page.
+            limit: Page size.
 
         Returns:
-            Personality presets data envelope.
+            Paginated personality presets.
         """
         from synthorg.templates.presets import (  # noqa: PLC0415
             PERSONALITY_PRESETS,
         )
 
+        app_state: AppState = state.app_state
         presets = tuple(
             PersonalityPresetInfoResponse(
                 name=name,
@@ -162,11 +167,17 @@ class SetupPersonalityController(Controller):
             for name, preset in sorted(PERSONALITY_PRESETS.items())
         )
 
+        page, meta = paginate_cursor(
+            presets,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         logger.debug(
             SETUP_PERSONALITY_PRESETS_LISTED,
-            count=len(presets),
+            count=len(page),
         )
-
-        return ApiResponse(
-            data=PersonalityPresetsListResponse(presets=presets),
+        return PaginatedResponse[PersonalityPresetInfoResponse](
+            data=page,
+            pagination=meta,
         )

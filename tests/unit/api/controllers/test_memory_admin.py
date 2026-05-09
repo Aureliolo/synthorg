@@ -7,7 +7,6 @@ from pydantic import ValidationError
 
 from synthorg.api.controllers.memory import (
     _BATCH_SIZE_BY_VRAM_GB,
-    _DEFAULT_BATCH_SIZE,
     ActiveEmbedderResponse,
     MemoryAdminController,
     _recommend_batch_size,
@@ -17,6 +16,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
     FineTuneStatus,
 )
+from synthorg.settings.definitions.memory import FINE_TUNE_DEFAULT_BATCH_SIZE
 
 
 @pytest.mark.unit
@@ -173,7 +173,7 @@ class TestRecommendBatchSize:
         fake_torch = MagicMock()
         fake_torch.cuda.is_available.return_value = False
         monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
-        assert _recommend_batch_size() == _DEFAULT_BATCH_SIZE
+        assert _recommend_batch_size() == FINE_TUNE_DEFAULT_BATCH_SIZE
 
     @pytest.mark.parametrize(
         ("vram_gb", "expected"),
@@ -184,7 +184,7 @@ class TestRecommendBatchSize:
             pytest.param(16, 64, id="16gb_boundary"),
             pytest.param(12, 32, id="12gb_mid"),
             pytest.param(8, 32, id="8gb_boundary"),
-            pytest.param(4, _DEFAULT_BATCH_SIZE, id="sub_8gb_fallback"),
+            pytest.param(4, FINE_TUNE_DEFAULT_BATCH_SIZE, id="sub_8gb_fallback"),
         ],
     )
     def test_vram_tier_returns_expected_batch_size(
@@ -388,3 +388,188 @@ class TestDeleteMemoryEntryEndpoint:
         finally:
             memory_module._build_memory_service = original_build
         assert exc_info.value.status_code == 501
+
+
+@pytest.mark.unit
+class TestResolveFineTuneThresholds:
+    """Verify the runtime resolver consults SettingsService overrides."""
+
+    async def test_falls_back_to_imported_defaults_when_service_missing(
+        self,
+    ) -> None:
+        """A ``None`` service path returns the imported defaults verbatim."""
+        from synthorg.api.controllers.memory import _resolve_fine_tune_thresholds
+        from synthorg.settings.definitions.memory import (
+            FINE_TUNE_DEFAULT_BATCH_SIZE,
+            FINE_TUNE_MIN_DOCS_RECOMMENDED,
+            FINE_TUNE_MIN_DOCS_REQUIRED,
+        )
+
+        thresholds = await _resolve_fine_tune_thresholds(None)
+        assert thresholds.default_batch_size == FINE_TUNE_DEFAULT_BATCH_SIZE
+        assert thresholds.min_docs_required == FINE_TUNE_MIN_DOCS_REQUIRED
+        assert thresholds.min_docs_recommended == FINE_TUNE_MIN_DOCS_RECOMMENDED
+
+    async def test_overrides_from_settings_service_take_effect(self) -> None:
+        """SettingsService values override the imported defaults."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.memory import _resolve_fine_tune_thresholds
+        from synthorg.core.types import NotBlankStr
+        from synthorg.settings.enums import SettingNamespace, SettingSource
+        from synthorg.settings.models import SettingValue
+        from synthorg.settings.service import SettingsService
+
+        async def _fake_get(_namespace: str, key: str) -> SettingValue:
+            override_value = {
+                "fine_tune_default_batch_size": "256",
+                "fine_tune_min_docs_required": "25",
+                "fine_tune_min_docs_recommended": "75",
+            }[key]
+            return SettingValue(
+                namespace=SettingNamespace.MEMORY,
+                key=NotBlankStr(key),
+                value=override_value,
+                source=SettingSource.DATABASE,
+            )
+
+        service = AsyncMock(spec=SettingsService)
+        service.get.side_effect = _fake_get
+
+        thresholds = await _resolve_fine_tune_thresholds(service)
+        assert thresholds.default_batch_size == 256
+        assert thresholds.min_docs_required == 25
+        assert thresholds.min_docs_recommended == 75
+
+    async def test_unparseable_value_falls_back_to_default(self) -> None:
+        """A non-integer setting value drops to the imported fallback."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.memory import _resolve_fine_tune_thresholds
+        from synthorg.core.types import NotBlankStr
+        from synthorg.settings.definitions.memory import (
+            FINE_TUNE_DEFAULT_BATCH_SIZE,
+            FINE_TUNE_MIN_DOCS_RECOMMENDED,
+            FINE_TUNE_MIN_DOCS_REQUIRED,
+        )
+        from synthorg.settings.enums import SettingNamespace, SettingSource
+        from synthorg.settings.models import SettingValue
+        from synthorg.settings.service import SettingsService
+
+        async def _fake_get(_namespace: str, key: str) -> SettingValue:
+            return SettingValue(
+                namespace=SettingNamespace.MEMORY,
+                key=NotBlankStr(key),
+                value="not-an-int",
+                source=SettingSource.DATABASE,
+            )
+
+        service = AsyncMock(spec=SettingsService)
+        service.get.side_effect = _fake_get
+
+        thresholds = await _resolve_fine_tune_thresholds(service)
+        assert thresholds.default_batch_size == FINE_TUNE_DEFAULT_BATCH_SIZE
+        assert thresholds.min_docs_required == FINE_TUNE_MIN_DOCS_REQUIRED
+        assert thresholds.min_docs_recommended == FINE_TUNE_MIN_DOCS_RECOMMENDED
+
+    async def test_missing_setting_falls_back_to_default(self) -> None:
+        """SettingNotFoundError on lookup drops to the imported fallback."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.memory import _resolve_fine_tune_thresholds
+        from synthorg.settings.definitions.memory import (
+            FINE_TUNE_DEFAULT_BATCH_SIZE,
+            FINE_TUNE_MIN_DOCS_RECOMMENDED,
+            FINE_TUNE_MIN_DOCS_REQUIRED,
+        )
+        from synthorg.settings.errors import SettingNotFoundError
+        from synthorg.settings.service import SettingsService
+
+        service = AsyncMock(spec=SettingsService)
+        service.get.side_effect = SettingNotFoundError("missing")
+
+        thresholds = await _resolve_fine_tune_thresholds(service)
+        assert thresholds.default_batch_size == FINE_TUNE_DEFAULT_BATCH_SIZE
+        assert thresholds.min_docs_required == FINE_TUNE_MIN_DOCS_REQUIRED
+        assert thresholds.min_docs_recommended == FINE_TUNE_MIN_DOCS_RECOMMENDED
+
+
+@pytest.mark.unit
+class TestCheckDocumentsBoundaries:
+    """Boundary cases for ``_check_documents`` against the warn / fail thresholds."""
+
+    def test_count_at_recommended_threshold_warns(self, tmp_path: object) -> None:
+        """A corpus exactly at the recommended threshold must warn, not pass.
+
+        Setting description is "warn band for corpora at or below this
+        size", so the boundary is inclusive.
+        """
+        from pathlib import Path
+
+        from synthorg.api.controllers.memory import _check_documents
+
+        src = Path(str(tmp_path))
+        for i in range(50):
+            (src / f"doc-{i:02d}.md").write_text("x")
+        check = _check_documents(
+            str(src),
+            min_required=10,
+            min_recommended=50,
+        )
+        assert check.status == "warn"
+
+    def test_count_above_recommended_passes(self, tmp_path: object) -> None:
+        """One document above the recommended threshold flips to pass."""
+        from pathlib import Path
+
+        from synthorg.api.controllers.memory import _check_documents
+
+        src = Path(str(tmp_path))
+        for i in range(51):
+            (src / f"doc-{i:02d}.md").write_text("x")
+        check = _check_documents(
+            str(src),
+            min_required=10,
+            min_recommended=50,
+        )
+        assert check.status == "pass"
+
+    def test_count_below_required_fails(self, tmp_path: object) -> None:
+        """A corpus below the hard floor fails."""
+        from pathlib import Path
+
+        from synthorg.api.controllers.memory import _check_documents
+
+        src = Path(str(tmp_path))
+        for i in range(5):
+            (src / f"doc-{i:02d}.md").write_text("x")
+        check = _check_documents(
+            str(src),
+            min_required=10,
+            min_recommended=50,
+        )
+        assert check.status == "fail"
+
+    def test_count_at_required_threshold_does_not_fail(
+        self,
+        tmp_path: object,
+    ) -> None:
+        """A corpus exactly at ``min_required`` clears the hard floor.
+
+        The fail branch uses a strict ``<`` so a count equal to
+        ``min_required`` must NOT fail; it still warns because it
+        sits below ``min_recommended``.
+        """
+        from pathlib import Path
+
+        from synthorg.api.controllers.memory import _check_documents
+
+        src = Path(str(tmp_path))
+        for i in range(10):
+            (src / f"doc-{i:02d}.md").write_text("x")
+        check = _check_documents(
+            str(src),
+            min_required=10,
+            min_recommended=50,
+        )
+        assert check.status == "warn"

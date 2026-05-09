@@ -108,15 +108,6 @@ export interface PersonalityPresetInfo {
   readonly description: string
 }
 
-export interface PersonalityPresetsListResponse {
-  readonly presets: readonly PersonalityPresetInfo[]
-}
-
-export interface SetupAgentsListResponse {
-  readonly agents: readonly SetupAgentSummary[]
-  agent_count: number
-}
-
 export interface SetupNameLocalesRequest {
   locales: string[]
 }

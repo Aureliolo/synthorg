@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.controllers.settings import _sink_identifier
 from synthorg.observability.config import DEFAULT_SINKS
-from synthorg.observability.enums import SinkType
 from synthorg.observability.sink_config_builder import CONSOLE_SINK_ID
 from tests.unit.api.conftest import make_auth_headers
 
@@ -64,13 +64,10 @@ class TestListSinks:
         body = resp.json()
         sinks = body["data"]
 
-        # Collect identifiers of default sinks
-        default_ids: set[str] = set()
-        for s in DEFAULT_SINKS:
-            if s.sink_type == SinkType.CONSOLE:
-                default_ids.add(CONSOLE_SINK_ID)
-            else:
-                default_ids.add(s.file_path or "")
+        # Collect identifiers of default sinks via the canonical
+        # helper so the hash format stays in lockstep with the
+        # endpoint output.
+        default_ids: set[str] = {_sink_identifier(s) for s in DEFAULT_SINKS}
 
         for sink in sinks:
             if sink["identifier"] in default_ids:
@@ -150,6 +147,51 @@ class TestListSinks:
             headers=observer_headers,
         )
         assert resp.status_code == 200
+
+    def test_pagination_round_trip(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Walking pages with limit=1 enumerates every sink exactly once."""
+        full = test_client.get(
+            "/api/v1/settings/observability/sinks",
+            headers=auth_headers,
+        ).json()["data"]
+        # Fail loudly if the default sink list ever shrinks below the
+        # two items this round-trip needs; a runtime ``pytest.skip``
+        # would turn a fixture / endpoint regression into a green build.
+        assert len(full) >= 2, (
+            "default sink list must expose at least two sinks for the "
+            "cursor round-trip; check the fixture and the endpoint"
+        )
+        first = test_client.get(
+            "/api/v1/settings/observability/sinks?limit=1",
+            headers=auth_headers,
+        ).json()
+        assert len(first["data"]) == 1
+        collected = list(first["data"])
+        cursor = first["pagination"]["next_cursor"]
+        assert cursor is not None
+        while cursor:
+            page = test_client.get(
+                f"/api/v1/settings/observability/sinks?limit=1&cursor={cursor}",
+                headers=auth_headers,
+            ).json()
+            collected.extend(page["data"])
+            cursor = page["pagination"]["next_cursor"]
+        assert collected == full
+
+    def test_tampered_cursor_rejected(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/settings/observability/sinks?cursor=garbage",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
 
     def test_list_sinks_with_console_level_override(
         self,

@@ -32,7 +32,12 @@ import type {
   ProviderConfig,
   RateLimitsConfig,
 } from '@/api/types/providers'
-import { paginatedFor, successFor, voidSuccess } from './helpers'
+import {
+  paginatedEnvelopeFor,
+  paginatedFor,
+  successFor,
+  voidSuccess,
+} from './helpers'
 
 /**
  * Canonical cloud-preset fixture builder.
@@ -146,7 +151,7 @@ function buildPullStream(): ReadableStream<Uint8Array> {
 
 export const providersHandlers = [
   http.get('/api/v1/providers', () =>
-    HttpResponse.json(successFor<typeof listProviders>({})),
+    HttpResponse.json(paginatedEnvelopeFor<typeof listProviders>()),
   ),
   http.get('/api/v1/providers/presets', () =>
     HttpResponse.json(successFor<typeof listPresets>([])),
@@ -187,7 +192,7 @@ export const providersHandlers = [
     HttpResponse.json(successFor<typeof getProvider>(buildProvider())),
   ),
   http.get('/api/v1/providers/:name/models', () =>
-    HttpResponse.json(successFor<typeof getProviderModels>([])),
+    HttpResponse.json(paginatedEnvelopeFor<typeof getProviderModels>()),
   ),
   http.get('/api/v1/providers/:name/health', () =>
     HttpResponse.json(

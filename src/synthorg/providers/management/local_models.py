@@ -5,7 +5,8 @@ on local LLM providers, plus a concrete implementation for Ollama.
 """
 
 import json
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+import re
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -31,6 +32,55 @@ _DELETE_TIMEOUT_SECONDS: float = 30.0
 _HTTP_OK: int = 200
 _HTTP_NOT_FOUND: int = 404
 _HTTP_CLIENT_ERROR: int = 400
+_OLLAMA_ERROR_MAX_LEN: Final[int] = 200  # lint-allow: magic-numbers -- internal cap
+
+# POSIX-style absolute paths (``/var/lib/ollama/models/x.bin``).  The
+# segment class includes a literal space so paths like
+# ``/var/lib/ollama/model cache/file.bin`` are fully redacted instead
+# of stopping at the first whitespace and leaking the trailing tail.
+# The trailing repetition group is zero-or-more (``*``) rather than
+# one-or-more so single-segment absolute paths like ``/models``,
+# ``/tmp``, or ``/token.json`` are also redacted; the previous
+# ``+`` form left those paths visible to remote clients.
+_OLLAMA_PATH_POSIX: Final[re.Pattern[str]] = re.compile(
+    r"/[\w.\- ]+(?:/[\w.\- ]+)*",
+)
+# Windows-style absolute paths (``C:\Users\admin\AppData\token.json``).
+# Same space-allowance applies so ``C:\Program Files\Ollama\token.json``
+# is fully consumed by the redaction.
+_OLLAMA_PATH_WIN: Final[re.Pattern[str]] = re.compile(
+    r"[A-Za-z]:\\[\w\\.\- ]+",
+)
+# ``host:port`` tokens, covering bracketed IPv6 (``[::1]:11434``),
+# IPv4 (``127.0.0.1:11434``), and DNS / single-label hostnames
+# (``localhost:11434`` or ``ollama-internal.local:11434``).  Internal
+# topology must not leak through any of these forms.
+_OLLAMA_HOST_PORT: Final[re.Pattern[str]] = re.compile(
+    r"(?:"
+    r"\[[0-9A-Fa-f:]+\]"  # bracketed IPv6 literal
+    r"|(?:\d{1,3}\.){3}\d{1,3}"  # IPv4 dotted quad
+    r"|[\w-]+(?:\.[\w-]+)*"  # DNS / single-label hostname
+    r"):\d{2,5}",
+)
+
+
+def _sanitize_ollama_error(raw: object) -> str:
+    """Coerce + redact a raw Ollama error field for client forwarding.
+
+    Strips filesystem paths and ``host:port`` tokens to avoid leaking
+    operator-internal topology to remote clients via SSE. Non-string
+    inputs collapse to a generic ``"Pull failed"`` fallback. The helper
+    is intentionally side-effect free; callers attach the contextual
+    ``PROVIDER_MODEL_PULL_FAILED`` log so the same upstream failure
+    does not produce duplicate log lines.
+    """
+    if not isinstance(raw, str):
+        return "Pull failed"
+    sanitized = _OLLAMA_PATH_POSIX.sub("[REDACTED-PATH]", raw)
+    sanitized = _OLLAMA_PATH_WIN.sub("[REDACTED-PATH]", sanitized)
+    sanitized = _OLLAMA_HOST_PORT.sub("[REDACTED-HOST]", sanitized)
+    truncated = sanitized[:_OLLAMA_ERROR_MAX_LEN].strip()
+    return truncated or "Pull failed"
 
 
 class PullProgressEvent(BaseModel):
@@ -143,17 +193,19 @@ class OllamaModelManager:
         Returns:
             A progress event derived from the data.
         """
-        error = data.get("error")
-        if error:
+        if "error" in data:
+            error = data.get("error")
+            sanitized = _sanitize_ollama_error(error)
             logger.warning(
                 PROVIDER_MODEL_PULL_FAILED,
                 provider="ollama",
                 model=model_name,
-                error=error,
+                error_type=type(error).__name__,
+                error=sanitized,
             )
             return PullProgressEvent(
-                status=str(error),
-                error=str(error),
+                status=sanitized,
+                error=sanitized,
                 done=True,
             )
 

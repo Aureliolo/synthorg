@@ -91,6 +91,10 @@ CREATE TABLE cost_records (
 CREATE INDEX idx_cost_records_agent_id ON cost_records(agent_id);
 CREATE INDEX idx_cost_records_task_id ON cost_records(task_id);
 CREATE INDEX idx_cost_records_timestamp ON cost_records(timestamp DESC);
+CREATE INDEX idx_cost_records_agent_timestamp
+    ON cost_records(agent_id, timestamp DESC);
+CREATE INDEX idx_cost_records_task_timestamp
+    ON cost_records(task_id, timestamp DESC);
 
 -- ── Messages ──────────────────────────────────────────────────
 CREATE TABLE messages (
@@ -656,6 +660,8 @@ CREATE INDEX idx_dr_executing_agent_recorded
     ON decision_records(executing_agent_id, recorded_at DESC);
 CREATE INDEX idx_dr_reviewer_agent_recorded
     ON decision_records(reviewer_agent_id, recorded_at DESC);
+CREATE INDEX idx_dr_task_recorded_id
+    ON decision_records(task_id, recorded_at, id);
 CREATE INDEX idx_dr_metadata_gin
     ON decision_records USING GIN (metadata);
 

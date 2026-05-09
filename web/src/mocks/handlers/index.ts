@@ -50,6 +50,7 @@ export {
   apiSuccess,
   buildValidationError,
   emptyPage,
+  paginatedEnvelopeFor,
   paginatedFor,
   successFor,
   voidSuccess,

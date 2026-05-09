@@ -38,11 +38,23 @@ class TestUpdateAgentPersonality:
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["personality_preset"] == "visionary_leader"
+            updated_name = data["name"]
 
-            # Verify persistence.
-            get_resp = test_client.get("/api/v1/setup/agents")
-            agents = get_resp.json()["data"]["agents"]
-            assert agents[0]["personality_preset"] == "visionary_leader"
+            # Verify persistence: anchor on the updated agent's name
+            # so the assertion cannot pass via a different agent that
+            # already carries the visionary_leader preset.  Use an
+            # explicit ``limit=100`` so the updated agent is returned
+            # regardless of where it sorts on the default page; rely
+            # on the status-code check to surface controller errors
+            # before iterating.
+            get_resp = test_client.get("/api/v1/setup/agents?limit=100")
+            assert get_resp.status_code == 200
+            agents = get_resp.json()["data"]
+            assert any(
+                agent["name"] == updated_name
+                and agent["personality_preset"] == "visionary_leader"
+                for agent in agents
+            )
         finally:
             app_state._provider_management = original
 
@@ -106,13 +118,20 @@ class TestListPersonalityPresets:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Personality presets endpoint returns a non-empty list."""
+        """Personality presets endpoint returns a non-empty paginated list."""
         resp = test_client.get("/api/v1/setup/personality-presets")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        presets = body["data"]["presets"]
-        assert len(presets) >= 1
+        assert isinstance(body["data"], list)
+        # Pin the paginated envelope shape, not just the data: the
+        # endpoint moved from a flat list to ``PaginatedResponse``
+        # this PR, and a future regression that drops ``pagination``
+        # from the wire format must fail here, not silently in the
+        # frontend store layer.
+        assert "pagination" in body
+        assert isinstance(body["pagination"], dict)
+        assert len(body["data"]) >= 1
 
     def test_list_presets_field_shape(
         self,
@@ -120,8 +139,9 @@ class TestListPersonalityPresets:
     ) -> None:
         """Each preset has ``name`` and ``description`` fields."""
         resp = test_client.get("/api/v1/setup/personality-presets")
+        assert resp.status_code == 200
         body = resp.json()
-        for preset in body["data"]["presets"]:
+        for preset in body["data"]:
             assert "name" in preset
             assert "description" in preset
             assert isinstance(preset["name"], str)

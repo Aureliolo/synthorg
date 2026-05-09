@@ -18,6 +18,8 @@ import {
   WS_PONG_TIMEOUT_MS,
   WS_PROTOCOL_VERSION,
   WS_RECONNECT_BASE_DELAY,
+  WS_RECONNECT_JITTER_MAX,
+  WS_RECONNECT_JITTER_MIN,
   WS_RECONNECT_MAX_DELAY,
 } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
@@ -227,9 +229,32 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       set({ reconnectExhausted: true })
       return
     }
-    const delay = Math.min(
+    const baseDelay = Math.min(
       WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts),
       WS_RECONNECT_MAX_DELAY,
+    )
+    // Apply +/-20% randomised jitter so a server-restart-driven
+    // reconnect storm de-correlates across clients instead of all
+    // clients hammering the gateway in lockstep on every backoff
+    // tick. Range comes from the ``WS_RECONNECT_JITTER_*`` ratios
+    // declared in ``utils/constants`` so the value is greppable and
+    // testable from a single source.
+    const jitterMultiplier =
+      WS_RECONNECT_JITTER_MIN +
+      Math.random() * (WS_RECONNECT_JITTER_MAX - WS_RECONNECT_JITTER_MIN)
+    // Clamp the post-rounding result to ``[1ms, WS_RECONNECT_MAX_DELAY]``.
+    // The 1ms floor stops a future tuning of the base / jitter
+    // constants that produces a sub-millisecond delay from collapsing
+    // the backoff to an immediate reconnect; the max ceiling stops the
+    // upper-bound jitter multiplier (1.2 today) from pushing the
+    // delay past the configured max once ``baseDelay`` is already
+    // saturated at ``WS_RECONNECT_MAX_DELAY``.
+    const delay = Math.max(
+      1,
+      Math.min(
+        WS_RECONNECT_MAX_DELAY,
+        Math.round(baseDelay * jitterMultiplier),
+      ),
     )
     reconnectAttempts++
     reconnectTimer = setTimeout(() => {

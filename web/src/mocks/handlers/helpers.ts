@@ -154,3 +154,63 @@ export function emptyPage<T>(limit = 200): PaginatedResult<T> {
     },
   }
 }
+
+/**
+ * Item type extracted from an endpoint function's flattened return
+ * type. Endpoints that walk pages via ``paginateAll`` return either
+ * ``T[]`` (most lists), ``readonly T[]`` (frozen lists), or
+ * ``Record<string, T>`` (provider-style keyed maps) -- never a
+ * ``PaginatedResult``. The ``string extends keyof R`` guard only
+ * matches a true index signature so a misuse against a shaped object
+ * (e.g. a single-resource endpoint) resolves to ``never`` and the
+ * call fails to type-check.
+ */
+type PaginatedItem<R> = R extends readonly (infer V)[]
+  ? V
+  : R extends Record<string, infer V>
+    ? string extends keyof R
+      ? V
+      : never
+    : never
+
+/**
+ * Build a ``PaginatedResponse<T>`` envelope tied to an endpoint
+ * function's flattened return type. Use this for handlers whose
+ * upstream endpoint walks pages via ``paginateAll`` and returns a
+ * flattened array or string-keyed map (so ``paginatedFor`` is not
+ * applicable -- it requires the endpoint to return
+ * ``PaginatedResult<T>`` directly).
+ *
+ * The item type is inferred from ``Awaited<ReturnType<Fn>>``:
+ *
+ *   - ``Promise<T[]>`` / ``Promise<readonly T[]>`` -> ``T``
+ *   - ``Promise<Record<string, T>>`` -> ``T``
+ *   - any other shape -> ``never`` (call fails to type-check)
+ *
+ * If the endpoint is renamed or its item type drifts, every handler
+ * call site turns red in TypeScript -- the envelope stays in lockstep
+ * with the contract.
+ */
+export function paginatedEnvelopeFor<
+  Fn extends (...args: never[]) => Promise<unknown>,
+>(
+  items: readonly PaginatedItem<AwaitedReturn<Fn>>[] = [],
+  options: {
+    limit?: number
+    nextCursor?: string | null
+    hasMore?: boolean
+  } = {},
+): PaginatedResponse<PaginatedItem<AwaitedReturn<Fn>>> {
+  type Item = PaginatedItem<AwaitedReturn<Fn>>
+  return {
+    data: items.slice() as Item[],
+    error: null,
+    error_detail: null,
+    pagination: {
+      limit: options.limit ?? 200,
+      next_cursor: options.nextCursor ?? null,
+      has_more: options.hasMore ?? false,
+    },
+    success: true,
+  }
+}

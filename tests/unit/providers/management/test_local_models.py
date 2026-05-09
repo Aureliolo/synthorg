@@ -9,8 +9,10 @@ import pytest
 
 from synthorg.config.schema import LocalModelParams
 from synthorg.providers.management.local_models import (
+    _OLLAMA_ERROR_MAX_LEN,
     OllamaModelManager,
     PullProgressEvent,
+    _sanitize_ollama_error,
     get_local_model_manager,
 )
 
@@ -296,3 +298,118 @@ class TestLocalModelParams:
 
         with pytest.raises(ValidationError):
             LocalModelParams(**{field: value})  # type: ignore[arg-type]
+
+
+class TestSanitizeOllamaError:
+    """Adversarial-input fixtures for the SSE-forwarded error sanitizer."""
+
+    def test_non_string_falls_back(self) -> None:
+        assert _sanitize_ollama_error(None) == "Pull failed"
+        assert _sanitize_ollama_error(12345) == "Pull failed"
+        assert _sanitize_ollama_error({"error": "x"}) == "Pull failed"
+
+    @pytest.mark.parametrize(
+        "raw",
+        ["", "   ", False, 0, None],
+    )
+    def test_falsey_payloads_fall_back(self, raw: object) -> None:
+        # The stream-level caller dispatches on ``"error" in data``
+        # (not truthiness) so the helper must still produce the
+        # generic fallback for falsey-but-present payloads.  Locks
+        # the contract against a regression back to a truthy check.
+        assert _sanitize_ollama_error(raw) == "Pull failed"
+
+    def test_redacts_posix_paths(self) -> None:
+        sanitized = _sanitize_ollama_error(
+            "open /var/lib/ollama/models/secret.bin: permission denied",
+        )
+        assert "/var/lib/ollama" not in sanitized
+        assert "[REDACTED-PATH]" in sanitized
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "open /models: permission denied",
+            "open /tmp: permission denied",
+            "/token.json missing",
+        ],
+    )
+    def test_redacts_single_segment_posix_paths(self, raw: str) -> None:
+        # Pin the contract that ``_OLLAMA_PATH_POSIX`` redacts
+        # single-segment absolute paths; the previous ``+`` form on
+        # the trailing repetition group required at least two
+        # segments and silently leaked these forms.
+        sanitized = _sanitize_ollama_error(raw)
+        assert "[REDACTED-PATH]" in sanitized
+        # ``/tmp`` here is the redaction target string we want to
+        # confirm got scrubbed -- not a real tempdir filesystem call.
+        for leaked in ("/models", "/tmp", "/token.json"):  # noqa: S108
+            assert leaked not in sanitized
+
+    def test_redacts_posix_paths_with_spaces(self) -> None:
+        # Path segments that contain a literal space must still be
+        # consumed in full -- the older regex stopped at the first
+        # whitespace and leaked the trailing tail.
+        sanitized = _sanitize_ollama_error(
+            "open /var/lib/ollama/model cache/secret.bin: permission denied",
+        )
+        assert "model cache" not in sanitized
+        assert "secret.bin" not in sanitized
+        assert "[REDACTED-PATH]" in sanitized
+
+    def test_redacts_windows_paths(self) -> None:
+        sanitized = _sanitize_ollama_error(
+            r"C:\Users\admin\AppData\token.json missing",
+        )
+        assert "Users" not in sanitized
+        assert "[REDACTED-PATH]" in sanitized
+
+    def test_redacts_windows_paths_with_spaces(self) -> None:
+        # ``Program Files`` is the canonical Windows-path-with-space
+        # case; the redaction must consume both segments.
+        sanitized = _sanitize_ollama_error(
+            r"C:\Program Files\Ollama\token.json missing",
+        )
+        assert "Program Files" not in sanitized
+        assert "token.json" not in sanitized
+        assert "[REDACTED-PATH]" in sanitized
+
+    @pytest.mark.parametrize(
+        ("raw", "leak"),
+        [
+            (
+                "dial tcp localhost:11434: connection refused",
+                "localhost",
+            ),
+            (
+                "dial tcp 127.0.0.1:11434: connection refused",
+                "127.0.0.1",
+            ),
+            (
+                "dial tcp [::1]:11434: connection refused",
+                "[::1]",
+            ),
+            (
+                "dial tcp ollama-internal.local:11434: connection refused",
+                "ollama-internal.local",
+            ),
+        ],
+    )
+    def test_redacts_host_port(self, raw: str, leak: str) -> None:
+        sanitized = _sanitize_ollama_error(raw)
+        assert leak not in sanitized
+        assert "11434" not in sanitized
+        assert "[REDACTED-HOST]" in sanitized
+
+    def test_truncates_oversized_input(self) -> None:
+        long = "x" * 1000
+        sanitized = _sanitize_ollama_error(long)
+        assert len(sanitized) <= _OLLAMA_ERROR_MAX_LEN
+
+    def test_benign_message_passes_through(self) -> None:
+        sanitized = _sanitize_ollama_error("model not found")
+        assert sanitized == "model not found"
+
+    def test_empty_string_falls_back(self) -> None:
+        assert _sanitize_ollama_error("") == "Pull failed"
+        assert _sanitize_ollama_error("   ") == "Pull failed"

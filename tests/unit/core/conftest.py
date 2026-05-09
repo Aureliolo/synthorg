@@ -101,6 +101,14 @@ class AgentIdentityFactory(ModelFactory[AgentIdentity]):
     level = SeniorityLevel.MID  # avoid JUNIOR+FULL autonomy validation conflict
     memory = MemoryConfigFactory
     tools = ToolPermissionsFactory
+    # ``SkillSetFactory`` zeroes ``primary`` / ``secondary`` so the
+    # ``SkillSet`` overlap validator cannot reject the generated
+    # instance.  Without this binding ``polyfactory`` generates the
+    # ``skills`` field directly from the model definition (random
+    # ``Skill`` tuples), which intermittently produces an
+    # overlapping primary/secondary id and CI rejects the build with
+    # ``Skills cannot appear in both primary and secondary tiers``.
+    skills = SkillSetFactory
 
 
 class TeamFactory(ModelFactory[Team]):

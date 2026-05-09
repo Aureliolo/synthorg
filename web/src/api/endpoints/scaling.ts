@@ -1,5 +1,6 @@
 import {
   apiClient,
+  paginateAll,
   unwrap,
   unwrapPaginated,
   type PaginatedResult,
@@ -39,10 +40,14 @@ export interface ScalingDecisionResponse {
 // -- API functions -----------------------------------------------------------
 
 export async function getScalingStrategies(): Promise<ScalingStrategyResponse[]> {
-  const response = await apiClient.get<ApiResponse<ScalingStrategyResponse[]>>(
-    '/scaling/strategies',
-  )
-  return unwrap(response)
+  return paginateAll<ScalingStrategyResponse>(async (cursor) => {
+    const params = new URLSearchParams()
+    if (cursor) params.set('cursor', cursor)
+    const qs = params.toString()
+    const url = qs ? `/scaling/strategies?${qs}` : '/scaling/strategies'
+    const response = await apiClient.get<PaginatedResponse<ScalingStrategyResponse>>(url)
+    return unwrapPaginated<ScalingStrategyResponse>(response)
+  })
 }
 
 export async function getScalingDecisions(params?: {
@@ -63,10 +68,14 @@ export async function getScalingDecisions(params?: {
 }
 
 export async function getScalingSignals(): Promise<ScalingSignalResponse[]> {
-  const response = await apiClient.get<ApiResponse<ScalingSignalResponse[]>>(
-    '/scaling/signals',
-  )
-  return unwrap(response)
+  return paginateAll<ScalingSignalResponse>(async (cursor) => {
+    const params = new URLSearchParams()
+    if (cursor) params.set('cursor', cursor)
+    const qs = params.toString()
+    const url = qs ? `/scaling/signals?${qs}` : '/scaling/signals'
+    const response = await apiClient.get<PaginatedResponse<ScalingSignalResponse>>(url)
+    return unwrapPaginated<ScalingSignalResponse>(response)
+  })
 }
 
 export async function triggerScalingEvaluation(): Promise<

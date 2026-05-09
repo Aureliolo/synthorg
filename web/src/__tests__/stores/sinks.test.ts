@@ -1,9 +1,20 @@
 import { http, HttpResponse } from 'msw'
+import type { PaginatedResponse } from '@/api/types/http'
 import type { SinkInfo, TestSinkResult } from '@/api/types/settings'
 import { useSinksStore } from '@/stores/sinks'
 import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
+
+function paginatedSinks(sinks: SinkInfo[]): PaginatedResponse<SinkInfo> {
+  return {
+    data: sinks,
+    error: null,
+    error_detail: null,
+    pagination: { limit: 200, next_cursor: null, has_more: false },
+    success: true,
+  }
+}
 
 function makeSink(overrides: Partial<SinkInfo> = {}): SinkInfo {
   return {
@@ -35,7 +46,7 @@ describe('fetchSinks', () => {
     ]
     server.use(
       http.get('/api/v1/settings/observability/sinks', () =>
-        HttpResponse.json(apiSuccess(sinks)),
+        HttpResponse.json(paginatedSinks(sinks)),
       ),
     )
 
@@ -55,7 +66,7 @@ describe('fetchSinks', () => {
     server.use(
       http.get('/api/v1/settings/observability/sinks', async () => {
         await gate
-        return HttpResponse.json(apiSuccess([makeSink()]))
+        return HttpResponse.json(paginatedSinks([makeSink()]))
       }),
     )
 
@@ -104,7 +115,7 @@ describe('fetchSinks', () => {
     useSinksStore.setState({ error: 'old error' })
     server.use(
       http.get('/api/v1/settings/observability/sinks', () =>
-        HttpResponse.json(apiSuccess([makeSink()])),
+        HttpResponse.json(paginatedSinks([makeSink()])),
       ),
     )
 

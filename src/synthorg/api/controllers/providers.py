@@ -20,6 +20,7 @@ from synthorg.api.controllers._provider_helpers import enrich_with_usage, sse_er
 from synthorg.api.controllers._workflow_helpers import request_audit_actor
 from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
 from synthorg.api.dto import (
+    DEFAULT_LIMIT,
     ApiResponse,
     CreateFromPresetRequest,
     CreateProviderRequest,
@@ -58,9 +59,17 @@ from synthorg.api.dto_providers import (
     to_provider_model_response,
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_keyset_meta,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathName  # noqa: TC001
-from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
+from synthorg.api.rate_limits import (
+    per_op_concurrency_from_policy,
+    per_op_rate_limit_from_policy,
+)
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import (
@@ -204,12 +213,29 @@ class ProviderController(Controller):
     async def list_providers(
         self,
         state: State,
-    ) -> ApiResponse[Mapping[str, ProviderResponse]]:
-        """List all configured providers (secrets stripped)."""
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[ProviderResponse]:
+        """List all configured providers (secrets stripped), paginated by name."""
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
-        safe = {name: to_provider_response(p) for name, p in providers.items()}
-        return ApiResponse(data=safe)
+        # Paginate the sorted name list FIRST, then build DTOs only
+        # for the page slice.  Constructing every ``ProviderResponse``
+        # before slicing would defeat the cursor-pagination perf goal:
+        # a small-page request still pays O(n) ``model_copy`` /
+        # secret-stripping cost on every call.  Same shape as
+        # ``list_models`` below.
+        ordered_names = tuple(sorted(providers))
+        page_names, meta = paginate_cursor(
+            ordered_names,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        page = tuple(
+            to_provider_response(providers[name], name=name) for name in page_names
+        )
+        return PaginatedResponse[ProviderResponse](data=page, pagination=meta)
 
     @get(
         "/{name:str}",
@@ -235,7 +261,13 @@ class ProviderController(Controller):
             operation="read",
             extra_log_kwargs={"name": name},
         )
-        return ApiResponse(data=to_provider_response(provider))
+        # ``name=None`` keeps the list-only ``ProviderResponse.name``
+        # field out of the wire envelope on single-resource responses
+        # (the URL already identifies the provider).  Setting ``name``
+        # here would silently expand the non-paginated schema to carry
+        # the field, breaking the dict-by-name contract on the
+        # frontend that distinguishes list vs single-resource shape.
+        return ApiResponse(data=to_provider_response(provider, name=None))
 
     @get(
         "/{name:str}/models",
@@ -245,8 +277,10 @@ class ProviderController(Controller):
         self,
         state: State,
         name: PathName,
-    ) -> ApiResponse[tuple[ProviderModelResponse, ...]]:
-        """List models for a provider with runtime capabilities.
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[ProviderModelResponse]:
+        """List models for a provider with runtime capabilities, paginated by id.
 
         Raises:
             NotFoundError: If the provider is not found.
@@ -266,11 +300,26 @@ class ProviderController(Controller):
         if app_state.has_provider_registry and name in app_state.provider_registry:
             driver = app_state.provider_registry.get(name)
 
+        # Paginate the model list FIRST, then enrich only the page.
+        # Running ``batch_get_capabilities`` over ``provider.models``
+        # before slicing would defeat the cursor-pagination perf goal:
+        # a small-page client would still pay the full upstream
+        # capability-probe cost on every request.  ``paginate_cursor``
+        # consumes the sorted ``ModelConfig`` objects directly; the
+        # response shape is built per-page below.
+        ordered_models = tuple(sorted(provider.models, key=lambda m: m.id))
+        page_models, meta = paginate_cursor(
+            ordered_models,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+
         caps_by_id: Mapping[str, ModelCapabilities | None] = {}
-        if driver is not None:
+        if driver is not None and page_models:
             try:
                 caps_by_id = await driver.batch_get_capabilities(
-                    tuple(m.id for m in provider.models),
+                    tuple(m.id for m in page_models),
                 )
             except* (RetryExhaustedError, RateLimitError) as exc_group:
                 # ``BaseCompletionProvider.batch_get_capabilities``
@@ -290,14 +339,14 @@ class ProviderController(Controller):
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-        results = tuple(
+        page = tuple(
             to_provider_model_response(
                 model_config,
                 caps_by_id.get(model_config.id),
             )
-            for model_config in provider.models
+            for model_config in page_models
         )
-        return ApiResponse(data=results)
+        return PaginatedResponse[ProviderModelResponse](data=page, pagination=meta)
 
     @get(
         "/{name:str}/health",
@@ -380,7 +429,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config))
+        return ApiResponse(data=to_provider_response(config, name=None))
 
     @post(
         "/from-preset",
@@ -431,7 +480,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config))
+        return ApiResponse(data=to_provider_response(config, name=None))
 
     @put(
         "/{name:str}",
@@ -481,7 +530,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config))
+        return ApiResponse(data=to_provider_response(config, name=None))
 
     @delete(
         "/{name:str}",
@@ -525,9 +574,8 @@ class ProviderController(Controller):
                 key="user",
             ),
         ],
-        opt=per_op_concurrency(
+        opt=per_op_concurrency_from_policy(
             "providers.discover_models",
-            max_inflight=2,
             key="user",
         ),
     )
@@ -722,9 +770,8 @@ class ProviderController(Controller):
             require_ceo_or_manager,
             per_op_rate_limit_from_policy("providers.pull_model", key="user"),
         ],
-        opt=per_op_concurrency(
+        opt=per_op_concurrency_from_policy(
             "providers.pull_model",
-            max_inflight=2,
             key="user",
         ),
         media_type="text/event-stream",
@@ -1004,7 +1051,7 @@ class ProviderController(Controller):
                 provider=name,
             )
             raise ConflictError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(updated))
+        return ApiResponse(data=to_provider_response(updated, name=None))
 
     @post(
         "/{name:str}/models/sync",
@@ -1127,7 +1174,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(updated))
+        return ApiResponse(data=to_provider_response(updated, name=None))
 
     # ── Preset overrides ────────────────────────────────────────
 
@@ -1386,7 +1433,7 @@ class ProviderController(Controller):
         state: State,
         name: PathName,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[ProviderAuditEvent]:
         """List the mutation audit log for one provider, newest first.
 
@@ -1406,7 +1453,7 @@ class ProviderController(Controller):
             name: Provider name (any value accepted; missing
                 providers yield an empty page rather than 404).
             cursor: Opaque keyset cursor from a previous page.
-            limit: Page size (default 50, max ``MAX_LIMIT``).
+            limit: Page size (default ``DEFAULT_LIMIT``, max ``MAX_LIMIT``).
 
         Returns:
             Paginated response of ``ProviderAuditEvent`` rows.

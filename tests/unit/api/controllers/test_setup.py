@@ -721,9 +721,17 @@ class TestSetupAgentsList:
     ) -> None:
         resp = test_client.get("/api/v1/setup/agents")
         assert resp.status_code == 200
-        data = resp.json()["data"]
-        assert data["agents"] == []
-        assert data["agent_count"] == 0
+        body = resp.json()
+        assert body["data"] == []
+        assert body["pagination"]["has_more"] is False
+        assert body["pagination"]["next_cursor"] is None
+
+    def test_tampered_cursor_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get("/api/v1/setup/agents?cursor=garbage")
+        assert resp.status_code == 400
 
     def test_returns_agents_after_company_creation(
         self,
@@ -742,11 +750,68 @@ class TestSetupAgentsList:
             # Now list agents.
             resp = test_client.get("/api/v1/setup/agents")
             assert resp.status_code == 200
-            list_data = resp.json()["data"]
-            agents = list_data["agents"]
+            body = resp.json()
+            agents = body["data"]
             assert len(agents) >= 1
-            assert list_data["agent_count"] == len(agents)
             assert agents[0]["role"]
+            assert body["pagination"]["limit"] >= len(agents)
+        finally:
+            app_state._provider_management = original
+
+    def test_pagination_round_trip_with_limit_one(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """First page + cursor follow-up reaches the final page."""
+        app_state, original = _setup_mock_providers(test_client)
+        try:
+            test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Test Startup",
+                    "template_name": "solo_founder",
+                },
+            )
+            first = test_client.get("/api/v1/setup/agents?limit=1").json()
+            assert len(first["data"]) <= 1
+            collected = list(first["data"])
+            cursor = first["pagination"]["next_cursor"]
+            # Pin the cross-page invariant so a future template shrink
+            # (``solo_founder`` happens to seed two agents today; a
+            # one-agent template would leave the loop body unexercised
+            # and turn the test into a vacuous pass).
+            assert cursor is not None, (
+                "first page's next_cursor must be non-null so the "
+                "cursor-follow-up loop is actually entered; the "
+                "seeded template no longer crosses a page boundary"
+            )
+            while cursor:
+                page = test_client.get(
+                    f"/api/v1/setup/agents?limit=1&cursor={cursor}",
+                ).json()
+                collected.extend(page["data"])
+                cursor = page["pagination"]["next_cursor"]
+            # Strict equality (not length) so the test fails on
+            # duplicates, gaps, or reordering across pages.  Build
+            # ``full`` by walking pagination at a high limit so the
+            # oracle is the entire dataset rather than the first
+            # ``DEFAULT_LIMIT``-sized page; the previous single-GET
+            # version compared two truncated views once the agent
+            # count exceeded the default page size.
+            full: list[dict[str, Any]] = []
+            full_cursor: str | None = None
+            while True:
+                qs = (
+                    "?limit=200"
+                    if full_cursor is None
+                    else f"?limit=200&cursor={full_cursor}"
+                )
+                page = test_client.get(f"/api/v1/setup/agents{qs}").json()
+                full.extend(page["data"])
+                full_cursor = page["pagination"]["next_cursor"]
+                if full_cursor is None:
+                    break
+            assert collected == full
         finally:
             app_state._provider_management = original
 
@@ -798,13 +863,21 @@ class TestSetupAgentModelUpdate:
             data = resp.json()["data"]
             assert data["model_provider"] == "test-provider"
             assert data["model_id"] == "test-small-001"
+            updated_name = data["name"]
 
             # Verify persistence: GET agents and check the update stuck.
+            # Anchor on the updated agent's name so the assertion cannot
+            # pass via a different agent that already carries the same
+            # provider/model pair.
             get_resp = test_client.get("/api/v1/setup/agents")
             assert get_resp.status_code == 200
-            agents = get_resp.json()["data"]["agents"]
-            assert agents[0]["model_provider"] == "test-provider"
-            assert agents[0]["model_id"] == "test-small-001"
+            agents = get_resp.json()["data"]
+            assert any(
+                a["name"] == updated_name
+                and a["model_provider"] == "test-provider"
+                and a["model_id"] == "test-small-001"
+                for a in agents
+            )
         finally:
             app_state._provider_management = original
 
@@ -862,10 +935,10 @@ class TestUpdateAgentName:
             data = resp.json()["data"]
             assert data["name"] == "New Agent Name"
 
-            # Verify persistence.
+            # Verify persistence -- agents are name-sorted so search by value.
             get_resp = test_client.get("/api/v1/setup/agents")
-            agents = get_resp.json()["data"]["agents"]
-            assert agents[0]["name"] == "New Agent Name"
+            agents = get_resp.json()["data"]
+            assert any(a["name"] == "New Agent Name" for a in agents)
         finally:
             app_state._provider_management = original
 
@@ -935,10 +1008,10 @@ class TestRandomizeAgentName:
             data = resp.json()["data"]
             assert data["name"] == "Ada Lovelace"
 
-            # Verify persistence.
+            # Verify persistence -- agents are name-sorted so search by value.
             get_resp = test_client.get("/api/v1/setup/agents")
-            agents = get_resp.json()["data"]["agents"]
-            assert agents[0]["name"] == "Ada Lovelace"
+            agents = get_resp.json()["data"]
+            assert any(a["name"] == "Ada Lovelace" for a in agents)
         finally:
             app_state._provider_management = original
 
@@ -1432,11 +1505,18 @@ class TestUpdateAgentPersonality:
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["personality_preset"] == "visionary_leader"
+            updated_name = data["name"]
 
-            # Verify persistence.
+            # Verify persistence: anchor on the updated agent's name so
+            # the assertion cannot pass via a different agent that
+            # already carries the visionary_leader preset.
             get_resp = test_client.get("/api/v1/setup/agents")
-            agents = get_resp.json()["data"]["agents"]
-            assert agents[0]["personality_preset"] == "visionary_leader"
+            agents = get_resp.json()["data"]
+            assert any(
+                agent["name"] == updated_name
+                and agent["personality_preset"] == "visionary_leader"
+                for agent in agents
+            )
         finally:
             app_state._provider_management = original
 
@@ -1500,13 +1580,14 @@ class TestListPersonalityPresets:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Personality presets endpoint returns a non-empty list."""
+        """Personality presets endpoint returns a non-empty paginated list."""
         resp = test_client.get("/api/v1/setup/personality-presets")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        presets = body["data"]["presets"]
+        presets = body["data"]
         assert len(presets) >= 1
+        assert "next_cursor" in body["pagination"]
 
     def test_list_presets_field_shape(
         self,
@@ -1515,12 +1596,62 @@ class TestListPersonalityPresets:
         """Each preset has ``name`` and ``description`` fields."""
         resp = test_client.get("/api/v1/setup/personality-presets")
         body = resp.json()
-        for preset in body["data"]["presets"]:
+        for preset in body["data"]:
             assert "name" in preset
             assert "description" in preset
             assert isinstance(preset["name"], str)
             assert isinstance(preset["description"], str)
             assert preset["name"].strip() != ""
+
+    def test_list_presets_round_trip_with_cursor(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Walking pages with limit=1 returns every preset exactly once."""
+        # Build the full list by walking pagination at a high limit so
+        # ``full`` is the entire dataset rather than the first
+        # ``DEFAULT_LIMIT``-sized page.  The previous implementation
+        # broke silently the moment the preset registry grew past the
+        # default page size, because the round-trip check was then
+        # comparing two truncated views.
+        full: list[dict[str, Any]] = []
+        cursor: str | None = None
+        while True:
+            qs = "?limit=200" if cursor is None else f"?limit=200&cursor={cursor}"
+            page = test_client.get(f"/api/v1/setup/personality-presets{qs}").json()
+            full.extend(page["data"])
+            cursor = page["pagination"]["next_cursor"]
+            if cursor is None:
+                break
+        if len(full) < 2:
+            pytest.skip("need at least two presets for cursor round-trip")
+        first = test_client.get(
+            "/api/v1/setup/personality-presets?limit=1",
+        ).json()
+        assert len(first["data"]) == 1
+        collected = list(first["data"])
+        cursor = first["pagination"]["next_cursor"]
+        assert cursor is not None
+        while cursor:
+            page = test_client.get(
+                f"/api/v1/setup/personality-presets?limit=1&cursor={cursor}",
+            ).json()
+            collected.extend(page["data"])
+            cursor = page["pagination"]["next_cursor"]
+        # Strict equality already encodes "no duplicates, no gaps,
+        # stable order"; loosening this check would require explicit
+        # invariant assertions but as written this single line covers
+        # the round-trip property in full.
+        assert collected == full
+
+    def test_list_presets_tampered_cursor_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/setup/personality-presets?cursor=garbage",
+        )
+        assert resp.status_code == 400
 
 
 # ``TestReadHasGpuSetting`` moved to test_setup_has_gpu.py to keep this
