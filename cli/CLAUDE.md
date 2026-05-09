@@ -123,6 +123,23 @@ See [docs/reference/cli-config-subcommands.md](../docs/reference/cli-config-subc
 | `version` | `--short` |
 | `uninstall` | `--keep-data`, `--keep-images` |
 
+## Doctor Report
+
+`synthorg doctor` collects diagnostics, saves a timestamped `synthorg-diagnostic-YYYYMMDD-HHMMSS.txt` (mode `0600`) under the data directory, prints a summary, and optionally auto-fixes detected issues with `--fix`. The footer of every run prints `synthorg doctor report` (file a bug report) and `synthorg logs` (view container logs) as next-step hints. Filter the report to a subset of categories with `--checks <name>[,<name>...]`; the keyword `all` is equivalent to omitting the flag.
+
+| Check | Description |
+|-------|-------------|
+| `environment` | Docker / Compose versions, OS, CLI version |
+| `health` | Backend `/api/v1/readyz` reachability + verdict (`OK` / `DEGRADED` / `CRITICAL`) |
+| `containers` | Container state per compose service (running / restarting / exited) |
+| `images` | Image presence, digest pins, verification cache state |
+| `compose` | `compose.yml` validation, port-collision detection |
+| `config` | Resolved config keys + override precedence (flag > env > config > default) |
+| `disk` | Volume sizes, free space at the data directory |
+| `errors` | Recent error log lines per service |
+
+See [docs/reference/cli-config-subcommands.md](../docs/reference/cli-config-subcommands.md) for the settable-key inventory and [docs/reference/cli-env-vars.md](../docs/reference/cli-env-vars.md) for the env-var reference.
+
 ## Persistence Backends
 
 `--persistence-backend sqlite` (default, single-node) uses the in-process SQLite store under volume `synthorg-data`. `--persistence-backend postgres` adds a `dhi.io/postgres` DHI service (tag pinned via `DefaultPostgresImageTag` in `cli/internal/config/state.go`, kept current by Renovate) on port `3002` (override via `--postgres-port`) backed by volume `synthorg-pgdata`. Interactive `init` defaults to Postgres + NATS; non-interactive defaults to SQLite + internal bus.
