@@ -4,7 +4,6 @@ Tests the full pipeline: signals -> rules -> strategies ->
 guards -> approval -> rollout -> regression detection.
 """
 
-from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, uuid5
 
 import pytest
@@ -128,13 +127,14 @@ class TestMetaCycleIntegration:
         async def snapshot_builder() -> OrgSignalSnapshot:
             return _snap(quality=7.5, success=0.85)
 
-        approval_store = ApprovalStore()
+        clock = FakeClock()
+        approval_store = ApprovalStore(clock=clock)
         svc = SelfImprovementService(
             config=SelfImprovementConfig(
                 enabled=True,
                 config_tuning_enabled=True,
             ),
-            clock=FakeClock(),
+            clock=clock,
             snapshot_builder=snapshot_builder,
             approval_store=approval_store,
         )
@@ -165,7 +165,7 @@ class TestMetaCycleIntegration:
         # first-writer-wins path the API and MCP approval handlers
         # take, so a regression in the store's concurrency model also
         # surfaces here.
-        decided_at = datetime.now(UTC)
+        decided_at = clock.now()
         decided = item.model_copy(
             update={
                 "status": ApprovalStatus.APPROVED,

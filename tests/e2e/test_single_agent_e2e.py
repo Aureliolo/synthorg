@@ -384,16 +384,16 @@ class TestRealLLMIntegration:
 
     Skipped unless REAL_LLM_TEST=1 is set; not expected to run in CI.
     Each method also requires REAL_LLM_MODEL and REAL_LLM_PROVIDER so
-    the test can construct a LiteLLM-backed provider without leaning
-    on app-startup config wiring. Authentication is configured via at
-    least one of REAL_LLM_API_KEY (hosted providers) or
-    REAL_LLM_BASE_URL (local providers like Ollama / LM Studio /
-    vLLM); when both are set, both are forwarded to LiteLLM (api_key
-    for auth, base_url as the request endpoint).
+    the test can construct a configured provider driver without
+    leaning on app-startup config wiring. Authentication is configured
+    via at least one of REAL_LLM_API_KEY (hosted providers) or
+    REAL_LLM_BASE_URL (local / self-hosted providers); when both are
+    set, both are forwarded to the provider driver (api_key for auth,
+    base_url as the request endpoint).
     """
 
     async def test_real_provider_text_completion(self) -> None:
-        """Minimal text-only task end-to-end through ``LiteLLMDriver``."""
+        """Minimal text-only task end-to-end through the configured provider driver."""
         provider_model = os.environ.get("REAL_LLM_MODEL")
         if not provider_model:
             pytest.skip(
@@ -403,7 +403,7 @@ class TestRealLLMIntegration:
         provider_name = os.environ.get("REAL_LLM_PROVIDER")
         if not provider_name:
             pytest.skip(
-                "Set REAL_LLM_PROVIDER to a LiteLLM routing key "
+                "Set REAL_LLM_PROVIDER to a provider routing key "
                 "(e.g. 'example-provider') to run this test"
             )
         # Normalise empty-string env vars to None so ProviderConfig's
