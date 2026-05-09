@@ -9,6 +9,7 @@ Sources (best-effort; failures keep the previously-stored value):
 * ``providers_curated``     -- ``len(synthorg.providers.presets.list_presets())``
 * ``providers_via_litellm`` -- ``len(litellm.model_cost)``
 * ``subagents``             -- ``glob .claude/agents/*.md``
+* ``convention_gates``      -- ``glob scripts/check_*.py``
 
 Run before ``zensical build``::
 
@@ -70,6 +71,7 @@ _SOURCES: Final[dict[str, str]] = {
     "providers_curated": "synthorg.providers.presets.list_presets",
     "providers_via_litellm": "len(litellm.model_cost)",
     "subagents": "glob .claude/agents/*.md",
+    "convention_gates": "glob scripts/check_*.py",
 }
 
 
@@ -269,6 +271,17 @@ def _fetch_subagents() -> StatEntry:
     return {"raw": count, "display": str(count)}
 
 
+def _fetch_convention_gates() -> StatEntry:
+    """Count `scripts/check_*.py` enforcement gate scripts (incl. meta-gate)."""
+    name = "convention_gates"
+    source = _SOURCES[name]
+    scripts_dir = REPO_ROOT / "scripts"
+    if not scripts_dir.is_dir():
+        raise _StatFetchError(name, source, f"scripts/ not found at {scripts_dir}")
+    count = sum(1 for _ in scripts_dir.glob("check_*.py"))
+    return {"raw": count, "display": str(count)}
+
+
 _FETCHERS: dict[str, Callable[[], StatEntry]] = {
     "tests": _fetch_tests,
     "version": _fetch_version,
@@ -276,6 +289,7 @@ _FETCHERS: dict[str, Callable[[], StatEntry]] = {
     "providers_curated": _fetch_providers_curated,
     "providers_via_litellm": _fetch_providers_via_litellm,
     "subagents": _fetch_subagents,
+    "convention_gates": _fetch_convention_gates,
 }
 
 

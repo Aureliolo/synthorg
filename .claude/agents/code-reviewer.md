@@ -25,9 +25,9 @@ Rate each issue from 0-100:
 
 - **0-25**: Likely false positive or pre-existing issue
 - **26-50**: Minor nitpick not explicitly in CLAUDE.md
-- **51-75**: Valid but low-impact issue
-- **76-90**: Important issue requiring attention
-- **91-100**: Critical bug or explicit CLAUDE.md violation
+- **51-79**: Valid but low-impact issue
+- **80-89**: Important issue requiring attention
+- **90-100**: Critical bug or explicit CLAUDE.md violation
 
 **Only report issues with confidence ≥ 80**
 

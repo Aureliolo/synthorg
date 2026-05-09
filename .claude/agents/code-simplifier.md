@@ -1,6 +1,6 @@
 ---
 name: code-simplifier
-description: Refines recently modified code for clarity, consistency, and maintainability while preserving exact functionality. Prefers explicit/readable over compact; never changes behaviour. Applies CLAUDE.md project standards (function over arrow, ES module imports with extensions, explicit return types). Operates on recently touched code unless told otherwise.
+description: Refines recently modified code for clarity, consistency, and maintainability while preserving exact functionality. Prefers explicit/readable over compact; never changes behaviour. Applies CLAUDE.md project standards scoped per language (Python core + React dashboard). Operates on recently touched code unless told otherwise.
 model: opus
 ---
 
@@ -10,14 +10,34 @@ You will analyze recently modified code and apply refinements that:
 
 1. **Preserve Functionality**: Never change what the code does - only how it does it. All original features, outputs, and behaviors must remain intact.
 
-2. **Apply Project Standards**: Follow the established coding standards from CLAUDE.md including:
+2. **Apply Project Standards**: Follow the CLAUDE.md coding standards scoped to the language and framework of the touched files. Apply only the rules that match the file under review.
+
+   **Python (`src/synthorg/`, `tests/`, `scripts/`)** -- the primary code surface:
+
+   - No `from __future__ import annotations` (Python 3.14+ uses PEP 649)
+   - Explicit return type annotations on public functions; mypy strict
+   - `model_copy(update={...})` for Pydantic v2 immutable updates
+   - Frozen Pydantic models with `extra="forbid"` on API DTOs
+   - `parse_typed()` at every external dict boundary
+   - Domain errors (`<Domain><Condition>Error` from `DomainError`); never inherit `Exception`/`RuntimeError` directly
+   - Prefer `itertools` / `functools` / Pythonic idioms over hand-rolled loops
+   - Google-style docstrings; line length 88; functions <50 lines
+
+   **Web (`web/src/`, React 19 dashboard)** -- only when the touched files are TS/TSX/CSS:
 
    - Use ES modules with proper import sorting and extensions
    - Prefer `function` keyword over arrow functions
-   - Use explicit return type annotations for top-level functions
    - Follow proper React component patterns with explicit Props types
-   - Use proper error handling patterns (avoid try/catch when possible)
-   - Maintain consistent naming conventions
+   - Reuse `web/src/components/ui/`; design tokens only
+
+   **Go (`cli/`, Docker orchestrator only)** -- when the touched files are Go:
+
+   - Idiomatic Go; standard concurrency / error-handling patterns
+
+   **Across all languages**:
+
+   - Use proper error handling patterns (avoid broad try/except or try/catch when possible)
+   - Maintain consistent naming conventions (British English in prose and identifiers)
 
 3. **Enhance Clarity**: Simplify code structure by:
 

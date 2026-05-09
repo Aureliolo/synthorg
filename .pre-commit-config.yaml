@@ -264,7 +264,7 @@ repos:
         # scripts/check_doc_numeric_macros.py + the YAML source of
         # truth + the injector/generator/gate themselves. Keep this
         # list in sync with `_SCOPED_FILES` whenever the scope changes.
-        files: ^(README\.md|docs/index\.md|docs/roadmap/index\.md|docs/architecture/decisions\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py)$
+        files: ^(README\.md|docs/index\.md|docs/roadmap/index\.md|docs/architecture/decisions\.md|docs/reference/convention-gates\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py)$
         pass_filenames: false
         stages: [pre-push]
 

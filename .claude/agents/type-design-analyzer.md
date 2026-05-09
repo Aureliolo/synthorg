@@ -49,7 +49,7 @@ When analyzing a type, you will:
 
 Provide your analysis in this structure:
 
-```
+```text
 ## Type: [TypeName]
 
 ### Invariants Identified

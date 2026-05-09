@@ -42,6 +42,9 @@ stats:
   subagents:
     raw: 7
     display: "7"
+  convention_gates:
+    raw: 36
+    display: "36"
 
 sources:
   tests: "uv run python -m pytest --collect-only -q"
@@ -50,3 +53,4 @@ sources:
   providers_curated: "synthorg.providers.presets.list_presets"
   providers_via_litellm: "len(litellm.model_cost) (lazy import)"
   subagents: "glob .claude/agents/*.md"
+  convention_gates: "glob scripts/check_*.py"
