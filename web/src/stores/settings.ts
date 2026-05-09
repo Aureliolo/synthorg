@@ -155,11 +155,15 @@ interface SettingsState {
   /**
    * Reset a setting to its default value.
    *
-   * Returns ``true`` on success. Returns ``false`` either when the
-   * server-side reset itself failed (after logging and emitting an
-   * error toast) or when the reset succeeded but the post-reset
-   * refetch failed (after emitting a warning toast so the user knows
-   * the local view is stale). Callers MUST NOT wrap in try/catch;
+   * Returns ``true`` only when the server-side reset succeeds AND the
+   * follow-up refetch is applied to ``state.entries``. Returns
+   * ``false`` for ANY stale-local-view outcome: the server-side
+   * reset itself failed (error toast emitted), the post-reset
+   * refetch failed, OR the refetch succeeded but was intentionally
+   * discarded because ``hasOtherSaves`` / ``generationDrifted``
+   * left the snapshot at risk of clobbering a concurrent write
+   * (warning toast emitted in those cases so the user knows the
+   * local view is stale). Callers MUST NOT wrap in try/catch;
    * check the return value instead so they can keep dirty state
    * intact when the local view did not catch up.
    */
@@ -231,12 +235,25 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   },
 
   refreshEntries: async () => {
-    // Skip if saves are in progress to avoid overwriting fresh data
+    // Skip if saves are in progress to avoid overwriting fresh data.
     if (get().savingKeys.size > 0) return
+    // Capture the entries-generation BEFORE the fetch so a
+    // ``resetSetting`` / ``updateSetting`` that completes during the
+    // fetch window cannot have its result clobbered by this older
+    // snapshot. ``savingKeys`` alone only catches mutations still in
+    // flight at apply time; the generation check covers the
+    // start-during-fetch / finish-before-apply race.
+    const generationAtFetchStart = get().entriesGeneration
     // Let errors propagate to usePolling's error tracking
     const entries = await fetchAllSettingsEntries()
-    // Re-check: a save may have started during the fetch
-    if (get().savingKeys.size > 0) return
+    // Re-check: a save / reset may have started OR completed during
+    // the fetch. Either condition means this snapshot may be stale.
+    if (
+      get().savingKeys.size > 0
+      || get().entriesGeneration !== generationAtFetchStart
+    ) {
+      return
+    }
     const patch: Partial<SettingsState> = { entries, error: null }
     patch.currency = deriveCurrency(entries) ?? DEFAULT_CURRENCY
     set(patch)
@@ -332,6 +349,20 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       return updated
     } catch (error) {
       const errorMessage = getErrorMessage(error)
+      // Symmetric to the success-path drop: if a newer mutation has
+      // already landed for this composite key, an older (failed)
+      // response must not surface a "Failed to update" toast or
+      // overwrite ``saveError`` -- the user's view shows the newer
+      // value, so the failure of the superseded request is no
+      // longer actionable. Drain the savingKeys refcount and
+      // return the null sentinel without the noisy toast / log.
+      const lastApplied = get().appliedMutationTokens.get(compositeKey) ?? 0
+      if (mutationToken <= lastApplied) {
+        set((state) => ({
+          savingKeys: decrementSavingKey(state.savingKeys, compositeKey),
+        }))
+        return null
+      }
       log.error('Update setting failed', {
         compositeKey: sanitizeForLog(compositeKey),
         error: sanitizeForLog(errorMessage),
@@ -426,6 +457,12 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         if (refreshedEntries && !hasOtherSaves && !generationDrifted) {
           update.entries = refreshedEntries
           update.error = null
+          // Bump the generation counter so a concurrent
+          // ``refreshEntries`` (poll / WS) that started before this
+          // apply but finishes afterward refuses to overwrite the
+          // post-reset entries with its older snapshot. Mirrors the
+          // ``updateSetting`` success-branch bump.
+          update.entriesGeneration = state.entriesGeneration + 1
           if (ns === 'budget' && key === 'currency') {
             update.currency = deriveCurrency(refreshedEntries) ?? DEFAULT_CURRENCY
           }
