@@ -29,10 +29,12 @@
       "source_root": "cli",
       "scan_paths": ["internal/codeqlfixtures"],
       "must_not_fire_at": [
-        {"rule": "go/path-injection", "function": "NegativePathInjection"}
+        {"rule": "go/path-injection", "function": "NegativePathInjection"},
+        {"rule": "go/log-injection", "function": "NegativeLogInjection"}
       ],
       "must_fire_at": [
-        {"rule": "go/path-injection", "function": "PositivePathInjection"}
+        {"rule": "go/path-injection", "function": "PositivePathInjection"},
+        {"rule": "go/log-injection", "function": "PositiveLogInjection"}
       ]
     },
     {

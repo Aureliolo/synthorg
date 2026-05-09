@@ -52,17 +52,6 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          enable-cache: true
-
-      - name: Install Python deps (for fixture extraction + check script)
-        run: uv sync --no-dev
-
-      - name: Install web deps (for fixture type-resolution)
-        run: npm --prefix web ci
-
       - name: Initialize CodeQL (provides codeql CLI on PATH)
         uses: github/codeql-action/init@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
         with:

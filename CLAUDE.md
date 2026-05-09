@@ -16,6 +16,7 @@ Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (use `go -C cli`, never `cd c
 - **No Hardcoded Values (MANDATORY)**: numerics live in `settings/definitions/`; allowlist 0/1/-1, HTTP codes, hex masks, powers-of-2. Enforced by `scripts/check_no_magic_numbers.py`.
 - **Doc Numeric Claims (MANDATORY)**: numerics in README + public docs sourced from `data/runtime_stats.yaml` via `<!--RS:NAME-->` markers. See `data/README.md`.
 - **Test Regression (MANDATORY)**: timeout/slow failures = source-code regression; never edit `tests/baselines/unit_timing.json`.
+- **CodeQL Sanitisers (MANDATORY)**: any change to a project sanitiser (helper that closes a CodeQL data-flow rule) requires a matching row in `.github/codeql/extensions/synthorg-sanitisers/*.model.yml` and a fixture pair under `.github/codeql/fixtures/` (or `cli/internal/codeqlfixtures/`). Enforced by `.github/workflows/codeql-pack-validate.yml` + `scripts/check_codeql_fixtures.py`. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md#codeql-barrier-inventory).
 - **Post-Implementation + Pre-PR Review (MANDATORY)**: after issue: branch + commit + push (no auto-PR); use `/pre-pr-review` (gh pr create is hookify-blocked). After PR: `/aurelio-review-pr` for external feedback. Fix EVERYTHING valid; no deferring.
 
 ## Quick Commands
@@ -42,7 +43,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 - [docs/reference/claude-reference.md](docs/reference/claude-reference.md): Doc layout, Docker, releasing, CI, dependencies, Hypothesis deep-dive
 - [docs/reference/conventions.md](docs/reference/conventions.md): repository CRUD, lifecycle, response wrapping, validators, event imports, domain errors, file structure, frozen ConfigDict, args models, Pydantic v2, async, Clock seam
-- [docs/reference/convention-gates.md](docs/reference/convention-gates.md): gate inventory (35 enforcement gates + meta-gate)
+- [docs/reference/convention-gates.md](docs/reference/convention-gates.md): gate inventory (38 enforcement gates + meta-gate)
 - [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md), [persistence-boundary.md](docs/reference/persistence-boundary.md), [configuration-precedence.md](docs/reference/configuration-precedence.md), [errors.md](docs/reference/errors.md), [sec-prompt-safety.md](docs/reference/sec-prompt-safety.md), [lifecycle-sync.md](docs/reference/lifecycle-sync.md), [mcp-handler-contract.md](docs/reference/mcp-handler-contract.md), [typed-boundaries.md](docs/reference/typed-boundaries.md), [retry-patterns.md](docs/reference/retry-patterns.md), [scaffolding.md](docs/reference/scaffolding.md), [audit-category-gate-coverage.md](docs/reference/audit-category-gate-coverage.md), [dead-api-endpoints.md](docs/reference/dead-api-endpoints.md), [pluggable-subsystems.md](docs/reference/pluggable-subsystems.md), [telemetry.md](docs/reference/telemetry.md)
 
 ## Diagrams

@@ -164,3 +164,16 @@ The custom CodeQL Models-as-Data extension pack at `.github/codeql/extensions/sy
 | `sanitizeWsEnum` | `web/src/utils/ws-sanitize.ts` | `js/log-injection` | Allowlist-validated; returns either the input or a literal fallback constant |
 
 Adding a new sanitiser is a three-part change in one PR: the helper itself, a matching row in the language-specific `*-sanitisers.model.yml`, and a fixture pair (negative + positive) under `.github/codeql/fixtures/` (or `cli/internal/codeqlfixtures/` for Go) plus its `expected.json` entry. The standalone `codeql-pack-validate.yml` workflow runs on every pack-related change and fails if either fixture diverges from its expectation.
+
+### Rules covered without a barrier model
+
+Two rules from the recurring-FP inventory are addressed by mechanisms other than a Models-as-Data barrier:
+
+| Rule | Resolution |
+|---|---|
+| `py/incomplete-url-substring-sanitization` | Suppressed by the `paths-ignore: ['tests/**']` clause in `.github/codeql/codeql-config.yml`. Every historical dismissal of this rule was on tuple-membership host checks (`host in allowed_hosts`) inside `tests/unit/tools/sandbox/*.py`; test files cannot ship a runtime vulnerability, so excluding them at the workflow level is more precise than modelling the membership check as a barrier. Production code that needs this idiom should use a dedicated typed validator (and earn its own barrier row above). |
+| `go/log-injection` | Covered by a typed-args fixture pair in `cli/internal/codeqlfixtures/fixture.go` (`NegativeLogInjection` / `PositiveLogInjection`). The historical dismissal was on `Logger.Info(msg, kvs ...any)` calls in `docker/sidecar/internal/health/health.go` where every variadic arg was a non-string scalar (`int` / `bool`); CodeQL's built-in Go data-flow already recognises non-string args as type-converted. The fixture asserts this end-to-end so a future regression in CodeQL's upstream model surfaces in CI rather than in dismissed alerts. |
+
+### Cross-references
+
+The "Key reference call sites" section above lists LLM call sites that wrap untrusted strings via `wrap_untrusted`. Sites that interpolate a sanitised value (e.g. `error=safe_error_description(exc)`) rely on the row above to keep CodeQL's data-flow accurate. If a sanitiser is renamed or moved, update the matching inventory row in lock-step.

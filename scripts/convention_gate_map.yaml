@@ -75,6 +75,11 @@ mandatory_rules:
     header: Test Regression
     gate: scripts/check_no_edit_baseline.sh
 
+  - id: claude-md::codeql-sanitisers
+    file: CLAUDE.md
+    header: CodeQL Sanitisers
+    gate: scripts/check_codeql_fixtures.py
+
   - id: claude-md::post-implementation-pre-pr-review
     file: CLAUDE.md
     header: Post-Implementation + Pre-PR Review

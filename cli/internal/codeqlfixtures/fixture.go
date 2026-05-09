@@ -37,3 +37,27 @@ func NegativePathInjection(userInput string) ([]byte, error) {
 func PositivePathInjection(userInput string) ([]byte, error) {
 	return os.ReadFile(userInput)
 }
+
+// Logger mirrors docker/sidecar/internal/health/health.go's Logger
+// interface. Variadic any kvs is the surface CodeQL's go/log-injection
+// query analyses on the production caller; modelling it here proves the
+// rule's behaviour against int/bool args end-to-end.
+type Logger interface {
+	Info(msg string, kvs ...any)
+	Warn(msg string, kvs ...any)
+}
+
+// NegativeLogInjection is the sanitised idiom: every variadic arg is
+// either a static label string, a non-string scalar (int / bool), or a
+// constant. CodeQL must NOT flag this as go/log-injection because no
+// user-controlled string flows into the log call.
+func NegativeLogInjection(logger Logger, hostCount int, allowAll bool) {
+	logger.Info("rules.updated", "count", hostCount, "allow_all", allowAll)
+}
+
+// PositiveLogInjection is the deliberate genuine leak: a user-controlled
+// string flows straight into the log call without sanitisation. CodeQL
+// MUST fire go/log-injection here.
+func PositiveLogInjection(logger Logger, userInput string) {
+	logger.Info("user said", "value", userInput)
+}

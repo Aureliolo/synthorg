@@ -84,6 +84,9 @@ cp "$RESULTS_DIR/javascript-negative.sarif" "$RESULTS_DIR/javascript-positive.sa
 
 echo
 echo "==> running fixture-expectation diff"
-uv run python "$REPO_ROOT/scripts/check_codeql_fixtures.py" \
+# check_codeql_fixtures.py is stdlib-only; invoke a system python directly
+# rather than via `uv run` so the workflow does not need to sync project
+# deps just to assert SARIF outputs.
+python3 "$REPO_ROOT/scripts/check_codeql_fixtures.py" \
     --expected "$REPO_ROOT/.github/codeql/fixtures/expected.json" \
     --results-dir "$RESULTS_DIR"
