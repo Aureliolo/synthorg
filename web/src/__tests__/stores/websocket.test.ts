@@ -442,9 +442,14 @@ const connectPromise = useWebSocketStore.getState().connect()
       'applies +/-20% jitter to the reconnect delay ($label)',
       async ({ random, expected }) => {
         const mathRandom = vi.spyOn(Math, 'random').mockReturnValue(random)
+        // Hoist the spy declaration above the ``try`` so the
+        // ``finally`` block can restore it; the previous shape left
+        // the spy in scope only inside ``try`` and never undid it,
+        // which leaked across tests because vitest config does not
+        // enable ``restoreMocks`` and the global ``afterEach`` does
+        // not call ``vi.restoreAllMocks()``.
+        const setTimeoutSpy = vi.spyOn(window, 'setTimeout')
         try {
-          const setTimeoutSpy = vi.spyOn(window, 'setTimeout')
-
           const connectPromise = useWebSocketStore.getState().connect()
           await vi.runAllTimersAsync()
           await connectPromise
@@ -469,6 +474,7 @@ const connectPromise = useWebSocketStore.getState().connect()
           expect(delay).toBeGreaterThanOrEqual(expected - 1)
           expect(delay).toBeLessThanOrEqual(expected + 1)
         } finally {
+          setTimeoutSpy.mockRestore()
           mathRandom.mockRestore()
         }
       },

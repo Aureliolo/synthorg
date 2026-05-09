@@ -38,8 +38,12 @@ _OLLAMA_ERROR_MAX_LEN: Final[int] = 200  # lint-allow: magic-numbers -- internal
 # segment class includes a literal space so paths like
 # ``/var/lib/ollama/model cache/file.bin`` are fully redacted instead
 # of stopping at the first whitespace and leaking the trailing tail.
+# The trailing repetition group is zero-or-more (``*``) rather than
+# one-or-more so single-segment absolute paths like ``/models``,
+# ``/tmp``, or ``/token.json`` are also redacted; the previous
+# ``+`` form left those paths visible to remote clients.
 _OLLAMA_PATH_POSIX: Final[re.Pattern[str]] = re.compile(
-    r"/[\w.\- ]+(?:/[\w.\- ]+)+",
+    r"/[\w.\- ]+(?:/[\w.\- ]+)*",
 )
 # Windows-style absolute paths (``C:\Users\admin\AppData\token.json``).
 # Same space-allowance applies so ``C:\Program Files\Ollama\token.json``

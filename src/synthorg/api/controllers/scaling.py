@@ -211,7 +211,7 @@ class ScalingController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[ScalingDecisionResponse]:
         """List recent scaling decisions.
 

@@ -219,15 +219,21 @@ class ProviderController(Controller):
         """List all configured providers (secrets stripped), paginated by name."""
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
-        ordered = tuple(
-            to_provider_response(providers[name], name=name)
-            for name in sorted(providers)
-        )
-        page, meta = paginate_cursor(
-            ordered,
+        # Paginate the sorted name list FIRST, then build DTOs only
+        # for the page slice.  Constructing every ``ProviderResponse``
+        # before slicing would defeat the cursor-pagination perf goal:
+        # a small-page request still pays O(n) ``model_copy`` /
+        # secret-stripping cost on every call.  Same shape as
+        # ``list_models`` below.
+        ordered_names = tuple(sorted(providers))
+        page_names, meta = paginate_cursor(
+            ordered_names,
             limit=limit,
             cursor=cursor,
             secret=app_state.cursor_secret,
+        )
+        page = tuple(
+            to_provider_response(providers[name], name=name) for name in page_names
         )
         return PaginatedResponse[ProviderResponse](data=page, pagination=meta)
 
@@ -1447,7 +1453,7 @@ class ProviderController(Controller):
             name: Provider name (any value accepted; missing
                 providers yield an empty page rather than 404).
             cursor: Opaque keyset cursor from a previous page.
-            limit: Page size (default 50, max ``MAX_LIMIT``).
+            limit: Page size (default ``DEFAULT_LIMIT``, max ``MAX_LIMIT``).
 
         Returns:
             Paginated response of ``ProviderAuditEvent`` rows.

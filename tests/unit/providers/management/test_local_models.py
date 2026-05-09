@@ -308,12 +308,43 @@ class TestSanitizeOllamaError:
         assert _sanitize_ollama_error(12345) == "Pull failed"
         assert _sanitize_ollama_error({"error": "x"}) == "Pull failed"
 
+    @pytest.mark.parametrize(
+        "raw",
+        ["", "   ", False, 0, None],
+    )
+    def test_falsey_payloads_fall_back(self, raw: object) -> None:
+        # The stream-level caller dispatches on ``"error" in data``
+        # (not truthiness) so the helper must still produce the
+        # generic fallback for falsey-but-present payloads.  Locks
+        # the contract against a regression back to a truthy check.
+        assert _sanitize_ollama_error(raw) == "Pull failed"
+
     def test_redacts_posix_paths(self) -> None:
         sanitized = _sanitize_ollama_error(
             "open /var/lib/ollama/models/secret.bin: permission denied",
         )
         assert "/var/lib/ollama" not in sanitized
         assert "[REDACTED-PATH]" in sanitized
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "open /models: permission denied",
+            "open /tmp: permission denied",
+            "/token.json missing",
+        ],
+    )
+    def test_redacts_single_segment_posix_paths(self, raw: str) -> None:
+        # Pin the contract that ``_OLLAMA_PATH_POSIX`` redacts
+        # single-segment absolute paths; the previous ``+`` form on
+        # the trailing repetition group required at least two
+        # segments and silently leaked these forms.
+        sanitized = _sanitize_ollama_error(raw)
+        assert "[REDACTED-PATH]" in sanitized
+        # ``/tmp`` here is the redaction target string we want to
+        # confirm got scrubbed -- not a real tempdir filesystem call.
+        for leaked in ("/models", "/tmp", "/token.json"):  # noqa: S108
+            assert leaked not in sanitized
 
     def test_redacts_posix_paths_with_spaces(self) -> None:
         # Path segments that contain a literal space must still be

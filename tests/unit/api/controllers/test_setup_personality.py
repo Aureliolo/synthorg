@@ -38,13 +38,17 @@ class TestUpdateAgentPersonality:
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["personality_preset"] == "visionary_leader"
+            updated_name = data["name"]
 
-            # Verify persistence (agents are returned in name-sorted order
-            # so use ``any`` rather than indexing by insertion position).
+            # Verify persistence: anchor on the updated agent's name
+            # so the assertion cannot pass via a different agent that
+            # already carries the visionary_leader preset.
             get_resp = test_client.get("/api/v1/setup/agents")
             agents = get_resp.json()["data"]
             assert any(
-                agent["personality_preset"] == "visionary_leader" for agent in agents
+                agent["name"] == updated_name
+                and agent["personality_preset"] == "visionary_leader"
+                for agent in agents
             )
         finally:
             app_state._provider_management = original

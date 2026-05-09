@@ -190,9 +190,15 @@ async def _resolve_fine_tune_thresholds(
     for key, fallback in fallbacks.items():
         try:
             entry = await settings_service.get("memory", key)
-            resolved[key] = int(entry.value)
+            value = int(entry.value)
         except SettingNotFoundError, ValueError, TypeError:
             resolved[key] = fallback
+            continue
+        # ``_FineTuneThresholds`` enforces ``ge=1`` on every field, so
+        # an unparseable override (handled above) AND a non-positive
+        # one ("0" / "-1") must both fall back rather than reach the
+        # constructor and surface as a 500 from the controller.
+        resolved[key] = value if value >= 1 else fallback
     return _FineTuneThresholds(
         default_batch_size=resolved["fine_tune_default_batch_size"],
         min_docs_required=resolved["fine_tune_min_docs_required"],
