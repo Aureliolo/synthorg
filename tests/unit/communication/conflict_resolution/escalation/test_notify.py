@@ -35,6 +35,7 @@ from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_SUBSCRIBER_PAUSED,
 )
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -109,14 +110,23 @@ class TestPostgresSubscriberLateBoundResolver:
             return False
 
         resolver.get_bool.side_effect = _gate
+        # ``FakeClock`` drives ``_run``'s clock-backed reconnect-delay
+        # sleep on virtual time. The subscriber's loop body fires
+        # ``gate_consulted`` BEFORE entering the clock sleep, so the
+        # test still finishes in zero wall-clock seconds (set
+        # ``stop_event`` once the gate is observed; the clock sleep is
+        # cancelled by the lifecycle cleanup). Without the seam the
+        # ``asyncio.wait_for(timeout=1.0)`` below would be wall-clock
+        # bound and flaky on slow CI / xdist contention.
+        clock = FakeClock()
         subscriber = PostgresEscalationNotifySubscriber(
             repo,
             registry,
             channel="escalations",
             reconnect_delay_seconds=1.0,
             config_resolver=resolver,
+            clock=clock,
         )
-        subscriber._reconnect_delay = 0.01
 
         debug_events: list[str] = []
         proxy = notify_mod.logger
@@ -135,6 +145,10 @@ class TestPostgresSubscriberLateBoundResolver:
         try:
             task = asyncio.create_task(subscriber._run())
             try:
+                # ``gate_consulted`` fires inside the resolver call at
+                # the top of each iteration -- before the clock sleep
+                # -- so the wait completes on the first scheduler tick
+                # without consuming any virtual time.
                 await asyncio.wait_for(gate_consulted.wait(), timeout=1.0)
             finally:
                 subscriber._stop_event.set()
@@ -190,11 +204,20 @@ class TestPostgresSubscriberLifecycle:
         """
         repo = AsyncMock(spec=InMemoryEscalationStore)
         registry = AsyncMock(spec=PendingFuturesRegistry)
+        # Inject ``FakeClock`` so the drain hard deadline runs on
+        # virtual time. ``FakeClock.sleep`` advances the virtual clock
+        # and yields once via ``asyncio.sleep(0)``, so the
+        # ``stop()``-side ``self._clock.sleep(self._stop_drain_timeout_seconds)``
+        # race finishes instantly regardless of the configured
+        # deadline -- xdist contention or a slow CI runner cannot
+        # make this test flaky.
+        clock = FakeClock()
         subscriber = PostgresEscalationNotifySubscriber(
             repo,
             registry,
             channel="escalations",
             reconnect_delay_seconds=1.0,
+            clock=clock,
         )
         await subscriber.start()
         original_task = subscriber._task

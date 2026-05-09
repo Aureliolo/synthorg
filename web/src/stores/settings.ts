@@ -119,6 +119,17 @@ interface SettingsState {
    * mutated in this session, which is bounded by the schema.
    */
   appliedMutationTokens: ReadonlyMap<string, number>
+  /**
+   * Monotonic counter incremented on every successful save that
+   * mutates ``entries``. ``resetSetting`` captures the value before
+   * its post-reset refetch and rechecks it after; if a concurrent
+   * save completed during the fetch (counter advanced), the
+   * refetched snapshot may be stale and is discarded the same way
+   * a refetch failure would be -- preventing the refetch from
+   * silently overwriting the UI with a value that missed the
+   * concurrent write.
+   */
+  entriesGeneration: number
   /** Error from the most recent save attempt. */
   saveError: string | null
 
@@ -165,6 +176,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   error: null,
   savingKeys: new Map(),
   appliedMutationTokens: new Map(),
+  entriesGeneration: 0,
   saveError: null,
 
   fetchCurrency: async () => {
@@ -245,6 +257,14 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     }))
     try {
       const updated = await settingsApi.updateSetting(ns, key, { value })
+      // ``applied`` lifts out of the ``set`` callback so the
+      // post-set toast / return-value branches can distinguish the
+      // out-of-order drop path (entries left untouched, response
+      // discarded) from the canonical success path. Without this
+      // signal, callers using the ``null``-sentinel contract could
+      // clear dirty state for a mutation the store explicitly
+      // discarded.
+      let applied = false
       set((state) => {
         const newSaving = decrementSavingKey(state.savingKeys, compositeKey)
         const lastApplied = state.appliedMutationTokens.get(compositeKey) ?? 0
@@ -261,6 +281,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
           })
           return { savingKeys: newSaving, saveError: null }
         }
+        applied = true
         const hasExisting = state.entries.some(
           (e) => e.definition.namespace === ns && e.definition.key === key,
         )
@@ -277,6 +298,12 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
           entries: newEntries,
           savingKeys: newSaving,
           appliedMutationTokens: newApplied,
+          // Bump the entries-generation counter so a concurrent
+          // ``resetSetting`` refetch in flight can detect that a
+          // save landed during its fetch window and refuse to
+          // overwrite the snapshot with stale data. See the
+          // ``resetSetting`` finally block for the pair check.
+          entriesGeneration: state.entriesGeneration + 1,
         }
         // Keep the standalone currency field in sync with the entry list.
         if (ns === 'budget' && key === 'currency') {
@@ -284,6 +311,13 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         }
         return patch
       })
+      if (!applied) {
+        // Out-of-order response was dropped; the caller should NOT
+        // see a success signal that lets it clear dirty state for
+        // a mutation we never wrote to ``state.entries``. Return
+        // the ``null`` sentinel to match the documented contract.
+        return null
+      }
       // Success toast per the store-CRUD contract. Batch callers
       // (saveSettingsBatch, CeremonyPolicyPage) intentionally do NOT
       // emit a separate aggregated success toast on top -- the store
@@ -349,6 +383,18 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     let refreshedEntries: SettingEntry[] | undefined
     let refreshFailed = false
     let hasOtherSaves = false
+    let generationDrifted = false
+    // Capture the entries-generation before the fetch. Any
+    // concurrent ``updateSetting`` that completes between this
+    // capture and the apply branch below increments the counter,
+    // so the post-fetch comparison detects "a save landed during
+    // the fetch window" and refuses to overwrite ``state.entries``
+    // with a snapshot that missed the concurrent write.
+    // ``hasOtherSaves`` (size of ``savingKeys``) only catches
+    // mutations still in flight at apply time; this generation
+    // check covers the start-during-fetch / finish-before-apply
+    // race that ``hasOtherSaves`` would otherwise miss.
+    const generationAtFetchStart = get().entriesGeneration
     try {
       refreshedEntries = await fetchAllSettingsEntries()
     } catch (err) {
@@ -370,29 +416,33 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         // (refcount > 1 before our decrement) and the different-key
         // case (other entries in the map).
         hasOtherSaves = newSaving.size > 0
+        // Generation drift = a save completed during the fetch
+        // window. Same outcome as ``hasOtherSaves``: do not
+        // overwrite ``entries`` with the (now-stale) snapshot.
+        generationDrifted = state.entriesGeneration !== generationAtFetchStart
         const update: Partial<SettingsState> = {
           savingKeys: newSaving,
         }
-        if (refreshedEntries && !hasOtherSaves) {
+        if (refreshedEntries && !hasOtherSaves && !generationDrifted) {
           update.entries = refreshedEntries
           update.error = null
           if (ns === 'budget' && key === 'currency') {
             update.currency = deriveCurrency(refreshedEntries) ?? DEFAULT_CURRENCY
           }
-        } else if (refreshFailed || hasOtherSaves) {
+        } else if (refreshFailed || hasOtherSaves || generationDrifted) {
           update.error =
             'Settings were reset, but the updated values could not be reloaded yet.'
         }
         return update
       })
     }
-    // Return false on refresh failure OR concurrent-save skip so
-    // callers can keep dirty state and avoid clearing UI on stale
-    // data; the reset itself succeeded server-side, but the local
-    // view did not catch up. Callers that need the literal
-    // "server-side mutation succeeded" signal can inspect
-    // ``saveError`` instead.
-    const localViewStale = refreshFailed || hasOtherSaves
+    // Return false on refresh failure, concurrent-save skip, or
+    // generation drift so callers can keep dirty state and avoid
+    // clearing UI on stale data; the reset itself succeeded
+    // server-side, but the local view did not catch up. Callers
+    // that need the literal "server-side mutation succeeded"
+    // signal can inspect ``saveError`` instead.
+    const localViewStale = refreshFailed || hasOtherSaves || generationDrifted
     if (localViewStale) {
       useToastStore.getState().add({
         variant: 'warning',
