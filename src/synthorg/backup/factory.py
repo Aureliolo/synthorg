@@ -9,7 +9,7 @@ from synthorg.backup.handlers.memory import MemoryComponentHandler
 from synthorg.backup.handlers.persistence import PersistenceComponentHandler
 from synthorg.backup.models import BackupComponent
 from synthorg.backup.service import BackupService
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
@@ -106,9 +106,11 @@ def build_backup_service(
         return BackupService(backup_config, handlers)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error="Failed to build backup service",
+            note="Failed to build backup service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None

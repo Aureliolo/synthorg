@@ -94,13 +94,15 @@ class SecurityTimeoutSettingsSubscriber:
 
         try:
             interval = float(result.value)
-        except ValueError, TypeError:
+        except (ValueError, TypeError) as exc:
             logger.warning(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
                 namespace=namespace,
                 key=key,
                 value=result.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="invalid interval value",
             )
             return

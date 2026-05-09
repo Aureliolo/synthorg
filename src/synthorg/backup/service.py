@@ -101,14 +101,19 @@ class BackupService(BackupServiceArchiveMixin):
         ``/settings``); the scheduler also services on-demand backups
         invoked through controllers and MCP handlers regardless of the
         scheduled-run gate.
+
+        The disabled branch logs at INFO so operators can confirm the
+        deliberate dormant state from the boot log alongside the
+        ``BACKUP_SCHEDULER_STARTED`` event the scheduler emits when
+        ``enabled`` is True.
         """
         if self._config.enabled:
             await self._scheduler.start()
-        else:
-            logger.info(
-                BACKUP_SCHEDULER_STOPPED,
-                note="Backup scheduler dormant (backup.enabled=false)",
-            )
+            return
+        logger.info(
+            BACKUP_SCHEDULER_STOPPED,
+            note="Backup scheduler dormant (backup.enabled=false)",
+        )
 
     async def stop(self) -> None:
         """Stop the backup scheduler."""
