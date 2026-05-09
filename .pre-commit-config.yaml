@@ -124,6 +124,7 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks
+        stages: [pre-push]
 
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.15.1
@@ -135,6 +136,7 @@ repos:
     rev: v2.14.0
     hooks:
       - id: hadolint-docker
+        stages: [pre-push]
 
   # Workflow YAML safety gates. actionlint catches workflow-syntax
   # errors, expression typos, and shellcheck-style issues in `run:`
@@ -290,7 +292,7 @@ repos:
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
-        stages: [pre-commit, pre-push]
+        stages: [pre-push]
 
       - id: go-vet
         name: go vet (CLI)
