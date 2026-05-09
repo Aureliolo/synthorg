@@ -511,10 +511,10 @@ distinct from `save` (persist) and `delete` (remove).
 
 | Method | Where | Notes |
 |--------|-------|-------|
-| `activate_workflow` | `src/synthorg/api/controllers/workflow_executions.py:116` | Spawns a workflow execution loop. The corresponding teardown verb in this controller is `cancel_execution` (line 273): workflow runtimes are cancelled rather than "deactivated" because `cancel_*` is the lifecycle-end verb when an entity carries an in-flight execution that may need to surface a cancellation outcome. |
-| `activate_sprint` / `deactivate_sprint` | `src/synthorg/engine/workflow/ceremony_scheduler.py:150,265` | Sprint window open / close. |
-| `deactivate_client` | `src/synthorg/api/controllers/clients.py:340`, `src/synthorg/integrations/mcp_services.py:346` | Disables an integration client without deletion. |
-| `deactivate_all` | `src/synthorg/persistence/fine_tune_protocol.py:94` (+ both backends) | Bulk deactivate of fine-tune jobs. |
+| `activate_workflow` | `WorkflowExecutionController.activate_workflow` (`src/synthorg/api/controllers/workflow_executions.py`) | Spawns a workflow execution loop. The corresponding teardown verb in this controller is `WorkflowExecutionController.cancel_execution`: workflow runtimes are cancelled rather than "deactivated" because `cancel_*` is the lifecycle-end verb when an entity carries an in-flight execution that may need to surface a cancellation outcome. |
+| `activate_sprint` / `deactivate_sprint` | `CeremonyScheduler.activate_sprint` / `CeremonyScheduler.deactivate_sprint` (`src/synthorg/engine/workflow/ceremony_scheduler.py`) | Sprint window open / close. |
+| `deactivate_client` | `ClientController.deactivate_client` (`src/synthorg/api/controllers/clients.py`), `ClientFacadeService.deactivate_client` (`src/synthorg/integrations/mcp_services.py`) | Disables an integration client without deletion. |
+| `deactivate_all` | `FineTuneCheckpointRepository.deactivate_all` (`src/synthorg/persistence/fine_tune_protocol.py`, both backends) | Bulk deactivate of fine-tune jobs. |
 
 Prefer these verbs for any new "becomes runnable / no longer runnable"
 transition. `enable_*` / `disable_*` are reserved for boolean feature

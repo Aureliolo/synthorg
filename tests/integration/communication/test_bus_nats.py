@@ -10,6 +10,7 @@ Mapped to the Distributed Runtime design page:
 """
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 
@@ -289,14 +290,37 @@ async def test_receive_returns_none_on_shutdown(bus: MessageBus) -> None:
     state = bus._state
     loop = asyncio.get_running_loop()
     deadline = loop.time() + 2.0
-    while not state.in_flight_fetches:
-        if loop.time() >= deadline:
-            pytest.fail("receive() did not park within 2s")
-        await asyncio.sleep(0.005)
-    assert not receive_task.done(), "receive() returned before bus.stop() fired"
-    await bus.stop()
-
-    assert await receive_task is None
+    try:
+        while not state.in_flight_fetches:
+            # If the receive task completes before parking it has
+            # either raised or returned naturally; either signal must
+            # surface immediately rather than waiting out the deadline.
+            if receive_task.done():
+                # ``await`` re-raises an exception or returns the value
+                # so the test fails with the receive coroutine's real
+                # error rather than the synthetic "did not park" miss.
+                early = await receive_task
+                pytest.fail(f"receive() returned before parking (result={early!r})")
+            if loop.time() >= deadline:
+                pytest.fail("receive() did not park within 2s")
+            await asyncio.sleep(0.005)
+        assert not receive_task.done(), "receive() returned before bus.stop() fired"
+        await bus.stop()
+        assert await receive_task is None
+    finally:
+        # Belt-and-braces cleanup: if any of the asserts above raised,
+        # the receive_task may still be pending. Cancel + await so the
+        # task does not leak across the test boundary.
+        if not receive_task.done():
+            receive_task.cancel()
+            # ``CancelledError`` is the expected outcome of cancel();
+            # swallowing ``Exception`` covers any error the receive
+            # coroutine raised after the assert chain failed (e.g. a
+            # NATS error that aborted setup before parking) so the
+            # cleanup never masks the original test failure with a
+            # secondary cancel-time error.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await receive_task
 
 
 # -- Direct Messaging --------------------------------------------------
