@@ -26,6 +26,38 @@ if not _IMAGE_REF_PATTERN.match(WEB_IMAGE):
     raise ValueError(msg)
 
 
+def _wait_for_web_container_ready(
+    base_url: str, *, deadline_secs: float = 15.0
+) -> None:
+    """Poll ``base_url`` until it returns 200, capped by a wall-clock deadline.
+
+    A wall-clock deadline (rather than a fixed iteration count) bounds
+    total wait independently of per-request timeout interactions; the
+    inner ``httpx.get`` timeout is shrunk on each iteration so the very
+    last request cannot push the budget past the deadline.
+    """
+    # ``time.monotonic`` not ``time.time`` so a wall-clock NTP step
+    # cannot push the deadline forward or backward mid-loop.
+    deadline = time.monotonic() + deadline_secs
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        # Skip the request if the deadline has already lapsed; passing
+        # a non-positive ``timeout`` to ``httpx.get`` is a contract
+        # violation (httpx raises ``InvalidURL``-ish errors on
+        # ``timeout <= 0`` rather than retrying within the budget).
+        if remaining <= 0:
+            break
+        try:
+            resp = httpx.get(f"{base_url}/", timeout=min(2, remaining))
+        except httpx.ConnectError, httpx.ReadError, httpx.TimeoutException:
+            pass
+        else:
+            if resp.status_code == 200:
+                return
+        time.sleep(0.25)
+    pytest.fail(f"Web container did not become healthy within {deadline_secs:.0f}s")
+
+
 @pytest.fixture(scope="module")
 def web_container() -> Generator[str]:
     """Start the web image with Docker-assigned port and yield the base URL."""
@@ -93,16 +125,11 @@ def web_container() -> Generator[str]:
         )
         host_port = port_info.stdout.strip()
         base_url = f"http://127.0.0.1:{host_port}"
-        for _ in range(30):
-            try:
-                resp = httpx.get(f"{base_url}/", timeout=2)
-                if resp.status_code == 200:
-                    break
-            except httpx.ConnectError, httpx.ReadError:
-                pass
-            time.sleep(0.5)
-        else:
-            pytest.fail("Web container did not become healthy within 15s")
+        # Polls a real Docker container's HTTP endpoint, so the wait is
+        # genuine network I/O against an external process; no FakeClock
+        # seam applies. See ``_wait_for_web_container_ready`` for the
+        # wall-clock deadline budget.
+        _wait_for_web_container_ready(base_url)
 
         yield base_url
     finally:

@@ -7,7 +7,8 @@ import { ROUTES } from '@/router/routes'
 import { useToastStore } from '@/stores/toast'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { useWorkflowsStore } from '@/stores/workflows'
-import type { WorkflowNodeType } from '@/api/types/workflows'
+import { isWorkflowEdgeType, isWorkflowNodeType } from '@/api/types/workflows'
+import type { WorkflowEdgeType, WorkflowNodeType } from '@/api/types/workflows'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject, isString } from '@/utils/type-guards'
@@ -157,28 +158,44 @@ export function useWorkflowEditorCallbacks(
     // ``unknown`` until validated. Without these the previous double
     // ``as`` casts ("as Record<string, unknown>" then "as string")
     // silently widened typos and missing fields into runtime crashes.
-    const nodeData = state.nodes.map((n) => ({
-      id: n.id,
-      type: readString(n.data, 'nodeType') ?? n.type ?? 'task',
-      label: readString(n.data, 'label') ?? n.id,
-      position_x: n.position.x,
-      position_y: n.position.y,
-      config: readRecord(n.data, 'config') ?? {},
-    }))
-    const edgeData = state.edges.map((e) => ({
-      id: e.id,
-      source_node_id: e.source,
-      target_node_id: e.target,
-      type: readString(e.data, 'edgeType') ?? 'sequential',
+    const nodeData = state.nodes.map((n) => {
+      const dataType = readString(n.data, 'nodeType')
+      const reactFlowType = n.type
+      const nodeType: WorkflowNodeType = isWorkflowNodeType(dataType)
+        ? dataType
+        : isWorkflowNodeType(reactFlowType)
+          ? reactFlowType
+          : 'task'
+      return {
+        id: n.id,
+        type: nodeType,
+        label: readString(n.data, 'label') ?? n.id,
+        position_x: n.position.x,
+        position_y: n.position.y,
+        config: readRecord(n.data, 'config') ?? {},
+      }
+    })
+    const edgeData = state.edges.map((e) => {
+      const dataType = readString(e.data, 'edgeType')
+      const edgeType: WorkflowEdgeType = isWorkflowEdgeType(dataType)
+        ? dataType
+        : 'sequential'
       // ReactFlow edges may store the label on ``data.label`` (our
       // own write path) OR directly on ``e.label`` (older edges
       // hydrated from the wire format). Fall back to ``e.label`` so
       // duplicating a workflow preserves edge labels regardless of
       // where they currently live.
-      label:
+      const label =
         readString(e.data, 'label')
-        ?? (typeof e.label === 'string' ? e.label : null),
-    }))
+        ?? (typeof e.label === 'string' ? e.label : null)
+      return {
+        id: e.id,
+        source_node_id: e.source,
+        target_node_id: e.target,
+        type: edgeType,
+        label,
+      }
+    })
     const created = await useWorkflowsStore.getState().createWorkflow({
       name: `${state.definition.name} (Copy)`,
       description: state.definition.description || undefined,

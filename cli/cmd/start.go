@@ -241,7 +241,7 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	if !startNoWait {
 		sp = out.StartSpinner("Waiting for backend to become healthy...")
 		healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
-		if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, 2*time.Second, 5*time.Second); err != nil {
+		if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, healthPollInterval, healthInitialDelay); err != nil {
 			sp.Error("Health check failed")
 			errOut.HintError("Run 'synthorg doctor' for diagnostics.")
 			return fmt.Errorf("health check did not pass: %w", err)
@@ -383,6 +383,29 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 // at 5 minutes keeps the retry schedule bounded and predictable.
 const maxPullBackoff = 5 * time.Minute
 
+// Health-check polling cadence shared by both start paths
+// (startDetached and pullStartAndWait).
+//
+//   - healthPollInterval (2s): trades responsiveness against backend
+//     load -- the readyz endpoint is cheap, but polling faster only
+//     shaves sub-second latency from a multi-second container start.
+//   - healthInitialDelay (5s): a typical compose-up cold start needs
+//     a few seconds before /readyz is even bound; polling sooner just
+//     burns connection refusals.
+//   - pullStartHealthTimeout (90s): fallback total budget for the
+//     pullStartAndWait path (which has no --timeout flag because it is
+//     called from `synthorg wipe` after a destructive reset, not from
+//     the user-facing `start` flow).
+//   - dhiVerifyTimeout (120s): caps DHI cosign + SLSA verification per
+//     batch; verification stalls past two minutes indicate a network or
+//     transparency-log outage rather than a slow CDN.
+const (
+	healthPollInterval     = 2 * time.Second
+	healthInitialDelay     = 5 * time.Second
+	pullStartHealthTimeout = 90 * time.Second
+	dhiVerifyTimeout       = 120 * time.Second
+)
+
 // dockerPullWithRetry pulls an image with retries for transient failures.
 // The caller supplies attempts (> 0) and baseDelay (exponential backoff
 // seed) so the values flow from the resolved
@@ -456,7 +479,7 @@ func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, sta
 
 	sp = out.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
-	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
+	if err := health.WaitForHealthy(ctx, healthURL, pullStartHealthTimeout, healthPollInterval, healthInitialDelay); err != nil {
 		sp.Error("Health check failed")
 		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
 		return fmt.Errorf("health check did not pass: %w", err)
@@ -634,7 +657,7 @@ func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out
 	defer lb.Finish()
 
 	// Verify each image with a timeout to prevent hanging on network issues.
-	dhiCtx, dhiCancel := context.WithTimeout(ctx, 120*time.Second)
+	dhiCtx, dhiCancel := context.WithTimeout(ctx, dhiVerifyTimeout)
 	defer dhiCancel()
 	results, err := verify.VerifyDHIImages(dhiCtx, dhiRefs)
 

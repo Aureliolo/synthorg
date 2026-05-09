@@ -10,6 +10,7 @@ Mapped to the Distributed Runtime design page:
 """
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 
@@ -277,15 +278,49 @@ async def test_receive_on_stopped_bus_raises(bus: MessageBus) -> None:
 async def test_receive_returns_none_on_shutdown(bus: MessageBus) -> None:
     await bus.subscribe("#general", "agent-a")
 
-    async def stop_after_delay() -> None:
-        await asyncio.sleep(0.1)
+    receive_task = asyncio.create_task(bus.receive("#general", "agent-a", timeout=10.0))
+    # Wait deterministically until the receive coroutine has parked at
+    # the fetch-vs-shutdown race in ``fetch_with_shutdown``. The state
+    # populates ``in_flight_fetches`` synchronously before that
+    # ``asyncio.wait``, so a non-empty set is the canonical
+    # "consumer is parked" signal -- strictly stronger than a fixed
+    # timeout heuristic, which only proves the task hasn't *finished*.
+    assert isinstance(bus, JetStreamMessageBus)
+    # Integration test reaches into bus internals to assert the parked-receive contract.
+    state = bus._state
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 2.0
+    try:
+        while not state.in_flight_fetches:
+            # If the receive task completes before parking it has
+            # either raised or returned naturally; either signal must
+            # surface immediately rather than waiting out the deadline.
+            if receive_task.done():
+                # ``await`` re-raises an exception or returns the value
+                # so the test fails with the receive coroutine's real
+                # error rather than the synthetic "did not park" miss.
+                early = await receive_task
+                pytest.fail(f"receive() returned before parking (result={early!r})")
+            if loop.time() >= deadline:
+                pytest.fail("receive() did not park within 2s")
+            await asyncio.sleep(0.005)
+        assert not receive_task.done(), "receive() returned before bus.stop() fired"
         await bus.stop()
-
-    async with asyncio.TaskGroup() as tg:
-        tg.create_task(stop_after_delay())
-        result = await bus.receive("#general", "agent-a", timeout=10.0)
-
-    assert result is None
+        assert await receive_task is None
+    finally:
+        # Belt-and-braces cleanup: if any of the asserts above raised,
+        # the receive_task may still be pending. Cancel + await so the
+        # task does not leak across the test boundary.
+        if not receive_task.done():
+            receive_task.cancel()
+            # ``CancelledError`` is the expected outcome of cancel();
+            # swallowing ``Exception`` covers any error the receive
+            # coroutine raised after the assert chain failed (e.g. a
+            # NATS error that aborted setup before parking) so the
+            # cleanup never masks the original test failure with a
+            # secondary cancel-time error.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await receive_task
 
 
 # -- Direct Messaging --------------------------------------------------

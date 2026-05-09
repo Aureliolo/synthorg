@@ -33,7 +33,11 @@ from synthorg.client.protocols import (
 )
 from synthorg.client.runner import SimulationRunner  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.client import CONTINUOUS_MODE_DISABLED
+from synthorg.observability.events.client import (
+    CONTINUOUS_MODE_DISABLED,
+    CONTINUOUS_MODE_STARTED,
+    CONTINUOUS_MODE_STOPPED,
+)
 
 logger = get_logger(__name__)
 
@@ -62,20 +66,37 @@ class ContinuousMode:
         """
         self._config = config
         self._runner = runner
-        self._stop_event = asyncio.Event()
+        self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init
         # Per ``docs/reference/lifecycle-sync.md`` the lifecycle lock
         # is named distinctly from any hot-path lock so a hot-path
         # contention cannot block lifecycle transitions. ContinuousMode
         # has no hot-path lock today, but the rename keeps the
         # codebase uniform across services.
-        self._lifecycle_lock = asyncio.Lock()
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init
         self._runs_completed = 0
         self._running = False
+        self._first_run_event_cache: asyncio.Event | None = None
 
     @property
     def runs_completed(self) -> int:
         """Number of runs completed since the last ``start`` call."""
         return self._runs_completed
+
+    @property
+    def first_run_event(self) -> asyncio.Event:
+        """Event set after the first run completes since the last ``start``.
+
+        Lazy-constructed on first access so it binds to the running
+        event loop rather than the interpreter-startup loop, satisfying
+        the ``check_no_loop_bound_init`` guard for restart-on-new-loop
+        safety. The check-then-assign is race-free under asyncio because
+        neither statement contains an ``await``: between the two lines
+        no other coroutine can be scheduled, so two concurrent first
+        accesses cannot each construct an Event.
+        """
+        if self._first_run_event_cache is None:
+            self._first_run_event_cache = asyncio.Event()
+        return self._first_run_event_cache
 
     async def start(
         self,
@@ -110,11 +131,18 @@ class ContinuousMode:
                 raise RuntimeError(msg)
             self._running = True
             self._stop_event.clear()
+            self.first_run_event.clear()
             self._runs_completed = 0
+        logger.info(
+            CONTINUOUS_MODE_STARTED,
+            request_interval_sec=self._config.request_interval_sec,
+            max_concurrent_requests=self._config.max_concurrent_requests,
+        )
         semaphore = asyncio.Semaphore(max(1, self._config.max_concurrent_requests))
         max_history = max(1, self._config.max_concurrent_requests * 100)
         results: deque[SimulationMetrics] = deque(maxlen=max_history)
         try:
+            # lint-allow: long-running-loop-kill-switch -- _stop_event gates loop
             while not self._stop_event.is_set():
                 async with semaphore:
                     metrics, _ = await self._runner.run(
@@ -123,6 +151,7 @@ class ContinuousMode:
                     )
                 results.append(metrics)
                 self._runs_completed += 1
+                self.first_run_event.set()
                 try:
                     await asyncio.wait_for(
                         self._stop_event.wait(),
@@ -133,6 +162,23 @@ class ContinuousMode:
         finally:
             async with self._lifecycle_lock:
                 self._running = False
+                # Drop the cached event so the next start() rebinds a
+                # fresh asyncio.Event to the running loop and a waiter
+                # created between this stop and the next start cannot
+                # consume the stale "first run completed" signal from
+                # this cycle. Re-binding (rather than ``clear()`` on
+                # the same instance) is required for cross-loop reuse:
+                # an Event whose internal future list was bound to the
+                # prior loop cannot be safely awaited on a new one.
+                self._first_run_event_cache = None
+                # ``_stop_event`` was created at __init__ and the same
+                # instance has now seen ``set()`` plus pending-waiter
+                # cleanup on this cycle's loop. Replace it with a
+                # fresh Event so a cross-loop restart of the same
+                # ContinuousMode instance cannot trip a "bound to a
+                # different event loop" RuntimeError on the new
+                # cycle's first ``wait()``.
+                self._stop_event = asyncio.Event()
         return list(results)
 
     def stop(self) -> None:
@@ -144,4 +190,12 @@ class ContinuousMode:
         acquired here because the lock guards only the ``_running``
         flag transition, not the long-lived loop body.
         """
+        # Setting the stop event when no run is active is a harmless
+        # no-op (the next ``start()`` clears it). Only emit the
+        # CONTINUOUS_MODE_STOPPED log when an actual run is being
+        # interrupted -- otherwise an idle ``stop()`` call would
+        # produce a misleading transition record.
+        already_stopping = self._stop_event.is_set()
         self._stop_event.set()
+        if self._running and not already_stopping:
+            logger.info(CONTINUOUS_MODE_STOPPED, runs_completed=self._runs_completed)

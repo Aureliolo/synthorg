@@ -137,3 +137,100 @@ class TestContinuousModeLifecycleLock:
             runner=runner,  # type: ignore[arg-type]
         )
         assert isinstance(mode._lifecycle_lock, asyncio.Lock)
+
+
+class TestContinuousModeFirstRunEvent:
+    """``first_run_event`` is the deterministic sync seam for callers
+    that need to observe the first-run boundary without polling
+    ``runs_completed``.
+    """
+
+    async def test_property_returns_event_and_is_cached(self) -> None:
+        runner = _FakeRunner()
+        mode = ContinuousMode(
+            config=ContinuousModeConfig(enabled=True),
+            runner=runner,  # type: ignore[arg-type]
+        )
+        first = mode.first_run_event
+        second = mode.first_run_event
+        assert isinstance(first, asyncio.Event)
+        assert first is second
+        assert not first.is_set()
+
+    async def test_event_set_after_first_run(self) -> None:
+        runner = _FakeRunner()
+        mode = ContinuousMode(
+            config=ContinuousModeConfig(
+                enabled=True,
+                request_interval_sec=0.001,
+                max_concurrent_requests=1,
+            ),
+            runner=runner,  # type: ignore[arg-type]
+        )
+
+        task = asyncio.create_task(
+            mode.start(sim_config=_sim_config(), clients=()),
+        )
+        await mode.first_run_event.wait()
+        assert mode.runs_completed >= 1
+        mode.stop()
+        await task
+
+    async def test_lifecycle_events_rebind_after_run(self) -> None:
+        """Both lifecycle events must be replaced on cycle exit.
+
+        ``_first_run_event_cache`` and ``_stop_event`` are bound to
+        the cycle's running loop; reusing the same instances on a
+        future loop can raise "bound to a different event loop"
+        RuntimeError on a fresh ``wait()``. The finally block must
+        drop / replace them so the next ``start()`` re-binds.
+        """
+        runner = _FakeRunner()
+        mode = ContinuousMode(
+            config=ContinuousModeConfig(
+                enabled=True,
+                request_interval_sec=0.001,
+                max_concurrent_requests=1,
+            ),
+            runner=runner,  # type: ignore[arg-type]
+        )
+
+        original_stop_event = mode._stop_event
+        cycle = asyncio.create_task(
+            mode.start(sim_config=_sim_config(), clients=()),
+        )
+        await mode.first_run_event.wait()
+        mode.stop()
+        await cycle
+
+        assert mode._first_run_event_cache is None
+        assert mode._stop_event is not original_stop_event
+        assert isinstance(mode._stop_event, asyncio.Event)
+        assert not mode._stop_event.is_set()
+
+    async def test_event_cleared_between_cycles(self) -> None:
+        """A waiter created between cycles must not see a stale signal.
+
+        Without clearing the cached event when ``start()`` exits, a
+        post-stop ``first_run_event.wait()`` would observe the prior
+        cycle's set state and resolve immediately, even though no run
+        has completed since the new cycle began.
+        """
+        runner = _FakeRunner()
+        mode = ContinuousMode(
+            config=ContinuousModeConfig(
+                enabled=True,
+                request_interval_sec=0.001,
+                max_concurrent_requests=1,
+            ),
+            runner=runner,  # type: ignore[arg-type]
+        )
+
+        first_cycle = asyncio.create_task(
+            mode.start(sim_config=_sim_config(), clients=()),
+        )
+        await mode.first_run_event.wait()
+        mode.stop()
+        await first_cycle
+
+        assert not mode.first_run_event.is_set()

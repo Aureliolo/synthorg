@@ -44,6 +44,15 @@ held across the full body of their respective method per
 
 ## 3. API response wrapping
 
+Default: return `ApiResponse[T]` (or `PaginatedResponse[T]` for list
+endpoints). Wrap in `Response[ApiResponse[T]]` **only** when the
+controller must set a custom status code or response header (`Location`
+on 201, `Retry-After` on 429, `WWW-Authenticate` on 401). Bare
+`ApiResponse[T]` is preferred everywhere else because Litestar's
+exception handler already maps domain errors to the right status codes;
+wrapping in `Response[...]` for a successful call adds noise without
+changing the wire envelope.
+
 Controllers return one of three shapes:
 
 * `ApiResponse[T]`: success-only path with no header or status-code
@@ -490,6 +499,27 @@ treated as whitespace). Examples:
 
 If you rename a header, update both `header:` and `id:` in the same
 edit. The gate's stale-entry check surfaces orphans automatically.
+
+## 18. `activate_*` / `deactivate_*` lifecycle method naming
+
+Domain services that flip an entity into / out of an "active" runtime
+state expose paired async methods named `activate_<entity>` and
+`deactivate_<entity>` (or the bare verbs when the receiver name
+already disambiguates). These verbs are reserved for state transitions
+that affect downstream scheduling, eligibility, or visibility,
+distinct from `save` (persist) and `delete` (remove).
+
+| Method | Where | Notes |
+|--------|-------|-------|
+| `activate_workflow` | `WorkflowExecutionController.activate_workflow` (`src/synthorg/api/controllers/workflow_executions.py`) | Spawns a workflow execution loop. The corresponding teardown verb in this controller is `WorkflowExecutionController.cancel_execution`: workflow runtimes are cancelled rather than "deactivated" because `cancel_*` is the lifecycle-end verb when an entity carries an in-flight execution that may need to surface a cancellation outcome. |
+| `activate_sprint` / `deactivate_sprint` | `CeremonyScheduler.activate_sprint` / `CeremonyScheduler.deactivate_sprint` (`src/synthorg/engine/workflow/ceremony_scheduler.py`) | Sprint window open / close. |
+| `deactivate_client` | `ClientController.deactivate_client` (`src/synthorg/api/controllers/clients.py`), `ClientFacadeService.deactivate_client` (`src/synthorg/integrations/mcp_services.py`) | Disables an integration client without deletion. |
+| `deactivate_all` | `FineTuneCheckpointRepository.deactivate_all` (`src/synthorg/persistence/fine_tune_protocol.py`, both backends) | Bulk deactivate of fine-tune jobs. |
+
+Prefer these verbs for any new "becomes runnable / no longer runnable"
+transition. `enable_*` / `disable_*` are reserved for boolean feature
+flags read from settings, not for domain-entity lifecycle, so avoid
+those as synonyms for the lifecycle pair documented here.
 
 ## See also
 

@@ -8,11 +8,15 @@ const SIZE_CLASSES = {
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return ''
-  const first = parts[0]!
-  if (parts.length === 1) return first[0]!.toUpperCase()
-  const last = parts[parts.length - 1]!
-  return (first[0]! + last[0]!).toUpperCase()
+  const first = parts[0]
+  if (!first) return ''
+  const firstInitial = first[0]
+  if (!firstInitial) return ''
+  if (parts.length === 1) return firstInitial.toUpperCase()
+  const last = parts[parts.length - 1]
+  const lastInitial = last?.[0]
+  if (!lastInitial) return firstInitial.toUpperCase()
+  return (firstInitial + lastInitial).toUpperCase()
 }
 
 interface AvatarProps {

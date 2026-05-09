@@ -79,7 +79,7 @@ class TestContinuousMode:
         )
 
         async def stopper() -> None:
-            await asyncio.sleep(0.05)
+            await mode.first_run_event.wait()
             mode.stop()
 
         async def starter() -> list[SimulationMetrics]:

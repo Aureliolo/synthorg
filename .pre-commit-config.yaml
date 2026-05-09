@@ -7,9 +7,13 @@ ci:
   # directly. Skip reasons, grouped by category:
   #   - commitizen / gitleaks / hadolint-docker / caddy-validate / zizmor:
   #     covered by dedicated CI jobs; re-running on pre-commit.ci adds
-  #     latency without adding signal. (actionlint is NOT skipped: no
-  #     dedicated CI job covers it, and pre-commit.ci is the only
-  #     enforcement layer for contributors who skipped local hooks.)
+  #     latency without adding signal. gitleaks and hadolint-docker
+  #     additionally carry `stages: [pre-push]` so they never reach the
+  #     pre-commit.ci runner regardless of this list -- the entries are
+  #     kept here for grep-discoverability of the skip rationale.
+  #     (actionlint is NOT skipped: no dedicated CI job covers it, and
+  #     pre-commit.ci is the only enforcement layer for contributors who
+  #     skipped local hooks.)
   #   - mypy / pytest-unit / go-* / eslint-web:
   #     too slow / toolchain-heavy for the cloud runner.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
@@ -124,6 +128,7 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks
+        stages: [pre-push]
 
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.15.1
@@ -135,6 +140,7 @@ repos:
     rev: v2.14.0
     hooks:
       - id: hadolint-docker
+        stages: [pre-push]
 
   # Workflow YAML safety gates. actionlint catches workflow-syntax
   # errors, expression typos, and shellcheck-style issues in `run:`
@@ -290,7 +296,7 @@ repos:
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
-        stages: [pre-commit, pre-push]
+        stages: [pre-push]
 
       - id: go-vet
         name: go vet (CLI)
