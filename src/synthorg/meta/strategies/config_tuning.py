@@ -10,6 +10,8 @@ entry point will use LLM analysis to author the proposal bodies.
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from pydantic import JsonValue  # noqa: TC002
+
 from synthorg.meta.models import (
     ConfigChange,
     ImprovementProposal,
@@ -113,7 +115,7 @@ class ConfigTuningStrategy:
 
     def _propose_quality_fix(
         self,
-        ctx: dict[str, object],
+        ctx: dict[str, JsonValue],
         snapshot: OrgSignalSnapshot,
     ) -> ImprovementProposal:
         _ = snapshot
@@ -162,7 +164,7 @@ class ConfigTuningStrategy:
 
     def _propose_success_rate_fix(
         self,
-        ctx: dict[str, object],
+        ctx: dict[str, JsonValue],
         snapshot: OrgSignalSnapshot,
     ) -> ImprovementProposal:
         _ = snapshot
@@ -207,7 +209,7 @@ class ConfigTuningStrategy:
 
     def _propose_budget_fix(
         self,
-        ctx: dict[str, object],
+        ctx: dict[str, JsonValue],
         snapshot: OrgSignalSnapshot,
     ) -> ImprovementProposal:
         _ = snapshot
@@ -257,7 +259,7 @@ class ConfigTuningStrategy:
 
     def _propose_coordination_cost_fix(
         self,
-        ctx: dict[str, object],
+        ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
         return ImprovementProposal(
             id=uuid4(),
@@ -303,7 +305,7 @@ class ConfigTuningStrategy:
 
     def _propose_overhead_fix(
         self,
-        ctx: dict[str, object],
+        ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
         return ImprovementProposal(
             id=uuid4(),
@@ -347,7 +349,7 @@ class ConfigTuningStrategy:
 
     def _propose_scaling_fix(
         self,
-        ctx: dict[str, object],
+        ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
         return ImprovementProposal(
             id=uuid4(),

@@ -298,7 +298,7 @@ class TestCoordinationMiddlewareContext:
     def test_frozen(self) -> None:
         ctx = _mw_context()
         with pytest.raises(ValidationError):
-            ctx.decomposition_result = "bad"  # type: ignore[misc]
+            ctx.decomposition_result = "bad"  # type: ignore[misc,assignment]
 
     def test_with_metadata(self) -> None:
         ctx = _mw_context()

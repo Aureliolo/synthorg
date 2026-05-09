@@ -1,6 +1,7 @@
 """Tests for rollback handler protocol and default implementations."""
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import RollbackOperation
@@ -56,7 +57,7 @@ def _op(
     *,
     op_type: str,
     target: str,
-    previous_value: object = None,
+    previous_value: JsonValue = None,
     description: str = "test op",
 ) -> RollbackOperation:
     return RollbackOperation(

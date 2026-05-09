@@ -4,6 +4,7 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.meta.config import CodeModificationConfig, SelfImprovementConfig
 from synthorg.meta.models import (
@@ -63,7 +64,7 @@ def _snap() -> OrgSignalSnapshot:
 def _rule(
     name: str = "quality_declining",
     altitudes: tuple[ProposalAltitude, ...] = (ProposalAltitude.CODE_MODIFICATION,),
-    ctx: dict[str, object] | None = None,
+    ctx: dict[str, JsonValue] | None = None,
 ) -> RuleMatch:
     return RuleMatch(
         rule_name=name,
