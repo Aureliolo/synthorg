@@ -83,9 +83,6 @@ WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED: Final[str] = (
 )
 """Workflow node execution status transitioned -- emitted on every hop."""
 
-WORKFLOW_EXEC_PERSISTENCE_FAILED: Final[str] = "workflow.execution.persistence_failed"
-"""Persistence operation failed during workflow execution."""
-
 # -- Subworkflow runtime events ----------------------------------------------
 
 WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED: Final[str] = (

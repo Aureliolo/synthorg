@@ -241,3 +241,229 @@ class TestCancelExecution:
     # The cancel operation is fully tested at the service level:
     # tests/unit/engine/workflow/test_execution_service.py::TestCancelExecution
     # The cancel_not_found test above verifies the endpoint is routable.
+
+
+# ── RFC 9457 envelope tests ───────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestWorkflowExecutionControllerErrorEnvelope:
+    """RFC 9457 envelope shape from centralised exception_handlers.
+
+    Every error path must surface through the registered handler in
+    ``src/synthorg/api/exception_handlers.py`` rather than a
+    controller-built ``Response``, so the structured ``error_detail``
+    block is consistent with the rest of the API.
+    """
+
+    @staticmethod
+    def _patch_service(
+        monkeypatch: pytest.MonkeyPatch,
+        method: str,
+        replacement: Any,
+    ) -> None:
+        """Monkeypatch a method on ``WorkflowExecutionService``."""
+        from synthorg.engine.workflow.execution_service import (
+            WorkflowExecutionService,
+        )
+
+        monkeypatch.setattr(WorkflowExecutionService, method, replacement)
+
+    def test_activate_invalid_definition_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.engine.errors import WorkflowDefinitionInvalidError
+
+        async def _raise(*_args: object, **_kwargs: object) -> object:
+            msg = "definition rejected at activation"
+            raise WorkflowDefinitionInvalidError(msg)
+
+        self._patch_service(monkeypatch, "activate", _raise)
+
+        resp = test_client.post(
+            "/api/v1/workflow-executions/activate/wfdef-any",
+            json={"project": "test-project"},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+
+    def test_activate_condition_eval_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.engine.errors import WorkflowConditionEvalError
+
+        async def _raise(*_args: object, **_kwargs: object) -> object:
+            msg = "condition expression failed"
+            raise WorkflowConditionEvalError(msg)
+
+        self._patch_service(monkeypatch, "activate", _raise)
+
+        resp = test_client.post(
+            "/api/v1/workflow-executions/activate/wfdef-any",
+            json={"project": "test-project"},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+
+    def test_activate_persistence_failure_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.core.persistence_errors import PersistenceError
+
+        async def _raise(*_args: object, **_kwargs: object) -> object:
+            msg = "DB unreachable"
+            raise PersistenceError(msg)
+
+        self._patch_service(monkeypatch, "activate", _raise)
+
+        resp = test_client.post(
+            "/api/v1/workflow-executions/activate/wfdef-any",
+            json={"project": "test-project"},
+        )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.PERSISTENCE_ERROR
+        assert detail["error_category"] == ErrorCategory.INTERNAL
+
+    def test_list_persistence_failure_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.core.persistence_errors import PersistenceError
+
+        async def _raise(*_args: object, **_kwargs: object) -> object:
+            msg = "DB unreachable"
+            raise PersistenceError(msg)
+
+        self._patch_service(monkeypatch, "list_executions", _raise)
+
+        resp = test_client.get(
+            "/api/v1/workflow-executions/by-definition/wfdef-any",
+        )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.PERSISTENCE_ERROR
+        assert detail["error_category"] == ErrorCategory.INTERNAL
+
+    def test_get_persistence_failure_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.core.persistence_errors import PersistenceError
+
+        async def _raise(*_args: object, **_kwargs: object) -> object:
+            msg = "DB unreachable"
+            raise PersistenceError(msg)
+
+        self._patch_service(monkeypatch, "get_execution", _raise)
+
+        resp = test_client.get(
+            "/api/v1/workflow-executions/wfexec-any",
+        )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.PERSISTENCE_ERROR
+        assert detail["error_category"] == ErrorCategory.INTERNAL
+
+    def test_cancel_version_conflict_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.core.persistence_errors import PersistenceVersionConflictError
+
+        async def _raise(*_args: object, **_kwargs: object) -> object:
+            msg = "version mismatch"
+            raise PersistenceVersionConflictError(msg)
+
+        self._patch_service(monkeypatch, "cancel_execution", _raise)
+
+        resp = test_client.post(
+            "/api/v1/workflow-executions/wfexec-any/cancel",
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.VERSION_CONFLICT
+        assert detail["error_category"] == ErrorCategory.CONFLICT
+        assert detail["retryable"] is False
+
+    def test_cancel_workflow_execution_error_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Already-terminal cancel surfaces via VersionConflictError 409."""
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.engine.errors import WorkflowExecutionError
+
+        async def _raise(*_args: object, **_kwargs: object) -> object:
+            msg = "execution already terminal"
+            raise WorkflowExecutionError(msg)
+
+        self._patch_service(monkeypatch, "cancel_execution", _raise)
+
+        resp = test_client.post(
+            "/api/v1/workflow-executions/wfexec-any/cancel",
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.VERSION_CONFLICT
+        assert detail["error_category"] == ErrorCategory.CONFLICT
+
+    def test_cancel_persistence_failure_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.core.persistence_errors import PersistenceError
+
+        async def _raise(*_args: object, **_kwargs: object) -> object:
+            msg = "DB unreachable"
+            raise PersistenceError(msg)
+
+        self._patch_service(monkeypatch, "cancel_execution", _raise)
+
+        resp = test_client.post(
+            "/api/v1/workflow-executions/wfexec-any/cancel",
+        )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.PERSISTENCE_ERROR
+        assert detail["error_category"] == ErrorCategory.INTERNAL

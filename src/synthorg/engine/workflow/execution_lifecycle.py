@@ -26,9 +26,10 @@ from synthorg.engine.workflow.execution_models import (  # noqa: TC001
     WorkflowExecution,
     WorkflowNodeExecution,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import METRICS_CLOCK_SKEW_DETECTED
 from synthorg.observability.events.workflow_execution import (
+    WORKFLOW_EXEC_CANCEL_CONFLICT,
     WORKFLOW_EXEC_CANCELLED,
     WORKFLOW_EXEC_COMPLETED,
     WORKFLOW_EXEC_FAILED,
@@ -128,8 +129,9 @@ async def cancel_execution(
             f" in terminal status {execution.status.value!r}"
         )
         logger.warning(
-            WORKFLOW_EXEC_CANCELLED,
+            WORKFLOW_EXEC_CANCEL_CONFLICT,
             execution_id=execution_id,
+            current_status=execution.status.value,
             error=msg,
         )
         raise WorkflowExecutionError(msg)
@@ -151,7 +153,22 @@ async def cancel_execution(
                 "version": execution.version + 1,
             }
         )
-        await repo.save(cancelled)
+        try:
+            await repo.save(cancelled)
+        except PersistenceVersionConflictError as exc:
+            # Optimistic-concurrency race: another writer mutated
+            # the execution between the read above and this save.
+            # Emit the audit-stream signal here, at the engine layer,
+            # so the controller can drop its own catch-and-respond
+            # site and just let the typed error propagate.
+            logger.warning(
+                WORKFLOW_EXEC_CANCEL_CONFLICT,
+                execution_id=execution_id,
+                current_status=execution.status.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         # State-transition logs fire AFTER persistence succeeds so
         # the audit trail only records transitions that actually
         # happened. A save failure raises, skipping these logs.

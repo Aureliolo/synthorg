@@ -612,3 +612,112 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
         assert "Export failed" in body["error"]
+
+    def test_create_from_blueprint_not_found_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Missing blueprint surfaces a 404 RFC 9457 envelope via the
+        centralised handler; the controller must propagate
+        ``BlueprintNotFoundError`` instead of building its own Response.
+        """
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.engine.workflow.blueprint_errors import BlueprintNotFoundError
+
+        def _raise_not_found(name: str) -> object:
+            msg = f"blueprint {name!r} not found"
+            raise BlueprintNotFoundError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.api.controllers._workflow_builders.load_blueprint",
+            _raise_not_found,
+        )
+
+        resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={"blueprint_name": "nonexistent"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.RESOURCE_NOT_FOUND
+        assert detail["error_category"] == ErrorCategory.NOT_FOUND
+        assert detail["retryable"] is False
+
+    def test_create_from_blueprint_validation_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Blueprint schema-validation failure surfaces a 422 envelope."""
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.engine.workflow.blueprint_errors import (
+            BlueprintValidationError,
+        )
+
+        def _raise_validation(name: str) -> object:
+            msg = f"blueprint {name!r} schema invalid"
+            raise BlueprintValidationError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.api.controllers._workflow_builders.load_blueprint",
+            _raise_validation,
+        )
+
+        resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={"blueprint_name": "broken"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+
+    def test_update_workflow_invalid_payload_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Invalid update collection surfaces a 422 RFC 9457 envelope.
+
+        ``_validate_collection`` previously built its own Response on a
+        Pydantic ``ValidationError``; the centralised handler must now
+        produce the structured envelope after it raises
+        ``WorkflowDefinitionValidationError``.
+        """
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        created = _create_workflow(test_client, name="invalid-update-target")
+        wf_id = created["data"]["id"]
+
+        resp = test_client.patch(
+            f"/api/v1/workflows/{wf_id}",
+            json={
+                "nodes": [
+                    {
+                        "id": "node-start",
+                        "type": "start",
+                        "label": "Start",
+                        "position_x": "not-a-float",
+                        "position_y": 0.0,
+                    },
+                    _END_NODE_DICT,
+                ],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+        assert "Invalid workflow definition." in body["error"]
+        assert "ValidationError" not in body["error"]

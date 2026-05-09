@@ -695,3 +695,55 @@ class TestCancelExecution:
 
         with pytest.raises(WorkflowExecutionError):
             await service.cancel_execution(exe.id, cancelled_by="admin")
+
+    @pytest.mark.unit
+    async def test_cancel_terminal_emits_cancel_conflict_event(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        """Engine emits ``WORKFLOW_EXEC_CANCEL_CONFLICT`` when cancel is
+        rejected because the execution is already terminal.
+
+        The controller-edge log was removed when the cancel path migrated
+        to the centralised exception handler; this asserts the audit
+        signal is preserved at the engine layer for downstream alerting.
+        """
+        import structlog.testing
+
+        from synthorg.observability.events.workflow_execution import (
+            WORKFLOW_EXEC_CANCEL_CONFLICT,
+        )
+
+        wf = make_workflow(
+            nodes=(
+                make_start_node(),
+                make_task_node_full("task-1", config={"title": "Work"}),
+                make_end_node(),
+            ),
+            edges=(
+                make_edge("e1", "start-1", "task-1"),
+                make_edge("e2", "task-1", "end-1"),
+            ),
+        )
+        await def_repo.save(wf)
+        exe = await service.activate(
+            wf.id,
+            project="proj",
+            activated_by="user",
+        )
+        await service.cancel_execution(exe.id, cancelled_by="admin")
+
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(WorkflowExecutionError),
+        ):
+            await service.cancel_execution(exe.id, cancelled_by="admin")
+
+        cancel_conflict = [
+            e for e in events if e.get("event") == WORKFLOW_EXEC_CANCEL_CONFLICT
+        ]
+        assert len(cancel_conflict) == 1
+        entry = cancel_conflict[0]
+        assert entry["execution_id"] == exe.id
+        assert entry["current_status"] == WorkflowExecutionStatus.CANCELLED.value
