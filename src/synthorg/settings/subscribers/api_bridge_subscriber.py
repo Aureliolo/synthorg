@@ -7,11 +7,11 @@ dispatcher already filters out ``restart_required=True`` keys before
 invoking subscribers, so the watched set here only enumerates the
 hot-reloadable fields.
 
-Currently watches ``api.max_lifecycle_events_per_query``, consumed by
+Watches ``api.max_lifecycle_events_per_query``, consumed by
 :class:`~synthorg.api.controllers.activities.ActivityController` as
-its ``LIMIT`` clamp on the lifecycle-events query. Other
-``ApiBridgeConfig`` fields can be added to ``_WATCHED`` as their
-controllers migrate off per-request fallback constants.
+its ``LIMIT`` clamp on the lifecycle-events query. Additional
+``ApiBridgeConfig`` fields can be appended to ``_WATCHED`` when their
+consumers need hot-reload semantics.
 """
 
 from typing import TYPE_CHECKING
@@ -62,12 +62,14 @@ class ApiBridgeSettingsSubscriber:
     every other consumer does).
 
     On a watched-key change the subscriber resolves the integer value
-    via :class:`~synthorg.settings.resolver.ConfigResolver`, builds the
-    next snapshot through ``model_copy(update=...)`` (preserves every
-    other field), and hands it to ``AppState.swap_api_bridge_config``.
-    Resolver failures are logged via ``SETTINGS_SERVICE_SWAP_FAILED``
-    and re-raised so the dispatcher records subscriber context; the
-    previous snapshot stays in place.
+    via :class:`~synthorg.settings.resolver.ConfigResolver` and applies
+    it through ``AppState.mutate_api_bridge_config({key: value})``,
+    which merges the single-field update into the current snapshot
+    under a per-bridge lock and re-validates via ``model_validate``
+    (Pydantic v2 skips validators on the bare ``model_copy(update=...)``
+    path). Resolver failures and validation errors are logged via
+    ``SETTINGS_SERVICE_SWAP_FAILED`` and re-raised so the dispatcher
+    records subscriber context; the previous snapshot stays in place.
 
     Args:
         app_state: Application state that owns the live snapshot.

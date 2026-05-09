@@ -174,9 +174,11 @@ The pattern has four pieces:
    `synthorg/settings/subscribers/<name>_bridge_subscriber.py` whose
    `_WATCHED` set lists every hot-reloadable field. On change, the
    subscriber resolves the new value and calls `mutate_*` with the
-   single-field update; `model_copy(update=...)` re-validates against
-   the field's `Field(ge=..., le=...)` bounds, so an out-of-range
-   value raises `ValidationError` and the prior snapshot is retained.
+   single-field update; `mutate_*` re-validates the merged dict via
+   `model_validate(...)` (Pydantic v2 skips validators on the bare
+   `model_copy(update=...)` path) against the field's
+   `Field(ge=..., le=...)` bounds, so an out-of-range value raises
+   `ValidationError` and the prior snapshot is retained.
    Module-load-time guard: every key in `_WATCHED` is asserted to
    exist on the bridge model so a typo or rename surfaces at import,
    not on the next operator hot-reload.
