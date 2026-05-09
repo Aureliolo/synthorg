@@ -305,6 +305,11 @@ class MetaController(Controller):
 
     @post(
         "/chat",
+        # Query-only endpoint: routes a question to ChiefOfStaffChat
+        # and returns the computed answer.  No server resource is
+        # created, so 200 OK is the right status; without this Litestar
+        # defaults POST handlers to 201 Created.
+        status_code=200,
         guards=[
             require_org_mutation(),
             per_op_rate_limit_from_policy("meta.chat", key="user"),

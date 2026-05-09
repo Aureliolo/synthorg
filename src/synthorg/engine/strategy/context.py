@@ -11,6 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.models import StrategicContext, StrategyConfig
@@ -33,13 +34,14 @@ _STRATEGIC_CONTEXT_TAG: NotBlankStr = NotBlankStr("strategic-context")
 
 
 class _StrategicContextOverridesArgs(BaseModel):
-    """Typed-boundary validator for memory-stored strategic-context overrides.
+    """Typed-boundary args model for memory-stored context overrides.
 
     The memory backend yields untrusted JSON; this args model is the
-    boundary that turns that payload into typed overrides.  Behaves like
-    :func:`synthorg.api.boundary.parse_typed` (validate, log on failure,
-    re-raise) but lives in-module so ``engine.strategy`` does not depend
-    on the ``api`` layer.
+    boundary contract that turns that payload into typed overrides.
+    Validated via :func:`synthorg.api.boundary.parse_typed` under the
+    ``memory.strategic_context`` boundary label so failures emit the
+    standard ``API_BOUNDARY_VALIDATION_FAILED`` log alongside the
+    provider's own ``STRATEGY_CONTEXT_PROVIDER_FAILED`` log.
 
     Each override field is ``NotBlankStr`` so blank / non-string values
     reject the payload entirely; callers fall back to the no-override
@@ -167,7 +169,11 @@ class MemoryContextProvider:
             return await self._fallback.provide(config=config)
 
         try:
-            args = _StrategicContextOverridesArgs.model_validate(decoded)
+            args = parse_typed(
+                "memory.strategic_context",
+                decoded,
+                _StrategicContextOverridesArgs,
+            )
         except ValidationError as exc:
             logger.warning(
                 STRATEGY_CONTEXT_PROVIDER_FAILED,

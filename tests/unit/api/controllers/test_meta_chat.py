@@ -7,7 +7,7 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
-from synthorg.meta.chief_of_staff.models import ChatResponse
+from synthorg.meta.chief_of_staff.models import ChatQuery, ChatResponse
 from synthorg.meta.models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -80,13 +80,16 @@ class TestMetaChat:
     ) -> None:
         """Wired chat backend returns the answer + sources + confidence."""
         chat_mock = AsyncMock(spec=ChiefOfStaffChat)
+        proposal_id = "11111111-1111-1111-1111-111111111111"
+        alert_id = "22222222-2222-2222-2222-222222222222"
         chat_mock.ask.return_value = ChatResponse(
             answer="Quality is up 5%.",
             sources=("performance",),
             confidence=0.8,
         )
         signals_mock = AsyncMock(spec=SignalsService)
-        signals_mock.get_org_snapshot.return_value = _empty_snapshot()
+        expected_snapshot = _empty_snapshot()
+        signals_mock.get_org_snapshot.return_value = expected_snapshot
 
         app_state = test_client.app.state.app_state
         chat_original = app_state._chief_of_staff_chat
@@ -97,14 +100,29 @@ class TestMetaChat:
             resp = test_client.post(
                 _BASE,
                 headers=_HEADERS,
-                json={"question": "How is quality trending?"},
+                json={
+                    "question": "How is quality trending?",
+                    "proposal_id": proposal_id,
+                    "alert_id": alert_id,
+                },
             )
-            assert resp.status_code == 201
+            assert resp.status_code == 200
             body = resp.json()
             assert body["success"] is True
             assert body["data"]["answer"] == "Quality is up 5%."
             assert body["data"]["sources"] == ["performance"]
             assert body["data"]["confidence"] == pytest.approx(0.8)
+            # Without these the controller could silently drop
+            # ``proposal_id`` / ``alert_id`` or swap the ``ask()`` args
+            # and the payload-only checks above would still pass.
+            signals_mock.get_org_snapshot.assert_awaited_once_with()
+            chat_mock.ask.assert_awaited_once()
+            asked_query, asked_snapshot = chat_mock.ask.await_args.args
+            assert isinstance(asked_query, ChatQuery)
+            assert asked_query.question == "How is quality trending?"
+            assert str(asked_query.proposal_id) == proposal_id
+            assert str(asked_query.alert_id) == alert_id
+            assert asked_snapshot is expected_snapshot
         finally:
             app_state._chief_of_staff_chat = chat_original
             app_state._signals_service = signals_original

@@ -16,7 +16,9 @@ proposer LLM call:
 Reference: ``synthorg.memory.procedural.proposer``.
 """
 
+import ast
 import inspect
+import textwrap
 
 import pytest
 
@@ -38,15 +40,38 @@ class TestProceduralMemoryPromptContract:
         the temperature for failure analysis. The contract is that
         the CompletionConfig is built from ``ProceduralMemoryConfig``,
         not hardcoded.
+
+        Uses AST matching rather than substring search so a refactor
+        that splits the keyword across lines, adds a comment, or
+        aliases ``config`` cannot quietly slip past the gate.
         """
         from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
 
         source = inspect.getsource(ProceduralMemoryProposer)
-        assert "temperature=config.temperature" in source, (
+        tree = ast.parse(source)
+        config_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "CompletionConfig"
+        ]
+        assert config_calls, (
+            "expected at least one CompletionConfig(...) call in "
+            "ProceduralMemoryProposer"
+        )
+        call = config_calls[0]
+        assert any(
+            kw.arg == "temperature" and ast.unparse(kw.value) == "config.temperature"
+            for kw in call.keywords
+        ), (
             "ProceduralMemoryProposer must build CompletionConfig from "
             "config.temperature so the value stays runtime-tunable"
         )
-        assert "max_tokens=config.max_tokens" in source, (
+        assert any(
+            kw.arg == "max_tokens" and ast.unparse(kw.value) == "config.max_tokens"
+            for kw in call.keywords
+        ), (
             "ProceduralMemoryProposer must read max_tokens from "
             "ProceduralMemoryConfig so token budgets stay tunable"
         )
@@ -86,12 +111,32 @@ class TestProceduralMemoryPromptContract:
 
         The construction-time check above proves the field is built
         correctly. This call-site check refuses any future refactor
-        that constructs a fresh CompletionConfig inline.
+        that constructs a fresh CompletionConfig inline.  AST walk
+        instead of substring so a stray reference in a comment or
+        docstring cannot satisfy the assertion.
         """
         from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
 
-        source = inspect.getsource(ProceduralMemoryProposer.propose)
-        assert "config=self._completion_config" in source, (
+        # ``inspect.getsource`` of a method preserves the class-body
+        # indentation, which ``ast.parse`` rejects as an unexpected
+        # indent.  Dedent before parsing.
+        source = textwrap.dedent(inspect.getsource(ProceduralMemoryProposer.propose))
+        tree = ast.parse(source)
+        complete_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "complete"
+        ]
+        assert any(
+            any(
+                kw.arg == "config"
+                and ast.unparse(kw.value) == "self._completion_config"
+                for kw in call.keywords
+            )
+            for call in complete_calls
+        ), (
             "ProceduralMemoryProposer.propose must pass "
             "config=self._completion_config to provider.complete; a "
             "fresh inline CompletionConfig() construction would defeat "

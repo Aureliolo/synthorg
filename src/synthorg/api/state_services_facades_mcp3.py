@@ -39,7 +39,12 @@ logger = get_logger(__name__)
 
 
 class _MetaMcp3FacadesMixin:
-    """Facade accessors for the five META-MCP-3 services."""
+    """Facade accessors for the six META-MCP-3 services.
+
+    Covers the five original META-MCP-3 surfaces plus
+    ``chief_of_staff_chat``, the LLM-backed chat backend wired in for
+    ``POST /meta/chat``.
+    """
 
     _set_once: Any
 
