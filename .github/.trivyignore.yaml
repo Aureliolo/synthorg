@@ -34,30 +34,6 @@ vulnerabilities:
       is ephemeral, network-isolated via iptables, runs as non-root
       (UID 10001).
 
-  - id: CVE-2026-4519
-    purls:
-      - "pkg:apk/wolfi/python-3.14"
-    expired_at: "2026-07-10T00:00:00Z"
-    statement: >-
-      Python webbrowser module command-line option injection (CVE-2026-4519).
-      Our backend never invokes webbrowser.open() -- the module is not
-      imported or used. Fixed in CPython 3.14.4 but Wolfi apko base pins
-      3.14.3-r0. Risk accepted: no code path reaches the vulnerable function.
-
-  - id: CVE-2026-28386
-    purls:
-      - "pkg:apk/wolfi/openssl"
-      - "pkg:apk/wolfi/libcrypto3"
-      - "pkg:apk/wolfi/libssl3"
-    expired_at: "2026-07-10T00:00:00Z"
-    statement: >-
-      OpenSSL AES-CFB128 out-of-bounds read on x86-64 with AVX-512 and
-      VAES support (CVSS 9.1). Requires partial block processing at page
-      boundary with unmapped following page. CFB mode is not used in
-      TLS/DTLS and our application does not use AES-CFB128. No patched
-      Wolfi package available yet. EPSS < 0.1%.
-      Risk accepted: attack vector is unreachable in our images.
-
   # NOTE: Earlier revisions of this PR waived several Go stdlib CVEs
   # carried by the Atlas CLI binary. That workaround is no longer
   # needed: docker/backend/Dockerfile copies the atlas binary from
