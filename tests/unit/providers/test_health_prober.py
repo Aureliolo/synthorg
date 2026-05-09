@@ -391,6 +391,10 @@ class TestProberLifecycle:
             spec=ConfigResolver.get_provider_configs,
             return_value={},
         )
+        config_resolver.get_bool = AsyncMock(
+            spec=ConfigResolver.get_bool,
+            return_value=True,
+        )
 
         prober = ProviderHealthProber(
             tracker,
