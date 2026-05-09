@@ -388,8 +388,8 @@ class TestRealLLMIntegration:
     on app-startup config wiring. Authentication is configured via at
     least one of REAL_LLM_API_KEY (hosted providers) or
     REAL_LLM_BASE_URL (local providers like Ollama / LM Studio /
-    vLLM); when both are set the API key wins as before, when only the
-    base URL is set the call goes unauthenticated.
+    vLLM); when both are set, both are forwarded to LiteLLM (api_key
+    for auth, base_url as the request endpoint).
     """
 
     async def test_real_provider_text_completion(self) -> None:
@@ -406,6 +406,9 @@ class TestRealLLMIntegration:
                 "Set REAL_LLM_PROVIDER to a LiteLLM routing key "
                 "(e.g. 'example-provider') to run this test"
             )
+        # Normalise empty-string env vars to None so ProviderConfig's
+        # NotBlankStr fields accept the value; an exported-but-empty
+        # var is treated as "unset" rather than rejected at construct.
         api_key = os.environ.get("REAL_LLM_API_KEY") or None
         base_url = os.environ.get("REAL_LLM_BASE_URL") or None
         if api_key is None and base_url is None:
