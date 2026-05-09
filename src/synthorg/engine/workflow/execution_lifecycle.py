@@ -109,10 +109,17 @@ async def cancel_execution(
     Raises:
         WorkflowExecutionNotFoundError: If not found.
         WorkflowExecutionAlreadyTerminalError: If execution is already
-            terminal. The dedicated subtype maps to 409 +
-            ``WORKFLOW_EXECUTION_ALREADY_TERMINAL`` so clients can
-            discriminate "execution finished before cancel arrived"
-            from a row-level optimistic-concurrency race.
+            terminal. Maps to 409 +
+            ``WORKFLOW_EXECUTION_ALREADY_TERMINAL`` so clients can tell
+            "execution finished before cancel arrived" (no retry will
+            succeed) apart from a row-level optimistic-concurrency
+            race.
+        PersistenceVersionConflictError: Re-raised from the save path
+            when a concurrent writer mutated the row between the read
+            and the cancel write. Callers should distinguish this from
+            ``WorkflowExecutionAlreadyTerminalError``: the persistence
+            race is retryable (re-read, re-issue), the terminal-status
+            case is not.
     """
     execution = await repo.get(execution_id)
     if execution is None:
