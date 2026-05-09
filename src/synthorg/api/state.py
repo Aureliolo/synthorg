@@ -157,6 +157,7 @@ class AppState(AppStateServicesMixin):
         "_agent_version_service",
         "_analytics_service",
         "_api_bridge_config",
+        "_api_bridge_config_lock",
         "_approval_gate",
         "_approval_timeout_scheduler",
         "_artifact_facade_service",
@@ -424,8 +425,14 @@ class AppState(AppStateServicesMixin):
         # is unavailable; ``_apply_bridge_config`` swaps in the
         # operator-tuned snapshot, and
         # ``ApiBridgeSettingsSubscriber`` hot-swaps it on operator
-        # edits (no restart required).
+        # edits (no restart required).  The dedicated lock guards the
+        # read-modify-write path on ``mutate_api_bridge_config`` so two
+        # concurrent subscribers each computing
+        # ``model_copy(update=...)`` from the same prior snapshot
+        # cannot lose each other's updates by both calling
+        # ``swap_api_bridge_config`` based on a stale read.
         self._api_bridge_config: ApiBridgeConfig = ApiBridgeConfig()
+        self._api_bridge_config_lock: threading.Lock = threading.Lock()
         self._provider_management: ProviderManagementService | None = None
         self._org_mutation_service: OrgMutationService | None = None
         # Shutdown flag observable by long-lived subsystems.

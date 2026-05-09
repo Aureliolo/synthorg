@@ -123,6 +123,27 @@ class TestRebuild:
 
         assert app_state.api_bridge_config is before
 
+    async def test_out_of_range_value_rejected_keeps_prior_snapshot(self) -> None:
+        # ``ApiBridgeConfig.max_lifecycle_events_per_query`` is bounded by
+        # ``Field(ge=100, le=1_000_000)``. ``model_copy(update=...)`` re-
+        # validates, so an operator-supplied value below 100 must raise
+        # ``ValidationError`` -- the subscriber logs + re-raises and the
+        # prior snapshot stays in place.
+        original = ApiBridgeConfig(max_lifecycle_events_per_query=12_345)
+        sub, app_state = _make_subscriber(
+            snapshot=original,
+            resolver_int_return=50,  # below the ge=100 bound
+        )
+
+        with pytest.raises(Exception) as exc_info:  # noqa: PT011 -- pydantic ValidationError
+            await sub.on_settings_changed("api", "max_lifecycle_events_per_query")
+        assert exc_info.type.__name__ == "ValidationError"
+
+        # Prior snapshot retained because the swap never happens when
+        # validation fails.
+        assert app_state.api_bridge_config is original
+        assert app_state.api_bridge_config.max_lifecycle_events_per_query == 12_345
+
 
 class TestUnexpectedRouting:
     """Unexpected (namespace, key) pairs are logged and no-op."""

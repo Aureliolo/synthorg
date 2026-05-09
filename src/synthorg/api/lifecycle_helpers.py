@@ -779,6 +779,8 @@ async def _apply_api_bridge_config_snapshot(app_state: AppState) -> None:
         return
     try:
         snapshot = await app_state.config_resolver.get_api_bridge_config()
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
     except Exception as exc:

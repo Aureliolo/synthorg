@@ -21,6 +21,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
+from synthorg.settings.bridge_configs import ApiBridgeConfig
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -34,6 +35,21 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         (_NAMESPACE, "max_lifecycle_events_per_query"),
     }
 )
+
+# Surface a typo or rename in ``_WATCHED`` at import time rather than at
+# the next operator hot-reload. ``model_copy(update={key: value})`` would
+# raise ValidationError because ``ApiBridgeConfig`` has ``extra="forbid"``,
+# but only when the subscriber actually fires, so a deployment can ship
+# with a broken watch list and never notice until a customer edits the
+# offending setting.
+_API_BRIDGE_FIELDS: frozenset[str] = frozenset(ApiBridgeConfig.model_fields)
+for _ns, _key in _WATCHED:
+    if _key not in _API_BRIDGE_FIELDS:
+        msg = (
+            f"ApiBridgeSettingsSubscriber._WATCHED key {_key!r}"
+            f" is not a field of ApiBridgeConfig"
+        )
+        raise RuntimeError(msg)
 
 
 class ApiBridgeSettingsSubscriber:
@@ -94,9 +110,7 @@ class ApiBridgeSettingsSubscriber:
             return
         try:
             value = await self._app_state.config_resolver.get_int(namespace, key)
-            new_config = self._app_state.api_bridge_config.model_copy(
-                update={key: value},
-            )
+            self._app_state.mutate_api_bridge_config({key: value})
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -109,4 +123,3 @@ class ApiBridgeSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
-        self._app_state.swap_api_bridge_config(new_config)

@@ -43,7 +43,11 @@ _MAX_AUDIT_QUERY = 10_000
 # during a prolonged settings outage this endpoint is queried once per
 # request and would otherwise flood the logs with identical warnings;
 # the flag is set on first failure and cleared on the next successful
-# resolution so a later outage is visible again.
+# resolution so a later outage is visible again. The activities
+# controller has migrated this knob to ``app_state.api_bridge_config``
+# (startup snapshot + ``ApiBridgeSettingsSubscriber`` hot-reload); this
+# controller follows the same pattern when its cap is similarly
+# bridged.
 _audit_cap_fallback_logged: bool = False
 
 
