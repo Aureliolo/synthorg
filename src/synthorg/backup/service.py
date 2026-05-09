@@ -37,7 +37,7 @@ from synthorg.observability.events.backup import (
     BACKUP_RESTORE_ROLLBACK,
     BACKUP_RESTORE_STARTED,
     BACKUP_RETENTION_FAILED,
-    BACKUP_SCHEDULER_STOPPED,
+    BACKUP_SCHEDULER_DORMANT,
     BACKUP_STARTED,
 )
 
@@ -111,7 +111,7 @@ class BackupService(BackupServiceArchiveMixin):
             await self._scheduler.start()
             return
         logger.info(
-            BACKUP_SCHEDULER_STOPPED,
+            BACKUP_SCHEDULER_DORMANT,
             note="Backup scheduler dormant (backup.enabled=false)",
         )
 

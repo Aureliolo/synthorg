@@ -1024,6 +1024,10 @@ async def _apply_security_timeout_interval(
     """
     if scheduler is None or not app_state.has_config_resolver:
         return
+    fallback = registered_default_float(
+        SettingNamespace.SECURITY.value,
+        "timeout_check_interval_seconds",
+    )
     try:
         interval = await app_state.config_resolver.get_float(
             SettingNamespace.SECURITY.value,
@@ -1039,6 +1043,7 @@ async def _apply_security_timeout_interval(
             setting="security.timeout_check_interval_seconds",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
+            fallback_seconds=fallback,
         )
         return
     try:

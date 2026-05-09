@@ -29,6 +29,7 @@ BACKUP_RETENTION_FAILED: Final[str] = "backup.retention.failed"
 # Scheduler events
 BACKUP_SCHEDULER_STARTED: Final[str] = "backup.scheduler.started"
 BACKUP_SCHEDULER_STOPPED: Final[str] = "backup.scheduler.stopped"
+BACKUP_SCHEDULER_DORMANT: Final[str] = "backup.scheduler.dormant"
 BACKUP_SCHEDULER_RESCHEDULED: Final[str] = "backup.scheduler.rescheduled"
 BACKUP_SCHEDULER_TICK: Final[str] = "backup.scheduler.tick"
 
