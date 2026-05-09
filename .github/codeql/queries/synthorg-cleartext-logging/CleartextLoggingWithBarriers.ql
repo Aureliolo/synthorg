@@ -24,7 +24,7 @@ import python
 private import semmle.python.dataflow.new.DataFlow
 import CleartextLoggingFlow::PathGraph
 import semmle.python.security.dataflow.CleartextLoggingQuery
-import Sanitizers
+import Sanitisers
 
 from
   CleartextLoggingFlow::PathNode source, CleartextLoggingFlow::PathNode sink,

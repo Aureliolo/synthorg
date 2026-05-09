@@ -21,8 +21,8 @@ import semmle.python.security.dataflow.CleartextLoggingCustomizations
  * helper). Both strip OAuth tokens, JSON credential values, URI userinfo,
  * `Authorization:` headers, and Fernet ciphertexts before returning.
  */
-class SynthorgRedactionSanitizer extends CleartextLogging::Sanitizer {
-  SynthorgRedactionSanitizer() {
+class SynthorgRedactionSanitiser extends CleartextLogging::Sanitizer {
+  SynthorgRedactionSanitiser() {
     this =
       API::moduleImport("synthorg")
           .getMember("observability")

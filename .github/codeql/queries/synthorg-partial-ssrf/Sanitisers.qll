@@ -25,8 +25,8 @@ import semmle.python.security.dataflow.ServerSideRequestForgeryCustomizations
  * identity-preserving sanitisers so partial-SSRF flow analysis recognises
  * the values as safe inputs to urlopen calls.
  */
-class SynthorgImageRefSanitizer extends ServerSideRequestForgery::Sanitizer {
-  SynthorgImageRefSanitizer() {
+class SynthorgImageRefSanitiser extends ServerSideRequestForgery::Sanitizer {
+  SynthorgImageRefSanitiser() {
     this =
       API::moduleImport("scripts")
           .getMember("check_image_signatures")

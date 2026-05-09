@@ -21,7 +21,7 @@
 import python
 import semmle.python.security.dataflow.ServerSideRequestForgeryQuery
 import PartialServerSideRequestForgeryFlow::PathGraph
-import Sanitizers
+import Sanitisers
 
 from
   PartialServerSideRequestForgeryFlow::PathNode source,
