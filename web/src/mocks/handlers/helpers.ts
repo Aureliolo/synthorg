@@ -15,11 +15,33 @@ export function apiSuccess<T>(data: T): ApiResponse<T> {
   return { data, error: null, error_detail: null, success: true }
 }
 
+/**
+ * Reject one-sided ``error_code`` / ``error_category`` overrides.
+ *
+ * The two fields are bound by the band-prefix invariant in
+ * ``src/synthorg/core/error_taxonomy.py`` -- the first digit of
+ * ``error_code`` must match ``error_category``. Letting a caller
+ * override one without the other silently produces an envelope the
+ * backend would never emit (e.g. ``PROVIDER_TIER_COVERAGE_INSUFFICIENT``
+ * paired with the default ``internal`` category), masking real
+ * frontend / backend divergence.
+ */
+function assertErrorIdentityOverrides(overrides?: Partial<ErrorDetail>): void {
+  const hasCode = overrides?.error_code !== undefined
+  const hasCategory = overrides?.error_category !== undefined
+  if (hasCode !== hasCategory) {
+    throw new Error(
+      'buildDefaultErrorDetail: error_code and error_category must be overridden together',
+    )
+  }
+}
+
 /** Default ErrorDetail used by both apiError and apiPaginatedError. */
 function buildDefaultErrorDetail(
   error: string,
   overrides?: Partial<ErrorDetail>,
 ): ErrorDetail {
+  assertErrorIdentityOverrides(overrides)
   return {
     detail: error,
     // INTERNAL_ERROR (8000) is the right pairing for the INTERNAL

@@ -354,6 +354,7 @@ describe('setup wizard store', () => {
           HttpResponse.json(
             apiError('insufficient', {
               error_code: ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+              error_category: ErrorCategory.VALIDATION,
             }),
             { status: 422 },
           ),
