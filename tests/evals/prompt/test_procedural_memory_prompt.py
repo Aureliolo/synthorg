@@ -60,20 +60,26 @@ class TestProceduralMemoryPromptContract:
             "expected at least one CompletionConfig(...) call in "
             "ProceduralMemoryProposer"
         )
-        call = config_calls[0]
+
+        def _kw(call: ast.Call, name: str) -> str | None:
+            for kw in call.keywords:
+                if kw.arg == name:
+                    return ast.unparse(kw.value)
+            return None
+
+        # Match against any CompletionConfig call carrying BOTH
+        # required kwargs.  Selecting ``config_calls[0]`` would
+        # silently break if a future refactor introduced a second
+        # CompletionConfig earlier in the class (e.g. for a retry
+        # path), so search the full set.
         assert any(
-            kw.arg == "temperature" and ast.unparse(kw.value) == "config.temperature"
-            for kw in call.keywords
+            _kw(call, "temperature") == "config.temperature"
+            and _kw(call, "max_tokens") == "config.max_tokens"
+            for call in config_calls
         ), (
             "ProceduralMemoryProposer must build CompletionConfig from "
-            "config.temperature so the value stays runtime-tunable"
-        )
-        assert any(
-            kw.arg == "max_tokens" and ast.unparse(kw.value) == "config.max_tokens"
-            for kw in call.keywords
-        ), (
-            "ProceduralMemoryProposer must read max_tokens from "
-            "ProceduralMemoryConfig so token budgets stay tunable"
+            "config.temperature and config.max_tokens so values remain "
+            "runtime-tunable"
         )
 
     def test_system_prompt_fingerprint_is_pinned(self) -> None:
@@ -122,20 +128,31 @@ class TestProceduralMemoryPromptContract:
         # indent.  Dedent before parsing.
         source = textwrap.dedent(inspect.getsource(ProceduralMemoryProposer.propose))
         tree = ast.parse(source)
-        complete_calls = [
+        # Narrow to provider call sites only -- accept the obvious
+        # ``provider``, ``self.provider``, and ``self._provider``
+        # receivers.  Without this, an unrelated ``foo.complete(...)``
+        # could satisfy the assertion even after a refactor that drops
+        # ``self._completion_config`` from the actual provider call.
+        provider_complete_calls = [
             node
             for node in ast.walk(tree)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == "complete"
+            and ast.unparse(node.func.value)
+            in {"provider", "self.provider", "self._provider"}
         ]
+        assert provider_complete_calls, (
+            "expected at least one provider.complete(...) call in "
+            "ProceduralMemoryProposer.propose"
+        )
         assert any(
             any(
                 kw.arg == "config"
                 and ast.unparse(kw.value) == "self._completion_config"
                 for kw in call.keywords
             )
-            for call in complete_calls
+            for call in provider_complete_calls
         ), (
             "ProceduralMemoryProposer.propose must pass "
             "config=self._completion_config to provider.complete; a "
