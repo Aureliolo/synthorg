@@ -47,7 +47,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 ## Diagrams
 
-`d2` for architecture / nested containers, `mermaid` for flowcharts / sequence / pipelines. Markdown tables for tabular data. D2 theme 200 (Dark Mauve), CI pinned to v0.7.1.
+`d2` for architecture / nested containers, `mermaid` for flowcharts / sequence / pipelines. Markdown tables for tabular data. D2 theme 200 (Dark Mauve), D2 CLI pinned to v0.7.1 in CI.
 
 ## Code conventions (detail in [conventions.md](docs/reference/conventions.md))
 
@@ -100,8 +100,5 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 ## Workflow
 
-- Finished issue → branch + commit + push (no auto-PR). Use `/pre-pr-review`.
 - After every squash merge → `/post-merge-cleanup`.
-- Always read `docs/design/` page before implementing. Plans require approval.
-- PR review: fix everything valid; never skip as out-of-scope.
 - CLI is Docker-only (init/start/stop/status); features go in dashboard + REST API.

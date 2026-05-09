@@ -32,7 +32,7 @@ Bundle-size budgets are declared in `web/.size-limit.cjs` (per-vendor-chunk gzip
 
 ## Package Structure
 
-`web/src/` follows the standard split: `api/` (Axios client + 38 endpoint domains), `components/` (`ui/` primitives + `layout/`), `hooks/`, `lib/`, `mocks/` (MSW), `pages/`, `router/`, `stores/` (Zustand), `styles/` (design tokens), `utils/`, `__tests__/`. Stores over ~600 lines are sliced into packages with one of two aggregation patterns (package-internal `index.ts` or sibling `.ts` aggregator).
+`web/src/` follows the standard split: `api/` (Axios client + endpoint domains), `components/` (`ui/` primitives + `layout/`), `hooks/`, `lib/`, `mocks/` (MSW), `pages/`, `router/`, `stores/` (Zustand), `styles/` (design tokens), `utils/`, `__tests__/`. Stores over ~600 lines are sliced into packages with one of two aggregation patterns (package-internal `index.ts` or sibling `.ts` aggregator).
 
 `web/e2e/` holds the Playwright suite: `factories/`, `fixtures/` (`mock-api.ts`, `websocket-harness.ts`), `flows/`, `helpers/`, `visual/`.
 
@@ -85,7 +85,7 @@ components in `web/src/components/ui/`):
 
 A PostToolUse hook (`scripts/check_web_design_system.py`) runs on every `web/src/` edit and flags hardcoded hex / rgba / fonts / Motion durations / locale literals / bare `.toLocale*String()` calls / missing Storybook stories / duplicate component patterns / complex `.map()` blocks. Fix every violation before proceeding.
 
-See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md) for the full ~70-component inventory (badges, cards, forms, layout, feedback, animation, command palette, version rollback, provider picker), the design-token recipe book (colors, typography, spacing, shadows, responsive widths, chart SVG attributes), the Base UI integration recipe (Portal + Backdrop + Popup composition, animation state attributes, Tailwind v4 transition gotchas), and the "What NOT to do" anti-pattern list.
+See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md) for the full component inventory (badges, cards, forms, layout, feedback, animation, command palette, version rollback, provider picker), the design-token recipe book (colors, typography, spacing, shadows, responsive widths, chart SVG attributes), the Base UI integration recipe (Portal + Backdrop + Popup composition, animation state attributes, Tailwind v4 transition gotchas), and the "What NOT to do" anti-pattern list.
 
 ### Component reuse: don't recreate these inline
 

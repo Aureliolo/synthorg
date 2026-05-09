@@ -36,7 +36,7 @@ This installs the pinned `golangci-lint` version that matches CI (`.github/workf
 ```text
 cli/
   cmd/            # Cobra commands (init, start, stop, status, logs, doctor, update, cleanup, wipe, config, etc.), global options, exit codes, env var constants
-  internal/       # version, config, docker, compose, health, diagnostics, images, selfupdate, completion, ui, verify
+  internal/       # version, config, docker, compose, health, diagnostics, images, selfupdate, completion, ui, verify, backup, scaffold
 ```
 
 ## Global Flags
