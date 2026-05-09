@@ -721,3 +721,48 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["retryable"] is False
         assert "Invalid nodes field in request." in body["error"]
         assert "ValidationError" not in body["error"]
+
+    def test_update_workflow_merged_invariant_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Merged-definition validation failures surface as 422.
+
+        Each item in the update payload passes per-item validation
+        (``_validate_collection`` accepts every node in isolation), but
+        the merged ``WorkflowDefinition`` is rejected by the
+        graph-level ``_validate_unique_ids`` model validator. This
+        exercises ``apply_update``'s outer try/except branch (the one
+        that wraps ``WorkflowDefinition.model_validate(merged)``) and
+        confirms the envelope still hides Pydantic class names.
+        """
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        created = _create_workflow(test_client, name="merged-invariant-target")
+        wf_id = created["data"]["id"]
+
+        duplicate_id_node: dict[str, object] = {
+            "id": "node-start",
+            "type": "task",
+            "label": "Duplicate ID",
+            "position_x": 50.0,
+            "position_y": 0.0,
+            "config": {"title": "Will collide with the start node"},
+        }
+        resp = test_client.patch(
+            f"/api/v1/workflows/{wf_id}",
+            json={
+                "nodes": [_START_NODE_DICT, duplicate_id_node, _END_NODE_DICT],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+        assert "Invalid workflow definition." in body["error"]
+        assert "ValidationError" not in body["error"]
+        assert "Duplicate node IDs" not in body["error"]

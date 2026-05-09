@@ -15,6 +15,10 @@ from synthorg.engine.workflow.definition import (
 
 # ── Seed data ─────────────────────────────────────────────────────
 
+_INTERNAL_PERSISTENCE_DETAIL = (
+    "persistence: version mismatch on row 1234, expected v=42 got v=41"
+)
+
 _NOW = datetime.now(UTC)
 
 _START_NODE = WorkflowNode(
@@ -423,6 +427,42 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         assert detail["error_code"] == ErrorCode[expected_code]
         assert detail["error_category"] == ErrorCategory.CONFLICT
         assert detail["retryable"] is False
+
+    def test_cancel_version_conflict_does_not_leak_persistence_detail(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Persistence-layer detail must not reach the public envelope.
+
+        The cancel controller catches ``PersistenceVersionConflictError``
+        and re-raises ``VersionConflictError`` with the default message,
+        so internal persistence detail (row IDs, version numbers, raw
+        SQL text) cannot leak into the response body. Locks the
+        contract by injecting an implementation-specific exception
+        message and asserting the envelope echoes none of its tokens.
+        """
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        leaky_exc = _import_persistence_error("PersistenceVersionConflictError")(
+            _INTERNAL_PERSISTENCE_DETAIL,
+        )
+        self._patch_service(monkeypatch, "cancel_execution", leaky_exc)
+
+        resp = test_client.post(
+            "/api/v1/workflow-executions/wfexec-any/cancel",
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.VERSION_CONFLICT
+        assert detail["error_category"] == ErrorCategory.CONFLICT
+        raw_body = resp.text
+        assert "row 1234" not in raw_body
+        assert "v=42" not in raw_body
+        assert "v=41" not in raw_body
+        assert "PersistenceVersionConflictError" not in raw_body
 
 
 def _import_engine_error(name: str) -> type[BaseException]:

@@ -29,7 +29,7 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_CANCELLED,
     WORKFLOW_EXEC_NOT_FOUND,
@@ -231,8 +231,12 @@ class WorkflowExecutionController(Controller):
             msg = f"Workflow execution {execution_id!r} not found"
             raise NotFoundError(msg) from None
         except PersistenceVersionConflictError as exc:
-            scrubbed = safe_error_description(exc)
-            raise VersionConflictError(scrubbed) from exc
+            # Drop the persistence-layer detail (row IDs, version
+            # numbers) on the public envelope; the engine emits
+            # ``WORKFLOW_EXEC_CANCEL_CONFLICT`` with the scrubbed
+            # exception attributes for audit. ``from exc`` keeps the
+            # original chained for traceback inspection.
+            raise VersionConflictError from exc
 
         logger.info(
             WORKFLOW_EXEC_CANCELLED,
