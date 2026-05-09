@@ -104,9 +104,9 @@ class SupervisorRouter:
         *,
         provider: CompletionProvider,
         model: NotBlankStr,
-        max_workers_per_query: int = 2,
+        max_workers_per_query: int = 2,  # lint-allow: magic-numbers -- bounded fan-out
         reflective_retry_enabled: bool = True,
-        max_retry_count: int = 2,
+        max_retry_count: int = 2,  # lint-allow: magic-numbers -- bounded retry budget
         quality_threshold: float = _DEFAULT_QUALITY_THRESHOLD,
         cost_tracker: CostTracker | None = None,
     ) -> None:

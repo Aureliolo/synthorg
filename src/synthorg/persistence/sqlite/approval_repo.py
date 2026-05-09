@@ -450,7 +450,7 @@ class SQLiteApprovalRepository:
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- default page size
         offset: int = 0,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters (paginated, newest-first).
