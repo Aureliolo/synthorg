@@ -1,0 +1,5 @@
+name: synthorg/cleartext-logging-queries
+version: 0.0.1
+library: false
+dependencies:
+  codeql/python-all: '*'

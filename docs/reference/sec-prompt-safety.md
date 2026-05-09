@@ -148,22 +148,26 @@ The pre-commit `check_logger_exception_str_exc.py` gate does not cover OTel span
 
 ## CodeQL barrier inventory
 
-The custom CodeQL Models-as-Data extension pack at `.github/codeql/extensions/synthorg-sanitisers/` teaches CodeQL that SynthOrg's sanitiser helpers are taint barriers, eliminating recurring false-positive dismissals on the same idioms. Each row binds a sanitiser to the rule it suppresses; genuine leaks on related-but-distinct rules continue to fire. The pack is provably precise: `.github/workflows/codeql-pack-validate.yml` runs negative + positive fixtures and asserts the rule fires on the deliberate leak and does not fire on the sanitised path.
+CodeQL is taught about SynthOrg's sanitiser helpers via two surfaces. Each binding is provably precise: `.github/workflows/codeql-pack-validate.yml` runs negative + positive fixtures and asserts the rule fires on the deliberate leak and does not fire on the sanitised path.
 
-| Sanitiser | File | Rule | Runtime guarantee |
-|---|---|---|---|
-| `safe_error_description` | `src/synthorg/observability/redaction.py` | `py/clear-text-logging-sensitive-data` | Strips OAuth tokens, JSON credential values, URI userinfo, `Authorization:` headers, and Fernet ciphertexts from exception messages; truncates to `MAX_SCRUBBED_LENGTH` |
-| `scrub_secret_tokens` | `src/synthorg/observability/redaction.py` | `py/clear-text-logging-sensitive-data` | Lower-level helper called by `safe_error_description`; pattern-replace credential shapes idempotently |
-| `_resolve_root` (12 sites under `scripts/`) | `scripts/check_*.py` | `py/path-injection` | Resolves the candidate, asserts containment via `os.path.commonpath` and `Path.relative_to`; returns `None` on escape |
-| `_validate_repo_prefix` | `scripts/check_image_signatures.py` | `py/partial-ssrf` | Anchored regex matches the OCI repo grammar; `\A...\Z` rejects newlines and CR |
-| `_validate_image_tag` | `scripts/check_image_signatures.py` | `py/partial-ssrf` | Anchored regex matches the OCI image-name + tag grammar |
-| `config.SecurePath` | `cli/internal/config/paths.go` | `go/path-injection` | `filepath.Clean` + absolute-path assertion |
-| `safeStateDir` | `cli/cmd/root.go` | `go/path-injection` | Wrapper around `config.SecurePath` keyed on the loaded `State.DataDir` |
-| `sanitizeForLog` | `web/src/utils/logging.ts` | `js/log-injection` | Strips C0/C1 controls + Unicode BIDI overrides; truncates to `maxLen` |
-| `sanitizeWsString` | `web/src/utils/ws-sanitize.ts` | `js/log-injection` | Calls `sanitizeForLog` with the WS-payload length cap |
-| `sanitizeWsEnum` | `web/src/utils/ws-sanitize.ts` | `js/log-injection` | Allowlist-validated; returns either the input or a literal fallback constant |
+**Surface 1 -- Models-as-Data extension pack** (`.github/codeql/extensions/synthorg-sanitisers/`). Each `*-sanitisers.model.yml` declares `barrierModel` rows for the queries whose CodeQL standard-library `Customizations.qll` exposes a `barrierNode("<kind>")` Models-as-Data hook. Today that covers Python `path-injection`, JavaScript `log-injection`, and Go `path-injection`.
 
-Adding a new sanitiser is a three-part change in one PR: the helper itself, a matching row in the language-specific `*-sanitisers.model.yml`, and a fixture pair (negative + positive) under `.github/codeql/fixtures/` (or `cli/internal/codeqlfixtures/` for Go) plus its `expected.json` entry. The standalone `codeql-pack-validate.yml` workflow runs on every pack-related change and fails if either fixture diverges from its expectation.
+**Surface 2 -- custom QL query packs** (`.github/codeql/queries/synthorg-*/`). For queries whose abstract `Sanitizer` class has no `barrierNode` MaD hook upstream, the pack defines a QL `Sanitizer` subclass and ships a custom query (re-running the standard flow analysis with the subclass in scope). The standard rule is excluded via `query-filters` in `codeql-config.yml`, and the custom query emits results under a `synthorg/<rule>` ID. Today that covers Python `clear-text-logging-sensitive-data` and `partial-ssrf`.
+
+| Sanitiser | File | Rule | Surface | Runtime guarantee |
+|---|---|---|---|---|
+| `safe_error_description` | `src/synthorg/observability/redaction.py` | `synthorg/clear-text-logging-sensitive-data` | Custom QL query | Strips OAuth tokens, JSON credential values, URI userinfo, `Authorization:` headers, and Fernet ciphertexts from exception messages; truncates to `MAX_SCRUBBED_LENGTH` |
+| `scrub_secret_tokens` | `src/synthorg/observability/redaction.py` | `synthorg/clear-text-logging-sensitive-data` | Custom QL query | Lower-level helper called by `safe_error_description`; pattern-replace credential shapes idempotently |
+| `_resolve_root` (7 sites under `scripts/`) | `scripts/check_*.py` | `py/path-injection` | `barrierModel` | Resolves the candidate, asserts containment via `os.path.commonpath` and `Path.relative_to`; returns `None` on escape |
+| `_validate_repo_prefix` | `scripts/check_image_signatures.py` | `synthorg/partial-ssrf` | Custom QL query | Anchored regex matches the OCI repo grammar; `\A...\Z` rejects newlines and CR |
+| `_validate_image_tag` | `scripts/check_image_signatures.py` | `synthorg/partial-ssrf` | Custom QL query | Anchored regex matches the OCI image-name + tag grammar |
+| `config.SecurePath` | `cli/internal/config/paths.go` | `go/path-injection` | `barrierModel` | `filepath.Clean` + absolute-path assertion |
+| `safeStateDir` | `cli/cmd/root.go` | `go/path-injection` | `barrierModel` | Wrapper around `config.SecurePath` keyed on the loaded `State.DataDir` |
+| `sanitizeForLog` | `web/src/utils/logging.ts` | `js/log-injection` | `barrierModel` | Strips C0/C1 controls + Unicode BIDI overrides; truncates to `maxLen` |
+| `sanitizeWsString` | `web/src/utils/ws-sanitize.ts` | `js/log-injection` | `barrierModel` | Calls `sanitizeForLog` with the WS-payload length cap |
+| `sanitizeWsEnum` | `web/src/utils/ws-sanitize.ts` | `js/log-injection` | `barrierModel` | Allowlist-validated; returns either the input or a literal fallback constant |
+
+Adding a new sanitiser is a four-part change in one PR: (1) the helper itself, (2) a matching binding -- either a row in the language-specific `*-sanitisers.model.yml` (Surface 1) or a `Sanitizer` subclass under `.github/codeql/queries/synthorg-<rule>/Sanitizers.qll` (Surface 2), (3) a fixture pair (negative + positive) under `.github/codeql/fixtures/` (or `cli/internal/codeqlfixtures/` for Go), and (4) its `expected.json` entry. Pick Surface 1 if the upstream query exposes a `barrierNode` MaD hook for the relevant kind; otherwise Surface 2. The standalone `codeql-pack-validate.yml` workflow runs on every pack-related change and fails if either fixture diverges from its expectation.
 
 ### Rules covered without a barrier model
 

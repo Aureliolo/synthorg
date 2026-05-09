@@ -1,9 +1,8 @@
 # SynthOrg Go sanitiser models.
 #
-# Each row uses the `sanitizerModel` extensible predicate so CodeQL treats
-# the modelled return value as a taint barrier (kind: "taint") rather than
-# a value-preserving summary. This matches the documented MaD pattern for
-# Go sanitisers
+# Each row uses the `barrierModel` extensible predicate so CodeQL treats the
+# modelled return value as a taint barrier for the named query kind. This
+# matches the documented Models-as-Data pattern for Go sanitisers
 # (https://codeql.github.com/docs/codeql-language-guides/customizing-library-models-for-go/).
 #
 # Per-rule scoping: every row below targets go/path-injection. SynthOrg's CLI
@@ -17,9 +16,9 @@ extensions:
   # input; the cleaned string is what flows into os.ReadFile / os.MkdirAll.
   - addsTo:
       pack: codeql/go-all
-      extensible: sanitizerModel
+      extensible: barrierModel
     data:
-      - ["github.com/Aureliolo/synthorg/cli/internal/config", "", "False", "SecurePath", "", "", "Argument[0]", "taint", "manual"]
+      - ["github.com/Aureliolo/synthorg/cli/internal/config", "", False, "SecurePath", "", "", "ReturnValue[0]", "path-injection", "manual"]
 
   # go/path-injection
   # safeStateDir wraps config.SecurePath using state.DataDir; modelled
@@ -29,6 +28,6 @@ extensions:
   # a main-package alias rather than an importable Go package.
   - addsTo:
       pack: codeql/go-all
-      extensible: sanitizerModel
+      extensible: barrierModel
     data:
-      - ["github.com/Aureliolo/synthorg/cli/cmd", "", "False", "safeStateDir", "", "", "Argument[0]", "taint", "manual"]
+      - ["github.com/Aureliolo/synthorg/cli/cmd", "", False, "safeStateDir", "", "", "ReturnValue[0]", "path-injection", "manual"]

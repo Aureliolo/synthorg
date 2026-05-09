@@ -1,5 +1,5 @@
 {
-  "description": "CodeQL pack-validation expectations. Each fixture is analyzed by codeql database analyze and the resulting SARIF is checked against this manifest. must_not_fire failure = pack is under-modelling a sanitiser; must_fire failure = pack is over-suppressing.",
+  "description": "CodeQL pack-validation expectations. Each fixture is analyzed by codeql database analyze and the resulting SARIF is checked against this manifest. must_not_fire failure = pack is under-modelling a sanitiser; must_fire failure = pack is over-suppressing. The synthorg/* rule IDs come from the custom query packs under .github/codeql/queries/ that replace upstream py/clear-text-logging-sensitive-data and py/partial-ssrf with versions that have project sanitisers in scope.",
   "fixtures": [
     {
       "name": "python-negative",
@@ -7,9 +7,9 @@
       "source_root": ".",
       "scan_paths": [".github/codeql/fixtures/python/negative.py"],
       "must_not_fire": [
-        "py/clear-text-logging-sensitive-data",
+        "synthorg/clear-text-logging-sensitive-data",
         "py/path-injection",
-        "py/partial-ssrf"
+        "synthorg/partial-ssrf"
       ]
     },
     {
@@ -18,9 +18,9 @@
       "source_root": ".",
       "scan_paths": [".github/codeql/fixtures/python/positive.py"],
       "must_fire": [
-        "py/clear-text-logging-sensitive-data",
+        "synthorg/clear-text-logging-sensitive-data",
         "py/path-injection",
-        "py/partial-ssrf"
+        "synthorg/partial-ssrf"
       ]
     },
     {

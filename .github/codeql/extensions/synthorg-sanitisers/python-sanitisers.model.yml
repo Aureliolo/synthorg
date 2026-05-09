@@ -1,58 +1,35 @@
 # SynthOrg Python sanitiser models.
 #
-# Each row uses the `sanitizerModel` extensible predicate so CodeQL treats
-# the modelled return value as a taint barrier (kind: "taint") rather than
-# a value-preserving summary. This is the documented MaD pattern for
-# sanitiser-style helpers
+# Each row uses the `barrierModel` extensible predicate so CodeQL treats the
+# modelled return value as a taint barrier for the named query kind. This is
+# the documented Models-as-Data pattern for sanitisers
 # (https://codeql.github.com/docs/codeql-language-guides/customizing-library-models-for-python/).
 #
-# Per-rule scoping is documented in the comments above each block. The same row
-# applies broadly across taint queries; the docs/reference/sec-prompt-safety.md
-# inventory keeps the 1:1 mapping for review purposes.
+# Per-rule scoping is documented in the comments above each block. Only the
+# `py/path-injection` query exposes a `barrierNode("path-injection")` hook in
+# CodeQL's standard library. Sanitisers for `py/clear-text-logging-sensitive-data`
+# and `py/partial-ssrf` are implemented as custom queries under
+# `.github/codeql/queries/` because their query modules use abstract
+# `Sanitizer` classes with no Models-as-Data wiring upstream. See
+# docs/reference/sec-prompt-safety.md#codeql-barrier-inventory for the full
+# barrier inventory across both surfaces.
 
 extensions:
-  # py/clear-text-logging-sensitive-data
-  # safe_error_description scrubs OAuth tokens, JSON credential values, URI
-  # userinfo, Authorization headers, and Fernet ciphertexts from exception
-  # messages before they reach a logger.
-  - addsTo:
-      pack: codeql/python-all
-      extensible: sanitizerModel
-    data:
-      - ["synthorg.observability.redaction", "Member[safe_error_description]", "taint"]
-      - ["synthorg.observability", "Member[safe_error_description]", "taint"]
-      - ["synthorg.observability.redaction", "Member[scrub_secret_tokens]", "taint"]
-
   # py/path-injection
   # _resolve_root resolves a candidate against project_root and returns None
   # when the resolved path escapes the trust boundary (commonpath +
-  # relative_to). The helper is duplicated across 12 scripts under scripts/;
+  # relative_to). The helper is duplicated across 7 scripts under scripts/;
   # we list each module explicitly because CodeQL MaD does not glob-match
-  # package names.
+  # package names. Keep this list in sync with `grep -l '^def _resolve_root'
+  # scripts/*.py`.
   - addsTo:
       pack: codeql/python-all
-      extensible: sanitizerModel
+      extensible: barrierModel
     data:
-      - ["scripts.check_currency_aggregation_invariant", "Member[_resolve_root]", "taint"]
-      - ["scripts.check_dependency_inversion", "Member[_resolve_root]", "taint"]
-      - ["scripts.check_domain_error_hierarchy", "Member[_resolve_root]", "taint"]
-      - ["scripts.check_forbidden_literals", "Member[_resolve_root]", "taint"]
-      - ["scripts.check_no_magic_numbers", "Member[_resolve_root]", "taint"]
-      - ["scripts.check_no_migration_framing", "Member[_resolve_root]", "taint"]
-      - ["scripts.check_no_review_origin_in_code", "Member[_resolve_root]", "taint"]
-      - ["scripts.check_persistence_boundary", "Member[_resolve_root]", "taint"]
-
-  # py/partial-ssrf
-  # The OCI-grammar regex validators in scripts/check_image_signatures.py
-  # anchor user-supplied repo prefixes and image tags against \A...\Z, then
-  # raise SystemExit(2) on mismatch. Modelled as taint barriers so flow
-  # analysis recognises the values as safe inputs to urlopen calls. The
-  # script also wraps each component in urllib.parse.quote(), which CodeQL
-  # already recognises -- this is belt-and-braces in case a future caller
-  # drops the quote() step.
-  - addsTo:
-      pack: codeql/python-all
-      extensible: sanitizerModel
-    data:
-      - ["scripts.check_image_signatures", "Member[_validate_repo_prefix]", "taint"]
-      - ["scripts.check_image_signatures", "Member[_validate_image_tag]", "taint"]
+      - ["scripts.check_currency_aggregation_invariant", "Member[_resolve_root].ReturnValue", "path-injection"]
+      - ["scripts.check_dependency_inversion", "Member[_resolve_root].ReturnValue", "path-injection"]
+      - ["scripts.check_forbidden_literals", "Member[_resolve_root].ReturnValue", "path-injection"]
+      - ["scripts.check_no_magic_numbers", "Member[_resolve_root].ReturnValue", "path-injection"]
+      - ["scripts.check_no_migration_framing", "Member[_resolve_root].ReturnValue", "path-injection"]
+      - ["scripts.check_no_review_origin_in_code", "Member[_resolve_root].ReturnValue", "path-injection"]
+      - ["scripts.check_persistence_boundary", "Member[_resolve_root].ReturnValue", "path-injection"]

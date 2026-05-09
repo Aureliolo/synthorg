@@ -50,30 +50,34 @@ mkdir -p "$RESULTS_DIR" "$DB_DIR"
 run_fixture() {
     local name="$1" language="$2" source_root="$3"
     local query_suite="$4"
-    local extra_args="${5:-}"
+    # Optional 5th arg: extra query files / paths appended to the analyze
+    # command, space-separated. Used by the Python invocations to layer the
+    # custom synthorg/* queries on top of the standard security suite.
+    local extra_queries="${5:-}"
 
     local db="$DB_DIR/$name"
     local sarif="$RESULTS_DIR/$name.sarif"
 
     echo "==> [$name] creating database (language=$language, source-root=$source_root)"
     rm -rf "$db"
-    # shellcheck disable=SC2086 -- extra_args is a deliberately-split arg list
     codeql database create \
         --language="$language" \
         --source-root="$REPO_ROOT/$source_root" \
         --threads=0 \
         --overwrite \
-        $extra_args \
         "$db"
 
     echo "==> [$name] analyzing with synthorg-sanitisers pack"
+    # shellcheck disable=SC2086
+    # extra_queries is a deliberately-split arg list (one path per word)
     codeql database analyze \
         --format=sarif-latest \
         --output="$sarif" \
         --additional-packs="$PACK_DIR" \
         --threads=0 \
         "$db" \
-        "$query_suite"
+        "$query_suite" \
+        $extra_queries
 }
 
 # Python: source-root is the repo so synthorg.* imports resolve in the
@@ -82,10 +86,21 @@ run_fixture() {
 # variants need separate analyses because expected.json asserts different
 # rule outcomes per file (must_not_fire vs must_fire) -- copying the SARIF
 # would yield identical results for both.
+#
+# The custom synthorg/* queries replace upstream py/clear-text-logging-
+# sensitive-data and py/partial-ssrf with versions that have project
+# sanitisers in scope. Both queries are layered on top of the standard
+# python-security-extended suite; the codeql-config.yml `query-filters`
+# entries that exclude the upstream rules are not honoured by `codeql
+# database analyze` directly (they apply at the codeql-action layer), so
+# the harness's expected.json asserts only the synthorg/* rule IDs.
+PYTHON_CUSTOM_QUERIES="$REPO_ROOT/.github/codeql/queries/synthorg-cleartext-logging $REPO_ROOT/.github/codeql/queries/synthorg-partial-ssrf"
 run_fixture python-negative python "." \
-    "codeql/python-queries:codeql-suites/python-security-extended.qls"
+    "codeql/python-queries:codeql-suites/python-security-extended.qls" \
+    "$PYTHON_CUSTOM_QUERIES"
 run_fixture python-positive python "." \
-    "codeql/python-queries:codeql-suites/python-security-extended.qls"
+    "codeql/python-queries:codeql-suites/python-security-extended.qls" \
+    "$PYTHON_CUSTOM_QUERIES"
 
 # Go: source-root is cli/ so the module builds and config.SecurePath is
 # extractable. Both negative + positive cases live in the same package

@@ -2,6 +2,8 @@ name: synthorg-codeql
 disable-default-queries: false
 queries:
   - uses: security-extended
+  - uses: ./.github/codeql/queries/synthorg-cleartext-logging
+  - uses: ./.github/codeql/queries/synthorg-partial-ssrf
 packs:
   - codeql/python-queries
   - codeql/go-queries
@@ -12,3 +14,16 @@ paths-ignore:
   - 'web/e2e/**'
   - '.github/codeql/fixtures/**'
   - 'cli/internal/codeqlfixtures/**'
+query-filters:
+  # Replaced by ./queries/synthorg-cleartext-logging/CleartextLoggingWithBarriers.ql
+  # which runs the same flow analysis with project sanitisers in scope.
+  # CleartextLoggingCustomizations.qll has no `barrierNode` Models-as-Data
+  # hook, so we cannot model SynthOrg redaction helpers via a *.model.yml row.
+  - exclude:
+      id: py/clear-text-logging-sensitive-data
+  # Replaced by ./queries/synthorg-partial-ssrf/PartialServerSideRequestForgeryWithBarriers.ql.
+  # Same situation: only the FullUrlControl variant exposes a
+  # `barrierNode("request-forgery")` hook, and it is wired only into the
+  # full-SSRF flow config.
+  - exclude:
+      id: py/partial-ssrf

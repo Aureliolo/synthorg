@@ -1,0 +1,5 @@
+name: synthorg/partial-ssrf-queries
+version: 0.0.1
+library: false
+dependencies:
+  codeql/python-all: '*'
