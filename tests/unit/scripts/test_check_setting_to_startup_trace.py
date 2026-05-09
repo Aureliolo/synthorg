@@ -166,16 +166,16 @@ def test_inventory_rejects_empty_suppression_justification(tmp_path: Path) -> No
 def test_real_repo_violations_match_expected() -> None:
     """Lint against the actual src/synthorg/ tree.
 
-    Asserts exactly the 7 expected ghost-wired violations: the
-    ``backup.*`` settings the BackupService factory still resolves
-    only when the operator opts in.  ``security.timeout_check_interval_seconds``
-    used to ghost-wire here as well; the audit-bucket PR wired
-    ``ApprovalTimeoutScheduler`` into the lifespan startup so the
-    setting is now resolved on every cold start, and the lint should
-    no longer flag it.
+    Asserts zero ghost-wired violations: ``BackupService`` is
+    constructed unconditionally by ``build_backup_service`` (the
+    factory no longer returns ``None`` on ``backup.enabled=false``,
+    so the registered ``backup.*`` settings have a live consumer at
+    boot), and ``ApprovalTimeoutScheduler`` is started by
+    ``_safe_startup`` with the operator-tuned interval applied via
+    ``_apply_security_timeout_interval`` after the resolver wires.
 
-    Asserts zero false positives on the negative ``security.*`` settings
-    (audit_enabled, post_tool_scanning_enabled, ...) and on
+    Also asserts zero false positives on the negative ``security.*``
+    settings (audit_enabled, post_tool_scanning_enabled, ...) and on
     ``engine.timeout_enforcement_enabled`` and the WS DoS settings.
 
     This test is the load-bearing assertion that the lint logic is
@@ -188,7 +188,7 @@ def test_real_repo_violations_match_expected() -> None:
     )
     flagged = {v.yaml_path for v in violations}
 
-    expected_positives = {
+    must_not_flag = {
         "backup.compression",
         "backup.enabled",
         "backup.on_shutdown",
@@ -196,12 +196,6 @@ def test_real_repo_violations_match_expected() -> None:
         "backup.path",
         "backup.retention_days",
         "backup.schedule_hours",
-    }
-    assert expected_positives.issubset(flagged), (
-        f"missing expected positives: {expected_positives - flagged}"
-    )
-
-    must_not_flag = {
         "security.enabled",
         "security.audit_enabled",
         "security.post_tool_scanning_enabled",
@@ -216,5 +210,4 @@ def test_real_repo_violations_match_expected() -> None:
     leaked = flagged & must_not_flag
     assert not leaked, f"false positives on negatives: {leaked}"
 
-    extras = flagged - expected_positives
-    assert not extras, f"unexpected extra flags: {extras}"
+    assert flagged == set(), f"unexpected flags: {flagged}"
