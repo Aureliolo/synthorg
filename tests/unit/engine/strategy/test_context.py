@@ -1,7 +1,13 @@
 """Unit tests for strategic context providers."""
 
+import json
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock
+
 import pytest
 
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.context import (
     CompositeContextProvider,
     ConfigContextProvider,
@@ -14,21 +20,37 @@ from synthorg.engine.strategy.models import (
     StrategicContextConfig,
     StrategyConfig,
 )
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
+
+
+def _entry(content: str) -> MemoryEntry:
+    """Build a MemoryEntry whose content is the JSON override payload."""
+    return MemoryEntry(
+        id=NotBlankStr("entry-1"),
+        agent_id=NotBlankStr("system:strategy"),
+        category=MemoryCategory.SEMANTIC,
+        content=NotBlankStr(content),
+        metadata=MemoryMetadata(tags=(NotBlankStr("strategic-context"),)),
+        created_at=datetime(2026, 5, 9, 12, 0, 0, tzinfo=UTC),
+    )
 
 
 class TestConfigContextProvider:
     """Tests for ConfigContextProvider."""
 
     @pytest.mark.unit
-    def test_reads_from_config(self, default_strategy_config: StrategyConfig) -> None:
+    async def test_reads_from_config(
+        self, default_strategy_config: StrategyConfig
+    ) -> None:
         provider = ConfigContextProvider()
-        ctx = provider.provide(config=default_strategy_config)
+        ctx = await provider.provide(config=default_strategy_config)
         assert ctx.maturity_stage == "growth"
         assert ctx.industry == "technology"
         assert ctx.competitive_position == "challenger"
 
     @pytest.mark.unit
-    def test_custom_config(self) -> None:
+    async def test_custom_config(self) -> None:
         config = StrategyConfig(
             context=StrategicContextConfig(
                 maturity_stage="seed",
@@ -37,38 +59,156 @@ class TestConfigContextProvider:
             ),
         )
         provider = ConfigContextProvider()
-        ctx = provider.provide(config=config)
+        ctx = await provider.provide(config=config)
         assert ctx.maturity_stage == "seed"
         assert ctx.industry == "fintech"
         assert ctx.competitive_position == "niche"
 
 
 class TestMemoryContextProvider:
-    """Tests for MemoryContextProvider (placeholder)."""
+    """Tests for MemoryContextProvider memory-driven overrides."""
 
     @pytest.mark.unit
-    def test_falls_back_to_config(
+    async def test_falls_back_when_no_memory_backend(
         self,
         default_strategy_config: StrategyConfig,
     ) -> None:
         fallback = ConfigContextProvider()
         provider = MemoryContextProvider(fallback=fallback)
-        ctx = provider.provide(config=default_strategy_config)
+        ctx = await provider.provide(config=default_strategy_config)
         assert ctx.maturity_stage == "growth"
+
+    @pytest.mark.unit
+    async def test_falls_back_when_backend_returns_no_entries(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = ()
+        provider = MemoryContextProvider(
+            fallback=ConfigContextProvider(),
+            memory_backend=backend,
+        )
+        ctx = await provider.provide(config=default_strategy_config)
+        assert ctx.maturity_stage == "growth"
+        backend.retrieve.assert_called_once()
+
+    @pytest.mark.unit
+    async def test_falls_back_when_backend_raises(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.side_effect = RuntimeError("backend unavailable")
+        provider = MemoryContextProvider(
+            fallback=ConfigContextProvider(),
+            memory_backend=backend,
+        )
+        ctx = await provider.provide(config=default_strategy_config)
+        assert ctx.maturity_stage == "growth"
+
+    @pytest.mark.unit
+    async def test_falls_back_when_content_is_not_json(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = (_entry("not-json-at-all"),)
+        provider = MemoryContextProvider(
+            fallback=ConfigContextProvider(),
+            memory_backend=backend,
+        )
+        ctx = await provider.provide(config=default_strategy_config)
+        assert ctx.maturity_stage == "growth"
+
+    @pytest.mark.unit
+    async def test_falls_back_when_content_is_not_object(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = (_entry(json.dumps(["scaleup"])),)
+        provider = MemoryContextProvider(
+            fallback=ConfigContextProvider(),
+            memory_backend=backend,
+        )
+        ctx = await provider.provide(config=default_strategy_config)
+        assert ctx.maturity_stage == "growth"
+
+    @pytest.mark.unit
+    async def test_applies_full_overrides(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        payload = {
+            "maturity_stage": "scaleup",
+            "industry": "fintech",
+            "competitive_position": "leader",
+        }
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = (_entry(json.dumps(payload)),)
+        provider = MemoryContextProvider(
+            fallback=ConfigContextProvider(),
+            memory_backend=backend,
+        )
+        ctx = await provider.provide(config=default_strategy_config)
+        assert ctx.maturity_stage == "scaleup"
+        assert ctx.industry == "fintech"
+        assert ctx.competitive_position == "leader"
+
+    @pytest.mark.unit
+    async def test_applies_partial_overrides(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        # Only ``maturity_stage`` is overridden; the other fields keep
+        # the fallback config values.
+        payload = {"maturity_stage": "scaleup"}
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = (_entry(json.dumps(payload)),)
+        provider = MemoryContextProvider(
+            fallback=ConfigContextProvider(),
+            memory_backend=backend,
+        )
+        ctx = await provider.provide(config=default_strategy_config)
+        assert ctx.maturity_stage == "scaleup"
+        assert ctx.industry == "technology"
+        assert ctx.competitive_position == "challenger"
+
+    @pytest.mark.unit
+    async def test_ignores_blank_or_non_string_overrides(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        payload = {
+            "maturity_stage": "   ",
+            "industry": 42,
+            "competitive_position": "leader",
+        }
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = (_entry(json.dumps(payload)),)
+        provider = MemoryContextProvider(
+            fallback=ConfigContextProvider(),
+            memory_backend=backend,
+        )
+        ctx = await provider.provide(config=default_strategy_config)
+        assert ctx.maturity_stage == "growth"
+        assert ctx.industry == "technology"
+        assert ctx.competitive_position == "leader"
 
 
 class TestCompositeContextProvider:
     """Tests for CompositeContextProvider."""
 
     @pytest.mark.unit
-    def test_returns_first_success(
+    async def test_returns_first_success(
         self,
         default_strategy_config: StrategyConfig,
     ) -> None:
         provider = CompositeContextProvider(
             providers=(ConfigContextProvider(),),
         )
-        ctx = provider.provide(config=default_strategy_config)
+        ctx = await provider.provide(config=default_strategy_config)
         assert ctx.maturity_stage == "growth"
 
     @pytest.mark.unit
@@ -77,32 +217,32 @@ class TestCompositeContextProvider:
             CompositeContextProvider(providers=())
 
     @pytest.mark.unit
-    def test_falls_back_on_first_provider_failure(
+    async def test_falls_back_on_first_provider_failure(
         self,
         default_strategy_config: StrategyConfig,
     ) -> None:
         """When first provider fails, second provider is used."""
 
         class FailingProvider:
-            def provide(self, *, config: StrategyConfig) -> StrategicContext:
+            async def provide(self, *, config: StrategyConfig) -> StrategicContext:
                 msg = "provider failed"
                 raise RuntimeError(msg)
 
         provider = CompositeContextProvider(
             providers=(FailingProvider(), ConfigContextProvider()),
         )
-        ctx = provider.provide(config=default_strategy_config)
+        ctx = await provider.provide(config=default_strategy_config)
         assert ctx.maturity_stage == "growth"
 
     @pytest.mark.unit
-    def test_all_providers_fail_raises_runtime_error(
+    async def test_all_providers_fail_raises_runtime_error(
         self,
         default_strategy_config: StrategyConfig,
     ) -> None:
         """When all providers fail, RuntimeError is raised."""
 
         class FailingProvider:
-            def provide(self, *, config: StrategyConfig) -> StrategicContext:
+            async def provide(self, *, config: StrategyConfig) -> StrategicContext:
                 msg = "provider failed"
                 raise RuntimeError(msg)
 
@@ -110,33 +250,45 @@ class TestCompositeContextProvider:
             providers=(FailingProvider(), FailingProvider()),
         )
         with pytest.raises(RuntimeError, match="All context providers failed"):
-            provider.provide(config=default_strategy_config)
+            await provider.provide(config=default_strategy_config)
 
 
 class TestBuildContext:
     """Tests for the build_context convenience factory."""
 
     @pytest.mark.unit
-    def test_config_source(self) -> None:
+    async def test_config_source(self) -> None:
         config = StrategyConfig(
             context=StrategicContextConfig(source=ContextSource.CONFIG),
         )
-        ctx = build_context(config)
+        ctx = await build_context(config)
         assert ctx.maturity_stage == "growth"
 
     @pytest.mark.unit
-    def test_memory_source(self) -> None:
+    async def test_memory_source_without_backend_falls_back(self) -> None:
         config = StrategyConfig(
             context=StrategicContextConfig(source=ContextSource.MEMORY),
         )
-        ctx = build_context(config)
-        # Falls back to config since memory is a placeholder.
+        ctx = await build_context(config)
+        # Without a memory backend the provider degrades to config.
         assert ctx.maturity_stage == "growth"
 
     @pytest.mark.unit
-    def test_composite_source(self) -> None:
+    async def test_memory_source_with_backend_applies_overrides(self) -> None:
+        config = StrategyConfig(
+            context=StrategicContextConfig(source=ContextSource.MEMORY),
+        )
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = (
+            _entry(json.dumps({"maturity_stage": "scaleup"})),
+        )
+        ctx = await build_context(config, memory_backend=backend)
+        assert ctx.maturity_stage == "scaleup"
+
+    @pytest.mark.unit
+    async def test_composite_source(self) -> None:
         config = StrategyConfig(
             context=StrategicContextConfig(source=ContextSource.COMPOSITE),
         )
-        ctx = build_context(config)
+        ctx = await build_context(config)
         assert ctx.maturity_stage == "growth"
