@@ -15,6 +15,7 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_AUDIT_RETENTION,
     API_AUTH_LOCKOUT_CLEANUP,
+    API_BRIDGE_CONFIG_RESOLVE_FAILED,
     API_SESSION_CLEANUP,
     API_WS_TICKET_CLEANUP,
 )
@@ -30,6 +31,7 @@ from synthorg.settings.registry import (
     registered_default_int,
 )
 from synthorg.settings.subscribers import (
+    ApiBridgeSettingsSubscriber,
     BackupSettingsSubscriber,
     MemorySettingsSubscriber,
     ObservabilitySettingsSubscriber,
@@ -589,11 +591,16 @@ def _build_settings_dispatcher(
         app_state=app_state,
         settings_service=settings_service,
     )
+    api_bridge_sub = ApiBridgeSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
     subs: list[SettingsSubscriber] = [
         provider_sub,
         memory_sub,
         observability_sub,
         per_op_rl_sub,
+        api_bridge_sub,
     ]
     if backup_service is not None:
         subs.append(
@@ -754,6 +761,40 @@ async def _apply_notification_dispatcher_config(
         )
 
 
+async def _apply_api_bridge_config_snapshot(app_state: AppState) -> None:
+    """Snapshot ``ApiBridgeConfig`` onto ``AppState`` at startup.
+
+    Resolves the full bridge once via
+    :meth:`ConfigResolver.get_api_bridge_config` and atomically swaps
+    it onto ``app_state``. On any non-fatal resolve failure the
+    default ``ApiBridgeConfig()`` snapshot installed by
+    ``AppState.__init__`` is retained and a single structured warning
+    is emitted -- the centralised replacement for the per-request
+    log-once fallback the activities controller used to carry inline.
+
+    No-op when no resolver is wired (dev/test rigs that bypass
+    ``create_app``); the default snapshot remains in place.
+    """
+    if not app_state.has_config_resolver:
+        return
+    try:
+        snapshot = await app_state.config_resolver.get_api_bridge_config()
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_BRIDGE_CONFIG_RESOLVE_FAILED,
+            bridge="api",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback="module_defaults",
+        )
+        return
+    app_state.swap_api_bridge_config(snapshot)
+
+
 async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     app_state: AppState,
     effective_config: RootConfig | None,
@@ -768,6 +809,7 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         return
 
     await _validate_approval_urgency_invariant(app_state)
+    await _apply_api_bridge_config_snapshot(app_state)
 
     try:
         app_state.ticket_store.set_max_pending_per_user(

@@ -83,6 +83,7 @@ from synthorg.providers.management.service import (
 )
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
+from synthorg.settings.bridge_configs import ApiBridgeConfig  # noqa: TC001
 from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
 from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
@@ -153,6 +154,8 @@ class AppStateServicesMixin(_FacadesMixin):
 
     _set_once: Any
     _init_derived_services: Any
+    _api_bridge_config: ApiBridgeConfig
+    _api_bridge_config_lock: threading.Lock
     config: Any
 
     def _require_service[T](  # pragma: no cover
@@ -1038,6 +1041,81 @@ class AppStateServicesMixin(_FacadesMixin):
             old_enabled=old_enabled,
             new_enabled=config.enabled,
             override_count=len(config.overrides),
+        )
+
+    @property
+    def api_bridge_config(self) -> ApiBridgeConfig:
+        """Return the current ``ApiBridgeConfig`` snapshot.
+
+        Always non-None: ``__init__`` default-constructs an
+        ``ApiBridgeConfig()`` so consumers see valid defaults even
+        before ``_apply_bridge_config`` runs or when the resolver is
+        unreachable.  Operator overrides land via
+        :meth:`swap_api_bridge_config` from the startup snapshot path
+        and :meth:`mutate_api_bridge_config` from the
+        ``ApiBridgeSettingsSubscriber`` hot-reload path.
+        """
+        return self._api_bridge_config
+
+    def swap_api_bridge_config(self, config: ApiBridgeConfig) -> None:
+        """Replace the ``ApiBridgeConfig`` snapshot wholesale.
+
+        Used by ``_apply_bridge_config`` at startup with the value
+        resolved through ``ConfigResolver.get_api_bridge_config`` (full
+        snapshot, not a diff).  Hot-reload paths must use
+        :meth:`mutate_api_bridge_config` instead so the read-modify-
+        write is serialised against concurrent updates.
+
+        Acquires ``_api_bridge_config_lock`` so a concurrent
+        ``mutate_api_bridge_config`` cannot interleave its read with
+        this assignment and lose the partial update.
+        """
+        with self._api_bridge_config_lock:
+            previous = self._api_bridge_config
+            self._api_bridge_config = config
+        if previous is config:
+            return
+        prev_fields = previous.model_dump()
+        new_fields = config.model_dump()
+        changed = sorted(k for k in new_fields if prev_fields.get(k) != new_fields[k])
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="api_bridge_config",
+            transition="swap",
+            changed_fields=changed,
+        )
+
+    def mutate_api_bridge_config(self, updates: dict[str, object]) -> None:
+        """Apply ``updates`` to the current snapshot under a lock.
+
+        Combines a re-validating partial update and the swap into a
+        single critical section so two concurrent operator edits cannot
+        both build a new snapshot from the same prior value and lose
+        each other's update.  The watched-key check in
+        :class:`~synthorg.settings.subscribers.api_bridge_subscriber.ApiBridgeSettingsSubscriber`
+        already restricts ``updates`` to fields declared on
+        ``ApiBridgeConfig``.
+
+        Re-validation is forced via ``model_validate(<dict>)`` rather
+        than ``model_copy(update=...)`` because Pydantic v2 skips
+        validators on the bare ``update=`` path -- an out-of-range
+        operator-supplied value (e.g. ``50`` against
+        ``Field(ge=100, le=1_000_000)``) would otherwise land silently
+        in the snapshot.  Re-validation raises ``ValidationError``,
+        leaving the prior snapshot in place and propagating the failure
+        to the subscriber's error log.
+        """
+        with self._api_bridge_config_lock:
+            previous = self._api_bridge_config
+            merged = previous.model_dump()
+            merged.update(updates)
+            new_config = type(previous).model_validate(merged)
+            self._api_bridge_config = new_config
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="api_bridge_config",
+            transition="mutate",
+            changed_fields=sorted(updates),
         )
 
     @property

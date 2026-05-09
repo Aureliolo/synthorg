@@ -141,6 +141,54 @@ entry:
    `tests/unit/settings/test_precedence_chain.py`.
 4. Document the new entry in this page's source matrix.
 
+## Bridge-config snapshot pattern (hot-reloadable AppState fields)
+
+For controller / service knobs that should be hot-reloadable but cost
+too much to resolve through `ConfigResolver.get_*()` on every request,
+the canonical pattern is a frozen Pydantic snapshot on `AppState`
+populated at startup and hot-swapped by a settings subscriber on
+operator-driven changes. Reference implementation:
+`api.max_lifecycle_events_per_query` consumed by
+`ActivityController.list_activities`.
+
+The pattern has four pieces:
+
+1. **Frozen bridge model.** A class in
+   `synthorg/settings/bridge_configs.py` (e.g. `ApiBridgeConfig`) with
+   `model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")`,
+   one field per setting it carries, defaults that match the
+   registered defaults. The model is the single source of truth for
+   the fallback value -- no controller carries a duplicate constant.
+2. **Resolver builder.** `ConfigResolver.get_<ns>_bridge_config()`
+   resolves every field at once via `_resolve_bridge_fields()`.
+3. **AppState slot + accessors.** `AppState.__init__` default-
+   constructs the bridge model so consumers always see a valid
+   snapshot, even before `_apply_bridge_config` has run.
+   `AppState.<name>_bridge_config` returns the current snapshot;
+   `AppState.swap_<name>_bridge_config(config)` does a wholesale
+   replace under a per-bridge `threading.Lock`;
+   `AppState.mutate_<name>_bridge_config({field: value, ...})`
+   applies a partial update under the same lock so two concurrent
+   subscribers cannot lose each other's writes.
+4. **Settings subscriber.** A `SettingsSubscriber` implementation in
+   `synthorg/settings/subscribers/<name>_bridge_subscriber.py` whose
+   `_WATCHED` set lists every hot-reloadable field. On change, the
+   subscriber resolves the new value and calls `mutate_*` with the
+   single-field update; `mutate_*` re-validates the merged dict via
+   `model_validate(...)` (Pydantic v2 skips validators on the bare
+   `model_copy(update=...)` path) against the field's
+   `Field(ge=..., le=...)` bounds, so an out-of-range value raises
+   `ValidationError` and the prior snapshot is retained.
+   Module-load-time guard: every key in `_WATCHED` is asserted to
+   exist on the bridge model so a typo or rename surfaces at import,
+   not on the next operator hot-reload.
+
+Use this pattern when the setting is hot-reloadable
+(`restart_required=False`) but per-request resolver lookup would
+add overhead or coupling. For restart-required knobs (e.g.
+`ws_auth_timeout_seconds`) the simpler `set_*()` pattern in
+`_apply_bridge_config` is sufficient.
+
 ## Bootstrap-wiring trace (ghost-wired settings gate)
 
 A registered setting whose consuming machinery exists but is never

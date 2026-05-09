@@ -34,8 +34,11 @@ logger = get_logger(__name__)
 _MAX_METRICS_QUERY = 10_000
 """Fallback cap applied when no settings resolver is wired in."""
 
-# Module-level log-once guard for the settings-resolution fallback;
-# see ``activities._resolve_lifecycle_cap`` for the rationale.
+# Module-level log-once guard for the settings-resolution fallback:
+# during a prolonged settings outage this endpoint is queried once per
+# request and would otherwise flood the logs with identical warnings.
+# The flag is set on first failure and cleared on the next successful
+# resolution so a later outage is visible again.
 _metrics_cap_fallback_logged: bool = False
 
 

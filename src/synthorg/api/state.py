@@ -108,6 +108,7 @@ from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
 from synthorg.security.audit import AuditLog  # noqa: TC001
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.security.trust.service import TrustService  # noqa: TC001
+from synthorg.settings.bridge_configs import ApiBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.telemetry.collector import TelemetryCollector  # noqa: TC001
@@ -155,6 +156,8 @@ class AppState(AppStateServicesMixin):
         "_agent_registry",
         "_agent_version_service",
         "_analytics_service",
+        "_api_bridge_config",
+        "_api_bridge_config_lock",
         "_approval_gate",
         "_approval_timeout_scheduler",
         "_artifact_facade_service",
@@ -415,6 +418,21 @@ class AppState(AppStateServicesMixin):
         # built into the notification-dispatcher sinks rather than
         # rebuilding and closing them on every startup.
         self._bridge_config_applied: bool = False
+        # Frozen ``ApiBridgeConfig`` snapshot consumed by API
+        # controllers (e.g. activities lifecycle cap). Default-
+        # constructed so consumers always see a valid instance, even
+        # before ``_apply_bridge_config`` has run or when the resolver
+        # is unavailable; ``_apply_bridge_config`` swaps in the
+        # operator-tuned snapshot, and
+        # ``ApiBridgeSettingsSubscriber`` hot-swaps it on operator
+        # edits (no restart required).  The dedicated lock guards the
+        # read-modify-write path on ``mutate_api_bridge_config`` so two
+        # concurrent subscribers each computing
+        # ``model_copy(update=...)`` from the same prior snapshot
+        # cannot lose each other's updates by both calling
+        # ``swap_api_bridge_config`` based on a stale read.
+        self._api_bridge_config: ApiBridgeConfig = ApiBridgeConfig()
+        self._api_bridge_config_lock: threading.Lock = threading.Lock()
         self._provider_management: ProviderManagementService | None = None
         self._org_mutation_service: OrgMutationService | None = None
         # Shutdown flag observable by long-lived subsystems.
