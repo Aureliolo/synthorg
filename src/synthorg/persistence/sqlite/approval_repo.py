@@ -324,15 +324,18 @@ class SQLiteApprovalRepository:
         if not ids:
             return ()
         placeholders = ",".join(["?"] * len(ids))
+        # ``placeholders`` interpolates only fixed ``?,?,?`` markers -- enum
+        # values and ids are bound through ``params`` below.
         sql = (
-            f"UPDATE approvals SET status = '{ApprovalStatus.EXPIRED.value}' "  # noqa: S608
+            "UPDATE approvals SET status = ? "  # noqa: S608
             f"WHERE id IN ({placeholders}) "
-            f"AND status = '{ApprovalStatus.PENDING.value}' "
+            "AND status = ? "
             "RETURNING id"
         )
+        params = (ApprovalStatus.EXPIRED.value, *ids, ApprovalStatus.PENDING.value)
         async with self._write_lock:
             try:
-                async with self._db.execute(sql, tuple(ids)) as cursor:
+                async with self._db.execute(sql, params) as cursor:
                     rows = await cursor.fetchall()
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
