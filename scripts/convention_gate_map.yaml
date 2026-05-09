@@ -242,3 +242,19 @@ mandatory_rules:
     file: docs/reference/errors.md
     header: Error-code constants - frontend integration
     gate: scripts/check_error_codes_ts_in_sync.py
+
+  # ---------------------------------------------------------------
+  # docs/reference/conventions.md
+  # ---------------------------------------------------------------
+  - id: docs-reference-conventions-md::18-activate-deactivate-lifecycle-method-naming
+    file: docs/reference/conventions.md
+    header: 18. `activate_*` / `deactivate_*` lifecycle method naming
+    exempt:
+      reason: |
+        Naming convention enforced at code review. Pattern matching
+        for ``activate_*`` / ``deactivate_*`` paired methods on
+        domain services is tractable as an AST gate but deferred to a
+        follow-up enforcement PR; the canonical sites are documented
+        in Section 18 with their file:line references so reviewers
+        can pattern-match new lifecycle methods against the existing
+        verb pair.

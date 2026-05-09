@@ -500,7 +500,7 @@ treated as whitespace). Examples:
 If you rename a header, update both `header:` and `id:` in the same
 edit. The gate's stale-entry check surfaces orphans automatically.
 
-## 18. `activate_*` / `deactivate_*` lifecycle method naming
+## 18. `activate_*` / `deactivate_*` lifecycle method naming (MANDATORY)
 
 Domain services that flip an entity into / out of an "active" runtime
 state expose paired async methods named `activate_<entity>` and

@@ -162,14 +162,15 @@ class ContinuousMode:
         finally:
             async with self._lifecycle_lock:
                 self._running = False
-                # Clear the cached event so a waiter created between
-                # this stop and the next start does not consume the
-                # stale "first run completed" signal from this cycle.
-                # ``clear()`` (rather than ``= None``) preserves any
-                # captured ``first_run_event`` references the caller
-                # may still hold across the restart.
-                if self._first_run_event_cache is not None:
-                    self._first_run_event_cache.clear()
+                # Drop the cached event so the next start() rebinds a
+                # fresh asyncio.Event to the running loop and a waiter
+                # created between this stop and the next start cannot
+                # consume the stale "first run completed" signal from
+                # this cycle. Re-binding (rather than ``clear()`` on
+                # the same instance) is required for cross-loop reuse:
+                # an Event whose internal future list was bound to the
+                # prior loop cannot be safely awaited on a new one.
+                self._first_run_event_cache = None
         return list(results)
 
     def stop(self) -> None:

@@ -36,9 +36,11 @@ def _wait_for_web_container_ready(
     inner ``httpx.get`` timeout is shrunk on each iteration so the very
     last request cannot push the budget past the deadline.
     """
-    deadline = time.time() + deadline_secs
-    while time.time() < deadline:
-        remaining = deadline - time.time()
+    # ``time.monotonic`` not ``time.time`` so a wall-clock NTP step
+    # cannot push the deadline forward or backward mid-loop.
+    deadline = time.monotonic() + deadline_secs
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
         try:
             resp = httpx.get(f"{base_url}/", timeout=min(2, remaining))
         except httpx.ConnectError, httpx.ReadError, httpx.TimeoutException:
