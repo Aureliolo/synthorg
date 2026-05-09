@@ -37,6 +37,7 @@ from synthorg.settings.subscribers import (
     ObservabilitySettingsSubscriber,
     PerOpRateLimitSettingsSubscriber,
     ProviderSettingsSubscriber,
+    SecurityTimeoutSettingsSubscriber,
 )
 
 if TYPE_CHECKING:
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.config.schema import RootConfig
+    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.bridge_configs import NotificationsBridgeConfig
     from synthorg.settings.service import SettingsService
     from synthorg.settings.subscriber import SettingsSubscriber
@@ -566,12 +568,13 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         )
 
 
-def _build_settings_dispatcher(
+def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscriber the dispatcher carries
     message_bus: MessageBus | None,
     settings_service: SettingsService | None,
     config: RootConfig,
     app_state: AppState,
     backup_service: BackupService | None = None,
+    approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
 ) -> SettingsChangeDispatcher | None:
     """Create settings change dispatcher if bus and settings are available."""
     if message_bus is None or settings_service is None:
@@ -606,6 +609,13 @@ def _build_settings_dispatcher(
         subs.append(
             BackupSettingsSubscriber(
                 backup_service=backup_service,
+                settings_service=settings_service,
+            ),
+        )
+    if approval_timeout_scheduler is not None:
+        subs.append(
+            SecurityTimeoutSettingsSubscriber(
+                scheduler=approval_timeout_scheduler,
                 settings_service=settings_service,
             ),
         )
@@ -991,6 +1001,61 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     await _apply_notification_dispatcher_config(app_state, effective_config)
 
     app_state.mark_bridge_config_applied()
+
+
+async def _apply_security_timeout_interval(
+    app_state: AppState,
+    scheduler: ApprovalTimeoutScheduler | None,
+) -> None:
+    """Apply ``security.timeout_check_interval_seconds`` at startup.
+
+    The scheduler is bootstrapped with the registry default at app
+    construction time before persistence connects. Once the resolver
+    is wired (after ``_apply_bridge_config``), pull the operator-tuned
+    value via the canonical DB > env > YAML > default chain and call
+    ``scheduler.reschedule(...)`` so the configured cadence takes
+    effect on the next loop tick.
+
+    Resolver outage falls back to the *current* scheduler interval
+    (the registry default the scheduler was bootstrapped with). The
+    fail-safe-on-outage rule from the kill-switch idiom applies in
+    spirit: leaving the scheduler running with the bootstrap default
+    is safer than stopping it on a settings-backend hiccup.
+    """
+    if scheduler is None or not app_state.has_config_resolver:
+        return
+    fallback = registered_default_float(
+        SettingNamespace.SECURITY.value,
+        "timeout_check_interval_seconds",
+    )
+    try:
+        interval = await app_state.config_resolver.get_float(
+            SettingNamespace.SECURITY.value,
+            "timeout_check_interval_seconds",
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            setting="security.timeout_check_interval_seconds",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback_seconds=fallback,
+        )
+        return
+    try:
+        scheduler.reschedule(interval)
+    except ValueError as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            setting="security.timeout_check_interval_seconds",
+            value=interval,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:

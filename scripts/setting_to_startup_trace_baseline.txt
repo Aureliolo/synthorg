@@ -8,11 +8,3 @@
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_setting_to_startup_trace.py --update-baseline
-backup.compression:ghost-wired:BackupService
-backup.enabled:ghost-wired:BackupService
-backup.on_shutdown:ghost-wired:BackupService
-backup.on_startup:ghost-wired:BackupService
-backup.path:ghost-wired:BackupService
-backup.retention_days:ghost-wired:BackupService
-backup.schedule_hours:ghost-wired:BackupService
-security.timeout_check_interval_seconds:ghost-wired:ApprovalTimeoutScheduler

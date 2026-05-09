@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.ontology.service import OntologyService
     from synthorg.persistence.protocol import PersistenceBackend
+    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
     from synthorg.settings.service import SettingsService
     from synthorg.workers.claim import JetStreamTaskQueue
@@ -92,13 +93,14 @@ class MeetingWireResult(NamedTuple):
 class BuildDispatcherFn(Protocol):
     """Protocol for the dispatcher builder callback."""
 
-    def __call__(  # noqa: D102
+    def __call__(  # noqa: D102, PLR0913 -- mirrors _build_settings_dispatcher signature
         self,
         message_bus: MessageBus | None,
         settings_service: SettingsService | None,
         config: RootConfig,
         app_state: AppState,
         backup_service: BackupService | None = None,
+        approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
     ) -> SettingsChangeDispatcher | None: ...
 
 
@@ -695,6 +697,7 @@ async def auto_wire_settings(  # noqa: PLR0913
     app_state: AppState,
     backup_service: BackupService | None,
     build_dispatcher: BuildDispatcherFn,
+    approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
 ) -> SettingsChangeDispatcher | None:
     """On-startup auto-wire: create SettingsService after persistence connects.
 
@@ -710,6 +713,9 @@ async def auto_wire_settings(  # noqa: PLR0913
         app_state: Application state container.
         backup_service: Backup service (for settings subscriber wiring).
         build_dispatcher: Callable that builds a settings dispatcher.
+        approval_timeout_scheduler: Approval-timeout scheduler so the
+            dispatcher can wire the matching subscriber for
+            ``security.timeout_check_interval_seconds``.
 
     Returns:
         The started dispatcher, or ``None`` if ``build_dispatcher``
@@ -751,6 +757,7 @@ async def auto_wire_settings(  # noqa: PLR0913
             effective_config,
             app_state,
             backup_service,
+            approval_timeout_scheduler,
         )
     except Exception as exc:
         logger.error(

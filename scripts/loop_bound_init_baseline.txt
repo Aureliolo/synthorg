@@ -6,7 +6,7 @@
 #   uv run python scripts/check_no_loop_bound_init.py --update-baseline
 
 src/synthorg/api/bus_bridge.py:102:MessageBusBridge:_lifecycle_lock:Lock
-src/synthorg/backup/service.py:74:BackupService:_backup_lock:Lock
+src/synthorg/backup/service.py:75:BackupService:_backup_lock:Lock
 src/synthorg/budget/quota_poller.py:64:QuotaPoller:_lifecycle_lock:Lock
 src/synthorg/client/continuous.py:65:ContinuousMode:_stop_event:Event
 src/synthorg/client/continuous.py:71:ContinuousMode:_lifecycle_lock:Lock

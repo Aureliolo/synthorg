@@ -18,6 +18,9 @@ from synthorg.settings.subscribers.per_op_rate_limit_subscriber import (
 from synthorg.settings.subscribers.provider_subscriber import (
     ProviderSettingsSubscriber,
 )
+from synthorg.settings.subscribers.security_timeout_subscriber import (
+    SecurityTimeoutSettingsSubscriber,
+)
 
 __all__ = [
     "ApiBridgeSettingsSubscriber",
@@ -26,4 +29,5 @@ __all__ = [
     "ObservabilitySettingsSubscriber",
     "PerOpRateLimitSettingsSubscriber",
     "ProviderSettingsSubscriber",
+    "SecurityTimeoutSettingsSubscriber",
 ]

@@ -212,26 +212,35 @@ the lint never flags a setting in isolation.
 
 - **Hardcoded-None ghost.** A service variable
   `x: T | None = None` paired with a conditional
-  `if x is not None: x.start()`. The guard always evaluates False.
-  Example: `ApprovalTimeoutScheduler` hardcoded in `api/app.py`.
+  `if x is not None: x.start()`. The guard always evaluates False,
+  so any setting consumed inside the would-be service is dead at
+  runtime even though the consumer code exists.
 - **Factory-gated ghost.** A factory `build_x(config) -> T | None`
   whose `None` branch fires when a registered default-disabled flag
-  is False. Example: `BackupService` gated on
-  `backup.enabled=False` (the registered default), making all 7
-  `backup.*` settings dead in default config.
+  is False -- in default config the factory returns `None`, the
+  start gate short-circuits, and every setting in the factory's
+  gating namespace is dead.
+
+**Fixing a ghost-wired service** means: drop the factory's early
+return (or the hardcoded `None`), construct the service
+unconditionally, gate the *behaviour* internally on the runtime
+flag, and wire a live `SettingsSubscriber` so operator changes take
+effect without restart. See `BackupService` (`backup/factory.py` +
+`backup/service.py` + `BackupSettingsSubscriber`) and
+`ApprovalTimeoutScheduler` (constructed in `api/app.py`, interval
+applied at boot via `_apply_security_timeout_interval` in
+`lifecycle_helpers.py`, live-tuned via
+`SecurityTimeoutSettingsSubscriber`) for end-to-end references.
 
 **Setting → ghost matchers** (run in order; first hit wins):
 
 1. **Gating-namespace match** (factory ghosts only). Every setting
    whose `namespace` equals the factory's gating namespace is
-   ghost-wired -- e.g. all `backup.*` settings flag when
-   `BackupService` is factory-gated by `backup.enabled=False`.
+   ghost-wired when the gating flag's registered default is False.
 2. **Class-file containment match** (hardcoded-None ghosts only).
    A setting is ghost-wired iff its `key` appears as a substring
    in the ghost class's source file AND its `namespace` appears
-   in that file's path. Catches the `ApprovalTimeoutScheduler`
-   case where `security.timeout_check_interval_seconds` is mentioned
-   in the scheduler's docstring.
+   in that file's path.
 3. **Direct ConfigResolver consumer match** (Pattern A; both ghost
    kinds). The lint scans the ghost class's source file for
    `ConfigResolver.get_*("<ns>", "<key>")` calls (resolving both

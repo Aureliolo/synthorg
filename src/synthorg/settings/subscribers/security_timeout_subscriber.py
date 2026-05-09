@@ -1,0 +1,131 @@
+"""Security timeout settings subscriber -- live reschedule on interval changes.
+
+Watches ``security.timeout_check_interval_seconds`` and calls
+``ApprovalTimeoutScheduler.reschedule(...)`` so operator overrides
+take effect on the next scheduler tick without restart. The
+startup-time application of the same setting lives in
+``synthorg.api.lifecycle_helpers._apply_security_timeout_interval``.
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
+
+if TYPE_CHECKING:
+    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+    from synthorg.settings.service import SettingsService
+
+logger = get_logger(__name__)
+
+_WATCHED: frozenset[tuple[str, str]] = frozenset(
+    {("security", "timeout_check_interval_seconds")},
+)
+
+
+class SecurityTimeoutSettingsSubscriber:
+    """React to ``security.timeout_check_interval_seconds`` changes.
+
+    Reads the new interval via ``SettingsService`` and reschedules the
+    scheduler. Read failures and parse failures log + skip; the
+    scheduler keeps its current interval. Mirrors the
+    ``BackupSettingsSubscriber._reschedule`` discipline.
+
+    Args:
+        scheduler: The approval timeout scheduler to reschedule.
+        settings_service: Settings service for reading the current value.
+    """
+
+    def __init__(
+        self,
+        *,
+        scheduler: ApprovalTimeoutScheduler,
+        settings_service: SettingsService,
+    ) -> None:
+        self._scheduler = scheduler
+        self._settings_service = settings_service
+
+    @property
+    def watched_keys(self) -> frozenset[tuple[str, str]]:
+        """Return security-namespace keys this subscriber watches."""
+        return _WATCHED
+
+    @property
+    def subscriber_name(self) -> str:
+        """Human-readable subscriber name."""
+        return "security-timeout-settings"
+
+    async def on_settings_changed(
+        self,
+        namespace: str,
+        key: str,
+    ) -> None:
+        """Handle a change to the timeout-check-interval setting.
+
+        Args:
+            namespace: Changed setting namespace.
+            key: Changed setting key.
+        """
+        if (namespace, key) not in _WATCHED:
+            logger.warning(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace=namespace,
+                key=key,
+                note="ignored unexpected key",
+            )
+            return
+
+        try:
+            result = await self._settings_service.get(namespace, key)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.error(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace=namespace,
+                key=key,
+                note="failed to read setting",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+
+        try:
+            interval = float(result.value)
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace=namespace,
+                key=key,
+                value=result.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="invalid interval value",
+            )
+            return
+
+        try:
+            self._scheduler.reschedule(interval)
+        except ValueError as exc:
+            logger.warning(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace=namespace,
+                key=key,
+                value=interval,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="scheduler rejected interval",
+            )
+            return
+
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            namespace=namespace,
+            key=key,
+            note="rescheduled",
+        )

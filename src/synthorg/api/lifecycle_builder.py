@@ -16,6 +16,7 @@ from synthorg.api.lifecycle import (
 )
 from synthorg.api.lifecycle_helpers import (
     _apply_bridge_config,
+    _apply_security_timeout_interval,
     _audit_retention_loop,
     _build_settings_dispatcher,
     _maybe_bootstrap_agents,
@@ -492,6 +493,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     app_state,
                     backup_service,
                     _build_settings_dispatcher,
+                    approval_timeout_scheduler,
                 )
             except MemoryError, RecursionError:
                 raise
@@ -614,6 +616,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             except Exception:  # noqa: S110 -- already logged via done-callback
                 pass
         await _apply_bridge_config(app_state, effective_config)
+        await _apply_security_timeout_interval(app_state, approval_timeout_scheduler)
 
         # Rebind the live ``MessageBusBridge`` to the now-wired
         # resolver. ``create_app`` captures the resolver eagerly when

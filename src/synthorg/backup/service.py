@@ -37,6 +37,7 @@ from synthorg.observability.events.backup import (
     BACKUP_RESTORE_ROLLBACK,
     BACKUP_RESTORE_STARTED,
     BACKUP_RETENTION_FAILED,
+    BACKUP_SCHEDULER_DORMANT,
     BACKUP_STARTED,
 )
 
@@ -92,9 +93,27 @@ class BackupService(BackupServiceArchiveMixin):
         return self._config.on_shutdown
 
     async def start(self) -> None:
-        """Start the backup scheduler if backups are enabled."""
+        """Start the backup scheduler if backups are enabled.
+
+        When ``backup.enabled`` is ``False`` the scheduler is left
+        dormant and the service stays available for runtime opt-in via
+        ``BackupSettingsSubscriber`` (operator flips the flag through
+        ``/settings``); the scheduler also services on-demand backups
+        invoked through controllers and MCP handlers regardless of the
+        scheduled-run gate.
+
+        The disabled branch logs at INFO so operators can confirm the
+        deliberate dormant state from the boot log alongside the
+        ``BACKUP_SCHEDULER_STARTED`` event the scheduler emits when
+        ``enabled`` is True.
+        """
         if self._config.enabled:
             await self._scheduler.start()
+            return
+        logger.info(
+            BACKUP_SCHEDULER_DORMANT,
+            note="Backup scheduler dormant (backup.enabled=false)",
+        )
 
     async def stop(self) -> None:
         """Stop the backup scheduler."""
