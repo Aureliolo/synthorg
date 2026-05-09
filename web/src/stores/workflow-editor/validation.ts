@@ -35,12 +35,12 @@ export const createValidationSlice: SliceCreator<ValidationSlice> = (set, get) =
       set({ error: 'Cannot validate: no workflow loaded' })
       return
     }
-    const badNodes = nodes.filter((n) => !n.type)
-    const badEdges = edges.filter((e) => readString(e.data, 'edgeType') === undefined)
+    const badNodes = nodes.filter((n) => !isWorkflowNodeType(n.type))
+    const badEdges = edges.filter((e) => !isWorkflowEdgeType(readString(e.data, 'edgeType')))
     if (badNodes.length > 0 || badEdges.length > 0) {
       const parts: string[] = []
-      if (badNodes.length > 0) parts.push(`nodes missing type: ${badNodes.map((n) => n.id).join(', ')}`)
-      if (badEdges.length > 0) parts.push(`edges missing type: ${badEdges.map((e) => e.id).join(', ')}`)
+      if (badNodes.length > 0) parts.push(`nodes missing/invalid type: ${badNodes.map((n) => n.id).join(', ')}`)
+      if (badEdges.length > 0) parts.push(`edges missing/invalid type: ${badEdges.map((e) => e.id).join(', ')}`)
       set({
         error: `Cannot validate -- ${parts.join('; ')}. Remove and re-add the affected items.`,
         validating: false,
