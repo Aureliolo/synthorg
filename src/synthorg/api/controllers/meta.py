@@ -86,7 +86,7 @@ class MetaController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- default page size
     ) -> PaginatedResponse[dict[str, Any]]:
         """List all signal rules (built-in + custom) with status.
 
@@ -139,7 +139,7 @@ class MetaController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- default page size
     ) -> PaginatedResponse[dict[str, str]]:
         """List available MCP signal tools (paginated).
 
@@ -181,7 +181,7 @@ class MetaController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- default page size
     ) -> PaginatedResponse[dict[str, Any]]:
         """List active A/B tests with status and current metrics.
 
@@ -231,7 +231,7 @@ class MetaController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- default page size
     ) -> PaginatedResponse[dict[str, Any]]:
         """List improvement proposals from the approval store.
 

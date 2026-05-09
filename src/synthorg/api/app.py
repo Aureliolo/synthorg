@@ -142,7 +142,9 @@ logger = get_logger(__name__)
 # Update both sites together if the default ever changes; otherwise a
 # bootstrap value will silently disagree with operator-editable
 # overrides resolved through ``ConfigResolver``.
-_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS = 60.0
+_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS = (
+    60.0  # lint-allow: magic-numbers -- bootstrap default mirrored by ConfigResolver
+)
 
 
 def _build_default_approval_timeout_scheduler(
