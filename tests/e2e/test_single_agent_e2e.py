@@ -383,9 +383,13 @@ class TestRealLLMIntegration:
     """Optional smoke test with a real LLM provider.
 
     Skipped unless REAL_LLM_TEST=1 is set; not expected to run in CI.
-    Each method also requires REAL_LLM_MODEL, REAL_LLM_PROVIDER, and
-    REAL_LLM_API_KEY so the test can construct a LiteLLM-backed
-    provider without leaning on app-startup config wiring.
+    Each method also requires REAL_LLM_MODEL and REAL_LLM_PROVIDER so
+    the test can construct a LiteLLM-backed provider without leaning
+    on app-startup config wiring. Authentication is configured via at
+    least one of REAL_LLM_API_KEY (hosted providers) or
+    REAL_LLM_BASE_URL (local providers like Ollama / LM Studio /
+    vLLM); when both are set the API key wins as before, when only the
+    base URL is set the call goes unauthenticated.
     """
 
     async def test_real_provider_text_completion(self) -> None:
@@ -402,15 +406,18 @@ class TestRealLLMIntegration:
                 "Set REAL_LLM_PROVIDER to a LiteLLM routing key "
                 "(e.g. 'example-provider') to run this test"
             )
-        api_key = os.environ.get("REAL_LLM_API_KEY")
-        if not api_key:
+        api_key = os.environ.get("REAL_LLM_API_KEY") or None
+        base_url = os.environ.get("REAL_LLM_BASE_URL") or None
+        if api_key is None and base_url is None:
             pytest.skip(
-                "Set REAL_LLM_API_KEY to the provider's API key to run this test"
+                "Set REAL_LLM_API_KEY (hosted) or REAL_LLM_BASE_URL "
+                "(local provider) to run this test"
             )
 
         provider_config = ProviderConfig(
             litellm_provider=provider_name,
             api_key=api_key,
+            base_url=base_url,
             models=(ProviderModelConfig(id=provider_model),),
         )
         provider = LiteLLMDriver(provider_name, provider_config)
