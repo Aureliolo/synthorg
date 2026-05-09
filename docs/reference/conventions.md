@@ -500,7 +500,7 @@ treated as whitespace). Examples:
 If you rename a header, update both `header:` and `id:` in the same
 edit. The gate's stale-entry check surfaces orphans automatically.
 
-## 18. `activate_*` / `deactivate_*` lifecycle method naming (MANDATORY)
+## 18. `activate_*` / `deactivate_*` lifecycle method naming
 
 Domain services that flip an entity into / out of an "active" runtime
 state expose paired async methods named `activate_<entity>` and
@@ -516,10 +516,10 @@ distinct from `save` (persist) and `delete` (remove).
 | `deactivate_client` | `src/synthorg/api/controllers/clients.py:340`, `src/synthorg/integrations/mcp_services.py:346` | Disables an integration client without deletion. |
 | `deactivate_all` | `src/synthorg/persistence/fine_tune_protocol.py:94` (+ both backends) | Bulk deactivate of fine-tune jobs. |
 
-Use these verbs for any new "becomes runnable / no longer runnable"
-transition; do not invent `enable_*` / `disable_*` synonyms. Those are
-reserved for boolean feature flags read from settings, not for
-domain-entity lifecycle.
+Prefer these verbs for any new "becomes runnable / no longer runnable"
+transition. `enable_*` / `disable_*` are reserved for boolean feature
+flags read from settings, not for domain-entity lifecycle, so avoid
+those as synonyms for the lifecycle pair documented here.
 
 ## See also
 

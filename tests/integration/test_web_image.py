@@ -41,6 +41,12 @@ def _wait_for_web_container_ready(
     deadline = time.monotonic() + deadline_secs
     while time.monotonic() < deadline:
         remaining = deadline - time.monotonic()
+        # Skip the request if the deadline has already lapsed; passing
+        # a non-positive ``timeout`` to ``httpx.get`` is a contract
+        # violation (httpx raises ``InvalidURL``-ish errors on
+        # ``timeout <= 0`` rather than retrying within the budget).
+        if remaining <= 0:
+            break
         try:
             resp = httpx.get(f"{base_url}/", timeout=min(2, remaining))
         except httpx.ConnectError, httpx.ReadError, httpx.TimeoutException:

@@ -171,6 +171,14 @@ class ContinuousMode:
                 # an Event whose internal future list was bound to the
                 # prior loop cannot be safely awaited on a new one.
                 self._first_run_event_cache = None
+                # ``_stop_event`` was created at __init__ and the same
+                # instance has now seen ``set()`` plus pending-waiter
+                # cleanup on this cycle's loop. Replace it with a
+                # fresh Event so a cross-loop restart of the same
+                # ContinuousMode instance cannot trip a "bound to a
+                # different event loop" RuntimeError on the new
+                # cycle's first ``wait()``.
+                self._stop_event = asyncio.Event()
         return list(results)
 
     def stop(self) -> None:
@@ -182,7 +190,12 @@ class ContinuousMode:
         acquired here because the lock guards only the ``_running``
         flag transition, not the long-lived loop body.
         """
+        # Setting the stop event when no run is active is a harmless
+        # no-op (the next ``start()`` clears it). Only emit the
+        # CONTINUOUS_MODE_STOPPED log when an actual run is being
+        # interrupted -- otherwise an idle ``stop()`` call would
+        # produce a misleading transition record.
         already_stopping = self._stop_event.is_set()
         self._stop_event.set()
-        if not already_stopping:
+        if self._running and not already_stopping:
             logger.info(CONTINUOUS_MODE_STOPPED, runs_completed=self._runs_completed)
