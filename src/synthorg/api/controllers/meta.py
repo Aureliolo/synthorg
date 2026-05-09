@@ -327,19 +327,23 @@ class MetaController(Controller):
             Chat response with answer, sources, and confidence.
         """
         app_state = state.app_state
-        if not app_state.has_chief_of_staff_chat:
+        chat_backend = (
+            app_state.chief_of_staff_chat if app_state.has_chief_of_staff_chat else None
+        )
+        if chat_backend is None:
             msg = (
                 "Chief of Staff chat is not configured. Enable "
                 "``meta.chief_of_staff.chat_enabled`` in settings and "
                 "ensure an LLM provider is registered."
             )
             raise ServiceUnavailableError(msg)
-        if not app_state.has_signals_service:
+        signals_service = (
+            app_state.signals_service if app_state.has_signals_service else None
+        )
+        if signals_service is None:
             msg = "SignalsService is not configured; cannot build a snapshot."
             raise ServiceUnavailableError(msg)
-
-        chat_backend = app_state.chief_of_staff_chat
-        snapshot = await app_state.signals_service.get_org_snapshot()
+        snapshot = await signals_service.get_org_snapshot()
         query = ChatQuery(
             question=data.question,
             proposal_id=data.proposal_id,
