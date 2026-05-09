@@ -162,6 +162,14 @@ class ContinuousMode:
         finally:
             async with self._lifecycle_lock:
                 self._running = False
+                # Clear the cached event so a waiter created between
+                # this stop and the next start does not consume the
+                # stale "first run completed" signal from this cycle.
+                # ``clear()`` (rather than ``= None``) preserves any
+                # captured ``first_run_event`` references the caller
+                # may still hold across the restart.
+                if self._first_run_event_cache is not None:
+                    self._first_run_event_cache.clear()
         return list(results)
 
     def stop(self) -> None:

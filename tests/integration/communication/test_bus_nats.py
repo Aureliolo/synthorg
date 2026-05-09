@@ -278,15 +278,22 @@ async def test_receive_returns_none_on_shutdown(bus: MessageBus) -> None:
     await bus.subscribe("#general", "agent-a")
 
     receive_task = asyncio.create_task(bus.receive("#general", "agent-a", timeout=10.0))
-    # The JetStream durable consumer's setup involves several internal
-    # awaits before the call blocks on next_msg(); a single sleep(0)
-    # is not enough yields on a busy event loop. Bound the wait with
-    # asyncio.wait() so the receive task is guaranteed to be parked in
-    # its blocking await before stop() fires. 50 ms ceiling is well
-    # under receive()'s 10 s timeout, so the test still asserts the
-    # shutdown-wakes-receive contract rather than the timeout path.
-    _, pending = await asyncio.wait({receive_task}, timeout=0.05)
-    assert receive_task in pending, "receive() returned before bus.stop() fired"
+    # Wait deterministically until the receive coroutine has parked at
+    # the fetch-vs-shutdown race in ``fetch_with_shutdown``. The state
+    # populates ``in_flight_fetches`` synchronously before that
+    # ``asyncio.wait``, so a non-empty set is the canonical
+    # "consumer is parked" signal -- strictly stronger than a fixed
+    # timeout heuristic, which only proves the task hasn't *finished*.
+    assert isinstance(bus, JetStreamMessageBus)
+    # Integration test reaches into bus internals to assert the parked-receive contract.
+    state = bus._state
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 2.0
+    while not state.in_flight_fetches:
+        if loop.time() >= deadline:
+            pytest.fail("receive() did not park within 2s")
+        await asyncio.sleep(0.005)
+    assert not receive_task.done(), "receive() returned before bus.stop() fired"
     await bus.stop()
 
     assert await receive_task is None

@@ -175,3 +175,30 @@ class TestContinuousModeFirstRunEvent:
         assert mode.runs_completed >= 1
         mode.stop()
         await task
+
+    async def test_event_cleared_between_cycles(self) -> None:
+        """A waiter created between cycles must not see a stale signal.
+
+        Without clearing the cached event when ``start()`` exits, a
+        post-stop ``first_run_event.wait()`` would observe the prior
+        cycle's set state and resolve immediately, even though no run
+        has completed since the new cycle began.
+        """
+        runner = _FakeRunner()
+        mode = ContinuousMode(
+            config=ContinuousModeConfig(
+                enabled=True,
+                request_interval_sec=0.001,
+                max_concurrent_requests=1,
+            ),
+            runner=runner,  # type: ignore[arg-type]
+        )
+
+        first_cycle = asyncio.create_task(
+            mode.start(sim_config=_sim_config(), clients=()),
+        )
+        await mode.first_run_event.wait()
+        mode.stop()
+        await first_cycle
+
+        assert not mode.first_run_event.is_set()
