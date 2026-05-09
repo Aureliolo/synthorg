@@ -8,6 +8,7 @@ reset the probe interval for that provider.
 """
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
@@ -354,6 +355,13 @@ class ProviderHealthProber:
         the setting is ``False`` every cycle short-circuits -- the loop
         keeps running so operators can re-enable without restarting,
         but no probe traffic is sent.
+
+        The cycle wait routes through the injected ``Clock`` seam so
+        ``FakeClock.sleep`` can drive the cadence on virtual time in
+        tests (matches the constructor's ``clock=`` parameter
+        contract). ``asyncio.wait_for(stop_event.wait(),
+        timeout=self._interval)`` would bypass the seam by relying on
+        the event-loop's wall-clock timer instead.
         """
         while not self._stop_event.is_set():
             if await self._resolve_enabled():
@@ -371,14 +379,26 @@ class ProviderHealthProber:
                     )
             else:
                 logger.debug(PROVIDER_HEALTH_PROBER_PAUSED, reason="paused_by_setting")
+            sleep_task: asyncio.Task[None] = asyncio.create_task(
+                self._clock.sleep(self._interval),
+            )
+            stop_task: asyncio.Task[bool] = asyncio.create_task(
+                self._stop_event.wait(),
+            )
             try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(),
-                    timeout=self._interval,
+                done, _pending = await asyncio.wait(
+                    {sleep_task, stop_task},
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
+            finally:
+                for task in (sleep_task, stop_task):
+                    if not task.done():
+                        task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await task
+            if stop_task in done:
                 break  # stop_event was set
-            except TimeoutError:
-                continue  # timeout = time to probe again
+            # ``sleep_task`` completed -- next cycle
 
     async def _probe_all(self) -> None:
         """Probe all eligible providers in parallel."""

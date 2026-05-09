@@ -581,16 +581,29 @@ class MessageBusBridge:
         resident so operators can re-enable without restarting.
         """
         consecutive_errors = 0
+        # Log only on the transition INTO the paused state so an
+        # operator-controlled pause does not flood the sink with one
+        # debug entry per poll interval (which would bury real
+        # transport failures emitted under the same event name).
+        paused_logged = False
         while True:
             poll_timeout = await self._get_poll_timeout()
             if not await self._resolve_enabled():
-                logger.debug(
-                    API_BUS_BRIDGE_POLL_ERROR,
-                    channel=channel_name,
-                    reason="paused_by_setting",
-                )
+                # Reset the streak on pause (matches ``webhook_bridge``):
+                # an operator pause must not consume the error budget
+                # so the first post-resume transient error does not
+                # break the bridge unexpectedly.
+                consecutive_errors = 0
+                if not paused_logged:
+                    logger.debug(
+                        API_BUS_BRIDGE_POLL_ERROR,
+                        channel=channel_name,
+                        reason="paused_by_setting",
+                    )
+                    paused_logged = True
                 await asyncio.sleep(poll_timeout)
                 continue
+            paused_logged = False
             max_errors = await self._get_max_consecutive_errors()
             try:
                 envelope = await self._bus.receive(

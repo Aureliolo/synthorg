@@ -1,5 +1,6 @@
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { SETTING_DEPENDENCIES } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
 
@@ -133,26 +134,44 @@ export async function saveSettingsBatch(
   ) => Promise<unknown | null>,
 ): Promise<Set<string>> {
   const keys = [...dirtyValues.keys()]
+  // Local validation rejections bypass the store-CRUD contract (they
+  // never call ``updateSetting``), so the store does not emit a per-
+  // mutation error toast for them. Without surfacing here, a
+  // code-mode save with a malformed key would fail with only a log
+  // entry and no user feedback. Emit one toast per validation
+  // rejection so the user sees exactly which key was rejected and
+  // why.
+  const surfaceValidationFailure = (
+    compositeKey: string,
+    reason: string,
+  ): void => {
+    log.error('Local validation rejected dirty draft', {
+      compositeKey: sanitizeForLog(compositeKey),
+      reason,
+    })
+    useToastStore.getState().add({
+      variant: 'error',
+      title: `Cannot save ${sanitizeForLog(compositeKey)}`,
+      description: reason,
+    })
+  }
   const promises = keys.map((compositeKey) => {
     const slashIdx = compositeKey.indexOf('/')
     if (slashIdx < 1) {
-      log.error('Malformed composite key', {
-        compositeKey: sanitizeForLog(compositeKey),
-      })
+      const reason = 'Malformed composite key (missing namespace)'
+      surfaceValidationFailure(compositeKey, reason)
       return Promise.reject(new Error(`Malformed key: ${compositeKey}`))
     }
     const nsRaw = compositeKey.slice(0, slashIdx)
     const key = compositeKey.slice(slashIdx + 1)
     if (key.length === 0) {
-      log.error('Empty key in composite', {
-        compositeKey: sanitizeForLog(compositeKey),
-      })
+      const reason = 'Empty setting key after the namespace separator'
+      surfaceValidationFailure(compositeKey, reason)
       return Promise.reject(new Error(`Empty key: ${compositeKey}`))
     }
     if (!VALID_SETTING_NAMESPACES.has(nsRaw)) {
-      log.error('Unknown namespace in composite key', {
-        compositeKey: sanitizeForLog(compositeKey),
-      })
+      const reason = `Unknown setting namespace ${sanitizeForLog(nsRaw)}`
+      surfaceValidationFailure(compositeKey, reason)
       return Promise.reject(new Error(`Unknown namespace: ${compositeKey}`))
     }
     const ns = nsRaw as SettingNamespace

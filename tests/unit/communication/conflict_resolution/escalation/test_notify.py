@@ -85,9 +85,17 @@ class TestPostgresSubscriberLateBoundResolver:
         subscriber.set_config_resolver(resolver)
         rebound_resolver: ConfigResolver | None = subscriber._config_resolver
         assert rebound_resolver is resolver
-        # The kill-switch helper now consults the live resolver.
+        # The kill-switch helper now consults the live resolver. Pinning
+        # the namespace + key here turns this from a smoke test into a
+        # regression test against ``communication.escalation_notify_subscriber_enabled``
+        # drift -- if a future refactor passes the wrong setting key,
+        # the assertion fails with the exact mismatch instead of
+        # silently passing on any awaited call.
         assert (await subscriber._resolve_subscriber_enabled()) is False
-        resolver.get_bool.assert_awaited_once()
+        resolver.get_bool.assert_awaited_once_with(
+            "communication",
+            "escalation_notify_subscriber_enabled",
+        )
 
     async def test_run_loop_paused_branch_uses_paused_event(self) -> None:
         """When the kill-switch is False the debug log uses the PAUSED event."""

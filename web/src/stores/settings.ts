@@ -56,6 +56,23 @@ function decrementSavingKey(
   return next
 }
 
+/**
+ * Module-local monotonic counter for ``updateSetting`` mutation
+ * tokens. Two concurrent saves on the same composite key receive
+ * distinct, ordered tokens; the apply branch refuses to overwrite a
+ * higher-token result that already landed, so an older request whose
+ * response arrives after the newer one cannot stamp stale data on
+ * ``state.entries``. Backend-issued mutation IDs would be the
+ * canonical solution; this local counter is a best-effort guard
+ * until that contract exists.
+ */
+let _nextMutationToken = 0
+
+function nextMutationToken(): number {
+  _nextMutationToken += 1
+  return _nextMutationToken
+}
+
 /** Extract valid currency from entries, or undefined if not found/invalid. */
 function deriveCurrency(
   entries: SettingEntry[],
@@ -92,6 +109,16 @@ interface SettingsState {
    * still-pending in-flight result.
    */
   savingKeys: ReadonlyMap<string, number>
+  /**
+   * Highest applied mutation token per composite key. Used to drop
+   * out-of-order ``updateSetting`` responses: if our token is less
+   * than the value here, a newer mutation already landed and we must
+   * not overwrite ``state.entries`` with stale data. The map is
+   * monotonic per key (only ever raised) so an entry never disappears
+   * once seen; ``size`` grows with the number of distinct keys
+   * mutated in this session, which is bounded by the schema.
+   */
+  appliedMutationTokens: ReadonlyMap<string, number>
   /** Error from the most recent save attempt. */
   saveError: string | null
 
@@ -137,6 +164,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   loading: false,
   error: null,
   savingKeys: new Map(),
+  appliedMutationTokens: new Map(),
   saveError: null,
 
   fetchCurrency: async () => {
@@ -204,6 +232,13 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   updateSetting: async (ns, key, value) => {
     const compositeKey = `${ns}/${key}`
+    // Capture the mutation token BEFORE the API call so that two
+    // concurrent saves on the same key receive distinct, ordered
+    // tokens. The apply branch below refuses to overwrite a
+    // higher-token result that already landed, preventing an older
+    // request whose response arrives after the newer one from
+    // stamping stale data on ``state.entries``.
+    const mutationToken = nextMutationToken()
     set((state) => ({
       savingKeys: incrementSavingKey(state.savingKeys, compositeKey),
       saveError: null,
@@ -211,6 +246,21 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     try {
       const updated = await settingsApi.updateSetting(ns, key, { value })
       set((state) => {
+        const newSaving = decrementSavingKey(state.savingKeys, compositeKey)
+        const lastApplied = state.appliedMutationTokens.get(compositeKey) ?? 0
+        if (mutationToken <= lastApplied) {
+          // A newer mutation already landed and overwrote (or
+          // chose not to overwrite) ``entries``; this older response
+          // must not regress ``state.entries`` to a stale value.
+          // Still drain the savingKeys refcount and clear saveError
+          // so the lifecycle accounting stays correct.
+          log.debug('Dropping out-of-order updateSetting response', {
+            compositeKey: sanitizeForLog(compositeKey),
+            ourToken: mutationToken,
+            lastApplied,
+          })
+          return { savingKeys: newSaving, saveError: null }
+        }
         const hasExisting = state.entries.some(
           (e) => e.definition.namespace === ns && e.definition.key === key,
         )
@@ -221,10 +271,12 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                 : e,
             )
           : [...state.entries, updated]
-        const newSaving = decrementSavingKey(state.savingKeys, compositeKey)
+        const newApplied = new Map(state.appliedMutationTokens)
+        newApplied.set(compositeKey, mutationToken)
         const patch: Partial<SettingsState> = {
           entries: newEntries,
           savingKeys: newSaving,
+          appliedMutationTokens: newApplied,
         }
         // Keep the standalone currency field in sync with the entry list.
         if (ns === 'budget' && key === 'currency') {

@@ -15,9 +15,11 @@ factory returns a :class:`NoopEscalationNotifySubscriber`.
 """
 
 import asyncio
+import contextlib
 import re
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
@@ -112,7 +114,7 @@ class PostgresEscalationNotifySubscriber:
     :class:`EscalationExpirationSweeper` eventually reaps stale rows.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- subscriber wiring (positional-only refactor would be churn)
         self,
         repo: EscalationQueueStore,
         registry: PendingFuturesRegistry,
@@ -120,6 +122,7 @@ class PostgresEscalationNotifySubscriber:
         channel: str,
         reconnect_delay_seconds: float,
         config_resolver: ConfigResolver | None = None,
+        clock: Clock | None = None,
     ) -> None:
         """Initialise the subscriber.
 
@@ -144,6 +147,11 @@ class PostgresEscalationNotifySubscriber:
                 flag every iteration so an operator can pause the
                 subscriber at runtime; without a resolver the loop
                 runs unconditionally (matches the registered default).
+            clock: Time seam per ``CLAUDE.md``.  Defaults to
+                :class:`SystemClock` so production keeps wall-clock
+                semantics; tests inject ``FakeClock`` to drive the
+                reconnect back-off and ``stop()`` drain deadline on
+                virtual time.
         """
         if reconnect_delay_seconds <= 0:
             msg = "reconnect_delay_seconds must be > 0"
@@ -166,6 +174,10 @@ class PostgresEscalationNotifySubscriber:
         self._channel = channel
         self._reconnect_delay = reconnect_delay_seconds
         self._config_resolver = config_resolver
+        # ``Clock`` seam per ``CLAUDE.md`` -- tests inject ``FakeClock``
+        # so the reconnect back-off and stop() drain deadline run on
+        # virtual time instead of wall time.
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._task: asyncio.Task[None] | None = None
         # Eager construction of the lifecycle primitives. Python 3.10+
         # ``asyncio.Lock`` / ``asyncio.Event`` are loop-agnostic until
@@ -291,12 +303,35 @@ class PostgresEscalationNotifySubscriber:
                     )
 
             drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+            # Race the drain against a clock-backed deadline so the
+            # hard-stop cadence honours the injected ``Clock`` seam
+            # (tests inject ``FakeClock`` to drive the timeout on
+            # virtual time without spending real wall-clock seconds).
+            # ``asyncio.shield(drain_task)`` would tie the deadline to
+            # the loop's wall-clock timer via ``asyncio.wait_for``,
+            # bypassing the seam.
+            deadline_task: asyncio.Task[None] = asyncio.create_task(
+                self._clock.sleep(self._stop_drain_timeout_seconds),
+            )
             try:
-                await asyncio.wait_for(
-                    asyncio.shield(drain_task),
-                    timeout=self._stop_drain_timeout_seconds,
+                done, _pending = await asyncio.wait(
+                    {drain_task, deadline_task},
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-            except TimeoutError:
+            finally:
+                # Always cancel the deadline task so it does not
+                # outlive the stop call. The drain task is cancelled
+                # below if the deadline won.
+                if not deadline_task.done():
+                    deadline_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await deadline_task
+            if drain_task in done:
+                # Drain completed inside the deadline; surface its
+                # exception (if any) through the existing fall-through.
+                with contextlib.suppress(asyncio.CancelledError):
+                    drain_task.result()
+            else:
                 # Drain exceeded the hard deadline. Mark the subscriber
                 # unrestartable so a future ``start()`` cannot spawn a
                 # fresh ``_run`` while the orphan task still holds the
@@ -313,7 +348,17 @@ class PostgresEscalationNotifySubscriber:
                     ),
                     timeout_seconds=self._stop_drain_timeout_seconds,
                 )
-                raise
+                # Cancel the drain task so it does not outlive the
+                # stop call as an orphan; surface the deadline breach
+                # to the caller via ``TimeoutError`` (matches the
+                # previous ``asyncio.wait_for`` + ``except TimeoutError``
+                # contract that ``stop()``'s callers depend on).
+                drain_task.cancel()
+                msg = (
+                    "PostgresEscalationNotifySubscriber stop exceeded"
+                    f" the {self._stop_drain_timeout_seconds}s drain deadline"
+                )
+                raise TimeoutError(msg)
             self._task = None
             logger.info(CONFLICT_ESCALATION_SUBSCRIBER_STOPPED)
         # Re-create the lifecycle primitives outside the (now
@@ -395,15 +440,33 @@ class PostgresEscalationNotifySubscriber:
                     channel=self._channel,
                     reason="paused_by_setting",
                 )
+            # Reconnect back-off routes through the ``Clock`` seam so
+            # ``FakeClock.sleep`` can drive the cadence on virtual
+            # time in tests. Race the clock-backed sleep against
+            # ``stop_event`` so a stop arriving mid-back-off wakes
+            # us immediately instead of waiting out the full delay.
+            sleep_task: asyncio.Task[None] = asyncio.create_task(
+                self._clock.sleep(self._reconnect_delay),
+            )
+            stop_wait: asyncio.Task[bool] = asyncio.create_task(
+                self._stop_event.wait(),
+            )
             try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(),
-                    timeout=self._reconnect_delay,
+                done, _pending = await asyncio.wait(
+                    {sleep_task, stop_wait},
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-            except TimeoutError:
+            finally:
+                for task in (sleep_task, stop_wait):
+                    if not task.done():
+                        task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await task
+            if stop_wait in done:
+                # Stop was set during the back-off; loop will exit
+                # via the ``while not self._stop_event.is_set()``
+                # guard at the top.
                 continue
-            except asyncio.CancelledError:
-                raise
 
     async def _listen_once(self) -> None:
         """Open a dedicated connection, LISTEN, and dispatch notifies.

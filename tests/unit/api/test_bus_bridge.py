@@ -1,7 +1,9 @@
 """Tests for message bus bridge."""
 
+import asyncio
+import contextlib
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -140,6 +142,64 @@ class TestMessageBusBridge:
         # The poll-timeout helper now consults the live resolver.
         assert (await bridge._get_poll_timeout()) == 7.5
         resolver.get_float.assert_awaited()
+
+    async def test_poll_channel_skips_bus_when_disabled(self) -> None:
+        """``_poll_channel`` consults the kill-switch BEFORE ``bus.receive``.
+
+        Pins the order of operations: if ``communication.bus_bridge_enabled``
+        is False, the loop must short-circuit before consuming a bus
+        message and before publishing to the Litestar channel. Without
+        this regression test, a future refactor that moves the
+        ``_resolve_enabled`` check below the ``receive`` call would
+        let the bridge keep draining messages while disabled, and the
+        existing helper-level tests would still pass.
+        """
+        from litestar.channels import ChannelsPlugin
+        from litestar.channels.backends.memory import MemoryChannelsBackend
+
+        from synthorg.api.channels import ALL_CHANNELS
+        from tests.unit.api.conftest import FakeMessageBus
+
+        bus = FakeMessageBus()
+        bus.receive = AsyncMock(spec=FakeMessageBus.receive, return_value=None)  # type: ignore[method-assign]
+        plugin = ChannelsPlugin(
+            backend=MemoryChannelsBackend(history=5),
+            channels=ALL_CHANNELS,
+        )
+        plugin.publish = MagicMock(spec=ChannelsPlugin.publish)  # type: ignore[method-assign]
+
+        resolver = AsyncMock(spec=ConfigResolver)
+        # Kill-switch off; first iteration should short-circuit, then
+        # we cancel before the next sleep completes.
+        resolver.get_bool.return_value = False
+        # ``_get_poll_timeout`` is called before the kill-switch check;
+        # resolver.get_float may be awaited too. A tiny value keeps the
+        # paused-branch ``await asyncio.sleep`` short while we cancel.
+        resolver.get_float.return_value = 0.001
+        bridge = MessageBusBridge(bus, plugin, config_resolver=resolver)
+
+        task = asyncio.create_task(bridge._poll_channel("messages"))
+        try:
+            # Wait until the kill-switch lookup has fired at least once,
+            # then cancel. ``asyncio.wait_for(get_bool wait)`` would be
+            # cleaner but ``get_bool`` is an AsyncMock without a
+            # synchronous ``called`` event; sleep(0) yields the loop
+            # enough times for the first iteration to enter the paused
+            # branch.
+            for _ in range(20):
+                await asyncio.sleep(0)
+                if resolver.get_bool.await_count > 0:
+                    break
+            assert resolver.get_bool.await_count >= 1, (
+                "kill-switch must be consulted at least once"
+            )
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        bus.receive.assert_not_called()
+        plugin.publish.assert_not_called()
 
     def test_to_ws_event_has_timestamp(self) -> None:
         msg = Message.model_validate(
