@@ -22,9 +22,7 @@
   "prHourlyLimit": 5,
   "separateMajorMinor": false,
   "vulnerabilityAlerts": {
-    "enabled": true,
-    "schedule": ["at any time"],
-    "labels": ["dependencies", "security"]
+    "enabled": false
   },
   "packageRules": [
     {
