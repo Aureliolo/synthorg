@@ -129,9 +129,9 @@ class TestMetaCycleIntegration:
             if p.source_rule == "quality_declining"
             and p.altitude == ProposalAltitude.CONFIG_TUNING
         )
-        # TODO: Route through real ApprovalStore once wired.
-        # For now, simulate approval via model_copy since
-        # the approval gate is a placeholder.
+        # Tracked in #1837: route through real ApprovalStore once
+        # wired. For now, simulate approval via model_copy since the
+        # approval gate is a placeholder.
         approved = proposal.model_copy(
             update={
                 "status": ProposalStatus.APPROVED,

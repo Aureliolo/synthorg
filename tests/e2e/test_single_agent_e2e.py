@@ -388,7 +388,8 @@ class TestRealLLMIntegration:
     async def test_real_provider_text_completion(self) -> None:
         """Minimal text-only task with a real provider.
 
-        TODO: Replace the skip with real provider setup when ready.
+        Tracked in #1837: replace the skip with real provider setup
+        when the provider integration path is wired.
         """
         provider_model = os.environ.get("REAL_LLM_MODEL")
         if not provider_model:
