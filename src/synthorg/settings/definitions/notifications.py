@@ -101,3 +101,23 @@ _r.register(
         yaml_path="notifications.ntfy.default_url",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.NOTIFICATIONS,
+        key="dispatcher_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master kill switch for the notification dispatcher. When"
+            " False every ``dispatch()`` call short-circuits before"
+            " touching any sink -- pauses outbound notifications without"
+            " tearing down sinks or lifecycle. Resolver outage falls"
+            " back to enabled (operators silence by setting the value"
+            " explicitly, never by inducing a settings outage)."
+        ),
+        group="Dispatcher",
+        level=SettingLevel.ADVANCED,
+        yaml_path="notifications.dispatcher_enabled",
+    )
+)

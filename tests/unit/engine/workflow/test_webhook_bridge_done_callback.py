@@ -19,6 +19,7 @@ import pytest
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
+from synthorg.settings.resolver import ConfigResolver
 
 pytestmark = pytest.mark.unit
 
@@ -92,3 +93,87 @@ async def test_memory_error_in_poll_loop_invokes_done_callback() -> None:
         exc = task.exception()
         assert isinstance(exc, MemoryError)
         assert task in fired_with, "done-callback was registered but never invoked"
+
+
+class TestResolveEnabled:
+    """``_resolve_enabled`` reads a live kill-switch and throttles warnings.
+
+    Without throttling a prolonged settings-resolver outage would log a
+    warning every iteration, drowning higher-signal errors in the same
+    sink. The log-once-until-recovery pattern is the canonical guard
+    used elsewhere in the bridge (``_get_poll_timeout`` /
+    ``_get_max_consecutive_errors``).
+    """
+
+    @staticmethod
+    def _make_bridge(resolver: ConfigResolver | None) -> WebhookEventBridge:
+        bus = AsyncMock(spec=MessageBus)
+        scheduler = AsyncMock(spec=CeremonyScheduler)
+        return WebhookEventBridge(
+            bus=bus,
+            ceremony_scheduler=scheduler,
+            config_resolver=resolver,
+        )
+
+    async def test_no_resolver_returns_true(self) -> None:
+        """Fail-safe: without a resolver the bridge defaults to enabled."""
+        bridge = self._make_bridge(None)
+        assert await bridge._resolve_enabled() is True
+
+    async def test_returns_resolver_value_and_clears_throttle(self) -> None:
+        """A successful resolver read returns the value and clears the flag."""
+        # Drive the throttle on via a fake outage first so the
+        # recovery path is exercised. Setting the bool attribute
+        # directly would let mypy narrow it to ``Literal[True]`` and
+        # the later "cleared" assertion would be flagged as
+        # unreachable, hiding the actual recovery semantics.
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.side_effect = RuntimeError("transient failure")
+        bridge = self._make_bridge(resolver)
+        assert (await bridge._resolve_enabled()) is True
+        flag_after_outage: bool = bridge._enabled_fallback_logged
+        assert flag_after_outage is True
+
+        resolver.get_bool.side_effect = None
+        resolver.get_bool.return_value = False
+        assert (await bridge._resolve_enabled()) is False
+        flag_after_recovery: bool = bridge._enabled_fallback_logged
+        assert flag_after_recovery is False
+
+    async def test_resolver_outage_logs_once_until_recovery(self) -> None:
+        """Repeat outages skip the warning until a successful read."""
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.side_effect = RuntimeError("settings backend down")
+        bridge = self._make_bridge(resolver)
+
+        with patch("synthorg.engine.workflow.webhook_bridge.logger") as patched_logger:
+            assert (await bridge._resolve_enabled()) is True
+            assert (await bridge._resolve_enabled()) is True
+            assert (await bridge._resolve_enabled()) is True
+            # Three iterations, exactly one warning -- the throttle is on.
+            assert patched_logger.warning.call_count == 1
+            flag_after_outage: bool = bridge._enabled_fallback_logged
+            assert flag_after_outage is True
+
+            # Recovery: a successful read clears the flag so a later
+            # outage surfaces a fresh warning.
+            resolver.get_bool.side_effect = None
+            resolver.get_bool.return_value = True
+            assert (await bridge._resolve_enabled()) is True
+            flag_after_recovery: bool = bridge._enabled_fallback_logged
+            assert flag_after_recovery is False
+
+            resolver.get_bool.side_effect = RuntimeError("settings backend down")
+            resolver.get_bool.return_value = None
+            assert (await bridge._resolve_enabled()) is True
+            assert patched_logger.warning.call_count == 2
+
+    async def test_set_config_resolver_late_binds(self) -> None:
+        """The lifecycle hook can rebind the resolver after construction."""
+        bridge = self._make_bridge(None)
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.return_value = False
+        bridge.set_config_resolver(resolver)
+
+        assert (await bridge._resolve_enabled()) is False
+        resolver.get_bool.assert_awaited_once()

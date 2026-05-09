@@ -129,10 +129,6 @@ src/synthorg/api/etag.py:97:16
 src/synthorg/api/etag.py:98:26
 src/synthorg/api/exception_handlers.py:71:38
 src/synthorg/api/exception_handlers.py:75:30
-src/synthorg/api/lifecycle_helpers.py:207:55
-src/synthorg/api/lifecycle_helpers.py:208:63
-src/synthorg/api/lifecycle_helpers.py:272:32
-src/synthorg/api/lifecycle_helpers.py:355:46
 src/synthorg/api/openapi.py:297:39
 src/synthorg/api/path_params.py:64:24
 src/synthorg/api/rate_limits/inflight_middleware.py:41:29
@@ -141,8 +137,6 @@ src/synthorg/api/services/idempotency_service.py:48:49
 src/synthorg/api/services/org_mutations.py:43:22
 src/synthorg/api/services/ssrf_violation_service.py:141:21
 src/synthorg/api/state_services.py:114:26
-src/synthorg/api/webhook_cleanup.py:41:42
-src/synthorg/api/webhook_cleanup.py:219:54
 src/synthorg/backup/service_archive.py:38:23
 src/synthorg/backup/service_archive.py:42:21
 src/synthorg/budget/_optimizer_helpers.py:225:41
@@ -194,7 +188,6 @@ src/synthorg/communication/config.py:33:28
 src/synthorg/communication/config.py:49:47
 src/synthorg/communication/conflict_resolution/escalation/config.py:15:26
 src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:34:17
-src/synthorg/communication/conflict_resolution/escalation/notify.py:46:34
 src/synthorg/communication/conflict_resolution/escalation/protocol.py:21:17
 src/synthorg/communication/conflict_resolution/escalation/sweeper.py:43:34
 src/synthorg/communication/conflict_resolution/human_strategy.py:72:48
@@ -782,11 +775,11 @@ src/synthorg/providers/health.py:37:23
 src/synthorg/providers/health.py:38:22
 src/synthorg/providers/health.py:39:18
 src/synthorg/providers/health.py:40:24
-src/synthorg/providers/health_prober.py:44:40
-src/synthorg/providers/health_prober.py:45:39
-src/synthorg/providers/health_prober.py:46:43
-src/synthorg/providers/health_prober.py:47:40
-src/synthorg/providers/health_prober.py:48:35
+src/synthorg/providers/health_prober.py:46:40
+src/synthorg/providers/health_prober.py:47:39
+src/synthorg/providers/health_prober.py:48:43
+src/synthorg/providers/health_prober.py:49:40
+src/synthorg/providers/health_prober.py:50:35
 src/synthorg/providers/management/_capability_helpers.py:29:26
 src/synthorg/providers/management/_helpers.py:29:35
 src/synthorg/providers/management/audit_service.py:74:21
@@ -840,8 +833,8 @@ src/synthorg/tools/invocation_tracker.py:28:23
 src/synthorg/tools/mcp/cache.py:48:24
 src/synthorg/tools/mcp/cache.py:49:29
 src/synthorg/tools/sandbox/container_log_shipper.py:30:31
-src/synthorg/tools/sandbox/docker_config.py:24:12
-src/synthorg/tools/sandbox/docker_config.py:25:19
+src/synthorg/tools/sandbox/docker_config.py:25:12
+src/synthorg/tools/sandbox/docker_config.py:26:19
 src/synthorg/tools/sandbox/docker_sandbox.py:65:46
 src/synthorg/tools/sandbox/docker_sandbox.py:66:40
 src/synthorg/tools/sandbox/docker_sandbox.py:68:29

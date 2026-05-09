@@ -64,7 +64,6 @@ func TestResolveTunables_StateOverridesDefault(t *testing.T) {
 	s := State{
 		HealthCheckTimeout:      "12s",
 		MaxBinaryBytes:          100 * 1024 * 1024,
-		DefaultNATSURL:          "nats://example.com:4222",
 		DefaultNATSStreamPrefix: "CUSTOM",
 	}
 	tun, err := ResolveTunables(s)
@@ -76,9 +75,6 @@ func TestResolveTunables_StateOverridesDefault(t *testing.T) {
 	}
 	if tun.MaxBinaryBytes != 100*1024*1024 {
 		t.Errorf("MaxBinaryBytes = %d; want %d", tun.MaxBinaryBytes, 100*1024*1024)
-	}
-	if tun.DefaultNATSURL != "nats://example.com:4222" {
-		t.Errorf("DefaultNATSURL = %q", tun.DefaultNATSURL)
 	}
 	if tun.DefaultNATSStreamPrefix != "CUSTOM" {
 		t.Errorf("DefaultNATSStreamPrefix = %q", tun.DefaultNATSStreamPrefix)
@@ -194,7 +190,6 @@ func TestResolveTunables_InvalidValues(t *testing.T) {
 		{"exceeds bytes ceiling", State{MaxBinaryBytes: 2 * 1024 * 1024 * 1024}, nil, "max_binary_bytes"},
 		{"negative bytes state", State{MaxAPIResponseBytes: -5}, nil, "max_api_response_bytes"},
 		{"bad registry host", State{RegistryHost: "not valid"}, nil, "registry_host"},
-		{"bad nats url", State{DefaultNATSURL: "http://example.com"}, nil, "default_nats_url"},
 		{"bad stream prefix", State{DefaultNATSStreamPrefix: "lowercase"}, nil, "default_nats_stream_prefix"},
 		{"bad image verify timeout env", State{}, map[string]string{EnvImageVerifyTimeout: "not-a-duration"}, "image_verify_timeout"},
 		{"bad image pull retry delay state", State{ImagePullRetryDelay: "not-a-duration"}, nil, "image_pull_retry_delay"},

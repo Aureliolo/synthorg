@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { Navigate, Outlet } from 'react-router'
 import { useAuthStore, useAuthStatus, useIsAuthenticated } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
-import { useSettingsStore } from '@/stores/settings'
 import { ROUTES } from './routes'
 
 /** Shared full-screen loading indicator for guard states. */
@@ -58,17 +57,6 @@ export function AuthGuard() {
       checkSession()
     }
   }, [authStatus, checkSession])
-
-  // As soon as the session validates, pull the ``display.locale`` override
-  // so ``getLocale()`` (called by every formatter) reflects the user's
-  // configured preference instead of falling back to navigator default
-  // + neutral ``'en'`` fallback. Without this, the override would not
-  // take effect until the user opened the Settings page.
-  useEffect(() => {
-    if (authStatus === 'authenticated') {
-      void useSettingsStore.getState().fetchLocale()
-    }
-  }, [authStatus])
 
   if (authStatus === 'unknown') {
     return <FullScreenLoading />

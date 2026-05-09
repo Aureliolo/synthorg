@@ -107,19 +107,20 @@ export const WRITE_ROLES = ['ceo', 'manager', 'pair_programmer'] as const
 export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
 
 /** Display order for setting namespaces shown in the Settings page.
- * 'company' and 'providers' are excluded -- they have dedicated pages.
- * 'settings' is excluded -- service-managed internal knobs.
- * CFG-1 audit: a2a, communication, integrations, meta, notifications,
- * tools added so operators see every runtime-editable namespace.
- * Each setting's `restart_required` flag is honored by RestartBadge. */
+ * Excluded:
+ *   - 'company' and 'providers': have dedicated pages.
+ *   - 'settings': service-managed internal knobs.
+ * Every other namespace the backend registry exposes is surfaced
+ * here. Each setting's `restart_required` flag is honoured by
+ * RestartBadge. */
 export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'api',
   'memory',
   'budget',
-  'display',
   'security',
   'coordination',
   'observability',
+  'telemetry',
   'backup',
   'engine',
   'communication',
@@ -127,13 +128,17 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'integrations',
   'meta',
   'notifications',
+  'simulations',
   'tools',
   'hr',
+  'workers',
+  'client',
 ] as const
 
 /** Human-readable display names for setting namespaces. */
 export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>> = {
   api: 'Server',
+  client: 'Client',
   company: 'Company',
   providers: 'Providers',
   memory: 'Memory',
@@ -143,15 +148,17 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   observability: 'Observability',
   backup: 'Backup',
   engine: 'Engine',
-  display: 'Display',
   communication: 'Communication',
   a2a: 'A2A Federation',
   integrations: 'Integrations',
   meta: 'Meta-Agent',
   notifications: 'Notifications',
+  simulations: 'Simulations',
   tools: 'Tools',
   settings: 'Settings (internal)',
   hr: 'HR',
+  workers: 'Workers',
+  telemetry: 'Telemetry',
 }
 
 /** sessionStorage key for the advanced-mode first-toggle warning. */

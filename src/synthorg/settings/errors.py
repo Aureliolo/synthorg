@@ -47,3 +47,21 @@ class SettingReadOnlyError(SettingValidationError):
 
 class SettingsEncryptionError(SettingsError):
     """Raised when encryption key is unavailable or decryption fails."""
+
+
+class SettingsRegistryError(SettingsError):
+    """Raised when the registry lookup itself fails its own invariants.
+
+    Distinct from :class:`SettingNotFoundError` (404 -- API-surface
+    "the requested setting does not exist") because registry lookup
+    failures are internal programming errors: the consumer asked for
+    a registered default before the namespace module was imported,
+    or the registered default is malformed (e.g. a boolean default
+    that is not ``"true"`` / ``"false"``).  HTTP 500 / INTERNAL_ERROR
+    is the correct status for these.
+    """
+
+    default_message: ClassVar[str] = "Settings registry lookup failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500

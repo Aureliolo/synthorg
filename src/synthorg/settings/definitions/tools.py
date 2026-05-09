@@ -198,6 +198,68 @@ _r.register(
     )
 )
 
+# ── Sandbox image references (env-var-aware bootstrap) ───────────
+# Backed by the resolver's DB > env > YAML > default chain so the
+# canonical resolved value lives at the settings layer rather than
+# being re-read from ``os.environ`` inside Pydantic field defaults.
+# ``env_var_override`` matches the historical env vars the CLI
+# injects into the backend container, preserving operator workflow.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="sandbox_image",
+        type=SettingType.STRING,
+        default="ghcr.io/aureliolo/synthorg-sandbox:latest",
+        description=(
+            "Docker image used for sandbox containers. Resolution"
+            " precedence at backend startup: DB override >"
+            " ``SYNTHORG_SANDBOX_IMAGE`` env var > YAML"
+            " ``tools.sandbox.docker.image`` > registered code default."
+            " The CLI injects a digest-pinned reference via the env var,"
+            " so DB / YAML overrides are mostly relevant for operators"
+            " running the backend outside the CLI. Resolved once at"
+            " startup and injected into ``DockerSandboxConfig`` via the"
+            " sandbox image-resolution cache; ``read_only_post_init``"
+            " keeps later DB writes from drifting from the resolved"
+            " value used at boot."
+        ),
+        group="Docker Sandbox",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_SANDBOX_IMAGE",
+        yaml_path="tools.sandbox.docker.image",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="sidecar_image",
+        type=SettingType.STRING,
+        default="ghcr.io/aureliolo/synthorg-sidecar:latest",
+        description=(
+            "Docker image used for the sandbox network sidecar"
+            " container. Resolution precedence at backend startup: DB"
+            " override > ``SYNTHORG_SIDECAR_IMAGE`` env var > YAML"
+            " ``tools.sandbox.docker.sidecar_image`` > registered code"
+            " default. Resolved once at startup and injected into"
+            " ``DockerSandboxConfig`` via the sidecar image-resolution"
+            " cache; ``read_only_post_init`` keeps later DB writes from"
+            " drifting from the resolved value used at boot, and"
+            " ``restart_required`` is set because changes only take"
+            " effect after the backend container restarts."
+        ),
+        group="Docker Sandbox",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_SIDECAR_IMAGE",
+        yaml_path="tools.sandbox.docker.sidecar_image",
+    )
+)
+
 # ── Git command timeout (overall execution bound) ────────────────
 # Distinct from ``git_kill_grace_timeout_seconds`` (post-SIGTERM grace);
 # this caps total git subprocess wall-clock.

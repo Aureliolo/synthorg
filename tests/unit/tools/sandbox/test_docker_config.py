@@ -3,16 +3,21 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.tools.sandbox._image_resolution import (
+    set_resolved_sandbox_image,
+    set_resolved_sidecar_image,
+)
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.policy import NetworkPolicy, SandboxPolicy
 
 pytestmark = pytest.mark.unit
 
 
-# The autouse fixture `_isolate_sandbox_image_env` lives in conftest.py so
-# every test in this directory starts with a clean SYNTHORG_SANDBOX_IMAGE
-# env var. Tests here that need a specific value still use monkeypatch.setenv
-# explicitly.
+# The autouse fixture ``_isolate_sandbox_image_resolution`` in
+# ``conftest.py`` resets the resolution cache + clears the legacy env
+# vars around every test in this directory. Tests that need a
+# specific resolved value override the cache via
+# ``set_resolved_sandbox_image(...)`` directly.
 
 
 class TestDockerSandboxConfigDefaults:
@@ -42,60 +47,52 @@ class TestDockerSandboxConfigDefaults:
 
 
 class TestDockerSandboxConfigImageResolution:
-    """SYNTHORG_SANDBOX_IMAGE env var drives the default image reference.
+    """The resolved-image cache drives ``DockerSandboxConfig.image``.
 
-    The CLI injects the digest-pinned sandbox image reference into the
-    backend container via this env var so the CLI and backend stay
-    version-locked. Explicit YAML config still wins over the env var.
-    Both the env-var-resolved and fallback branches emit structured log
-    events so operators debugging image mismatches have a signal to follow.
+    The cache is populated at startup by
+    ``_apply_bridge_config`` after resolving ``tools.sandbox_image``
+    (env-aware via ``env_var_override="SYNTHORG_SANDBOX_IMAGE"``)
+    through ``ConfigResolver``. Explicit YAML config still wins over
+    the cache. Both resolved and fallback branches emit structured
+    log events so operators debugging image mismatches have a signal
+    to follow.
     """
 
-    def test_env_var_provides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_cache_provides_default(self) -> None:
         pinned = (
             "ghcr.io/aureliolo/synthorg-sandbox@sha256:"
             "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
         )
-        monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", pinned)
+        set_resolved_sandbox_image(pinned)
         config = DockerSandboxConfig()
         assert config.image == pinned
 
     @pytest.mark.parametrize(
-        ("env_action", "env_value"),
-        [
-            ("delenv", None),
-            ("setenv", ""),
-            ("setenv", "   "),
-        ],
+        "cached",
+        [None, "", "   "],
         ids=["unset", "empty", "whitespace"],
     )
-    def test_fallback_when_env_var_absent_or_blank(
+    def test_fallback_when_cache_absent_or_blank(
         self,
-        monkeypatch: pytest.MonkeyPatch,
-        env_action: str,
-        env_value: str | None,
+        cached: str | None,
     ) -> None:
-        if env_action == "delenv":
-            monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
-        else:
-            monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", env_value)  # type: ignore[arg-type]
+        # Pass the value RAW to the setter so the setter's own
+        # whitespace normalisation (added in
+        # ``_image_resolution.set_resolved_sandbox_image``) is the
+        # thing under test. Pre-stripping in the call site would
+        # short-circuit the very behaviour we're verifying.
+        set_resolved_sandbox_image(cached)
         config = DockerSandboxConfig()
         assert config.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
 
-    def test_explicit_yaml_wins_over_env_var(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv(
-            "SYNTHORG_SANDBOX_IMAGE",
-            "ghcr.io/aureliolo/synthorg-sandbox:env-var",
-        )
+    def test_explicit_yaml_wins_over_cache(self) -> None:
+        set_resolved_sandbox_image("ghcr.io/aureliolo/synthorg-sandbox:cached")
         config = DockerSandboxConfig(image="explicit:yaml")
         assert config.image == "explicit:yaml"
 
-    def test_fallback_path_logs_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from synthorg.tools.sandbox import docker_config as module
+    def test_fallback_path_logs_debug(self) -> None:
+        from synthorg.tools.sandbox import _image_resolution as module
 
-        monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
         recorded: list[tuple[str, str, dict[str, object]]] = []
 
         def _capture(event: str, **kwargs: object) -> None:
@@ -113,9 +110,77 @@ class TestDockerSandboxConfigImageResolution:
         try:
             DockerSandboxConfig()
             assert any(
-                level == "debug" and event == "config.env_var.fallback"
+                level == "debug" and event == "config.fallback.used"
                 for level, event, _ in recorded
             ), f"expected fallback debug log, got: {recorded}"
+        finally:
+            from contextlib import suppress
+
+            with suppress(AttributeError):
+                del proxy.debug
+
+
+class TestDockerSandboxConfigSidecarImageResolution:
+    """The resolved-sidecar-image cache drives ``DockerSandboxConfig.sidecar_image``.
+
+    Mirrors the sandbox-image cache parity: the sidecar follows the
+    same startup-resolution path through ``_apply_bridge_config`` /
+    ``set_resolved_sidecar_image``, so a regression on the sidecar-only
+    path (e.g. cache lookup tied to the sandbox key only, fallback
+    branch emitting wrong constant) would otherwise slip through the
+    sandbox-only suite above.
+    """
+
+    def test_cache_provides_default(self) -> None:
+        pinned = (
+            "ghcr.io/aureliolo/synthorg-sidecar@sha256:"
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        )
+        set_resolved_sidecar_image(pinned)
+        config = DockerSandboxConfig()
+        assert config.sidecar_image == pinned
+
+    @pytest.mark.parametrize(
+        "cached",
+        [None, "", "   "],
+        ids=["unset", "empty", "whitespace"],
+    )
+    def test_fallback_when_cache_absent_or_blank(
+        self,
+        cached: str | None,
+    ) -> None:
+        # Same RAW-pass-through rationale as the sandbox parametrise:
+        # the setter's whitespace normalisation is the thing under
+        # test, so pre-stripping at the call site would mask it.
+        set_resolved_sidecar_image(cached)
+        config = DockerSandboxConfig()
+        assert config.sidecar_image == "ghcr.io/aureliolo/synthorg-sidecar:latest"
+
+    def test_explicit_yaml_wins_over_cache(self) -> None:
+        set_resolved_sidecar_image("ghcr.io/aureliolo/synthorg-sidecar:cached")
+        config = DockerSandboxConfig(sidecar_image="explicit:yaml")
+        assert config.sidecar_image == "explicit:yaml"
+
+    def test_fallback_path_logs_debug(self) -> None:
+        from synthorg.tools.sandbox import _image_resolution as module
+
+        recorded: list[tuple[str, str, dict[str, object]]] = []
+
+        def _capture(event: str, **kwargs: object) -> None:
+            recorded.append(("debug", event, dict(kwargs)))
+
+        proxy = module.logger
+        proxy.debug = _capture  # type: ignore[method-assign,assignment]
+        try:
+            # Force ``sidecar_image`` resolution by reading the
+            # attribute (Pydantic v2 evaluates default factories
+            # lazily; ``DockerSandboxConfig()`` alone would not
+            # touch the sidecar cache without a touch site).
+            DockerSandboxConfig().sidecar_image  # noqa: B018 -- intentional read for resolver side-effect
+            assert any(
+                level == "debug" and event == "config.fallback.used"
+                for level, event, _ in recorded
+            ), f"expected sidecar fallback debug log, got: {recorded}"
         finally:
             from contextlib import suppress
 

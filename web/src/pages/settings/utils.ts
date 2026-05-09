@@ -1,8 +1,56 @@
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { SETTING_DEPENDENCIES } from '@/utils/constants'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('settings')
+
+/**
+ * Authoritative compile-time-exhaustive map of allowed setting
+ * namespaces. ``Record<SettingNamespace, true>`` forces TypeScript to
+ * fail the build if ``SettingNamespace`` gains a new member that this
+ * table forgets to list, instead of letting a valid setting be
+ * rejected at runtime as "Unknown namespace" the first time a user
+ * tries to save it. ``VALID_SETTING_NAMESPACES`` is derived from this
+ * record so the runtime allowlist stays in lockstep automatically.
+ */
+const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
+  api: true,
+  client: true,
+  company: true,
+  providers: true,
+  memory: true,
+  budget: true,
+  security: true,
+  coordination: true,
+  observability: true,
+  backup: true,
+  engine: true,
+  communication: true,
+  a2a: true,
+  integrations: true,
+  meta: true,
+  notifications: true,
+  simulations: true,
+  tools: true,
+  settings: true,
+  hr: true,
+  workers: true,
+  telemetry: true,
+}
+
+/**
+ * Runtime allowlist used by ``saveSettingsBatch`` to validate a
+ * composite key's namespace before casting through
+ * ``as SettingNamespace`` and dispatching the API call -- so a
+ * malformed dirty-draft entry (manual code-mode input, stale
+ * localStorage from an older schema, fuzz noise) cannot reach the
+ * network with a literally-impossible namespace.
+ */
+const VALID_SETTING_NAMESPACES: ReadonlySet<string> = new Set(
+  Object.keys(SETTING_NAMESPACE_TABLE),
+)
 
 /**
  * Fuzzy subsequence match: returns true if every character of `needle`
@@ -69,21 +117,65 @@ export function buildControllerDisabledMap(
   return map
 }
 
-/** Save a batch of dirty settings via parallel PUTs. Returns the set of failed composite keys. */
+/** Save a batch of dirty settings via parallel PUTs.
+ *
+ * Returns the set of failed composite keys. The store-CRUD contract
+ * for ``updateSetting`` is no-throw: each call resolves either with
+ * the updated entry (success) or ``null`` (failure, error toast
+ * already emitted by the store). ``Promise.allSettled`` defends
+ * against any unexpected rejection that escapes the store.
+ */
 export async function saveSettingsBatch(
   dirtyValues: ReadonlyMap<string, string>,
-  updateSetting: (ns: SettingNamespace, key: string, value: string) => Promise<unknown>,
+  updateSetting: (
+    ns: SettingNamespace,
+    key: string,
+    value: string,
+  ) => Promise<unknown | null>,
 ): Promise<Set<string>> {
   const keys = [...dirtyValues.keys()]
+  // Local validation rejections bypass the store-CRUD contract (they
+  // never call ``updateSetting``), so the store does not emit a per-
+  // mutation error toast for them. Without surfacing here, a
+  // code-mode save with a malformed key would fail with only a log
+  // entry and no user feedback. Emit one toast per validation
+  // rejection so the user sees exactly which key was rejected and
+  // why.
+  const surfaceValidationFailure = (
+    compositeKey: string,
+    reason: string,
+  ): void => {
+    log.error('Local validation rejected dirty draft', {
+      compositeKey: sanitizeForLog(compositeKey),
+      reason,
+    })
+    useToastStore.getState().add({
+      variant: 'error',
+      title: `Cannot save ${sanitizeForLog(compositeKey)}`,
+      description: reason,
+    })
+  }
   const promises = keys.map((compositeKey) => {
     const slashIdx = compositeKey.indexOf('/')
     if (slashIdx < 1) {
-      log.error(`Malformed composite key: "${compositeKey}"`)
+      const reason = 'Malformed composite key (missing namespace)'
+      surfaceValidationFailure(compositeKey, reason)
       return Promise.reject(new Error(`Malformed key: ${compositeKey}`))
     }
-    const ns = compositeKey.slice(0, slashIdx) as SettingNamespace
+    const nsRaw = compositeKey.slice(0, slashIdx)
     const key = compositeKey.slice(slashIdx + 1)
-    return updateSetting(ns, key, dirtyValues.get(compositeKey)!).then(() => undefined)
+    if (key.length === 0) {
+      const reason = 'Empty setting key after the namespace separator'
+      surfaceValidationFailure(compositeKey, reason)
+      return Promise.reject(new Error(`Empty key: ${compositeKey}`))
+    }
+    if (!VALID_SETTING_NAMESPACES.has(nsRaw)) {
+      const reason = `Unknown setting namespace ${sanitizeForLog(nsRaw)}`
+      surfaceValidationFailure(compositeKey, reason)
+      return Promise.reject(new Error(`Unknown namespace: ${compositeKey}`))
+    }
+    const ns = nsRaw as SettingNamespace
+    return updateSetting(ns, key, dirtyValues.get(compositeKey)!)
   })
   const results = await Promise.allSettled(promises)
   const failedKeys = new Set<string>()
@@ -92,7 +184,19 @@ export async function saveSettingsBatch(
     const compositeKey = keys[i]!
     if (result.status === 'rejected') {
       failedKeys.add(compositeKey)
-      log.error(`Failed to save "${compositeKey}":`, result.reason)
+      log.error('Failed to save setting', {
+        compositeKey: sanitizeForLog(compositeKey),
+        reason: sanitizeForLog(result.reason),
+      })
+    } else if (result.value == null) {
+      // Store already logged + emitted the error toast. We just
+      // need to record the failure so the caller can keep the
+      // dirty draft and skip post-save side effects. ``== null``
+      // (loose) catches both ``null`` (the canonical sentinel
+      // contract) and ``undefined`` (defensive: a future store
+      // refactor that returns ``undefined`` instead of ``null``
+      // shouldn't silently look like success).
+      failedKeys.add(compositeKey)
     }
   }
   return failedKeys

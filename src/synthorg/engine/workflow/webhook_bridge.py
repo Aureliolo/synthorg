@@ -16,11 +16,13 @@ from synthorg.engine.workflow.strategies.external_trigger import (
     ExternalTriggerStrategy,
 )
 from synthorg.integrations.webhooks.event_bus_bridge import WEBHOOK_CHANNEL
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.integrations import (
     WEBHOOK_BRIDGE_EVENT_FORWARDED,
+    WEBHOOK_BRIDGE_PAUSED,
     WEBHOOK_BRIDGE_POLL_ERROR,
+    WEBHOOK_BRIDGE_RESOLVE_FAILED,
     WEBHOOK_BRIDGE_STARTED,
     WEBHOOK_BRIDGE_STOPPED,
 )
@@ -34,7 +36,9 @@ logger = get_logger(__name__)
 _SUBSCRIBER_ID: Final[str] = "__webhook_bridge__"
 _POLL_TIMEOUT: Final[float] = 1.0
 """Fallback poll timeout used when no resolver is wired in."""
-_MAX_CONSECUTIVE_ERRORS: Final[int] = 30
+_MAX_CONSECUTIVE_ERRORS: Final[int] = (
+    30  # lint-allow: magic-numbers -- resolver-unwired fallback
+)
 """Fallback error budget used when no resolver is wired in."""
 
 
@@ -61,13 +65,18 @@ class WebhookEventBridge:
         self._scheduler = ceremony_scheduler
         self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager lifecycle lock per ``docs/reference/lifecycle-sync.md``;
+        # ``asyncio.Lock`` is loop-agnostic until first ``acquire()``,
+        # so app-wire-time construction is safe and prevents a racing
+        # ``stop()`` from observing a half-published lock attribute.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         # Resolver-failure warnings are log-once per run of failures
         # to keep the polling loop from flooding logs during a
         # prolonged settings outage. Flags reset on the first
         # successful resolution so a later failure is visible again.
         self._poll_timeout_fallback_logged: bool = False
         self._max_errors_fallback_logged: bool = False
+        self._enabled_fallback_logged: bool = False
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Inject the ConfigResolver after construction.
@@ -213,15 +222,61 @@ class WebhookEventBridge:
             self._task = None
             logger.info(WEBHOOK_BRIDGE_STOPPED)
 
+    async def _resolve_enabled(self) -> bool:
+        """Resolve the webhook-bridge kill-switch, fail-safe to ``True``.
+
+        Operators flip ``communication.webhook_bridge_enabled=false``
+        to pause event forwarding mid-flight without tearing down the
+        bridge task. Resolver outage returns ``True`` because silently
+        pausing event forwarding on a settings hiccup would queue
+        webhook events indefinitely.
+        """
+        if self._config_resolver is None:
+            return True
+        try:
+            value = await self._config_resolver.get_bool(
+                SettingNamespace.COMMUNICATION.value,
+                "webhook_bridge_enabled",
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            if not self._enabled_fallback_logged:
+                logger.warning(
+                    WEBHOOK_BRIDGE_RESOLVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    fallback_enabled=True,
+                )
+                self._enabled_fallback_logged = True
+            return True
+        self._enabled_fallback_logged = False
+        return value
+
     async def _poll_loop(self) -> None:
         """Poll ``#webhooks`` and forward events.
 
         Poll timeout and max-error budget are cached per iteration so
         the receive call and the error-budget check observe the same
         values even if the operator edits the setting mid-iteration.
+
+        Gated by ``communication.webhook_bridge_enabled`` (live,
+        per-iteration): when False the loop stays resident but each
+        iteration short-circuits before consuming a bus message.
         """
         consecutive_errors = 0
         while True:
+            if not await self._resolve_enabled():
+                # Operator-controlled pause must not consume the error
+                # budget: clear any pre-pause error streak so the first
+                # post-resume transient failure does not stop the
+                # bridge unexpectedly.
+                consecutive_errors = 0
+                logger.debug(WEBHOOK_BRIDGE_PAUSED, reason="paused_by_setting")
+                await asyncio.sleep(await self._get_poll_timeout())
+                continue
             poll_timeout = await self._get_poll_timeout()
             max_errors = await self._get_max_consecutive_errors()
             try:

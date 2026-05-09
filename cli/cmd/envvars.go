@@ -35,7 +35,6 @@ const (
 	EnvDHIRegistry            = config.EnvDHIRegistry
 	EnvPostgresImageTag       = config.EnvPostgresImageTag
 	EnvNATSImageTag           = config.EnvNATSImageTag
-	EnvDefaultNATSURL         = config.EnvDefaultNATSURL
 	EnvDefaultNATSStreamPfx   = config.EnvDefaultNATSStreamPfx
 	EnvBackupCreateTimeout    = config.EnvBackupCreateTimeout
 	EnvBackupRestoreTimeout   = config.EnvBackupRestoreTimeout

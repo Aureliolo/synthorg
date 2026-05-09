@@ -2,10 +2,11 @@
 
 Covers:
 
-* ``_resolve_audit_retention`` -- resolver-available, resolver-missing,
-  resolver-errors paths.
-* ``_audit_retention_tick`` -- paused, disabled-via-zero-days, happy
-  path, persistence-missing, and repository-error branches.
+* ``_resolve_audit_retention_days`` and
+  ``_resolve_audit_retention_loop_enabled`` -- resolver-available,
+  resolver-missing, resolver-errors paths.
+* ``_audit_retention_tick`` -- disabled-via-zero-days, happy path,
+  persistence-missing, and repository-error branches.
 * ``_validate_approval_urgency_invariant`` -- valid ordering, invalid
   ordering (critical >= high), and resolver-error soft-skip path.
 * The cleanup-done callback factory used by the lifecycle builder for
@@ -19,7 +20,8 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.lifecycle_helpers import (
     _audit_retention_tick,
-    _resolve_audit_retention,
+    _resolve_audit_retention_days,
+    _resolve_audit_retention_loop_enabled,
     _validate_approval_urgency_invariant,
 )
 from synthorg.api.state import AppState
@@ -87,56 +89,63 @@ async def _make_app_state(
 
 
 @pytest.mark.unit
-class TestResolveAuditRetention:
+class TestResolveAuditRetentionDays:
     async def test_returns_default_when_no_resolver(self) -> None:
         state = await _make_app_state()
-        days, paused = await _resolve_audit_retention(state)
+        days = await _resolve_audit_retention_days(state)
         assert days == 730
-        assert paused is False
 
-    async def test_reads_resolved_values(self) -> None:
+    async def test_reads_resolved_value(self) -> None:
         resolver = _FakeConfigResolver(
             ints={("security", "audit_retention_days"): 42},
-            bools={("security", "retention_cleanup_paused"): True},
         )
         state = await _make_app_state(resolver=resolver)
-        days, paused = await _resolve_audit_retention(state)
+        days = await _resolve_audit_retention_days(state)
         assert days == 42
-        assert paused is True
 
     async def test_falls_back_to_default_on_resolver_error(self) -> None:
         resolver = _FakeConfigResolver(raise_exc=RuntimeError("backend down"))
         state = await _make_app_state(resolver=resolver)
-        days, paused = await _resolve_audit_retention(state)
+        days = await _resolve_audit_retention_days(state)
         assert days == 730
-        assert paused is False
 
     async def test_cancellation_propagates(self) -> None:
         resolver = _FakeConfigResolver(raise_exc=asyncio.CancelledError())
         state = await _make_app_state(resolver=resolver)
         with pytest.raises(asyncio.CancelledError):
-            await _resolve_audit_retention(state)
+            await _resolve_audit_retention_days(state)
+
+
+@pytest.mark.unit
+class TestResolveAuditRetentionLoopEnabled:
+    async def test_returns_default_when_no_resolver(self) -> None:
+        state = await _make_app_state()
+        assert await _resolve_audit_retention_loop_enabled(state) is True
+
+    async def test_reads_resolved_value(self) -> None:
+        resolver = _FakeConfigResolver(
+            bools={("security", "audit_retention_loop_enabled"): False},
+        )
+        state = await _make_app_state(resolver=resolver)
+        assert await _resolve_audit_retention_loop_enabled(state) is False
+
+    async def test_falls_back_to_default_on_resolver_error(self) -> None:
+        resolver = _FakeConfigResolver(raise_exc=RuntimeError("backend down"))
+        state = await _make_app_state(resolver=resolver)
+        assert await _resolve_audit_retention_loop_enabled(state) is True
+
+    async def test_cancellation_propagates(self) -> None:
+        resolver = _FakeConfigResolver(raise_exc=asyncio.CancelledError())
+        state = await _make_app_state(resolver=resolver)
+        with pytest.raises(asyncio.CancelledError):
+            await _resolve_audit_retention_loop_enabled(state)
 
 
 @pytest.mark.unit
 class TestAuditRetentionTick:
-    async def test_paused_short_circuits(self) -> None:
-        resolver = _FakeConfigResolver(
-            ints={("security", "audit_retention_days"): 30},
-            bools={("security", "retention_cleanup_paused"): True},
-        )
-        backend = FakePersistenceBackend()
-        await backend.connect()
-        state = await _make_app_state(persistence=backend, resolver=resolver)
-
-        await _audit_retention_tick(state)
-
-        assert backend.audit_entries.purge_calls == 0
-
     async def test_zero_days_disables_purge(self) -> None:
         resolver = _FakeConfigResolver(
             ints={("security", "audit_retention_days"): 0},
-            bools={("security", "retention_cleanup_paused"): False},
         )
         backend = FakePersistenceBackend()
         await backend.connect()
@@ -149,7 +158,6 @@ class TestAuditRetentionTick:
     async def test_missing_persistence_is_noop(self) -> None:
         resolver = _FakeConfigResolver(
             ints={("security", "audit_retention_days"): 30},
-            bools={("security", "retention_cleanup_paused"): False},
         )
         state = await _make_app_state(resolver=resolver)
 
@@ -160,7 +168,6 @@ class TestAuditRetentionTick:
     async def test_invokes_purge_before_with_cutoff(self) -> None:
         resolver = _FakeConfigResolver(
             ints={("security", "audit_retention_days"): 15},
-            bools={("security", "retention_cleanup_paused"): False},
         )
         backend = FakePersistenceBackend()
         await backend.connect()
@@ -173,7 +180,6 @@ class TestAuditRetentionTick:
     async def test_repository_error_is_swallowed(self) -> None:
         resolver = _FakeConfigResolver(
             ints={("security", "audit_retention_days"): 15},
-            bools={("security", "retention_cleanup_paused"): False},
         )
         backend = FakePersistenceBackend()
         await backend.connect()

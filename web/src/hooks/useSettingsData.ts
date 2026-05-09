@@ -17,8 +17,12 @@ export interface UseSettingsDataReturn {
   saveError: string | null
   wsConnected: boolean
   wsSetupError: string | null
-  updateSetting: (ns: SettingNamespace, key: string, value: string) => Promise<SettingEntry>
-  resetSetting: (ns: SettingNamespace, key: string) => Promise<void>
+  updateSetting: (
+    ns: SettingNamespace,
+    key: string,
+    value: string,
+  ) => Promise<SettingEntry | null>
+  resetSetting: (ns: SettingNamespace, key: string) => Promise<boolean>
 }
 
 export function useSettingsData(): UseSettingsDataReturn {

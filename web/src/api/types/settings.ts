@@ -5,6 +5,7 @@ import type { DepartmentReportingLine } from './org'
 
 export type SettingNamespace =
   | 'api'
+  | 'client'
   | 'company'
   | 'providers'
   | 'memory'
@@ -14,15 +15,17 @@ export type SettingNamespace =
   | 'observability'
   | 'backup'
   | 'engine'
-  | 'display'
   | 'communication'
   | 'a2a'
   | 'integrations'
   | 'meta'
   | 'notifications'
+  | 'simulations'
   | 'tools'
   | 'settings'
   | 'hr'
+  | 'workers'
+  | 'telemetry'
 
 export type SettingType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'json'
 

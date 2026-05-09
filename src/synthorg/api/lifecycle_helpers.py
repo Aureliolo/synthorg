@@ -7,7 +7,7 @@ Split out of ``lifecycle_builder.py`` so neither file exceeds the
 
 import asyncio
 import inspect
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger, safe_error_description
@@ -24,6 +24,11 @@ from synthorg.observability.events.persistence import (
 from synthorg.observability.events.setup import SETUP_AGENT_BOOTSTRAP_FAILED
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.registry import (
+    registered_default_bool,
+    registered_default_float,
+    registered_default_int,
+)
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     MemorySettingsSubscriber,
@@ -39,6 +44,7 @@ if TYPE_CHECKING:
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.config.schema import RootConfig
+    from synthorg.settings.bridge_configs import NotificationsBridgeConfig
     from synthorg.settings.service import SettingsService
     from synthorg.settings.subscriber import SettingsSubscriber
 
@@ -46,15 +52,20 @@ logger = get_logger(__name__)
 
 
 async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
-    """Resolve the ticket cleanup interval, falling back to 60 seconds.
+    """Resolve the ticket cleanup interval.
 
     A settings-backend outage, missing setting, or malformed value must
     not kill the cleanup task -- otherwise expired WS tickets and
     sessions accumulate indefinitely until the next restart. Any
-    resolver failure is logged and the built-in default is returned.
+    resolver failure is logged and the registered default for
+    ``api.ticket_cleanup_interval_seconds`` is returned, so the fallback
+    tracks the registry rather than duplicating the literal here.
     """
+    fallback = registered_default_float(
+        SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
+    )
     if not app_state.has_config_resolver:
-        return 60.0
+        return fallback
     try:
         return await app_state.config_resolver.get_float(
             SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
@@ -66,28 +77,28 @@ async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
     except Exception as exc:
         logger.warning(
             API_WS_TICKET_CLEANUP,
-            error=(
-                "Failed to resolve ticket_cleanup_interval_seconds;"
-                " falling back to 60.0 seconds"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
+            fallback_seconds=fallback,
         )
-        return 60.0
+        return fallback
 
 
 async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
-    """Resolve the lifecycle-cleanup kill-switch, fail-safe to ``True``.
+    """Resolve the lifecycle-cleanup kill-switch.
 
     Operators flip ``api.lifecycle_cleanup_enabled=false`` to pause the
     WS ticket / session / lockout cleanup loop mid-flight without tearing
     down the lifespan task.  A settings-backend outage must not mask the
-    operator's intent in either direction -- we pick "keep cleaning" as
-    the safer failure mode because stale tickets and sessions accumulate
+    operator's intent in either direction -- the registered default
+    ("keep cleaning") wins because stale tickets and sessions accumulate
     forever otherwise.
     """
+    fallback = registered_default_bool(
+        SettingNamespace.API.value, "lifecycle_cleanup_enabled"
+    )
     if not app_state.has_config_resolver:
-        return True
+        return fallback
     try:
         return await app_state.config_resolver.get_bool(
             SettingNamespace.API.value, "lifecycle_cleanup_enabled"
@@ -99,13 +110,11 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
     except Exception as exc:
         logger.warning(
             API_WS_TICKET_CLEANUP,
-            error=(
-                "Failed to resolve lifecycle_cleanup_enabled; defaulting to enabled"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
+            fallback_enabled=fallback,
         )
-        return True
+        return fallback
 
 
 async def _run_cleanup_step(
@@ -140,9 +149,9 @@ async def _run_cleanup_step(
     except Exception as exc:
         logger.warning(
             event,
-            error=failure_message,
+            failure_context=failure_message,
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
 
 
@@ -192,9 +201,8 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         except Exception as exc:
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_CLEANUP,
-                error="Periodic OAuth-state cleanup failed",
                 error_type=type(exc).__name__,
-                error_desc=safe_error_description(exc),
+                error=safe_error_description(exc),
             )
         else:
             logger.info(
@@ -209,14 +217,6 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         )
 
 
-_DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS: Final[float] = (
-    86400.0  # lint-allow: magic-numbers -- bootstrap
-)
-_DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS: Final[float] = (
-    300.0  # lint-allow: magic-numbers -- bootstrap
-)
-
-
 async def _resolve_event_stream_janitor_settings(
     app_state: AppState,
 ) -> tuple[float, float]:
@@ -227,11 +227,16 @@ async def _resolve_event_stream_janitor_settings(
     enabled rather than disabling pruning on a broken settings backend
     -- leaking subscriber state silently is the worse failure mode.
     """
+    fallback_idle = registered_default_float(
+        SettingNamespace.COMMUNICATION.value,
+        "event_stream_subscriber_idle_ttl_seconds",
+    )
+    fallback_interval = registered_default_float(
+        SettingNamespace.COMMUNICATION.value,
+        "event_stream_janitor_interval_seconds",
+    )
     if not app_state.has_config_resolver:
-        return (
-            _DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS,
-            _DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS,
-        )
+        return fallback_idle, fallback_interval
     try:
         idle = await app_state.config_resolver.get_float(
             SettingNamespace.COMMUNICATION.value,
@@ -248,17 +253,12 @@ async def _resolve_event_stream_janitor_settings(
     except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to resolve event stream janitor settings;"
-                " falling back to defaults"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
+            fallback_idle_ttl_seconds=fallback_idle,
+            fallback_interval_seconds=fallback_interval,
         )
-        return (
-            _DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS,
-            _DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS,
-        )
+        return fallback_idle, fallback_interval
     return idle, interval
 
 
@@ -278,30 +278,23 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
         await _run_cleanup_tick(app_state)
 
 
-_DEFAULT_AUDIT_RETENTION_DAYS = 730  # lint-allow: magic-numbers -- bootstrap
+async def _resolve_audit_retention_loop_enabled(app_state: AppState) -> bool:
+    """Return whether the audit retention loop is enabled (live, per-tick).
 
-
-async def _resolve_audit_retention(
-    app_state: AppState,
-) -> tuple[int, bool]:
-    """Resolve ``(retention_days, paused)`` for the audit retention loop.
-
-    Falls back to the registered default (``730`` days, unpaused) when
-    the settings resolver is unavailable or either read fails.  The
-    fallback intentionally keeps retention enabled rather than
-    disabling purging on a broken settings backend -- leaving expired
-    audit rows around is a compliance risk, so prefer the built-in
-    default to a silent zero.  ``0`` is reserved for an operator
-    explicitly opting out via ``security.audit_retention_days=0``.
+    Reads ``security.audit_retention_loop_enabled`` from the settings
+    resolver.  Falls back to the registered default (``True``) when the
+    resolver is unavailable or the read fails -- leaving expired audit
+    rows around is a compliance risk, so the loop stays active on a
+    broken settings backend rather than silently disabling itself.
     """
+    fallback = registered_default_bool(
+        SettingNamespace.SECURITY.value, "audit_retention_loop_enabled"
+    )
     if not app_state.has_config_resolver:
-        return _DEFAULT_AUDIT_RETENTION_DAYS, False
+        return fallback
     try:
-        days = await app_state.config_resolver.get_int(
-            SettingNamespace.SECURITY.value, "audit_retention_days"
-        )
-        paused_raw = await app_state.config_resolver.get_bool(
-            SettingNamespace.SECURITY.value, "retention_cleanup_paused"
+        return await app_state.config_resolver.get_bool(
+            SettingNamespace.SECURITY.value, "audit_retention_loop_enabled"
         )
     except asyncio.CancelledError:
         raise
@@ -309,17 +302,75 @@ async def _resolve_audit_retention(
         raise
     except Exception as exc:
         logger.warning(
-            API_APP_STARTUP,
-            error=(
-                "Failed to resolve audit retention settings;"
-                " falling back to default retention window"
-            ),
+            API_AUDIT_RETENTION,
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
-            fallback_days=_DEFAULT_AUDIT_RETENTION_DAYS,
+            error=safe_error_description(exc),
+            fallback_enabled=fallback,
         )
-        return _DEFAULT_AUDIT_RETENTION_DAYS, False
-    return days, paused_raw
+        return fallback
+
+
+async def _resolve_audit_retention_days(app_state: AppState) -> int:
+    """Resolve ``audit_retention_days`` for the retention loop.
+
+    Falls back to the registered default when the settings resolver is
+    unavailable or the read fails.  The fallback intentionally keeps
+    retention enabled rather than disabling purging on a broken
+    settings backend -- leaving expired audit rows around is a
+    compliance risk, so prefer the built-in default to a silent zero.
+    ``0`` is reserved for an operator explicitly opting out via
+    ``security.audit_retention_days=0``.
+    """
+    fallback = registered_default_int(
+        SettingNamespace.SECURITY.value, "audit_retention_days"
+    )
+    if not app_state.has_config_resolver:
+        return fallback
+    try:
+        return await app_state.config_resolver.get_int(
+            SettingNamespace.SECURITY.value, "audit_retention_days"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_AUDIT_RETENTION,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback_days=fallback,
+        )
+        return fallback
+
+
+async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
+    """Resolve the cadence between audit retention purge ticks.
+
+    Falls back to the registered default when the resolver is
+    unavailable or the read fails.
+    """
+    fallback = registered_default_float(
+        SettingNamespace.SECURITY.value, "audit_retention_tick_seconds"
+    )
+    if not app_state.has_config_resolver:
+        return fallback
+    try:
+        return await app_state.config_resolver.get_float(
+            SettingNamespace.SECURITY.value, "audit_retention_tick_seconds"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_AUDIT_RETENTION,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback_seconds=fallback,
+        )
+        return fallback
 
 
 async def _audit_retention_tick(app_state: AppState) -> None:
@@ -330,10 +381,7 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     """
     from datetime import UTC, datetime, timedelta  # noqa: PLC0415
 
-    days, paused = await _resolve_audit_retention(app_state)
-    if paused:
-        logger.info(API_AUDIT_RETENTION, note="audit retention purge paused")
-        return
+    days = await _resolve_audit_retention_days(app_state)
     if days <= 0:
         logger.debug(API_AUDIT_RETENTION, note="audit retention purge disabled")
         return
@@ -361,31 +409,31 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     )
 
 
-_AUDIT_RETENTION_TICK_SECONDS: Final[float] = (
-    86_400.0  # lint-allow: magic-numbers -- bootstrap
-)
-"""Audit retention sweep cadence (24h). Hardcoded by design: retention is
-not a hot path and operators tune the *window* (``security.audit_retention_days``)
-rather than the *cadence*."""
-
-
 async def _audit_retention_loop(app_state: AppState) -> None:
     """Daily sweep that purges audit_entries older than retention window.
 
     Reads ``security.audit_retention_days`` and
-    ``security.retention_cleanup_paused`` from the settings resolver
-    on every tick so operator changes take effect without restart.
-    A ``retention_days`` of 0 disables purging entirely (opt-out via
-    ``security.audit_retention_days=0``); resolver outages fall back
-    to the registered default of 730 days rather than disabling
-    retention. The loop stays resident even when paused so lifecycle
-    plumbing is unchanged. Tick cadence is fixed at
-    ``_AUDIT_RETENTION_TICK_SECONDS`` (24h) -- audit retention is not a
-    hot path.
+    ``security.audit_retention_loop_enabled`` from the settings
+    resolver on every tick so operator changes take effect without
+    restart.  A ``retention_days`` of 0 disables purging entirely
+    (opt-out via ``security.audit_retention_days=0``); the kill-switch
+    keeps the loop resident but inert so plumbing is unchanged when
+    operators pause retention during incident investigation.
+    Resolver outages fall back to the registered defaults rather than
+    disabling retention -- leaving expired audit rows around is a
+    compliance risk.  Tick cadence comes from
+    ``security.audit_retention_tick_seconds`` (default 24h).
     """
     while True:
-        await _audit_retention_tick(app_state)
-        await asyncio.sleep(_AUDIT_RETENTION_TICK_SECONDS)
+        if await _resolve_audit_retention_loop_enabled(app_state):
+            await _audit_retention_tick(app_state)
+        else:
+            logger.info(
+                API_AUDIT_RETENTION,
+                note="audit retention purge paused",
+                reason="paused_by_setting",
+            )
+        await asyncio.sleep(await _resolve_audit_retention_tick_seconds(app_state))
 
 
 async def _maybe_promote_first_owner(app_state: AppState) -> None:
@@ -511,9 +559,8 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
     except Exception as exc:
         logger.warning(
             SETUP_AGENT_BOOTSTRAP_FAILED,
-            error="Agent bootstrap failed at startup (non-fatal)",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
 
 
@@ -590,12 +637,8 @@ async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
     except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to resolve approval-urgency settings for"
-                " invariant check; skipping"
-            ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
         return
     if critical >= high:
@@ -613,6 +656,102 @@ async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
             high_seconds=high,
         )
         raise ValueError(msg)
+
+
+async def _apply_sandbox_image_cache(app_state: AppState) -> None:
+    """Populate the sandbox / sidecar image-resolution cache from settings.
+
+    Called once per startup so ``DockerSandboxConfig`` field defaults
+    stop reading ``os.environ`` directly. ``env_var_override`` on the
+    registered settings preserves the historical
+    ``SYNTHORG_SANDBOX_IMAGE`` / ``SYNTHORG_SIDECAR_IMAGE`` workflow
+    without bypassing the canonical DB > env > YAML > default chain.
+
+    Resolver failures clear the cache to ``None`` so the field default
+    falls through to the documented constant; whitespace-only resolver
+    results are normalised to ``None`` in the caller (the setter also
+    normalises, but stripping here makes the intent explicit).
+    """
+    from synthorg.tools.sandbox._image_resolution import (  # noqa: PLC0415
+        set_resolved_sandbox_image,
+        set_resolved_sidecar_image,
+    )
+
+    for setting_key, setter in (
+        ("sandbox_image", set_resolved_sandbox_image),
+        ("sidecar_image", set_resolved_sidecar_image),
+    ):
+        try:
+            image_value = await app_state.config_resolver.get_str(
+                SettingNamespace.TOOLS.value, setting_key
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            setter(None)
+            logger.warning(
+                API_APP_STARTUP,
+                setting=f"tools.{setting_key}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        else:
+            stripped = image_value.strip() if image_value is not None else None
+            setter(stripped or None)
+
+
+async def _apply_notification_dispatcher_config(
+    app_state: AppState,
+    effective_config: RootConfig | None,
+) -> None:
+    """Rebuild the notification dispatcher with operator-tuned timeouts.
+
+    Reads the notifications bridge config from the resolver, then if a
+    dispatcher already exists on ``app_state``, builds a fresh one with
+    the resolved timeouts and swaps it in. Closes the previous
+    dispatcher's sinks after the swap. Resolver outage falls through to
+    a rebuild with ``bridge_config=None`` (built-in default timeouts) so
+    the live dispatcher still picks up the ``config_resolver`` and the
+    runtime kill-switch stays operational.
+    """
+    notif_bridge: NotificationsBridgeConfig | None
+    try:
+        notif_bridge = await app_state.config_resolver.get_notifications_bridge_config()
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            setting="notifications.bridge_config",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        notif_bridge = None
+    if not (app_state.has_notification_dispatcher and effective_config is not None):
+        return
+    new_dispatcher = build_notification_dispatcher(
+        effective_config.notifications,
+        bridge_config=notif_bridge,
+        config_resolver=app_state.config_resolver,
+    )
+    old_dispatcher = app_state.swap_notification_dispatcher(new_dispatcher)
+    if old_dispatcher is None:
+        return
+    try:
+        await old_dispatcher.aclose()
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            event_context="old_notification_dispatcher_aclose",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
@@ -639,12 +778,12 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to apply ws_ticket_max_pending_per_user; using built-in default"
-            ),
+            setting="api.ws_ticket_max_pending_per_user",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
     try:
@@ -659,9 +798,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=("Failed to apply ws_auth_timeout_seconds; using built-in default"),
+            setting="api.ws_auth_timeout_seconds",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
 
     # Each WS DoS-prevention setting resolves and applies independently
@@ -685,13 +824,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         except Exception as exc:
             logger.warning(
                 API_APP_STARTUP,
-                error=(
-                    f"Failed to apply WS DoS-prevention setting {setting_key};"
-                    " using built-in default"
-                ),
                 setting=setting_key,
                 error_type=type(exc).__name__,
-                error_desc=safe_error_description(exc),
+                error=safe_error_description(exc),
             )
 
     from synthorg.api.auth.token_size import (  # noqa: PLC0415
@@ -718,9 +853,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         set_auth_token_bytes(_DEFAULT_AUTH_TOKEN_BYTES)
         logger.warning(
             API_APP_STARTUP,
-            error=("Failed to apply security.auth_token_bytes; using built-in default"),
+            setting="security.auth_token_bytes",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
             fallback_bytes=_DEFAULT_AUTH_TOKEN_BYTES,
         )
 
@@ -748,14 +883,13 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         set_timeout_enforcement_enabled(value=True)
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to apply engine.timeout_enforcement_enabled;"
-                " keeping enforcement on (safe default)"
-            ),
+            setting="engine.timeout_enforcement_enabled",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
             fallback_enabled=True,
         )
+
+    await _apply_sandbox_image_cache(app_state)
 
     if app_state.oauth_token_manager is not None:
         app_state.oauth_token_manager.set_config_resolver(
@@ -763,6 +897,10 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         )
     if app_state.webhook_event_bridge is not None:
         app_state.webhook_event_bridge.set_config_resolver(
+            app_state.config_resolver,
+        )
+    if app_state.escalation_notify_subscriber is not None:
+        app_state.escalation_notify_subscriber.set_config_resolver(
             app_state.config_resolver,
         )
     _bus = app_state.message_bus if app_state.has_message_bus else None
@@ -778,13 +916,12 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error=(
-                "Failed to resolve audit_chain_signing_timeout_seconds;"
-                " keeping sink default"
-            ),
+            setting="observability.audit_chain_signing_timeout_seconds",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
     else:
         from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
@@ -800,63 +937,34 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                     _handler.set_signing_timeout_seconds(signing_timeout)
                 except MemoryError, RecursionError:
                     raise
-                except Exception:
+                except Exception as exc:
                     logger.warning(
                         API_APP_STARTUP,
-                        error=(
-                            "Failed to apply"
-                            " audit_chain_signing_timeout_seconds"
-                            " to handler"
-                        ),
+                        setting=("observability.audit_chain_signing_timeout_seconds"),
+                        phase="apply_to_handler",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
-    try:
-        notif_bridge = await app_state.config_resolver.get_notifications_bridge_config()
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_APP_STARTUP,
-            error=(
-                "Failed to resolve notifications bridge config;"
-                " keeping dispatcher default timeouts"
-            ),
-        )
-    else:
-        if app_state.has_notification_dispatcher and effective_config is not None:
-            _new_dispatcher = build_notification_dispatcher(
-                effective_config.notifications,
-                bridge_config=notif_bridge,
-            )
-            _old_dispatcher = app_state.swap_notification_dispatcher(_new_dispatcher)
-            if _old_dispatcher is not None:
-                try:
-                    await _old_dispatcher.aclose()
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    logger.warning(
-                        API_APP_STARTUP,
-                        error=(
-                            "Failed to close pre-startup notification"
-                            " dispatcher sinks after rebuild"
-                        ),
-                    )
+    await _apply_notification_dispatcher_config(app_state, effective_config)
 
     app_state.mark_bridge_config_applied()
 
 
 async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:
-    """Resolve the OAuth idempotency retention window, fail-safe to 600s.
+    """Resolve the OAuth idempotency retention window.
 
-    A settings-backend outage must not stop the OAuth state cleanup loop;
-    the table would otherwise grow unbounded as consumed-but-stale rows
-    accumulate.  10 minutes covers the documented redelivery envelope of
-    the major IdPs and is the value the loop ran with before the setting
-    was introduced.
+    Falls back to the registered default when the resolver is
+    unavailable or the read fails. A settings-backend outage must not
+    stop the OAuth state cleanup loop; the table would otherwise grow
+    unbounded as consumed-but-stale rows accumulate.
     """
+    fallback = registered_default_float(
+        SettingNamespace.INTEGRATIONS.value,
+        "oauth_idempotency_retention_seconds",
+    )
     if not app_state.has_config_resolver:
-        return 600.0
+        return fallback
     try:
         return await app_state.config_resolver.get_float(
             SettingNamespace.INTEGRATIONS.value,
@@ -869,11 +977,9 @@ async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:
     except Exception as exc:
         logger.warning(
             PERSISTENCE_OAUTH_STATE_CLEANUP,
-            error=(
-                "Failed to resolve oauth_idempotency_retention_seconds;"
-                " falling back to 600.0 seconds"
-            ),
+            setting="integrations.oauth_idempotency_retention_seconds",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
+            fallback_seconds=fallback,
         )
-        return 600.0
+        return fallback

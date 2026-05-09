@@ -13,6 +13,8 @@ from synthorg.observability.events.notification import (
     NOTIFICATION_DISPATCH_FAILED,
     NOTIFICATION_DISPATCHED,
     NOTIFICATION_DISPATCHER_CLOSED,
+    NOTIFICATION_DISPATCHER_PAUSED,
+    NOTIFICATION_DISPATCHER_RESOLVE_FAILED,
     NOTIFICATION_DISPATCHER_STARTED,
     NOTIFICATION_FILTERED,
     NOTIFICATION_NO_SINKS,
@@ -20,9 +22,11 @@ from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_REGISTERED,
     NOTIFICATION_SINK_START_FAILED,
 )
+from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
     from synthorg.notifications.protocol import NotificationSink
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -53,13 +57,24 @@ class NotificationDispatcher:
     Args:
         sinks: Initial set of notification sinks.
         min_severity: Minimum severity to dispatch.
+        config_resolver: Optional ``ConfigResolver`` providing the
+            runtime kill-switch (``notifications.dispatcher_enabled``).
+            Set to ``None`` for the back-compat path used by test
+            fixtures and early-boot construction sites; in that mode
+            the dispatcher always delivers and the kill-switch is
+            inert. When set, ``dispatch()`` re-reads the flag per
+            call and short-circuits when the operator flips it to
+            ``false``, fail-safing to ``True`` on resolver outage so
+            a degraded settings backend cannot silence the surface.
     """
 
     __slots__ = (
+        "_config_resolver",
         "_dispatch_idle",
         "_dispatch_inflight",
         "_lifecycle_lock",
         "_min_severity",
+        "_resolve_failed_logged",
         "_sinks",
         "_started",
         "_stopping",
@@ -70,11 +85,22 @@ class NotificationDispatcher:
         sinks: tuple[NotificationSink, ...] = (),
         *,
         min_severity: NotificationSeverity = NotificationSeverity.INFO,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._sinks = list(sinks)
         self._min_severity = min_severity
         self._lifecycle_lock = asyncio.Lock()
         self._started = False
+        # Optional resolver enables the runtime kill-switch
+        # (``notifications.dispatcher_enabled``).  ``None`` is the
+        # back-compat path: legacy callers (test fixtures, early-boot
+        # construction sites) get a dispatcher that always delivers.
+        self._config_resolver: ConfigResolver | None = config_resolver
+        # Suppress duplicate resolver-failure warnings: log the first
+        # failure of a streak, stay quiet until the resolver recovers.
+        # Otherwise a degraded settings backend produces one warning
+        # per dispatch call (potentially many per second).
+        self._resolve_failed_logged: bool = False
         # Dispatch gate: ``aclose`` flips ``_stopping`` so any
         # ``dispatch`` that arrives during shutdown short-circuits
         # before touching ``sink.send``; ``_dispatch_inflight`` +
@@ -91,6 +117,37 @@ class NotificationDispatcher:
                 NOTIFICATION_SINK_REGISTERED,
                 sink_name=sink.sink_name,
             )
+
+    async def _resolve_enabled(self) -> bool:
+        """Resolve the kill-switch, fail-safe to ``True``.
+
+        Operators flip ``notifications.dispatcher_enabled=false`` to
+        silence outbound notifications without tearing down sinks. A
+        settings-backend outage must not silently silence the surface
+        (operators silence by setting the value explicitly), so any
+        resolver failure resolves to enabled.
+        """
+        if self._config_resolver is None:
+            return True
+        try:
+            value = await self._config_resolver.get_bool(
+                SettingNamespace.NOTIFICATIONS.value, "dispatcher_enabled"
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            if not self._resolve_failed_logged:
+                logger.warning(
+                    NOTIFICATION_DISPATCHER_RESOLVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                self._resolve_failed_logged = True
+            return True
+        self._resolve_failed_logged = False
+        return value
 
     def register(self, sink: NotificationSink) -> None:
         """Register an additional sink.
@@ -205,24 +262,35 @@ class NotificationDispatcher:
                 error=safe_error_description(exc),
             )
 
-    async def dispatch(self, notification: Notification) -> None:
+    async def dispatch(self, notification: Notification) -> None:  # noqa: C901
         """Deliver a notification to all registered sinks.
 
         Best-effort: individual sink errors are logged and
         swallowed. ``MemoryError`` and ``RecursionError`` propagate.
 
+        Gated by ``notifications.dispatcher_enabled`` (live, per-call):
+        when the setting is ``False`` every dispatch short-circuits
+        before touching any sink. Resolver outage falls back to
+        enabled (operators silence by setting the value explicitly,
+        never by inducing a settings outage).
+
         Args:
             notification: The notification to deliver.
         """
         # Shutdown gate: once ``aclose`` flips ``_stopping``, no new
-        # dispatches reach the sinks. The check is sync so it cannot
-        # interleave with ``aclose`` between this point and the
-        # counter bump below.
-        if self._stopping:
+        # dispatches reach the sinks. Re-checked after the resolver
+        # ``await`` because ``aclose`` can suspend the dispatch task
+        # between the two checks and close the sinks.
+        if self._is_stopping(notification):
+            return
+        enabled = await self._resolve_enabled()
+        if self._is_stopping(notification):
+            return
+        if not enabled:
             logger.debug(
-                NOTIFICATION_FILTERED,
+                NOTIFICATION_DISPATCHER_PAUSED,
                 notification_id=notification.id,
-                detail="dispatcher_stopping",
+                reason="paused_by_setting",
             )
             return
         # Snapshot the sink list so register() during dispatch is safe.
@@ -262,6 +330,22 @@ class NotificationDispatcher:
                 self._dispatch_idle.set()
 
         self._log_result(notification, errors)
+
+    def _is_stopping(self, notification: Notification) -> bool:
+        """Return True (and log) when the dispatcher is shutting down.
+
+        Caller bails out on True. Extracted so the dispatch path can
+        re-check the shutdown gate after every ``await`` -- ``aclose``
+        can flip ``_stopping`` while the dispatcher task is suspended.
+        """
+        if self._stopping:
+            logger.debug(
+                NOTIFICATION_FILTERED,
+                notification_id=notification.id,
+                detail="dispatcher_stopping",
+            )
+            return True
+        return False
 
     def _should_filter(self, notification: Notification) -> bool:
         """Return True if the notification is below min_severity."""

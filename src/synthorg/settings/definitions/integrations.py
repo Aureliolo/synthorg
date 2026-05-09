@@ -98,6 +98,31 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.INTEGRATIONS,
+        key="webhook_receipt_cleanup_tick_seconds",
+        type=SettingType.FLOAT,
+        default="86400.0",
+        description=(
+            "Wall-clock interval between webhook-receipt sweep ticks."
+            " Receipts are retained in days; a daily sweep is the right"
+            " granularity. Operators tune the *window*"
+            " (``integrations.webhooks.receipt_retention_days`` or the"
+            " per-connection override) rather than the *cadence*."
+            " Default 24h. Resolved per-tick by"
+            " ``_resolve_webhook_receipt_cleanup_tick_seconds``, so"
+            " operator changes take effect on the next tick without"
+            " restart."
+        ),
+        group="Webhooks",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=604800.0,
+        yaml_path="integrations.webhooks.receipt_cleanup_tick_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
         key="oauth_device_flow_poll_interval_seconds",
         type=SettingType.INTEGER,
         default="5",

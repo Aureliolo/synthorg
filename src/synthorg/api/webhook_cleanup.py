@@ -13,15 +13,17 @@ Per-connection retention semantics follow ``Connection.webhook_receipt_retention
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final, Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from synthorg.core.clock import SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+    PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED,
 )
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.registry import registered_default_float, registered_default_int
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -38,14 +40,73 @@ class _CleanupOutcome(NamedTuple):
 
 logger = get_logger(__name__)
 
-_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS = 90
+
+class _ResolverThrottleState:
+    """Per-process throttle flags for webhook-cleanup resolver helpers.
+
+    A mutable singleton lives at module scope so the
+    log-once-until-recovery semantics survive across loop ticks (the
+    helpers are module-level functions, not class methods, so there is
+    no ``self`` to attach the flag to). Wrapping the flags in a class
+    rather than declaring two ``bool`` module-level globals keeps
+    PLW0603 quiet -- attribute writes on an existing instance do not
+    require ``global``. Tests reset state via
+    ``_resolver_throttle.cleanup_*_failed = False`` when exercising
+    repeated-outage paths.
+    """
+
+    cleanup_enabled_failed: bool = False
+    cleanup_tick_failed: bool = False
+
+
+_resolver_throttle = _ResolverThrottleState()
+
+
+async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
+    """Resolve the webhook-cleanup kill-switch, fail-safe to ``True``.
+
+    Operators flip ``api.webhook_receipt_cleanup_enabled=false`` to
+    pause the per-connection sweep mid-flight without tearing down the
+    lifespan task.  A settings-backend outage must not silently flip
+    the sweep off (receipts would accumulate forever) -- prefer
+    enabled on resolver failure and surface the error.
+
+    Repeated outages are throttled via
+    ``_resolver_throttle.cleanup_enabled_failed`` so a prolonged
+    settings hiccup logs one warning per failure run instead of one per
+    loop tick.
+    """
+    if not app_state.has_config_resolver:
+        return True
+    try:
+        value = await app_state.config_resolver.get_bool(
+            SettingNamespace.API.value, "webhook_receipt_cleanup_enabled"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        if not _resolver_throttle.cleanup_enabled_failed:
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+                reason="kill_switch_resolution_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback_enabled=True,
+            )
+            _resolver_throttle.cleanup_enabled_failed = True
+        return True
+    _resolver_throttle.cleanup_enabled_failed = False
+    return value
 
 
 async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
     """Resolve the global default webhook-receipt retention window (days).
 
-    Falls back to :data:`_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS` when the
-    settings resolver is unavailable or the read fails.  A transient
+    Falls back to the registered default for
+    ``integrations.webhook_receipt_retention_days`` when the settings
+    resolver is unavailable or the read fails.  A transient
     settings-backend outage must not silently truncate the receipt log
     nor flip every connection to indefinite retention.
 
@@ -56,8 +117,11 @@ async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
     the remainder of the loop's lifetime.  Surfacing the error makes
     that override discoverable in alerting.
     """
+    fallback = registered_default_int(
+        SettingNamespace.INTEGRATIONS.value, "webhook_receipt_retention_days"
+    )
     if not app_state.has_config_resolver:
-        return _DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
+        return fallback
     try:
         return await app_state.config_resolver.get_int(
             SettingNamespace.INTEGRATIONS.value,
@@ -75,15 +139,15 @@ async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
             message=(
                 "Failed to resolve integrations.webhook_receipt_retention_days;"
-                f" falling back to {_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS} days."
+                f" falling back to {fallback} days."
                 " If an operator set the value to 0 (disable sweep) it will"
                 " NOT take effect until the settings backend recovers."
             ),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            fallback_days=_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS,
+            fallback_days=fallback,
         )
-        return _DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
+        return fallback
 
 
 async def _cleanup_connection_receipts(
@@ -216,12 +280,48 @@ async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
     )
 
 
-_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS: Final[float] = 86_400.0
-"""Webhook-receipt sweep cadence (24h). Hardcoded by design: receipts
-are retained in days, not minutes, so a daily sweep is the right
-granularity.  Operators tune the *window* (per-connection or global
-``integrations.webhook_receipt_retention_days``) rather than the
-*cadence*."""
+async def _resolve_webhook_receipt_cleanup_tick_seconds(app_state: AppState) -> float:
+    """Resolve the cadence between webhook-receipt cleanup ticks.
+
+    Falls back to the registered default
+    (``integrations.webhook_receipt_cleanup_tick_seconds``) when the
+    resolver is unavailable or the read fails.  Operators tune the
+    *window* (per-connection or global
+    ``integrations.webhooks.receipt_retention_days``) rather than the
+    *cadence*; the cadence remains a setting so a sluggish persistence
+    backend can be given a longer interval without code changes.
+
+    Repeated outages are throttled via
+    ``_resolver_throttle.cleanup_tick_failed``.
+    """
+    fallback = registered_default_float(
+        SettingNamespace.INTEGRATIONS.value,
+        "webhook_receipt_cleanup_tick_seconds",
+    )
+    if not app_state.has_config_resolver:
+        return fallback
+    try:
+        value = await app_state.config_resolver.get_float(
+            SettingNamespace.INTEGRATIONS.value,
+            "webhook_receipt_cleanup_tick_seconds",
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        if not _resolver_throttle.cleanup_tick_failed:
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+                reason="tick_seconds_resolution_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback_seconds=fallback,
+            )
+            _resolver_throttle.cleanup_tick_failed = True
+        return fallback
+    _resolver_throttle.cleanup_tick_failed = False
+    return value
 
 
 async def _webhook_receipt_cleanup_loop(
@@ -237,6 +337,11 @@ async def _webhook_receipt_cleanup_loop(
     receipt retention is durable (days, weeks, months) rather than
     transient (seconds, minutes).
 
+    Gated by ``api.webhook_receipt_cleanup_enabled`` (live, per-tick):
+    when the setting is ``False`` every 24h tick short-circuits -- the
+    loop keeps running so operators can re-enable without restarting,
+    but no sweep work is done.
+
     ``clock`` is the time-injection seam: production wires
     :class:`SystemClock` (which delegates to ``asyncio.sleep``) and
     tests inject ``FakeClock`` so the loop is driven deterministically
@@ -245,5 +350,13 @@ async def _webhook_receipt_cleanup_loop(
     """
     effective_clock: Clock = clock if clock is not None else SystemClock()
     while True:
-        await _webhook_receipt_cleanup_tick(app_state)
-        await effective_clock.sleep(_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS)
+        if await _resolve_webhook_receipt_cleanup_enabled(app_state):
+            await _webhook_receipt_cleanup_tick(app_state)
+        else:
+            logger.debug(
+                PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED,
+                reason="paused_by_setting",
+            )
+        await effective_clock.sleep(
+            await _resolve_webhook_receipt_cleanup_tick_seconds(app_state)
+        )

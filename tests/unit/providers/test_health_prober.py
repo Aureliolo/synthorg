@@ -18,6 +18,11 @@ from synthorg.providers.health_prober import (
     _build_auth_headers,
     _build_ping_url,
 )
+from synthorg.settings import (
+    definitions as _settings_definitions,  # noqa: F401 -- side-effect import populates the registry
+)
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.registry import registered_default_int
 from synthorg.settings.resolver import ConfigResolver
 
 
@@ -57,7 +62,9 @@ def _make_prober(
     )
     config_resolver.get_int = AsyncMock(
         spec=ConfigResolver.get_int,
-        return_value=11434,
+        return_value=registered_default_int(
+            SettingNamespace.PROVIDERS.value, "ollama_default_port"
+        ),
     )
     prober = ProviderHealthProber(
         trk,
@@ -92,16 +99,25 @@ class _PatchCtx:
         self.mock_client_cls: MagicMock | None = None
 
     def __enter__(self) -> _PatchCtx:
+        # Capture the real classes BEFORE entering the patch context.
+        # ``patch("synthorg.providers.health_prober.httpx.AsyncClient")``
+        # mutates the shared httpx module's attribute, so reading
+        # ``httpx.AsyncClient`` after ``__enter__`` returns a MagicMock
+        # (which mock rejects as a spec target). The ``spec=`` calls
+        # below need the real classes so AsyncMock auto-generates real
+        # method children.
+        real_async_client = httpx.AsyncClient
+        real_response = httpx.Response
         self.mock_client_cls = self._patcher.__enter__()
-        mock_client = AsyncMock()
+        mock_client = AsyncMock(spec=real_async_client)
         if self._side_effect is not None:
-            mock_client.get = AsyncMock(side_effect=self._side_effect)
+            mock_client.get.side_effect = self._side_effect
         else:
-            mock_response = MagicMock()
+            mock_response = MagicMock(spec=real_response)
             mock_response.status_code = self._status_code or 200
-            mock_client.get = AsyncMock(return_value=mock_response)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.get.return_value = mock_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = False
         self.mock_client_cls.return_value = mock_client
         return self
 
@@ -116,32 +132,55 @@ class _PatchCtx:
 
 @pytest.mark.unit
 class TestBuildPingUrl:
+    # Read the canonical default from the settings registry rather
+    # than hardcoding 11434: the registry is the single source of
+    # truth, and a literal here would re-create a parallel-default
+    # drift. If ``providers.ollama_default_port`` moves, these tests
+    # follow automatically.
+    OLLAMA_PORT: int = registered_default_int(
+        SettingNamespace.PROVIDERS.value, "ollama_default_port"
+    )
+
     def test_root_url_provider_returns_root(self) -> None:
         # Provider type "ollama" uses root URL (liveness string)
         assert (
-            _build_ping_url("http://localhost:11434", "ollama")
+            _build_ping_url(
+                "http://localhost:11434", "ollama", ollama_port=self.OLLAMA_PORT
+            )
             == "http://localhost:11434"
         )
 
     def test_local_detected_by_port(self) -> None:
-        assert _build_ping_url("http://host:11434/", None) == "http://host:11434"
+        assert (
+            _build_ping_url(
+                f"http://host:{self.OLLAMA_PORT}/",
+                None,
+                ollama_port=self.OLLAMA_PORT,
+            )
+            == f"http://host:{self.OLLAMA_PORT}"
+        )
 
     def test_standard_appends_models(self) -> None:
         assert (
-            _build_ping_url("http://localhost:1234/v1", None)
+            _build_ping_url(
+                "http://localhost:1234/v1", None, ollama_port=self.OLLAMA_PORT
+            )
             == "http://localhost:1234/v1/models"
         )
 
     def test_strips_trailing_slash(self) -> None:
         assert (
-            _build_ping_url("http://localhost:8000/v1/", "test-api")
+            _build_ping_url(
+                "http://localhost:8000/v1/", "test-api", ollama_port=self.OLLAMA_PORT
+            )
             == "http://localhost:8000/v1/models"
         )
 
     def test_port_in_path_does_not_match(self) -> None:
-        """Port heuristic uses urlparse -- :11434 in path should not match."""
-        result = _build_ping_url("http://host:8080/api/11434/v1", None)
-        assert result == "http://host:8080/api/11434/v1/models"
+        """Port heuristic uses urlparse: a port-shaped path segment must not match."""
+        path_url = f"http://host:8080/api/{self.OLLAMA_PORT}/v1"
+        result = _build_ping_url(path_url, None, ollama_port=self.OLLAMA_PORT)
+        assert result == f"{path_url}/models"
 
 
 @pytest.mark.unit
@@ -252,7 +291,14 @@ class TestProviderHealthProber:
         policy = ProviderDiscoveryPolicy(
             host_port_allowlist=("allowed.com:8080",),
         )
-        policy_loader = AsyncMock(return_value=policy)
+
+        # ``spec=`` against an async-callable signature so the gate's
+        # mock-spec ConcreteClass rule is satisfied; the body is never
+        # invoked because ``return_value=`` short-circuits the call.
+        async def _policy_loader_spec() -> ProviderDiscoveryPolicy:
+            raise NotImplementedError
+
+        policy_loader = AsyncMock(spec=_policy_loader_spec, return_value=policy)
 
         configs = {
             "test-blocked": _make_local_config(
@@ -344,6 +390,10 @@ class TestProberLifecycle:
         config_resolver.get_provider_configs = AsyncMock(
             spec=ConfigResolver.get_provider_configs,
             return_value={},
+        )
+        config_resolver.get_bool = AsyncMock(
+            spec=ConfigResolver.get_bool,
+            return_value=True,
         )
 
         prober = ProviderHealthProber(

@@ -1,8 +1,19 @@
 """Security namespace setting definitions."""
 
+from typing import Final
+
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
+
+# Shared audit-retention-tick bounds + default. Re-exported so
+# ``synthorg.security.config.SecurityConfig`` and the Pydantic field
+# validators reuse the canonical values instead of duplicating
+# numeric literals -- a single source of truth for both startup-model
+# validation and live settings registry validation.
+AUDIT_RETENTION_TICK_DEFAULT_SECONDS: Final[float] = 86400.0
+AUDIT_RETENTION_TICK_MIN_SECONDS: Final[float] = 60.0
+AUDIT_RETENTION_TICK_MAX_SECONDS: Final[float] = 604800.0
 
 _r = get_registry()
 
@@ -82,18 +93,42 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SECURITY,
-        key="retention_cleanup_paused",
+        key="audit_retention_loop_enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
-            "Pause flag for the audit retention purge loop. When"
-            " True, the loop stays resident but every tick"
+            "Live kill-switch for the audit retention purge loop. When"
+            " ``False`` the loop stays resident but every configured"
+            " tick (see ``security.audit_retention_tick_seconds``)"
             " short-circuits -- used during incident investigations"
-            " to preserve all records."
+            " to preserve all records, or to decommission retention"
+            " on a deployment that handles it externally."
         ),
         group="Retention",
         level=SettingLevel.ADVANCED,
-        yaml_path="security.retention_cleanup_paused",
+        yaml_path="security.audit_retention_loop_enabled",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="audit_retention_tick_seconds",
+        type=SettingType.FLOAT,
+        default=str(AUDIT_RETENTION_TICK_DEFAULT_SECONDS),
+        description=(
+            "Wall-clock interval between audit retention purge ticks."
+            " Audit retention is not a hot path; operators tune the"
+            " *window* (``security.audit_retention_days``) rather than"
+            " the *cadence*. Default 24h. Resolved per-tick by"
+            " ``_resolve_audit_retention_tick_seconds``, so operator"
+            " changes take effect on the next tick without restart."
+        ),
+        group="Retention",
+        level=SettingLevel.ADVANCED,
+        min_value=AUDIT_RETENTION_TICK_MIN_SECONDS,
+        max_value=AUDIT_RETENTION_TICK_MAX_SECONDS,
+        yaml_path="security.audit_retention_tick_seconds",
     )
 )
 

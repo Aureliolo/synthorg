@@ -263,6 +263,25 @@ class EscalationExpirationSweeper:
             self._lifecycle_lock = None
             logger.info(CONFLICT_ESCALATION_SWEEPER_STOPPED)
 
+    async def _resolve_sweeper_enabled(self) -> bool:
+        """Return True when the sweeper is enabled (inverts the paused flag).
+
+        Reads ``communication.escalation_sweeper_paused`` from the
+        resolver and inverts it so the kill-switch shape matches the
+        ``_resolve_*_enabled`` convention.  Fail-safes to enabled
+        (returns ``True``) when the resolver is unavailable or the
+        read fails -- a settings-backend outage must not silently
+        flip the sweeper off because stale escalations would then
+        accumulate forever.
+        """
+        paused = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="communication",
+            key="escalation_sweeper_paused",
+            fallback=False,
+        )
+        return not paused
+
     async def _run(self) -> None:
         """Main loop body.
 
@@ -270,28 +289,40 @@ class EscalationExpirationSweeper:
         ``stop()`` that sets it to ``None`` cannot trip an ``is_set``
         attribute access here.  ``start()`` guarantees the event is
         non-None at the moment the task is spawned.
+
+        Gated by ``communication.escalation_sweeper_paused`` (live,
+        per-tick, inverted): when the sweeper is paused every tick
+        short-circuits the work but the loop stays resident so
+        operators can resume without restarting the lifecycle plumbing.
         """
         stop_event = self._stop_event
         if stop_event is None:  # defensive; start() guarantees non-None
             msg = "_run invoked without an initialised stop event"
             raise RuntimeError(msg)
         while not stop_event.is_set():
-            try:
-                await self._sweep_once()
-            except asyncio.CancelledError:
-                raise
-            except MemoryError, RecursionError:
-                # Match the ``_drain`` shape: surface catastrophic
-                # interpreter-level errors instead of looping past
-                # them at WARNING.
-                raise
-            except Exception as exc:
-                logger.warning(
-                    CONFLICT_ESCALATION_SWEEPER_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+            if await self._resolve_sweeper_enabled():
+                try:
+                    await self._sweep_once()
+                except asyncio.CancelledError:
+                    raise
+                except MemoryError, RecursionError:
+                    # Match the ``_drain`` shape: surface catastrophic
+                    # interpreter-level errors instead of looping past
+                    # them at WARNING.
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        CONFLICT_ESCALATION_SWEEPER_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    record_escalation_outcome(outcome="sweeper_failed")
+            else:
+                logger.debug(
+                    CONFLICT_ESCALATION_EXPIRED,
+                    expired_count=0,
+                    note="sweeper_paused_by_setting",
                 )
-                record_escalation_outcome(outcome="sweeper_failed")
             try:
                 await asyncio.wait_for(
                     stop_event.wait(),
@@ -313,25 +344,11 @@ class EscalationExpirationSweeper:
         so operators can detect a silent sweeper (store returns 0 due
         to a timezone / WHERE-clause bug) by the absence of debug logs.
 
-        Honors the ``communication.escalation_sweeper_paused`` flag at
-        the start of each tick: when ``True`` the loop stays resident
-        but the call short-circuits so an operator can suspend
-        expiration during incident investigation without tearing down
-        the lifecycle plumbing.
+        The ``communication.escalation_sweeper_paused`` kill-switch is
+        evaluated by ``_run`` before this method is invoked, so a
+        paused sweeper short-circuits at the loop body rather than
+        partway through this helper.
         """
-        paused = await resolve_bool_with_fallback(
-            resolver=self._config_resolver,
-            namespace="communication",
-            key="escalation_sweeper_paused",
-            fallback=False,
-        )
-        if paused:
-            logger.debug(
-                CONFLICT_ESCALATION_EXPIRED,
-                expired_count=0,
-                note="sweeper_paused_by_setting",
-            )
-            return
         now = datetime.now(UTC)
         expired = await self._store.mark_expired(now.isoformat())
         if expired:

@@ -11,7 +11,7 @@ interface NamespaceSettingRowProps {
   entry: SettingEntry
   dirtyValues: ReadonlyMap<string, string>
   onValueChange: (ck: string, v: string) => void
-  savingKeys: ReadonlySet<string>
+  savingKeys: ReadonlyMap<string, number>
   controllerDisabledMap: ReadonlyMap<string, boolean>
   changedKeys?: ReadonlySet<string>
   highlightQuery?: string
@@ -48,7 +48,7 @@ export interface NamespaceSectionProps {
   entries: SettingEntry[]
   dirtyValues: ReadonlyMap<string, string>
   onValueChange: (compositeKey: string, value: string) => void
-  savingKeys: ReadonlySet<string>
+  savingKeys: ReadonlyMap<string, number>
   /** Map of composite key -> boolean indicating if its controller is disabled. */
   controllerDisabledMap: ReadonlyMap<string, boolean>
   /** Whether the section is forced open (e.g. during search). */

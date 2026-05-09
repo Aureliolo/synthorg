@@ -615,6 +615,15 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 pass
         await _apply_bridge_config(app_state, effective_config)
 
+        # Rebind the live ``MessageBusBridge`` to the now-wired
+        # resolver. ``create_app`` captures the resolver eagerly when
+        # the bridge is constructed; on the auto-wire path the
+        # resolver is not yet available at that moment, so the bridge
+        # is built with ``None`` and would otherwise read the
+        # registered defaults forever.
+        if bridge is not None and app_state.has_config_resolver:
+            bridge.set_config_resolver(app_state.config_resolver)
+
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
             name="ws-ticket-cleanup",

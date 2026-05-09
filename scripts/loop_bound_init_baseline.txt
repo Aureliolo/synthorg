@@ -12,8 +12,6 @@ src/synthorg/client/continuous.py:65:ContinuousMode:_stop_event:Event
 src/synthorg/client/continuous.py:71:ContinuousMode:_lifecycle_lock:Lock
 src/synthorg/communication/bus/memory.py:110:InMemoryMessageBus:_lock:Lock
 src/synthorg/communication/bus/memory.py:125:InMemoryMessageBus:_shutdown_event:Event
-src/synthorg/communication/conflict_resolution/escalation/notify.py:153:PostgresEscalationNotifySubscriber:_stop_event:Event
-src/synthorg/communication/conflict_resolution/escalation/notify.py:154:PostgresEscalationNotifySubscriber:_lifecycle_lock:Lock
 src/synthorg/engine/task_engine.py:104:TaskEngine:_lifecycle_lock:Lock
 src/synthorg/engine/task_engine.py:112:TaskEngine:_admission_lock:Lock
 src/synthorg/engine/task_engine.py:114:TaskEngine:_observer_queue:Queue
@@ -34,10 +32,10 @@ src/synthorg/meta/chief_of_staff/monitor.py:82:OrgInflectionMonitor:_stop_event:
 src/synthorg/meta/chief_of_staff/monitor.py:83:OrgInflectionMonitor:_lifecycle_lock:Lock
 src/synthorg/notifications/adapters/ntfy.py:116:NtfyNotificationSink:_lifecycle_lock:Lock
 src/synthorg/notifications/adapters/slack.py:104:SlackNotificationSink:_lifecycle_lock:Lock
-src/synthorg/notifications/dispatcher.py:76:NotificationDispatcher:_lifecycle_lock:Lock
-src/synthorg/notifications/dispatcher.py:87:NotificationDispatcher:_dispatch_idle:Event
-src/synthorg/providers/health_prober.py:182:ProviderHealthProber:_stop_event:Event
-src/synthorg/providers/health_prober.py:188:ProviderHealthProber:_lifecycle_lock:Lock
+src/synthorg/notifications/dispatcher.py:113:NotificationDispatcher:_dispatch_idle:Event
+src/synthorg/notifications/dispatcher.py:92:NotificationDispatcher:_lifecycle_lock:Lock
+src/synthorg/providers/health_prober.py:184:ProviderHealthProber:_stop_event:Event
+src/synthorg/providers/health_prober.py:190:ProviderHealthProber:_lifecycle_lock:Lock
 src/synthorg/settings/dispatcher.py:104:SettingsChangeDispatcher:_lifecycle_lock:Lock
 src/synthorg/telemetry/collector.py:321:TelemetryCollector:_lifecycle_lock:Lock
 src/synthorg/workers/worker.py:83:Worker:_stop_event:Event

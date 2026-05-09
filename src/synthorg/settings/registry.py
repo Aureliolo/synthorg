@@ -4,6 +4,7 @@ from types import MappingProxyType
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_REGISTRY_DUPLICATE
+from synthorg.settings.errors import SettingsRegistryError
 from synthorg.settings.models import SettingDefinition  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -111,3 +112,71 @@ _registry = SettingsRegistry()
 def get_registry() -> SettingsRegistry:
     """Return the global settings registry singleton."""
     return _registry
+
+
+def _registered_default_str(namespace: str, key: str) -> str:
+    """Return the registered default for ``(namespace, key)`` as a string.
+
+    Raises :class:`SettingsRegistryError` if the setting is unregistered
+    or has no default.  Callers that need a typed value pass the result
+    through the matching ``registered_default_*`` helper.
+    """
+    definition = _registry.get(namespace, key)
+    if definition is None:
+        msg = f"setting {namespace}.{key} is not registered"
+        raise SettingsRegistryError(msg)
+    if definition.default is None:
+        msg = f"setting {namespace}.{key} has no registered default"
+        raise SettingsRegistryError(msg)
+    return definition.default
+
+
+def registered_default_int(namespace: str, key: str) -> int:
+    """Return the registered default for ``(namespace, key)`` coerced to ``int``.
+
+    Reads the canonical default from the registry rather than
+    duplicating the literal in caller code -- the registry is the
+    single source of truth, so consumer-side fallbacks (e.g. resolver
+    outage paths) read the same value the resolver would have served
+    on the happy path.  Raises :class:`SettingsRegistryError` if the
+    registered default is not a parseable integer string (chains the
+    underlying ``ValueError`` as the cause).
+    """
+    raw = _registered_default_str(namespace, key)
+    try:
+        return int(raw)
+    except ValueError as exc:
+        msg = f"setting {namespace}.{key} default {raw!r} is not an integer string"
+        raise SettingsRegistryError(msg) from exc
+
+
+def registered_default_float(namespace: str, key: str) -> float:
+    """Return the registered default for ``(namespace, key)`` coerced to ``float``.
+
+    Raises :class:`SettingsRegistryError` if the registered default is
+    not a parseable float string (chains the underlying ``ValueError``
+    as the cause).
+    """
+    raw = _registered_default_str(namespace, key)
+    try:
+        return float(raw)
+    except ValueError as exc:
+        msg = f"setting {namespace}.{key} default {raw!r} is not a float string"
+        raise SettingsRegistryError(msg) from exc
+
+
+def registered_default_bool(namespace: str, key: str) -> bool:
+    """Return the registered default for ``(namespace, key)`` coerced to ``bool``.
+
+    Accepts the canonical string representations recorded in the
+    registry: ``"true"`` / ``"false"`` (case-insensitive).  Raises
+    :class:`SettingsRegistryError` if the registered default is not
+    a recognised boolean string.
+    """
+    raw = _registered_default_str(namespace, key).strip().lower()
+    if raw == "true":
+        return True
+    if raw == "false":
+        return False
+    msg = f"setting {namespace}.{key} default {raw!r} is not a boolean string"
+    raise SettingsRegistryError(msg)

@@ -124,6 +124,8 @@ NGROK_TUNNEL_STARTED: Final[str] = "integrations.tunnel.ngrok.started"
 WEBHOOK_BRIDGE_STARTED: Final[str] = "integrations.webhook_bridge.started"
 WEBHOOK_BRIDGE_STOPPED: Final[str] = "integrations.webhook_bridge.stopped"
 WEBHOOK_BRIDGE_POLL_ERROR: Final[str] = "integrations.webhook_bridge.poll_error"
+WEBHOOK_BRIDGE_RESOLVE_FAILED: Final[str] = "integrations.webhook_bridge.resolve_failed"
+WEBHOOK_BRIDGE_PAUSED: Final[str] = "integrations.webhook_bridge.paused"
 WEBHOOK_BRIDGE_EVENT_FORWARDED: Final[str] = (
     "integrations.webhook_bridge.event_forwarded"
 )

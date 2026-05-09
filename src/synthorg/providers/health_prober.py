@@ -8,6 +8,7 @@ reset the probe interval for that provider.
 """
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
@@ -23,6 +24,9 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_STARTED,
     PROVIDER_HEALTH_PROBE_SUCCESS,
     PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+    PROVIDER_HEALTH_PROBER_PAUSED,
+    PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
+    PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED,
     PROVIDER_HEALTH_PROBER_STARTED,
     PROVIDER_HEALTH_PROBER_STOPPED,
 )
@@ -32,6 +36,7 @@ from synthorg.providers.discovery_policy import (
 )
 from synthorg.providers.errors import ProviderLifecycleConflictError
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
+from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -41,22 +46,25 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_INTERVAL_SECONDS: Final[int] = 1800  # 30 minutes
-_PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
-_HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
-_MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
-_DEFAULT_OLLAMA_PORT: Final[int] = 11434
-"""Documented default that mirrors the ``providers.ollama_default_port``
-setting.  Production callers resolve via ``ConfigResolver`` and pass
-the value through; this constant is the documented baseline used by
-test stubs and as the resolver's last-resort fallback."""
+_DEFAULT_INTERVAL_SECONDS: Final[int] = (
+    1800  # lint-allow: magic-numbers -- 30 min ctor-kwarg default
+)
+_PROBE_TIMEOUT_SECONDS: Final[float] = (
+    10.0  # lint-allow: magic-numbers -- HTTP client timeout baseline
+)
+_HTTP_SERVER_ERROR_THRESHOLD: Final[int] = (
+    500  # lint-allow: magic-numbers -- HTTP 5xx protocol constant
+)
+_MAX_ERROR_MESSAGE_LENGTH: Final[int] = (
+    200  # lint-allow: magic-numbers -- log truncation limit
+)
 
 
 def _build_ping_url(
     base_url: str,
     litellm_provider: str | None,
     *,
-    ollama_port: int = _DEFAULT_OLLAMA_PORT,
+    ollama_port: int,
 ) -> str:
     """Build a lightweight ping URL for a provider.
 
@@ -69,12 +77,13 @@ def _build_ping_url(
         base_url: Provider base URL.
         litellm_provider: LiteLLM provider identifier for path selection.
         ollama_port: Port used to detect a self-hosted Ollama provider
-            when ``litellm_provider`` is not set explicitly.  Must be a
-            valid TCP port (1-65535).  Resolve via
-            ``ConfigResolver.get_int("providers",
-            "ollama_default_port")`` at the call site; the registry
-            entry validates the bounds at write time, so a value out
-            of range cannot reach this function via the resolver path.
+            when ``litellm_provider`` is not set explicitly. Required
+            (no default) so the canonical value flows through from the
+            registered ``providers.ollama_default_port`` setting at
+            every call site instead of mirroring it locally. Must be a
+            valid TCP port (1-65535); the registry entry validates the
+            bounds at write time, so a value out of range cannot reach
+            this function via the resolver path.
 
     Returns:
         URL to ping.
@@ -151,6 +160,7 @@ class ProviderHealthProber:
         "_health_tracker",
         "_interval",
         "_lifecycle_lock",
+        "_resolve_failed_logged",
         "_stop_drain_timeout_seconds",
         "_stop_event",
         "_stop_failed",
@@ -175,19 +185,25 @@ class ProviderHealthProber:
         self._config_resolver = config_resolver
         self._discovery_policy_loader = discovery_policy_loader
         self._interval = interval_seconds
-        # ``Clock`` seam per ``CLAUDE.md`` -- tests inject ``FakeClock``
-        # so the lifecycle drain timeout and probe-cycle interval can
-        # be driven on virtual time instead of wall time.
+        # Time seam: tests inject ``FakeClock`` to drive the drain
+        # deadline and probe-cycle cadence on virtual time, so the
+        # suite never depends on wall-clock waits.
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._stop_event = asyncio.Event()
+        # Lifecycle primitives are constructed eagerly so a racing
+        # ``stop()`` cannot observe a half-published lock / event /
+        # task. The unrestartable flag survives a timed-out stop so
+        # a subsequent ``start()`` cannot attach a fresh task while
+        # the orphaned ``_run_loop`` still holds resources.
+        self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init -- see above.
         self._task: asyncio.Task[None] | None = None
-        # Per ``docs/reference/lifecycle-sync.md`` the lifecycle lock,
-        # stop event, drain timeout, and unrestartable flag are
-        # constructed eagerly so a racing ``stop()`` cannot observe a
-        # half-published lock attribute.
-        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._stop_failed: bool = False
         self._stop_drain_timeout_seconds: float = 30.0
+        # Resolver-failure warnings are log-once per failure run so a
+        # prolonged settings outage cannot flood logs with one warning
+        # per cycle. The flag clears on the first successful resolution
+        # so a re-failure surfaces a fresh warning.
+        self._resolve_failed_logged: bool = False
 
     async def start(self) -> None:
         """Start the background probe loop.
@@ -213,6 +229,13 @@ class ProviderHealthProber:
             if self._task is not None and not self._task.done():
                 return
             self._stop_event.clear()
+            # ``_resolve_failed_logged`` survives a graceful stop/start
+            # otherwise, which would silence the resolver-failure
+            # warning on a re-started service that hits the same
+            # outage. Reset before each fresh run so the
+            # log-once-per-failure-run contract holds across lifecycle
+            # transitions.
+            self._resolve_failed_logged = False
             self._task = asyncio.create_task(
                 self._run_loop(),
                 name="provider-health-prober",
@@ -285,29 +308,98 @@ class ProviderHealthProber:
             self._stop_event = asyncio.Event()
             logger.info(PROVIDER_HEALTH_PROBER_STOPPED)
 
-    async def _run_loop(self) -> None:
-        """Main loop: probe all, then sleep until next cycle or stop."""
-        while not self._stop_event.is_set():
-            try:
-                await self._probe_all()
-            except asyncio.CancelledError:
-                raise
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
+    async def _resolve_enabled(self) -> bool:
+        """Resolve the kill-switch, fail-safe to ``True``.
+
+        Operators flip ``api.health_prober_enabled=false`` to pause
+        provider HTTP probing mid-flight without tearing down the loop.
+        A settings-backend outage must not silently pause observability,
+        so any resolver failure resolves to enabled.
+
+        Resolver-failure warnings are throttled via
+        ``_resolve_failed_logged`` -- a prolonged outage emits a single
+        ``PROVIDER_HEALTH_PROBER_RESOLVE_FAILED`` warning, and the next
+        successful read clears the flag and emits one
+        ``PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED`` info before
+        resuming silent operation. Without this guard a short probe
+        interval against a degraded settings backend would tile dashboards
+        with cycle-failed events that are actually clean fallback
+        cycles.
+        """
+        try:
+            value = await self._config_resolver.get_bool(
+                SettingNamespace.API.value, "health_prober_enabled"
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            if not self._resolve_failed_logged:
                 logger.warning(
-                    PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+                    PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
+                    fallback_enabled=True,
                 )
+                self._resolve_failed_logged = True
+            return True
+        if self._resolve_failed_logged:
+            logger.info(PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED)
+            self._resolve_failed_logged = False
+        return value
+
+    async def _run_loop(self) -> None:
+        """Main loop: probe all, then sleep until next cycle or stop.
+
+        Gated by ``api.health_prober_enabled`` (live, per-cycle): when
+        the setting is ``False`` every cycle short-circuits -- the loop
+        keeps running so operators can re-enable without restarting,
+        but no probe traffic is sent.
+
+        The cycle wait routes through the injected ``Clock`` seam so
+        ``FakeClock.sleep`` can drive the cadence on virtual time in
+        tests (matches the constructor's ``clock=`` parameter
+        contract). ``asyncio.wait_for(stop_event.wait(),
+        timeout=self._interval)`` would bypass the seam by relying on
+        the event-loop's wall-clock timer instead.
+        """
+        while not self._stop_event.is_set():
+            if await self._resolve_enabled():
+                try:
+                    await self._probe_all()
+                except asyncio.CancelledError:
+                    raise
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+            else:
+                logger.debug(PROVIDER_HEALTH_PROBER_PAUSED, reason="paused_by_setting")
+            sleep_task: asyncio.Task[None] = asyncio.create_task(
+                self._clock.sleep(self._interval),
+            )
+            stop_task: asyncio.Task[bool] = asyncio.create_task(
+                self._stop_event.wait(),
+            )
             try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(),
-                    timeout=self._interval,
+                done, _pending = await asyncio.wait(
+                    {sleep_task, stop_task},
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
+            finally:
+                for task in (sleep_task, stop_task):
+                    if not task.done():
+                        task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await task
+            if stop_task in done:
                 break  # stop_event was set
-            except TimeoutError:
-                continue  # timeout = time to probe again
+            # ``sleep_task`` completed -- next cycle
 
     async def _probe_all(self) -> None:
         """Probe all eligible providers in parallel."""

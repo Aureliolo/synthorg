@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"text/template"
 
@@ -21,6 +22,12 @@ var composeTmpl string
 // and verify.IsValidDigest so the rules (including the 128-char Docker
 // limit) stay in a single place and cannot drift between the config
 // load path and the compose render path.
+
+// envSynthorgNATSURL is the shared env var that the CLI and the
+// backend's “communication.nats_url“ setting both read. Centralised
+// here so callers (resolveNATSURL, future generators) reference a
+// single source of truth instead of repeating the string literal.
+const envSynthorgNATSURL = "SYNTHORG_NATS_URL"
 
 // allowedLogLevels restricts log level values to a known safe set.
 var allowedLogLevels = map[string]bool{
@@ -172,10 +179,22 @@ func ParamsFromState(s config.State) (Params, error) {
 		NATSImageTag:          tun.NATSImageTag,
 		PostgresDigest:        pgDigest,
 		NATSDigest:            natsDigest,
-		NATSURL:               tun.DefaultNATSURL,
+		NATSURL:               resolveNATSURL(),
 		DisableDefaultDHIPins: tun.CustomRegistry,
 		DigestPins:            digestPins,
 	}, nil
+}
+
+// resolveNATSURL returns the NATS URL embedded into the generated
+// compose.yml backend env block. Reads “envSynthorgNATSURL“
+// directly so the CLI and the backend's “communication.nats_url“
+// setting share a single env var, falling back to the compiled-in
+// default when the env var is unset or whitespace-only.
+func resolveNATSURL() string {
+	if v := strings.TrimSpace(os.Getenv(envSynthorgNATSURL)); v != "" {
+		return v
+	}
+	return config.DefaultNATSURLValue
 }
 
 // PostgresEnabled reports whether the Postgres persistence backend is active.
@@ -256,7 +275,11 @@ func applyComposeDefaults(p *Params) {
 		p.NATSImageTag = config.DefaultNATSImageTag
 	}
 	if p.NATSURL == "" {
-		p.NATSURL = config.DefaultNATSURLValue
+		// Honour SYNTHORG_NATS_URL on the direct-Params build path so
+		// callers that construct Params themselves (and never go
+		// through ParamsFromState) see the same env override the
+		// state-driven path does.
+		p.NATSURL = resolveNATSURL()
 	}
 
 	// Autofill pinned digests ONLY when every registry/repo/tag field

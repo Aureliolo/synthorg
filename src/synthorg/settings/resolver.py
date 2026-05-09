@@ -807,6 +807,7 @@ class ConfigResolver:
                 ("ws_frame_timeout_seconds", "int"),
                 ("ws_revalidation_window_seconds", "int"),
                 ("ws_revalidation_max_failures", "int"),
+                ("sse_keepalive_seconds", "float"),
                 ("max_rpm_default", "int"),
                 ("compression_minimum_size_bytes", "int"),
                 ("request_max_body_size_bytes", "int"),
@@ -829,6 +830,8 @@ class ConfigResolver:
                 ("lifecycle_persistence_shutdown_seconds", "float"),
                 ("lifecycle_approval_timeout_shutdown_seconds", "float"),
                 ("lifecycle_drain_timeout_seconds", "float"),
+                ("approval_urgency_critical_seconds", "float"),
+                ("approval_urgency_high_seconds", "float"),
                 ("csp_docs_external_origins", "json"),
                 ("error_docs_base_url", "str"),
             ),
@@ -894,6 +897,7 @@ class ConfigResolver:
             (
                 ("client_timeout_seconds", "float"),
                 ("push_verification_clock_skew_seconds", "int"),
+                ("max_message_parts", "int"),
             ),
         )
         return A2ABridgeConfig(**values)

@@ -242,6 +242,103 @@ uv run python scripts/check_setting_to_startup_trace.py
 uv run python scripts/check_setting_to_startup_trace.py --update-baseline
 ```
 
+## Kill-Switch Idiom (MANDATORY)
+
+Every long-running async loop in `src/synthorg/` MUST be pause-able
+at runtime via an `<namespace>.<service>_enabled` boolean setting,
+without restarting the process. The canonical shape:
+
+1. Register the flag in `src/synthorg/settings/definitions/<ns>.py`
+   with `SettingType.BOOLEAN`, `default="true"`, a `description`
+   that names the gated service, and a `yaml_path="<ns>.<x>_enabled"`
+   so the setting participates in the full DB > env > YAML > default
+   precedence chain. Without `yaml_path` the YAML leg is silently
+   skipped and operators get the code default at startup.
+2. Add a fail-safe-to-enabled resolver helper next to the loop. The
+   "no resolver wired" fast-path returns `True` directly so a service
+   constructed in a test or pre-startup context (where
+   `app_state.has_config_resolver` is `False` / `config_resolver is None`)
+   does not crash on a `None.get_bool` access:
+
+   ```python
+   async def _resolve_<x>_enabled(...) -> bool:
+       if not app_state.has_config_resolver:
+           return True
+       try:
+           return await app_state.config_resolver.get_bool(<ns>, "<x>_enabled")
+       except asyncio.CancelledError:
+           raise
+       except MemoryError, RecursionError:
+           raise
+       except Exception as exc:
+           logger.warning(<event>, error_type=type(exc).__name__,
+                          error=safe_error_description(exc))
+           return True
+   ```
+
+3. Gate the loop body per iteration (or per call for non-loop
+   surfaces like `NotificationDispatcher.dispatch`):
+
+   ```python
+   while not self._stop_event.is_set():
+       if await self._resolve_enabled():
+           await self._do_work()
+       else:
+           logger.debug(<paused_event>, reason="paused_by_setting")
+       await asyncio.sleep(self._interval)
+   ```
+
+The fail-safe-to-enabled rule is non-negotiable: a settings-backend
+outage must not silently silence the surface. Operators silence by
+setting the value explicitly.
+
+Reference implementations (symbol-only references; line numbers churn):
+`api.lifecycle_helpers._ticket_cleanup_loop`,
+`api.lifecycle_helpers._audit_retention_loop`,
+`api.webhook_cleanup._webhook_receipt_cleanup_loop`,
+`providers.health_prober.ProviderHealthProber._run_loop`,
+`notifications.dispatcher.NotificationDispatcher.dispatch`,
+`communication.conflict_resolution.escalation.sweeper.EscalationExpirationSweeper._run`.
+
+Per-line opt-out:
+`# lint-allow: long-running-loop-kill-switch -- <reason>` on the
+`while` line itself, or on one of the two preceding source lines
+(leading comment block / decorator). The justification is mandatory
+and must be non-empty (mirrors the existing `# lint-allow:`
+markers). Suppression is per-loop: a function with two unguarded
+long-running loops needs two markers, otherwise a function-wide
+opt-out could silently mask a new sibling loop added later.
+Pre-existing not-yet-pause-able loops live in
+`scripts/long_running_loops_kill_switch_baseline.txt`; the gate
+fails when a NEW loop missing the kill-switch lands.
+
+Enforced by `scripts/check_long_running_loops_have_kill_switch.py`
+(pre-push + CI). Scope: the gate scans every long-running
+`while True:` / `while not <stop_event>.is_set():` inside an
+`async def` under `src/synthorg/`, so the loop-bodied surfaces above
+(`_ticket_cleanup_loop`, `ProviderHealthProber._run_loop`,
+`_webhook_receipt_cleanup_loop`) are lint-enforced. Per-call
+non-loop surfaces such as `NotificationDispatcher.dispatch` are
+covered by project convention and reviewed by CodeRabbit /
+human review, but they sit outside the AST gate's
+loop-shaped detection.
+
+## Sandbox image cache
+
+The Pydantic field defaults in
+`src/synthorg/tools/sandbox/docker_config.py` no longer read
+`SYNTHORG_SANDBOX_IMAGE` / `SYNTHORG_SIDECAR_IMAGE` directly from
+`os.environ`; the canonical resolution path is
+`tools.sandbox_image` / `tools.sidecar_image` registered in
+`definitions/tools.py` with `env_var_override=` matching the
+historical env var names. `_apply_bridge_config` resolves both
+once at startup and writes them into the process-singleton cache
+in `tools/sandbox/_image_resolution.py`. Tests override the cache
+via `set_resolved_*_image(...)`; the autouse fixture
+`_isolate_sandbox_image_resolution` in
+`tests/unit/tools/sandbox/conftest.py` clears the cache around
+every sandbox test.
+
 `--update-baseline` requires explicit user approval to commit the
 diff. Don't run it casually -- the baseline is the lint's frozen
 authority.

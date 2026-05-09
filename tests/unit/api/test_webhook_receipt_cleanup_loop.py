@@ -22,10 +22,21 @@ from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
     WebhookReceiptRepository,
 )
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.registry import registered_default_float, registered_default_int
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
+
+_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS_DEFAULT = registered_default_float(
+    SettingNamespace.INTEGRATIONS.value,
+    "webhook_receipt_cleanup_tick_seconds",
+)
+_WEBHOOK_RECEIPT_RETENTION_DAYS_DEFAULT = registered_default_int(
+    SettingNamespace.INTEGRATIONS.value,
+    "webhook_receipt_retention_days",
+)
 
 
 def _make_connection(
@@ -52,6 +63,10 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
     """Build a minimal AppState stand-in for the cleanup loop."""
     config_resolver = AsyncMock(spec=ConfigResolver)
     config_resolver.get_int.return_value = default_retention_days
+    config_resolver.get_float.return_value = (
+        _WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS_DEFAULT
+    )
+    config_resolver.get_bool.return_value = True
     connections_repo = AsyncMock(spec=ConnectionRepository)
     if list_all_side_effect is not None:
         connections_repo.list_all.side_effect = list_all_side_effect
@@ -220,7 +235,7 @@ async def test_resolve_falls_back_when_no_config_resolver() -> None:
 
     days = await webhook_cleanup._resolve_webhook_receipt_retention(app_state)  # type: ignore[arg-type]
 
-    assert days == webhook_cleanup._DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
+    assert days == _WEBHOOK_RECEIPT_RETENTION_DAYS_DEFAULT
 
 
 async def test_resolve_falls_back_on_resolver_error() -> None:
@@ -236,7 +251,7 @@ async def test_resolve_falls_back_on_resolver_error() -> None:
             app_state,  # type: ignore[arg-type]
         )
 
-    assert days == webhook_cleanup._DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
+    assert days == _WEBHOOK_RECEIPT_RETENTION_DAYS_DEFAULT
     # Resolver failure must escalate to ERROR (not WARNING) so an
     # operator's intentional ``=0`` opt-out cannot be silently
     # overridden by the fallback default; the contract is enforced
@@ -278,9 +293,9 @@ async def test_loop_drives_tick_at_each_iteration(
     # Allow the first tick to run, then drive two cycles of sleep.
     await asyncio.sleep(0)
     assert tick_count == 1
-    await clock.advance_async(webhook_cleanup._WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS)
+    await clock.advance_async(_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS_DEFAULT)
     assert tick_count == 2
-    await clock.advance_async(webhook_cleanup._WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS)
+    await clock.advance_async(_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS_DEFAULT)
     assert tick_count == 3
     task.cancel()
     with pytest.raises(asyncio.CancelledError):

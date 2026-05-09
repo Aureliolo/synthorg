@@ -51,6 +51,9 @@ CONFLICT_ESCALATION_SUBSCRIBER_STOPPED: Final[str] = (
 CONFLICT_ESCALATION_SUBSCRIBER_FAILED: Final[str] = (
     "conflict.escalation.subscriber_failed"
 )
+CONFLICT_ESCALATION_SUBSCRIBER_PAUSED: Final[str] = (
+    "conflict.escalation.subscriber_paused"
+)
 
 # Validation
 CONFLICT_VALIDATION_ERROR: Final[str] = "conflict.validation.error"

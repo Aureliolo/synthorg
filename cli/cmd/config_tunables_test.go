@@ -19,7 +19,6 @@ var tunableKeys = []struct {
 	{"dhi_registry", "private.docker.example"},
 	{"postgres_image_tag", "17-debian13"},
 	{"nats_image_tag", "2.11-debian13"},
-	{"default_nats_url", "nats://example.com:4222"},
 	{"default_nats_stream_prefix", "CUSTOM"},
 	{"backup_create_timeout", "90s"},
 	{"backup_restore_timeout", "45s"},
@@ -91,7 +90,6 @@ func TestTunableKeys_InvalidValues(t *testing.T) {
 		"dhi_registry":               "invalid!host",
 		"postgres_image_tag":         "-leading-dash",
 		"nats_image_tag":             "with space",
-		"default_nats_url":           "http://example.com",
 		"default_nats_stream_prefix": "lowercase",
 		"backup_create_timeout":      "not-a-duration",
 		"health_check_timeout":       "-5s",
@@ -112,11 +110,45 @@ func TestTunableKeys_ComposeAffectingSet(t *testing.T) {
 	want := []string{
 		"registry_host", "image_repo_prefix", "dhi_registry",
 		"postgres_image_tag", "nats_image_tag",
-		"default_nats_url", "default_nats_stream_prefix",
+		"default_nats_stream_prefix",
 	}
 	for _, k := range want {
 		if !composeAffectingKeys[k] {
 			t.Errorf("%s should be in composeAffectingKeys", k)
 		}
+	}
+	// SYNTHORG_NATS_URL is env-only since the parallel CLI tunable
+	// layer was removed; it must not creep back in as a tunable.
+	if composeAffectingKeys["default_nats_url"] {
+		t.Errorf("default_nats_url should NOT be in composeAffectingKeys")
+	}
+}
+
+// TestRemovedTunable_DefaultNATSURLRejected guards against re-introducing
+// "default_nats_url" as a config-set tunable. SYNTHORG_NATS_URL is the
+// single env-only source of truth shared with the backend; if a future
+// PR mistakenly re-adds the parallel CLI tunable, this test fails by
+// enumerating every entry point (key list + apply + reset).
+func TestRemovedTunable_DefaultNATSURLRejected(t *testing.T) {
+	const removedKey = "default_nats_url"
+	state := config.DefaultState()
+
+	if slices.Contains(supportedConfigKeys, removedKey) {
+		t.Errorf("%s should NOT be present in supportedConfigKeys", removedKey)
+	}
+	if slices.Contains(gettableConfigKeys, removedKey) {
+		t.Errorf("%s should NOT be present in gettableConfigKeys", removedKey)
+	}
+	if err := applyConfigValue(&state, removedKey, "nats://example:4222"); err == nil {
+		t.Errorf("applyConfigValue should reject removed key %q", removedKey)
+	}
+	if err := resetConfigValue(&state, removedKey); err == nil {
+		t.Errorf("resetConfigValue should reject removed key %q", removedKey)
+	}
+	// envVarForKey backs the env-var plumbing the live tunables use;
+	// ensuring it returns "" prevents the removed key from lingering
+	// as a back-channel even after the apply/reset paths reject it.
+	if env := envVarForKey(removedKey); env != "" {
+		t.Errorf("envVarForKey(%q) = %q, want \"\" (no env-var mapping)", removedKey, env)
 	}
 }

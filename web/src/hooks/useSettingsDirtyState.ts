@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { createLogger } from '@/lib/logger'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
+import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
+import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { saveSettingsBatch } from '@/pages/settings/utils'
 
 const log = createLogger('useSettingsDirtyState')
@@ -23,7 +25,7 @@ export function useSettingsDirtyState(
     ns: SettingNamespace,
     key: string,
     value: string,
-  ) => Promise<unknown>,
+  ) => Promise<unknown | null>,
 ): UseSettingsDirtyStateReturn {
   const [dirtyValues, setDirtyValues] = useState<Map<string, string>>(
     () => new Map(),
@@ -84,27 +86,24 @@ export function useSettingsDirtyState(
         return next
       })
 
-      if (failedKeys.size === 0) {
-        useToastStore.getState().add({
-          variant: 'success',
-          title: 'Settings saved',
-        })
-      } else {
-        useToastStore.getState().add({
-          variant: 'error',
-          title: `${failedKeys.size} setting(s) failed to save`,
-        })
-      }
-    } catch (err) {
-      log.error(
-        'Unexpected error in handleSave:',
-        err,
-      )
+      // No aggregate toast (success or failure) on batch saves: the
+      // store fires one toast per mutation per the CRUD contract,
+      // so an aggregate at this level would just stack on top.
+    } catch (error) {
+      // Defence-in-depth: per-mutation failures are tracked via
+      // ``failedKeys`` and toasted at the store layer, so this catch
+      // should only fire on programming errors, network failures in
+      // the batch coordination logic, or exceptions in the state
+      // updater.  Log + toast so the user sees feedback and the
+      // dirty state stays intact for retry.
+      log.error('Unexpected error during batch save', {
+        pendingKeys: Array.from(dirtyValues.keys()).map(sanitizeForLog),
+        error: sanitizeForLog(getErrorMessage(error)),
+      })
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Could not save settings',
-        description:
-          'Refresh the page and try again, or check the setting value for validation errors.',
+        title: 'Save failed',
+        description: 'Some settings could not be saved. Please try again.',
       })
     } finally {
       isSavingRef.current = false

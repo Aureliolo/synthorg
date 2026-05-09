@@ -580,17 +580,35 @@ func TestParamsFromState(t *testing.T) {
 // ParamsFromState to fail fast instead of silently falling back to
 // compiled-in defaults. A silent fallback would emit a compose.yml
 // built from defaults that masks the broken override.
+//
+// The valid-control case must succeed; without it the invalid-host
+// branch could pass on any unrelated pipeline failure (a missing
+// required field, a downstream tunable validation rejecting a
+// different value) and silently miss a regression that drops the
+// IsValidRegistryHost check from the resolution path.
 func TestParamsFromState_InvalidTunableReturnsError(t *testing.T) {
-	t.Setenv("SYNTHORG_DEFAULT_NATS_URL", "http://not-a-nats-scheme") // rejected by ValidateNATSURL
-	s := config.State{
-		ImageTag:    "v1.0.0",
-		BackendPort: 3001,
-		WebPort:     3000,
-		LogLevel:    "info",
+	makeState := func() config.State {
+		return config.State{
+			ImageTag:    "v1.0.0",
+			BackendPort: 3001,
+			WebPort:     3000,
+			LogLevel:    "info",
+		}
 	}
-	if _, err := ParamsFromState(s); err == nil {
-		t.Fatal("ParamsFromState: want error for invalid SYNTHORG_DEFAULT_NATS_URL, got nil")
-	}
+
+	t.Run("valid_control", func(t *testing.T) {
+		t.Setenv("SYNTHORG_REGISTRY_HOST", "ghcr.io")
+		if _, err := ParamsFromState(makeState()); err != nil {
+			t.Fatalf("ParamsFromState rejected valid SYNTHORG_REGISTRY_HOST: %v", err)
+		}
+	})
+
+	t.Run("invalid_host", func(t *testing.T) {
+		t.Setenv("SYNTHORG_REGISTRY_HOST", "not valid host")
+		if _, err := ParamsFromState(makeState()); err == nil {
+			t.Fatal("ParamsFromState: want error for invalid SYNTHORG_REGISTRY_HOST, got nil")
+		}
+	})
 }
 
 func assertContains(t *testing.T, s, substr string) {
@@ -782,4 +800,109 @@ func extractServiceBlock(t *testing.T, yaml, name string) string {
 		}
 	}
 	return strings.Join(lines[:end], "\n")
+}
+
+func TestResolveNATSURL(t *testing.T) {
+	cases := []struct {
+		name   string
+		envVal string
+		envSet bool
+		want   string
+	}{
+		{
+			name:   "env_unset_falls_back_to_default",
+			envSet: false,
+			want:   config.DefaultNATSURLValue,
+		},
+		{
+			name:   "env_empty_falls_back_to_default",
+			envSet: true,
+			envVal: "",
+			want:   config.DefaultNATSURLValue,
+		},
+		{
+			name:   "env_whitespace_only_falls_back_to_default",
+			envSet: true,
+			envVal: "   \t\n",
+			want:   config.DefaultNATSURLValue,
+		},
+		{
+			name:   "env_set_returns_trimmed_value",
+			envSet: true,
+			envVal: "  nats://custom:4222  ",
+			want:   "nats://custom:4222",
+		},
+		{
+			name:   "env_set_canonical_value",
+			envSet: true,
+			envVal: "nats://broker.example.org:4222",
+			want:   "nats://broker.example.org:4222",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.envSet {
+				t.Setenv("SYNTHORG_NATS_URL", tc.envVal)
+			} else {
+				// Setenv + then Unsetenv via t.Setenv("", "") is awkward;
+				// the parent process may have SYNTHORG_NATS_URL set from
+				// a developer shell, so explicitly clear it for this case.
+				t.Setenv("SYNTHORG_NATS_URL", "")
+				if err := os.Unsetenv("SYNTHORG_NATS_URL"); err != nil {
+					t.Fatalf("Unsetenv: %v", err)
+				}
+			}
+			got := resolveNATSURL()
+			if got != tc.want {
+				t.Errorf("resolveNATSURL() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestResolveNATSURL_InvalidURLPropagatesToValidation confirms that a
+// malformed SYNTHORG_NATS_URL is rejected by the real compose generation
+// path (ParamsFromState then Generate), not just by ValidateNATSURL in
+// isolation. The valid control case must succeed; without that control,
+// the test would pass for any unrelated pipeline failure (a missing
+// field, a bad image tag) and silently miss the actual regression --
+// a future refactor that drops ValidateNATSURL from the pipeline.
+func TestResolveNATSURL_InvalidURLPropagatesToValidation(t *testing.T) {
+	makeState := func() config.State {
+		return config.State{
+			DataDir:            t.TempDir(),
+			ImageTag:           "v1.0.0",
+			BackendPort:        9000,
+			WebPort:            4000,
+			LogLevel:           "info",
+			JWTSecret:          "secret",
+			SettingsKey:        "settings-key",
+			CursorSecret:       "test-cursor-secret-stable-value",
+			PersistenceBackend: "sqlite",
+			MemoryBackend:      "mem0",
+			BusBackend:         "nats",
+		}
+	}
+
+	t.Run("valid_control", func(t *testing.T) {
+		t.Setenv("SYNTHORG_NATS_URL", "nats://127.0.0.1:4222")
+		params, err := ParamsFromState(makeState())
+		if err != nil {
+			t.Fatalf("ParamsFromState rejected valid SYNTHORG_NATS_URL: %v", err)
+		}
+		if _, err := Generate(params); err != nil {
+			t.Fatalf("Generate rejected valid SYNTHORG_NATS_URL: %v", err)
+		}
+	})
+
+	t.Run("invalid_http_scheme", func(t *testing.T) {
+		t.Setenv("SYNTHORG_NATS_URL", "http://not-a-nats-url:4222")
+		params, paramsErr := ParamsFromState(makeState())
+		if paramsErr != nil {
+			return // ParamsFromState rejecting the bad URL is also an acceptable failure mode
+		}
+		if _, err := Generate(params); err == nil {
+			t.Fatal("expected Generate to reject http:// SYNTHORG_NATS_URL, got nil")
+		}
+	})
 }

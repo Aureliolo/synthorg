@@ -14,7 +14,6 @@ import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
 import { CEREMONY_STRATEGY_TYPES, STRATEGY_DEFAULT_VELOCITY_CALC, VELOCITY_CALC_TYPES } from '@/utils/constants'
-import { getErrorMessage } from '@/utils/errors'
 import { StrategyPicker } from './StrategyPicker'
 import { StrategyChangeWarning } from './StrategyChangeWarning'
 import { StrategyConfigPanel } from './StrategyConfigPanel'
@@ -269,11 +268,22 @@ export default function CeremonyPolicyPage() {
   // Save handler: persist all ceremony settings.
   // Individual calls are used because the settings service does not support
   // batch updates -- each key is an independent PUT /settings/{ns}/{key}.
+  // ``updateSetting`` follows the store-CRUD contract: never throws,
+  // returns ``null`` on failure (with the per-call error toast already
+  // emitted by the store). We treat any ``null`` result as a partial
+  // failure, keep the page dirty so the user can retry, and skip
+  // ``fetchResolvedPolicy`` (the resolved view would race with the
+  // half-saved state).
   const handleSave = useCallback(async () => {
     setSaving(true)
     setSaveError(null)
+    // ``updateSetting`` follows the store-CRUD contract (never throws,
+    // returns ``null`` on failure). ``Promise.allSettled`` is used
+    // anyway as defence-in-depth -- a future regression that breaks
+    // the no-throw contract would otherwise skip the per-result
+    // inspection and propagate an unhandled rejection.
     try {
-      await Promise.all([
+      const settled = await Promise.allSettled([
         updateSetting('coordination', 'ceremony_strategy', strategy),
         updateSetting('coordination', 'ceremony_strategy_config', JSON.stringify(strategyConfig)),
         updateSetting('coordination', 'ceremony_velocity_calculator', velocityCalculator),
@@ -281,19 +291,24 @@ export default function CeremonyPolicyPage() {
         updateSetting('coordination', 'ceremony_transition_threshold', String(transitionThreshold)),
         updateSetting('coordination', 'ceremony_policy_overrides', JSON.stringify(ceremonyOverrides)),
       ])
+      const failedCount = settled.filter(
+        (r) => r.status === 'rejected' || r.value == null,
+      ).length
+      if (failedCount > 0) {
+        setSaveError(`${failedCount} ceremony setting(s) failed to save`)
+        return
+      }
       setIsDirty(false)
-      addToast({ variant: 'success', title: 'Ceremony policy saved' })
+      // No aggregate success toast here: the store emits one per
+      // mutation per the CRUD contract, so an aggregate at this
+      // level would double up.
       fetchResolvedPolicy()
-    } catch (err) {
-      const msg = getErrorMessage(err)
-      setSaveError(msg)
-      addToast({ variant: 'error', title: 'Failed to save ceremony policy', description: msg })
     } finally {
       setSaving(false)
     }
   }, [
     strategy, strategyConfig, velocityCalculator, autoTransition, transitionThreshold,
-    ceremonyOverrides, updateSetting, addToast, fetchResolvedPolicy,
+    ceremonyOverrides, updateSetting, fetchResolvedPolicy,
   ])
 
   // Handle per-ceremony override changes

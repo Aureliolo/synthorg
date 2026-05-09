@@ -576,6 +576,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             _escalation_store,
             _escalation_registry,
             reconnect_delay_seconds=escalation_config.reconnect_delay_seconds,
+            config_resolver=app_state.config_resolver
+            if app_state.has_config_resolver
+            else None,
         ),
     )
 

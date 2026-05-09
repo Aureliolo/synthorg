@@ -110,8 +110,9 @@ vi.mock('@/hooks/useSettingsData', () => {
 
 // Mock the settings store for savingKeys
 vi.mock('@/stores/settings', () => ({
-  useSettingsStore: vi.fn((selector: (s: { savingKeys: ReadonlySet<string> }) => unknown) =>
-    selector({ savingKeys: new Set() }),
+  useSettingsStore: vi.fn(
+    (selector: (s: { savingKeys: ReadonlyMap<string, number> }) => unknown) =>
+      selector({ savingKeys: new Map() }),
   ),
 }))
 

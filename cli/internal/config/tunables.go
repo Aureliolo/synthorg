@@ -17,7 +17,6 @@ const (
 	EnvDHIRegistry            = "SYNTHORG_DHI_REGISTRY"
 	EnvPostgresImageTag       = "SYNTHORG_POSTGRES_IMAGE_TAG"
 	EnvNATSImageTag           = "SYNTHORG_NATS_IMAGE_TAG"
-	EnvDefaultNATSURL         = "SYNTHORG_DEFAULT_NATS_URL"
 	EnvDefaultNATSStreamPfx   = "SYNTHORG_DEFAULT_NATS_STREAM_PREFIX"
 	EnvBackupCreateTimeout    = "SYNTHORG_BACKUP_CREATE_TIMEOUT"
 	EnvBackupRestoreTimeout   = "SYNTHORG_BACKUP_RESTORE_TIMEOUT"
@@ -44,7 +43,6 @@ type Tunables struct {
 	PostgresImageTag string
 	NATSImageTag     string
 
-	DefaultNATSURL          string
 	DefaultNATSStreamPrefix string
 
 	BackupCreateTimeout    time.Duration
@@ -79,7 +77,6 @@ func DefaultTunables() Tunables {
 		DHIRegistry:             DefaultDHIRegistry,
 		PostgresImageTag:        DefaultPostgresImageTag,
 		NATSImageTag:            DefaultNATSImageTag,
-		DefaultNATSURL:          DefaultNATSURLValue,
 		DefaultNATSStreamPrefix: DefaultNATSStreamPrefixValue,
 		BackupCreateTimeout:     DefaultBackupCreateTimeout,
 		BackupRestoreTimeout:    DefaultBackupRestoreTimeout,
@@ -127,12 +124,11 @@ func ResolveTunables(s State) (Tunables, error) {
 		return Tunables{}, fmt.Errorf("invalid nats_image_tag %q", t.NATSImageTag)
 	}
 
-	// NATS defaults.
-	t.DefaultNATSURL = firstNonEmpty(os.Getenv(EnvDefaultNATSURL), s.DefaultNATSURL, t.DefaultNATSURL)
+	// NATS stream prefix default. The NATS URL itself is no longer
+	// resolved here -- the worker reads ``SYNTHORG_NATS_URL`` directly
+	// so the CLI and the backend's ``communication.nats_url`` setting
+	// share a single env var.
 	t.DefaultNATSStreamPrefix = firstNonEmpty(os.Getenv(EnvDefaultNATSStreamPfx), s.DefaultNATSStreamPrefix, t.DefaultNATSStreamPrefix)
-	if err := ValidateNATSURL(t.DefaultNATSURL); err != nil {
-		return Tunables{}, fmt.Errorf("invalid default_nats_url: %w", err)
-	}
 	if !IsValidStreamPrefix(t.DefaultNATSStreamPrefix) {
 		return Tunables{}, fmt.Errorf("invalid default_nats_stream_prefix %q", t.DefaultNATSStreamPrefix)
 	}

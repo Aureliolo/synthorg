@@ -63,18 +63,38 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	// Precedence: explicit flag > env/config (via Tunables) > flag default.
-	if !cmd.Flags().Changed("nats-url") {
-		workerStartNatsURL = opts.Tunables.DefaultNATSURL
+	// Precedence for --nats-url: explicit flag > SYNTHORG_NATS_URL env >
+	// compiled-in fallback. Single source of truth shared with the
+	// backend's ``communication.nats_url`` setting; no parallel
+	// CLI-only tunable layer.
+	//
+	// Reused-process safety: pflag's StringVar binds to a package
+	// global. A previous explicit ``--nats-url=foo`` invocation
+	// leaves ``workerStartNatsURL == "foo"`` after the command
+	// returns, so a later invocation that omits the flag would
+	// inherit ``"foo"`` instead of falling back to the compiled
+	// default. Initialise the omitted-flag branch from
+	// ``config.DefaultNATSURLValue`` directly so the env override
+	// (or the documented default) wins, regardless of what the
+	// previous invocation passed.
+	var resolvedNATSURL string
+	if cmd.Flags().Changed("nats-url") {
+		resolvedNATSURL = workerStartNatsURL
+	} else {
+		resolvedNATSURL = config.DefaultNATSURLValue
+		if envURL := strings.TrimSpace(os.Getenv("SYNTHORG_NATS_URL")); envURL != "" {
+			resolvedNATSURL = envURL
+		}
 	}
+	resolvedStreamPrefix := workerStartStreamPrefix
 	if !cmd.Flags().Changed("stream-prefix") {
-		workerStartStreamPrefix = opts.Tunables.DefaultNATSStreamPrefix
+		resolvedStreamPrefix = opts.Tunables.DefaultNATSStreamPrefix
 	}
 
 	if workerStartCount <= 0 {
 		return fmt.Errorf("--workers must be > 0, got %d", workerStartCount)
 	}
-	if err := validateNatsURL(workerStartNatsURL); err != nil {
+	if err := validateNatsURL(resolvedNATSURL); err != nil {
 		return err
 	}
 	// Validate the stream prefix up front so an explicit --stream-prefix
@@ -82,10 +102,10 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	// worker pool. The tunable path already runs through the same regex
 	// via config.ResolveTunables, but an explicit flag skips that check
 	// and would otherwise end up as an env var on the backend process.
-	if !config.IsValidStreamPrefix(workerStartStreamPrefix) {
+	if !config.IsValidStreamPrefix(resolvedStreamPrefix) {
 		return fmt.Errorf(
 			"invalid --stream-prefix %q: must match [A-Z0-9][A-Z0-9_-]*",
-			workerStartStreamPrefix,
+			resolvedStreamPrefix,
 		)
 	}
 	if err := validateContainerName(workerStartContainer); err != nil {
@@ -116,14 +136,14 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 		"--workers", strconv.Itoa(workerStartCount),
 	}
 	env := append(os.Environ(),
-		"SYNTHORG_NATS_URL="+workerStartNatsURL,
-		"SYNTHORG_NATS_STREAM_PREFIX="+workerStartStreamPrefix,
+		"SYNTHORG_NATS_URL="+resolvedNATSURL,
+		"SYNTHORG_NATS_STREAM_PREFIX="+resolvedStreamPrefix,
 		"SYNTHORG_WORKER_COUNT="+strconv.Itoa(workerStartCount),
 	)
 
 	out.KeyValue("Workers", strconv.Itoa(workerStartCount))
-	out.KeyValue("NATS URL", redactNatsURL(workerStartNatsURL))
-	out.KeyValue("Stream prefix", workerStartStreamPrefix)
+	out.KeyValue("NATS URL", redactNatsURL(resolvedNATSURL))
+	out.KeyValue("Stream prefix", resolvedStreamPrefix)
 	out.KeyValue("Container", container)
 	out.HintNextStep("Press Ctrl+C to stop workers.")
 

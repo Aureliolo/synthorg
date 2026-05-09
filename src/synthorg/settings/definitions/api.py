@@ -793,6 +793,48 @@ _r.register(
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,
+        yaml_path="api.lifecycle_cleanup_enabled",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="health_prober_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master kill switch for the provider health prober. When"
+            " False the loop stays resident but every cycle short-circuits"
+            " -- pauses provider HTTP probing without tearing down"
+            " lifecycle. Real API call outcomes still update the health"
+            " tracker. Resolver outage falls back to enabled (safer than"
+            " silently pausing observability)."
+        ),
+        group="Providers",
+        level=SettingLevel.ADVANCED,
+        yaml_path="api.health_prober_enabled",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="webhook_receipt_cleanup_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master kill switch for the per-connection webhook receipt"
+            " sweep loop. When False the loop stays resident but every"
+            " tick short-circuits (cadence controlled by"
+            " ``integrations.webhook_receipt_cleanup_tick_seconds``) --"
+            " pauses receipt pruning without tearing down lifecycle."
+            " Receipts continue to accumulate until the flag is flipped"
+            " back. Resolver outage falls back to enabled."
+        ),
+        group="Webhooks",
+        level=SettingLevel.ADVANCED,
+        yaml_path="api.webhook_receipt_cleanup_enabled",
     )
 )
 
@@ -815,6 +857,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
+        yaml_path="api.rate_limiter_enabled",
     )
 )
 
@@ -834,6 +877,7 @@ _r.register(
         restart_required=True,
         min_value=60.0,
         max_value=86_400.0,
+        yaml_path="api.approval_urgency_critical_seconds",
     )
 )
 
@@ -852,6 +896,7 @@ _r.register(
         restart_required=True,
         min_value=300.0,
         max_value=604_800.0,
+        yaml_path="api.approval_urgency_high_seconds",
     )
 )
 
