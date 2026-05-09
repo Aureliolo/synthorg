@@ -6,7 +6,7 @@ promotion/demotion behavior.
 
 import copy
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -77,7 +77,7 @@ class ModelMappingConfig(BaseModel):
         default=True,
         description="Whether model follows seniority level",
     )
-    seniority_model_map: Any = Field(
+    seniority_model_map: dict[str, str] = Field(
         default_factory=dict,
         description="Explicit seniority level to model ID overrides "
         "(wrapped as MappingProxyType after validation)",
@@ -87,14 +87,14 @@ class ModelMappingConfig(BaseModel):
     def _validate_model_map_keys(self) -> Self:
         """Validate keys and wrap in MappingProxyType for immutability."""
         raw_map = self.seniority_model_map
-        if isinstance(raw_map, MappingProxyType):
-            raw_map = dict(raw_map)
         valid_values = {level.value for level in SeniorityLevel}
         for key in raw_map:
             if key not in valid_values:
                 msg = f"Unknown seniority level in model map: {key!r}"
                 raise ValueError(msg)
-        # Wrap in MappingProxyType for read-only enforcement
+        # Wrap in MappingProxyType for read-only enforcement.  Pydantic
+        # has already coerced any ``Mapping`` input into a dict by the
+        # time this validator runs.
         object.__setattr__(
             self,
             "seniority_model_map",

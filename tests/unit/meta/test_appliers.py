@@ -820,7 +820,7 @@ class TestArchitectureApplier:
                 "r1",
                 payload={
                     "description": "d",
-                    "tool_access": ("git", "shell"),
+                    "tool_access": ["git", "shell"],
                 },
             ),
         )
