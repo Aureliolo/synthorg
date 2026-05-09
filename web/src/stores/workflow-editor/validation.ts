@@ -32,7 +32,11 @@ export const createValidationSlice: SliceCreator<ValidationSlice> = (set, get) =
   validate: async () => {
     const { definition, nodes, edges } = get()
     if (!definition) {
-      set({ error: 'Cannot validate: no workflow loaded' })
+      set({
+        error: 'Cannot validate: no workflow loaded',
+        validating: false,
+        validationResult: null,
+      })
       return
     }
     const badNodes = nodes.filter((n) => !isWorkflowNodeType(n.type))
@@ -44,6 +48,7 @@ export const createValidationSlice: SliceCreator<ValidationSlice> = (set, get) =
       set({
         error: `Cannot validate -- ${parts.join('; ')}. Remove and re-add the affected items.`,
         validating: false,
+        validationResult: null,
       })
       return
     }

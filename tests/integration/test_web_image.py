@@ -41,7 +41,7 @@ def _wait_for_web_container_ready(
         remaining = deadline - time.time()
         try:
             resp = httpx.get(f"{base_url}/", timeout=min(2, remaining))
-        except httpx.ConnectError, httpx.ReadError:
+        except httpx.ConnectError, httpx.ReadError, httpx.TimeoutException:
             pass
         else:
             if resp.status_code == 200:

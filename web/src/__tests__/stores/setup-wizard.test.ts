@@ -439,8 +439,15 @@ describe('setup wizard store', () => {
       // Tight timeout: if the predicate hasn't held within 100 ms the
       // store's coalescing logic is broken; the default 1000 ms would
       // mask a regression as a slow-CI false pass.
-      await vi.waitFor(() => expect(observedConcurrent).toBe(1), { timeout: 100 })
-      releaseHandler()
+      // ``try/finally`` ensures ``releaseHandler()`` fires even when
+      // ``vi.waitFor`` rejects, otherwise the gated handler would
+      // leave the three submitCompany() promises stuck and the test
+      // would hang on the subsequent ``await submissions``.
+      try {
+        await vi.waitFor(() => expect(observedConcurrent).toBe(1), { timeout: 100 })
+      } finally {
+        releaseHandler()
+      }
       await submissions
       // ``observedConcurrent`` alone is satisfied if a serial test
       // runner happens to schedule the three calls one-after-another
