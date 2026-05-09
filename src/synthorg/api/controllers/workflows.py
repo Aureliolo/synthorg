@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from synthorg.api.controllers._workflow_builders import (
     apply_update,
     build_definition_from_blueprint,
-    load_blueprint_or_error,
+    load_blueprint_or_raise,
     run_subworkflow_validation,
     wf_versioning,
 )
@@ -177,10 +177,7 @@ class WorkflowController(Controller):
             blueprint_name=data.blueprint_name,
         )
 
-        result = await load_blueprint_or_error(data.blueprint_name)
-        if isinstance(result, Response):
-            return result
-        bp = result
+        bp = await load_blueprint_or_raise(data.blueprint_name)
 
         now = datetime.now(UTC)
         definition = build_definition_from_blueprint(
@@ -332,10 +329,7 @@ class WorkflowController(Controller):
             data.expected_revision,
         )
 
-        update_result = apply_update(existing, data)
-        if isinstance(update_result, Response):
-            return update_result
-        updated = update_result
+        updated = apply_update(existing, data)
 
         subworkflow_errors = await run_subworkflow_validation(updated, state)
         if subworkflow_errors:

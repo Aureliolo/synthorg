@@ -18,6 +18,7 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.engine.errors import (
+    WorkflowExecutionAlreadyTerminalError,
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
@@ -26,9 +27,10 @@ from synthorg.engine.workflow.execution_models import (  # noqa: TC001
     WorkflowExecution,
     WorkflowNodeExecution,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import METRICS_CLOCK_SKEW_DETECTED
 from synthorg.observability.events.workflow_execution import (
+    WORKFLOW_EXEC_CANCEL_CONFLICT,
     WORKFLOW_EXEC_CANCELLED,
     WORKFLOW_EXEC_COMPLETED,
     WORKFLOW_EXEC_FAILED,
@@ -106,7 +108,18 @@ async def cancel_execution(
 
     Raises:
         WorkflowExecutionNotFoundError: If not found.
-        WorkflowExecutionError: If execution is already terminal.
+        WorkflowExecutionAlreadyTerminalError: If execution is already
+            terminal. Maps to 409 +
+            ``WORKFLOW_EXECUTION_ALREADY_TERMINAL`` so clients can tell
+            "execution finished before cancel arrived" (no retry will
+            succeed) apart from a row-level optimistic-concurrency
+            race.
+        PersistenceVersionConflictError: Re-raised from the save path
+            when a concurrent writer mutated the row between the read
+            and the cancel write. Callers should distinguish this from
+            ``WorkflowExecutionAlreadyTerminalError``: the persistence
+            race is retryable (re-read, re-issue), the terminal-status
+            case is not.
     """
     execution = await repo.get(execution_id)
     if execution is None:
@@ -128,11 +141,12 @@ async def cancel_execution(
             f" in terminal status {execution.status.value!r}"
         )
         logger.warning(
-            WORKFLOW_EXEC_CANCELLED,
+            WORKFLOW_EXEC_CANCEL_CONFLICT,
             execution_id=execution_id,
+            current_status=execution.status.value,
             error=msg,
         )
-        raise WorkflowExecutionError(msg)
+        raise WorkflowExecutionAlreadyTerminalError(msg)
 
     with _tracer.start_as_current_span(
         "workflow.execution.cancelled",
@@ -151,7 +165,28 @@ async def cancel_execution(
                 "version": execution.version + 1,
             }
         )
-        await repo.save(cancelled)
+        try:
+            await repo.save(cancelled)
+        except PersistenceVersionConflictError as exc:
+            # Optimistic-concurrency race: another writer mutated the
+            # execution between the read above and this save. Re-fetch
+            # so the audit signal records the *winner's* status, not
+            # the stale pre-save snapshot which would usually still
+            # report 'running' even after another writer moved the row
+            # to a terminal state.
+            refreshed = await repo.get(execution_id)
+            logger.warning(
+                WORKFLOW_EXEC_CANCEL_CONFLICT,
+                execution_id=execution_id,
+                current_status=(
+                    refreshed.status.value
+                    if refreshed is not None
+                    else execution.status.value
+                ),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         # State-transition logs fire AFTER persistence succeeds so
         # the audit trail only records transitions that actually
         # happened. A save failure raises, skipping these logs.

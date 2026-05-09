@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, ClassVar
 
-from synthorg.core.domain_errors import DomainError
+from synthorg.core.domain_errors import DomainError, VersionConflictError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -256,11 +256,33 @@ class WorkflowExecutionError(EngineError):
 
 
 class WorkflowDefinitionInvalidError(WorkflowExecutionError):
-    """Raised when a workflow definition fails validation at activation time."""
+    """Raised when a workflow definition fails validation at activation time.
+
+    422 + ``REQUEST_VALIDATION_ERROR``: a definition that fails activation-time
+    structural checks is a caller-side validation failure surfaced after the
+    request reached the engine, not an internal fault. Aligns with
+    :class:`WorkflowDefinitionValidationError` (the create/update path) so
+    every "invalid workflow definition" surface emits the same 422 envelope.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Invalid workflow definition for activation"
 
 
 class WorkflowConditionEvalError(WorkflowExecutionError):
-    """Raised when a condition expression cannot be evaluated."""
+    """Raised when a condition expression cannot be evaluated.
+
+    422 + ``REQUEST_VALIDATION_ERROR``: a condition expression that fails
+    evaluation is authored by the caller as part of the workflow definition,
+    so the failure is a request-shape problem rather than an engine fault.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Workflow condition evaluation failed"
 
 
 class WorkflowExecutionNotFoundError(WorkflowExecutionError):
@@ -393,6 +415,23 @@ class WorkflowYamlExportError(WorkflowExecutionError):
     error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Workflow YAML export failed"
+
+
+class WorkflowExecutionAlreadyTerminalError(VersionConflictError):
+    """Raised when cancel targets an execution already in a terminal status.
+
+    Distinct from :class:`synthorg.core.domain_errors.VersionConflictError`
+    (4002) so API clients can discriminate "the execution finished before
+    you cancelled" (no retry will succeed) from a row-level optimistic-
+    concurrency race where the caller can re-read and try again. Both
+    map to 409 + ``CONFLICT`` so the HTTP envelope shape is unchanged;
+    only the ``error_code`` differs.
+    """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_EXECUTION_ALREADY_TERMINAL
+    default_message: ClassVar[str] = (
+        "Workflow execution is already in a terminal status"
+    )
 
 
 class SelfReviewError(EngineError):

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from synthorg.engine.errors import (
     SubworkflowDepthExceededError,
     WorkflowDefinitionInvalidError,
+    WorkflowExecutionAlreadyTerminalError,
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
@@ -252,7 +253,7 @@ async def workflow_executions_cancel(  # noqa: PLR0911 -- error mapping
     except WorkflowExecutionNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
-    except WorkflowExecutionError as exc:
+    except WorkflowExecutionAlreadyTerminalError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except MemoryError, RecursionError:

@@ -10,10 +10,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from litestar import Response
 from pydantic import ValidationError
 
-from synthorg.api.dto import ApiResponse
+from synthorg.engine.errors import WorkflowDefinitionValidationError
 from synthorg.engine.workflow.blueprint_errors import (
     BlueprintNotFoundError,
     BlueprintValidationError,
@@ -34,8 +33,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.blueprint import BLUEPRINT_INSTANTIATE_FAILED
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_INVALID_REQUEST,
-    WORKFLOW_DEF_NOT_FOUND,
-    WORKFLOW_DEF_VERSION_CONFLICT,
 )
 from synthorg.observability.metrics_hub import record_blueprint_instantiation
 from synthorg.versioning import VersioningService
@@ -49,9 +46,6 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.workflow.blueprint_models import BlueprintData
     from synthorg.engine.workflow.validation import WorkflowValidationError
-    from synthorg.persistence.workflow_definition_protocol import (
-        WorkflowDefinitionRepository,
-    )
 
 logger = get_logger(__name__)
 
@@ -89,71 +83,48 @@ def _validate_collection(
     model_cls: type,
     *,
     field_name: str,
-    invalid_message: str,
-) -> tuple[object, ...] | Response[ApiResponse[WorkflowDefinition]]:
-    """Validate an iterable of dict items against ``model_cls``."""
+) -> tuple[object, ...]:
+    """Validate an iterable of dict items against ``model_cls``.
+
+    Raises:
+        WorkflowDefinitionValidationError: 422 with a field-scoped
+            message so API clients see which collection failed without
+            needing to consult server logs. Pydantic detail is scrubbed
+            to avoid leaking internal payload shapes.
+    """
     try:
         return tuple(model_cls.model_validate(i) for i in items)  # type: ignore[attr-defined]
     except (ValueError, ValidationError) as exc:
-        safe_exc = safe_error_description(exc)
         logger.warning(
             WORKFLOW_DEF_INVALID_REQUEST,
             field=field_name,
             error_type=type(exc).__name__,
-            error=safe_exc,
+            error=safe_error_description(exc),
         )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](
-                error=invalid_message.format(exc=safe_exc),
-            ),
-            status_code=422,
-        )
+        msg = f"Invalid {field_name} field in request."
+        raise WorkflowDefinitionValidationError(msg) from exc
 
 
 def build_update_fields(
     data: UpdateWorkflowDefinitionRequest,
-) -> dict[str, object] | Response[ApiResponse[WorkflowDefinition]]:
-    """Build the update dict from the request, or return error."""
+) -> dict[str, object]:
+    """Build the update dict from the request, raising on invalid fields."""
     updates = _scalar_updates(data)
 
-    collection_specs: tuple[tuple[str, object, type, str], ...] = (
-        (
-            "inputs",
-            data.inputs,
-            WorkflowIODeclaration,
-            "Invalid 'inputs' field in request.",
-        ),
-        (
-            "outputs",
-            data.outputs,
-            WorkflowIODeclaration,
-            "Invalid 'outputs' field in request.",
-        ),
-        (
-            "nodes",
-            data.nodes,
-            WorkflowNode,
-            "Invalid nodes: {exc}",
-        ),
-        (
-            "edges",
-            data.edges,
-            WorkflowEdge,
-            "Invalid edges: {exc}",
-        ),
+    collection_specs: tuple[tuple[str, object, type], ...] = (
+        ("inputs", data.inputs, WorkflowIODeclaration),
+        ("outputs", data.outputs, WorkflowIODeclaration),
+        ("nodes", data.nodes, WorkflowNode),
+        ("edges", data.edges, WorkflowEdge),
     )
-    for field_name, items, model_cls, message in collection_specs:
+    for field_name, items, model_cls in collection_specs:
         if items is None:
             continue
-        validated = _validate_collection(
+        updates[field_name] = _validate_collection(
             items,
             model_cls,
             field_name=field_name,
-            invalid_message=message,
         )
-        if isinstance(validated, Response):
-            return validated
-        updates[field_name] = validated
     return updates
 
 
@@ -215,12 +186,16 @@ def build_definition_from_blueprint(
 def apply_update(
     existing: WorkflowDefinition,
     data: UpdateWorkflowDefinitionRequest,
-) -> WorkflowDefinition | Response[ApiResponse[WorkflowDefinition]]:
-    """Merge update fields into an existing definition and validate."""
-    result = build_update_fields(data)
-    if isinstance(result, Response):
-        return result
-    updates = result
+) -> WorkflowDefinition:
+    """Merge update fields into an existing definition and validate.
+
+    Raises:
+        WorkflowDefinitionValidationError: 422 if the merged payload
+            fails Pydantic validation. Pydantic detail is scrubbed so
+            the envelope does not leak internal payload shapes; the
+            structured warning log preserves operator context.
+    """
+    updates = build_update_fields(data)
     updates["revision"] = existing.revision + 1
 
     try:
@@ -229,57 +204,27 @@ def apply_update(
     except (ValueError, ValidationError) as exc:
         logger.warning(
             WORKFLOW_DEF_INVALID_REQUEST,
+            definition_id=existing.id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](
-                error=f"Invalid update: {safe_error_description(exc)}",
-            ),
-            status_code=422,
-        )
+        msg = WorkflowDefinitionValidationError.default_message
+        raise WorkflowDefinitionValidationError(msg) from exc
 
 
-async def fetch_existing_for_update(
-    repo: WorkflowDefinitionRepository,
-    workflow_id: str,
-    expected_revision: int | None,
-) -> WorkflowDefinition | Response[ApiResponse[WorkflowDefinition]]:
-    """Fetch a definition and check for revision conflicts before update."""
-    existing = await repo.get(workflow_id)
-    if existing is None:
-        logger.warning(
-            WORKFLOW_DEF_NOT_FOUND,
-            definition_id=workflow_id,
-        )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](
-                error="Workflow definition not found",
-            ),
-            status_code=404,
-        )
-
-    if expected_revision is not None and expected_revision != existing.revision:
-        logger.warning(
-            WORKFLOW_DEF_VERSION_CONFLICT,
-            definition_id=workflow_id,
-            expected=expected_revision,
-            actual=existing.revision,
-        )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](
-                error="Version conflict: the workflow was modified. Reload and retry.",
-            ),
-            status_code=409,
-        )
-
-    return existing
-
-
-async def load_blueprint_or_error(
+async def load_blueprint_or_raise(
     blueprint_name: str,
-) -> BlueprintData | Response[ApiResponse[WorkflowDefinition]]:
-    """Load a blueprint by name, returning an error response on failure."""
+) -> BlueprintData:
+    """Load a blueprint by name, raising the typed domain error on failure.
+
+    Emits the per-attempt warning + metric so the audit stream records
+    "blueprint resolution attempted -> outcome" pairs regardless of
+    where the typed error is finally rendered.
+
+    Raises:
+        BlueprintNotFoundError: 404 + ``RESOURCE_NOT_FOUND``.
+        BlueprintValidationError: 422 + ``VALIDATION_ERROR``.
+    """
     try:
         return await asyncio.to_thread(load_blueprint, blueprint_name)
     except BlueprintNotFoundError as exc:
@@ -293,12 +238,7 @@ async def load_blueprint_or_error(
             outcome="not_found",
             blueprint_name=blueprint_name,
         )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](
-                error=f"Blueprint not found: {blueprint_name}",
-            ),
-            status_code=404,
-        )
+        raise
     except BlueprintValidationError as exc:
         logger.warning(
             BLUEPRINT_INSTANTIATE_FAILED,
@@ -310,9 +250,4 @@ async def load_blueprint_or_error(
             outcome="validation_error",
             blueprint_name=blueprint_name,
         )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](
-                error="Blueprint validation failed",
-            ),
-            status_code=422,
-        )
+        raise

@@ -85,6 +85,7 @@ All 13 share the same `type` URI; the numeric code is the discriminator.
 | 4005 | `CHANNEL_ALREADY_EXISTS` | Channel name already taken |
 | 4006 | `ESCALATION_ALREADY_DECIDED` | Late decision on a closed escalation |
 | 4007 | `MIXED_CURRENCY_AGGREGATION` | Cross-currency aggregation attempted |
+| 4008 | `WORKFLOW_EXECUTION_ALREADY_TERMINAL` | Cancel hit an execution already in a terminal status (no retry will succeed) |
 
 ## Rate Limit (5xxx)
 

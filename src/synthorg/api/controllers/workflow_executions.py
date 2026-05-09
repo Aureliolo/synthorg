@@ -18,29 +18,21 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import NotFoundError, VersionConflictError
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import (
-    PersistenceError,
     PersistenceVersionConflictError,
     RecordNotFoundError,
 )
 from synthorg.engine.errors import (
-    WorkflowConditionEvalError,
-    WorkflowDefinitionInvalidError,
-    WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
-    WORKFLOW_EXEC_CANCEL_CONFLICT,
     WORKFLOW_EXEC_CANCELLED,
-    WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
-    WORKFLOW_EXEC_INVALID_DEFINITION,
     WORKFLOW_EXEC_NOT_FOUND,
-    WORKFLOW_EXEC_PERSISTENCE_FAILED,
     WORKFLOW_EXECUTION_USERNAME_FALLBACK,
 )
 
@@ -120,7 +112,12 @@ class WorkflowExecutionController(Controller):
         workflow_id: PathId,
         data: ActivateWorkflowRequest,
     ) -> Response[ApiResponse[WorkflowExecution]]:
-        """Activate a workflow definition, creating task instances."""
+        """Activate a workflow definition, creating task instances.
+
+        ``WorkflowDefinitionInvalidError`` (422), ``WorkflowConditionEvalError``
+        (422) and ``PersistenceError`` (500) propagate to the centralised
+        RFC 9457 dispatch in ``api/exception_handlers.py``.
+        """
         activated_by = _extract_username(request)
         service = await _build_service(state)
         try:
@@ -137,44 +134,6 @@ class WorkflowExecutionController(Controller):
             )
             msg = f"Workflow definition {workflow_id!r} not found"
             raise NotFoundError(msg) from None
-        except WorkflowDefinitionInvalidError as exc:
-            scrubbed = safe_error_description(exc)
-            logger.warning(
-                WORKFLOW_EXEC_INVALID_DEFINITION,
-                workflow_id=workflow_id,
-                error_type=type(exc).__name__,
-                error=scrubbed,
-            )
-            return Response(
-                content=ApiResponse[WorkflowExecution](error=scrubbed),
-                status_code=422,
-            )
-        except WorkflowConditionEvalError as exc:
-            scrubbed = safe_error_description(exc)
-            logger.warning(
-                WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
-                workflow_id=workflow_id,
-                error_type=type(exc).__name__,
-                error=scrubbed,
-            )
-            return Response(
-                content=ApiResponse[WorkflowExecution](error=scrubbed),
-                status_code=422,
-            )
-        except PersistenceError as exc:
-            logger.warning(
-                WORKFLOW_EXEC_PERSISTENCE_FAILED,
-                workflow_id=workflow_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="persistence failure during activation",
-            )
-            return Response(
-                content=ApiResponse[WorkflowExecution](
-                    error="Workflow activation failed due to a storage error.",
-                ),
-                status_code=500,
-            )
 
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),
@@ -194,22 +153,7 @@ class WorkflowExecutionController(Controller):
     ) -> Response[PaginatedResponse[WorkflowExecution] | ApiResponse[None]]:
         """List executions for a workflow definition with cursor pagination."""
         service = await _build_service(state)
-        try:
-            executions = await service.list_executions(workflow_id)
-        except PersistenceError as exc:
-            logger.warning(
-                WORKFLOW_EXEC_PERSISTENCE_FAILED,
-                workflow_id=workflow_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="persistence failure during list",
-            )
-            return Response(
-                content=ApiResponse[None](
-                    error="Failed to list workflow executions.",
-                ),
-                status_code=500,
-            )
+        executions = await service.list_executions(workflow_id)
         page, meta = paginate_cursor(
             tuple(executions),
             limit=limit,
@@ -234,22 +178,7 @@ class WorkflowExecutionController(Controller):
     ) -> Response[ApiResponse[WorkflowExecution]]:
         """Get a specific workflow execution."""
         service = await _build_service(state)
-        try:
-            execution = await service.get_execution(execution_id)
-        except PersistenceError as exc:
-            logger.warning(
-                WORKFLOW_EXEC_PERSISTENCE_FAILED,
-                execution_id=execution_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="persistence failure during get",
-            )
-            return Response(
-                content=ApiResponse[WorkflowExecution](
-                    error="Failed to retrieve workflow execution.",
-                ),
-                status_code=500,
-            )
+        execution = await service.get_execution(execution_id)
         execution = require_resource_or_404(
             execution,
             resource_type="Workflow execution",
@@ -276,7 +205,17 @@ class WorkflowExecutionController(Controller):
         state: State,
         execution_id: PathId,
     ) -> Response[ApiResponse[WorkflowExecution]]:
-        """Cancel a workflow execution."""
+        """Cancel a workflow execution.
+
+        Rejection paths translate to 409 ``CONFLICT`` with a discriminating
+        ``error_code`` so clients can distinguish "execution finished
+        before you cancelled" (``WORKFLOW_EXECUTION_ALREADY_TERMINAL``,
+        no retry will succeed) from a row-level optimistic-concurrency
+        race (``VERSION_CONFLICT``, re-read and retry).
+        ``WorkflowExecutionAlreadyTerminalError`` propagates from the
+        engine; only the persistence-layer race is re-mapped here.
+        ``PersistenceError`` (500) propagates unchanged.
+        """
         cancelled_by = _extract_username(request)
         service = await _build_service(state)
         try:
@@ -291,38 +230,13 @@ class WorkflowExecutionController(Controller):
             )
             msg = f"Workflow execution {execution_id!r} not found"
             raise NotFoundError(msg) from None
-        except (WorkflowExecutionError, PersistenceVersionConflictError) as exc:
-            # Cancel was rejected (already-terminal status, version
-            # mismatch). Emit a distinct conflict event so audit
-            # streams and dashboards do NOT mistake a failed cancel
-            # for a successful one; the success path emits
-            # ``WORKFLOW_EXEC_CANCELLED`` only after the persistence
-            # write succeeds, below.
-            scrubbed = safe_error_description(exc)
-            logger.warning(
-                WORKFLOW_EXEC_CANCEL_CONFLICT,
-                execution_id=execution_id,
-                error_type=type(exc).__name__,
-                error=scrubbed,
-            )
-            return Response(
-                content=ApiResponse[WorkflowExecution](error=scrubbed),
-                status_code=409,
-            )
-        except PersistenceError as exc:
-            logger.warning(
-                WORKFLOW_EXEC_PERSISTENCE_FAILED,
-                execution_id=execution_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="persistence failure during cancel",
-            )
-            return Response(
-                content=ApiResponse[WorkflowExecution](
-                    error="Failed to cancel workflow execution.",
-                ),
-                status_code=500,
-            )
+        except PersistenceVersionConflictError as exc:
+            # Drop the persistence-layer detail (row IDs, version
+            # numbers) on the public envelope; the engine emits
+            # ``WORKFLOW_EXEC_CANCEL_CONFLICT`` with the scrubbed
+            # exception attributes for audit. ``from exc`` keeps the
+            # original chained for traceback inspection.
+            raise VersionConflictError from exc
 
         logger.info(
             WORKFLOW_EXEC_CANCELLED,

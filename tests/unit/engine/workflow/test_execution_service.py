@@ -18,7 +18,7 @@ from synthorg.core.persistence_errors import (
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
     WorkflowDefinitionInvalidError,
-    WorkflowExecutionError,
+    WorkflowExecutionAlreadyTerminalError,
     WorkflowExecutionNotFoundError,
 )
 from synthorg.engine.task_engine_models import CreateTaskData
@@ -673,7 +673,7 @@ class TestCancelExecution:
         service: WorkflowExecutionService,
         def_repo: FakeDefinitionRepo,
     ) -> None:
-        """Cancelling a terminal execution raises WorkflowExecutionError."""
+        """Cancelling a terminal execution raises the dedicated terminal error."""
         wf = make_workflow(
             nodes=(
                 make_start_node(),
@@ -693,5 +693,150 @@ class TestCancelExecution:
         )
         await service.cancel_execution(exe.id, cancelled_by="admin")
 
-        with pytest.raises(WorkflowExecutionError):
+        with pytest.raises(WorkflowExecutionAlreadyTerminalError):
             await service.cancel_execution(exe.id, cancelled_by="admin")
+
+    @pytest.mark.unit
+    async def test_cancel_terminal_emits_cancel_conflict_event(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        """Engine emits ``WORKFLOW_EXEC_CANCEL_CONFLICT`` when cancel is
+        rejected because the execution is already terminal.
+
+        Engine-layer emission is the canonical home for this audit signal:
+        the controller raises a typed domain error which the centralised
+        handler translates into the 409 envelope, so the only place the
+        signal can be sourced is the service.
+        """
+        import structlog.testing
+
+        from synthorg.observability.events.workflow_execution import (
+            WORKFLOW_EXEC_CANCEL_CONFLICT,
+        )
+
+        wf = make_workflow(
+            nodes=(
+                make_start_node(),
+                make_task_node_full("task-1", config={"title": "Work"}),
+                make_end_node(),
+            ),
+            edges=(
+                make_edge("e1", "start-1", "task-1"),
+                make_edge("e2", "task-1", "end-1"),
+            ),
+        )
+        await def_repo.save(wf)
+        exe = await service.activate(
+            wf.id,
+            project="proj",
+            activated_by="user",
+        )
+        await service.cancel_execution(exe.id, cancelled_by="admin")
+
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(WorkflowExecutionAlreadyTerminalError),
+        ):
+            await service.cancel_execution(exe.id, cancelled_by="admin")
+
+        cancel_conflict = [
+            e for e in events if e.get("event") == WORKFLOW_EXEC_CANCEL_CONFLICT
+        ]
+        assert len(cancel_conflict) == 1
+        entry = cancel_conflict[0]
+        assert entry["execution_id"] == exe.id
+        assert entry["current_status"] == WorkflowExecutionStatus.CANCELLED.value
+
+    @pytest.mark.unit
+    async def test_cancel_version_conflict_logs_refreshed_status(
+        self,
+        def_repo: FakeDefinitionRepo,
+        task_engine: FakeTaskEngine,
+    ) -> None:
+        """Version-conflict log records the winner's current status.
+
+        On ``PersistenceVersionConflictError`` the in-memory snapshot is
+        stale: the winning writer already moved the row to a terminal
+        status, so logging ``execution.status.value`` would mis-report
+        the audit signal as 'running'. The engine must re-fetch and
+        emit the refreshed status.
+        """
+        import structlog.testing
+
+        from synthorg.observability.events.workflow_execution import (
+            WORKFLOW_EXEC_CANCEL_CONFLICT,
+        )
+
+        class _RacingExecRepo(FakeExecutionRepo):
+            """Simulates a winning writer mutating the row mid-cancel.
+
+            The first time a non-insert save (i.e. when a stored row
+            already exists) hits the repo, the in-memory store is
+            rewritten to the racing writer's version (FAILED + bumped
+            version) and ``PersistenceVersionConflictError`` is raised,
+            mirroring what an optimistic-concurrency lookup-and-bump
+            backend does. Activation's insert at version=1 is left
+            untouched so the test fixture can build a real execution.
+            """
+
+            def __init__(self) -> None:
+                super().__init__()
+                self._raced = False
+
+            async def save(self, execution: WorkflowExecution) -> None:
+                stored = self._store.get(execution.id)
+                if stored is not None and not self._raced:
+                    self._raced = True
+                    winner = stored.model_copy(
+                        update={
+                            "status": WorkflowExecutionStatus.FAILED,
+                            "version": stored.version + 1,
+                        },
+                    )
+                    self._store[execution.id] = winner
+                    msg = "simulated optimistic-concurrency race"
+                    raise PersistenceVersionConflictError(msg)
+                await super().save(execution)
+
+        racing_repo = _RacingExecRepo()
+        engine: Any = task_engine
+        service = WorkflowExecutionService(
+            definition_repo=def_repo,
+            execution_repo=racing_repo,
+            task_engine=engine,
+            max_subworkflow_depth=16,
+        )
+
+        wf = make_workflow(
+            nodes=(
+                make_start_node(),
+                make_task_node_full("task-1", config={"title": "Work"}),
+                make_end_node(),
+            ),
+            edges=(
+                make_edge("e1", "start-1", "task-1"),
+                make_edge("e2", "task-1", "end-1"),
+            ),
+        )
+        await def_repo.save(wf)
+        exe = await service.activate(
+            wf.id,
+            project="proj",
+            activated_by="user",
+        )
+
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(PersistenceVersionConflictError),
+        ):
+            await service.cancel_execution(exe.id, cancelled_by="admin")
+
+        cancel_conflict = [
+            e for e in events if e.get("event") == WORKFLOW_EXEC_CANCEL_CONFLICT
+        ]
+        assert len(cancel_conflict) == 1
+        entry = cancel_conflict[0]
+        assert entry["execution_id"] == exe.id
+        assert entry["current_status"] == WorkflowExecutionStatus.FAILED.value
