@@ -1,6 +1,8 @@
 // AUTO-GENERATED: do not edit by hand.
 // Regenerate with: uv run python scripts/generate_error_codes_ts.py
+// Drift check (pre-push): uv run python scripts/check_error_codes_ts_in_sync.py
 // Source: src/synthorg/core/error_taxonomy.py
+// Contract: web/CLAUDE.md -> 'Error-code constants (MANDATORY)'
 
 export const ErrorCode = {
     UNAUTHORIZED: 1000,

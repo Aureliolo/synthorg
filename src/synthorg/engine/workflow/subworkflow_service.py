@@ -81,9 +81,9 @@ class SubworkflowHasParentsError(SubworkflowIOError):
             )
             raise ValueError(msg)
         super().__init__(message)
-        self.subworkflow_id = subworkflow_id
-        self.version = version
-        self.parents = parents
+        self.subworkflow_id: str = subworkflow_id
+        self.version: str = version
+        self.parents: tuple[ParentReference, ...] = parents
 
 
 class SubworkflowService:

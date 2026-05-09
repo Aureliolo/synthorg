@@ -463,7 +463,7 @@ class TestWorkflowControllerErrorEnvelope:
         body = resp.json()
         assert body["success"] is False
         detail = body["error_detail"]
-        assert detail["error_code"] == ErrorCode.VALIDATION_ERROR
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
 
@@ -574,3 +574,40 @@ class TestWorkflowControllerErrorEnvelope:
         detail = body["error_detail"]
         assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
         assert detail["error_category"] == ErrorCategory.VALIDATION
+
+    def test_export_workflow_yaml_serialization_error_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ValueError from the YAML exporter surfaces a 422 envelope.
+
+        The pre-refactor controller mapped a raw ValueError to 422; the
+        new ``WorkflowYamlExportError`` ClassVar must keep that status
+        so existing clients of /workflows/{id}/export are not broken.
+        """
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        wf_id = _seed(test_client, "wfdef-export-err")
+
+        def _raise_value_error(_definition: object) -> str:
+            msg = "yaml round-trip failed"
+            raise ValueError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.api.controllers.workflows.export_workflow_yaml",
+            _raise_value_error,
+        )
+
+        resp = test_client.post(
+            f"/api/v1/workflows/{wf_id}/export",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+        assert "Export failed" in body["error"]

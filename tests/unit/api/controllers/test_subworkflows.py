@@ -412,3 +412,64 @@ class TestSubworkflowControllerErrorEnvelope:
         detail = body["error_detail"]
         assert detail["error_code"] == ErrorCode.SUBWORKFLOW_NOT_FOUND
         assert detail["error_category"] == ErrorCategory.NOT_FOUND
+
+    def test_delete_version_still_referenced_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Deleting a subworkflow with live parent references returns 409.
+
+        ``SubworkflowHasParentsError`` overrides its parent
+        ``SubworkflowIOError``'s 422 ClassVar with 409 + RESOURCE_CONFLICT
+        because a still-referenced subworkflow is a resource-state
+        conflict, not a validation failure. Verify the centralised
+        handler honours the override.
+        """
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.engine.workflow.subworkflow_models import (
+            ParentReference,
+        )
+        from synthorg.engine.workflow.subworkflow_registry import (
+            SubworkflowRegistry,
+        )
+        from synthorg.engine.workflow.subworkflow_service import (
+            SubworkflowHasParentsError,
+        )
+
+        _create_subworkflow(test_client)
+
+        async def _raise_has_parents(
+            self: SubworkflowRegistry,
+            subworkflow_id: str,
+            version: str,
+        ) -> None:
+            msg = "Subworkflow has live parent references"
+            raise SubworkflowHasParentsError(
+                msg,
+                subworkflow_id=subworkflow_id,
+                version=version,
+                parents=(
+                    ParentReference(
+                        parent_id="wfdef-parent",
+                        parent_name="parent",
+                        pinned_version="1.0.0",
+                        node_id="sub-node-1",
+                        parent_type="workflow_definition",
+                    ),
+                ),
+            )
+
+        monkeypatch.setattr(SubworkflowRegistry, "delete", _raise_has_parents)
+
+        resp = test_client.delete(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.RESOURCE_CONFLICT
+        assert detail["error_category"] == ErrorCategory.CONFLICT
+        assert detail["retryable"] is False

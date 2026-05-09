@@ -54,7 +54,10 @@ _OUTPUT_REL: Final[str] = "web/src/api/types/error-codes.gen.ts"
 _HEADER: Final[str] = (
     "// AUTO-GENERATED: do not edit by hand.\n"
     "// Regenerate with: uv run python scripts/generate_error_codes_ts.py\n"
+    "// Drift check (pre-push): "
+    "uv run python scripts/check_error_codes_ts_in_sync.py\n"
     "// Source: src/synthorg/core/error_taxonomy.py\n"
+    "// Contract: web/CLAUDE.md -> 'Error-code constants (MANDATORY)'\n"
 )
 
 

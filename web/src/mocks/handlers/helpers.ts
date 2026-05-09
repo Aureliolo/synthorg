@@ -22,7 +22,11 @@ function buildDefaultErrorDetail(
 ): ErrorDetail {
   return {
     detail: error,
-    error_code: ErrorCode.UNAUTHORIZED,
+    // INTERNAL_ERROR (8000) is the right pairing for the INTERNAL
+    // category; the prior UNAUTHORIZED (1000, auth band) was a
+    // category/code mismatch that violated the band invariant
+    // documented in src/synthorg/core/error_taxonomy.py.
+    error_code: ErrorCode.INTERNAL_ERROR,
     error_category: ErrorCategory.INTERNAL,
     retryable: false,
     retry_after: null,
@@ -63,7 +67,11 @@ export function buildValidationError(
 ): ApiResponse<never> {
   if (fields.length === 0) {
     return apiError('Validation error: required field is missing.', {
-      error_code: ErrorCode.DUPLICATE_RECORD,
+      // REQUEST_VALIDATION_ERROR (2001) sits in the validation band;
+      // the prior DUPLICATE_RECORD (4001, conflict band) was a
+      // category/code mismatch that would have failed the backend's
+      // band-prefix invariant.
+      error_code: ErrorCode.REQUEST_VALIDATION_ERROR,
       error_category: ErrorCategory.VALIDATION,
       title: 'Validation error',
       ...overrides,
@@ -73,7 +81,7 @@ export function buildValidationError(
     ? `${fields[0]} is required`
     : `${fields.slice(0, -1).join(', ')} and ${fields[fields.length - 1]} are required`
   return apiError(`Validation error: ${formatted}.`, {
-    error_code: ErrorCode.DUPLICATE_RECORD,
+    error_code: ErrorCode.REQUEST_VALIDATION_ERROR,
     error_category: ErrorCategory.VALIDATION,
     title: 'Validation error',
     ...overrides,
