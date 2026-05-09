@@ -22,7 +22,7 @@ ARG BASE_IMAGE
 # ---------------------------------------------------------------------------
 FROM python:3.14.3-slim@sha256:5e59aae31ff0e87511226be8e2b94d78c58f05216efda3b07dbbed938ec8583b AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.11@sha256:798712e57f879c5393777cbda2bb309b29fcdeb0532129d4b1c3125c5385975a /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.12@sha256:3a59a3cdd5f7c217faa36e32dbc7fddbb0412889c2a0a5229f6d790e5a019dd7 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
@@ -102,7 +102,7 @@ USER build
 # buildx resolves the per-platform manifest from the multi-arch
 # index automatically.
 # ---------------------------------------------------------------------------
-FROM arigaio/atlas:latest-community-distroless@sha256:7e41efead8f10dc1aaa6e76538f1bb48adcc148b1c959ca69064d1171190b237 AS atlas
+FROM arigaio/atlas:latest-community-distroless@sha256:7be850664b7548c970a406ac36c833c887618b94a895fffae71e760cc32882dd AS atlas
 
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)
