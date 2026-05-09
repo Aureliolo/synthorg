@@ -152,8 +152,12 @@ class TestBuildPingUrl:
 
     def test_local_detected_by_port(self) -> None:
         assert (
-            _build_ping_url("http://host:11434/", None, ollama_port=self.OLLAMA_PORT)
-            == "http://host:11434"
+            _build_ping_url(
+                f"http://host:{self.OLLAMA_PORT}/",
+                None,
+                ollama_port=self.OLLAMA_PORT,
+            )
+            == f"http://host:{self.OLLAMA_PORT}"
         )
 
     def test_standard_appends_models(self) -> None:
@@ -173,11 +177,10 @@ class TestBuildPingUrl:
         )
 
     def test_port_in_path_does_not_match(self) -> None:
-        """Port heuristic uses urlparse -- :11434 in path should not match."""
-        result = _build_ping_url(
-            "http://host:8080/api/11434/v1", None, ollama_port=self.OLLAMA_PORT
-        )
-        assert result == "http://host:8080/api/11434/v1/models"
+        """Port heuristic uses urlparse: a port-shaped path segment must not match."""
+        path_url = f"http://host:8080/api/{self.OLLAMA_PORT}/v1"
+        result = _build_ping_url(path_url, None, ollama_port=self.OLLAMA_PORT)
+        assert result == f"{path_url}/models"
 
 
 @pytest.mark.unit

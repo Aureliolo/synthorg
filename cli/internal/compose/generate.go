@@ -23,6 +23,12 @@ var composeTmpl string
 // limit) stay in a single place and cannot drift between the config
 // load path and the compose render path.
 
+// envSynthorgNATSURL is the shared env var that the CLI and the
+// backend's “communication.nats_url“ setting both read. Centralised
+// here so callers (resolveNATSURL, future generators) reference a
+// single source of truth instead of repeating the string literal.
+const envSynthorgNATSURL = "SYNTHORG_NATS_URL"
+
 // allowedLogLevels restricts log level values to a known safe set.
 var allowedLogLevels = map[string]bool{
 	"debug": true,
@@ -180,12 +186,12 @@ func ParamsFromState(s config.State) (Params, error) {
 }
 
 // resolveNATSURL returns the NATS URL embedded into the generated
-// compose.yml backend env block. Reads “SYNTHORG_NATS_URL“ directly
-// so the CLI and the backend's “communication.nats_url“ setting
-// share a single env var, falling back to the compiled-in default
-// when the env var is unset or whitespace-only.
+// compose.yml backend env block. Reads “envSynthorgNATSURL“
+// directly so the CLI and the backend's “communication.nats_url“
+// setting share a single env var, falling back to the compiled-in
+// default when the env var is unset or whitespace-only.
 func resolveNATSURL() string {
-	if v := strings.TrimSpace(os.Getenv("SYNTHORG_NATS_URL")); v != "" {
+	if v := strings.TrimSpace(os.Getenv(envSynthorgNATSURL)); v != "" {
 		return v
 	}
 	return config.DefaultNATSURLValue

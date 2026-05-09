@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from synthorg.tools.sandbox._image_resolution import (
     set_resolved_sandbox_image,
+    set_resolved_sidecar_image,
 )
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.policy import NetworkPolicy, SandboxPolicy
@@ -112,6 +113,74 @@ class TestDockerSandboxConfigImageResolution:
                 level == "debug" and event == "config.fallback.used"
                 for level, event, _ in recorded
             ), f"expected fallback debug log, got: {recorded}"
+        finally:
+            from contextlib import suppress
+
+            with suppress(AttributeError):
+                del proxy.debug
+
+
+class TestDockerSandboxConfigSidecarImageResolution:
+    """The resolved-sidecar-image cache drives ``DockerSandboxConfig.sidecar_image``.
+
+    Mirrors the sandbox-image cache parity: the sidecar follows the
+    same startup-resolution path through ``_apply_bridge_config`` /
+    ``set_resolved_sidecar_image``, so a regression on the sidecar-only
+    path (e.g. cache lookup tied to the sandbox key only, fallback
+    branch emitting wrong constant) would otherwise slip through the
+    sandbox-only suite above.
+    """
+
+    def test_cache_provides_default(self) -> None:
+        pinned = (
+            "ghcr.io/aureliolo/synthorg-sidecar@sha256:"
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        )
+        set_resolved_sidecar_image(pinned)
+        config = DockerSandboxConfig()
+        assert config.sidecar_image == pinned
+
+    @pytest.mark.parametrize(
+        "cached",
+        [None, "", "   "],
+        ids=["unset", "empty", "whitespace"],
+    )
+    def test_fallback_when_cache_absent_or_blank(
+        self,
+        cached: str | None,
+    ) -> None:
+        # Same RAW-pass-through rationale as the sandbox parametrise:
+        # the setter's whitespace normalisation is the thing under
+        # test, so pre-stripping at the call site would mask it.
+        set_resolved_sidecar_image(cached)
+        config = DockerSandboxConfig()
+        assert config.sidecar_image == "ghcr.io/aureliolo/synthorg-sidecar:latest"
+
+    def test_explicit_yaml_wins_over_cache(self) -> None:
+        set_resolved_sidecar_image("ghcr.io/aureliolo/synthorg-sidecar:cached")
+        config = DockerSandboxConfig(sidecar_image="explicit:yaml")
+        assert config.sidecar_image == "explicit:yaml"
+
+    def test_fallback_path_logs_debug(self) -> None:
+        from synthorg.tools.sandbox import _image_resolution as module
+
+        recorded: list[tuple[str, str, dict[str, object]]] = []
+
+        def _capture(event: str, **kwargs: object) -> None:
+            recorded.append(("debug", event, dict(kwargs)))
+
+        proxy = module.logger
+        proxy.debug = _capture  # type: ignore[method-assign,assignment]
+        try:
+            # Force ``sidecar_image`` resolution by reading the
+            # attribute (Pydantic v2 evaluates default factories
+            # lazily; ``DockerSandboxConfig()`` alone would not
+            # touch the sidecar cache without a touch site).
+            DockerSandboxConfig().sidecar_image  # noqa: B018 -- intentional read for resolver side-effect
+            assert any(
+                level == "debug" and event == "config.fallback.used"
+                for level, event, _ in recorded
+            ), f"expected sidecar fallback debug log, got: {recorded}"
         finally:
             from contextlib import suppress
 

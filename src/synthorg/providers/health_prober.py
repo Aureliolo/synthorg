@@ -185,14 +185,15 @@ class ProviderHealthProber:
         self._config_resolver = config_resolver
         self._discovery_policy_loader = discovery_policy_loader
         self._interval = interval_seconds
-        # ``Clock`` seam per ``CLAUDE.md`` -- tests inject ``FakeClock``
-        # so the lifecycle drain timeout and probe-cycle interval can
-        # be driven on virtual time instead of wall time.
+        # Time seam: tests inject ``FakeClock`` to drive the drain
+        # deadline and probe-cycle cadence on virtual time, so the
+        # suite never depends on wall-clock waits.
         self._clock: Clock = clock if clock is not None else SystemClock()
-        # Per ``docs/reference/lifecycle-sync.md`` the lifecycle lock,
-        # stop event, drain timeout, and unrestartable flag are
-        # constructed eagerly so a racing ``stop()`` cannot observe a
-        # half-published lock attribute.
+        # Lifecycle primitives are constructed eagerly so a racing
+        # ``stop()`` cannot observe a half-published lock / event /
+        # task. The unrestartable flag survives a timed-out stop so
+        # a subsequent ``start()`` cannot attach a fresh task while
+        # the orphaned ``_run_loop`` still holds resources.
         self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init -- see above.
         self._task: asyncio.Task[None] | None = None
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.

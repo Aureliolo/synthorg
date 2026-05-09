@@ -1,8 +1,19 @@
 """Security namespace setting definitions."""
 
+from typing import Final
+
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
+
+# Shared audit-retention-tick bounds + default. Re-exported so
+# ``synthorg.security.config.SecurityConfig`` and the Pydantic field
+# validators reuse the canonical values instead of duplicating
+# numeric literals -- a single source of truth for both startup-model
+# validation and live settings registry validation.
+AUDIT_RETENTION_TICK_DEFAULT_SECONDS: Final[float] = 86400.0
+AUDIT_RETENTION_TICK_MIN_SECONDS: Final[float] = 60.0
+AUDIT_RETENTION_TICK_MAX_SECONDS: Final[float] = 604800.0
 
 _r = get_registry()
 
@@ -104,7 +115,7 @@ _r.register(
         namespace=SettingNamespace.SECURITY,
         key="audit_retention_tick_seconds",
         type=SettingType.FLOAT,
-        default="86400.0",
+        default=str(AUDIT_RETENTION_TICK_DEFAULT_SECONDS),
         description=(
             "Wall-clock interval between audit retention purge ticks."
             " Audit retention is not a hot path; operators tune the"
@@ -115,8 +126,8 @@ _r.register(
         ),
         group="Retention",
         level=SettingLevel.ADVANCED,
-        min_value=60.0,
-        max_value=604800.0,
+        min_value=AUDIT_RETENTION_TICK_MIN_SECONDS,
+        max_value=AUDIT_RETENTION_TICK_MAX_SECONDS,
         yaml_path="security.audit_retention_tick_seconds",
     )
 )

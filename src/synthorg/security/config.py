@@ -14,6 +14,11 @@ from synthorg.core.enums import ActionType, ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.security.models import SecurityVerdictType
 from synthorg.security.policy_engine.config import SecurityPolicyConfig
+from synthorg.settings.definitions.security import (
+    AUDIT_RETENTION_TICK_DEFAULT_SECONDS,
+    AUDIT_RETENTION_TICK_MAX_SECONDS,
+    AUDIT_RETENTION_TICK_MIN_SECONDS,
+)
 
 
 class SecurityEnforcementMode(StrEnum):
@@ -355,9 +360,9 @@ class SecurityConfig(BaseModel):
         ),
     )
     audit_retention_tick_seconds: float = Field(
-        default=86400.0,
-        ge=60.0,
-        le=604800.0,
+        default=AUDIT_RETENTION_TICK_DEFAULT_SECONDS,
+        ge=AUDIT_RETENTION_TICK_MIN_SECONDS,
+        le=AUDIT_RETENTION_TICK_MAX_SECONDS,
         description=(
             "Wall-clock interval between audit retention purge ticks. Default 24h."
         ),
