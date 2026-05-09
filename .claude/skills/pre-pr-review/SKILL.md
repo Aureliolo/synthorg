@@ -249,29 +249,29 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 
 | Agent | Condition | subagent_type |
 |---|---|---|
-| **docs-consistency** | **ALWAYS** runs on every PR regardless of change type | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **comment-quality-rot** | **ALWAYS** runs on every PR regardless of change type | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **code-reviewer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` |
+| **docs-consistency** | **ALWAYS** runs on every PR regardless of change type | `code-reviewer` (custom prompt below) |
+| **comment-quality-rot** | **ALWAYS** runs on every PR regardless of change type | `code-reviewer` (custom prompt below) |
+| **code-reviewer** | Any `src_py` or `test_py` | `code-reviewer` |
 | **python-reviewer** | Any `src_py` or `test_py` | `python-reviewer` |
-| **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `pr-review-toolkit:pr-test-analyzer` |
-| **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `pr-review-toolkit:silent-failure-hunter` |
-| **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `pr-review-toolkit:comment-analyzer` |
-| **type-design-analyzer** | Diff contains `class` definitions, `BaseModel`, `TypedDict`, type aliases | `pr-review-toolkit:type-design-analyzer` |
-| **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **resilience-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **conventions-enforcer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `pr-test-analyzer` |
+| **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `silent-failure-hunter` |
+| **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `comment-analyzer` |
+| **type-design-analyzer** | Diff contains `class` definitions, `BaseModel`, `TypedDict`, type aliases | `type-design-analyzer` |
+| **logging-audit** | Any `src_py` changed | `code-reviewer` (custom prompt below) |
+| **resilience-audit** | Any `src_py` changed | `code-reviewer` (custom prompt below) |
+| **conventions-enforcer** | Any `src_py` or `test_py` | `code-reviewer` (custom prompt below) |
 | **security-reviewer** | Files in `src/synthorg/api/`, `src/synthorg/security/`, `src/synthorg/tools/`, `src/synthorg/config/`, `src/synthorg/persistence/`, `src/synthorg/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `security-reviewer` |
-| **frontend-reviewer** | Any `web_src` or `web_test` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **frontend-reviewer** | Any `web_src` or `web_test` | `code-reviewer` (custom prompt below) |
 | **design-token-audit** | Any `web_src` | `.claude/agents/design-token-audit.md` prompt (scans for density, animation, spacing token violations) |
-| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `code-reviewer` (custom prompt below) |
+| **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `code-reviewer` (custom prompt below) |
 | **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `persistence-reviewer` |
-| **test-quality-reviewer** | Any `test_py` or `web_test` | `pr-review-toolkit:pr-test-analyzer` (custom prompt below) |
-| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **test-quality-reviewer** | Any `test_py` or `web_test` | `pr-test-analyzer` (custom prompt below) |
+| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `code-reviewer` (custom prompt below) |
 | **go-reviewer** | Any `cli_go` | `go-reviewer` |
 | **go-security-reviewer** | Any `cli_go` whose diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `security-reviewer` |
-| **go-conventions-enforcer** | Any `cli_go` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **issue-resolution-verifier** | Issue context was found in Phase 0 step 6 | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **go-conventions-enforcer** | Any `cli_go` | `code-reviewer` (custom prompt below) |
+| **issue-resolution-verifier** | Issue context was found in Phase 0 step 6 | `code-reviewer` (custom prompt below) |
 | **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `.claude/agents/tool-parity-checker.md` prompt (verifies Claude Code <-> OpenCode config parity) |
 | **diagram-syntax-validator** | Any `docs` files changed that contain ` ```d2 ` or ` ```mermaid ` blocks | `.claude/agents/diagram-syntax-validator.md` prompt (validates diagram syntax, conventions, fence types) |
 
@@ -916,7 +916,7 @@ git add -A
 
 **Skip this phase if:** quick mode was used, OR no agent findings were implemented (nothing changed beyond Phase 2 auto-fixes).
 
-1. Launch `pr-review-toolkit:code-simplifier` on all modified files
+1. Launch `code-simplifier` on all modified files
 2. If it suggests improvements, apply them
 3. Re-run verification (same conditional gating as Phase 8):
    - If `src_py` or `test_py` changed: `uv run ruff check src/ tests/` + `uv run ruff format src/ tests/` + `uv run mypy src/ tests/` + `uv run python -m pytest tests/ -n 8`
