@@ -267,6 +267,12 @@ convention = "google"
     "S603",    # subprocess calls expected in hook scripts
     "S607",    # partial executable paths (git, pytest, mypy)
 ]
+".github/codeql/fixtures/python/*.py" = [
+    "TRY301", # deliberate raise patterns exercising CodeQL data-flow
+    "EM101",  # string-literal exceptions are part of the fixture shape
+    "S310",   # urllib calls are deliberate data-flow sinks
+    "D",      # fixture files are not API surface
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["synthorg"]

@@ -145,3 +145,22 @@ The structlog secret-log redaction policy above covers the **structlog sink only
 - **Span events**: code that calls `span.add_event(name, attributes)` is responsible for applying `safe_error_description` (or equivalent scrubbing) to every attribute that may carry exception strings, request bodies, or other attacker-controllable content.
 
 The pre-commit `check_logger_exception_str_exc.py` gate does not cover OTel spans (it AST-walks logger calls only). New OTel call sites must self-police; reviewers should reject any `span.record_exception` outside test fixtures.
+
+## CodeQL barrier inventory
+
+The custom CodeQL Models-as-Data extension pack at `.github/codeql/extensions/synthorg-sanitisers/` teaches CodeQL that SynthOrg's sanitiser helpers are taint barriers, eliminating recurring false-positive dismissals on the same idioms. Each row binds a sanitiser to the rule it suppresses; genuine leaks on related-but-distinct rules continue to fire. The pack is provably precise: `.github/workflows/codeql-pack-validate.yml` runs negative + positive fixtures and asserts the rule fires on the deliberate leak and does not fire on the sanitised path.
+
+| Sanitiser | File | Rule | Runtime guarantee |
+|---|---|---|---|
+| `safe_error_description` | `src/synthorg/observability/redaction.py` | `py/clear-text-logging-sensitive-data` | Strips OAuth tokens, JSON credential values, URI userinfo, `Authorization:` headers, and Fernet ciphertexts from exception messages; truncates to `MAX_SCRUBBED_LENGTH` |
+| `scrub_secret_tokens` | `src/synthorg/observability/redaction.py` | `py/clear-text-logging-sensitive-data` | Lower-level helper called by `safe_error_description`; pattern-replace credential shapes idempotently |
+| `_resolve_root` (12 sites under `scripts/`) | `scripts/check_*.py` | `py/path-injection` | Resolves the candidate, asserts containment via `os.path.commonpath` and `Path.relative_to`; returns `None` on escape |
+| `_validate_repo_prefix` | `scripts/check_image_signatures.py` | `py/partial-ssrf` | Anchored regex matches the OCI repo grammar; `\A...\Z` rejects newlines and CR |
+| `_validate_image_tag` | `scripts/check_image_signatures.py` | `py/partial-ssrf` | Anchored regex matches the OCI image-name + tag grammar |
+| `config.SecurePath` | `cli/internal/config/paths.go` | `go/path-injection` | `filepath.Clean` + absolute-path assertion |
+| `safeStateDir` | `cli/cmd/root.go` | `go/path-injection` | Wrapper around `config.SecurePath` keyed on the loaded `State.DataDir` |
+| `sanitizeForLog` | `web/src/utils/logging.ts` | `js/log-injection` | Strips C0/C1 controls + Unicode BIDI overrides; truncates to `maxLen` |
+| `sanitizeWsString` | `web/src/utils/ws-sanitize.ts` | `js/log-injection` | Calls `sanitizeForLog` with the WS-payload length cap |
+| `sanitizeWsEnum` | `web/src/utils/ws-sanitize.ts` | `js/log-injection` | Allowlist-validated; returns either the input or a literal fallback constant |
+
+Adding a new sanitiser is a three-part change in one PR: the helper itself, a matching row in the language-specific `*-sanitisers.model.yml`, and a fixture pair (negative + positive) under `.github/codeql/fixtures/` (or `cli/internal/codeqlfixtures/` for Go) plus its `expected.json` entry. The standalone `codeql-pack-validate.yml` workflow runs on every pack-related change and fails if either fixture diverges from its expectation.

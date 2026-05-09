@@ -1,0 +1,83 @@
+name: CodeQL Pack Validate
+
+on:
+  pull_request:
+    paths:
+      - '.github/codeql/**'
+      - '.github/workflows/codeql-pack-validate.yml'
+      - 'cli/internal/codeqlfixtures/**'
+      - 'scripts/check_codeql_fixtures.py'
+      - 'scripts/run_codeql_pack_validation.sh'
+  push:
+    branches: [main]
+    paths:
+      - '.github/codeql/**'
+      - 'cli/internal/codeqlfixtures/**'
+      - 'scripts/check_codeql_fixtures.py'
+      - 'scripts/run_codeql_pack_validation.sh'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: codeql-pack-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate sanitiser pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.15.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install Python deps (for fixture extraction + check script)
+        run: uv sync --no-dev
+
+      - name: Install web deps (for fixture type-resolution)
+        run: npm --prefix web ci
+
+      - name: Initialize CodeQL (provides codeql CLI on PATH)
+        uses: github/codeql-action/init@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
+        with:
+          languages: python
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Run pack validation
+        env:
+          CODEQL_RAM: '4096'
+        run: bash scripts/run_codeql_pack_validation.sh
+
+      - name: Upload SARIF artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codeql-fixture-sarifs
+          path: .github/codeql/fixtures/results/
+          retention-days: 7
