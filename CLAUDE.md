@@ -42,7 +42,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 - [docs/reference/claude-reference.md](docs/reference/claude-reference.md): Doc layout, Docker, releasing, CI, dependencies, Hypothesis deep-dive
 - [docs/reference/conventions.md](docs/reference/conventions.md): repository CRUD, lifecycle, response wrapping, validators, event imports, domain errors, file structure, frozen ConfigDict, args models, Pydantic v2, async, Clock seam
-- [docs/reference/convention-gates.md](docs/reference/convention-gates.md): gate inventory (34 enforcement gates + meta-gate)
+- [docs/reference/convention-gates.md](docs/reference/convention-gates.md): gate inventory (35 enforcement gates + meta-gate)
 - [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md), [persistence-boundary.md](docs/reference/persistence-boundary.md), [configuration-precedence.md](docs/reference/configuration-precedence.md), [errors.md](docs/reference/errors.md), [sec-prompt-safety.md](docs/reference/sec-prompt-safety.md), [lifecycle-sync.md](docs/reference/lifecycle-sync.md), [mcp-handler-contract.md](docs/reference/mcp-handler-contract.md), [typed-boundaries.md](docs/reference/typed-boundaries.md), [retry-patterns.md](docs/reference/retry-patterns.md), [scaffolding.md](docs/reference/scaffolding.md), [audit-category-gate-coverage.md](docs/reference/audit-category-gate-coverage.md), [dead-api-endpoints.md](docs/reference/dead-api-endpoints.md), [pluggable-subsystems.md](docs/reference/pluggable-subsystems.md), [telemetry.md](docs/reference/telemetry.md)
 
 ## Diagrams
