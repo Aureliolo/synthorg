@@ -278,10 +278,15 @@ async def test_receive_returns_none_on_shutdown(bus: MessageBus) -> None:
     await bus.subscribe("#general", "agent-a")
 
     receive_task = asyncio.create_task(bus.receive("#general", "agent-a", timeout=10.0))
-    # Yield once so receive() reaches its blocking await before stop()
-    # fires; the test asserts the JetStream durable consumer wakes up
-    # with None on shutdown rather than blocking out the full timeout.
-    await asyncio.sleep(0)
+    # The JetStream durable consumer's setup involves several internal
+    # awaits before the call blocks on next_msg(); a single sleep(0)
+    # is not enough yields on a busy event loop. Bound the wait with
+    # asyncio.wait() so the receive task is guaranteed to be parked in
+    # its blocking await before stop() fires. 50 ms ceiling is well
+    # under receive()'s 10 s timeout, so the test still asserts the
+    # shutdown-wakes-receive contract rather than the timeout path.
+    _, pending = await asyncio.wait({receive_task}, timeout=0.05)
+    assert receive_task in pending, "receive() returned before bus.stop() fired"
     await bus.stop()
 
     assert await receive_task is None

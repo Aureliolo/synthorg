@@ -436,7 +436,10 @@ describe('setup wizard store', () => {
         useSetupWizardStore.getState().submitCompany(),
       ])
       // Yield so the (single) coalesced fetch reaches the handler.
-      await vi.waitFor(() => expect(observedConcurrent).toBe(1))
+      // Tight timeout: if the predicate hasn't held within 100 ms the
+      // store's coalescing logic is broken; the default 1000 ms would
+      // mask a regression as a slow-CI false pass.
+      await vi.waitFor(() => expect(observedConcurrent).toBe(1), { timeout: 100 })
       releaseHandler()
       await submissions
       // ``observedConcurrent`` alone is satisfied if a serial test

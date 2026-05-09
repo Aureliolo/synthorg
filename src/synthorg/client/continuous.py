@@ -33,7 +33,11 @@ from synthorg.client.protocols import (
 )
 from synthorg.client.runner import SimulationRunner  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.client import CONTINUOUS_MODE_DISABLED
+from synthorg.observability.events.client import (
+    CONTINUOUS_MODE_DISABLED,
+    CONTINUOUS_MODE_STARTED,
+    CONTINUOUS_MODE_STOPPED,
+)
 
 logger = get_logger(__name__)
 
@@ -62,13 +66,13 @@ class ContinuousMode:
         """
         self._config = config
         self._runner = runner
-        self._stop_event = asyncio.Event()
+        self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init
         # Per ``docs/reference/lifecycle-sync.md`` the lifecycle lock
         # is named distinctly from any hot-path lock so a hot-path
         # contention cannot block lifecycle transitions. ContinuousMode
         # has no hot-path lock today, but the rename keeps the
         # codebase uniform across services.
-        self._lifecycle_lock = asyncio.Lock()
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init
         self._runs_completed = 0
         self._running = False
         self._first_run_event_cache: asyncio.Event | None = None
@@ -85,7 +89,10 @@ class ContinuousMode:
         Lazy-constructed on first access so it binds to the running
         event loop rather than the interpreter-startup loop, satisfying
         the ``check_no_loop_bound_init`` guard for restart-on-new-loop
-        safety.
+        safety. The check-then-assign is race-free under asyncio because
+        neither statement contains an ``await``: between the two lines
+        no other coroutine can be scheduled, so two concurrent first
+        accesses cannot each construct an Event.
         """
         if self._first_run_event_cache is None:
             self._first_run_event_cache = asyncio.Event()
@@ -126,6 +133,11 @@ class ContinuousMode:
             self._stop_event.clear()
             self.first_run_event.clear()
             self._runs_completed = 0
+        logger.info(
+            CONTINUOUS_MODE_STARTED,
+            request_interval_sec=self._config.request_interval_sec,
+            max_concurrent_requests=self._config.max_concurrent_requests,
+        )
         semaphore = asyncio.Semaphore(max(1, self._config.max_concurrent_requests))
         max_history = max(1, self._config.max_concurrent_requests * 100)
         results: deque[SimulationMetrics] = deque(maxlen=max_history)
@@ -161,4 +173,7 @@ class ContinuousMode:
         acquired here because the lock guards only the ``_running``
         flag transition, not the long-lived loop body.
         """
+        already_stopping = self._stop_event.is_set()
         self._stop_event.set()
+        if not already_stopping:
+            logger.info(CONTINUOUS_MODE_STOPPED, runs_completed=self._runs_completed)

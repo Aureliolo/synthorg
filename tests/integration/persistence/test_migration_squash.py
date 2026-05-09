@@ -97,20 +97,14 @@ def _atlas(
 def _generate_migrations(project_dir: Path) -> list[str]:
     """Generate 6 SQLite migrations from incremental schema changes.
 
-    Atlas writes filenames with wall-clock-second-precision timestamps,
-    so back-to-back ``migrate diff`` calls would land within the same
-    second. After generating all migrations, the function rewrites
-    every filename to a deterministic monotonic schedule -- one second
-    per step except for a two-second jump at the squash boundary, so
-    the checkpoint timestamp computed in :func:`_build_squashed_dir`
-    (``m4_dt + 1s``) has room before ``m5_dt`` without depending on
-    real elapsed time between Atlas calls. ``atlas migrate hash``
-    regenerates ``atlas.sum`` after the renames.
+    Atlas writes filenames with wall-clock-second-precision timestamps;
+    back-to-back ``migrate diff`` calls would otherwise force a
+    real-time wait to keep ``m4`` and ``m5`` at least 2s apart (the
+    constraint ``_build_squashed_dir`` asserts: ``m4 + 1s < m5``).
+    Filenames are rewritten post-hoc to a deterministic monotonic
+    schedule so the test does not depend on elapsed wall time.
 
-    Uses a file-backed dev database to avoid lock contention when
-    multiple xdist workers generate migrations concurrently.
-
-    Returns the sorted list of .sql filenames.
+    File-backed dev DB avoids lock contention across xdist workers.
     """
     revisions = project_dir / "revisions"
     revisions.mkdir(exist_ok=True)
