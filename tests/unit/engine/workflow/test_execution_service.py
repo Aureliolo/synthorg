@@ -705,9 +705,10 @@ class TestCancelExecution:
         """Engine emits ``WORKFLOW_EXEC_CANCEL_CONFLICT`` when cancel is
         rejected because the execution is already terminal.
 
-        The controller-edge log was removed when the cancel path migrated
-        to the centralised exception handler; this asserts the audit
-        signal is preserved at the engine layer for downstream alerting.
+        Engine-layer emission is the canonical home for this audit signal:
+        the controller raises a typed domain error which the centralised
+        handler translates into the 409 envelope, so the only place the
+        signal can be sourced is the service.
         """
         import structlog.testing
 
