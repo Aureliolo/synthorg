@@ -598,12 +598,20 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         resolved_db_path=resolved_db_path,
         resolved_config_path=resolved_config_path,
     )
+    # Constructed here (rather than at the previous near-`_build_lifecycle`
+    # site) so ``_build_settings_dispatcher`` can wire the matching
+    # subscriber for ``security.timeout_check_interval_seconds`` against
+    # the same scheduler instance that the lifecycle starts.
+    approval_timeout_scheduler = _build_default_approval_timeout_scheduler(
+        approval_store=effective_approval_store,
+    )
     settings_dispatcher = _build_settings_dispatcher(
         message_bus,
         settings_service,
         effective_config,
         app_state,
         backup_service,
+        approval_timeout_scheduler,
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
     # Resolve api.rate_limiter_enabled at boot.  The flag is
@@ -881,15 +889,17 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
         app_state.set_review_gate_service(review_gate_service)
 
-    # Approval timeout scheduler -- bootstrapped here with the
-    # operator-tunable interval from
-    # ``security.timeout_check_interval_seconds``. The default policy
-    # is ``WaitForeverPolicy`` so the scheduler runs but never
-    # auto-decides; operators can swap in DenyOnTimeout / Tiered /
-    # EscalationChain via the security.* settings at runtime.
-    approval_timeout_scheduler = _build_default_approval_timeout_scheduler(
-        approval_store=effective_approval_store,
-    )
+    # Approval timeout scheduler is constructed earlier (next to the
+    # backup service) so the settings dispatcher can wire the matching
+    # ``security.timeout_check_interval_seconds`` subscriber against the
+    # same instance that the lifecycle starts. ``_apply_security_timeout_interval``
+    # in ``lifecycle_helpers.py`` resolves the operator-tuned interval
+    # from ``ConfigResolver`` after persistence connects and calls
+    # ``scheduler.reschedule(...)`` so the configured cadence takes
+    # effect on the next loop tick. The default policy is
+    # ``WaitForeverPolicy`` so the scheduler runs but never auto-decides;
+    # operators can swap in DenyOnTimeout / Tiered / EscalationChain via
+    # the security.* settings at runtime.
 
     startup, shutdown = _build_lifecycle(
         persistence,
