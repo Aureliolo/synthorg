@@ -44,6 +44,15 @@ held across the full body of their respective method per
 
 ## 3. API response wrapping
 
+Default: return `ApiResponse[T]` (or `PaginatedResponse[T]` for list
+endpoints). Wrap in `Response[ApiResponse[T]]` **only** when the
+controller must set a custom status code or response header (`Location`
+on 201, `Retry-After` on 429, `WWW-Authenticate` on 401). Bare
+`ApiResponse[T]` is preferred everywhere else because Litestar's
+exception handler already maps domain errors to the right status codes;
+wrapping in `Response[...]` for a successful call adds noise without
+changing the wire envelope.
+
 Controllers return one of three shapes:
 
 * `ApiResponse[T]`: success-only path with no header or status-code
@@ -490,6 +499,27 @@ treated as whitespace). Examples:
 
 If you rename a header, update both `header:` and `id:` in the same
 edit. The gate's stale-entry check surfaces orphans automatically.
+
+## 18. `activate_*` / `deactivate_*` lifecycle method naming
+
+Domain services that flip an entity into / out of an "active" runtime
+state expose paired async methods named `activate_<entity>` and
+`deactivate_<entity>` (or the bare verbs when the receiver name
+already disambiguates). These verbs are reserved for state transitions
+that affect downstream scheduling, eligibility, or visibility,
+distinct from `save` (persist) and `delete` (remove).
+
+| Method | Where | Notes |
+|--------|-------|-------|
+| `activate_workflow` / `deactivate_workflow` | `src/synthorg/api/controllers/workflow_executions.py:116` | Spawns / tears down a workflow execution loop. |
+| `activate_sprint` / `deactivate_sprint` | `src/synthorg/engine/workflow/ceremony_scheduler.py:150,265` | Sprint window open / close. |
+| `deactivate_client` | `src/synthorg/api/controllers/clients.py:340`, `src/synthorg/integrations/mcp_services.py:346` | Disables an integration client without deletion. |
+| `deactivate_all` | `src/synthorg/persistence/fine_tune_protocol.py:94` (+ both backends) | Bulk deactivate of fine-tune jobs. |
+
+Use these verbs for any new "becomes runnable / no longer runnable"
+transition; do not invent `enable_*` / `disable_*` synonyms. Those are
+reserved for boolean feature flags read from settings, not for
+domain-entity lifecycle.
 
 ## See also
 
