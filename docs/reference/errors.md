@@ -38,6 +38,8 @@ Clients should dispatch on `error_code` (most specific) and fall back to `error_
 | 1005 | `REFRESH_TOKEN_INVALID` | Refresh rotation mismatch or expired |
 | 1006 | `SESSION_LIMIT_EXCEEDED` | Per-user session cap reached |
 | 1007 | `TOOL_PERMISSION_DENIED` | Agent not permitted to invoke the tool |
+| 1008 | `SESSION_NO_TOKEN` | No session cookie or bearer token on the request |
+| 1009 | `SESSION_EXPIRED` | Session cookie / JWT decoded but past expiry |
 
 ## Validation (2xxx)
 
@@ -47,6 +49,7 @@ Clients should dispatch on `error_code` (most specific) and fall back to `error_
 | 2001 | `REQUEST_VALIDATION_ERROR` | Litestar-parsed body/params rejected |
 | 2002 | `ARTIFACT_TOO_LARGE` | Upload exceeds `artifact.max_bytes` |
 | 2003 | `TOOL_PARAMETER_ERROR` | Tool parameters failed schema validation |
+| 2004 | `PROVIDER_TIER_COVERAGE_INSUFFICIENT` | Setup wizard cannot apply a template because no configured provider exposes any models |
 
 ## Not Found (3xxx)
 
@@ -129,6 +132,8 @@ All 13 share the same `type` URI; the numeric code is the discriminator.
 | 8006 | `TOOL_ERROR` | Generic tool failure |
 | 8007 | `ARTIFACT_STORAGE_FULL` | Artifact store at capacity |
 | 8008 | `TOOL_EXECUTION_ERROR` | Tool runtime failure (subclass of `TOOL_ERROR`) |
+| 8009 | `FEATURE_NOT_IMPLEMENTED` | Active backend or deployment fundamentally does not implement the requested operation (501) |
+| 8010 | `ARTIFACT_NO_STORAGE_BACKEND` | Artifact service was constructed without a storage backend; controller-helper misconfiguration |
 
 ## Content negotiation
 

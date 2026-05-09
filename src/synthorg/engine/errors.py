@@ -383,10 +383,10 @@ class WorkflowDefinitionValidationError(WorkflowExecutionError):
 class WorkflowYamlExportError(WorkflowExecutionError):
     """Raised when YAML serialisation of a workflow definition fails.
 
-    422 (Unprocessable Entity) preserves the pre-refactor mapping for
-    the ``/workflows/{id}/export`` endpoint: the request was well-formed
-    but the persisted definition cannot be serialised to YAML, which is
-    a content-level failure rather than a request-syntax problem.
+    Maps to 422 (Unprocessable Entity) on ``/workflows/{id}/export``:
+    the request itself is well-formed, but the persisted definition
+    cannot be serialised to YAML -- a content-level failure rather
+    than a request-syntax problem.
     """
 
     status_code: ClassVar[int] = 422

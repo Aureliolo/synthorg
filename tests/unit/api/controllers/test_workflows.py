@@ -574,6 +574,7 @@ class TestWorkflowControllerErrorEnvelope:
         detail = body["error_detail"]
         assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
         assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
 
     def test_export_workflow_yaml_serialization_error_envelope(
         self,

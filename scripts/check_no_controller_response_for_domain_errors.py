@@ -54,6 +54,7 @@ Usage::
 
 import argparse
 import ast
+import builtins
 import re
 import sys
 from pathlib import Path
@@ -89,26 +90,22 @@ _BASELINE_ENTRY_RE: Final[re.Pattern[str]] = re.compile(r"^.+:\d+:.+$")
 
 # Stdlib bases that are NOT domain errors. Catching these locally and
 # building a Response is fine -- they are not part of the centralised
-# domain-error pipeline.
-_STDLIB_BASES: Final[frozenset[str]] = frozenset(
+# domain-error pipeline. Computed dynamically from ``builtins`` so any
+# ``*Error`` builtin (TimeoutError, ConnectionError, FileNotFoundError,
+# NotImplementedError, ...) is allowlisted without a hardcoded list
+# drifting against the active Python version. The manual extras cover
+# namespaced ``except`` targets that ``vars(builtins)`` does not see.
+_BUILTIN_ERROR_NAMES: Final[frozenset[str]] = frozenset(
+    name
+    for name, obj in vars(builtins).items()
+    if isinstance(obj, type)
+    and issubclass(obj, BaseException)
+    and name.endswith("Error")
+)
+_STDLIB_BASES: Final[frozenset[str]] = _BUILTIN_ERROR_NAMES | frozenset(
     {
-        "Exception",
-        "BaseException",
-        "RuntimeError",
-        "LookupError",
-        "PermissionError",
-        "ValueError",
-        "TypeError",
-        "KeyError",
-        "IndexError",
-        "AttributeError",
-        "OSError",
-        "IOError",
-        "ImportError",
         "asyncio.CancelledError",
         "asyncio.TimeoutError",
-        "MemoryError",
-        "RecursionError",
     }
 )
 
@@ -146,21 +143,57 @@ def _is_domain_error_name(name: str) -> bool:
     return name not in _STDLIB_BASES
 
 
-def _builds_response_envelope(node: ast.AST) -> bool:
-    """Return True iff *node* is ``return Response(...)``.
+def _is_response_call(node: ast.AST) -> bool:
+    """Return True iff *node* is ``Response(...)`` or ``*.Response(...)``."""
+    if not isinstance(node, ast.Call):
+        return False
+    func_name = _name_of(node.func)
+    return func_name == "Response" or func_name.endswith(".Response")
 
-    Matches both the unqualified ``Response(...)`` and any dotted
-    attribute access whose terminal identifier is ``Response`` (e.g.
-    ``litestar.Response(...)``), so an alias-imported envelope still
-    trips the gate.
+
+def _response_aliases_in(handler: ast.ExceptHandler) -> frozenset[str]:
+    """Return names in *handler* assigned a ``Response(...)`` call.
+
+    Catches the local-variable bypass ``resp = Response(...); return resp``
+    that would otherwise sneak past the direct-return matcher. Only
+    simple single-target ``Name`` assignments are tracked; complex
+    targets and reassignments are ignored to avoid false positives.
+    """
+    aliases: set[str] = set()
+    for child in ast.walk(handler):
+        if not isinstance(child, ast.Assign):
+            continue
+        if len(child.targets) != 1:
+            continue
+        target = child.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        if _is_response_call(child.value):
+            aliases.add(target.id)
+    return frozenset(aliases)
+
+
+def _builds_response_envelope(
+    node: ast.AST,
+    response_aliases: frozenset[str] = frozenset(),
+) -> bool:
+    """Return True iff *node* is a return that yields a Response envelope.
+
+    Matches three forms:
+
+    * ``return Response(...)`` -- direct unqualified call.
+    * ``return litestar.Response(...)`` -- any dotted name whose
+      terminal identifier is ``Response``.
+    * ``return resp`` where ``resp`` was previously assigned a Response
+      call within the same handler scope (alias bypass). The caller
+      passes the per-handler alias set via ``response_aliases``.
     """
     if not isinstance(node, ast.Return) or node.value is None:
         return False
-    call = node.value
-    if not isinstance(call, ast.Call):
-        return False
-    func_name = _name_of(call.func)
-    return func_name == "Response" or func_name.endswith(".Response")
+    value = node.value
+    if _is_response_call(value):
+        return True
+    return isinstance(value, ast.Name) and value.id in response_aliases
 
 
 def _line_has_suppression(source_lines: list[str], lineno: int) -> bool:
@@ -185,10 +218,11 @@ def _find_violations(
             )
             if not domain_names:
                 continue
+            response_aliases = _response_aliases_in(handler)
             for child in ast.walk(handler):
                 if not isinstance(child, ast.Return):
                     continue
-                if not _builds_response_envelope(child):
+                if not _builds_response_envelope(child, response_aliases):
                     continue
                 if _line_has_suppression(source_lines, child.lineno):
                     continue
