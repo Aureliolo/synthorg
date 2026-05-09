@@ -173,6 +173,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self._workflow_version_service = None
         self._subworkflow_service = None
         self._self_improvement_service = None
+        self._chief_of_staff_chat = None
 
     # Slot attrs for facade services (populated on concrete AppState).
     _signals_service: SignalsService | None

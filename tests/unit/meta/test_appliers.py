@@ -813,6 +813,13 @@ class TestArchitectureApplier:
         assert expected in (result.error_message or "")
 
     async def test_dry_run_tool_access_valid_passes(self) -> None:
+        # ``ArchitectureChange.payload`` is JSON-typed, so the
+        # ``_validate_tool_access`` ``isinstance(list | tuple)`` branch
+        # is unreachable for tuples in practice -- the upstream Pydantic
+        # boundary rejects them with ``input was not a valid JSON
+        # value`` before the applier sees the payload.  Only the list
+        # path is tested because that's the only path real callers can
+        # exercise.
         applier = ArchitectureApplier(context=_FakeArchContext())
         proposal = _proposal_architecture(
             _arch(
@@ -820,7 +827,7 @@ class TestArchitectureApplier:
                 "r1",
                 payload={
                     "description": "d",
-                    "tool_access": ("git", "shell"),
+                    "tool_access": ["git", "shell"],
                 },
             ),
         )

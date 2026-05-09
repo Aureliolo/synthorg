@@ -7,6 +7,8 @@ new roles, department restructuring, workflow modifications.
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from pydantic import JsonValue  # noqa: TC002
+
 from synthorg.meta.models import (
     ArchitectureChange,
     ImprovementProposal,
@@ -95,7 +97,7 @@ class ArchitectureProposalStrategy:
 
     def _propose_team_restructure(
         self,
-        ctx: dict[str, object],
+        ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
         return ImprovementProposal(
             id=uuid4(),
@@ -141,7 +143,7 @@ class ArchitectureProposalStrategy:
 
     def _propose_specialist_role(
         self,
-        ctx: dict[str, object],
+        ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
         return ImprovementProposal(
             id=uuid4(),

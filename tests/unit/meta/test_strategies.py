@@ -1,6 +1,7 @@
 """Unit tests for meta-loop improvement strategies."""
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
@@ -62,7 +63,7 @@ def _snap() -> OrgSignalSnapshot:
 def _rule(
     name: str,
     altitudes: tuple[ProposalAltitude, ...],
-    ctx: dict[str, object] | None = None,
+    ctx: dict[str, JsonValue] | None = None,
 ) -> RuleMatch:
     return RuleMatch(
         rule_name=name,
@@ -152,7 +153,7 @@ class TestConfigTuningStrategy:
 
     async def test_all_known_rules_produce_proposals(self) -> None:
         s = ConfigTuningStrategy(config=_DEFAULT_CONFIG)
-        known: list[tuple[str, dict[str, object]]] = [
+        known: list[tuple[str, dict[str, JsonValue]]] = [
             ("quality_declining", {"avg_quality": 4.0, "agent_count": 10}),
             ("success_rate_drop", {"avg_success_rate": 0.6}),
             ("budget_overrun", {"days_until_exhausted": 7, "total_spend": 150}),

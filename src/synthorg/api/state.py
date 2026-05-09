@@ -170,6 +170,7 @@ class AppState(AppStateServicesMixin):
         "_bridge_config_applied",
         "_ceremony_policy_service",
         "_ceremony_scheduler",
+        "_chief_of_staff_chat",
         "_client_facade_service",
         "_client_simulation_state",
         "_company_read_service",

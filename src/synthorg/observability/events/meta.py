@@ -170,3 +170,14 @@ META_REGRESSION_STATISTICAL_INSUFFICIENT_DATA: Final[str] = (
 # defaults.  Always logged at WARNING so operators can audit silent
 # fallbacks.
 META_SELF_IMPROVEMENT_LOAD_FAILED: Final[str] = "meta.self_improvement.load_failed"
+
+# -- Chief of Staff chat endpoint diagnostics ------------------------------
+
+# Emitted at WARNING when ``POST /meta/chat`` cannot be served because a
+# required service (chat backend or signals service) is not wired into
+# the AppState.  These guards run hand-rolled rather than through
+# ``AppState._require_service`` so the endpoint can emit
+# ``META_CHAT_DEPENDENCY_UNAVAILABLE`` with dependency-specific context
+# (which dependency is missing, plus a fix hint) before
+# ``ServiceUnavailableError`` propagates and the response surfaces 503.
+META_CHAT_DEPENDENCY_UNAVAILABLE: Final[str] = "meta.chat.dependency_unavailable"

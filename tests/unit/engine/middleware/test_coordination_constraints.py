@@ -8,9 +8,14 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import AutonomyLevel, Priority, TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationPhaseResult,
+)
+from synthorg.engine.decomposition.models import (
+    DecompositionResult,
+    SubtaskStatusRollup,
 )
 from synthorg.engine.middleware.coordination_constraints import (
     MagenticReplanHook,
@@ -29,6 +34,7 @@ from synthorg.engine.middleware.models import (
     ProgressLedger,
     TaskLedger,
 )
+from tests.unit.engine.conftest import make_decomposition, make_subtask
 
 # ── Test helpers ──────────────────────────────────────────────────
 
@@ -71,10 +77,34 @@ def _coord_context() -> CoordinationContext:
     )
 
 
+def _decomp(parent_task_id: str = "parent-1") -> DecompositionResult:
+    return make_decomposition(
+        subtasks=(make_subtask("s1"),),
+        parent_task_id=parent_task_id,
+    )
+
+
+def _rollup(
+    *,
+    parent_task_id: str = "parent-1",
+    completed: int = 0,
+    total: int = 1,
+) -> SubtaskStatusRollup:
+    return SubtaskStatusRollup(
+        parent_task_id=NotBlankStr(parent_task_id),
+        total=total,
+        completed=completed,
+        failed=0,
+        in_progress=max(total - completed, 0),
+        blocked=0,
+        cancelled=0,
+    )
+
+
 def _mw_context(
     *,
-    decomp_result: object = None,
-    status_rollup: object = None,
+    decomp_result: DecompositionResult | None = None,
+    status_rollup: SubtaskStatusRollup | None = None,
     phases: tuple[CoordinationPhaseResult, ...] = (),
     task_ledger: TaskLedger | None = None,
     progress_ledger: ProgressLedger | None = None,
@@ -111,7 +141,7 @@ class TestTaskLedgerMiddleware:
 
     async def test_creates_ledger(self) -> None:
         mw = TaskLedgerMiddleware()
-        ctx = _mw_context(decomp_result="mock decomposition plan")
+        ctx = _mw_context(decomp_result=_decomp())
         result = await mw.before_dispatch(ctx)
         assert result.task_ledger is not None
         assert result.task_ledger.plan_version == 1
@@ -125,7 +155,7 @@ class TestTaskLedgerMiddleware:
             created_at=datetime.now(UTC),
         )
         ctx = _mw_context(
-            decomp_result="new plan",
+            decomp_result=_decomp(),
             task_ledger=existing,
         )
         result = await mw.before_dispatch(ctx)
@@ -148,11 +178,8 @@ class TestProgressLedgerMiddleware:
         assert ProgressLedgerMiddleware().name == "progress_ledger"
 
     async def test_first_round_with_progress(self) -> None:
-        from types import SimpleNamespace
-
-        rollup = SimpleNamespace(completed_count=2)
         mw = ProgressLedgerMiddleware()
-        ctx = _mw_context(status_rollup=rollup)
+        ctx = _mw_context(status_rollup=_rollup(completed=2, total=3))
         result = await mw.after_rollup(ctx)
         assert result.progress_ledger is not None
         assert result.progress_ledger.round_number == 1
@@ -162,7 +189,7 @@ class TestProgressLedgerMiddleware:
 
     async def test_first_round_no_completed_count_no_progress(self) -> None:
         mw = ProgressLedgerMiddleware()
-        ctx = _mw_context(status_rollup="mock rollup")
+        ctx = _mw_context(status_rollup=_rollup(completed=0, total=3))
         result = await mw.after_rollup(ctx)
         assert result.progress_ledger is not None
         assert result.progress_ledger.round_number == 1
@@ -213,7 +240,7 @@ class TestProgressLedgerMiddleware:
             ),
         )
         ctx = _mw_context(
-            status_rollup="rollup",
+            status_rollup=_rollup(completed=0, total=2),
             phases=phases,
         )
         result = await mw.after_rollup(ctx)

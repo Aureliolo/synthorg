@@ -18,12 +18,25 @@ from synthorg.observability.events.api import (
 )
 from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 
+# All four of ``CostTracker`` / ``ChiefOfStaffChat`` / ``ChiefOfStaffConfig``
+# / ``ProviderRegistry`` are imported lazily under TYPE_CHECKING.  Hoisting
+# them to runtime imports created a circular import via the budget /
+# observability chain (``cannot import name 'CostRecord' from partially
+# initialized module 'synthorg.budget.cost_record'``).  Under PEP 649 the
+# annotations are stored as code objects and only evaluated when
+# ``typing.get_type_hints()`` runs against this module -- which Litestar's
+# route discovery does for handler signatures, not for the helpers below
+# (private prefix or non-handler).  ``ChiefOfStaffChat`` is also imported
+# in-function below for the constructor call site, so the runtime
+# constructor reference is independent of the annotation surface.
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import RootConfig
     from synthorg.hr.performance.config import PerformanceConfig
     from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
     from synthorg.hr.performance.tracker import PerformanceTracker
+    from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
+    from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.trust.service import TrustService
 
@@ -112,6 +125,52 @@ def _resolve_llm_judge_strategy(
     return LlmJudgeQualityStrategy(
         provider=provider_driver,
         model=cfg.quality_judge_model,
+        cost_tracker=cost_tracker,
+    )
+
+
+def build_chief_of_staff_chat(
+    chief_of_staff_config: ChiefOfStaffConfig,
+    *,
+    provider_registry: ProviderRegistry,
+    cost_tracker: CostTracker | None,
+) -> ChiefOfStaffChat | None:
+    """Resolve a ChiefOfStaffChat from the meta config + provider registry.
+
+    Returns ``None`` -- and the ``POST /meta/chat`` endpoint then surfaces
+    503 -- when:
+
+    - ``chief_of_staff_config.chat_enabled`` is False (the documented
+      opt-in default), or
+    - no LLM provider is registered (degenerate test/anonymous boots).
+
+    The provider is picked by the same convention as the LLM quality
+    judge: the first registered provider, since the chat model name in
+    config is provider-agnostic.
+    """
+    from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat  # noqa: PLC0415
+
+    if not chief_of_staff_config.chat_enabled:
+        return None
+
+    available = provider_registry.list_providers()
+    if not available:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Chief of Staff chat enabled but no providers registered",
+        )
+        return None
+
+    provider = provider_registry.get(available[0])
+    logger.info(
+        API_APP_STARTUP,
+        note="Chief of Staff chat configured",
+        provider=available[0],
+        chat_model=str(chief_of_staff_config.chat_model),
+    )
+    return ChiefOfStaffChat(
+        provider=provider,
+        config=chief_of_staff_config,
         cost_tracker=cost_tracker,
     )
 

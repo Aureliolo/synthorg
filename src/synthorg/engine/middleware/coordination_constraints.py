@@ -144,11 +144,11 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         # Determine round number
         round_number = (existing.round_number + 1) if existing else 1
 
-        # Analyze progress via monotonic comparison of completed_count.
-        if rollup is not None:
-            completed = getattr(rollup, "completed_count", 0) or 0
-        else:
-            completed = 0
+        # Analyze progress via monotonic comparison of completed-count.
+        # ``SubtaskStatusRollup.completed`` is the canonical name on
+        # the rollup; ``ProgressLedger.completed_count`` is the
+        # snapshot we persist for round-over-round comparison.
+        completed = rollup.completed if rollup is not None else 0
         prev_completed = existing.completed_count if existing else 0
         progress_made = completed > prev_completed
 

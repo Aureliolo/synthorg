@@ -12,14 +12,22 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.coordination.dispatcher_types import (
+    DispatchResult,  # noqa: TC001
+)
 from synthorg.engine.coordination.models import (
     CoordinationContext,  # noqa: TC001
     CoordinationPhaseResult,  # noqa: TC001
+)
+from synthorg.engine.decomposition.models import (
+    DecompositionResult,  # noqa: TC001
+    SubtaskStatusRollup,  # noqa: TC001
 )
 from synthorg.engine.middleware.models import (
     ProgressLedger,  # noqa: TC001
     TaskLedger,  # noqa: TC001
 )
+from synthorg.engine.routing.models import RoutingResult  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.middleware import (
     MIDDLEWARE_COORDINATION_HOOK_ERROR,
@@ -55,19 +63,19 @@ class CoordinationMiddlewareContext(BaseModel):
     coordination_context: CoordinationContext = Field(
         description="Original coordination input",
     )
-    decomposition_result: Any | None = Field(
+    decomposition_result: DecompositionResult | None = Field(
         default=None,
         description="DecompositionResult (set after decomposition)",
     )
-    routing_result: Any | None = Field(
+    routing_result: RoutingResult | None = Field(
         default=None,
         description="RoutingResult (set after routing)",
     )
-    dispatch_result: Any | None = Field(
+    dispatch_result: DispatchResult | None = Field(
         default=None,
         description="DispatchResult (set after dispatch)",
     )
-    status_rollup: Any | None = Field(
+    status_rollup: SubtaskStatusRollup | None = Field(
         default=None,
         description="SubtaskStatusRollup (set after rollup)",
     )

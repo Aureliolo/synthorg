@@ -7,7 +7,7 @@ the meta-improvement pipeline.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Self
+from typing import Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -15,6 +15,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     computed_field,
     model_validator,
 )
@@ -120,7 +121,7 @@ class RollbackOperation(BaseModel):
 
     operation_type: NotBlankStr
     target: NotBlankStr
-    previous_value: Any = None
+    previous_value: JsonValue = None
     description: NotBlankStr
 
 
@@ -156,8 +157,8 @@ class ConfigChange(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     path: NotBlankStr
-    old_value: Any = None
-    new_value: Any = None
+    old_value: JsonValue = None
+    new_value: JsonValue = None
     description: NotBlankStr
 
 
@@ -176,7 +177,7 @@ class ArchitectureChange(BaseModel):
 
     operation: NotBlankStr
     target_name: NotBlankStr
-    payload: dict[str, Any] = Field(default_factory=dict)
+    payload: dict[str, JsonValue] = Field(default_factory=dict)
     description: NotBlankStr
 
 
@@ -435,7 +436,7 @@ class RuleMatch(BaseModel):
     rule_name: NotBlankStr
     severity: RuleSeverity
     description: NotBlankStr
-    signal_context: dict[str, Any] = Field(default_factory=dict)
+    signal_context: dict[str, JsonValue] = Field(default_factory=dict)
     suggested_altitudes: tuple[ProposalAltitude, ...] = Field(min_length=1)
     matched_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),

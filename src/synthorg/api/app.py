@@ -25,6 +25,7 @@ from synthorg.api.app_builders import (
     _build_default_trust_service,
     _build_performance_tracker,
     _build_telemetry_collector,
+    build_chief_of_staff_chat,
 )
 from synthorg.api.app_helpers import (
     _make_expire_callback,
@@ -141,7 +142,9 @@ logger = get_logger(__name__)
 # Update both sites together if the default ever changes; otherwise a
 # bootstrap value will silently disagree with operator-editable
 # overrides resolved through ``ConfigResolver``.
-_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS = 60.0
+_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS = (
+    60.0  # lint-allow: magic-numbers -- bootstrap default mirrored by ConfigResolver
+)
 
 
 def _build_default_approval_timeout_scheduler(
@@ -957,6 +960,35 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             performance_tracker=performance_tracker,
         )
         app_state.set_report_service(report_service)
+
+    async def _wire_chief_of_staff_chat() -> None:
+        # Wired only when the meta config opts in via
+        # ``chief_of_staff.chat_enabled`` AND a provider is registered.
+        # When unwired, ``POST /meta/chat`` surfaces 503 rather than the
+        # silent placeholder it returned previously.
+        # Idempotent: a re-entry of lifespan startup against the same
+        # ``AppState`` (e.g. ASGI restart in tests) would otherwise make
+        # the one-shot ``set_chief_of_staff_chat`` raise.
+        if app_state.has_chief_of_staff_chat:
+            return
+        if provider_registry is None:
+            return
+        from synthorg.meta.config import (  # noqa: PLC0415
+            load_self_improvement_config,
+        )
+
+        meta_self_improvement = await load_self_improvement_config(
+            app_state.settings_service if app_state.has_settings_service else None,
+        )
+        chat_backend = build_chief_of_staff_chat(
+            meta_self_improvement.chief_of_staff,
+            provider_registry=provider_registry,
+            cost_tracker=cost_tracker,
+        )
+        if chat_backend is not None:
+            app_state.set_chief_of_staff_chat(chat_backend)
+
+    startup = [*startup, _wire_chief_of_staff_chat]
 
     # Bring up the notification dispatcher's HTTP-bearing sinks
     # (slack/ntfy ``httpx.AsyncClient``) lazily under their lifecycle
