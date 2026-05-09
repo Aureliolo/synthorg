@@ -36,7 +36,7 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -79,6 +79,11 @@ or null, "alternative_strategy": "..." or null, "reason": "..."}}
 
 _DEFAULT_QUALITY_THRESHOLD = 0.3
 _DEFAULT_FALLBACK_WORKERS = ("semantic",)
+
+# Routing decisions and retry-evaluation must be deterministic so the
+# same query produces the same worker selection across runs; pin
+# ``temperature=0.0`` regardless of provider defaults.
+_ROUTING_COMPLETION_CONFIG = CompletionConfig(temperature=0.0)
 
 
 class SupervisorRouter:
@@ -227,6 +232,7 @@ class SupervisorRouter:
             response = await self._provider.complete(
                 messages,
                 self._model,
+                config=_ROUTING_COMPLETION_CONFIG,
             )
         if response.content is None:
             msg = "LLM returned empty content for routing"
@@ -295,6 +301,7 @@ class SupervisorRouter:
             response = await self._provider.complete(
                 messages,
                 self._model,
+                config=_ROUTING_COMPLETION_CONFIG,
             )
         if response.content is None:
             return None
