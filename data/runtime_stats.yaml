@@ -43,8 +43,8 @@ stats:
     raw: 7
     display: "7"
   convention_gates:
-    raw: 36
-    display: "36"
+    raw: 37
+    display: "37"
 
 sources:
   tests: "uv run python -m pytest --collect-only -q"
