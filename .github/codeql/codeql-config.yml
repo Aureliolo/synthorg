@@ -4,20 +4,11 @@ queries:
   - uses: security-extended
   - uses: ./.github/codeql/queries/synthorg-cleartext-logging
   - uses: ./.github/codeql/queries/synthorg-partial-ssrf
-# No top-level `packs:` -- the `security-extended` suite already pulls in
-# the language-appropriate query pack for each matrix entry. Listing
-# `codeql/{python,go,javascript}-queries` here forces every analysis (e.g.
-# JS) to also load the other-language query packs, which transitively
-# loads their language-specific lib packs (e.g. `codeql/go-all`) and lets
-# our `synthorg-go-sanitisers` 9-column `barrierModel` rows reach the JS
-# barrierModel signature check (3 user-cols), failing the analysis with
-# "Expected 4, but was 9".
 paths-ignore:
   - 'tests/**'
   - 'web/__mocks__/**'
   - 'web/e2e/**'
   - '.github/codeql/fixtures/**'
-  - 'cli/internal/codeqlfixtures/**'
 query-filters:
   # Replaced by ./queries/synthorg-cleartext-logging/CleartextLoggingWithBarriers.ql
   # which runs the same flow analysis with project sanitisers in scope.

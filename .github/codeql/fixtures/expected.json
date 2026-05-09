@@ -1,5 +1,5 @@
 {
-  "description": "CodeQL pack-validation expectations. Each fixture is analyzed by codeql database analyze and the resulting SARIF is checked against this manifest. must_not_fire failure = pack is under-modelling a sanitiser; must_fire failure = pack is over-suppressing. The synthorg/* rule IDs come from the custom query packs under .github/codeql/queries/ that replace upstream py/clear-text-logging-sensitive-data and py/partial-ssrf with versions that have project sanitisers in scope.",
+  "description": "CodeQL pack-validation expectations. Each fixture is analyzed by codeql database analyze and the resulting SARIF is checked against this manifest. must_not_fire failure = a custom query is under-modelling a sanitiser; must_fire failure = a custom query is over-suppressing. The synthorg/* rule IDs come from the custom query packs under .github/codeql/queries/ that replace upstream py/clear-text-logging-sensitive-data and py/partial-ssrf with versions that have project sanitisers in scope.",
   "fixtures": [
     {
       "name": "python-negative",
@@ -8,7 +8,6 @@
       "scan_paths": [".github/codeql/fixtures/python/negative.py"],
       "must_not_fire": [
         "synthorg/clear-text-logging-sensitive-data",
-        "py/path-injection",
         "synthorg/partial-ssrf"
       ]
     },
@@ -19,40 +18,7 @@
       "scan_paths": [".github/codeql/fixtures/python/positive.py"],
       "must_fire": [
         "synthorg/clear-text-logging-sensitive-data",
-        "py/path-injection",
         "synthorg/partial-ssrf"
-      ]
-    },
-    {
-      "name": "go",
-      "language": "go",
-      "source_root": "cli",
-      "scan_paths": ["internal/codeqlfixtures"],
-      "must_not_fire_at": [
-        {"rule": "go/path-injection", "function": "NegativePathInjection"},
-        {"rule": "go/log-injection", "function": "NegativeLogInjection"}
-      ],
-      "must_fire_at": [
-        {"rule": "go/path-injection", "function": "PositivePathInjection"},
-        {"rule": "go/log-injection", "function": "PositiveLogInjection"}
-      ]
-    },
-    {
-      "name": "javascript-negative",
-      "language": "javascript",
-      "source_root": ".",
-      "scan_paths": [".github/codeql/fixtures/javascript/negative.ts"],
-      "must_not_fire": [
-        "js/log-injection"
-      ]
-    },
-    {
-      "name": "javascript-positive",
-      "language": "javascript",
-      "source_root": ".",
-      "scan_paths": [".github/codeql/fixtures/javascript/positive.ts"],
-      "must_fire": [
-        "js/log-injection"
       ]
     }
   ]

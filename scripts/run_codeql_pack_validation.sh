@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate the SynthOrg CodeQL Models-as-Data sanitiser pack.
+# Validate the SynthOrg CodeQL custom-query sanitiser packs.
 #
 # Drives the CodeQL CLI against each fixture in
 # .github/codeql/fixtures/expected.json and asserts via
@@ -24,13 +24,6 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 RESULTS_DIR="$REPO_ROOT/.github/codeql/fixtures/results"
-# Single search-path that contains all per-language extension packs. CodeQL
-# discovers each pack via its qlpack.yml and only loads the YAML rows whose
-# `addsTo.pack` matches the language being analysed -- the per-language
-# split keeps Go's 9-column rows out of the JS/Python signature check (and
-# vice-versa), which a single mixed pack with multi-language
-# `extensionTargets` cannot do.
-EXTENSIONS_DIR="$REPO_ROOT/.github/codeql/extensions"
 DB_DIR="$REPO_ROOT/.codeql-databases"
 
 if ! command -v codeql >/dev/null 2>&1 && [ -n "${RUNNER_TOOL_CACHE:-}" ]; then
@@ -73,13 +66,12 @@ run_fixture() {
         --overwrite \
         "$db"
 
-    echo "==> [$name] analyzing with synthorg-*-sanitisers extension packs"
+    echo "==> [$name] analyzing with synthorg-* custom query packs"
     # shellcheck disable=SC2086
     # extra_queries is a deliberately-split arg list (one path per word)
     codeql database analyze \
         --format=sarif-latest \
         --output="$sarif" \
-        --additional-packs="$EXTENSIONS_DIR" \
         --threads=0 \
         "$db" \
         "$query_suite" \
@@ -107,21 +99,6 @@ run_fixture python-negative python "." \
 run_fixture python-positive python "." \
     "codeql/python-queries:codeql-suites/python-security-extended.qls" \
     "$PYTHON_CUSTOM_QUERIES"
-
-# Go: source-root is cli/ so the module builds and config.SecurePath is
-# extractable. Both negative + positive cases live in the same package
-# (cli/internal/codeqlfixtures/) so a single analysis covers both; the
-# check script's `must_not_fire_at` / `must_fire_at` use function names to
-# scope the assertions.
-run_fixture go go "cli" \
-    "codeql/go-queries:codeql-suites/go-security-extended.qls"
-
-# JavaScript: source-root is the repo so the relative import in
-# fixtures/javascript/*.ts can resolve to web/src/utils/.
-run_fixture javascript-negative javascript-typescript "." \
-    "codeql/javascript-queries:codeql-suites/javascript-security-extended.qls"
-run_fixture javascript-positive javascript-typescript "." \
-    "codeql/javascript-queries:codeql-suites/javascript-security-extended.qls"
 
 echo
 echo "==> running fixture-expectation diff"

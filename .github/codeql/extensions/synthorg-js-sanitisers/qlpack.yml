@@ -1,7 +1,0 @@
-name: synthorg/js-sanitisers
-version: 0.0.1
-library: true
-extensionTargets:
-  codeql/javascript-all: '*'
-dataExtensions:
-  - js-sanitisers.model.yml
