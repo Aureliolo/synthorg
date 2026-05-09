@@ -6,17 +6,17 @@ Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (use `go -C cli`, never `cd c
 
 ## MANDATORY one-liners
 
-- **Design Spec**: read `docs/design/` page before implementing; deviations need approval. See [DESIGN_SPEC.md](docs/DESIGN_SPEC.md).
-- **Planning**: present every plan for accept/deny before coding.
-- **Web Design System**: reuse `web/src/components/ui/`; design tokens only. Detail in `web/CLAUDE.md`.
-- **Regional Defaults**: no region/currency/locale privileged; metric units; British English. See [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md).
-- **Persistence Boundary**: only `src/synthorg/persistence/` may import sqlite/psycopg or emit raw SQL. See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md).
-- **Convention Rollout**: every convention PR ships its enforcement gate. See [docs/reference/convention-gates.md](docs/reference/convention-gates.md).
-- **Configuration Precedence**: DB > env > YAML > code default via `SettingsService`/`ConfigResolver`; no `os.environ.get` outside startup. See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md).
-- **No Hardcoded Values**: numerics live in `settings/definitions/`; allowlist 0/1/-1, HTTP codes, hex masks, powers-of-2. Enforced by `scripts/check_no_magic_numbers.py`.
-- **Doc Numeric Claims**: numerics in README + public docs sourced from `data/runtime_stats.yaml` via `<!--RS:NAME-->` markers. See `data/README.md`.
-- **Test Regression**: timeout/slow failures = source-code regression; never edit `tests/baselines/unit_timing.json`.
-- **Post-Implementation**: after issue: branch + commit + push (no auto-PR); use `/pre-pr-review` (gh pr create is hookify-blocked). After PR: `/aurelio-review-pr` for external feedback. Fix EVERYTHING valid; no deferring.
+- **Design Spec (MANDATORY)**: read `docs/design/` page before implementing; deviations need approval. See [DESIGN_SPEC.md](docs/DESIGN_SPEC.md).
+- **Planning (MANDATORY)**: present every plan for accept/deny before coding.
+- **Web Dashboard Design System (MANDATORY)**: reuse `web/src/components/ui/`; design tokens only. Detail in `web/CLAUDE.md`.
+- **Regional Defaults (MANDATORY)**: no region/currency/locale privileged; metric units; British English. See [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md).
+- **Persistence Boundary (MANDATORY)**: only `src/synthorg/persistence/` may import sqlite/psycopg or emit raw SQL. See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md).
+- **Convention Rollout (MANDATORY)**: every convention PR ships its enforcement gate. See [docs/reference/convention-gates.md](docs/reference/convention-gates.md).
+- **Configuration Precedence (MANDATORY)**: DB > env > YAML > code default via `SettingsService`/`ConfigResolver`; no `os.environ.get` outside startup. See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md).
+- **No Hardcoded Values (MANDATORY)**: numerics live in `settings/definitions/`; allowlist 0/1/-1, HTTP codes, hex masks, powers-of-2. Enforced by `scripts/check_no_magic_numbers.py`.
+- **Doc Numeric Claims (MANDATORY)**: numerics in README + public docs sourced from `data/runtime_stats.yaml` via `<!--RS:NAME-->` markers. See `data/README.md`.
+- **Test Regression (MANDATORY)**: timeout/slow failures = source-code regression; never edit `tests/baselines/unit_timing.json`.
+- **Post-Implementation + Pre-PR Review (MANDATORY)**: after issue: branch + commit + push (no auto-PR); use `/pre-pr-review` (gh pr create is hookify-blocked). After PR: `/aurelio-review-pr` for external feedback. Fix EVERYTHING valid; no deferring.
 
 ## Quick Commands
 
