@@ -1,8 +1,9 @@
 # SynthOrg JavaScript / TypeScript sanitiser models.
 #
-# Each row is a Models-as-Data summary with kind: "value" so CodeQL knows the
-# return value is derived from the input but without taint. This matches the
-# documented MaD pattern for JS sanitisers
+# Each row uses the `sanitizerModel` extensible predicate so CodeQL treats
+# the modelled return value as a taint barrier (kind: "taint") rather than
+# a value-preserving summary. This matches the documented MaD pattern for
+# JS sanitisers
 # (https://codeql.github.com/docs/codeql-language-guides/customizing-library-models-for-javascript/).
 #
 # Per-rule scoping: every row below targets js/log-injection. The web
@@ -17,23 +18,23 @@ extensions:
   # truncates the result to maxLen characters.
   - addsTo:
       pack: codeql/javascript-all
-      extensible: summaryModel
+      extensible: sanitizerModel
     data:
-      - ["web/src/utils/logging", "Member[sanitizeForLog]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
+      - ["web/src/utils/logging", "Member[sanitizeForLog]", "taint"]
 
   # js/log-injection
   # sanitizeWsString applies sanitizeForLog with the WS-payload length cap.
   - addsTo:
       pack: codeql/javascript-all
-      extensible: summaryModel
+      extensible: sanitizerModel
     data:
-      - ["web/src/utils/ws-sanitize", "Member[sanitizeWsString]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
+      - ["web/src/utils/ws-sanitize", "Member[sanitizeWsString]", "taint"]
 
   # js/log-injection
   # sanitizeWsEnum validates against an allowlist and returns either the
   # input (when allowed) or a literal fallback. Both branches are safe.
   - addsTo:
       pack: codeql/javascript-all
-      extensible: summaryModel
+      extensible: sanitizerModel
     data:
-      - ["web/src/utils/ws-sanitize", "Member[sanitizeWsEnum]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
+      - ["web/src/utils/ws-sanitize", "Member[sanitizeWsEnum]", "taint"]

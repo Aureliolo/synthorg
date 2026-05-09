@@ -16,6 +16,7 @@ from scripts.check_image_signatures import (
     _validate_image_tag,
     _validate_repo_prefix,
 )
+from scripts.check_persistence_boundary import _resolve_root
 
 from synthorg.observability.redaction import safe_error_description
 
@@ -41,15 +42,14 @@ def negative_path_injection_relative_to(
 ) -> str | None:
     """py/path-injection must NOT fire here.
 
-    Pattern: resolve, then assert containment via ``Path.relative_to`` in
-    a try/except block. The ValueError branch is the safe-exit.
+    Pattern: delegate to ``_resolve_root`` -- the modelled sanitiser that
+    asserts the candidate path resolves strictly under ``project_root``.
+    The None-return branch is the safe-exit.
     """
-    candidate = (project_root / user_input).resolve()
-    try:
-        candidate.relative_to(project_root)
-    except ValueError:
+    resolved = _resolve_root(Path(user_input), project_root)
+    if resolved is None:
         return None
-    return candidate.read_text()
+    return resolved.read_text()
 
 
 def negative_partial_ssrf(repo_prefix: str, image: str, tag: str) -> int:

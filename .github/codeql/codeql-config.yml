@@ -6,9 +6,9 @@ packs:
   - codeql/python-queries
   - codeql/go-queries
   - codeql/javascript-queries
-  - .github/codeql/extensions/synthorg-sanitisers
 paths-ignore:
   - 'tests/**'
   - 'web/__mocks__/**'
   - 'web/e2e/**'
   - '.github/codeql/fixtures/**'
+  - 'cli/internal/codeqlfixtures/**'

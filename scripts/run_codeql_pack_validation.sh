@@ -11,8 +11,10 @@
 # The same script is invoked by .github/workflows/codeql-pack-validate.yml
 # so local runs and CI runs share one source of truth.
 #
-# Requires the CodeQL CLI on PATH. CI installs it via codeql-action; locally,
-# install via:
+# Requires the CodeQL CLI on PATH. CI installs it via codeql-action which
+# extracts the bundle into $RUNNER_TOOL_CACHE/CodeQL/<version>/x64/codeql/
+# but does NOT add that directory to PATH; the PATH-discovery block below
+# handles that case. Locally, install via:
 #
 #   gh release download codeql-bundle-vX.Y.Z --pattern '*linux64*' --repo github/codeql-action
 #   tar -xzf codeql-bundle-*-linux64.tar.gz -C "$HOME/.codeql"
@@ -24,6 +26,18 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 RESULTS_DIR="$REPO_ROOT/.github/codeql/fixtures/results"
 PACK_DIR="$REPO_ROOT/.github/codeql/extensions/synthorg-sanitisers"
 DB_DIR="$REPO_ROOT/.codeql-databases"
+
+if ! command -v codeql >/dev/null 2>&1 && [ -n "${RUNNER_TOOL_CACHE:-}" ]; then
+    # codeql-action extracts the bundle into RUNNER_TOOL_CACHE but does not
+    # export PATH for subsequent script steps. Discover the latest extracted
+    # version and add its `codeql/` subdirectory to PATH.
+    for cand in "$RUNNER_TOOL_CACHE"/CodeQL/*/x64/codeql; do
+        if [ -x "$cand/codeql" ]; then
+            export PATH="$cand:$PATH"
+            break
+        fi
+    done
+fi
 
 if ! command -v codeql >/dev/null 2>&1; then
     echo "error: codeql CLI not on PATH" >&2
@@ -64,15 +78,20 @@ run_fixture() {
 
 # Python: source-root is the repo so synthorg.* imports resolve in the
 # fixture; the fixture dir is not isolated. The check script's scan_paths
-# filter restricts assertions to fixture files only.
+# filter restricts assertions to fixture files only. Negative + positive
+# variants need separate analyses because expected.json asserts different
+# rule outcomes per file (must_not_fire vs must_fire) -- copying the SARIF
+# would yield identical results for both.
 run_fixture python-negative python "." \
     "codeql/python-queries:codeql-suites/python-security-extended.qls"
-# Reuse the database for the positive variant -- same source-root, same
-# language. We just re-analyze with a different SARIF output name.
-cp "$RESULTS_DIR/python-negative.sarif" "$RESULTS_DIR/python-positive.sarif"
+run_fixture python-positive python "." \
+    "codeql/python-queries:codeql-suites/python-security-extended.qls"
 
 # Go: source-root is cli/ so the module builds and config.SecurePath is
-# extractable.
+# extractable. Both negative + positive cases live in the same package
+# (cli/internal/codeqlfixtures/) so a single analysis covers both; the
+# check script's `must_not_fire_at` / `must_fire_at` use function names to
+# scope the assertions.
 run_fixture go go "cli" \
     "codeql/go-queries:codeql-suites/go-security-extended.qls"
 
@@ -80,7 +99,8 @@ run_fixture go go "cli" \
 # fixtures/javascript/*.ts can resolve to web/src/utils/.
 run_fixture javascript-negative javascript-typescript "." \
     "codeql/javascript-queries:codeql-suites/javascript-security-extended.qls"
-cp "$RESULTS_DIR/javascript-negative.sarif" "$RESULTS_DIR/javascript-positive.sarif"
+run_fixture javascript-positive javascript-typescript "." \
+    "codeql/javascript-queries:codeql-suites/javascript-security-extended.qls"
 
 echo
 echo "==> running fixture-expectation diff"

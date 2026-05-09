@@ -1,8 +1,9 @@
 # SynthOrg Python sanitiser models.
 #
-# Each row is a Models-as-Data summary with kind: "value" so CodeQL knows the
-# return value is derived from the input but does NOT propagate taint. This is
-# the documented MaD pattern for sanitiser-style helpers
+# Each row uses the `sanitizerModel` extensible predicate so CodeQL treats
+# the modelled return value as a taint barrier (kind: "taint") rather than
+# a value-preserving summary. This is the documented MaD pattern for
+# sanitiser-style helpers
 # (https://codeql.github.com/docs/codeql-language-guides/customizing-library-models-for-python/).
 #
 # Per-rule scoping is documented in the comments above each block. The same row
@@ -16,11 +17,11 @@ extensions:
   # messages before they reach a logger.
   - addsTo:
       pack: codeql/python-all
-      extensible: summaryModel
+      extensible: sanitizerModel
     data:
-      - ["synthorg.observability.redaction", "Member[safe_error_description]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["synthorg.observability", "Member[safe_error_description]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["synthorg.observability.redaction", "Member[scrub_secret_tokens]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
+      - ["synthorg.observability.redaction", "Member[safe_error_description]", "taint"]
+      - ["synthorg.observability", "Member[safe_error_description]", "taint"]
+      - ["synthorg.observability.redaction", "Member[scrub_secret_tokens]", "taint"]
 
   # py/path-injection
   # _resolve_root resolves a candidate against project_root and returns None
@@ -30,28 +31,28 @@ extensions:
   # package names.
   - addsTo:
       pack: codeql/python-all
-      extensible: summaryModel
+      extensible: sanitizerModel
     data:
-      - ["scripts.check_currency_aggregation_invariant", "Member[_resolve_root]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["scripts.check_dependency_inversion", "Member[_resolve_root]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["scripts.check_domain_error_hierarchy", "Member[_resolve_root]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["scripts.check_forbidden_literals", "Member[_resolve_root]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["scripts.check_no_magic_numbers", "Member[_resolve_root]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["scripts.check_no_migration_framing", "Member[_resolve_root]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["scripts.check_no_review_origin_in_code", "Member[_resolve_root]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["scripts.check_persistence_boundary", "Member[_resolve_root]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
+      - ["scripts.check_currency_aggregation_invariant", "Member[_resolve_root]", "taint"]
+      - ["scripts.check_dependency_inversion", "Member[_resolve_root]", "taint"]
+      - ["scripts.check_domain_error_hierarchy", "Member[_resolve_root]", "taint"]
+      - ["scripts.check_forbidden_literals", "Member[_resolve_root]", "taint"]
+      - ["scripts.check_no_magic_numbers", "Member[_resolve_root]", "taint"]
+      - ["scripts.check_no_migration_framing", "Member[_resolve_root]", "taint"]
+      - ["scripts.check_no_review_origin_in_code", "Member[_resolve_root]", "taint"]
+      - ["scripts.check_persistence_boundary", "Member[_resolve_root]", "taint"]
 
   # py/partial-ssrf
   # The OCI-grammar regex validators in scripts/check_image_signatures.py
   # anchor user-supplied repo prefixes and image tags against \A...\Z, then
-  # raise SystemExit(2) on mismatch. Modelled as identity-preserving sanitisers
-  # so flow analysis recognises the values as safe inputs to urlopen calls.
-  # The script also wraps each component in urllib.parse.quote(), which CodeQL
-  # already recognises -- this is belt-and-braces in case a future caller drops
-  # the quote() step.
+  # raise SystemExit(2) on mismatch. Modelled as taint barriers so flow
+  # analysis recognises the values as safe inputs to urlopen calls. The
+  # script also wraps each component in urllib.parse.quote(), which CodeQL
+  # already recognises -- this is belt-and-braces in case a future caller
+  # drops the quote() step.
   - addsTo:
       pack: codeql/python-all
-      extensible: summaryModel
+      extensible: sanitizerModel
     data:
-      - ["scripts.check_image_signatures", "Member[_validate_repo_prefix]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
-      - ["scripts.check_image_signatures", "Member[_validate_image_tag]", "", "", "", "", "Argument[0]", "ReturnValue", "value", "manual"]
+      - ["scripts.check_image_signatures", "Member[_validate_repo_prefix]", "taint"]
+      - ["scripts.check_image_signatures", "Member[_validate_image_tag]", "taint"]
