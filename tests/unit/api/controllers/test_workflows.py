@@ -686,10 +686,10 @@ class TestWorkflowControllerErrorEnvelope:
     ) -> None:
         """Invalid update collection surfaces a 422 RFC 9457 envelope.
 
-        ``_validate_collection`` previously built its own Response on a
-        Pydantic ``ValidationError``; the centralised handler must now
-        produce the structured envelope after it raises
-        ``WorkflowDefinitionValidationError``.
+        ``_validate_collection`` raises a field-scoped
+        ``WorkflowDefinitionValidationError`` so the central handler's
+        envelope tells API clients which collection failed without
+        leaking Pydantic detail.
         """
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
@@ -719,5 +719,5 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
-        assert "Invalid workflow definition." in body["error"]
+        assert "Invalid nodes field in request." in body["error"]
         assert "ValidationError" not in body["error"]

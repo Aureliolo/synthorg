@@ -18,7 +18,7 @@ from synthorg.core.persistence_errors import (
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
     WorkflowDefinitionInvalidError,
-    WorkflowExecutionError,
+    WorkflowExecutionAlreadyTerminalError,
     WorkflowExecutionNotFoundError,
 )
 from synthorg.engine.task_engine_models import CreateTaskData
@@ -673,7 +673,7 @@ class TestCancelExecution:
         service: WorkflowExecutionService,
         def_repo: FakeDefinitionRepo,
     ) -> None:
-        """Cancelling a terminal execution raises WorkflowExecutionError."""
+        """Cancelling a terminal execution raises the dedicated terminal error."""
         wf = make_workflow(
             nodes=(
                 make_start_node(),
@@ -693,7 +693,7 @@ class TestCancelExecution:
         )
         await service.cancel_execution(exe.id, cancelled_by="admin")
 
-        with pytest.raises(WorkflowExecutionError):
+        with pytest.raises(WorkflowExecutionAlreadyTerminalError):
             await service.cancel_execution(exe.id, cancelled_by="admin")
 
     @pytest.mark.unit
@@ -737,7 +737,7 @@ class TestCancelExecution:
 
         with (
             structlog.testing.capture_logs() as events,
-            pytest.raises(WorkflowExecutionError),
+            pytest.raises(WorkflowExecutionAlreadyTerminalError),
         ):
             await service.cancel_execution(exe.id, cancelled_by="admin")
 

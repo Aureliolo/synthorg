@@ -578,10 +578,10 @@ class TestErrorPaths:
         app_state: SimpleNamespace,
         actor: AgentIdentity,
     ) -> None:
-        from synthorg.engine.errors import WorkflowExecutionError
+        from synthorg.engine.errors import WorkflowExecutionAlreadyTerminalError
 
         app_state.workflow_execution_service.cancel_execution.side_effect = (
-            WorkflowExecutionError("already terminal")
+            WorkflowExecutionAlreadyTerminalError("already terminal")
         )
         handlers = build_handler_map()
         body = _parse(

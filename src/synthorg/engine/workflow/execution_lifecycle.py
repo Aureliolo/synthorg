@@ -18,6 +18,7 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.engine.errors import (
+    WorkflowExecutionAlreadyTerminalError,
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
@@ -107,7 +108,11 @@ async def cancel_execution(
 
     Raises:
         WorkflowExecutionNotFoundError: If not found.
-        WorkflowExecutionError: If execution is already terminal.
+        WorkflowExecutionAlreadyTerminalError: If execution is already
+            terminal. The dedicated subtype maps to 409 +
+            ``WORKFLOW_EXECUTION_ALREADY_TERMINAL`` so clients can
+            discriminate "execution finished before cancel arrived"
+            from a row-level optimistic-concurrency race.
     """
     execution = await repo.get(execution_id)
     if execution is None:
@@ -134,7 +139,7 @@ async def cancel_execution(
             current_status=execution.status.value,
             error=msg,
         )
-        raise WorkflowExecutionError(msg)
+        raise WorkflowExecutionAlreadyTerminalError(msg)
 
     with _tracer.start_as_current_span(
         "workflow.execution.cancelled",

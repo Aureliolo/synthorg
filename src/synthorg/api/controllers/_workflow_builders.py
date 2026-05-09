@@ -86,11 +86,11 @@ def _validate_collection(
 ) -> tuple[object, ...]:
     """Validate an iterable of dict items against ``model_cls``.
 
-    Raises ``WorkflowDefinitionValidationError`` (422) on Pydantic
-    validation failures so the centralised RFC 9457 dispatch produces
-    the structured envelope; the per-field log preserves the
-    operator-visible context that the controller-edge Response carried
-    before.
+    Raises:
+        WorkflowDefinitionValidationError: 422 with a field-scoped
+            message so API clients see which collection failed without
+            needing to consult server logs. Pydantic detail is scrubbed
+            to avoid leaking internal payload shapes.
     """
     try:
         return tuple(model_cls.model_validate(i) for i in items)  # type: ignore[attr-defined]
@@ -101,7 +101,7 @@ def _validate_collection(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = WorkflowDefinitionValidationError.default_message
+        msg = f"Invalid {field_name} field in request."
         raise WorkflowDefinitionValidationError(msg) from exc
 
 
@@ -189,9 +189,11 @@ def apply_update(
 ) -> WorkflowDefinition:
     """Merge update fields into an existing definition and validate.
 
-    Raises ``WorkflowDefinitionValidationError`` (422) if the merged
-    payload fails Pydantic validation; the centralised handler
-    produces the RFC 9457 envelope.
+    Raises:
+        WorkflowDefinitionValidationError: 422 if the merged payload
+            fails Pydantic validation. Pydantic detail is scrubbed so
+            the envelope does not leak internal payload shapes; the
+            structured warning log preserves operator context.
     """
     updates = build_update_fields(data)
     updates["revision"] = existing.revision + 1
@@ -200,6 +202,12 @@ def apply_update(
         merged = existing.model_dump() | updates
         return WorkflowDefinition.model_validate(merged)
     except (ValueError, ValidationError) as exc:
+        logger.warning(
+            WORKFLOW_DEF_INVALID_REQUEST,
+            definition_id=existing.id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         msg = WorkflowDefinitionValidationError.default_message
         raise WorkflowDefinitionValidationError(msg) from exc
 
@@ -209,13 +217,13 @@ async def load_blueprint_or_raise(
 ) -> BlueprintData:
     """Load a blueprint by name, raising the typed domain error on failure.
 
-    ``BlueprintNotFoundError`` (404 + ``RESOURCE_NOT_FOUND``) and
-    ``BlueprintValidationError`` (422 + ``VALIDATION_ERROR``) carry
-    the correct ClassVars; the centralised handler in
-    ``api/exception_handlers.py`` produces the RFC 9457 envelope.
-    The instantiation log + metric stay here so the audit stream still
-    records "blueprint resolution attempted -> outcome" pairs before
-    the typed error propagates to the centralised handler.
+    Emits the per-attempt warning + metric so the audit stream records
+    "blueprint resolution attempted -> outcome" pairs regardless of
+    where the typed error is finally rendered.
+
+    Raises:
+        BlueprintNotFoundError: 404 + ``RESOURCE_NOT_FOUND``.
+        BlueprintValidationError: 422 + ``VALIDATION_ERROR``.
     """
     try:
         return await asyncio.to_thread(load_blueprint, blueprint_name)

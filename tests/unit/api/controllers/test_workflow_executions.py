@@ -385,7 +385,9 @@ class TestWorkflowExecutionControllerErrorEnvelope:
                 "VERSION_CONFLICT",
             ),
             (
-                lambda: _import_engine_error("WorkflowExecutionError")(
+                lambda: _import_engine_error(
+                    "WorkflowExecutionAlreadyTerminalError",
+                )(
                     "execution already terminal",
                 ),
                 "WORKFLOW_EXECUTION_ALREADY_TERMINAL",

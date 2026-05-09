@@ -25,8 +25,6 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.engine.errors import (
-    WorkflowExecutionAlreadyTerminalError,
-    WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
 from synthorg.engine.workflow.execution_models import WorkflowExecution
@@ -213,10 +211,10 @@ class WorkflowExecutionController(Controller):
         ``error_code`` so clients can distinguish "execution finished
         before you cancelled" (``WORKFLOW_EXECUTION_ALREADY_TERMINAL``,
         no retry will succeed) from a row-level optimistic-concurrency
-        race (``VERSION_CONFLICT``, re-read and retry). ``PersistenceError``
-        (500) propagates unchanged. The engine layer emits
-        ``WORKFLOW_EXEC_CANCEL_CONFLICT`` before raising so audit-stream
-        alerting on failed cancels is preserved.
+        race (``VERSION_CONFLICT``, re-read and retry).
+        ``WorkflowExecutionAlreadyTerminalError`` propagates from the
+        engine; only the persistence-layer race is re-mapped here.
+        ``PersistenceError`` (500) propagates unchanged.
         """
         cancelled_by = _extract_username(request)
         service = await _build_service(state)
@@ -232,9 +230,6 @@ class WorkflowExecutionController(Controller):
             )
             msg = f"Workflow execution {execution_id!r} not found"
             raise NotFoundError(msg) from None
-        except WorkflowExecutionError as exc:
-            scrubbed = safe_error_description(exc)
-            raise WorkflowExecutionAlreadyTerminalError(scrubbed) from exc
         except PersistenceVersionConflictError as exc:
             scrubbed = safe_error_description(exc)
             raise VersionConflictError(scrubbed) from exc
