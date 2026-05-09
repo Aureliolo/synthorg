@@ -84,6 +84,13 @@ class SubworkflowHasParentsError(SubworkflowIOError):
         self.subworkflow_id: str = subworkflow_id
         self.version: str = version
         self.parents: tuple[ParentReference, ...] = parents
+        # Primitive projection so ``_safe_log_attrs`` in the
+        # centralised exception handler can include the blocking
+        # parent IDs in the structured log envelope. The full
+        # ``parents`` tuple is kept for callers (API response
+        # serialisation, MCP) but is skipped by the log clamp because
+        # ``ParentReference`` is a Pydantic model, not a primitive.
+        self.parent_ids: tuple[str, ...] = tuple(p.parent_id for p in parents)
 
 
 class SubworkflowService:

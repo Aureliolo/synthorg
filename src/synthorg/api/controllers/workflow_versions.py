@@ -351,9 +351,18 @@ class WorkflowVersionController(Controller):
             # Translate the persistence-layer name to the API-aware
             # ``VersionConflictError`` so the centralised handler emits
             # the user-facing message rather than the lower-level
-            # "Optimistic concurrency conflict" default. The
-            # centralised handler also logs the error itself, so no
-            # additional ``logger.warning`` is needed here.
+            # "Optimistic concurrency conflict" default. Log the
+            # rollback-specific context (``definition_id`` /
+            # ``target_version``) before raising; the centralised
+            # handler logs the exception attributes via
+            # ``_safe_log_attrs``, but those don't carry the call-site
+            # context that's only in scope here.
+            logger.warning(
+                WORKFLOW_DEF_VERSION_CONFLICT,
+                definition_id=workflow_id,
+                target_version=data.target_version,
+                error_type=type(exc).__name__,
+            )
             msg = "Version conflict during rollback. Reload and retry."
             raise VersionConflictError(msg) from exc
 

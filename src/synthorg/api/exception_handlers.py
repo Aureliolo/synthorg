@@ -358,14 +358,19 @@ def _safe_log_attrs(exc: Exception) -> dict[str, object]:
     Domain error subclasses (e.g. ``WorkflowDefinitionRevisionMismatchError``,
     ``SubworkflowHasParentsError``) carry structured fields like
     ``definition_id``, ``expected``, ``actual``, ``subworkflow_id``,
-    ``parents`` that operators query log streams by. Without this
+    ``parent_ids`` that operators query log streams by. Without this
     pass-through they would be lost when controllers stop building
     their own log calls.
 
-    Only primitives (``int`` / ``str`` / ``bool`` / ``None``) and small
-    tuples of primitives are included; complex values are skipped to
-    keep credentials and connection objects out of the sink. Private
-    (``_*``) attributes, dunder attributes, and the standard
+    Only primitives (``int`` / ``float`` / ``str`` / ``bool`` /
+    ``None``) and small tuples of primitives are included; complex
+    values (Pydantic models, nested dicts, custom objects) are skipped
+    to keep credentials and connection objects out of the sink. Domain
+    errors that need structured detail in logs expose a primitive-only
+    representation alongside the rich one (e.g.
+    ``SubworkflowHasParentsError`` exposes ``parent_ids: tuple[str,
+    ...]`` next to the full ``parents: tuple[ParentReference, ...]``).
+    Private (``_*``) attributes, dunder attributes, and the standard
     ``BaseException.args`` slot are skipped. Strings are clamped at
     ``_MAX_LOG_STR_LEN`` characters and tuples at
     ``_MAX_LOG_TUPLE_LEN`` elements. Keys colliding with the reserved
@@ -394,7 +399,7 @@ def _clamp_log_value(value: object) -> object:
     match value:
         case None | True | False:
             return value
-        case int():
+        case int() | float():
             return value
         case str():
             return value[:_MAX_LOG_STR_LEN]

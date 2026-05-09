@@ -82,7 +82,7 @@ describe('getErrorMessage', () => {
   it('surfaces structured error_detail.detail for 422 when data.error is absent', () => {
     const detail: ErrorDetail = {
       detail: 'currency: invalid_code',
-      error_code: ErrorCode.RATE_LIMITED,
+      error_code: ErrorCode.REQUEST_VALIDATION_ERROR,
       error_category: ErrorCategory.VALIDATION,
       retryable: false,
       retry_after: null,

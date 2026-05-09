@@ -147,13 +147,20 @@ def _is_domain_error_name(name: str) -> bool:
 
 
 def _builds_response_envelope(node: ast.AST) -> bool:
-    """Return True iff *node* is ``return Response(...)``."""
+    """Return True iff *node* is ``return Response(...)``.
+
+    Matches both the unqualified ``Response(...)`` and any dotted
+    attribute access whose terminal identifier is ``Response`` (e.g.
+    ``litestar.Response(...)``), so an alias-imported envelope still
+    trips the gate.
+    """
     if not isinstance(node, ast.Return) or node.value is None:
         return False
     call = node.value
     if not isinstance(call, ast.Call):
         return False
-    return _name_of(call.func) == "Response"
+    func_name = _name_of(call.func)
+    return func_name == "Response" or func_name.endswith(".Response")
 
 
 def _line_has_suppression(source_lines: list[str], lineno: int) -> bool:
