@@ -25,7 +25,7 @@ dependencies = [
     "cedarpy==4.8.1",
     "lxml==6.1.0",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.21.1",
-    "mcp==1.27.0",
+    "mcp==1.27.1",
     "mem0ai==2.0.2",
     "mmh3==5.2.1",
     "packaging==26.2",
@@ -105,7 +105,7 @@ fine-tune-cpu = [
 ]
 dev = [
     "commitizen==4.15.1",
-    "mypy==1.20.2",
+    "mypy==2.0.0",
     "pre-commit==4.6.0",
     "pip-audit==2.10.0",
     "pre-commit-uv==4.2.1",
