@@ -11,7 +11,7 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateCompanyStep } from '@/utils/setup-validation'
 import { CURRENCY_OPTIONS } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
-import { ERROR_CODE_PROVIDER_TIER_COVERAGE_INSUFFICIENT } from '@/api/types/errors'
+import { ErrorCode } from '@/api/types/errors'
 import { TemplateVariables } from './TemplateVariables'
 
 export function CompanyStep() {
@@ -126,7 +126,7 @@ export function CompanyStep() {
   // human-readable message -- the message is locale-coupled, the
   // code is the contract.
   const tierCoverageInsufficient =
-    companyErrorCode === ERROR_CODE_PROVIDER_TIER_COVERAGE_INSUFFICIENT
+    companyErrorCode === ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT
   const errorBannerAction = tierCoverageInsufficient
     ? { label: 'Go back to Providers step', onClick: goToProvidersStep }
     : undefined

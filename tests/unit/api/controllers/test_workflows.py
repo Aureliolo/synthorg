@@ -329,7 +329,7 @@ class TestWorkflowController:
         assert resp.status_code == 409
         body = resp.json()
         assert body["success"] is False
-        assert "version conflict" in body["error"].lower()
+        assert "revision conflict" in body["error"].lower()
 
     def test_update_workflow_with_correct_expected_revision(
         self, test_client: TestClient[Any]
@@ -441,4 +441,174 @@ class TestWorkflowController:
         assert "yaml" in resp.headers.get("content-type", "").lower()
         text = resp.text
         assert "workflow_definition" in text
-        assert "test-workflow" in text
+
+
+@pytest.mark.unit
+class TestWorkflowControllerErrorEnvelope:
+    """RFC 9457 envelope shape from centralised exception_handlers.
+
+    Every error path in the controller must surface through the
+    registered handler in ``src/synthorg/api/exception_handlers.py``
+    rather than a controller-built ``Response``, so the structured
+    ``error_detail`` block is consistent with the rest of the API.
+    """
+
+    def test_list_invalid_workflow_type_envelope(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        resp = test_client.get("/api/v1/workflows?workflow_type=bogus")
+        assert resp.status_code == 400
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+
+    def test_create_workflow_invalid_definition_envelope(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        """Pydantic validation failure surfaces a 422 with a safe message.
+
+        The controller must not leak Pydantic validation detail; the
+        response carries the typed ``WorkflowDefinitionValidationError``
+        default message via the centralised handler.
+        """
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        bad_payload = _make_create_payload(
+            nodes=[
+                {
+                    "id": "node-start",
+                    "type": "start",
+                    "label": "Start",
+                    "position_x": "not-a-float",
+                    "position_y": 0.0,
+                },
+                _END_NODE_DICT,
+            ],
+        )
+        resp = test_client.post(
+            "/api/v1/workflows",
+            json=bad_payload,
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+        assert "Invalid workflow definition." in body["error"]
+        assert "ValidationError" not in body["error"]
+
+    def test_update_workflow_not_found_envelope(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        resp = test_client.patch(
+            "/api/v1/workflows/wfdef-missing",
+            json={"name": "no-such-workflow"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.RESOURCE_NOT_FOUND
+        assert detail["error_category"] == ErrorCategory.NOT_FOUND
+        assert detail["retryable"] is False
+
+    def test_update_workflow_revision_conflict_envelope(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        created = _create_workflow(test_client, name="conflict-target")
+        wf_id = created["data"]["id"]
+
+        resp = test_client.patch(
+            f"/api/v1/workflows/{wf_id}",
+            json={"name": "racing-update", "expected_revision": 999},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.VERSION_CONFLICT
+        assert detail["error_category"] == ErrorCategory.CONFLICT
+        assert detail["retryable"] is False
+
+    def test_validate_workflow_invalid_definition_envelope(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        """The /validate endpoint also routes invalid bodies through
+        the centralised handler with a 422 envelope."""
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        bad_payload = _make_create_payload(
+            nodes=[
+                {
+                    "id": "node-start",
+                    "type": "start",
+                    "label": "Start",
+                    "position_x": "not-a-float",
+                    "position_y": 0.0,
+                },
+                _END_NODE_DICT,
+            ],
+        )
+        resp = test_client.post(
+            "/api/v1/workflows/validate-draft",
+            json=bad_payload,
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+
+    def test_export_workflow_yaml_serialization_error_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ValueError from the YAML exporter surfaces a 422 envelope.
+
+        The pre-refactor controller mapped a raw ValueError to 422; the
+        new ``WorkflowYamlExportError`` ClassVar must keep that status
+        so existing clients of /workflows/{id}/export are not broken.
+        """
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        wf_id = _seed(test_client, "wfdef-export-err")
+
+        def _raise_value_error(_definition: object) -> str:
+            msg = "yaml round-trip failed"
+            raise ValueError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.api.controllers.workflows.export_workflow_yaml",
+            _raise_value_error,
+        )
+
+        resp = test_client.post(
+            f"/api/v1/workflows/{wf_id}/export",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+        assert "Export failed" in body["error"]

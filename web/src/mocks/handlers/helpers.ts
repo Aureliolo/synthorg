@@ -1,4 +1,8 @@
-import type { ErrorDetail } from '@/api/types/errors'
+import {
+  ErrorCategory,
+  ErrorCode,
+  type ErrorDetail,
+} from '@/api/types/errors'
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -11,15 +15,41 @@ export function apiSuccess<T>(data: T): ApiResponse<T> {
   return { data, error: null, error_detail: null, success: true }
 }
 
+/**
+ * Reject one-sided ``error_code`` / ``error_category`` overrides.
+ *
+ * The two fields are bound by the band-prefix invariant in
+ * ``src/synthorg/core/error_taxonomy.py`` -- the first digit of
+ * ``error_code`` must match ``error_category``. Letting a caller
+ * override one without the other silently produces an envelope the
+ * backend would never emit (e.g. ``PROVIDER_TIER_COVERAGE_INSUFFICIENT``
+ * paired with the default ``internal`` category), masking real
+ * frontend / backend divergence.
+ */
+function assertErrorIdentityOverrides(overrides?: Partial<ErrorDetail>): void {
+  const hasCode = overrides?.error_code !== undefined
+  const hasCategory = overrides?.error_category !== undefined
+  if (hasCode !== hasCategory) {
+    throw new Error(
+      'buildDefaultErrorDetail: error_code and error_category must be overridden together',
+    )
+  }
+}
+
 /** Default ErrorDetail used by both apiError and apiPaginatedError. */
 function buildDefaultErrorDetail(
   error: string,
   overrides?: Partial<ErrorDetail>,
 ): ErrorDetail {
+  assertErrorIdentityOverrides(overrides)
   return {
     detail: error,
-    error_code: 1000,
-    error_category: 'internal',
+    // INTERNAL_ERROR (8000) is the right pairing for the INTERNAL
+    // category; the prior UNAUTHORIZED (1000, auth band) was a
+    // category/code mismatch that violated the band invariant
+    // documented in src/synthorg/core/error_taxonomy.py.
+    error_code: ErrorCode.INTERNAL_ERROR,
+    error_category: ErrorCategory.INTERNAL,
     retryable: false,
     retry_after: null,
     instance: '/storybook',
@@ -59,8 +89,12 @@ export function buildValidationError(
 ): ApiResponse<never> {
   if (fields.length === 0) {
     return apiError('Validation error: required field is missing.', {
-      error_code: 4001,
-      error_category: 'validation',
+      // REQUEST_VALIDATION_ERROR (2001) sits in the validation band;
+      // the prior DUPLICATE_RECORD (4001, conflict band) was a
+      // category/code mismatch that would have failed the backend's
+      // band-prefix invariant.
+      error_code: ErrorCode.REQUEST_VALIDATION_ERROR,
+      error_category: ErrorCategory.VALIDATION,
       title: 'Validation error',
       ...overrides,
     })
@@ -69,8 +103,8 @@ export function buildValidationError(
     ? `${fields[0]} is required`
     : `${fields.slice(0, -1).join(', ')} and ${fields[fields.length - 1]} are required`
   return apiError(`Validation error: ${formatted}.`, {
-    error_code: 4001,
-    error_category: 'validation',
+    error_code: ErrorCode.REQUEST_VALIDATION_ERROR,
+    error_category: ErrorCategory.VALIDATION,
     title: 'Validation error',
     ...overrides,
   })

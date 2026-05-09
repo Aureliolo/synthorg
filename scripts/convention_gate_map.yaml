@@ -142,6 +142,11 @@ mandatory_rules:
         integration tests and code review; no AST gate cross-checks
         the two files yet.
 
+  - id: web-claude-md::error-code-constants
+    file: web/CLAUDE.md
+    header: Error-code constants
+    gate: scripts/check_error_codes_ts_in_sync.py
+
   - id: web-claude-md::design-system
     file: web/CLAUDE.md
     header: Design System
@@ -224,3 +229,16 @@ mandatory_rules:
     file: docs/reference/configuration-precedence.md
     header: Kill-Switch Idiom
     gate: scripts/check_long_running_loops_have_kill_switch.py
+
+  # ---------------------------------------------------------------
+  # docs/reference/errors.md
+  # ---------------------------------------------------------------
+  - id: docs-reference-errors-md::http-exception-handler-registration
+    file: docs/reference/errors.md
+    header: HTTP exception handler registration
+    gate: scripts/check_no_controller_response_for_domain_errors.py
+
+  - id: docs-reference-errors-md::error-code-constants-frontend-integration
+    file: docs/reference/errors.md
+    header: Error-code constants - frontend integration
+    gate: scripts/check_error_codes_ts_in_sync.py

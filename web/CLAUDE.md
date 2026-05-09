@@ -65,6 +65,8 @@ All store **mutation** actions (create / update / delete) follow the `stores/con
 
 **WS wire protocol (MANDATORY)**: the client-server contract lives in `web/src/utils/constants.ts` (`WS_PROTOCOL_VERSION`, `WS_MAX_MESSAGE_SIZE`, `WS_HEARTBEAT_INTERVAL_MS`, `WS_PONG_TIMEOUT_MS`, `LOG_SANITIZE_MAX_LENGTH`) and MUST stay in lockstep with `src/synthorg/api/ws_models.py` / `src/synthorg/api/controllers/ws.py`. Bump the protocol version on both sides together for breaking payload changes.
 
+**Error-code constants (MANDATORY)**: import `ErrorCode` and `ErrorCategory` from `@/api/types/errors` (re-exported from the generated `web/src/api/types/error-codes.gen.ts`). Discriminate on `ErrorCode.<NAME>`, never on raw integer literals. The generator (`scripts/generate_error_codes_ts.py`) reads `src/synthorg/core/error_taxonomy.py`; drift is enforced at pre-push by `scripts/check_error_codes_ts_in_sync.py`.
+
 See [docs/reference/web-zustand-stores.md](../docs/reference/web-zustand-stores.md) for the full mutation pattern, the per-PR async-leak audit trail, the structural-floor research, the WebSocket auth handshake / backpressure / single-writer details, and the cookie shim contract.
 
 ## Design System (MANDATORY)

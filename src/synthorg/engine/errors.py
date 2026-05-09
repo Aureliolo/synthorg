@@ -215,8 +215,8 @@ class DelegationRoundLimitError(EngineError):
     """
 
     def __init__(self, current_round: int, soft_limit: int) -> None:
-        self.current_round = current_round
-        self.soft_limit = soft_limit
+        self.current_round: int = current_round
+        self.soft_limit: int = soft_limit
         super().__init__(
             f"Delegation round {current_round} exceeds hard limit "
             f"({soft_limit * 2}, soft cap {soft_limit})"
@@ -247,8 +247,8 @@ class CoordinationPhaseError(CoordinationError):
         partial_phases: tuple[CoordinationPhaseResult, ...] = (),
     ) -> None:
         super().__init__(message)
-        self.phase = phase
-        self.partial_phases = partial_phases
+        self.phase: str = phase
+        self.partial_phases: tuple[CoordinationPhaseResult, ...] = partial_phases
 
 
 class WorkflowExecutionError(EngineError):
@@ -293,8 +293,8 @@ class SubworkflowNotFoundError(WorkflowExecutionError):
         version: NotBlankStr,
     ) -> None:
         super().__init__(message)
-        self.subworkflow_id = subworkflow_id
-        self.version = version
+        self.subworkflow_id: NotBlankStr = subworkflow_id
+        self.version: NotBlankStr = version
 
 
 class SubworkflowCycleError(WorkflowExecutionError):
@@ -312,7 +312,7 @@ class SubworkflowCycleError(WorkflowExecutionError):
         cycle_path: tuple[tuple[str, str], ...],
     ) -> None:
         super().__init__(message)
-        self.cycle_path = cycle_path
+        self.cycle_path: tuple[tuple[str, str], ...] = cycle_path
 
 
 class SubworkflowDepthExceededError(WorkflowExecutionError):
@@ -331,16 +331,68 @@ class SubworkflowDepthExceededError(WorkflowExecutionError):
         max_depth: int,
     ) -> None:
         super().__init__(message)
-        self.depth = depth
-        self.max_depth = max_depth
+        self.depth: int = depth
+        self.max_depth: int = max_depth
 
 
 class SubworkflowIOError(WorkflowExecutionError):
     """Raised when subworkflow input or output binding is invalid.
 
     Covers missing required inputs, unknown inputs, unknown outputs,
-    type mismatches, and invalid binding expressions.
+    type mismatches, and invalid binding expressions. The 422 mapping
+    treats binding mismatches as caller-side validation failures so
+    the centralised RFC 9457 dispatch surfaces a structured envelope
+    without controller-level translation.
     """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Subworkflow input/output validation failed"
+
+
+class WorkflowTypeInvalidError(WorkflowExecutionError):
+    """Raised when a request specifies an unknown ``workflow_type`` value.
+
+    Uses ``REQUEST_VALIDATION_ERROR`` (2001) and 400 to align with the
+    other request-shape failures in this module: the value did not parse
+    against the ``WorkflowType`` enum at the API boundary.
+    """
+
+    status_code: ClassVar[int] = 400
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Invalid workflow type"
+
+
+class WorkflowDefinitionValidationError(WorkflowExecutionError):
+    """Raised when a workflow definition fails structural checks.
+
+    The default message is intentionally generic so Pydantic validation
+    detail does not leak to API clients; callers may still chain the
+    underlying exception with ``raise … from exc`` for the structured
+    log emitted by the centralised handler.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Invalid workflow definition."
+
+
+class WorkflowYamlExportError(WorkflowExecutionError):
+    """Raised when YAML serialisation of a workflow definition fails.
+
+    Maps to 422 (Unprocessable Entity) on ``/workflows/{id}/export``:
+    the request itself is well-formed, but the persisted definition
+    cannot be serialised to YAML -- a content-level failure rather
+    than a request-syntax problem.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Workflow YAML export failed"
 
 
 class SelfReviewError(EngineError):

@@ -327,3 +327,149 @@ class TestSubworkflowCrud:
         assert resp.status_code == 200
         parents = resp.json()["data"]
         assert parents == []
+
+
+@pytest.mark.unit
+class TestSubworkflowControllerErrorEnvelope:
+    """RFC 9457 envelope shape from centralised exception_handlers."""
+
+    def test_create_invalid_definition_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        bad = _sub_payload()
+        bad_nodes = list(bad["nodes"])
+        bad_nodes[0] = dict(bad_nodes[0])
+        bad_nodes[0]["position_x"] = "not-a-float"
+        bad["nodes"] = bad_nodes
+
+        resp = test_client.post(
+            "/api/v1/subworkflows",
+            json=bad,
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+
+    def test_create_duplicate_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        _create_subworkflow(test_client)
+        resp = test_client.post(
+            "/api/v1/subworkflows",
+            json=_sub_payload(),
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.DUPLICATE_RECORD
+        assert detail["error_category"] == ErrorCategory.CONFLICT
+        assert detail["retryable"] is False
+
+    def test_delete_version_not_found_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        resp = test_client.delete(
+            "/api/v1/subworkflows/sub-missing/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.SUBWORKFLOW_NOT_FOUND
+        assert detail["error_category"] == ErrorCategory.NOT_FOUND
+        assert detail["retryable"] is False
+
+    def test_get_version_not_found_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        resp = test_client.get(
+            "/api/v1/subworkflows/sub-missing/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.SUBWORKFLOW_NOT_FOUND
+        assert detail["error_category"] == ErrorCategory.NOT_FOUND
+
+    def test_delete_version_still_referenced_envelope(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Deleting a subworkflow with live parent references returns 409.
+
+        ``SubworkflowHasParentsError`` overrides its parent
+        ``SubworkflowIOError``'s 422 ClassVar with 409 + RESOURCE_CONFLICT
+        because a still-referenced subworkflow is a resource-state
+        conflict, not a validation failure. Verify the centralised
+        handler honours the override.
+        """
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+        from synthorg.engine.workflow.subworkflow_models import (
+            ParentReference,
+        )
+        from synthorg.engine.workflow.subworkflow_registry import (
+            SubworkflowRegistry,
+        )
+        from synthorg.engine.workflow.subworkflow_service import (
+            SubworkflowHasParentsError,
+        )
+
+        _create_subworkflow(test_client)
+
+        async def _raise_has_parents(
+            self: SubworkflowRegistry,
+            subworkflow_id: str,
+            version: str,
+        ) -> None:
+            msg = "Subworkflow has live parent references"
+            raise SubworkflowHasParentsError(
+                msg,
+                subworkflow_id=subworkflow_id,
+                version=version,
+                parents=(
+                    ParentReference(
+                        parent_id="wfdef-parent",
+                        parent_name="parent",
+                        pinned_version="1.0.0",
+                        node_id="sub-node-1",
+                        parent_type="workflow_definition",
+                    ),
+                ),
+            )
+
+        monkeypatch.setattr(SubworkflowRegistry, "delete", _raise_has_parents)
+
+        resp = test_client.delete(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.RESOURCE_CONFLICT
+        assert detail["error_category"] == ErrorCategory.CONFLICT
+        assert detail["retryable"] is False

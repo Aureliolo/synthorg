@@ -1,6 +1,6 @@
 import { AxiosError, type AxiosResponse } from 'axios'
 import { formatBatchErrors, getErrorMessage, getErrorDetail, isAxiosError } from '@/utils/errors'
-import type { ErrorDetail } from '@/api/types/errors'
+import { ErrorCategory, ErrorCode, type ErrorDetail } from '@/api/types/errors'
 
 function makeAxiosError(
   status: number | undefined,
@@ -82,8 +82,8 @@ describe('getErrorMessage', () => {
   it('surfaces structured error_detail.detail for 422 when data.error is absent', () => {
     const detail: ErrorDetail = {
       detail: 'currency: invalid_code',
-      error_code: 5000,
-      error_category: 'validation',
+      error_code: ErrorCode.REQUEST_VALIDATION_ERROR,
+      error_category: ErrorCategory.VALIDATION,
       retryable: false,
       retry_after: null,
       instance: 'req-422',
@@ -199,8 +199,8 @@ describe('getErrorDetail', () => {
   it('returns error_detail when present', () => {
     const detail: ErrorDetail = {
       detail: 'Not found',
-      error_code: 3000,
-      error_category: 'not_found',
+      error_code: ErrorCode.RESOURCE_NOT_FOUND,
+      error_category: ErrorCategory.NOT_FOUND,
       retryable: false,
       retry_after: null,
       instance: 'req-123',

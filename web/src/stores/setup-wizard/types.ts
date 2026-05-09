@@ -85,7 +85,7 @@ export interface CompanySlice {
    * RFC 9457 ``error_detail.error_code`` from the most recent failure,
    * or ``null`` when the envelope did not carry one. Used by
    * ``CompanyStep`` to discriminate actionable failures (e.g.
-   * ``ERROR_CODE_PROVIDER_TIER_COVERAGE_INSUFFICIENT`` -> route the
+   * ``ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT`` -> route the
    * operator back to the providers step) from generic retryable errors.
    *
    * Lifecycle: ephemeral. Cleared by ``submitCompany`` at the start

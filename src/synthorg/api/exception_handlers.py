@@ -345,6 +345,76 @@ def _category_for_status(
     return _CLIENT_ERROR_DEFAULT
 
 
+_RESERVED_LOG_KEYS: Final = frozenset(
+    {"method", "path", "status_code", "error_type", "error"},
+)
+_MAX_LOG_STR_LEN: Final = 256  # lint-allow: magic-numbers -- log clamp
+_MAX_LOG_TUPLE_LEN: Final = 16  # lint-allow: magic-numbers -- log clamp
+
+
+def _safe_log_attrs(exc: Exception) -> dict[str, object]:
+    """Return primitive exception attributes safe to surface in logs.
+
+    Domain error subclasses (e.g. ``WorkflowDefinitionRevisionMismatchError``,
+    ``SubworkflowHasParentsError``) carry structured fields like
+    ``definition_id``, ``expected``, ``actual``, ``subworkflow_id``,
+    ``parent_ids`` that operators query log streams by. Without this
+    pass-through they would be lost when controllers stop building
+    their own log calls.
+
+    Only primitives (``int`` / ``float`` / ``str`` / ``bool`` /
+    ``None``) and small tuples of primitives are included; complex
+    values (Pydantic models, nested dicts, custom objects) are skipped
+    to keep credentials and connection objects out of the sink. Domain
+    errors that need structured detail in logs expose a primitive-only
+    representation alongside the rich one (e.g.
+    ``SubworkflowHasParentsError`` exposes ``parent_ids: tuple[str,
+    ...]`` next to the full ``parents: tuple[ParentReference, ...]``).
+    Private (``_*``) attributes, dunder attributes, and the standard
+    ``BaseException.args`` slot are skipped. Strings are clamped at
+    ``_MAX_LOG_STR_LEN`` characters and tuples at
+    ``_MAX_LOG_TUPLE_LEN`` elements. Keys colliding with the reserved
+    log envelope (``method`` / ``path`` / ``status_code`` etc.) are
+    dropped so the API request fields cannot be shadowed by an
+    exception attribute.
+    """
+    safe: dict[str, object] = {}
+    instance_attrs = getattr(exc, "__dict__", {})
+    if not isinstance(instance_attrs, dict):
+        return safe
+    for name, value in instance_attrs.items():
+        if name.startswith("_") or name == "args" or name in _RESERVED_LOG_KEYS:
+            continue
+        clamped = _clamp_log_value(value)
+        if clamped is not _LOG_SKIP:
+            safe[name] = clamped
+    return safe
+
+
+_LOG_SKIP: Final = object()
+
+
+def _clamp_log_value(value: object) -> object:
+    """Coerce *value* into a log-safe form, or ``_LOG_SKIP`` if unsafe."""
+    match value:
+        case None | True | False:
+            return value
+        case int() | float():
+            return value
+        case str():
+            return value[:_MAX_LOG_STR_LEN]
+        case tuple() if len(value) <= _MAX_LOG_TUPLE_LEN:
+            items: list[object] = []
+            for item in value:
+                inner = _clamp_log_value(item)
+                if inner is _LOG_SKIP:
+                    return _LOG_SKIP
+                items.append(inner)
+            return tuple(items)
+        case _:
+            return _LOG_SKIP
+
+
 def _log_error(
     request: Request[Any, Any, Any],
     exc: Exception,
@@ -357,7 +427,10 @@ def _log_error(
     errors. ``error_type`` + ``error=safe_error_description(exc)``
     supplies operator-visible diagnostic context without attaching the
     traceback (whose frame-locals would carry connection strings,
-    tokens, etc. straight to the sink).
+    tokens, etc. straight to the sink). Domain-error structured
+    attributes (e.g. ``definition_id``, ``expected`` revision) are
+    surfaced via ``_safe_log_attrs`` so log queries by domain identifier
+    keep working after controllers stop building per-error log calls.
     """
     log = logger.error if status >= _SERVER_ERROR_THRESHOLD else logger.warning
     log(
@@ -367,6 +440,7 @@ def _log_error(
         status_code=status,
         error_type=type(exc).__qualname__,
         error=safe_error_description(exc),
+        **_safe_log_attrs(exc),
     )
 
 

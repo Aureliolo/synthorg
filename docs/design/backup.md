@@ -62,24 +62,29 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 
 Every endpoint surfaces a structured RFC 9457 envelope on failure (see
 [errors reference](../reference/errors.md)). Status codes are produced
-in two layers and the layer that runs first wins.
+in two layers.
 
-**Layer 1: controller-specific catches** (in
-`src/synthorg/api/controllers/backup.py`).  These take precedence
-because they run before the central exception handler:
+**Layer 1: controller-specific translation** (in
+`src/synthorg/api/controllers/backup.py`). The restore endpoint
+translates internal-detail exceptions into sanitised
+HTTP-aware domain errors so the response body never echoes raw
+manifest-parse internals; the original exception is preserved on
+``__cause__`` for the structured log emitted by the centralised
+handler. The controller does not build its own ``Response`` envelope;
+it raises the typed error and the centralised handler maps it.
 
-| Endpoint | Caught exception | Status |
-|----------|------------------|--------|
-| `POST /api/v1/admin/backups/restore` | `ManifestError` | `422` |
-| `POST /api/v1/admin/backups/restore` | `RestoreError` | `500` (with detail `"Restore operation failed"`) |
-| `POST /api/v1/admin/backups`, `POST /api/v1/admin/backups/restore` | `BackupInProgressError` | `409` |
-| `GET /api/v1/admin/backups/{id}`, `DELETE /api/v1/admin/backups/{id}`, `POST /api/v1/admin/backups/restore` | `BackupNotFoundError` | `404` |
+| Endpoint | Caught exception | Re-raised as | Resulting status |
+|----------|------------------|--------------|------------------|
+| `POST /api/v1/admin/backups/restore` | `ManifestError` | `ValidationError("Invalid backup manifest")` | `422` |
+| `POST /api/v1/admin/backups/restore` | `RestoreError` | `InternalServerException("Restore operation failed")` | `500` |
+| `POST /api/v1/admin/backups`, `POST /api/v1/admin/backups/restore` | `BackupInProgressError` | `ConflictError("A backup operation is already in progress")` | `409` |
+| `GET /api/v1/admin/backups/{id}`, `DELETE /api/v1/admin/backups/{id}`, `POST /api/v1/admin/backups/restore` | `BackupNotFoundError` | propagated unchanged (carries `RECORD_NOT_FOUND`) | `404` |
 
-**Layer 2: catch-all** via `handle_backup_error` in
-`src/synthorg/api/exception_handlers.py`.  This is the safety net for
-any `BackupError` subtype that is not caught by the controller (for
-example, `ManifestError` raised from `GET /api/v1/admin/backups/{id}`
-since that endpoint does not catch it explicitly):
+**Layer 2: centralised mapping** via `handle_backup_error` in
+`src/synthorg/api/exception_handlers.py`.  Catches every `BackupError`
+subtype not translated by the controller (for example, `ManifestError`
+raised from `GET /api/v1/admin/backups/{id}` since that endpoint does
+not translate it explicitly):
 
 | Exception | Status | `error_code` |
 |-----------|--------|---------------|

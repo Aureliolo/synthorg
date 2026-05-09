@@ -28,12 +28,8 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import WorkflowType
-from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.errors import (
-    SubworkflowIOError,
-    SubworkflowNotFoundError,
-)
+from synthorg.engine.errors import WorkflowDefinitionValidationError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -50,9 +46,6 @@ from synthorg.engine.workflow.subworkflow_registry import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_CURSOR_INVALID
-from synthorg.observability.events.workflow_definition import (
-    SUBWORKFLOW_INVALID_REQUEST,
-)
 
 logger = get_logger(__name__)
 
@@ -125,7 +118,7 @@ class SubworkflowController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[SubworkflowSummary]:
         """List subworkflows with keyset-based cursor pagination.
 
@@ -337,45 +330,11 @@ class SubworkflowController(Controller):
                 updated_at=now,
             )
         except (ValueError, ValidationError) as exc:
-            logger.warning(
-                SUBWORKFLOW_INVALID_REQUEST,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Invalid subworkflow definition",
-                ),
-                status_code=422,
-            )
+            msg = "Invalid subworkflow definition"
+            raise WorkflowDefinitionValidationError(msg) from exc
 
         registry = _registry(state)
-        try:
-            await registry.register(definition)
-        except SubworkflowIOError as exc:
-            logger.warning(
-                SUBWORKFLOW_INVALID_REQUEST,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Subworkflow I/O validation failed.",
-                ),
-                status_code=422,
-            )
-        except DuplicateRecordError as exc:
-            logger.warning(
-                SUBWORKFLOW_INVALID_REQUEST,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="A subworkflow with this ID and version already exists.",
-                ),
-                status_code=409,
-            )
+        await registry.register(definition)
 
         return Response(
             content=ApiResponse[WorkflowDefinition](data=definition),
@@ -402,25 +361,5 @@ class SubworkflowController(Controller):
         404 when the coordinate does not exist.
         """
         registry = _registry(state)
-        try:
-            await registry.delete(subworkflow_id, version)
-        except SubworkflowIOError as exc:
-            logger.warning(
-                SUBWORKFLOW_INVALID_REQUEST,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return Response(
-                content=ApiResponse[None](
-                    error="Cannot delete: version is still referenced.",
-                ),
-                status_code=409,
-            )
-        except SubworkflowNotFoundError:
-            return Response(
-                content=ApiResponse[None](
-                    error="Subworkflow version not found.",
-                ),
-                status_code=404,
-            )
+        await registry.delete(subworkflow_id, version)
         return Response(content=ApiResponse[None]())

@@ -33,7 +33,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
 )
 from synthorg.engine.workflow.diff import WorkflowDiff, compute_diff
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_DIFF_COMPUTED,
     WORKFLOW_DEF_INVALID_REQUEST,
@@ -348,11 +348,20 @@ class WorkflowVersionController(Controller):
                 saved_by=updater,
             )
         except PersistenceVersionConflictError as exc:
+            # Translate the persistence-layer name to the API-aware
+            # ``VersionConflictError`` so the centralised handler emits
+            # the user-facing message rather than the lower-level
+            # "Optimistic concurrency conflict" default. Log the
+            # rollback-specific context (``definition_id`` /
+            # ``target_version``) before raising; the centralised
+            # handler logs the exception attributes via
+            # ``_safe_log_attrs``, but those don't carry the call-site
+            # context that's only in scope here.
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,
                 definition_id=workflow_id,
+                target_version=data.target_version,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             msg = "Version conflict during rollback. Reload and retry."
             raise VersionConflictError(msg) from exc

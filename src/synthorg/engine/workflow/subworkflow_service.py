@@ -12,6 +12,9 @@ already depend on its narrow surface; this service is the broader
 "control plane" entry point.
 """
 
+from typing import ClassVar
+
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     SubworkflowIOError,
@@ -50,8 +53,17 @@ class SubworkflowHasParentsError(SubworkflowIOError):
     """Raised when ``delete`` is blocked by live parent references.
 
     Carries the parent list so callers can surface the conflict to the
-    operator without re-querying.
+    operator without re-querying. Overrides the parent's 422/VALIDATION
+    mapping with 409/CONFLICT because a still-referenced subworkflow
+    is a resource-state conflict, not a validation failure.
     """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = (
+        "Subworkflow is still referenced by parent workflows"
+    )
 
     def __init__(
         self,
@@ -69,9 +81,16 @@ class SubworkflowHasParentsError(SubworkflowIOError):
             )
             raise ValueError(msg)
         super().__init__(message)
-        self.subworkflow_id = subworkflow_id
-        self.version = version
-        self.parents = parents
+        self.subworkflow_id: str = subworkflow_id
+        self.version: str = version
+        self.parents: tuple[ParentReference, ...] = parents
+        # Primitive projection so ``_safe_log_attrs`` in the
+        # centralised exception handler can include the blocking
+        # parent IDs in the structured log envelope. The full
+        # ``parents`` tuple is kept for callers (API response
+        # serialisation, MCP) but is skipped by the log clamp because
+        # ``ParentReference`` is a Pydantic model, not a primitive.
+        self.parent_ids: tuple[str, ...] = tuple(p.parent_id for p in parents)
 
 
 class SubworkflowService:
