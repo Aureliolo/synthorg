@@ -199,6 +199,20 @@ async def _resolve_fine_tune_thresholds(
         # one ("0" / "-1") must both fall back rather than reach the
         # constructor and surface as a 500 from the controller.
         resolved[key] = value if value >= 1 else fallback
+    # Cross-field invariant: ``min_docs_recommended >= min_docs_required``,
+    # otherwise ``_check_documents`` could never emit the ``warn`` band
+    # (a corpus passes the required floor but is still below recommended).
+    # An operator that lowered ``recommended`` below ``required`` falls
+    # back to the imported recommended default rather than constructing
+    # an inconsistent threshold pair.
+    if (
+        resolved["fine_tune_min_docs_recommended"]
+        < resolved["fine_tune_min_docs_required"]
+    ):
+        resolved["fine_tune_min_docs_recommended"] = max(
+            FINE_TUNE_MIN_DOCS_RECOMMENDED,
+            resolved["fine_tune_min_docs_required"],
+        )
     return _FineTuneThresholds(
         default_batch_size=resolved["fine_tune_default_batch_size"],
         min_docs_required=resolved["fine_tune_min_docs_required"],

@@ -32,6 +32,7 @@ from synthorg.observability.events.hr import (
     HR_SCALING_PRIORITY_ORDER_UPDATED,
     HR_SCALING_STRATEGY_TOGGLED,
 )
+from synthorg.settings.definitions.api import SCALING_STRATEGY_PRIORITY_FALLBACK
 
 logger = get_logger(__name__)
 
@@ -194,7 +195,10 @@ class ScalingController(Controller):
             ScalingStrategyResponse(
                 name=str(s.name),
                 enabled=scaling.is_strategy_enabled(str(s.name)),
-                priority=configured_order.get(str(s.name), 999),
+                priority=configured_order.get(
+                    str(s.name),
+                    SCALING_STRATEGY_PRIORITY_FALLBACK,
+                ),
             )
             for s in sorted(scaling.strategies, key=lambda s: str(s.name))
         )
@@ -431,7 +435,10 @@ class ScalingController(Controller):
             data=ScalingStrategyResponse(
                 name=strategy_name,
                 enabled=scaling.is_strategy_enabled(strategy_name),
-                priority=configured_order.get(strategy_name, 999),
+                priority=configured_order.get(
+                    strategy_name,
+                    SCALING_STRATEGY_PRIORITY_FALLBACK,
+                ),
             ),
         )
 
