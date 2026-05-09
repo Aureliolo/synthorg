@@ -14,10 +14,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from synthorg.budget.tracker import CostTracker
-from synthorg.core.agent import ToolPermissions
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.agent import ModelConfig, ToolPermissions
 from synthorg.core.enums import TaskStatus, ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ToolCall
 from synthorg.tools.file_system.write_file import WriteFileTool
@@ -381,22 +383,79 @@ class TestRealLLMIntegration:
     """Optional smoke test with a real LLM provider.
 
     Skipped unless REAL_LLM_TEST=1 is set; not expected to run in CI.
-    Currently a placeholder -- all methods skip until a real provider
-    is configured via environment variables.
+    Each method also requires REAL_LLM_MODEL and REAL_LLM_PROVIDER so
+    the test can construct a configured provider driver without
+    leaning on app-startup config wiring. Authentication is configured
+    via at least one of REAL_LLM_API_KEY (hosted providers) or
+    REAL_LLM_BASE_URL (local / self-hosted providers); when both are
+    set, both are forwarded to the provider driver (api_key for auth,
+    base_url as the request endpoint).
     """
 
     async def test_real_provider_text_completion(self) -> None:
-        """Minimal text-only task with a real provider.
-
-        Placeholder for real provider integration; additional
-        configuration scaffolding is required before this can be enabled.
-        """
+        """Minimal text-only task end-to-end through the configured provider driver."""
         provider_model = os.environ.get("REAL_LLM_MODEL")
         if not provider_model:
             pytest.skip(
                 "Set REAL_LLM_MODEL to a valid model ID "
                 "(e.g. 'example-large-001') to run this test"
             )
-        pytest.skip(
-            f"Real LLM provider integration not yet wired -- model={provider_model}"
+        provider_name = os.environ.get("REAL_LLM_PROVIDER")
+        if not provider_name:
+            pytest.skip(
+                "Set REAL_LLM_PROVIDER to a provider routing key "
+                "(e.g. 'example-provider') to run this test"
+            )
+        # Normalise empty-string env vars to None so ProviderConfig's
+        # NotBlankStr fields accept the value; an exported-but-empty
+        # var is treated as "unset" rather than rejected at construct.
+        api_key = os.environ.get("REAL_LLM_API_KEY") or None
+        base_url = os.environ.get("REAL_LLM_BASE_URL") or None
+        if api_key is None and base_url is None:
+            pytest.skip(
+                "Set REAL_LLM_API_KEY (hosted) or REAL_LLM_BASE_URL "
+                "(local provider) to run this test"
+            )
+
+        provider_config = ProviderConfig(
+            litellm_provider=provider_name,
+            api_key=api_key,
+            base_url=base_url,
+            models=(ProviderModelConfig(id=provider_model),),
         )
+        provider = LiteLLMDriver(provider_name, provider_config)
+
+        cost_tracker = CostTracker()
+        identity = make_e2e_identity().model_copy(
+            update={
+                "model": ModelConfig(
+                    provider=provider_name,
+                    model_id=provider_model,
+                ),
+            },
+        )
+        task = make_e2e_task(
+            identity=identity,
+            title="Real LLM smoke test",
+            description="Reply with the single word 'ack'.",
+        )
+
+        engine = AgentEngine(
+            provider=provider,
+            cost_tracker=cost_tracker,
+        )
+        result = await engine.run(
+            identity=identity,
+            task=task,
+            max_turns=2,
+        )
+
+        # Real provider produced a successful single-turn completion.
+        assert result.is_success is True
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.completion_summary
+        # ``>= 0`` (not ``> 0``) so a local zero-cost preset still passes.
+        assert result.total_cost >= 0
+        assert await cost_tracker.get_record_count() == result.total_turns
+        assert result.task_id == task.id
+        assert result.duration_seconds > 0

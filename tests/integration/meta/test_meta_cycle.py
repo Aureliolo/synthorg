@@ -4,9 +4,13 @@ Tests the full pipeline: signals -> rules -> strategies ->
 guards -> approval -> rollout -> regression detection.
 """
 
+from uuid import NAMESPACE_URL, uuid5
+
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.core.enums import ApprovalStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     OrgBudgetSummary,
@@ -107,19 +111,32 @@ class TestMetaCycleIntegration:
         assert "budget_overrun" in sources
 
     async def test_proposal_rollout_succeeds(self) -> None:
-        """Scenario: approved proposal -> rollout -> success."""
+        """Scenario: approved proposal -> rollout -> success.
+
+        Routes the approval through the real ``ApprovalStore``: the
+        guard registers an ``ApprovalItem`` during ``run_cycle``, the
+        test approves it via ``save_if_pending`` (mirroring the API /
+        MCP approval handlers), and the proposal handed to
+        ``execute_rollout`` carries the decision metadata that came
+        back from the store. A regression in
+        ``ApprovalGateGuard.evaluate`` (e.g. a different deterministic
+        approval id, or failure to register) makes this test fail at
+        the ``item is not None`` assert.
+        """
 
         async def snapshot_builder() -> OrgSignalSnapshot:
             return _snap(quality=7.5, success=0.85)
 
+        clock = FakeClock()
+        approval_store = ApprovalStore(clock=clock)
         svc = SelfImprovementService(
             config=SelfImprovementConfig(
                 enabled=True,
                 config_tuning_enabled=True,
             ),
-            clock=FakeClock(),
+            clock=clock,
             snapshot_builder=snapshot_builder,
-            approval_store=ApprovalStore(),
+            approval_store=approval_store,
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
         assert len(proposals) >= 1
@@ -129,17 +146,53 @@ class TestMetaCycleIntegration:
             if p.source_rule == "quality_declining"
             and p.altitude == ProposalAltitude.CONFIG_TUNING
         )
-        # Simulate approval via model_copy because the ApprovalStore
-        # approval flow is not yet integrated in the test harness.
-        approved = proposal.model_copy(
+
+        # The guard derives the approval id deterministically from
+        # the proposal id; mirror that derivation so a regression in
+        # the guard surfaces as a missing approval item rather than a
+        # silently bypassed flow.
+        approval_id = NotBlankStr(
+            str(uuid5(NAMESPACE_URL, f"proposal:{proposal.id}")),
+        )
+        item = await approval_store.get(approval_id)
+        assert item is not None, (
+            "ApprovalGateGuard did not register an approval item for "
+            "the proposal during run_cycle"
+        )
+        assert item.status == ApprovalStatus.PENDING
+
+        # Approve via the real store: ``save_if_pending`` is the same
+        # first-writer-wins path the API and MCP approval handlers
+        # take, so a regression in the store's concurrency model also
+        # surfaces here.
+        decided_at = clock.now()
+        decided = item.model_copy(
             update={
-                "status": ProposalStatus.APPROVED,
-                "decided_at": proposal.proposed_at,
+                "status": ApprovalStatus.APPROVED,
+                "decided_at": decided_at,
                 "decided_by": "test-approver",
                 "decision_reason": "Integration test approval",
             },
         )
-        result = await svc.execute_rollout(approved)
+        saved = await approval_store.save_if_pending(decided)
+        assert saved is not None, "Approval store rejected the pending decision"
+        assert saved.status == ApprovalStatus.APPROVED
+
+        # Hand ``execute_rollout`` a proposal whose APPROVED state
+        # mirrors the store-resident decision. The proposal-side
+        # ``model_copy`` is mechanical -- there is no
+        # ``ApprovalItem -> ImprovementProposal`` adapter -- but the
+        # decision metadata flows from the real ``ApprovalStore``
+        # round-trip, not from a free-standing test mutation.
+        approved_proposal = proposal.model_copy(
+            update={
+                "status": ProposalStatus.APPROVED,
+                "decided_at": saved.decided_at,
+                "decided_by": saved.decided_by,
+                "decision_reason": saved.decision_reason,
+            },
+        )
+        result = await svc.execute_rollout(approved_proposal)
         assert result.outcome == RolloutOutcome.SUCCESS
 
     async def test_disabled_altitude_blocks_proposals(self) -> None:
