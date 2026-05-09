@@ -83,6 +83,7 @@ from synthorg.providers.management.service import (
 )
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
+from synthorg.settings.bridge_configs import ApiBridgeConfig  # noqa: TC001
 from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
 from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
@@ -153,6 +154,7 @@ class AppStateServicesMixin(_FacadesMixin):
 
     _set_once: Any
     _init_derived_services: Any
+    _api_bridge_config: ApiBridgeConfig
     config: Any
 
     def _require_service[T](  # pragma: no cover
@@ -1038,6 +1040,40 @@ class AppStateServicesMixin(_FacadesMixin):
             old_enabled=old_enabled,
             new_enabled=config.enabled,
             override_count=len(config.overrides),
+        )
+
+    @property
+    def api_bridge_config(self) -> ApiBridgeConfig:
+        """Return the current ``ApiBridgeConfig`` snapshot.
+
+        Always non-None: ``__init__`` default-constructs an
+        ``ApiBridgeConfig()`` so consumers see valid defaults even
+        before ``_apply_bridge_config`` runs or when the resolver is
+        unreachable.  Operator overrides land via
+        :meth:`swap_api_bridge_config` from the startup snapshot path
+        and the ``ApiBridgeSettingsSubscriber`` hot-reload path.
+        """
+        return self._api_bridge_config
+
+    def swap_api_bridge_config(self, config: ApiBridgeConfig) -> None:
+        """Replace the ``ApiBridgeConfig`` snapshot atomically.
+
+        Called by ``_apply_bridge_config`` at startup with the value
+        resolved through ``ConfigResolver.get_api_bridge_config`` and by
+        :class:`ApiBridgeSettingsSubscriber` on operator-driven changes
+        to watched API settings.  A plain Python attribute assignment
+        is atomic, so concurrent readers always see either the prior
+        snapshot or the new one -- never a half-built object.
+        """
+        previous = self._api_bridge_config
+        self._api_bridge_config = config
+        if previous is config:
+            return
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="api_bridge_config",
+            old_lifecycle_cap=previous.max_lifecycle_events_per_query,
+            new_lifecycle_cap=config.max_lifecycle_events_per_query,
         )
 
     @property

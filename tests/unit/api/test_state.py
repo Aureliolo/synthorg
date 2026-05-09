@@ -525,3 +525,43 @@ class TestAppStateRequestLocks:
             assert state._request_locks["in-flight"] is reserved
         finally:
             state._release_request_lock_ref("in-flight")
+
+
+@pytest.mark.unit
+class TestAppStateApiBridgeConfig:
+    """Tests for api_bridge_config snapshot accessor and swap_api_bridge_config."""
+
+    def test_default_snapshot_available_pre_startup(self) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        state = _make_state()
+        snapshot = state.api_bridge_config
+        assert isinstance(snapshot, ApiBridgeConfig)
+        assert snapshot == ApiBridgeConfig()
+
+    def test_default_lifecycle_cap_matches_bridge_default(self) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        state = _make_state()
+        assert (
+            state.api_bridge_config.max_lifecycle_events_per_query
+            == ApiBridgeConfig().max_lifecycle_events_per_query
+        )
+
+    def test_swap_replaces_snapshot(self) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        state = _make_state()
+        new = ApiBridgeConfig(max_lifecycle_events_per_query=25_000)
+        state.swap_api_bridge_config(new)
+        assert state.api_bridge_config is new
+        assert state.api_bridge_config.max_lifecycle_events_per_query == 25_000
+
+    def test_swap_is_idempotent_for_same_instance(self) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        state = _make_state()
+        snapshot = ApiBridgeConfig(max_lifecycle_events_per_query=12_345)
+        state.swap_api_bridge_config(snapshot)
+        state.swap_api_bridge_config(snapshot)
+        assert state.api_bridge_config is snapshot

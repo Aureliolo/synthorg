@@ -714,3 +714,85 @@ class TestDegradedSources:
             assert "budget_config" in resp.json()["degraded_sources"]
         finally:
             app_state.config_resolver.get_budget_config = original
+
+
+class TestActivityFeedLifecycleCap:
+    """Lifecycle cap is sourced from ``app_state.api_bridge_config``.
+
+    The controller no longer carries a hardcoded fallback constant;
+    the cap flows through the bridge-config snapshot that
+    ``_apply_bridge_config`` populates at startup and the
+    :class:`ApiBridgeSettingsSubscriber` hot-swaps on operator change.
+    """
+
+    async def test_default_cap_passed_to_list_events(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        captured: dict[str, Any] = {}
+        original = fake_persistence.lifecycle_events.list_events
+
+        async def _spy(**kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return await original(**kwargs)
+
+        fake_persistence.lifecycle_events.list_events = _spy
+        try:
+            resp = test_client.get("/api/v1/activities")
+        finally:
+            fake_persistence.lifecycle_events.list_events = original
+
+        assert resp.status_code == 200
+        app_state = test_client.app.state.app_state
+        assert (
+            captured["limit"]
+            == app_state.api_bridge_config.max_lifecycle_events_per_query
+        )
+
+    async def test_swapped_cap_takes_effect_immediately(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        app_state = test_client.app.state.app_state
+        previous = app_state.api_bridge_config
+        app_state.swap_api_bridge_config(
+            previous.model_copy(update={"max_lifecycle_events_per_query": 137}),
+        )
+        captured: dict[str, Any] = {}
+        original = fake_persistence.lifecycle_events.list_events
+
+        async def _spy(**kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return await original(**kwargs)
+
+        fake_persistence.lifecycle_events.list_events = _spy
+        try:
+            resp = test_client.get("/api/v1/activities")
+        finally:
+            fake_persistence.lifecycle_events.list_events = original
+            app_state.swap_api_bridge_config(previous)
+
+        assert resp.status_code == 200
+        assert captured["limit"] == 137
+        # Confirm the snapshot still holds an ``ApiBridgeConfig`` after
+        # restoration -- the swap path is reversible.
+        assert isinstance(app_state.api_bridge_config, ApiBridgeConfig)
+
+
+class TestActivitiesControllerSurface:
+    """The legacy fallback symbols are gone after the refactor."""
+
+    def test_max_lifecycle_events_constant_removed(self) -> None:
+        from synthorg.api.controllers import activities as mod
+
+        assert not hasattr(mod, "_MAX_LIFECYCLE_EVENTS")
+
+    def test_resolve_lifecycle_cap_helper_removed(self) -> None:
+        from synthorg.api.controllers import activities as mod
+
+        assert not hasattr(mod, "_resolve_lifecycle_cap")
+        assert not hasattr(mod, "_lifecycle_cap_fallback_logged")

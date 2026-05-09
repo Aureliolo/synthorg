@@ -33,8 +33,7 @@ src/synthorg/api/auth/token_size.py:30:29
 src/synthorg/api/auth/token_size.py:38:29
 src/synthorg/api/auth_response_discriminator.py:29:30
 src/synthorg/api/boundary.py:46:24
-src/synthorg/api/controllers/activities.py:45:24
-src/synthorg/api/controllers/activities.py:366:29
+src/synthorg/api/controllers/activities.py:318:29
 src/synthorg/api/controllers/agent_identity_versions.py:111:29
 src/synthorg/api/controllers/agents.py:66:24
 src/synthorg/api/controllers/agents.py:190:29
@@ -45,7 +44,7 @@ src/synthorg/api/controllers/approvals.py:75:40
 src/synthorg/api/controllers/approvals.py:519:29
 src/synthorg/api/controllers/artifacts.py:181:29
 src/synthorg/api/controllers/audit.py:39:19
-src/synthorg/api/controllers/audit.py:101:29
+src/synthorg/api/controllers/audit.py:104:29
 src/synthorg/api/controllers/backup.py:187:29
 src/synthorg/api/controllers/budget.py:302:29
 src/synthorg/api/controllers/budget_config_versions.py:46:29
@@ -55,7 +54,7 @@ src/synthorg/api/controllers/connections.py:65:20
 src/synthorg/api/controllers/connections.py:66:22
 src/synthorg/api/controllers/connections.py:156:29
 src/synthorg/api/controllers/coordination_metrics.py:34:21
-src/synthorg/api/controllers/coordination_metrics.py:93:29
+src/synthorg/api/controllers/coordination_metrics.py:96:29
 src/synthorg/api/controllers/custom_rules.py:205:29
 src/synthorg/api/controllers/custom_rules.py:435:29
 src/synthorg/api/controllers/departments.py:229:49
@@ -136,7 +135,7 @@ src/synthorg/api/services/idempotency_service.py:47:41
 src/synthorg/api/services/idempotency_service.py:48:49
 src/synthorg/api/services/org_mutations.py:43:22
 src/synthorg/api/services/ssrf_violation_service.py:141:21
-src/synthorg/api/state_services.py:114:26
+src/synthorg/api/state_services.py:115:26
 src/synthorg/backup/service_archive.py:38:23
 src/synthorg/backup/service_archive.py:42:21
 src/synthorg/budget/_optimizer_helpers.py:225:41
