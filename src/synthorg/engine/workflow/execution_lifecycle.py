@@ -161,15 +161,21 @@ async def cancel_execution(
         try:
             await repo.save(cancelled)
         except PersistenceVersionConflictError as exc:
-            # Optimistic-concurrency race: another writer mutated
-            # the execution between the read above and this save.
-            # Emit the audit-stream signal here, at the engine layer,
-            # so the controller can drop its own catch-and-respond
-            # site and just let the typed error propagate.
+            # Optimistic-concurrency race: another writer mutated the
+            # execution between the read above and this save. Re-fetch
+            # so the audit signal records the *winner's* status, not
+            # the stale pre-save snapshot which would usually still
+            # report 'running' even after another writer moved the row
+            # to a terminal state.
+            refreshed = await repo.get(execution_id)
             logger.warning(
                 WORKFLOW_EXEC_CANCEL_CONFLICT,
                 execution_id=execution_id,
-                current_status=execution.status.value,
+                current_status=(
+                    refreshed.status.value
+                    if refreshed is not None
+                    else execution.status.value
+                ),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
