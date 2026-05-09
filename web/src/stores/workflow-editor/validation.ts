@@ -80,7 +80,7 @@ export const createValidationSlice: SliceCreator<ValidationSlice> = (set, get) =
           }
         }),
       })
-      set({ validationResult: result, validating: false })
+      set({ validationResult: result, validating: false, error: null })
     } catch (err) {
       log.warn('Workflow validation failed', sanitizeForLog(err))
       set({ validating: false, validationResult: null, error: getErrorMessage(err) })
