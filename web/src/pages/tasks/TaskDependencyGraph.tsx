@@ -60,17 +60,17 @@ function buildGraph(tasks: Task[]): { nodes: Node[]; edges: Edge[] } {
   // Build edges from dependencies
   for (const task of relevantTasks) {
     for (const depId of task.dependencies) {
-      if (taskMap.has(depId)) {
-        edges.push({
-          id: `${depId}->${task.id}`,
-          source: depId,
-          target: task.id,
-          markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-          style: { stroke: 'var(--so-border-bright)', strokeWidth: 'var(--so-stroke-thin)' },
-          label: `${getTaskStatusLabel(taskMap.get(depId)!.status)}`,
-          labelStyle: { fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' },
-        })
-      }
+      const depTask = taskMap.get(depId)
+      if (!depTask) continue
+      edges.push({
+        id: `${depId}->${task.id}`,
+        source: depId,
+        target: task.id,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+        style: { stroke: 'var(--so-border-bright)', strokeWidth: 'var(--so-stroke-thin)' },
+        label: `${getTaskStatusLabel(depTask.status)}`,
+        labelStyle: { fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' },
+      })
     }
   }
 
