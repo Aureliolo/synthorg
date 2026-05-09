@@ -44,7 +44,7 @@ src/synthorg/api/controllers/approvals.py:75:40
 src/synthorg/api/controllers/approvals.py:519:29
 src/synthorg/api/controllers/artifacts.py:181:29
 src/synthorg/api/controllers/audit.py:39:19
-src/synthorg/api/controllers/audit.py:108:29
+src/synthorg/api/controllers/audit.py:104:29
 src/synthorg/api/controllers/backup.py:187:29
 src/synthorg/api/controllers/budget.py:302:29
 src/synthorg/api/controllers/budget_config_versions.py:46:29
@@ -54,7 +54,7 @@ src/synthorg/api/controllers/connections.py:65:20
 src/synthorg/api/controllers/connections.py:66:22
 src/synthorg/api/controllers/connections.py:156:29
 src/synthorg/api/controllers/coordination_metrics.py:34:21
-src/synthorg/api/controllers/coordination_metrics.py:100:29
+src/synthorg/api/controllers/coordination_metrics.py:96:29
 src/synthorg/api/controllers/custom_rules.py:205:29
 src/synthorg/api/controllers/custom_rules.py:435:29
 src/synthorg/api/controllers/departments.py:229:49
