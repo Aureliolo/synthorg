@@ -130,6 +130,7 @@ class ContinuousMode:
         max_history = max(1, self._config.max_concurrent_requests * 100)
         results: deque[SimulationMetrics] = deque(maxlen=max_history)
         try:
+            # lint-allow: long-running-loop-kill-switch -- _stop_event gates loop
             while not self._stop_event.is_set():
                 async with semaphore:
                     metrics, _ = await self._runner.run(
