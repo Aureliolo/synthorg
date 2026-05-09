@@ -72,8 +72,12 @@ export interface CreateWorkflowDefinitionRequest {
   readonly name: string
   readonly description?: string
   readonly workflow_type: string
-  readonly nodes: readonly Record<string, unknown>[]
-  readonly edges: readonly Record<string, unknown>[]
+  readonly version?: string
+  readonly inputs?: readonly WorkflowIODeclaration[]
+  readonly outputs?: readonly WorkflowIODeclaration[]
+  readonly is_subworkflow?: boolean
+  readonly nodes: readonly WorkflowNodeData[]
+  readonly edges: readonly WorkflowEdgeData[]
 }
 
 export interface UpdateWorkflowDefinitionRequest {
