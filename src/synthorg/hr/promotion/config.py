@@ -5,6 +5,7 @@ promotion/demotion behavior.
 """
 
 import copy
+from collections.abc import Mapping  # noqa: TC003
 from types import MappingProxyType
 from typing import Self
 
@@ -77,7 +78,7 @@ class ModelMappingConfig(BaseModel):
         default=True,
         description="Whether model follows seniority level",
     )
-    seniority_model_map: dict[str, str] = Field(
+    seniority_model_map: Mapping[str, str] = Field(
         default_factory=dict,
         description="Explicit seniority level to model ID overrides "
         "(wrapped as MappingProxyType after validation)",

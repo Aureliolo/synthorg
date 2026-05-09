@@ -244,6 +244,13 @@ async def build_context(
             memory_backend=memory_backend,
         )
     elif config.context.source == ContextSource.COMPOSITE:
+        # Scaffolding for future multi-provider chains (e.g. policy /
+        # market-data overrides layered on top of memory).  Today the
+        # tuple holds only ``MemoryContextProvider`` -- which already
+        # falls back to ``ConfigContextProvider`` -- so the composite
+        # wrapper is a no-op semantically.  Keep it so adding new
+        # providers is a one-line tuple extension rather than a control
+        # flow change.
         provider = CompositeContextProvider(
             providers=(
                 MemoryContextProvider(

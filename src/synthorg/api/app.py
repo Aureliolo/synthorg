@@ -966,6 +966,11 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # ``chief_of_staff.chat_enabled`` AND a provider is registered.
         # When unwired, ``POST /meta/chat`` surfaces 503 rather than the
         # silent placeholder it returned previously.
+        # Idempotent: a re-entry of lifespan startup against the same
+        # ``AppState`` (e.g. ASGI restart in tests) would otherwise make
+        # the one-shot ``set_chief_of_staff_chat`` raise.
+        if app_state.has_chief_of_staff_chat:
+            return
         if provider_registry is None:
             return
         from synthorg.meta.config import (  # noqa: PLC0415
