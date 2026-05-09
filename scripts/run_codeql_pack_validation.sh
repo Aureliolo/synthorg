@@ -24,7 +24,13 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 RESULTS_DIR="$REPO_ROOT/.github/codeql/fixtures/results"
-PACK_DIR="$REPO_ROOT/.github/codeql/extensions/synthorg-sanitisers"
+# Single search-path that contains all per-language extension packs. CodeQL
+# discovers each pack via its qlpack.yml and only loads the YAML rows whose
+# `addsTo.pack` matches the language being analysed -- the per-language
+# split keeps Go's 9-column rows out of the JS/Python signature check (and
+# vice-versa), which a single mixed pack with multi-language
+# `extensionTargets` cannot do.
+EXTENSIONS_DIR="$REPO_ROOT/.github/codeql/extensions"
 DB_DIR="$REPO_ROOT/.codeql-databases"
 
 if ! command -v codeql >/dev/null 2>&1 && [ -n "${RUNNER_TOOL_CACHE:-}" ]; then
@@ -67,13 +73,13 @@ run_fixture() {
         --overwrite \
         "$db"
 
-    echo "==> [$name] analyzing with synthorg-sanitisers pack"
+    echo "==> [$name] analyzing with synthorg-*-sanitisers extension packs"
     # shellcheck disable=SC2086
     # extra_queries is a deliberately-split arg list (one path per word)
     codeql database analyze \
         --format=sarif-latest \
         --output="$sarif" \
-        --additional-packs="$PACK_DIR" \
+        --additional-packs="$EXTENSIONS_DIR" \
         --threads=0 \
         "$db" \
         "$query_suite" \

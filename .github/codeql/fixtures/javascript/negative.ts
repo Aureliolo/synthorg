@@ -22,7 +22,12 @@ export function negativeWsLogInjection(wsPayload: string): void {
 }
 
 export function negativeWsEnumLogInjection(wsField: unknown): Level {
-  // js/log-injection MUST NOT fire on the returned value -- the enum
-  // allowlist guarantees it's a known constant.
-  return sanitizeWsEnum<Level>(wsField, ALLOWED_LEVELS, 'info', { field: 'level' })
+  // js/log-injection MUST NOT fire here: the sanitised enum value flows
+  // into a console.warn sink, which CodeQL's `js/log-injection` query
+  // recognises as a logging sink. Without an explicit sink-flow, the
+  // `must_not_fire` assertion in expected.json is vacuous (the rule could
+  // never fire even if the sanitiser were broken).
+  const level = sanitizeWsEnum<Level>(wsField, ALLOWED_LEVELS, 'info', { field: 'level' })
+  console.warn('ws level:', level)
+  return level
 }
