@@ -433,6 +433,7 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
         next_revalidate_ts: float | None = (
             loop_now + SSE_REVALIDATE_INTERVAL_SECONDS if revalidation_armed else None
         )
+        # lint-allow: long-running-loop-kill-switch -- per-request SSE stream; lifetime bounded by client connection (CancelledError on disconnect)  # noqa: E501
         while True:
             now = clock.monotonic()
             if next_revalidate_ts is None:
