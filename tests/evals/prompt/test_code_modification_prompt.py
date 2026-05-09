@@ -13,6 +13,7 @@ improvement code-modification strategy:
 Reference: ``synthorg.meta.strategies.code_modification``.
 """
 
+import ast
 import inspect
 
 import pytest
@@ -34,20 +35,45 @@ class TestCodeModificationPromptContract:
         We deliberately avoid pinning the value to ``0.0`` here because
         operations may tune the temperature for code generation in
         production. The contract is "config-driven, not literal".
+
+        Uses AST matching rather than substring search so a refactor
+        that splits the keyword across lines, adds a comment, or aliases
+        ``self._code_config`` cannot quietly slip past the gate.
         """
         from synthorg.meta.strategies.code_modification import (
             CodeModificationStrategy,
         )
 
         source = inspect.getsource(CodeModificationStrategy)
-        assert "temperature=self._code_config.temperature" in source, (
-            "CodeModificationStrategy must build CompletionConfig from "
+        tree = ast.parse(source)
+        config_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "CompletionConfig"
+        ]
+        assert config_calls, (
+            "expected at least one CompletionConfig(...) call in "
+            "CodeModificationStrategy"
+        )
+        call = config_calls[0]
+        assert any(
+            kw.arg == "temperature"
+            and ast.unparse(kw.value) == "self._code_config.temperature"
+            for kw in call.keywords
+        ), (
+            "CompletionConfig.temperature must come from "
             "self._code_config.temperature so the value stays runtime-"
             "tunable rather than hardcoded"
         )
-        assert "max_tokens=self._code_config.max_tokens" in source, (
-            "CodeModificationStrategy must read max_tokens from "
-            "self._code_config so token budgets stay tunable"
+        assert any(
+            kw.arg == "max_tokens"
+            and ast.unparse(kw.value) == "self._code_config.max_tokens"
+            for kw in call.keywords
+        ), (
+            "CompletionConfig.max_tokens must come from "
+            "self._code_config.max_tokens so token budgets stay tunable"
         )
 
     def test_system_prompt_fingerprint_is_pinned(self) -> None:

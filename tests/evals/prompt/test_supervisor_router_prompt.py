@@ -13,6 +13,7 @@ supervisor router:
    config inline fails the call-site test.
 """
 
+import ast
 import inspect
 
 import pytest
@@ -65,18 +66,36 @@ class TestSupervisorRouterPromptContract:
     def test_call_sites_use_pinned_config(self) -> None:
         """Both LLM call sites must pass the module-level pinned config.
 
-        AST-level check is intentionally simple (``config=`` keyword
-        bound to the constant name) because the surface is small and
-        any cleverer refactor that constructs a fresh CompletionConfig
-        inline should be caught by ``test_temperature_is_zero``
-        regressing or this assertion failing.
+        Walks the AST for every ``.complete(...)`` call (or bare
+        ``complete(...)`` if a future refactor unwraps the attribute
+        access) and counts those whose ``config=`` keyword binds to the
+        ``_ROUTING_COMPLETION_CONFIG`` Name node.  Substring counting
+        gave false positives on stray references in comments or
+        docstrings; this AST check only counts real call-site bindings.
         """
         from synthorg.memory.retrieval.hierarchical import supervisor
 
         source = inspect.getsource(supervisor)
+        tree = ast.parse(source)
+        occurrences = 0
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            is_complete_call = (
+                isinstance(func, ast.Attribute) and func.attr == "complete"
+            ) or (isinstance(func, ast.Name) and func.id == "complete")
+            if not is_complete_call:
+                continue
+            if any(
+                kw.arg == "config"
+                and isinstance(kw.value, ast.Name)
+                and kw.value.id == "_ROUTING_COMPLETION_CONFIG"
+                for kw in node.keywords
+            ):
+                occurrences += 1
         # Two distinct call sites: ``_route_via_llm`` and
         # ``_evaluate_via_llm``.  Each must pass the pinned config.
-        occurrences = source.count("config=_ROUTING_COMPLETION_CONFIG")
         assert occurrences >= 2, (
             "expected both supervisor.complete() call sites to pass "
             f"config=_ROUTING_COMPLETION_CONFIG; found {occurrences}"

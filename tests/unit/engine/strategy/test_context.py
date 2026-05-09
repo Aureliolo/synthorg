@@ -176,10 +176,15 @@ class TestMemoryContextProvider:
         assert ctx.competitive_position == "challenger"
 
     @pytest.mark.unit
-    async def test_ignores_blank_or_non_string_overrides(
+    async def test_falls_back_when_any_field_is_blank_or_non_string(
         self,
         default_strategy_config: StrategyConfig,
     ) -> None:
+        # Strict args-model validation rejects the whole payload as soon
+        # as any field is blank or non-string, so even the otherwise-
+        # valid ``competitive_position`` is dropped.  This is the right
+        # contract for boundary validation: garbage in -> total fall
+        # back, no partial application.
         payload = {
             "maturity_stage": "   ",
             "industry": 42,
@@ -194,7 +199,28 @@ class TestMemoryContextProvider:
         ctx = await provider.provide(config=default_strategy_config)
         assert ctx.maturity_stage == "growth"
         assert ctx.industry == "technology"
-        assert ctx.competitive_position == "leader"
+        assert ctx.competitive_position == "challenger"
+
+    @pytest.mark.unit
+    async def test_ignores_unknown_payload_fields(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        # Forward-compatible: extra fields the args model doesn't know
+        # about are dropped silently, the rest still apply.
+        payload = {
+            "maturity_stage": "scaleup",
+            "future_field": {"experimental": True},
+        }
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = (_entry(json.dumps(payload)),)
+        provider = MemoryContextProvider(
+            fallback=ConfigContextProvider(),
+            memory_backend=backend,
+        )
+        ctx = await provider.provide(config=default_strategy_config)
+        assert ctx.maturity_stage == "scaleup"
+        assert ctx.industry == "technology"
 
 
 class TestCompositeContextProvider:
@@ -286,9 +312,26 @@ class TestBuildContext:
         assert ctx.maturity_stage == "scaleup"
 
     @pytest.mark.unit
-    async def test_composite_source(self) -> None:
+    async def test_composite_source_without_backend_falls_back(self) -> None:
         config = StrategyConfig(
             context=StrategicContextConfig(source=ContextSource.COMPOSITE),
         )
         ctx = await build_context(config)
         assert ctx.maturity_stage == "growth"
+
+    @pytest.mark.unit
+    async def test_composite_source_with_backend_applies_overrides(self) -> None:
+        # Pins the COMPOSITE branch end-to-end with a real backend so a
+        # regression in ``CompositeContextProvider`` (e.g. wrapping the
+        # wrong fallback chain) fails this test rather than slipping
+        # through under the no-backend degraded path.
+        config = StrategyConfig(
+            context=StrategicContextConfig(source=ContextSource.COMPOSITE),
+        )
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = (
+            _entry(json.dumps({"maturity_stage": "scaleup"})),
+        )
+        ctx = await build_context(config, memory_backend=backend)
+        assert ctx.maturity_stage == "scaleup"
+        assert ctx.industry == "technology"

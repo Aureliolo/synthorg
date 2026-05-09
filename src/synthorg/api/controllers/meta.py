@@ -21,7 +21,10 @@ from synthorg.meta.config import load_self_improvement_config
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.meta import META_CUSTOM_RULE_LIST_FAILED
+from synthorg.observability.events.meta import (
+    META_CHAT_DEPENDENCY_UNAVAILABLE,
+    META_CUSTOM_RULE_LIST_FAILED,
+)
 
 
 class ChatRequest(BaseModel):
@@ -331,6 +334,13 @@ class MetaController(Controller):
             app_state.chief_of_staff_chat if app_state.has_chief_of_staff_chat else None
         )
         if chat_backend is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="chief_of_staff_chat",
+                hint=(
+                    "Set meta.chief_of_staff.chat_enabled and register an LLM provider."
+                ),
+            )
             msg = (
                 "Chief of Staff chat is not configured. Enable "
                 "``meta.chief_of_staff.chat_enabled`` in settings and "
@@ -341,6 +351,11 @@ class MetaController(Controller):
             app_state.signals_service if app_state.has_signals_service else None
         )
         if signals_service is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="signals_service",
+                hint="SignalsService must be wired during AppState startup.",
+            )
             msg = "SignalsService is not configured; cannot build a snapshot."
             raise ServiceUnavailableError(msg)
         snapshot = await signals_service.get_org_snapshot()

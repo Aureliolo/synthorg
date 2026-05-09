@@ -10,23 +10,39 @@ import tempfile
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING
 
+# These four types appear in the public signatures of
+# ``build_chief_of_staff_chat`` and ``_resolve_llm_judge_strategy``.
+# Under PEP 649 lazy annotations, ``typing.get_type_hints()`` resolves
+# annotation names against module globals at introspection time, so the
+# imports must be runtime-resolvable; keeping them under TYPE_CHECKING
+# would raise ``NameError`` for any caller (Litestar's plugin loader,
+# doc generators, type checkers) that introspects the annotation
+# surface.  Same pattern as ``app_helpers.py``'s ChannelsPlugin.
+from synthorg.budget.tracker import (
+    CostTracker,  # noqa: TC001 -- runtime-resolvable annotation for PEP 649
+)
+from synthorg.meta.chief_of_staff.chat import (
+    ChiefOfStaffChat,
+)
+from synthorg.meta.chief_of_staff.config import (
+    ChiefOfStaffConfig,  # noqa: TC001 -- runtime-resolvable annotation for PEP 649
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_MEMORY_DIR_TMPROOT_FALLBACK,
 )
+from synthorg.providers.registry import (
+    ProviderRegistry,  # noqa: TC001 -- runtime-resolvable annotation for PEP 649
+)
 from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import RootConfig
     from synthorg.hr.performance.config import PerformanceConfig
     from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
     from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
-    from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-    from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.trust.service import TrustService
 
 logger = get_logger(__name__)
@@ -137,8 +153,6 @@ def build_chief_of_staff_chat(
     judge: the first registered provider, since the chat model name in
     config is provider-agnostic.
     """
-    from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat  # noqa: PLC0415
-
     if not chief_of_staff_config.chat_enabled:
         return None
 

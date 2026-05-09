@@ -9,6 +9,8 @@ import builtins
 import json
 from typing import Protocol, runtime_checkable
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.models import StrategicContext, StrategyConfig
@@ -29,11 +31,27 @@ _STRATEGIC_CONTEXT_AGENT_ID: NotBlankStr = NotBlankStr("system:strategy")
 _STRATEGIC_CONTEXT_TAG: NotBlankStr = NotBlankStr("strategic-context")
 """Tag the memory backend filters on for strategic-context entries."""
 
-_OVERRIDABLE_FIELDS: tuple[str, ...] = (
-    "maturity_stage",
-    "industry",
-    "competitive_position",
-)
+
+class _StrategicContextOverridesArgs(BaseModel):
+    """Typed-boundary validator for memory-stored strategic-context overrides.
+
+    The memory backend yields untrusted JSON; this args model is the
+    boundary that turns that payload into typed overrides.  Behaves like
+    :func:`synthorg.api.boundary.parse_typed` (validate, log on failure,
+    re-raise) but lives in-module so ``engine.strategy`` does not depend
+    on the ``api`` layer.
+
+    Each override field is ``NotBlankStr`` so blank / non-string values
+    reject the payload entirely; callers fall back to the no-override
+    path on :class:`pydantic.ValidationError`.  ``extra="ignore"`` keeps
+    the boundary forward-compatible with future enrichment fields.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore", strict=True)
+
+    maturity_stage: NotBlankStr | None = None
+    industry: NotBlankStr | None = None
+    competitive_position: NotBlankStr | None = None
 
 
 @runtime_checkable
@@ -106,7 +124,6 @@ class MemoryContextProvider:
     async def provide(self, *, config: StrategyConfig) -> StrategicContext:  # noqa: PLR0911
         """Layer memory-stored overrides on top of the fallback context."""
         if self._memory_backend is None:
-            logger.debug(STRATEGY_CONTEXT_BUILT, source="memory_no_backend")
             return await self._fallback.provide(config=config)
 
         try:
@@ -138,7 +155,7 @@ class MemoryContextProvider:
             return await self._fallback.provide(config=config)
 
         try:
-            payload = json.loads(entries[0].content)
+            decoded = json.loads(entries[0].content)
         except json.JSONDecodeError as exc:
             logger.warning(
                 STRATEGY_CONTEXT_PROVIDER_FAILED,
@@ -149,21 +166,20 @@ class MemoryContextProvider:
             )
             return await self._fallback.provide(config=config)
 
-        if not isinstance(payload, dict):
+        try:
+            args = _StrategicContextOverridesArgs.model_validate(decoded)
+        except ValidationError as exc:
             logger.warning(
                 STRATEGY_CONTEXT_PROVIDER_FAILED,
                 provider_name="MemoryContextProvider",
-                stage="parse",
-                reason="content_not_object",
+                stage="validate",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return await self._fallback.provide(config=config)
 
+        overrides = args.model_dump(exclude_none=True)
         fallback_ctx = await self._fallback.provide(config=config)
-        overrides: dict[str, str] = {}
-        for field_name in _OVERRIDABLE_FIELDS:
-            value = payload.get(field_name)
-            if isinstance(value, str) and value.strip():
-                overrides[field_name] = value
         if not overrides:
             return fallback_ctx
         logger.info(
