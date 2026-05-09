@@ -327,3 +327,88 @@ class TestSubworkflowCrud:
         assert resp.status_code == 200
         parents = resp.json()["data"]
         assert parents == []
+
+
+@pytest.mark.unit
+class TestSubworkflowControllerErrorEnvelope:
+    """RFC 9457 envelope shape from centralised exception_handlers."""
+
+    def test_create_invalid_definition_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        bad = _sub_payload()
+        bad_nodes = list(bad["nodes"])
+        bad_nodes[0] = dict(bad_nodes[0])
+        bad_nodes[0]["position_x"] = "not-a-float"
+        bad["nodes"] = bad_nodes
+
+        resp = test_client.post(
+            "/api/v1/subworkflows",
+            json=bad,
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
+
+    def test_create_duplicate_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        _create_subworkflow(test_client)
+        resp = test_client.post(
+            "/api/v1/subworkflows",
+            json=_sub_payload(),
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.DUPLICATE_RECORD
+        assert detail["error_category"] == ErrorCategory.CONFLICT
+        assert detail["retryable"] is False
+
+    def test_delete_version_not_found_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        resp = test_client.delete(
+            "/api/v1/subworkflows/sub-missing/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.SUBWORKFLOW_NOT_FOUND
+        assert detail["error_category"] == ErrorCategory.NOT_FOUND
+        assert detail["retryable"] is False
+
+    def test_get_version_not_found_envelope(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+        resp = test_client.get(
+            "/api/v1/subworkflows/sub-missing/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.SUBWORKFLOW_NOT_FOUND
+        assert detail["error_category"] == ErrorCategory.NOT_FOUND

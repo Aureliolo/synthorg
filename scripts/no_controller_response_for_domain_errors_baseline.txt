@@ -1,0 +1,24 @@
+# Frozen baseline of pre-existing controller-level `except <DomainError>:
+# return Response(...)` patterns under src/synthorg/api/controllers/.
+# Each line is `path:lineno:except_clause_name` (POSIX path, 1-indexed
+# line) sorted in deterministic order.
+#
+# scripts/check_no_controller_response_for_domain_errors.py reads this
+# file to suppress violations at these exact entries. New violations
+# NOT in this list will fail the pre-push hook.
+#
+# This file should shrink monotonically. Regenerate (rare; requires
+# explicit user approval) with:
+#   uv run python scripts/check_no_controller_response_for_domain_errors.py \
+#       --update-baseline
+src/synthorg/api/controllers/_workflow_builders.py:105:ValidationError
+src/synthorg/api/controllers/_workflow_builders.py:235:ValidationError
+src/synthorg/api/controllers/_workflow_builders.py:296:BlueprintNotFoundError
+src/synthorg/api/controllers/_workflow_builders.py:313:BlueprintValidationError
+src/synthorg/api/controllers/workflow_executions.py:148:WorkflowDefinitionInvalidError
+src/synthorg/api/controllers/workflow_executions.py:160:WorkflowConditionEvalError
+src/synthorg/api/controllers/workflow_executions.py:172:PersistenceError
+src/synthorg/api/controllers/workflow_executions.py:207:PersistenceError
+src/synthorg/api/controllers/workflow_executions.py:247:PersistenceError
+src/synthorg/api/controllers/workflow_executions.py:308:WorkflowExecutionError, PersistenceVersionConflictError
+src/synthorg/api/controllers/workflow_executions.py:320:PersistenceError

@@ -6,7 +6,7 @@ import { vi } from 'vitest'
 vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
 
 import { ApiRequestError, unwrap, unwrapPaginated, unwrapVoid, apiClient } from '@/api/client'
-import type { ErrorDetail } from '@/api/types/errors'
+import { ErrorCategory, ErrorCode, type ErrorDetail } from '@/api/types/errors'
 import type { ApiResponse, PaginatedResponse } from '@/api/types/http'
 
 /**
@@ -27,8 +27,8 @@ function mockResponse<T>(data: unknown): AxiosResponse<T> {
 
 const testErrorDetail: ErrorDetail = {
   detail: 'Resource not found',
-  error_code: 3000,
-  error_category: 'not_found',
+  error_code: ErrorCode.RESOURCE_NOT_FOUND,
+  error_category: ErrorCategory.NOT_FOUND,
   retryable: false,
   retry_after: null,
   instance: 'req-abc',

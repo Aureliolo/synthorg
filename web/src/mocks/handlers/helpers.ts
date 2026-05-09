@@ -1,4 +1,8 @@
-import type { ErrorDetail } from '@/api/types/errors'
+import {
+  ErrorCategory,
+  ErrorCode,
+  type ErrorDetail,
+} from '@/api/types/errors'
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -18,8 +22,8 @@ function buildDefaultErrorDetail(
 ): ErrorDetail {
   return {
     detail: error,
-    error_code: 1000,
-    error_category: 'internal',
+    error_code: ErrorCode.UNAUTHORIZED,
+    error_category: ErrorCategory.INTERNAL,
     retryable: false,
     retry_after: null,
     instance: '/storybook',
@@ -59,8 +63,8 @@ export function buildValidationError(
 ): ApiResponse<never> {
   if (fields.length === 0) {
     return apiError('Validation error: required field is missing.', {
-      error_code: 4001,
-      error_category: 'validation',
+      error_code: ErrorCode.DUPLICATE_RECORD,
+      error_category: ErrorCategory.VALIDATION,
       title: 'Validation error',
       ...overrides,
     })
@@ -69,8 +73,8 @@ export function buildValidationError(
     ? `${fields[0]} is required`
     : `${fields.slice(0, -1).join(', ')} and ${fields[fields.length - 1]} are required`
   return apiError(`Validation error: ${formatted}.`, {
-    error_code: 4001,
-    error_category: 'validation',
+    error_code: ErrorCode.DUPLICATE_RECORD,
+    error_category: ErrorCategory.VALIDATION,
     title: 'Validation error',
     ...overrides,
   })

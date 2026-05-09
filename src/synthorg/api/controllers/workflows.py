@@ -19,7 +19,7 @@ from synthorg.api.controllers._workflow_builders import (
     wf_versioning,
 )
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.dto_workflow import (
     BlueprintInfoResponse,
     CreateFromBlueprintRequest,
@@ -33,6 +33,11 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import (
+    WorkflowDefinitionValidationError,
+    WorkflowTypeInvalidError,
+    WorkflowYamlExportError,
+)
 from synthorg.engine.workflow.blueprint_loader import list_blueprints
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -40,12 +45,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
-from synthorg.engine.workflow.service import (
-    WorkflowDefinitionExistsError,
-    WorkflowDefinitionNotFoundError,
-    WorkflowDefinitionRevisionMismatchError,
-    WorkflowService,
-)
+from synthorg.engine.workflow.service import WorkflowService
 from synthorg.engine.workflow.validation import WorkflowValidationResult
 from synthorg.engine.workflow.validation import (
     validate_workflow as run_workflow_validation,
@@ -61,9 +61,7 @@ from synthorg.observability.events.blueprint import (
     BLUEPRINT_INSTANTIATE_SUCCESS,
 )
 from synthorg.observability.events.workflow_definition import (
-    WORKFLOW_DEF_INVALID_REQUEST,
     WORKFLOW_DEF_NOT_FOUND,
-    WORKFLOW_DEF_VERSION_CONFLICT,
 )
 from synthorg.observability.metrics_hub import record_blueprint_instantiation
 
@@ -106,29 +104,18 @@ class WorkflowController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = DEFAULT_LIMIT,
         workflow_type: WorkflowTypeFilter = None,
-    ) -> PaginatedResponse[WorkflowDefinition] | Response[ApiResponse[None]]:
+    ) -> PaginatedResponse[WorkflowDefinition]:
         """List workflow definitions with optional filters."""
         parsed_type: WorkflowType | None = None
         if workflow_type is not None:
             try:
                 parsed_type = WorkflowType(workflow_type)
-            except ValueError:
+            except ValueError as exc:
                 valid = ", ".join(e.value for e in WorkflowType)
-                logger.warning(
-                    WORKFLOW_DEF_INVALID_REQUEST,
-                    field="workflow_type",
-                    value=workflow_type,
-                )
-                return Response(
-                    content=ApiResponse[None](
-                        error=(
-                            f"Invalid workflow type: {workflow_type!r}. Valid: {valid}"
-                        ),
-                    ),
-                    status_code=400,
-                )
+                msg = f"Invalid workflow type: {workflow_type!r}. Valid: {valid}"
+                raise WorkflowTypeInvalidError(msg) from exc
 
         defs = await _service(state).list_definitions(workflow_type=parsed_type)
         page, meta = paginate_cursor(
@@ -203,24 +190,7 @@ class WorkflowController(Controller):
             now,
         )
 
-        try:
-            await _service(state).create_definition(definition, saved_by=creator)
-        except WorkflowDefinitionExistsError as exc:
-            # Duplicate id hit at the SQL level in ``create_if_absent``.
-            # Surface as HTTP 409 so clients retrying a failed create do
-            # not see a 500.
-            scrubbed = safe_error_description(exc)
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                definition_id=definition.id,
-                reason="duplicate_id",
-                error_type=type(exc).__name__,
-                error=scrubbed,
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](error=scrubbed),
-                status_code=409,
-            )
+        await _service(state).create_definition(definition, saved_by=creator)
 
         # Snapshot orchestration moved into ``WorkflowService.create_definition``
         # (via the ``saved_by`` kwarg), so no explicit ``snapshot_if_changed``
@@ -300,31 +270,14 @@ class WorkflowController(Controller):
                 updated_at=now,
             )
         except (ValueError, ValidationError) as exc:
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Invalid workflow definition.",
-                ),
-                status_code=422,
-            )
+            msg = WorkflowDefinitionValidationError.default_message
+            raise WorkflowDefinitionValidationError(msg) from exc
 
         subworkflow_errors = await run_subworkflow_validation(definition, state)
         if subworkflow_errors:
             messages = "; ".join(e.message for e in subworkflow_errors)
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                error=messages,
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Subworkflow validation failed.",
-                ),
-                status_code=422,
-            )
+            msg = f"Subworkflow validation failed: {messages}"
+            raise WorkflowDefinitionValidationError(msg)
 
         # Pre-persist intent log -- captures the operator's request
         # even if the write itself fails. ``WORKFLOW_DEFINITION_CHANGED``
@@ -337,24 +290,7 @@ class WorkflowController(Controller):
             version_after=definition.version,
         )
 
-        try:
-            await _service(state).create_definition(definition, saved_by=creator)
-        except WorkflowDefinitionExistsError as exc:
-            # The service raises this when ``create_if_absent`` hits a
-            # duplicate id at the SQL level. Map to HTTP 409 so clients
-            # retrying a failed create do not see a 500.
-            scrubbed = safe_error_description(exc)
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                definition_id=definition.id,
-                reason="duplicate_id",
-                error_type=type(exc).__name__,
-                error=scrubbed,
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](error=scrubbed),
-                status_code=409,
-            )
+        await _service(state).create_definition(definition, saved_by=creator)
 
         # Snapshot recording is handled inside ``WorkflowService`` via the
         # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
@@ -382,7 +318,7 @@ class WorkflowController(Controller):
             per_op_rate_limit_from_policy("workflows.update", key="user"),
         ],
     )
-    async def update_workflow(  # noqa: PLR0911 -- enumerate distinct HTTP error paths explicitly
+    async def update_workflow(
         self,
         request: Request[Any, Any, Any],
         state: State,
@@ -391,37 +327,10 @@ class WorkflowController(Controller):
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Update an existing workflow definition."""
         service = _service(state)
-        try:
-            existing = await service.fetch_for_update(
-                workflow_id,
-                data.expected_revision,
-            )
-        except WorkflowDefinitionNotFoundError as exc:
-            logger.warning(
-                WORKFLOW_DEF_NOT_FOUND,
-                definition_id=workflow_id,
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=safe_error_description(exc),
-                ),
-                status_code=404,
-            )
-        except WorkflowDefinitionRevisionMismatchError as exc:
-            logger.warning(
-                WORKFLOW_DEF_VERSION_CONFLICT,
-                definition_id=workflow_id,
-                expected=exc.expected,
-                actual=exc.actual,
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=(
-                        "Version conflict: the workflow was modified. Reload and retry."
-                    ),
-                ),
-                status_code=409,
-            )
+        existing = await service.fetch_for_update(
+            workflow_id,
+            data.expected_revision,
+        )
 
         update_result = apply_update(existing, data)
         if isinstance(update_result, Response):
@@ -431,16 +340,8 @@ class WorkflowController(Controller):
         subworkflow_errors = await run_subworkflow_validation(updated, state)
         if subworkflow_errors:
             messages = "; ".join(e.message for e in subworkflow_errors)
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                error=messages,
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Subworkflow validation failed.",
-                ),
-                status_code=422,
-            )
+            msg = f"Subworkflow validation failed: {messages}"
+            raise WorkflowDefinitionValidationError(msg)
 
         updater = get_auth_user_id(request)
         # Pre-persist intent log -- captures the operator's request
@@ -454,36 +355,7 @@ class WorkflowController(Controller):
             version_before=existing.version,
             version_after=updated.version,
         )
-        try:
-            await service.update_definition(updated, saved_by=updater)
-        except WorkflowDefinitionNotFoundError as exc:
-            # Row was deleted between fetch_for_update and update;
-            # surface as 404 so the client refetches rather than
-            # accidentally creating via a retry.
-            logger.warning(
-                WORKFLOW_DEF_NOT_FOUND,
-                definition_id=updated.id,
-                operation="update_workflow",
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=safe_error_description(exc),
-                ),
-                status_code=404,
-            )
-        except WorkflowDefinitionRevisionMismatchError as exc:
-            logger.warning(
-                WORKFLOW_DEF_VERSION_CONFLICT,
-                definition_id=updated.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Version conflict: definition was modified concurrently.",
-                ),
-                status_code=409,
-            )
+        await service.update_definition(updated, saved_by=updater)
 
         # Snapshot recording is handled inside ``WorkflowService`` via the
         # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
@@ -571,17 +443,8 @@ class WorkflowController(Controller):
                 created_by="draft",
             )
         except (ValueError, ValidationError) as exc:
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowValidationResult](
-                    error=f"Invalid workflow: {safe_error_description(exc)}",
-                ),
-                status_code=422,
-            )
+            msg = WorkflowDefinitionValidationError.default_message
+            raise WorkflowDefinitionValidationError(msg) from exc
 
         result = run_workflow_validation(definition)
 
@@ -650,18 +513,8 @@ class WorkflowController(Controller):
         try:
             yaml_str = export_workflow_yaml(definition)
         except ValueError as exc:
-            scrubbed = safe_error_description(exc)
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                error_type=type(exc).__name__,
-                error=scrubbed,
-            )
-            return Response(
-                content=ApiResponse[None](
-                    error=f"Export failed: {scrubbed}",
-                ),
-                status_code=422,
-            )
+            msg = f"Export failed: {safe_error_description(exc)}"
+            raise WorkflowYamlExportError(msg) from exc
 
         return Response(
             content=yaml_str,

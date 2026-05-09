@@ -3,6 +3,7 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { apiError, apiSuccess, buildLocalPreset, buildCloudPreset } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
+import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import type { SeniorityLevel } from '@/api/types/enums'
 
 const _NON_DEFAULT = CURRENCY_OPTIONS.find((c) => c.value !== DEFAULT_CURRENCY)
@@ -308,7 +309,10 @@ describe('setup wizard store', () => {
               'No configured provider exposes any models. Go back to '
               + 'the Providers step, add at least one model to a provider, '
               + 'then return here to apply the template.',
-              { error_code: 2004, error_category: 'validation' },
+              {
+                error_code: ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+                error_category: ErrorCategory.VALIDATION,
+              },
             ),
             { status: 422 },
           ),
@@ -324,7 +328,9 @@ describe('setup wizard store', () => {
       const state = useSetupWizardStore.getState()
       expect(state.companyResponse).toBeNull()
       expect(state.companyError).toContain('Providers step')
-      expect(state.companyErrorCode).toBe(2004)
+      expect(state.companyErrorCode).toBe(
+        ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+      )
       expect(state.companyLoading).toBe(false)
     })
 
@@ -346,7 +352,9 @@ describe('setup wizard store', () => {
       server.use(
         http.post('/api/v1/setup/company', () =>
           HttpResponse.json(
-            apiError('insufficient', { error_code: 2004 }),
+            apiError('insufficient', {
+              error_code: ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+            }),
             { status: 422 },
           ),
         ),
@@ -356,7 +364,9 @@ describe('setup wizard store', () => {
         selectedTemplate: 'startup',
       })
       await useSetupWizardStore.getState().submitCompany()
-      expect(useSetupWizardStore.getState().companyErrorCode).toBe(2004)
+      expect(useSetupWizardStore.getState().companyErrorCode).toBe(
+        ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+      )
 
       // Next attempt: success. Code must clear (not linger from prior).
       server.use(

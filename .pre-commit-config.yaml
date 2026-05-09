@@ -425,6 +425,30 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
+      - id: no-controller-response-for-domain-errors
+        name: no-controller-response-for-domain-errors gate (raise typed errors, never build local Response envelopes)
+        entry: uv run python scripts/check_no_controller_response_for_domain_errors.py
+        language: system
+        # Trigger on any change to controllers, the gate script, or its
+        # baseline so a PR that re-introduces a controller-level
+        # ``except DomainError: return Response(...)`` (or weakens the
+        # gate by editing the script / baseline) cannot bypass the check.
+        files: ^(src/synthorg/api/controllers/.*\.py|scripts/check_no_controller_response_for_domain_errors\.py|scripts/no_controller_response_for_domain_errors_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      - id: error-codes-ts-in-sync
+        name: error-codes-ts-in-sync gate (web/src/api/types/error-codes.gen.ts matches src/synthorg/core/error_taxonomy.py)
+        entry: uv run python scripts/check_error_codes_ts_in_sync.py
+        language: system
+        # Trigger on any change to the source enum, the generator,
+        # the gate, or the generated mirror so a PR that adds a
+        # backend code without regenerating (or weakens the gate by
+        # editing the script) cannot bypass the check.
+        files: ^(src/synthorg/core/error_taxonomy\.py|scripts/generate_error_codes_ts\.py|scripts/check_error_codes_ts_in_sync\.py|web/src/api/types/error-codes\.gen\.ts|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
       - id: mcp-admin-guardrail
         name: MCP admin_tool guardrails gate (require_admin_guardrails on every admin handler)
         entry: uv run python scripts/check_mcp_admin_tool_guardrails.py

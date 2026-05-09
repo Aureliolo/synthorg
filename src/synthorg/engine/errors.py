@@ -339,8 +339,49 @@ class SubworkflowIOError(WorkflowExecutionError):
     """Raised when subworkflow input or output binding is invalid.
 
     Covers missing required inputs, unknown inputs, unknown outputs,
-    type mismatches, and invalid binding expressions.
+    type mismatches, and invalid binding expressions. The 422 mapping
+    treats binding mismatches as caller-side validation failures so
+    the centralised RFC 9457 dispatch surfaces a structured envelope
+    without controller-level translation.
     """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Subworkflow input/output validation failed"
+
+
+class WorkflowTypeInvalidError(WorkflowExecutionError):
+    """Raised when a request specifies an unknown ``workflow_type`` value."""
+
+    status_code: ClassVar[int] = 400
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Invalid workflow type"
+
+
+class WorkflowDefinitionValidationError(WorkflowExecutionError):
+    """Raised when a workflow definition fails structural checks.
+
+    The default message is intentionally generic so Pydantic validation
+    detail does not leak to API clients; callers may still chain the
+    underlying exception with ``raise … from exc`` for the structured
+    log emitted by the centralised handler.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Invalid workflow definition."
+
+
+class WorkflowYamlExportError(WorkflowExecutionError):
+    """Raised when YAML serialisation of a workflow definition fails."""
+
+    status_code: ClassVar[int] = 400
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Workflow YAML export failed"
 
 
 class SelfReviewError(EngineError):

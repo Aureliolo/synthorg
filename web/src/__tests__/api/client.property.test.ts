@@ -1,6 +1,7 @@
 import fc from 'fast-check'
 import type { AxiosResponse } from 'axios'
 import { unwrap, unwrapPaginated, ApiRequestError } from '@/api/client'
+import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import type { ApiResponse, PaginatedResponse } from '@/api/types/http'
 
 function mockResponse<T>(data: T): AxiosResponse<T> {
@@ -32,8 +33,8 @@ describe('client property tests', () => {
           error: errorMsg,
           error_detail: {
             detail: errorMsg,
-            error_code: 8000,
-            error_category: 'internal',
+            error_code: ErrorCode.INTERNAL_ERROR,
+            error_category: ErrorCategory.INTERNAL,
             retryable: false,
             retry_after: null,
             instance: 'test',

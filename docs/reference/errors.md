@@ -134,7 +134,7 @@ All 13 share the same `type` URI; the numeric code is the discriminator.
 
 Clients that set `Accept: application/problem+json` receive a bare RFC 9457 body. Clients that accept `application/json` receive an `ApiResponse` envelope with `error_detail` carrying the same fields. See the [API reference](../openapi/) for per-route examples.
 
-## HTTP exception handler registration
+## HTTP exception handler registration (MANDATORY)
 
 Litestar resolves exception handlers by walking the raised exception's
 MRO; the first matching type in `EXCEPTION_HANDLERS`
@@ -144,6 +144,15 @@ register a single base-class handler (e.g. `BackupError`,
 structured response without falling through to the catch-all
 `Exception: handle_unexpected` (which would surface as a generic 500
 without a domain-specific `error_code`).
+
+**Controllers MUST NOT catch a domain error and build their own
+`Response(...)` envelope.** Raise the typed domain error (declaring
+`status_code` / `error_code` / `error_category` ClassVars on the
+class) and let `handle_domain_error` produce the RFC 9457 envelope.
+Enforced at pre-push by
+`scripts/check_no_controller_response_for_domain_errors.py`.
+Per-line opt-out:
+`# lint-allow: controller-domain-response -- <reason>`.
 
 Each handler:
 
@@ -200,6 +209,34 @@ gate also accepts a frozen baseline file
 violations a rollout has not yet reached. The baseline shrinks
 monotonically: any entry that no longer maps to a real violation is
 reported as drift, so the file cannot harbour stale rows.
+
+## Error-code constants - frontend integration (MANDATORY)
+
+`src/synthorg/core/error_taxonomy.py` is the single source of truth
+for `ErrorCode` and `ErrorCategory`. The dashboard imports the same
+constants from `web/src/api/types/error-codes.gen.ts`, which is
+generated from the Python enums by
+`scripts/generate_error_codes_ts.py`.
+
+When adding or renaming a code:
+
+1. Edit `src/synthorg/core/error_taxonomy.py`.
+2. Run `uv run python scripts/generate_error_codes_ts.py` and commit
+   `web/src/api/types/error-codes.gen.ts` alongside the Python change.
+3. Update any frontend call sites that newly want to discriminate on
+   the code (import `ErrorCode` from `@/api/types/errors` and use the
+   named member, never the raw integer).
+
+The pre-push gate `scripts/check_error_codes_ts_in_sync.py` re-runs
+the generator and fails if the committed `error-codes.gen.ts` differs
+byte-for-byte from the freshly rendered output, so a backend code
+addition that forgets the regeneration step cannot land.
+
+Frontend code MUST import error codes through `@/api/types/errors`
+(re-exported from the generated module). Inlining numeric error codes
+(e.g. `error_code: 3000`) is forbidden -- name-based discrimination
+keeps the `web/` and `src/synthorg/` sides in lockstep when codes are
+renumbered.
 
 ## Further reading
 
