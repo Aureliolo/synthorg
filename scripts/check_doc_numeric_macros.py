@@ -37,6 +37,7 @@ _SCOPED_FILES: Final[tuple[str, ...]] = (
     "docs/index.md",
     "docs/roadmap/index.md",
     "docs/architecture/decisions.md",
+    "docs/reference/convention-gates.md",
 )
 
 _NUMBER: Final[str] = (

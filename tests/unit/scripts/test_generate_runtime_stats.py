@@ -71,6 +71,7 @@ def _fake_fetchers(
         "providers_curated": lambda: {"raw": 19, "display": "19"},
         "providers_via_litellm": lambda: {"raw": 100, "display": "100+"},
         "subagents": lambda: {"raw": 7, "display": "7"},
+        "convention_gates": lambda: {"raw": 36, "display": "36"},
     }
     if overrides:
         base.update(overrides)
@@ -129,6 +130,7 @@ class TestMainHappyPath:
         assert stats["providers_curated"]["display"] == "19"
         assert stats["providers_via_litellm"]["display"] == "100+"
         assert stats["subagents"]["display"] == "7"
+        assert stats["convention_gates"]["display"] == "36"
         assert "sources" in loaded
         # Sources mapping is informational; ensure every stat has a source.
         for stat_name in stats:
@@ -165,6 +167,7 @@ class TestMainSingleFetcherFails:
                 "providers_curated": {"raw": 1, "display": "1"},
                 "providers_via_litellm": {"raw": 50, "display": "50+"},
                 "subagents": {"raw": 3, "display": "3"},
+                "convention_gates": {"raw": 12, "display": "12"},
             },
             "sources": {},
         }
@@ -257,6 +260,32 @@ class TestFetchSubagents:
             pytest.raises(gen._StatFetchError),
         ):
             gen._fetch_subagents()
+
+
+@pytest.mark.unit
+class TestFetchConventionGates:
+    """`_fetch_convention_gates` counts `scripts/check_*.py` directly."""
+
+    def test_counts_check_scripts(self, tmp_path: Path) -> None:
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        for name in ("check_alpha.py", "check_beta.py", "check_gamma.py"):
+            (scripts_dir / name).write_text("# stub\n", encoding="utf-8")
+        # Non-matching files ignored.
+        (scripts_dir / "helper.py").write_text("# stub\n", encoding="utf-8")
+        (scripts_dir / "check_README.md").write_text("# stub\n", encoding="utf-8")
+
+        with patch.object(gen, "REPO_ROOT", tmp_path):
+            result = gen._fetch_convention_gates()
+        assert result["raw"] == 3
+        assert result["display"] == "3"
+
+    def test_raises_when_scripts_dir_missing(self, tmp_path: Path) -> None:
+        with (
+            patch.object(gen, "REPO_ROOT", tmp_path),
+            pytest.raises(gen._StatFetchError),
+        ):
+            gen._fetch_convention_gates()
 
 
 @pytest.mark.unit

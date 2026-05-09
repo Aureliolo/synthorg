@@ -8,6 +8,7 @@ every ``<!--RS:NAME-->...<!--/RS-->`` marker in the in-scope docs:
 * ``docs/index.md``
 * ``docs/roadmap/index.md``
 * ``docs/architecture/decisions.md``
+* ``docs/reference/convention-gates.md``
 
 The rewrite is idempotent: running twice produces identical output.
 Unknown marker names raise :class:`_UnknownStatError` so typos in
@@ -49,6 +50,7 @@ _SCOPED_FILES: Final[tuple[str, ...]] = (
     "docs/index.md",
     "docs/roadmap/index.md",
     "docs/architecture/decisions.md",
+    "docs/reference/convention-gates.md",
 )
 
 _MARKER_RE: Final[re.Pattern[str]] = re.compile(

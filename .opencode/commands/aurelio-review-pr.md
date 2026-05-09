@@ -12,12 +12,12 @@ The skill below references `subagent_type` values from Claude Code plugins. In O
 
 | Skill references this `subagent_type` | Use this OpenCode agent instead |
 |---|---|
-| `pr-review-toolkit:code-reviewer` | `.opencode/agents/code-reviewer.md` |
+| `code-reviewer` | `.opencode/agents/code-reviewer.md` |
 | `python-reviewer` | `.opencode/agents/python-reviewer.md` |
-| `pr-review-toolkit:pr-test-analyzer` | `.opencode/agents/pr-test-analyzer.md` |
-| `pr-review-toolkit:silent-failure-hunter` | `.opencode/agents/silent-failure-hunter.md` |
-| `pr-review-toolkit:comment-analyzer` | `.opencode/agents/comment-analyzer.md` |
-| `pr-review-toolkit:type-design-analyzer` | `.opencode/agents/type-design-analyzer.md` |
+| `pr-test-analyzer` | `.opencode/agents/pr-test-analyzer.md` |
+| `silent-failure-hunter` | `.opencode/agents/silent-failure-hunter.md` |
+| `comment-analyzer` | `.opencode/agents/comment-analyzer.md` |
+| `type-design-analyzer` | `.opencode/agents/type-design-analyzer.md` |
 | `security-reviewer` | `.opencode/agents/security-reviewer.md` |
 | `persistence-reviewer` | `.opencode/agents/persistence-reviewer.md` |
 | `go-reviewer` | `.opencode/agents/go-reviewer.md` |

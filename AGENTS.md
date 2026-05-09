@@ -48,9 +48,9 @@ This project runs on Windows. OpenCode uses PowerShell, Claude Code uses bash. S
 
 ## OpenCode Agents
 
-The project defines 22 review agents for automated code review, organized in a 2-tier model routing architecture:
-- **Quality tier** (Sonnet-class: ollama-cloud/qwen3-coder-next:cloud): code-reviewer, python-reviewer, frontend-reviewer, go-reviewer, conventions-enforcer, logging-audit, resilience-audit, api-contract-drift
-- **Parallel tier** (Haiku-class: ollama-cloud/minimax-m2.5:cloud): async-concurrency-reviewer, comment-analyzer, design-token-audit, docs-consistency, go-conventions-enforcer, go-security-reviewer, infra-reviewer, issue-resolution-verifier, persistence-reviewer, pr-test-analyzer, security-reviewer, silent-failure-hunter, test-quality-reviewer, type-design-analyzer
+The project defines 26 review agents for automated code review, organized in a 2-tier model routing architecture:
+- **Quality tier** (Sonnet-class: ollama-cloud/qwen3-coder-next:cloud): code-reviewer, code-simplifier, python-reviewer, frontend-reviewer, go-reviewer, conventions-enforcer, logging-audit, resilience-audit, api-contract-drift
+- **Parallel tier** (Haiku-class: ollama-cloud/minimax-m2.5:cloud): async-concurrency-reviewer, comment-analyzer, comment-quality-rot, design-token-audit, diagram-syntax-validator, docs-consistency, go-conventions-enforcer, go-security-reviewer, infra-reviewer, issue-resolution-verifier, persistence-reviewer, pr-test-analyzer, security-reviewer, silent-failure-hunter, test-quality-reviewer, tool-parity-checker, type-design-analyzer
 
 Agents verify: correctness, security, type design, documentation consistency, API contracts, logging practices, resilience patterns, infrastructure, test quality, and frontend design tokens.
 
