@@ -84,6 +84,9 @@ def _atlas(
             return result
         if "lock" not in result.stderr.lower() or attempt == 4:
             break
+        # Genuine wall-clock backoff between subprocess retries: the
+        # atlas binary holds a real OS-level lock that another xdist
+        # worker is releasing. There is no clock seam to inject here.
         time.sleep(1 + attempt)
     if check and result.returncode != 0:
         msg = f"atlas {' '.join(args[:4])}: {result.stderr.strip()}"
@@ -94,10 +97,15 @@ def _atlas(
 def _generate_migrations(project_dir: Path) -> list[str]:
     """Generate 6 SQLite migrations from incremental schema changes.
 
-    Inserts a 3-second pause between migration 4 and 5 to ensure
-    there is at least a 2-second gap between their timestamps, which
-    is needed for the checkpoint to have a unique timestamp between
-    them.
+    Atlas writes filenames with wall-clock-second-precision timestamps,
+    so back-to-back ``migrate diff`` calls would land within the same
+    second. After generating all migrations, the function rewrites
+    every filename to a deterministic monotonic schedule -- one second
+    per step except for a two-second jump at the squash boundary, so
+    the checkpoint timestamp computed in :func:`_build_squashed_dir`
+    (``m4_dt + 1s``) has room before ``m5_dt`` without depending on
+    real elapsed time between Atlas calls. ``atlas migrate hash``
+    regenerates ``atlas.sum`` after the renames.
 
     Uses a file-backed dev database to avoid lock contention when
     multiple xdist workers generate migrations concurrently.
@@ -111,8 +119,6 @@ def _generate_migrations(project_dir: Path) -> list[str]:
     dev_url = _to_url(dev_db, "sqlite")
 
     for i, ddl in enumerate(_SCHEMA_STEPS):
-        if i == _SQUASH_POINT:
-            time.sleep(3)
         schema.write_text(ddl)
         _atlas(
             "migrate",
@@ -128,7 +134,23 @@ def _generate_migrations(project_dir: Path) -> list[str]:
             f"m{i + 1}",
         )
 
-    return sorted(f.name for f in revisions.glob("*.sql"))
+    _ts_fmt = "%Y%m%d%H%M%S"
+    base = datetime(2026, 1, 1, 0, 0, 0)  # noqa: DTZ001 -- arbitrary fixed base
+    files = sorted(f.name for f in revisions.glob("*.sql"))
+    new_names: list[str] = []
+    for idx, name in enumerate(files):
+        # +1s per step, but +2s at the squash boundary so m5 is at
+        # least two seconds after m4 (the constraint asserted in
+        # _build_squashed_dir for cp_dt = m4 + 1s < m5).
+        offset = idx if idx < _SQUASH_POINT else idx + 1
+        new_prefix = (base + timedelta(seconds=offset)).strftime(_ts_fmt)
+        new_name = new_prefix + name[14:]
+        if new_name != name:
+            (revisions / name).rename(revisions / new_name)
+        new_names.append(new_name)
+    _atlas("migrate", "hash", "--dir", _to_url(revisions))
+
+    return sorted(new_names)
 
 
 def _build_squashed_dir(

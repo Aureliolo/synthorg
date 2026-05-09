@@ -277,15 +277,14 @@ async def test_receive_on_stopped_bus_raises(bus: MessageBus) -> None:
 async def test_receive_returns_none_on_shutdown(bus: MessageBus) -> None:
     await bus.subscribe("#general", "agent-a")
 
-    async def stop_after_delay() -> None:
-        await asyncio.sleep(0.1)
-        await bus.stop()
+    receive_task = asyncio.create_task(bus.receive("#general", "agent-a", timeout=10.0))
+    # Yield once so receive() reaches its blocking await before stop()
+    # fires; the test asserts the JetStream durable consumer wakes up
+    # with None on shutdown rather than blocking out the full timeout.
+    await asyncio.sleep(0)
+    await bus.stop()
 
-    async with asyncio.TaskGroup() as tg:
-        tg.create_task(stop_after_delay())
-        result = await bus.receive("#general", "agent-a", timeout=10.0)
-
-    assert result is None
+    assert await receive_task is None
 
 
 # -- Direct Messaging --------------------------------------------------

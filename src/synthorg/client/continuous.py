@@ -71,11 +71,25 @@ class ContinuousMode:
         self._lifecycle_lock = asyncio.Lock()
         self._runs_completed = 0
         self._running = False
+        self._first_run_event_cache: asyncio.Event | None = None
 
     @property
     def runs_completed(self) -> int:
         """Number of runs completed since the last ``start`` call."""
         return self._runs_completed
+
+    @property
+    def first_run_event(self) -> asyncio.Event:
+        """Event set after the first run completes since the last ``start``.
+
+        Lazy-constructed on first access so it binds to the running
+        event loop rather than the interpreter-startup loop, satisfying
+        the ``check_no_loop_bound_init`` guard for restart-on-new-loop
+        safety.
+        """
+        if self._first_run_event_cache is None:
+            self._first_run_event_cache = asyncio.Event()
+        return self._first_run_event_cache
 
     async def start(
         self,
@@ -110,6 +124,7 @@ class ContinuousMode:
                 raise RuntimeError(msg)
             self._running = True
             self._stop_event.clear()
+            self.first_run_event.clear()
             self._runs_completed = 0
         semaphore = asyncio.Semaphore(max(1, self._config.max_concurrent_requests))
         max_history = max(1, self._config.max_concurrent_requests * 100)
@@ -123,6 +138,7 @@ class ContinuousMode:
                     )
                 results.append(metrics)
                 self._runs_completed += 1
+                self.first_run_event.set()
                 try:
                     await asyncio.wait_for(
                         self._stop_event.wait(),

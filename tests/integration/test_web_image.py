@@ -93,14 +93,17 @@ def web_container() -> Generator[str]:
         )
         host_port = port_info.stdout.strip()
         base_url = f"http://127.0.0.1:{host_port}"
-        for _ in range(30):
+        # Polls a real Docker container's HTTP endpoint, so the wait is
+        # genuine network I/O against an external process; no FakeClock
+        # seam applies. 60 attempts x 0.25s = 15s budget (unchanged).
+        for _ in range(60):
             try:
                 resp = httpx.get(f"{base_url}/", timeout=2)
                 if resp.status_code == 200:
                     break
             except httpx.ConnectError, httpx.ReadError:
                 pass
-            time.sleep(0.5)
+            time.sleep(0.25)
         else:
             pytest.fail("Web container did not become healthy within 15s")
 

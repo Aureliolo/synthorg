@@ -397,12 +397,20 @@ describe('setup wizard store', () => {
       let inflightCount = 0
       let observedConcurrent = 0
       let totalCalls = 0
+      // Manually-released gate: the handler awaits this promise so the
+      // test controls when the server "responds". Replaces a 20ms
+      // setTimeout that gave the second/third submitCompany() calls
+      // wall-clock room to arrive while the first was in flight.
+      let releaseHandler!: () => void
+      const handlerGate = new Promise<void>((resolve) => {
+        releaseHandler = resolve
+      })
       server.use(
         http.post('/api/v1/setup/company', async () => {
           totalCalls += 1
           inflightCount += 1
           observedConcurrent = Math.max(observedConcurrent, inflightCount)
-          await new Promise((resolve) => setTimeout(resolve, 20))
+          await handlerGate
           inflightCount -= 1
           return HttpResponse.json(
             apiSuccess({
@@ -422,11 +430,15 @@ describe('setup wizard store', () => {
         companyName: 'Acme Corp',
         selectedTemplate: 'startup',
       })
-      await Promise.all([
+      const submissions = Promise.all([
         useSetupWizardStore.getState().submitCompany(),
         useSetupWizardStore.getState().submitCompany(),
         useSetupWizardStore.getState().submitCompany(),
       ])
+      // Yield so the (single) coalesced fetch reaches the handler.
+      await vi.waitFor(() => expect(observedConcurrent).toBe(1))
+      releaseHandler()
+      await submissions
       // ``observedConcurrent`` alone is satisfied if a serial test
       // runner happens to schedule the three calls one-after-another
       // (no real concurrency to block). ``totalCalls`` pins the
