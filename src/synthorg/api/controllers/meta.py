@@ -1,6 +1,7 @@
 """Meta improvement controller -- self-improvement proposals and signals."""
 
 from typing import Any
+from uuid import UUID  # noqa: TC003
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -12,8 +13,10 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.meta.chief_of_staff.models import ChatQuery
 from synthorg.meta.config import load_self_improvement_config
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
@@ -27,6 +30,8 @@ class ChatRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     question: NotBlankStr = Field(max_length=2000)
+    proposal_id: UUID | None = Field(default=None)
+    alert_id: UUID | None = Field(default=None)
 
 
 logger = get_logger(__name__)
@@ -304,30 +309,48 @@ class MetaController(Controller):
     )
     async def chat(
         self,
-        data: ChatRequest,  # noqa: ARG002
+        data: ChatRequest,
+        state: State,
     ) -> ApiResponse[dict[str, Any]]:
         """Ask the Chief of Staff a question.
 
         Routes to the ChiefOfStaffChat backend for LLM-powered
-        explanations of signals and proposals.
+        explanations of signals and proposals.  Returns 503 when the
+        chat backend is not configured (``chief_of_staff.chat_enabled``
+        is False or no LLM provider is registered).
 
         Args:
             data: Chat request with question text.
+            state: Application state.
 
         Returns:
             Chat response with answer, sources, and confidence.
         """
-        # Placeholder: real implementation will inject
-        # ChiefOfStaffChat via DI once the service is wired.
+        app_state = state.app_state
+        if not app_state.has_chief_of_staff_chat:
+            msg = (
+                "Chief of Staff chat is not configured. Enable "
+                "``meta.chief_of_staff.chat_enabled`` in settings and "
+                "ensure an LLM provider is registered."
+            )
+            raise ServiceUnavailableError(msg)
+        if not app_state.has_signals_service:
+            msg = "SignalsService is not configured; cannot build a snapshot."
+            raise ServiceUnavailableError(msg)
+
+        chat_backend = app_state.chief_of_staff_chat
+        snapshot = await app_state.signals_service.get_org_snapshot()
+        query = ChatQuery(
+            question=data.question,
+            proposal_id=data.proposal_id,
+            alert_id=data.alert_id,
+        )
+        result = await chat_backend.ask(query, snapshot)
         return ApiResponse[dict[str, Any]](
             data={
-                "answer": (
-                    "The Chief of Staff chat is not yet connected "
-                    "to a live LLM provider. This is a placeholder "
-                    "response."
-                ),
-                "sources": [],
-                "confidence": 0.0,
+                "answer": result.answer,
+                "sources": list(result.sources),
+                "confidence": result.confidence,
             },
         )
 

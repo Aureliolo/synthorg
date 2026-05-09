@@ -1,13 +1,15 @@
 """AppState facade accessors for META-MCP-3 write-side services.
 
 Provides ``has_<service>`` / ``<service>`` / ``set_<service>`` triples
-for the five services META-MCP-3 introduces or wires onto AppState:
+for the services META-MCP-3 introduces or wires onto AppState:
 
 - ``workflow_service`` -- workflow definition CRUD facade.
 - ``workflow_execution_service`` -- workflow execution lifecycle.
 - ``workflow_version_service`` -- workflow definition version reads.
 - ``subworkflow_service`` -- subworkflow control plane.
 - ``self_improvement_service`` -- meta-loop trigger and config readout.
+- ``chief_of_staff_chat`` -- LLM-backed chat for proposal/alert/free-form
+  explanations served by the ``POST /meta/chat`` endpoint.
 
 This is the META-MCP-3 mixin; the parallel META-MCP-4 mixin lives in
 ``state_services_facades_mcp4.py``. Both follow the same conventions
@@ -28,6 +30,7 @@ from synthorg.engine.workflow.subworkflow_service import (
 from synthorg.engine.workflow.version_service import (
     WorkflowVersionService,  # noqa: TC001
 )
+from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat  # noqa: TC001
 from synthorg.meta.service import SelfImprovementService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_STATE_SERVICE_ATTACHED
@@ -66,6 +69,7 @@ class _MetaMcp3FacadesMixin:
     _workflow_version_service: WorkflowVersionService | None
     _subworkflow_service: SubworkflowService | None
     _self_improvement_service: SelfImprovementService | None
+    _chief_of_staff_chat: ChiefOfStaffChat | None
 
     # ── WorkflowService ──────────────────────────────────────────
 
@@ -189,6 +193,29 @@ class _MetaMcp3FacadesMixin:
             slot="_self_improvement_service",
             service=service,
             name="self_improvement_service",
+        )
+
+    # ── ChiefOfStaffChat ─────────────────────────────────────────
+
+    @property
+    def has_chief_of_staff_chat(self) -> bool:
+        """Whether the Chief of Staff chat backend has been attached."""
+        return self._chief_of_staff_chat is not None
+
+    @property
+    def chief_of_staff_chat(self) -> ChiefOfStaffChat:
+        """Return the attached :class:`ChiefOfStaffChat`."""
+        return self._require_service(
+            self._chief_of_staff_chat,
+            "chief_of_staff_chat",
+        )
+
+    def set_chief_of_staff_chat(self, service: ChiefOfStaffChat) -> None:
+        """Attach the Chief of Staff chat backend (one-shot)."""
+        self._attach_service(
+            slot="_chief_of_staff_chat",
+            service=service,
+            name="chief_of_staff_chat",
         )
 
 
