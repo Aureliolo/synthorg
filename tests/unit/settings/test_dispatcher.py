@@ -48,6 +48,54 @@ def _envelope(msg: Message) -> DeliveryEnvelope:
     )
 
 
+class _FakeConfigResolver:
+    """Minimal resolver stub used to inject deterministic dispatcher tunables.
+
+    The dispatcher reads ``settings.dispatcher_max_consecutive_errors``
+    and ``settings.dispatcher_stop_drain_timeout_seconds`` via
+    ``ConfigResolver``; tests inject this stub when they need to
+    exercise either knob without standing up the full
+    ``SettingsService`` stack.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_consecutive_errors: int | None = None,
+        stop_drain_timeout_seconds: float | None = None,
+        enabled: bool = True,
+    ) -> None:
+        self._max_consecutive_errors = max_consecutive_errors
+        self._stop_drain_timeout_seconds = stop_drain_timeout_seconds
+        self._enabled = enabled
+
+    async def get_int(self, namespace: str, key: str) -> int:
+        if (
+            namespace == "settings"
+            and key == "dispatcher_max_consecutive_errors"
+            and self._max_consecutive_errors is not None
+        ):
+            return self._max_consecutive_errors
+        msg = f"unexpected get_int({namespace!r}, {key!r})"
+        raise KeyError(msg)
+
+    async def get_float(self, namespace: str, key: str) -> float:
+        if (
+            namespace == "settings"
+            and key == "dispatcher_stop_drain_timeout_seconds"
+            and self._stop_drain_timeout_seconds is not None
+        ):
+            return self._stop_drain_timeout_seconds
+        msg = f"unexpected get_float({namespace!r}, {key!r})"
+        raise KeyError(msg)
+
+    async def get_bool(self, namespace: str, key: str) -> bool:
+        if namespace == "settings" and key == "dispatcher_enabled":
+            return self._enabled
+        msg = f"unexpected get_bool({namespace!r}, {key!r})"
+        raise KeyError(msg)
+
+
 class _FakeSubscriber:
     """Test subscriber that records calls and signals completion."""
 
@@ -569,7 +617,6 @@ class TestConsecutiveErrors:
         import synthorg.settings.dispatcher as _mod
 
         monkeypatch.setattr(_mod, "_ERROR_BACKOFF", 0.01)
-        monkeypatch.setattr(_mod, "_MAX_CONSECUTIVE_ERRORS", 5)
 
         sub = _FakeSubscriber("sub", frozenset({("ns", "k")}))
         call_count = 0
@@ -599,6 +646,7 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
+            config_resolver=_FakeConfigResolver(max_consecutive_errors=5),
         )
         await d.start()
         try:
@@ -611,11 +659,10 @@ class TestConsecutiveErrors:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Loop exits after _MAX_CONSECUTIVE_ERRORS OSErrors."""
+        """Loop exits after the configured max-consecutive-errors OSErrors."""
         import synthorg.settings.dispatcher as _mod
 
         monkeypatch.setattr(_mod, "_ERROR_BACKOFF", 0.01)
-        monkeypatch.setattr(_mod, "_MAX_CONSECUTIVE_ERRORS", 5)
 
         class _PermanentErrorBus(_FakeBus):
             async def receive(
@@ -633,6 +680,7 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
+            config_resolver=_FakeConfigResolver(max_consecutive_errors=5),
         )
         await d.start()
         assert d._task is not None

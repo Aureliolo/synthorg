@@ -59,3 +59,45 @@ _r.register(
         yaml_path="settings.dispatcher.max_consecutive_errors",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SETTINGS,
+        key="dispatcher_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Runtime kill switch for the settings change dispatcher poll"
+            " loop. When False the loop sleeps the configured poll-timeout"
+            " each iteration without consuming the bus or invoking"
+            " subscribers; flip back to True to resume without restarting"
+            " the dispatcher. Resolver outage falls back to enabled --"
+            " operators silence dispatch by setting the value explicitly,"
+            " never by inducing a settings outage."
+        ),
+        group="Dispatcher",
+        level=SettingLevel.ADVANCED,
+        yaml_path="settings.dispatcher.enabled",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SETTINGS,
+        key="dispatcher_stop_drain_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="10.0",
+        description=(
+            "Hard deadline for the dispatcher stop() drain. Lifecycle"
+            " synchronisation requires services whose stop() drains"
+            " across await boundaries to bound the wait so the lifecycle"
+            " lock is never held indefinitely if the polling task"
+            " ignores cancellation."
+        ),
+        group="Dispatcher",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+        max_value=60.0,
+        yaml_path="settings.dispatcher.stop_drain_timeout_seconds",
+    )
+)

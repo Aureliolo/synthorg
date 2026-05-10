@@ -619,9 +619,13 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
                 settings_service=settings_service,
             ),
         )
+    config_resolver = (
+        app_state.config_resolver if app_state.has_config_resolver else None
+    )
     return SettingsChangeDispatcher(
         message_bus=message_bus,
         subscribers=tuple(subs),
+        config_resolver=config_resolver,
     )
 
 

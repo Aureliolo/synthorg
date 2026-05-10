@@ -37,6 +37,13 @@ unsubscribe call fails. Kept distinct from
 clean-shutdown event do not silently absorb failed stops."""
 SETTINGS_DISPATCHER_POLL_ERROR: Final[str] = "settings.dispatcher.poll_error"
 SETTINGS_DISPATCHER_CHANNEL_DEAD: Final[str] = "settings.dispatcher.channel_dead"
+SETTINGS_DISPATCHER_RESOLVE_FAILED: Final[str] = "settings.dispatcher.resolve_failed"
+"""Emitted when the dispatcher's kill-switch resolver call fails.
+
+Logged once per failure run (``_resolve_failed_logged`` debounces
+repeats); cleared on the next successful resolve so the surface
+re-arms. Failure resolves to ``enabled=True`` so a settings outage
+cannot silently silence the dispatcher."""
 SETTINGS_SUBSCRIBER_NOTIFIED: Final[str] = "settings.subscriber.notified"
 SETTINGS_SUBSCRIBER_ERROR: Final[str] = "settings.subscriber.error"
 SETTINGS_SUBSCRIBER_RESTART_REQUIRED: Final[str] = (

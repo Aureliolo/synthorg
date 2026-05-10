@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_RESOLVED,
+    CONFLICT_VALIDATION_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -93,6 +94,12 @@ class HumanDecisionProcessor:
     def __init__(self, mode: DecisionMode = "winner") -> None:
         if mode not in ("winner", "hybrid"):
             msg = f"mode must be 'winner' or 'hybrid', got {mode!r}"
+            logger.warning(
+                CONFLICT_VALIDATION_ERROR,
+                note="invalid_decision_mode",
+                attempted_mode=mode,
+                error=msg,
+            )
             raise ValueError(msg)
         self._mode = mode
 
