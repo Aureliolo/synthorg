@@ -14,6 +14,7 @@ from synthorg.engine.workflow.graph_utils import (
     build_adjacency_maps,
     topological_sort,
 )
+from synthorg.engine.workflow.yaml_step_builders import STEP_BUILDERS
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_EXPORT_FAILED,
@@ -26,67 +27,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-_TASK_CONFIG_KEYS = (
-    "title",
-    "task_type",
-    "priority",
-    "complexity",
-    "coordination_topology",
-)
-_ASSIGNMENT_KEYS = (
-    "routing_strategy",
-    "role_filter",
-    "agent_name",
-)
-_ASSIGNMENT_STEP_MAP = {
-    "routing_strategy": "strategy",
-    "role_filter": "role",
-    "agent_name": "agent_name",
-}
-
-
-def _add_task_fields(
-    step: dict[str, Any],
-    config: dict[str, Any],
-) -> None:
-    """Copy task-specific config fields into the step dict."""
-    for key in _TASK_CONFIG_KEYS:
-        if key in config:
-            step[key] = config[key]
-    if "routing_strategy" in config or "role_filter" in config:
-        assignment = {
-            _ASSIGNMENT_STEP_MAP[k]: str(config[k])
-            for k in _ASSIGNMENT_KEYS
-            if k in config
-        }
-        step["agent_assignment"] = assignment
-
-
-def _add_assignment_fields(
-    step: dict[str, Any],
-    config: dict[str, Any],
-) -> None:
-    """Copy agent assignment fields into the step dict."""
-    for key in _ASSIGNMENT_KEYS:
-        if key in config:
-            step[_ASSIGNMENT_STEP_MAP[key]] = config[key]
-
-
-def _add_subworkflow_fields(
-    step: dict[str, Any],
-    config: dict[str, Any],
-) -> None:
-    """Copy subworkflow reference fields into the step dict."""
-    if "subworkflow_id" in config:
-        step["subworkflow_id"] = config["subworkflow_id"]
-    if "version" in config:
-        step["version"] = config["version"]
-    if config.get("input_bindings"):
-        step["input_bindings"] = dict(config["input_bindings"])
-    if config.get("output_bindings"):
-        step["output_bindings"] = dict(config["output_bindings"])
-
-
 def _build_step(
     node_id: str,
     node_type: WorkflowNodeType,
@@ -97,23 +37,7 @@ def _build_step(
     """Build a single step dict for the YAML output."""
     step: dict[str, Any] = {"id": node_id, "type": node_type.value}
 
-    if node_type == WorkflowNodeType.TASK:
-        _add_task_fields(step, config)
-    elif node_type == WorkflowNodeType.AGENT_ASSIGNMENT:
-        _add_assignment_fields(step, config)
-    elif node_type == WorkflowNodeType.CONDITIONAL:
-        if "condition_expression" in config:
-            step["condition"] = config["condition_expression"]
-    elif node_type == WorkflowNodeType.PARALLEL_SPLIT:
-        step["branches"] = [
-            t for t, et in outgoing_edges if et == WorkflowEdgeType.PARALLEL_BRANCH
-        ]
-        if "max_concurrency" in config:
-            step["max_concurrency"] = config["max_concurrency"]
-    elif node_type == WorkflowNodeType.PARALLEL_JOIN:
-        step["join_strategy"] = config.get("join_strategy", "all")
-    elif node_type == WorkflowNodeType.SUBWORKFLOW:
-        _add_subworkflow_fields(step, config)
+    STEP_BUILDERS[node_type](step, config, outgoing_edges)
 
     depends_on = [nid for nid in incoming_node_ids if nid != node_id]
     if depends_on:

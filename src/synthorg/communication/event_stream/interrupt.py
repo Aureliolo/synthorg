@@ -324,6 +324,10 @@ class InterruptStore:
             The resolved interrupt, or ``None`` per the three cases
             documented above.
         """
+        from synthorg.communication.event_stream.interrupt_resolution_validators import (  # noqa: E501, PLC0415
+            INTERRUPT_RESOLUTION_VALIDATORS,
+        )
+
         async with self._lock:
             interrupt = self._pending.get(resolution.interrupt_id)
             if interrupt is None:
@@ -334,20 +338,12 @@ class InterruptStore:
                 return None
 
             # Validate resolution payload matches interrupt type.
-            is_tool = interrupt.type == InterruptType.TOOL_APPROVAL
-            if is_tool and resolution.decision is None:
+            failure_note = INTERRUPT_RESOLUTION_VALIDATORS[interrupt.type](resolution)
+            if failure_note is not None:
                 logger.warning(
                     EVENT_STREAM_INVALID_RESUME_PAYLOAD,
                     interrupt_id=resolution.interrupt_id,
-                    note="TOOL_APPROVAL requires decision",
-                )
-                return None
-            is_info = interrupt.type == InterruptType.INFO_REQUEST
-            if is_info and resolution.response is None:
-                logger.warning(
-                    EVENT_STREAM_INVALID_RESUME_PAYLOAD,
-                    interrupt_id=resolution.interrupt_id,
-                    note="INFO_REQUEST requires response",
+                    note=failure_note,
                 )
                 return None
 
