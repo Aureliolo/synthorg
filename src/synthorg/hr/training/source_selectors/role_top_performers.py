@@ -12,6 +12,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
     HR_TRAINING_SELECTION_SKIPPED,
+    HR_TRAINING_SELECTOR_CONFIG_INVALID,
 )
 
 if TYPE_CHECKING:
@@ -51,7 +52,13 @@ class RoleTopPerformers:
     ) -> None:
         if top_n <= 0:
             msg = f"top_n must be a positive integer, got {top_n}"
-            logger.warning(msg, top_n=top_n)
+            logger.warning(
+                HR_TRAINING_SELECTOR_CONFIG_INVALID,
+                selector="role_top_performers",
+                field="top_n",
+                value=top_n,
+                reason=msg,
+            )
             raise ValueError(msg)
         self._registry = registry
         self._tracker = tracker

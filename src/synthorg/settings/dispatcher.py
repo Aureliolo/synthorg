@@ -103,6 +103,12 @@ class SettingsChangeDispatcher:
         # both observing _running=False would otherwise both
         # subscribe to #settings and both spawn a poll task.
         self._lifecycle_lock = asyncio.Lock()
+        # Strong refs to the lock-acquiring fire-and-forget tasks
+        # spawned from ``_on_task_done`` (RUF006). The callback runs
+        # synchronously and cannot ``await`` the lock, so it
+        # schedules the state update via ``create_task``; without a
+        # strong ref the task could be garbage-collected mid-flight.
+        self._post_done_tasks: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
         """Start the polling loop.
@@ -301,12 +307,18 @@ class SettingsChangeDispatcher:
     def _on_task_done(self, task: asyncio.Task[None]) -> None:
         """Handle unexpected poll-loop exit.
 
-        Resets ``_running`` so the dispatcher's state is honest,
-        and logs an error if the loop died with an exception.
+        The poll task ending while ``stop()`` is not driving the
+        teardown means the loop crashed (or hit max-consecutive-errors)
+        and the dispatcher needs ``_running`` reset so a subsequent
+        ``start()`` can proceed without a manual ``stop()`` first.
+        The callback runs synchronously on the event loop and cannot
+        ``await`` the ``_lifecycle_lock``, so the locked update is
+        scheduled as a follow-up coroutine; logging happens here
+        immediately so a crashed loop is observable even if the
+        scheduled task is delayed.
         """
         if task.cancelled():
             return
-        self._running = False
         exc = task.exception()
         if exc is not None:
             logger.error(
@@ -320,6 +332,38 @@ class SettingsChangeDispatcher:
                 SETTINGS_DISPATCHER_STOPPED,
                 note="Poll loop exited (max consecutive errors or channel dead)",
             )
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop (e.g. interpreter shutdown). The
+            # ``_running`` flag stays True; the dispatcher is being
+            # torn down anyway and a future start() on a fresh
+            # instance is the recovery path.
+            return
+        post_task = loop.create_task(
+            self._reset_running_under_lock(task),
+            name="settings-dispatcher-post-done",
+        )
+        self._post_done_tasks.add(post_task)
+        # Discard the strong ref when the task finishes, so the set
+        # does not hold a reference indefinitely. Without this callback,
+        # the set would keep the task alive forever, defeating RUF006
+        # protection (the whole point of storing strong refs here).
+        post_task.add_done_callback(self._post_done_tasks.discard)
+
+    async def _reset_running_under_lock(self, task: asyncio.Task[None]) -> None:
+        """Clear ``_running`` under the lifecycle lock after a crash.
+
+        Acquiring the lock serialises this write against concurrent
+        ``start()`` / ``stop()`` calls so a crashed-task callback
+        cannot race a fresh ``start()`` into observing
+        ``_running=False`` while the previous task object is still
+        bound to ``self._task``.
+        """
+        async with self._lifecycle_lock:
+            if self._task is task:
+                self._running = False
+                self._task = None
 
     async def _ensure_channel(self) -> None:
         """Create ``#settings`` channel if it does not exist."""

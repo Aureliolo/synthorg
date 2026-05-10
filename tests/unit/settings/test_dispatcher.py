@@ -526,7 +526,12 @@ class TestDoneCallback:
         assert d._task is not None
         with contextlib.suppress(Exception):
             await asyncio.wait_for(d._task, timeout=2.0)
-        # done_callback should have set _running to False
+        # The done callback schedules a follow-up coroutine that
+        # acquires ``_lifecycle_lock`` before clearing ``_running``;
+        # wait for it to finish so the assertion observes the
+        # post-lock state instead of the in-flight intermediate.
+        if d._post_done_tasks:
+            await asyncio.gather(*d._post_done_tasks)
         assert d._running is False
 
 
@@ -633,4 +638,6 @@ class TestConsecutiveErrors:
         assert d._task is not None
         with contextlib.suppress(Exception):
             await asyncio.wait_for(d._task, timeout=10.0)
+        if d._post_done_tasks:
+            await asyncio.gather(*d._post_done_tasks)
         assert d._running is False

@@ -13,6 +13,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
     HR_TRAINING_SELECTION_SKIPPED,
+    HR_TRAINING_SELECTOR_CONFIG_INVALID,
 )
 
 if TYPE_CHECKING:
@@ -60,7 +61,13 @@ class DepartmentDiversitySampling:
                 f">= 0, got top={top_performer_count}, "
                 f"complementary={complementary_count}"
             )
-            logger.warning(msg)
+            logger.warning(
+                HR_TRAINING_SELECTOR_CONFIG_INVALID,
+                selector="department_diversity",
+                top_performer_count=top_performer_count,
+                complementary_count=complementary_count,
+                reason=msg,
+            )
             raise ValueError(msg)
         self._registry = registry
         self._tracker = tracker

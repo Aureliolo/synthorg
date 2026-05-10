@@ -1,7 +1,7 @@
 """Decision processor strategy for the escalation queue."""
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from synthorg.communication.conflict_resolution.escalation.models import (
@@ -16,6 +16,9 @@ from synthorg.communication.conflict_resolution.models import (
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_RESOLVED,
 )
@@ -87,6 +90,9 @@ class HumanDecisionProcessor:
     _mode: DecisionMode
 
     def __init__(self, mode: DecisionMode = "winner") -> None:
+        if mode not in ("winner", "hybrid"):
+            msg = f"mode must be 'winner' or 'hybrid', got {mode!r}"
+            raise ValueError(msg)
         self._mode = mode
 
     @property
@@ -99,7 +105,7 @@ class HumanDecisionProcessor:
         conflict: Conflict,
         decision: EscalationDecision,
         *,
-        decided_by: str,
+        decided_by: NotBlankStr,
     ) -> ConflictResolution:
         """Build a resolution matching the decision and the configured mode.
 
@@ -156,7 +162,7 @@ class HumanDecisionProcessor:
         conflict: Conflict,
         decision: WinnerDecision,
         *,
-        decided_by: str,
+        decided_by: NotBlankStr,
     ) -> ConflictResolution:
         winning_position = next(
             (
@@ -204,7 +210,7 @@ class HumanDecisionProcessor:
         conflict: Conflict,
         decision: EscalationDecision,
         *,
-        decided_by: str,
+        decided_by: NotBlankStr,
     ) -> ConflictResolution:
         resolution = ConflictResolution(
             conflict_id=conflict.id,

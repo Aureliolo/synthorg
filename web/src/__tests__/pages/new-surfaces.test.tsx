@@ -1,11 +1,11 @@
 /**
- * Smoke tests for the 9 new dashboard surfaces scaffolded for issue #1687.
+ * Smoke tests for nine dashboard surfaces.
  *
  * Each test asserts the page renders without crashing under the default
- * MSW handlers (workflow-executions / webhooks handlers were added in
- * the same PR; version-history pages reuse the existing
- * VersionHistorySection mocks; analytics / meta / setup endpoints were
- * already mocked).
+ * MSW handlers. Workflow-executions and webhooks handlers are defined
+ * locally; version-history pages reuse the existing
+ * VersionHistorySection mocks; analytics / meta / setup endpoints are
+ * already mocked.
  *
  * The point is not full UX coverage; it is to fail fast if a page's
  * imports break, the route binds the wrong endpoint, or a Pydantic
