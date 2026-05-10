@@ -247,7 +247,7 @@ A **WorkflowDefinition** is a design-time blueprint: a visual directed graph tha
 
 ### YAML Export
 
-`export_workflow_yaml()` performs topological sort and emits a flat step list with `depends_on` references, `agent_assignment` config, conditional expressions, and parallel branch/join metadata. START and END nodes are omitted (structural markers only). `depends_on` entries are either a plain string (sequential/parallel edges) or an object `{ id, branch: "true"|"false" }` (conditional edges with explicit branch metadata). The importer prefers explicit branch metadata when present and falls back to counter-based inference for backward compatibility with plain strings.
+`export_workflow_yaml()` performs topological sort and emits a flat step list with `depends_on` references, `agent_assignment` config, conditional expressions, and parallel branch/join metadata. START and END nodes are omitted (structural markers only). Per-step field assembly dispatches through the `STEP_BUILDERS` registry in `synthorg.engine.workflow.yaml_step_builders`; START and END are filtered upstream and intentionally absent from the registry, so a stray START/END reaching the dispatcher surfaces as a `KeyError` rather than silently producing a placeholder step. The exporter writes `depends_on` entries as plain predecessor node IDs (no per-edge branch object); the importer accepts either a plain string or an object `{ id, branch: "true"|"false" }` and, for conditional edges, prefers explicit branch metadata when present and falls back to counter-based inference when only plain strings are available.
 
 ### Persistence
 

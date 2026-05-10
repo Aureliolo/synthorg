@@ -5,7 +5,6 @@ four sources in priority order: DB > env > YAML > code defaults.
 """
 
 import asyncio
-import json
 import os
 import re
 from collections.abc import Mapping, Sequence  # noqa: TC003
@@ -32,7 +31,7 @@ from synthorg.observability.events.settings import (
 )
 from synthorg.observability.metrics_hub import record_settings_mutation
 from synthorg.settings.config_bridge import extract_from_config
-from synthorg.settings.enums import SettingsImportSource, SettingSource, SettingType
+from synthorg.settings.enums import SettingsImportSource, SettingSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingReadOnlyError,
@@ -40,6 +39,7 @@ from synthorg.settings.errors import (
     SettingValidationError,
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
+from synthorg.settings.type_validators import validate_by_type
 
 if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
@@ -147,114 +147,13 @@ def _validate_value(definition: SettingDefinition, value: str) -> None:
     Raises:
         SettingValidationError: If validation fails.
     """
-    _validate_by_type(definition, value)
+    validate_by_type(definition, value)
 
     if definition.validator_pattern is not None and not re.fullmatch(
         definition.validator_pattern, value
     ):
         display = _SENSITIVE_MASK if definition.sensitive else repr(value)
         msg = f"Value {display} does not match pattern {definition.validator_pattern!r}"
-        raise SettingValidationError(msg)
-
-
-def _validate_by_type(definition: SettingDefinition, value: str) -> None:
-    """Type-specific validation dispatch."""
-    setting_type = definition.type
-
-    if setting_type == SettingType.INTEGER:
-        _validate_integer(definition, value)
-    elif setting_type == SettingType.FLOAT:
-        _validate_float(definition, value)
-    elif setting_type == SettingType.BOOLEAN:
-        _validate_boolean(definition, value)
-    elif setting_type == SettingType.ENUM:
-        _validate_enum(definition, value)
-    elif setting_type == SettingType.JSON:
-        _validate_json(definition, value)
-
-
-def _validate_integer(definition: SettingDefinition, value: str) -> None:
-    try:
-        int_val = int(value)
-    except ValueError as exc:
-        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
-        msg = f"Expected integer, got {display}"
-        raise SettingValidationError(msg) from exc
-    _check_range(definition, float(int_val))
-
-
-def _validate_float(definition: SettingDefinition, value: str) -> None:
-    try:
-        float_val = float(value)
-    except ValueError as exc:
-        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
-        msg = f"Expected float, got {display}"
-        raise SettingValidationError(msg) from exc
-    _check_range(definition, float_val)
-
-
-def _validate_boolean(definition: SettingDefinition, value: str) -> None:
-    if value.lower() not in ("true", "false", "1", "0"):
-        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
-        msg = f"Expected boolean, got {display}"
-        raise SettingValidationError(msg)
-
-
-def _validate_enum(definition: SettingDefinition, value: str) -> None:
-    if value not in definition.enum_values:
-        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
-        msg = f"Invalid enum value {display}. Allowed: {definition.enum_values}"
-        raise SettingValidationError(msg)
-
-
-def _validate_json(definition: SettingDefinition, value: str) -> None:
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError as exc:
-        if definition.sensitive:
-            msg = (
-                f"Invalid JSON for sensitive setting"
-                f" {definition.namespace}/{definition.key}"
-            )
-        else:
-            msg = f"Invalid JSON: {safe_error_description(exc)}"
-        raise SettingValidationError(msg) from exc
-    # Dispatch to any per-setting shape validator so write-time and
-    # runtime contracts stay aligned (e.g. canonical-origin checks for
-    # ``api.csp_docs_external_origins``). Validators raise ``ValueError``
-    # which we re-wrap as ``SettingValidationError`` to keep the error
-    # surface uniform; sensitive payloads are masked the same way the
-    # parse-error branch above masks them.
-    from synthorg.settings.json_validators import (  # noqa: PLC0415
-        get_json_validator,
-    )
-
-    # SettingNamespace is a StrEnum, so passing it directly gives the
-    # underlying string value (e.g. ``"api"``).
-    validator = get_json_validator(str(definition.namespace), definition.key)
-    if validator is None:
-        return
-    try:
-        validator(parsed)
-    except ValueError as exc:
-        if definition.sensitive:
-            msg = (
-                f"Invalid JSON shape for sensitive setting"
-                f" {definition.namespace}/{definition.key}"
-            )
-        else:
-            msg = f"Invalid JSON shape for {definition.namespace}/{definition.key}: {safe_error_description(exc)}"  # noqa: E501
-        raise SettingValidationError(msg) from exc
-
-
-def _check_range(definition: SettingDefinition, value: float) -> None:
-    """Check numeric range constraints."""
-    display = _SENSITIVE_MASK if definition.sensitive else str(value)
-    if definition.min_value is not None and value < definition.min_value:
-        msg = f"Value {display} below minimum {definition.min_value}"
-        raise SettingValidationError(msg)
-    if definition.max_value is not None and value > definition.max_value:
-        msg = f"Value {display} above maximum {definition.max_value}"
         raise SettingValidationError(msg)
 
 
