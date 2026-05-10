@@ -41,16 +41,32 @@ _MODULE: Any = cast("Any", _load_script_module())
 @pytest.mark.parametrize(
     ("path", "expected"),
     [
+        # Accepted shapes
         ("scripts/mock_spec_baseline.txt", True),
         ("scripts/no_magic_numbers_baseline.txt", True),
         ("scripts/_workflow_shell_git_commits_baseline.json", True),
+        ("scripts/legit_baseline.json", True),
         ("scripts/_schema_drift_baseline.py", True),
+        # Wrong location
+        ("tests/baselines/unit_timing.json", False),
+        ("README.md", False),
+        # Wrong extension / shape
         ("scripts/check_mock_spec.py", False),
         ("scripts/check_no_edit_baseline.sh", False),
         ("scripts/no_baseline_at_all.txt", False),
-        ("tests/baselines/unit_timing.json", False),
+        # py-format baseline must start with leading underscore
+        ("scripts/legit_baseline.py", False),
+        # Nested paths and traversal sequences must be rejected
         ("scripts/subdir/mock_spec_baseline.txt", False),
-        ("README.md", False),
+        ("scripts/../escape_baseline.txt", False),
+        (r"scripts/..\escape_baseline.txt", False),
+        # Disallowed character classes in basename
+        ("scripts/Capitalised_Baseline.txt", False),
+        ("scripts/legit-baseline.txt", False),
+        ("scripts/legit_baseline.exe", False),
+        # Anchored at scripts/ specifically
+        ("../escape_baseline.txt", False),
+        ("scriptsX/legit_baseline.txt", False),
     ],
 )
 def test_is_baseline_path(path: str, expected: bool) -> None:
@@ -141,22 +157,21 @@ def test_main_bypass_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_main_detects_growth(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    baseline = tmp_path / "scripts" / "fake_baseline.txt"
-    baseline.parent.mkdir(parents=True)
-    baseline.write_text(
-        "# header\nsrc/a.py:1:1\nsrc/b.py:2:2\nsrc/c.py:3:3\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
     monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
-    with patch.object(
-        _MODULE,
-        "_read_head",
-        return_value="# header\nsrc/a.py:1:1\n",
+    with (
+        patch.object(
+            _MODULE,
+            "_read_staged",
+            return_value="# header\nsrc/a.py:1:1\nsrc/b.py:2:2\nsrc/c.py:3:3\n",
+        ),
+        patch.object(
+            _MODULE,
+            "_read_head",
+            return_value="# header\nsrc/a.py:1:1\n",
+        ),
     ):
         rc: int = _MODULE.main(
             ["check_baseline_growth.py", "scripts/fake_baseline.txt"],
@@ -168,22 +183,15 @@ def test_main_detects_growth(
     assert "ALLOW_BASELINE_GROWTH=1" in captured.err
 
 
-def test_main_allows_shrink(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    baseline = tmp_path / "scripts" / "fake_baseline.txt"
-    baseline.parent.mkdir(parents=True)
-    baseline.write_text(
-        "# header\nsrc/a.py:1:1\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
+def test_main_allows_shrink(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
-    with patch.object(
-        _MODULE,
-        "_read_head",
-        return_value="# header\nsrc/a.py:1:1\nsrc/b.py:2:2\nsrc/c.py:3:3\n",
+    with (
+        patch.object(_MODULE, "_read_staged", return_value="# header\nsrc/a.py:1:1\n"),
+        patch.object(
+            _MODULE,
+            "_read_head",
+            return_value="# header\nsrc/a.py:1:1\nsrc/b.py:2:2\nsrc/c.py:3:3\n",
+        ),
     ):
         rc: int = _MODULE.main(
             ["check_baseline_growth.py", "scripts/fake_baseline.txt"],
@@ -192,18 +200,12 @@ def test_main_allows_shrink(
 
 
 def test_main_treats_missing_head_as_empty(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    baseline = tmp_path / "scripts" / "new_baseline.txt"
-    baseline.parent.mkdir(parents=True)
-    baseline.write_text("src/a.py:1:1\n", encoding="utf-8")
-    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
     monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
-    with patch.object(
-        _MODULE,
-        "_read_head",
-        return_value=None,
+    with (
+        patch.object(_MODULE, "_read_staged", return_value="src/a.py:1:1\n"),
+        patch.object(_MODULE, "_read_head", return_value=None),
     ):
         rc: int = _MODULE.main(
             ["check_baseline_growth.py", "scripts/new_baseline.txt"],
@@ -263,16 +265,18 @@ def test_read_head_warns_on_unexpected_oserror(
 
 
 def test_main_blocks_invalid_json_baseline(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    baseline = tmp_path / "scripts" / "_fake_baseline.json"
-    baseline.parent.mkdir(parents=True)
-    baseline.write_text("{ this is not valid json ", encoding="utf-8")
-    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
     monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
-    with patch.object(_MODULE, "_read_head", return_value="{}"):
+    with (
+        patch.object(
+            _MODULE,
+            "_read_staged",
+            return_value="{ this is not valid json ",
+        ),
+        patch.object(_MODULE, "_read_head", return_value="{}"),
+    ):
         rc: int = _MODULE.main(
             ["check_baseline_growth.py", "scripts/_fake_baseline.json"],
         )
@@ -282,64 +286,25 @@ def test_main_blocks_invalid_json_baseline(
     assert "failed to parse" in captured.err
 
 
-def test_main_skips_unreadable_staged_file(
-    tmp_path: Path,
+def test_main_skips_when_path_not_in_index(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A staged file that disappears between staging and the gate is silently skipped.
+    """A baseline path missing from the git index is silently skipped.
 
     Pre-commit cannot reach this case in practice because the file is staged,
-    but a hostile filesystem (anti-virus quarantine, race with cleanup) could
-    surface OSError. Skipping silently matches the intent: the gate has nothing
-    to compare against.
+    but ``git show :<path>`` will return non-zero (and ``_read_staged`` will
+    return ``None``) for a path that is not in the index. The gate has
+    nothing to compare against, so it skips.
     """
-    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
     monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
-    rc: int = _MODULE.main(
-        ["check_baseline_growth.py", "scripts/missing_baseline.txt"],
-    )
+    with patch.object(_MODULE, "_read_staged", return_value=None):
+        rc: int = _MODULE.main(
+            ["check_baseline_growth.py", "scripts/missing_baseline.txt"],
+        )
     assert rc == 0
 
 
-def test_safe_baseline_path_rejects_path_injection(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``_safe_baseline_path`` rejects any input outside the canonical shape.
-
-    Defends against path-injection from untrusted argv. The implementation
-    validates the basename against a strict regex and joins it to a hardcoded
-    ``REPO_ROOT / "scripts"``, so even a baseline-shaped string that slips
-    through ``_is_baseline_path`` cannot redirect the filesystem read.
-    """
-    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
-    rejected = [
-        "../escape_baseline.txt",
-        "scripts/../../escape_baseline.txt",
-        r"scripts/..\..\escape_baseline.txt",
-        "scripts/subdir/legit_baseline.txt",
-        "scripts/legit_baseline.exe",
-        "scripts/Capitalised_Baseline.txt",
-        "scripts/legit_baseline",
-        "scripts/legit-baseline.txt",
-    ]
-    for path in rejected:
-        assert _MODULE._safe_baseline_path(path) is None, path
-    accepted = {
-        "scripts/legit_baseline.txt": "legit_baseline.txt",
-        "scripts/_workflow_shell_git_commits_baseline.json": (
-            "_workflow_shell_git_commits_baseline.json"
-        ),
-        "scripts/_schema_drift_baseline.py": "_schema_drift_baseline.py",
-    }
-    for path, basename in accepted.items():
-        assert _MODULE._safe_baseline_path(path) == tmp_path / "scripts" / basename, (
-            path
-        )
-
-
 def test_inspect_path_warns_on_corrupt_head_baseline(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -349,15 +314,18 @@ def test_inspect_path_warns_on_corrupt_head_baseline(
     growth check visible without changing the safe behaviour (head_count=0
     still rejects any non-empty staged baseline as growth).
     """
-    baseline = tmp_path / "scripts" / "_corrupt_head_baseline.json"
-    baseline.parent.mkdir(parents=True)
-    baseline.write_text(json.dumps({"locations": {"a": 1}}), encoding="utf-8")
-    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
     monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
-    with patch.object(
-        _MODULE,
-        "_read_head",
-        return_value="{ this is not valid json ",
+    with (
+        patch.object(
+            _MODULE,
+            "_read_staged",
+            return_value=json.dumps({"locations": {"a": 1}}),
+        ),
+        patch.object(
+            _MODULE,
+            "_read_head",
+            return_value="{ this is not valid json ",
+        ),
     ):
         rc: int = _MODULE.main(
             [
@@ -373,27 +341,31 @@ def test_inspect_path_warns_on_corrupt_head_baseline(
 
 
 def test_main_handles_multiple_paths_mixed_states(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    grew = tmp_path / "scripts" / "grew_baseline.txt"
-    shrank = tmp_path / "scripts" / "shrank_baseline.txt"
-    grew.parent.mkdir(parents=True)
-    grew.write_text("a\nb\nc\nd\n", encoding="utf-8")
-    shrank.write_text("a\n", encoding="utf-8")
-    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
     monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
+    staged_lookup = {
+        "scripts/grew_baseline.txt": "a\nb\nc\nd\n",
+        "scripts/shrank_baseline.txt": "a\n",
+        "scripts/missing_baseline.txt": None,
+    }
     head_lookup = {
         "scripts/grew_baseline.txt": "a\nb\n",
         "scripts/shrank_baseline.txt": "a\nb\nc\n",
         "scripts/missing_baseline.txt": None,
     }
 
+    def fake_read_staged(path: str) -> str | None:
+        return staged_lookup[path]
+
     def fake_read_head(path: str) -> str | None:
         return head_lookup[path]
 
-    with patch.object(_MODULE, "_read_head", side_effect=fake_read_head):
+    with (
+        patch.object(_MODULE, "_read_staged", side_effect=fake_read_staged),
+        patch.object(_MODULE, "_read_head", side_effect=fake_read_head),
+    ):
         rc: int = _MODULE.main(
             [
                 "check_baseline_growth.py",
@@ -407,3 +379,81 @@ def test_main_handles_multiple_paths_mixed_states(
     assert "grew_baseline.txt" in captured.err
     assert "shrank_baseline.txt" not in captured.err
     assert "missing_baseline.txt" not in captured.err
+
+
+# ── _read_staged ────────────────────────────────────────────────
+
+
+def test_read_staged_returns_none_for_path_not_in_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        cmd: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=128,
+            stdout="",
+            stderr="fatal: path 'scripts/x.txt' does not exist in the index",
+        )
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", fake_run)
+    assert _MODULE._read_staged("scripts/x.txt") is None
+
+
+def test_read_staged_returns_none_when_git_binary_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        cmd: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del cmd, kwargs
+        msg = "git binary not on PATH"
+        raise FileNotFoundError(msg)
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", fake_run)
+    assert _MODULE._read_staged("scripts/x.txt") is None
+
+
+def test_read_staged_warns_on_unexpected_oserror(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(
+        cmd: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del cmd, kwargs
+        msg = "git denied"
+        raise PermissionError(msg)
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", fake_run)
+    assert _MODULE._read_staged("scripts/some_baseline.txt") is None
+    captured = capsys.readouterr()
+    assert "git show" in captured.err
+    assert "some_baseline.txt" in captured.err
+
+
+def test_read_staged_returns_blob_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        cmd: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=0,
+            stdout="src/a.py:1:1\nsrc/b.py:2:2\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", fake_run)
+    assert (
+        _MODULE._read_staged("scripts/mock_spec_baseline.txt")
+        == "src/a.py:1:1\nsrc/b.py:2:2\n"
+    )

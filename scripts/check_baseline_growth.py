@@ -20,15 +20,23 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 EXIT_OK = 0
 EXIT_GROWTH_DETECTED = 1
 EXIT_INVALID_BASELINE = 2
 
 _SCRIPTS_DIRNAME = "scripts"
-_BASELINE_BASENAME_RE = re.compile(r"^_?[a-z][a-z_]*_baseline\.(?:txt|json|py)$")
+
+# Single regex governing every "is this a gate-suppression baseline" decision.
+# Three legitimate shapes:
+#   - ``<name>_baseline.txt`` / ``<name>_baseline.json`` (optional leading ``_``)
+#   - ``_<name>_baseline.py`` (leading ``_`` REQUIRED for py-format baselines)
+# Everything else is rejected so ``_is_baseline_path`` and any downstream check
+# stay consistent: a previous split between an ``endswith()`` filter and a
+# regex sanitiser let some shapes pass one check and not the other.
+_BASELINE_BASENAME_RE = re.compile(
+    r"^(?:_?[a-z][a-z_]*_baseline\.(?:txt|json)|_[a-z][a-z_]*_baseline\.py)$"
+)
 
 
 class InvalidBaselineError(Exception):
@@ -36,15 +44,18 @@ class InvalidBaselineError(Exception):
 
 
 def _is_baseline_path(path: str) -> bool:
-    """Return ``True`` for paths that this gate should compare against HEAD."""
-    if not path.startswith("scripts/"):
+    """Return ``True`` for paths this gate should compare against HEAD.
+
+    Validates against ``_BASELINE_BASENAME_RE`` so every code path agrees on
+    which shapes count as a baseline. Rejects nested paths and any basename
+    containing path separators (POSIX or Windows-style).
+    """
+    if not path.startswith(f"{_SCRIPTS_DIRNAME}/"):
         return False
-    name = path[len("scripts/") :]
-    if "/" in name:
+    basename = path[len(_SCRIPTS_DIRNAME) + 1 :]
+    if "/" in basename or "\\" in basename:
         return False
-    if name.endswith(("_baseline.txt", "_baseline.json")):
-        return True
-    return name.startswith("_") and name.endswith("_baseline.py")
+    return _BASELINE_BASENAME_RE.fullmatch(basename) is not None
 
 
 def _count_json_entries(text: str) -> int:
@@ -126,26 +137,35 @@ def _classify(path: str) -> str:
     return ".txt"
 
 
-def _safe_baseline_path(path: str) -> Path | None:
-    """Convert a staged baseline path into an absolute ``Path`` inside ``REPO_ROOT``.
+def _read_staged(path: str) -> str | None:
+    """Return the staged-blob content for ``path`` from the git index, or ``None``.
 
-    Defends against path-injection: pre-commit feeds this gate a list of staged
-    paths from argv. Rather than passing the user-controlled string into
-    ``Path.resolve()`` and hoping the resolved location stays inside the repo,
-    extract the basename, validate it against a strict regex, and construct the
-    filesystem path from a hardcoded directory plus the validated basename. The
-    user-supplied directory portion is discarded; only the regex-clean basename
-    is joined to ``REPO_ROOT / "scripts"``. Returns ``None`` for any input that
-    does not match the canonical ``scripts/<allowed-basename>`` shape.
+    Reads via ``git show :<path>`` so the gate compares what is actually
+    staged for the commit, not whatever happens to be on disk. A working-tree
+    read could drift from the index (post-stage edit, file removed after
+    staging) and let growth slip through. Reading from the index also avoids
+    any filesystem touch on the user-controlled argv path, closing the
+    path-injection class entirely.
+
+    Treats a missing ``git`` binary, the path not being staged, and other OS
+    errors as "no staged content" so the caller skips silently rather than
+    crashing on infrastructure problems pre-commit cannot reach in practice.
     """
-    if not path.startswith(f"{_SCRIPTS_DIRNAME}/"):
+    try:
+        result = subprocess.run(
+            ["git", "show", f":{path}"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
         return None
-    basename = path[len(_SCRIPTS_DIRNAME) + 1 :]
-    if "/" in basename or "\\" in basename:
+    except OSError as exc:
+        print(f"WARNING: git show :{path} failed: {exc}", file=sys.stderr)
         return None
-    if not _BASELINE_BASENAME_RE.fullmatch(basename):
+    if result.returncode != 0:
         return None
-    return REPO_ROOT / _SCRIPTS_DIRNAME / basename
+    return result.stdout
 
 
 def _inspect_path(
@@ -155,12 +175,8 @@ def _inspect_path(
 ) -> None:
     """Compare one staged baseline against HEAD; record growth or parse failure."""
     suffix = _classify(path)
-    absolute = _safe_baseline_path(path)
-    if absolute is None:
-        return
-    try:
-        staged_text = absolute.read_text(encoding="utf-8")
-    except OSError:
+    staged_text = _read_staged(path)
+    if staged_text is None:
         return
     try:
         staged_count = _staged_entries(staged_text, suffix)

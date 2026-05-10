@@ -73,6 +73,20 @@ def test_blocks_edit_of_test_timing_baseline_posix() -> None:
 
 
 @_BASH_AVAILABLE
+def test_blocks_edit_of_python_baseline_posix() -> None:
+    """Python-format gate baselines (``scripts/_*_baseline.py``) are protected too."""
+    result = _run(
+        {
+            "tool_input": {
+                "file_path": "scripts/_workflow_shell_git_commits_baseline.py",
+                "new_string": "[]",
+            },
+        },
+    )
+    assert result.returncode == 2
+
+
+@_BASH_AVAILABLE
 def test_allows_non_baseline_path() -> None:
     result = _run(
         {
@@ -92,6 +106,7 @@ def test_allows_non_baseline_path() -> None:
         r"C:\repo\scripts\mock_spec_baseline.txt",
         r"scripts\mock_spec_baseline.txt",
         r"D:\projects\synthorg\scripts\_workflow_shell_git_commits_baseline.json",
+        r"D:\projects\synthorg\scripts\_workflow_shell_git_commits_baseline.py",
         r"C:\repo\tests\baselines\unit_timing.json",
     ],
 )
