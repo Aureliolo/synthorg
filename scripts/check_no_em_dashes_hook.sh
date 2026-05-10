@@ -33,7 +33,10 @@ if [[ -z "$FILE_PATH" ]]; then
 fi
 
 # Skip regenerated changelog (release-please rewrites this file from git history).
-case "$FILE_PATH" in
+# Normalise Windows-style backslashes to forward slashes so the case patterns
+# below match `C:\repo\.github\CHANGELOG.md` the same as the POSIX form.
+NORMALISED_FILE_PATH=${FILE_PATH//\\//}
+case "$NORMALISED_FILE_PATH" in
     */.github/CHANGELOG.md|.github/CHANGELOG.md)
         exit 0
         ;;

@@ -95,8 +95,18 @@ def test_count_json_entries_invalid_raises() -> None:
         _MODULE._count_json_entries("not json")
 
 
-def test_count_json_entries_no_locations_dict() -> None:
-    assert _MODULE._count_json_entries(json.dumps({"foo": "bar"})) == 0
+def test_count_json_entries_no_locations_dict_falls_back_to_top_level_keys() -> None:
+    """A flat-dict baseline (no ``locations`` key) falls back to top-level keys.
+
+    The earlier sentinel of 0 created a loophole: any flat-dict format would
+    return 0 for both staged and HEAD, so growth (``staged > head``) was
+    never detected. Counting top-level keys instead lets the gate catch
+    additions even on unconventional baseline shapes.
+    """
+    assert _MODULE._count_json_entries(json.dumps({"foo": "bar"})) == 1
+    assert (
+        _MODULE._count_json_entries(json.dumps({"a": 1, "b": 2, "c": 3, "d": 4})) == 4
+    )
 
 
 # ── classification ──────────────────────────────────────────────
@@ -289,6 +299,25 @@ def test_main_skips_unreadable_staged_file(
         ["check_baseline_growth.py", "scripts/missing_baseline.txt"],
     )
     assert rc == 0
+
+
+def test_safe_baseline_path_rejects_repo_escape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_safe_baseline_path`` rejects paths that resolve outside REPO_ROOT.
+
+    Defends against path-injection from untrusted argv: even if a baseline-shaped
+    string slips through ``_is_baseline_path``, the resolved location must remain
+    inside the repository before the gate touches the filesystem.
+    """
+    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
+    assert _MODULE._safe_baseline_path("../escape_baseline.txt") is None
+    assert _MODULE._safe_baseline_path("scripts/../../escape_baseline.txt") is None
+    assert (
+        _MODULE._safe_baseline_path("scripts/legit_baseline.txt")
+        == (tmp_path / "scripts" / "legit_baseline.txt").resolve()
+    )
 
 
 def test_main_handles_multiple_paths_mixed_states(

@@ -49,6 +49,11 @@ def _count_json_entries(text: str) -> int:
     A corrupt baseline must block the commit, never silently pass. The previous
     sentinel return of -1 was less-than every non-negative ``head_count``, which
     let malformed baselines slip through the ``staged > head`` comparison.
+
+    For dict payloads, prefer the ``locations`` key (the canonical shape used
+    by gate baselines). When ``locations`` is missing or non-collection, fall
+    back to counting top-level keys so a flat-dict baseline format still
+    surfaces growth instead of silently returning 0.
     """
     try:
         payload = json.loads(text)
@@ -61,13 +66,14 @@ def _count_json_entries(text: str) -> int:
             return len(locations)
         if isinstance(locations, list):
             return len(locations)
-        return 0
+        return len(payload)
     if isinstance(payload, list):
         return len(payload)
     return 0
 
 
 def _count_text_entries(text: str) -> int:
+    """Count non-blank, non-comment lines in a text baseline."""
     return sum(
         1
         for line in text.splitlines()
@@ -108,11 +114,27 @@ def _read_head(path: str) -> str | None:
 
 
 def _classify(path: str) -> str:
+    """Return the file-suffix tag (``.json`` / ``.py`` / ``.txt``) for a baseline path."""
     if path.endswith(".json"):
         return ".json"
     if path.endswith(".py"):
         return ".py"
     return ".txt"
+
+
+def _safe_baseline_path(path: str) -> Path | None:
+    """Resolve ``path`` against ``REPO_ROOT`` and confirm it stays inside the repo.
+
+    Defends against path-injection: pre-commit feeds this gate a list of staged
+    paths from argv. ``_is_baseline_path`` already restricts the shape, but a
+    resolved path that escapes ``REPO_ROOT`` (symlinks, exotic basenames) must
+    still be rejected before any filesystem read.
+    """
+    repo_root = REPO_ROOT.resolve()
+    candidate = (repo_root / path).resolve()
+    if candidate == repo_root or not candidate.is_relative_to(repo_root):
+        return None
+    return candidate
 
 
 def _inspect_path(
@@ -122,7 +144,9 @@ def _inspect_path(
 ) -> None:
     """Compare one staged baseline against HEAD; record growth or parse failure."""
     suffix = _classify(path)
-    absolute = REPO_ROOT / path
+    absolute = _safe_baseline_path(path)
+    if absolute is None:
+        return
     try:
         staged_text = absolute.read_text(encoding="utf-8")
     except OSError:

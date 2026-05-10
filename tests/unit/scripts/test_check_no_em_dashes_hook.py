@@ -127,6 +127,34 @@ def test_skips_changelog_md_absolute_path() -> None:
 
 
 @_BASH_AVAILABLE
+@pytest.mark.parametrize(
+    "windows_path",
+    [
+        r"C:\repo\.github\CHANGELOG.md",
+        r".github\CHANGELOG.md",
+        r"D:\projects\synthorg\.github\CHANGELOG.md",
+    ],
+)
+def test_skips_changelog_md_windows_path(windows_path: str) -> None:
+    """Windows-style backslash paths must hit the same exemption as POSIX.
+
+    Without normalisation, the case pattern only matches ``/``-separated paths
+    and a Windows path like ``C:\\repo\\.github\\CHANGELOG.md`` would be blocked
+    even though changelog writes are exempt. The hook normalises backslashes
+    to forward slashes before the case match.
+    """
+    result = _run(
+        {
+            "tool_input": {
+                "file_path": windows_path,
+                "content": f"hello {_EM_DASH} world",
+            },
+        },
+    )
+    assert result.returncode == 0
+
+
+@_BASH_AVAILABLE
 def test_allows_empty_content() -> None:
     result = _run({"tool_input": {"file_path": "src/foo.py", "content": ""}})
     assert result.returncode == 0
