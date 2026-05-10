@@ -131,6 +131,16 @@ class SettingsChangeDispatcher:
                     reason="unrestartable",
                 )
                 raise RuntimeError(msg)
+            # Collapse a crashed-and-finished poll task here under the
+            # same lock, so a recovery start() doesn't reject on
+            # ``_running=True`` while ``_reset_running_under_lock`` is
+            # still queued behind us. _on_task_done's reset coroutine
+            # is best-effort cleanup; doing it eagerly here closes the
+            # window between the sync callback firing and the locked
+            # reset actually running.
+            if self._task is not None and self._task.done():
+                self._running = False
+                self._task = None
             if self._running:
                 msg = "SettingsChangeDispatcher is already running"
                 logger.warning(

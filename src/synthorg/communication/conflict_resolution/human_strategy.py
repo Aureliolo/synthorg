@@ -130,8 +130,10 @@ class HumanEscalationResolver:
         )
 
         self._store: EscalationQueueStore = store or InMemoryEscalationStore()
-        self._processor: DecisionProcessor = processor or HumanDecisionProcessor(
-            mode="winner",
+        self._processor: DecisionProcessor = (
+            processor
+            if processor is not None
+            else HumanDecisionProcessor(mode="winner")
         )
         self._registry: PendingFuturesRegistry = registry or PendingFuturesRegistry()
         self._notifier: NotificationDispatcher | None = notifier

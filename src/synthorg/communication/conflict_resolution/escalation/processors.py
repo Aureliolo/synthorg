@@ -1,11 +1,12 @@
 """Decision processor strategy for the escalation queue."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, assert_never
 from uuid import uuid4
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationDecision,
+    RejectDecision,
     WinnerDecision,
 )
 from synthorg.communication.conflict_resolution.models import (
@@ -121,33 +122,41 @@ class HumanDecisionProcessor:
                 decision,
                 decided_by=decided_by,
             )
-        # Union ``EscalationDecision`` is exhaustive (``WinnerDecision``
-        # | ``RejectDecision``); reaching this branch means the decision
-        # is a ``RejectDecision``.
-        if self._mode == "winner":
-            # Raised as ValueError (rather than TypeError) because the
-            # caller is the REST layer validating payload shapes; the
-            # escalations controller translates this into a 422
-            # ValidationError.
-            msg = (
-                "HumanDecisionProcessor in 'winner' mode only accepts "
-                "'winner' decisions. Configure decision_strategy='hybrid' "
-                "to allow 'reject' decisions."
-            )
-            logger.warning(
-                CONFLICT_ESCALATION_RESOLVED,
-                conflict_id=conflict.id,
+        # An unknown subclass of ``EscalationDecision`` (e.g. a future
+        # variant added alongside ``WinnerDecision`` / ``RejectDecision``)
+        # must not silently fall through to the reject path -- that would
+        # misclassify the new decision as ``REJECTED_BY_HUMAN``. Detect
+        # ``RejectDecision`` explicitly and raise on anything else.
+        if isinstance(decision, RejectDecision):
+            if self._mode == "winner":
+                # Raised as ValueError (rather than TypeError) because the
+                # caller is the REST layer validating payload shapes; the
+                # escalations controller translates this into a 422
+                # ValidationError.
+                msg = (
+                    "HumanDecisionProcessor in 'winner' mode only accepts "
+                    "'winner' decisions. Configure decision_strategy='hybrid' "
+                    "to allow 'reject' decisions."
+                )
+                logger.warning(
+                    CONFLICT_ESCALATION_RESOLVED,
+                    conflict_id=conflict.id,
+                    decided_by=decided_by,
+                    decision_type=getattr(decision, "type", type(decision).__name__),
+                    strategy=ConflictResolutionStrategy.HUMAN.value,
+                    note="winner_select_rejected_non_winner",
+                )
+                raise ValueError(msg)
+            return self._build_reject_resolution(
+                conflict,
+                decision,
                 decided_by=decided_by,
-                decision_type=getattr(decision, "type", type(decision).__name__),
-                strategy=ConflictResolutionStrategy.HUMAN.value,
-                note="winner_select_rejected_non_winner",
             )
-            raise ValueError(msg)
-        return self._build_reject_resolution(
-            conflict,
-            decision,
-            decided_by=decided_by,
-        )
+        # ``EscalationDecision`` is a union of the two variants above;
+        # ``assert_never`` proves exhaustiveness to the type checker and
+        # raises ``AssertionError`` at runtime if a future variant is
+        # added without updating this branch.
+        assert_never(decision)
 
     def build_dissent_records(
         self,

@@ -6,7 +6,7 @@ Tracker: [#1850](https://github.com/Aureliolo/synthorg/issues/1850) sub-task **I
 
 ## Methodology
 
-Generated mechanically from `_audit/protocol_audit.py` (uncommitted). For each Protocol class definition the helper records:
+Generated mechanically. The helper script lives in the gitignored `_audit/` working area; reproduce the table with `uv run python _audit/protocol_audit.py` from the repo root, run against the commit recorded by the file's most recent edit (the date in the title above tracks that commit). The script walks `src/synthorg/` for every `class X(...Protocol...):` definition and records:
 
 - **Path + line** of the `class X(Protocol)` line.
 - **`@runtime_checkable`** decorator presence.
