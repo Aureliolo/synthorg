@@ -402,6 +402,16 @@ def _build_middleware(
     #      rate limits, logging) and every handler observes the bound
     #      user. Reset is token-based and runs in finally, so the var
     #      is unbound the moment dispatch returns.
+    #
+    #      INVARIANT: AuthContextMiddleware MUST run immediately after
+    #      auth_middleware AND before any middleware that calls
+    #      ``get_authenticated_user_id`` / ``audit_actor_from_context``.
+    #      ``scope["user"]`` is treated as immutable from this point
+    #      onward; mutating it downstream silently corrupts the binding
+    #      (the ContextVar still points at the original user). Any
+    #      mutation surfaces as a debug ``API_AUTH_CONTEXT_SKIPPED``
+    #      event the next time AuthContextMiddleware runs in the chain
+    #      (it never does today, but the gate is there for defence).
     #   5. csrf_middleware -- validates double-submit for cookie sessions
     #   6. unauth_rl -- 20/min/IP for requests where user is None
     #   7. RequestLoggingMiddleware

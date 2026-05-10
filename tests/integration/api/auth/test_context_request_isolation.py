@@ -42,14 +42,32 @@ _CONCURRENT_REQUESTS: Final[int] = 8
 # Bounded so a missing release cannot wedge the suite; well under the
 # pytest 30s per-test timeout so a deadlock surfaces here as a clear
 # barrier-broken failure rather than a generic timeout.
+#
+# Deadlock note: ``threading.Barrier`` deadlocks if a participant errors
+# before reaching ``barrier.wait()``. Both tests below put the
+# barrier.wait() call BEFORE any code that can raise (the user_id read
+# is the only line ahead of it, and it succeeds when the middleware is
+# wired correctly). If an early raise ever happens, the bounded timeout
+# above turns the deadlock into a ``BrokenBarrierError``, which is a
+# loud failure rather than a hang.
 _BARRIER_TIMEOUT_SECONDS: Final[float] = 5.0
 _TEST_USER_HEADER: Final[str] = "x-test-user-id"
+
+
+def _user_id_for(index: int) -> str:
+    """Stable user-id format shared by header injection and assertions.
+
+    Centralised so a future change to the format cannot desync
+    request-side header values from the ``_make_user`` factory or the
+    expected-id assertions.
+    """
+    return f"user-{index:02d}"
 
 
 def _make_user(user_id: str) -> AuthenticatedUser:
     return AuthenticatedUser(
         user_id=user_id,
-        username=f"user-{user_id}@example.com",
+        username=f"{user_id}@example.com",
         role=HumanRole.CEO,
         auth_method=AuthMethod.JWT,
     )
@@ -117,14 +135,14 @@ class TestConcurrentRequestIsolation:
                 pool.submit(
                     client.get,
                     "/whoami",
-                    headers={_TEST_USER_HEADER: f"user-{i:02d}"},
+                    headers={_TEST_USER_HEADER: _user_id_for(i)},
                 )
                 for i in range(_CONCURRENT_REQUESTS)
             ]
             responses = [f.result(timeout=_BARRIER_TIMEOUT_SECONDS) for f in futures]
 
         observed_ids = sorted(r.json()["user_id"] for r in responses)
-        expected_ids = sorted(f"user-{i:02d}" for i in range(_CONCURRENT_REQUESTS))
+        expected_ids = sorted(_user_id_for(i) for i in range(_CONCURRENT_REQUESTS))
         assert observed_ids == expected_ids
         for response in responses:
             assert response.status_code == 200
@@ -161,7 +179,7 @@ class TestConcurrentRequestIsolation:
                 pool.submit(
                     client.get,
                     "/whoami-or-fail",
-                    headers={_TEST_USER_HEADER: f"user-{i:02d}"},
+                    headers={_TEST_USER_HEADER: _user_id_for(i)},
                 )
                 for i in range(_CONCURRENT_REQUESTS)
             ]
@@ -172,10 +190,33 @@ class TestConcurrentRequestIsolation:
             if response.status_code == 200:
                 success_ids.append(response.json()["user_id"])
             else:
-                assert response.status_code >= 500
+                # An unhandled RuntimeError flows through Litestar's
+                # default exception handler to a 500; tighten the
+                # assertion so a 502/503 (which would indicate a
+                # different failure mode) does not pass silently.
+                assert response.status_code == 500
 
         expected_success = sorted(
-            f"user-{i:02d}" for i in range(_CONCURRENT_REQUESTS) if i % 2 == 1
+            _user_id_for(i) for i in range(_CONCURRENT_REQUESTS) if i % 2 == 1
         )
         assert sorted(success_ids) == expected_success
+        assert _authenticated_user.get() is None
+
+    def test_handler_on_unauthenticated_path_returns_500_typed_error(
+        self,
+    ) -> None:
+        # When a request reaches a handler that calls
+        # get_authenticated_user_id() but no AuthenticatedUser was bound
+        # (here: the test injector skips the header), the typed
+        # AuthContextMissingError surfaces as a 500. Confirms the
+        # unset-read contract end-to-end via the real exception
+        # handler chain rather than only the unit-level raise test.
+        @get("/whoami-strict")
+        async def whoami_strict() -> dict[str, str]:
+            return {"user_id": get_authenticated_user_id()}
+
+        app = _build_app(whoami_strict)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/whoami-strict")
+        assert response.status_code == 500
         assert _authenticated_user.get() is None

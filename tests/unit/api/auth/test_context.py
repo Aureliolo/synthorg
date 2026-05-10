@@ -96,6 +96,33 @@ class TestAuthenticatedUserScope:
             assert get_authenticated_user_id() == "outer-id"
         assert _authenticated_user.get() is None
 
+    async def test_child_task_inherits_scope_without_polluting_parent(
+        self,
+    ) -> None:
+        # ContextVars are copied (not shared) into child Tasks. The
+        # child sees the parent's binding, can rebind locally, and the
+        # parent's binding remains intact when the child returns.
+        import asyncio
+
+        parent = _make_user("parent-id", "parent@example.com")
+        child = _make_user("child-id", "child@example.com")
+        observed: dict[str, str] = {}
+
+        async def _child_task() -> None:
+            observed["inherited"] = get_authenticated_user_id()
+            async with authenticated_user_scope(child):
+                observed["child_local"] = get_authenticated_user_id()
+
+        async with authenticated_user_scope(parent):
+            await asyncio.create_task(_child_task())
+            observed["parent_after"] = get_authenticated_user_id()
+        assert observed == {
+            "inherited": "parent-id",
+            "child_local": "child-id",
+            "parent_after": "parent-id",
+        }
+        assert _authenticated_user.get() is None
+
 
 class _CaptureApp:
     """Stub ``next_app`` that records the active ContextVar when invoked."""
