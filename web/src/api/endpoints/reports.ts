@@ -1,12 +1,23 @@
 import { apiClient, unwrap, unwrapPaginated } from '../client'
-import type { components } from '../types/generated'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
-type Schemas = components['schemas']
+export const REPORT_PERIOD_VALUES = ['daily', 'weekly', 'monthly'] as const
+export type ReportPeriod = (typeof REPORT_PERIOD_VALUES)[number]
 
-export type ReportPeriod = Schemas['ReportPeriod']
-export type ReportResponse = Schemas['ReportResponse']
-export type GenerateReportRequest = Schemas['GenerateReportRequest']
+export interface ReportResponse {
+  period: ReportPeriod
+  start: string
+  end: string
+  has_spending: boolean
+  has_performance: boolean
+  has_task_completion: boolean
+  has_risk_trends: boolean
+  generated_at: string
+}
+
+export interface GenerateReportRequest {
+  period: ReportPeriod
+}
 
 export interface ListReportPeriodsOptions {
   signal?: AbortSignal
