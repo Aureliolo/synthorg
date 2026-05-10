@@ -46,6 +46,28 @@ class TestGetAuthenticatedUser:
         with pytest.raises(AuthContextMissingError):
             get_authenticated_user_id()
 
+    async def test_unset_logs_warning_event_before_raising(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Operators triaging a 500 from a wiring-bug call site need a
+        # structured breadcrumb; assert the WARNING event fires *before*
+        # the exception so a forgotten log() can't slip past.
+        from synthorg.api.auth import context as auth_context
+
+        warning_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+        def _record(*args: Any, **kwargs: Any) -> None:
+            warning_calls.append((args, kwargs))
+
+        monkeypatch.setattr(auth_context.logger, "warning", _record)
+        with pytest.raises(AuthContextMissingError):
+            get_authenticated_user()
+        assert len(warning_calls) == 1
+        event_args, event_kwargs = warning_calls[0]
+        assert event_args == ("api.auth.context_missing",)
+        assert event_kwargs == {"caller": "get_authenticated_user"}
+
     async def test_returns_bound_user_inside_scope(self) -> None:
         user = _make_user()
         async with authenticated_user_scope(user):

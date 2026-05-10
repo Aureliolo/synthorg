@@ -35,6 +35,7 @@ from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_CONTEXT_BOUND,
+    API_AUTH_CONTEXT_MISSING,
     API_AUTH_CONTEXT_SKIPPED,
 )
 
@@ -74,6 +75,12 @@ def get_authenticated_user() -> AuthenticatedUser:
     """
     user = _authenticated_user.get()
     if user is None:
+        # An unset read is a server-side wiring bug (excluded path
+        # misrouted to a request-coupled helper, AuthContextMiddleware
+        # missing from the stack, helper invoked outside a request).
+        # Operators see only the 500 envelope without this breadcrumb,
+        # so emit a structured event before raising.
+        logger.warning(API_AUTH_CONTEXT_MISSING, caller="get_authenticated_user")
         raise AuthContextMissingError
     return user
 
