@@ -13,6 +13,7 @@ absent from the registry so a stray START/END node would surface as a
 ``KeyError``.
 """
 
+import copy
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -61,11 +62,17 @@ class StepBuildContext:
         """Freeze the read-only inputs so handlers cannot mutate them.
 
         ``step`` stays mutable: it is the intended output slot the builders
-        write to. ``config`` and ``outgoing_edges`` are wrapped in
-        ``MappingProxyType`` / ``tuple`` at construction, even if a caller
-        passed a mutable ``dict`` / ``list``.
+        write to. ``config`` is deep-copied before being wrapped in
+        ``MappingProxyType`` so that nested dicts/lists inherited from the
+        caller are isolated -- the project's standard "deepcopy at system
+        boundaries" rule. ``outgoing_edges`` is converted to ``tuple``; the
+        inner ``(target, edge_type)`` pairs are already immutable.
         """
-        object.__setattr__(self, "config", MappingProxyType(dict(self.config)))
+        object.__setattr__(
+            self,
+            "config",
+            MappingProxyType(copy.deepcopy(dict(self.config))),
+        )
         object.__setattr__(self, "outgoing_edges", tuple(self.outgoing_edges))
 
 

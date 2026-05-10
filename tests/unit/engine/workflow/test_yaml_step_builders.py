@@ -60,6 +60,18 @@ class TestStepBuildContextImmutability:
         )
         assert isinstance(ctx.outgoing_edges, tuple)
 
+    def test_nested_config_is_deepcopied_so_mutation_does_not_leak(self) -> None:
+        """Mutating nested values via ctx.config must not touch caller data."""
+        nested: dict[str, Any] = {"x": "v"}
+        original: dict[str, Any] = {"input_bindings": nested}
+        ctx = _ctx(_new_step("n", WorkflowNodeType.SUBWORKFLOW), original)
+        # The proxy returns a deep clone; mutating it leaves the caller alone.
+        ctx.config["input_bindings"]["x"] = "mutated"
+        ctx.config["input_bindings"]["new_key"] = "leaked"
+        assert original["input_bindings"]["x"] == "v"
+        assert "new_key" not in original["input_bindings"]
+        assert nested == {"x": "v"}
+
 
 # ── Registry exhaustiveness ──────────────────────────────────────
 
