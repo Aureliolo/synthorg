@@ -55,7 +55,7 @@ def compare_ci(a: str, b: str) -> bool:
     names, yes/no flags). For picking the first item out of an
     iterable of objects by attribute, prefer :func:`find_by_name_ci`.
 
-    The helper is ``str``-only by design. Three ASGI-layer call
+    The helper is ``str``-only by design. Four ASGI-layer call
     sites that compare bytes-typed header names
     (``synthorg.api.auth.csrf`` and ``synthorg.api.etag``) keep
     the inline ``name.lower() == b"..."`` pattern: byte equality is

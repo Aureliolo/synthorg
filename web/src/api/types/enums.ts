@@ -9,55 +9,55 @@
 
 export const SENIORITY_LEVEL_VALUES = [
   'junior', 'mid', 'senior', 'lead', 'principal', 'director', 'vp', 'c_suite',
-] as const
+] as const satisfies readonly string[]
 export type SeniorityLevel = (typeof SENIORITY_LEVEL_VALUES)[number]
 
 export const AGENT_STATUS_VALUES = [
   'active', 'onboarding', 'on_leave', 'terminated',
-] as const
+] as const satisfies readonly string[]
 export type AgentStatus = (typeof AGENT_STATUS_VALUES)[number]
 
 export const TASK_STATUS_VALUES = [
   'created', 'assigned', 'in_progress', 'in_review', 'completed',
   'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
   'rejected', 'auth_required',
-] as const
+] as const satisfies readonly string[]
 export type TaskStatus = (typeof TASK_STATUS_VALUES)[number]
 
 export const TASK_TYPE_VALUES = [
   'development', 'design', 'research', 'review', 'meeting', 'admin',
-] as const
+] as const satisfies readonly string[]
 export type TaskType = (typeof TASK_TYPE_VALUES)[number]
 
 export const PRIORITY_VALUES = [
   'critical', 'high', 'medium', 'low',
-] as const
+] as const satisfies readonly string[]
 export type Priority = (typeof PRIORITY_VALUES)[number]
 
 export const APPROVAL_STATUS_VALUES = [
   'pending', 'approved', 'rejected', 'expired',
-] as const
+] as const satisfies readonly string[]
 export type ApprovalStatus = (typeof APPROVAL_STATUS_VALUES)[number]
 
 export const APPROVAL_RISK_LEVEL_VALUES = [
   'low', 'medium', 'high', 'critical',
-] as const
+] as const satisfies readonly string[]
 export type ApprovalRiskLevel = (typeof APPROVAL_RISK_LEVEL_VALUES)[number]
 
 export const URGENCY_LEVEL_VALUES = [
   'critical', 'high', 'normal', 'no_expiry',
-] as const
+] as const satisfies readonly string[]
 export type UrgencyLevel = (typeof URGENCY_LEVEL_VALUES)[number]
 
 export const TASK_SOURCE_VALUES = [
   'internal', 'client', 'simulation',
-] as const
+] as const satisfies readonly string[]
 export type TaskSource = (typeof TASK_SOURCE_VALUES)[number]
 
 export const DEPARTMENT_NAME_VALUES = [
   'executive', 'product', 'design', 'engineering', 'quality_assurance',
   'data_analytics', 'operations', 'creative_marketing', 'security',
-] as const
+] as const satisfies readonly string[]
 export type DepartmentName = (typeof DEPARTMENT_NAME_VALUES)[number]
 
 const DEPARTMENT_NAME_SET: ReadonlySet<string> = new Set(DEPARTMENT_NAME_VALUES)
@@ -73,32 +73,32 @@ export function isDepartmentName(value: string): value is DepartmentName {
 
 export const PROJECT_STATUS_VALUES = [
   'planning', 'active', 'on_hold', 'completed', 'cancelled',
-] as const
+] as const satisfies readonly string[]
 export type ProjectStatus = (typeof PROJECT_STATUS_VALUES)[number]
 
 export const ARTIFACT_TYPE_VALUES = [
   'code', 'tests', 'documentation',
-] as const
+] as const satisfies readonly string[]
 export type ArtifactType = (typeof ARTIFACT_TYPE_VALUES)[number]
 
 export const COMPLEXITY_VALUES = [
   'simple', 'medium', 'complex', 'epic',
-] as const
+] as const satisfies readonly string[]
 export type Complexity = (typeof COMPLEXITY_VALUES)[number]
 
 export const AUTONOMY_LEVEL_VALUES = [
   'full', 'semi', 'supervised', 'locked',
-] as const
+] as const satisfies readonly string[]
 export type AutonomyLevel = (typeof AUTONOMY_LEVEL_VALUES)[number]
 
 export const ORG_ROLE_VALUES = [
   'owner', 'department_admin', 'editor', 'viewer',
-] as const
+] as const satisfies readonly string[]
 export type OrgRole = (typeof ORG_ROLE_VALUES)[number]
 
 export const HUMAN_ROLE_VALUES = [
   'ceo', 'manager', 'board_member', 'pair_programmer', 'observer', 'system',
-] as const
+] as const satisfies readonly string[]
 export type HumanRole = (typeof HUMAN_ROLE_VALUES)[number]
 
 // The following types are not yet exposed in the OpenAPI surface;

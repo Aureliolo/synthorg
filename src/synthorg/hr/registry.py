@@ -15,7 +15,11 @@ from synthorg.core.enums import (
     ApprovalStatus,
     AutonomyLevel,
 )
-from synthorg.core.normalization import compare_ci, find_by_name_ci
+from synthorg.core.normalization import (
+    compare_ci,
+    find_by_name_ci,
+    normalize_identifier,
+)
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     AgentNotFoundError,
@@ -243,13 +247,17 @@ class AgentRegistryService:
             )
             raise ValueError(msg)
         async with self._lock:
-            by_lower_name: dict[str, AgentIdentity] = {}
+            by_normalised_name: dict[str, AgentIdentity] = {}
             for identity in self._agents.values():
-                key = str(identity.name).lower()
+                key = normalize_identifier(str(identity.name))
                 # First registration wins on name collision, matching
-                # ``get_by_name`` semantics.
-                by_lower_name.setdefault(key, identity)
-            return tuple(by_lower_name.get(str(name).lower()) for name in names)
+                # ``get_by_name`` semantics (which routes through
+                # ``find_by_name_ci`` -- casefold + whitespace strip).
+                by_normalised_name.setdefault(key, identity)
+            return tuple(
+                by_normalised_name.get(normalize_identifier(str(name)))
+                for name in names
+            )
 
     async def list_active(self) -> tuple[AgentIdentity, ...]:
         """List all agents with ACTIVE status.

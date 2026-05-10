@@ -1,8 +1,14 @@
 import { apiClient, unwrap, unwrapPaginated } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
-export const REPORT_PERIOD_VALUES = ['daily', 'weekly', 'monthly'] as const
+export const REPORT_PERIOD_VALUES = ['daily', 'weekly', 'monthly'] as const satisfies readonly string[]
 export type ReportPeriod = (typeof REPORT_PERIOD_VALUES)[number]
+
+const REPORT_PERIOD_SET: ReadonlySet<string> = new Set(REPORT_PERIOD_VALUES)
+
+function isReportPeriod(value: unknown): value is ReportPeriod {
+  return typeof value === 'string' && REPORT_PERIOD_SET.has(value)
+}
 
 export interface ReportResponse {
   period: ReportPeriod
@@ -29,12 +35,21 @@ export async function listReportPeriods(
   // Backend returns ``PaginatedResponse[ReportPeriod]`` (the period set
   // is bounded but paginated for shape consistency with the rest of
   // the list surface). Default page size covers all known periods, so
-  // we discard the cursor metadata at the call site.
-  const response = await apiClient.get<PaginatedResponse<ReportPeriod>>(
+  // we discard the cursor metadata at the call site. The wire payload
+  // is validated against ``REPORT_PERIOD_VALUES`` before narrowing so a
+  // backend rolling out a new period cannot break exhaustive switches
+  // downstream.
+  const response = await apiClient.get<PaginatedResponse<string>>(
     '/reports/periods',
     { signal: options.signal },
   )
-  return unwrapPaginated<ReportPeriod>(response).data
+  const periods = unwrapPaginated<string>(response).data
+  if (!periods.every(isReportPeriod)) {
+    throw new Error(
+      `Unknown report period in /reports/periods response (allowed: ${REPORT_PERIOD_VALUES.join(', ')})`,
+    )
+  }
+  return periods
 }
 
 export async function generateReport(

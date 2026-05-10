@@ -381,7 +381,7 @@ The `REMOVE` and `REVIEW` candidates above are filed as separate cleanup issues 
 - `[CLEANUP] Protocols audit follow-up: REMOVE pass for engine/strategy/ + engine/quality/ + engine/review/`
 - `[CLEANUP] Protocols audit follow-up: REMOVE pass for memory/procedural/`
 - `[CLEANUP] Protocols audit follow-up: REMOVE pass for security/ + integrations/connections/health/tunnel/ + ontology/ + tools/sandbox/web_search`
-- `[CLEANUP] Protocols audit follow-up: REVIEW pass for `_PrivatePrefixed` typing seams`
+- ``[CLEANUP] Protocols audit follow-up: REVIEW pass for `_PrivatePrefixed` typing seams``
 - `[CLEANUP] Protocols audit follow-up: fold duplicate-named protocols (ConflictDetector, SignalAggregator)`
 - `[CLEANUP] Protocols audit follow-up: meta-tracking issue umbrella`
 
