@@ -1,5 +1,66 @@
 # Changelog
 
+## [0.8.2](https://github.com/Aureliolo/synthorg/compare/v0.8.1...v0.8.2) (2026-05-10)
+
+
+### Features
+
+* close audit gaps in error logging and Prometheus instrumentation ([#1821](https://github.com/Aureliolo/synthorg/issues/1821)) ([ef00fdc](https://github.com/Aureliolo/synthorg/commit/ef00fdc10b11ca6c37ac87fa22424e9871356e4c))
+
+
+### Bug Fixes
+
+* **ci:** eliminate dev-release tag-vs-downstream race + CI hygiene audit ([#1827](https://github.com/Aureliolo/synthorg/issues/1827)) ([b7b9a59](https://github.com/Aureliolo/synthorg/commit/b7b9a59067b5020721c5f6dc5483094d47450c29))
+* **config:** close 6 settings reachability + kill-switch gaps ([#1798](https://github.com/Aureliolo/synthorg/issues/1798)) ([410cb3b](https://github.com/Aureliolo/synthorg/commit/410cb3b887a7755016af70b3dbf6615dfb0e21bb))
+* correctness / safety fixes from 2026-05-05 audit (Wave 28) ([#1823](https://github.com/Aureliolo/synthorg/issues/1823)) ([d01e624](https://github.com/Aureliolo/synthorg/commit/d01e624c8b0972ea294781a7bee73df729a4c9f3))
+
+
+### Performance
+
+* composite indexes + cursor pagination + clock seam + SSE rate-limit + Ollama sanitization + retry-after web client + WS reconnect jitter ([#1822](https://github.com/Aureliolo/synthorg/issues/1822)) ([d1faf86](https://github.com/Aureliolo/synthorg/commit/d1faf862819106462485cad26b8fb7022d1754a5))
+
+
+### Refactoring
+
+* **api:** move activities lifecycle-cap fallback to ApiBridgeConfig snapshot ([#1840](https://github.com/Aureliolo/synthorg/issues/1840)) ([7a56e9c](https://github.com/Aureliolo/synthorg/commit/7a56e9cfc0c510abfee8fd7f349b532df6497612))
+* centralise workflow error mapping and shared error codes ([#1778](https://github.com/Aureliolo/synthorg/issues/1778) sub-tasks A + E) ([#1843](https://github.com/Aureliolo/synthorg/issues/1843)) ([11132cd](https://github.com/Aureliolo/synthorg/commit/11132cda91ddefc49e307e3adfb2ca56653d1e47))
+* drive controller-error baseline to zero ([#1778](https://github.com/Aureliolo/synthorg/issues/1778) sub-task A tail) ([#1846](https://github.com/Aureliolo/synthorg/issues/1846)) ([e96ae20](https://github.com/Aureliolo/synthorg/commit/e96ae20757d2f77d488515f5da3e5a9ed8b5c0b3))
+* slim CLAUDE.md, port pr-review-toolkit agents, sync .opencode parity ([#1833](https://github.com/Aureliolo/synthorg/issues/1833)) ([e6372b8](https://github.com/Aureliolo/synthorg/commit/e6372b81a977dd18c49b1e78aafe477f8c977577))
+* tighten settings → startup-trace baseline (8 → 0) ([#1847](https://github.com/Aureliolo/synthorg/issues/1847)) ([3376ee2](https://github.com/Aureliolo/synthorg/commit/3376ee2591de3018fbaa7a685618e6e9f040de35))
+
+
+### Documentation
+
+* fix CLAUDE.md inaccuracies and drop drift-prone counts ([#1844](https://github.com/Aureliolo/synthorg/issues/1844)) ([371925f](https://github.com/Aureliolo/synthorg/commit/371925f4b48f0480eaef7059dd258a2476019501))
+
+
+### Tests
+
+* replace test placeholders with real subsystem wiring ([#1845](https://github.com/Aureliolo/synthorg/issues/1845)) ([ddbb666](https://github.com/Aureliolo/synthorg/commit/ddbb6666d400118b44639f97fe909b678d0b9482))
+
+
+### CI/CD
+
+* **cla:** replace flaky contributor-assistant action with custom read-path step ([#1819](https://github.com/Aureliolo/synthorg/issues/1819)) ([11aeafe](https://github.com/Aureliolo/synthorg/commit/11aeafebcb812a5ef2785b2f5ece8d7111825f2d))
+* tidy dev-release notes + stagger renovate lockfile day ([#1824](https://github.com/Aureliolo/synthorg/issues/1824)) ([ec746a9](https://github.com/Aureliolo/synthorg/commit/ec746a9f67e177ed8b8404f6307a7a482fcf9418))
+
+
+### Maintenance
+
+* cleanup roundup, sub-tasks a/c/d/g/h/j/l/m of [#1781](https://github.com/Aureliolo/synthorg/issues/1781) ([#1838](https://github.com/Aureliolo/synthorg/issues/1838)) ([099b871](https://github.com/Aureliolo/synthorg/commit/099b8716f0d6808650e6ae430a8a1b7adae5fb9c))
+* close remaining 5 sub-tasks of [#1781](https://github.com/Aureliolo/synthorg/issues/1781) (b/e/f/i/k) ([#1852](https://github.com/Aureliolo/synthorg/issues/1852)) ([59cf0b2](https://github.com/Aureliolo/synthorg/commit/59cf0b2414006a51d6071b30c6952e3a1e3f6976))
+* collapse Renovate dep groups into Python / Web / Infrastructure to remove cross-PR overlap ([#1813](https://github.com/Aureliolo/synthorg/issues/1813)) ([4cbd857](https://github.com/Aureliolo/synthorg/commit/4cbd8578c13b8ae0b0c37a4bd385ace85454ee80))
+* **deps,security:** bump in-toto-golang v0.11.0 + drop two patched CVE waivers ([#1851](https://github.com/Aureliolo/synthorg/issues/1851)) ([0b8b5bb](https://github.com/Aureliolo/synthorg/commit/0b8b5bb73e721a298be534c5821a11b35115a371))
+* disable Renovate vulnerabilityAlerts so security flows into normal updates ([#1834](https://github.com/Aureliolo/synthorg/issues/1834)) ([6b7d15f](https://github.com/Aureliolo/synthorg/commit/6b7d15ffdda383815b2260c251e9be064e57fbc8))
+* Lock file maintenance ([#1820](https://github.com/Aureliolo/synthorg/issues/1820)) ([ccbad73](https://github.com/Aureliolo/synthorg/commit/ccbad730d33e34db121e3deea5e845c389bc0b89))
+* Lock file maintenance ([#1842](https://github.com/Aureliolo/synthorg/issues/1842)) ([13b68a5](https://github.com/Aureliolo/synthorg/commit/13b68a545caf2afd30334f915d2f6935ae5d9013))
+* Lock file maintenance ([#1853](https://github.com/Aureliolo/synthorg/issues/1853)) ([db6650b](https://github.com/Aureliolo/synthorg/commit/db6650b0ed10012f80c96acbad40c157da28e19b))
+* Update dhi.io/nats:2.14-debian13 Docker digest to eb768bf ([#1841](https://github.com/Aureliolo/synthorg/issues/1841)) ([37f84fc](https://github.com/Aureliolo/synthorg/commit/37f84fc7b67c7596754f79d3f93ad6f3b9094029))
+* Update Infrastructure dependencies ([#1815](https://github.com/Aureliolo/synthorg/issues/1815)) ([75b12fe](https://github.com/Aureliolo/synthorg/commit/75b12fe5528f6c77e0928b9f99cabe9f9c3e3b86))
+* Update Infrastructure dependencies ([#1831](https://github.com/Aureliolo/synthorg/issues/1831)) ([3f3c50b](https://github.com/Aureliolo/synthorg/commit/3f3c50b667490d12437758792488abc0e5a8c0d3))
+* Update Python dependencies ([#1817](https://github.com/Aureliolo/synthorg/issues/1817)) ([e11332f](https://github.com/Aureliolo/synthorg/commit/e11332fdd2e9f970842ab798c9e5a1cb475f3beb))
+* Update Python dependencies ([#1832](https://github.com/Aureliolo/synthorg/issues/1832)) ([4515c8e](https://github.com/Aureliolo/synthorg/commit/4515c8ee99212cd9ea1fd31ca6d7f82620df7170))
+
 ## [0.8.1](https://github.com/Aureliolo/synthorg/compare/v0.8.0...v0.8.1) (2026-05-08)
 
 
