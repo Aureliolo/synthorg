@@ -277,3 +277,36 @@ class TestAuthContextMiddleware:
             await _drive(middleware, scope, next_app)
             assert next_app.observed_user is None
             assert _authenticated_user.get() is outer
+
+    async def test_wrong_type_scope_user_normalised_to_none(self) -> None:
+        # Downstream layers (rate-limit gates, anonymous-tier check,
+        # etc.) read scope["user"] directly. If the wiring-bug branch
+        # left a foreign principal in scope["user"] while the
+        # ContextVar binding cleared to None, those gates would treat
+        # the request as authenticated while accessors raise
+        # AuthContextMissingError. Lock the normalisation: scope["user"]
+        # MUST become None on this branch.
+        captured_scope: dict[str, Any] = {}
+
+        async def _capture_scope(
+            scope: dict[str, Any],
+            receive: Callable[[], Awaitable[dict[str, Any]]],
+            send: Callable[[dict[str, Any]], Awaitable[None]],
+        ) -> None:
+            del receive, send
+            captured_scope["user"] = scope.get("user")
+
+        middleware = AuthContextMiddleware()
+        scope: dict[str, Any] = {
+            "type": "http",
+            "path": "/api/health",
+            "user": {"id": "spoof"},
+        }
+        await middleware.handle(
+            cast("Any", scope),
+            cast("Any", _noop_receive),
+            cast("Any", _noop_send),
+            cast("Any", _capture_scope),
+        )
+        assert captured_scope["user"] is None
+        assert scope["user"] is None

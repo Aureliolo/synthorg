@@ -164,6 +164,14 @@ class AuthContextMiddleware(ASGIMiddleware):
                     scope_user_type=type(scope_user).__name__,
                     path=scope.get("path", ""),
                 )
+                # Normalise the request scope to match the bound
+                # ContextVar so downstream layers reading scope["user"]
+                # directly (rate-limit identifiers, anonymous-tier
+                # gate, etc.) see the same unauthenticated state as
+                # get_authenticated_user*(). Without this, a foreign
+                # principal would be visible to gates while the
+                # accessors raise AuthContextMissingError.
+                scope["user"] = None
         # Always bind a token (None on the skipped path) so a context
         # inherited from an outer task cannot leak a stale principal
         # into helpers reading the var; reset unconditionally restores
