@@ -397,9 +397,9 @@ src/synthorg/hr/training/extractors/tool_patterns.py:29:25
 src/synthorg/hr/training/guards/review_gate.py:31:25
 src/synthorg/hr/training/guards/sanitization.py:25:22
 src/synthorg/hr/training/service.py:65:26
-src/synthorg/hr/training/source_selectors/department_diversity.py:29:31
 src/synthorg/hr/training/source_selectors/department_diversity.py:30:31
-src/synthorg/hr/training/source_selectors/role_top_performers.py:29:17
+src/synthorg/hr/training/source_selectors/department_diversity.py:31:31
+src/synthorg/hr/training/source_selectors/role_top_performers.py:30:17
 src/synthorg/infrastructure/services.py:917:21
 src/synthorg/infrastructure/services.py:957:21
 src/synthorg/integrations/health/checks/generic_http.py:21:11
