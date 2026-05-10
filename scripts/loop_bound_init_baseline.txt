@@ -8,15 +8,12 @@
 src/synthorg/api/bus_bridge.py:102:MessageBusBridge:_lifecycle_lock:Lock
 src/synthorg/backup/service.py:75:BackupService:_backup_lock:Lock
 src/synthorg/budget/quota_poller.py:64:QuotaPoller:_lifecycle_lock:Lock
-src/synthorg/client/continuous.py:65:ContinuousMode:_stop_event:Event
-src/synthorg/client/continuous.py:71:ContinuousMode:_lifecycle_lock:Lock
 src/synthorg/communication/bus/memory.py:110:InMemoryMessageBus:_lock:Lock
 src/synthorg/communication/bus/memory.py:125:InMemoryMessageBus:_shutdown_event:Event
 src/synthorg/engine/task_engine.py:104:TaskEngine:_lifecycle_lock:Lock
 src/synthorg/engine/task_engine.py:112:TaskEngine:_admission_lock:Lock
 src/synthorg/engine/task_engine.py:114:TaskEngine:_observer_queue:Queue
 src/synthorg/engine/task_engine.py:96:TaskEngine:_queue:Queue
-src/synthorg/engine/workflow/webhook_bridge.py:64:WebhookEventBridge:_lifecycle_lock:Lock
 src/synthorg/hr/pruning/service.py:103:PruningService:_lifecycle_lock:Lock
 src/synthorg/hr/pruning/service.py:129:PruningService:_processing_lock:Lock
 src/synthorg/hr/pruning/service.py:97:PruningService:_wake_event:Event
@@ -34,8 +31,6 @@ src/synthorg/notifications/adapters/ntfy.py:116:NtfyNotificationSink:_lifecycle_
 src/synthorg/notifications/adapters/slack.py:104:SlackNotificationSink:_lifecycle_lock:Lock
 src/synthorg/notifications/dispatcher.py:113:NotificationDispatcher:_dispatch_idle:Event
 src/synthorg/notifications/dispatcher.py:92:NotificationDispatcher:_lifecycle_lock:Lock
-src/synthorg/providers/health_prober.py:184:ProviderHealthProber:_stop_event:Event
-src/synthorg/providers/health_prober.py:190:ProviderHealthProber:_lifecycle_lock:Lock
 src/synthorg/settings/dispatcher.py:105:SettingsChangeDispatcher:_lifecycle_lock:Lock
 src/synthorg/telemetry/collector.py:321:TelemetryCollector:_lifecycle_lock:Lock
 src/synthorg/workers/worker.py:83:Worker:_stop_event:Event
