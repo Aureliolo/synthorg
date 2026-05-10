@@ -16,6 +16,10 @@ from synthorg.engine.recovery import (
     RecoveryResult,
     RecoveryStrategy,
 )
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -497,10 +501,10 @@ class TestCheckpointRecoveryFallbackCleanup:
             sample_agent_with_personality,
             sample_task_with_criteria,
         )
-        cp_repo = AsyncMock()
+        cp_repo = AsyncMock(spec=CheckpointRepository)
         cp_repo.get_latest = AsyncMock(return_value=None)
         cp_repo.delete_by_execution = AsyncMock(return_value=0)
-        hb_repo = AsyncMock()
+        hb_repo = AsyncMock(spec=HeartbeatRepository)
         hb_repo.delete = AsyncMock()
 
         strategy = CheckpointRecoveryStrategy(
@@ -532,10 +536,10 @@ class TestCheckpointRecoveryFallbackCleanup:
             sample_task_with_criteria,
         )
         checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
-        cp_repo = AsyncMock()
+        cp_repo = AsyncMock(spec=CheckpointRepository)
         cp_repo.get_latest = AsyncMock(return_value=checkpoint)
         cp_repo.delete_by_execution = AsyncMock(return_value=1)
-        hb_repo = AsyncMock()
+        hb_repo = AsyncMock(spec=HeartbeatRepository)
         hb_repo.delete = AsyncMock()
 
         config = CheckpointConfig(max_resume_attempts=0)

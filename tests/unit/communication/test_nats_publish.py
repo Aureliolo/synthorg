@@ -9,6 +9,7 @@ connection required.
 
 import asyncio
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -62,8 +63,8 @@ def _make_state(*, running: bool = True) -> _NatsState:
     # Set up publish to return a PubAck-like result
     state.js.publish = AsyncMock(return_value=MagicMock(seq=1))
     # Set up async publish pipeline
-    future: asyncio.Future[MagicMock] = asyncio.get_running_loop().create_future()
-    future.set_result(MagicMock(seq=1))
+    future: asyncio.Future[SimpleNamespace] = asyncio.get_running_loop().create_future()
+    future.set_result(SimpleNamespace(seq=1))
     state.js.publish_async = AsyncMock(return_value=future)
     state.js.publish_async_completed = AsyncMock()
     # Pre-register the #test channel

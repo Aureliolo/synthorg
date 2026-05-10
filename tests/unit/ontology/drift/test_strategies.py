@@ -9,6 +9,7 @@ from synthorg.ontology.drift.active import ActiveValidatorStrategy
 from synthorg.ontology.drift.layered import LayeredDetectionStrategy
 from synthorg.ontology.drift.noop import NoDriftDetection
 from synthorg.ontology.drift.passive import PassiveMonitorStrategy
+from synthorg.ontology.drift.protocol import DriftDetectionStrategy
 from synthorg.ontology.models import (
     DriftAction,
     DriftReport,
@@ -244,9 +245,9 @@ class TestLayeredDetectionStrategy:
             canonical_version=1,
             recommendation=DriftAction.NO_ACTION,
         )
-        core = AsyncMock()
+        core = AsyncMock(spec=DriftDetectionStrategy)
         core.detect = AsyncMock(return_value=clean_report)
-        user = AsyncMock()
+        user = AsyncMock(spec=DriftDetectionStrategy)
         user.detect = AsyncMock()
 
         strategy = LayeredDetectionStrategy(
@@ -273,9 +274,9 @@ class TestLayeredDetectionStrategy:
             canonical_version=1,
             recommendation=DriftAction.NO_ACTION,
         )
-        core = AsyncMock()
+        core = AsyncMock(spec=DriftDetectionStrategy)
         core.detect = AsyncMock()
-        user = AsyncMock()
+        user = AsyncMock(spec=DriftDetectionStrategy)
         user.detect = AsyncMock(return_value=clean_report)
 
         strategy = LayeredDetectionStrategy(
@@ -292,7 +293,7 @@ class TestLayeredDetectionStrategy:
         ontology = _make_ontology()
         strategy = LayeredDetectionStrategy(
             ontology=ontology,
-            core_strategy=AsyncMock(),
-            user_strategy=AsyncMock(),
+            core_strategy=AsyncMock(spec=DriftDetectionStrategy),
+            user_strategy=AsyncMock(spec=DriftDetectionStrategy),
         )
         assert strategy.strategy_name == "layered"

@@ -7,6 +7,7 @@ import pytest
 from synthorg.memory.org.access_control import WriteAccessConfig
 from synthorg.memory.org.hybrid_backend import HybridPromptRetrievalBackend
 from synthorg.memory.org.protocol import OrgMemoryBackend
+from synthorg.persistence.memory_protocol import OrgFactRepository
 
 
 @pytest.mark.unit
@@ -14,7 +15,7 @@ class TestOrgMemoryBackendProtocol:
     """OrgMemoryBackend is runtime_checkable."""
 
     def test_hybrid_backend_is_instance(self) -> None:
-        store = AsyncMock()
+        store = AsyncMock(spec=OrgFactRepository)
         backend = HybridPromptRetrievalBackend(
             core_policies=(),
             store=store,

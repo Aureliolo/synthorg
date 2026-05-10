@@ -66,6 +66,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 scripts/check_mock_spec_ratchet.py",
+            "timeout": 10000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash scripts/check_no_edit_migration.sh",
             "timeout": 5000
           },

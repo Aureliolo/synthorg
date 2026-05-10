@@ -190,7 +190,7 @@ def _patch_today(date_str: str = _FROZEN_DATE) -> Any:
     """
     frozen = MagicMock()
     frozen.date.return_value.isoformat.return_value = date_str
-    mock_dt = MagicMock()
+    mock_dt = MagicMock(spec=gen.dt)
     mock_dt.datetime.now.return_value = frozen
     mock_dt.UTC = dt.UTC
     return patch.object(gen, "dt", mock_dt)

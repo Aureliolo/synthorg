@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.messages.service import MessageService
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.communication import (
@@ -24,7 +25,7 @@ def _make_service(*, deleted: bool) -> tuple[MessageService, AsyncMock]:
     repo = AsyncMock()
     repo.delete = AsyncMock(return_value=deleted)
     persistence = SimpleNamespace(messages=repo)
-    bus = AsyncMock()
+    bus = AsyncMock(spec=MessageBus)
     service = MessageService(bus=bus, persistence=persistence)
     return service, repo
 

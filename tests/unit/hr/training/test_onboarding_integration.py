@@ -7,10 +7,13 @@ import pytest
 
 from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.enums import OnboardingStep
+from synthorg.hr.onboarding_service import OnboardingService
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.training.models import TrainingResult
 from synthorg.hr.training.onboarding_integration import (
     TrainingOnboardingBridge,
 )
+from synthorg.hr.training.service import TrainingService
 
 
 def _now() -> datetime:
@@ -46,13 +49,13 @@ class TestTrainingOnboardingBridge:
     """TrainingOnboardingBridge tests."""
 
     async def test_runs_training_and_completes_step(self) -> None:
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get.return_value = _make_identity()
 
-        training_service = AsyncMock()
+        training_service = AsyncMock(spec=TrainingService)
         training_service.execute.return_value = _make_empty_result()
 
-        onboarding = AsyncMock()
+        onboarding = AsyncMock(spec=OnboardingService)
 
         bridge = TrainingOnboardingBridge(
             registry=registry,
@@ -70,13 +73,13 @@ class TestTrainingOnboardingBridge:
         )
 
     async def test_skip_training(self) -> None:
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get.return_value = _make_identity()
 
-        training_service = AsyncMock()
+        training_service = AsyncMock(spec=TrainingService)
         training_service.execute.return_value = _make_empty_result()
 
-        onboarding = AsyncMock()
+        onboarding = AsyncMock(spec=OnboardingService)
 
         bridge = TrainingOnboardingBridge(
             registry=registry,
@@ -91,13 +94,13 @@ class TestTrainingOnboardingBridge:
         onboarding.complete_step.assert_awaited_once()
 
     async def test_passes_override_sources(self) -> None:
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get.return_value = _make_identity()
 
-        training_service = AsyncMock()
+        training_service = AsyncMock(spec=TrainingService)
         training_service.execute.return_value = _make_empty_result()
 
-        onboarding = AsyncMock()
+        onboarding = AsyncMock(spec=OnboardingService)
 
         bridge = TrainingOnboardingBridge(
             registry=registry,
@@ -115,13 +118,13 @@ class TestTrainingOnboardingBridge:
         assert plan.override_sources == ("senior-a", "senior-b")
 
     async def test_raises_when_agent_not_found(self) -> None:
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get.return_value = None
 
         bridge = TrainingOnboardingBridge(
             registry=registry,
-            training_service=AsyncMock(),
-            onboarding_service=AsyncMock(),
+            training_service=AsyncMock(spec=TrainingService),
+            onboarding_service=AsyncMock(spec=OnboardingService),
         )
 
         with pytest.raises(ValueError, match="not found"):

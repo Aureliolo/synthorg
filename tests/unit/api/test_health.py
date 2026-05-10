@@ -11,6 +11,7 @@ from synthorg.api.controllers.health import (
     TelemetryStatus,
     _resolve_telemetry_status,
 )
+from synthorg.api.state import AppState
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
@@ -226,25 +227,25 @@ class TestResolveTelemetryStatus:
     """Branch coverage for the health controller helper."""
 
     def test_disabled_when_no_collector(self) -> None:
-        app_state = MagicMock()
+        app_state = MagicMock(spec=AppState)
         app_state.has_telemetry_collector = False
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
     def test_enabled_when_collector_is_functional(self) -> None:
-        app_state = MagicMock()
+        app_state = MagicMock(spec=AppState)
         app_state.has_telemetry_collector = True
         app_state.telemetry_collector.is_functional = True
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.ENABLED
 
     def test_disabled_when_collector_opted_out(self) -> None:
-        app_state = MagicMock()
+        app_state = MagicMock(spec=AppState)
         app_state.has_telemetry_collector = True
         app_state.telemetry_collector.is_functional = False
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
     def test_disabled_when_enabled_but_reporter_is_noop(self) -> None:
         """Enabled config + noop reporter must surface as ``disabled``."""
-        app_state = MagicMock()
+        app_state = MagicMock(spec=AppState)
         app_state.has_telemetry_collector = True
         app_state.telemetry_collector.enabled = True
         app_state.telemetry_collector.is_functional = False

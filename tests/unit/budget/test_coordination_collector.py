@@ -15,6 +15,7 @@ from synthorg.budget.coordination_config import (
     OrchestrationAlertThresholds,
 )
 from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.providers.enums import FinishReason
 
 # ---------------------------------------------------------------------------
@@ -725,7 +726,7 @@ class TestMetricIsolation:
 
     async def test_bus_error_isolated(self) -> None:
         """Message bus failure does not block other metrics."""
-        bus = AsyncMock()
+        bus = AsyncMock(spec=MessageBus)
         bus.list_channels = AsyncMock(side_effect=RuntimeError("bus down"))
 
         store = _baseline_store()

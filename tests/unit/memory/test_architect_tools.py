@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.core.enums import AutonomyLevel, ToolCategory
 from synthorg.core.role_catalog import get_builtin_role
+from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.tools import (
     KnowledgeArchitectBrowseWikiTool,
     KnowledgeArchitectDeleteTool,
@@ -13,6 +14,7 @@ from synthorg.memory.tools import (
     KnowledgeArchitectSearchTool,
     KnowledgeArchitectWriteTool,
 )
+from synthorg.persistence.memory_protocol import OrgFactRepository
 
 
 def _mock_org_backend() -> AsyncMock:
@@ -192,7 +194,7 @@ class TestKnowledgeArchitectDeleteTool:
     @pytest.mark.unit
     async def test_delete_denied_at_full_autonomy(self) -> None:
         backend = _mock_org_backend()
-        fact_store = AsyncMock()
+        fact_store = AsyncMock(spec=OrgFactRepository)
         fact_store.delete = AsyncMock(return_value=True)
         tool = KnowledgeArchitectDeleteTool(
             org_backend=backend,
@@ -210,7 +212,7 @@ class TestKnowledgeArchitectDeleteTool:
     @pytest.mark.unit
     async def test_delete_allowed_at_supervised(self) -> None:
         backend = _mock_org_backend()
-        fact_store = AsyncMock()
+        fact_store = AsyncMock(spec=OrgFactRepository)
         fact_store.delete = AsyncMock(return_value=True)
         tool = KnowledgeArchitectDeleteTool(
             org_backend=backend,
@@ -243,7 +245,7 @@ class TestKnowledgeArchitectBrowseWikiTool:
     async def test_export_succeeds(self) -> None:
         from types import SimpleNamespace
 
-        exporter = AsyncMock()
+        exporter = AsyncMock(spec=WikiExporter)
         exporter.export = AsyncMock(
             return_value=SimpleNamespace(
                 raw_count=2,
@@ -264,7 +266,7 @@ class TestKnowledgeArchitectBrowseWikiTool:
     async def test_include_raw_false_omits_raw_count(self) -> None:
         from types import SimpleNamespace
 
-        exporter = AsyncMock()
+        exporter = AsyncMock(spec=WikiExporter)
         exporter.export = AsyncMock(
             return_value=SimpleNamespace(
                 raw_count=2,

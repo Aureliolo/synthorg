@@ -9,6 +9,7 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
@@ -403,7 +404,7 @@ class TestNotifications:
     async def test_publishes_on_set(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
     ) -> None:
-        bus = MagicMock()
+        bus = MagicMock(spec=MessageBus)
         bus.is_running = True
         bus.publish = AsyncMock()
         svc = SettingsService(
@@ -421,7 +422,7 @@ class TestNotifications:
     async def test_publishes_on_delete(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
     ) -> None:
-        bus = MagicMock()
+        bus = MagicMock(spec=MessageBus)
         bus.is_running = True
         bus.publish = AsyncMock()
         svc = SettingsService(
@@ -495,7 +496,7 @@ class TestDeleteNamespace:
                 yaml_path="budget.another_key",
             )
         )
-        bus = MagicMock()
+        bus = MagicMock(spec=MessageBus)
         bus.is_running = True
         bus.publish = AsyncMock()
         svc = SettingsService(
@@ -552,7 +553,7 @@ class TestDeleteNamespace:
 
         from synthorg.observability.events.settings import SETTINGS_VALUE_DELETED
 
-        bus = MagicMock()
+        bus = MagicMock(spec=MessageBus)
         bus.is_running = True
         bus.publish = AsyncMock()
         svc = SettingsService(
@@ -686,7 +687,7 @@ class TestNotificationExceptionHandling:
     async def test_set_succeeds_when_bus_publish_raises(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
     ) -> None:
-        bus = MagicMock()
+        bus = MagicMock(spec=MessageBus)
         bus.is_running = True
         bus.publish = AsyncMock(side_effect=RuntimeError("bus broken"))
         svc = SettingsService(
@@ -702,7 +703,7 @@ class TestNotificationExceptionHandling:
     async def test_skips_publish_when_bus_not_running(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
     ) -> None:
-        bus = MagicMock()
+        bus = MagicMock(spec=MessageBus)
         bus.is_running = False
         bus.publish = AsyncMock()
         svc = SettingsService(

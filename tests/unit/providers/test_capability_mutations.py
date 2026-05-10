@@ -24,7 +24,8 @@ from synthorg.api.dto_provider_capabilities import (
     _OAuthRotation,
     _SubscriptionRotation,
 )
-from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.api.state import AppState
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import (
@@ -36,6 +37,8 @@ from synthorg.providers.management.preset_override_service import (
     PresetOverrideService,
 )
 from synthorg.providers.management.service import ProviderManagementService
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service import SettingsService
 
 
 class _FakeAuditRepo:
@@ -128,12 +131,12 @@ def audit_service(audit_repo: _FakeAuditRepo) -> ProviderAuditService:
 @pytest.fixture
 def service(audit_service: ProviderAuditService) -> ProviderManagementService:
     """Build a ``ProviderManagementService`` with mocked deps."""
-    settings_service = AsyncMock()
-    config_resolver = AsyncMock()
-    app_state = MagicMock()
+    settings_service = AsyncMock(spec=SettingsService)
+    config_resolver = AsyncMock(spec=ConfigResolver)
+    app_state = MagicMock(spec=AppState)
     app_state.swap_provider_registry = MagicMock()
     app_state.swap_model_router = MagicMock()
-    config = MagicMock()
+    config = MagicMock(spec=RootConfig)
     config.providers = {}
 
     initial = {"cloud-test": _make_provider_config()}
@@ -299,12 +302,12 @@ class TestRotateCredentialsAllAuthTypes:
         audit_service: ProviderAuditService,
         provider: ProviderConfig,
     ) -> ProviderManagementService:
-        settings_service = AsyncMock()
-        config_resolver = AsyncMock()
-        app_state = MagicMock()
+        settings_service = AsyncMock(spec=SettingsService)
+        config_resolver = AsyncMock(spec=ConfigResolver)
+        app_state = MagicMock(spec=AppState)
         app_state.swap_provider_registry = MagicMock()
         app_state.swap_model_router = MagicMock()
-        config = MagicMock()
+        config = MagicMock(spec=RootConfig)
         config.providers = {}
         initial = {"cloud-test": provider}
         config_resolver.get_provider_configs = AsyncMock(return_value=initial)

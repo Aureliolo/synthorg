@@ -196,6 +196,39 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             }
 
             const filePathInput = { file_path: filePath } as Record<string, unknown>;
+            const args = (output.args ?? {}) as Record<string, unknown>;
+
+            // Mock-spec ratchet: blocks edits that would increase the
+            // gate's CATCH count in any tests/*.py file, and edits that
+            // weaken scripts/check_mock_spec.py. The hook needs the
+            // full Edit / Write payload (file_path + old_string /
+            // new_string / content) so it runs before the
+            // file-path-only checks below.
+            {
+              const ratchetInput = { ...filePathInput } as Record<string, unknown>;
+              if (typeof args.old_string === "string") {
+                ratchetInput.old_string = args.old_string;
+              }
+              if (typeof args.new_string === "string") {
+                ratchetInput.new_string = args.new_string;
+              }
+              if (typeof args.replace_all === "boolean") {
+                ratchetInput.replace_all = args.replace_all;
+              }
+              if (typeof args.content === "string") {
+                ratchetInput.content = args.content;
+              }
+              const outcome = runHookScript(
+                "scripts/check_mock_spec_ratchet.py",
+                ratchetInput,
+                10000,
+                input.tool === "edit" ? "Edit" : "Write",
+              );
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
+              }
+            }
 
             // Order must match `.claude/settings.json` PreToolUse Edit|Write:
             //   migration, baseline, em-dash (richer payload), triage-gate.
@@ -218,7 +251,6 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
 
             // check_no_em_dashes_hook.sh: inspects the candidate content
             // before it lands on disk (mirrors scripts/check_no_em_dashes.py).
-            const args = (output.args ?? {}) as Record<string, unknown>;
             const emDashInput = { ...filePathInput } as Record<string, unknown>;
             if (typeof args.content === "string") {
               emDashInput.content = args.content;

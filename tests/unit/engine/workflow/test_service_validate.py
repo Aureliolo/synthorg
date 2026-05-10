@@ -17,12 +17,17 @@ from synthorg.engine.workflow.validation_types import (
     ValidationErrorCode,
     WorkflowValidationResult,
 )
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionRepository,
+)
 
 
 def _service() -> WorkflowService:
+    from synthorg.persistence.protocol import VersionRepository
+
     return WorkflowService(
-        definition_repo=AsyncMock(),
-        version_repo=AsyncMock(),
+        definition_repo=AsyncMock(spec=WorkflowDefinitionRepository),
+        version_repo=AsyncMock(spec=VersionRepository),
     )
 
 

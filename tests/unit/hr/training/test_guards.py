@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.training.guards.review_gate import ReviewGateGuard
 from synthorg.hr.training.guards.sanitization import SanitizationGuard
@@ -188,11 +189,11 @@ class TestReviewGateGuard:
     """ReviewGateGuard tests."""
 
     def test_name(self) -> None:
-        guard = ReviewGateGuard(approval_store=AsyncMock())
+        guard = ReviewGateGuard(approval_store=AsyncMock(spec=ApprovalStoreProtocol))
         assert guard.name == "review_gate"
 
     async def test_creates_approval_when_review_required(self) -> None:
-        store = AsyncMock()
+        store = AsyncMock(spec=ApprovalStoreProtocol)
         guard = ReviewGateGuard(approval_store=store)
         items = (_make_item(),)
         plan = _make_plan(require_review=True)
@@ -208,7 +209,7 @@ class TestReviewGateGuard:
         store.add.assert_awaited_once()
 
     async def test_passes_when_review_not_required(self) -> None:
-        store = AsyncMock()
+        store = AsyncMock(spec=ApprovalStoreProtocol)
         guard = ReviewGateGuard(approval_store=store)
         items = (_make_item(),)
         plan = _make_plan(require_review=False)
@@ -223,7 +224,7 @@ class TestReviewGateGuard:
         store.add.assert_not_awaited()
 
     async def test_empty_input_skips_review(self) -> None:
-        store = AsyncMock()
+        store = AsyncMock(spec=ApprovalStoreProtocol)
         guard = ReviewGateGuard(approval_store=store)
         decision = await guard.evaluate(
             (),

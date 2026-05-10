@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity_service import ActivityFeedService
@@ -179,7 +180,7 @@ class TestListRecentActivity:
             project_id="proj-other",
             cost=2.0,
         )
-        cost_tracker = AsyncMock()
+        cost_tracker = AsyncMock(spec=CostTracker)
         cost_tracker.get_records.return_value = (
             cost_in_scope,
             cost_out_of_scope,

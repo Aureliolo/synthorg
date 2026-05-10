@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiosqlite.core import Connection
 
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.auth.session import Session
@@ -117,7 +118,7 @@ def test_concrete_stores_expose_protocol_shape() -> None:
     shared protocol (e.g. a renamed or dropped method).
     """
     pg_pool = MagicMock()
-    sqlite_db = MagicMock()
+    sqlite_db = MagicMock(spec=Connection)
     pg_store = PostgresSessionStore(pg_pool)
     sqlite_store = SqliteSessionStore(sqlite_db)
     assert isinstance(pg_store, SessionStore)

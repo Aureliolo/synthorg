@@ -13,6 +13,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.collaboration_override_store import (
     CollaborationOverrideStore,
 )
+from synthorg.hr.performance.collaboration_protocol import CollaborationScoringStrategy
+from synthorg.hr.performance.llm_calibration_sampler import LlmCalibrationSampler
 from synthorg.hr.performance.models import CollaborationOverride
 from synthorg.hr.performance.tracker import PerformanceTracker
 
@@ -140,7 +142,7 @@ class TestSamplerIntegration:
 
     async def test_sampler_invoked_when_conditions_met(self) -> None:
         """Sampler is invoked for records with interaction_summary."""
-        mock_sampler = MagicMock()
+        mock_sampler = MagicMock(spec=LlmCalibrationSampler)
         mock_sampler.should_sample.return_value = True
         mock_sampler.sample = AsyncMock(return_value=None)
         tracker = PerformanceTracker(sampler=mock_sampler)
@@ -158,7 +160,7 @@ class TestSamplerIntegration:
 
     async def test_sampler_skipped_without_summary(self) -> None:
         """Sampler is not invoked for records without summary."""
-        mock_sampler = MagicMock()
+        mock_sampler = MagicMock(spec=LlmCalibrationSampler)
         mock_sampler.should_sample.return_value = True
         mock_sampler.sample = AsyncMock()
         tracker = PerformanceTracker(sampler=mock_sampler)
@@ -175,7 +177,7 @@ class TestSamplerIntegration:
 
     async def test_sampler_skipped_when_should_sample_false(self) -> None:
         """Sampler.sample() not called when should_sample() is False."""
-        mock_sampler = MagicMock()
+        mock_sampler = MagicMock(spec=LlmCalibrationSampler)
         mock_sampler.should_sample.return_value = False
         mock_sampler.sample = AsyncMock()
         tracker = PerformanceTracker(sampler=mock_sampler)
@@ -209,7 +211,7 @@ class TestSamplerIntegration:
 
     async def test_sampler_failure_does_not_block_recording(self) -> None:
         """If sampler.sample() raises, the record is still stored."""
-        mock_sampler = MagicMock()
+        mock_sampler = MagicMock(spec=LlmCalibrationSampler)
         mock_sampler.should_sample.return_value = True
         mock_sampler.sample = AsyncMock(side_effect=RuntimeError("LLM down"))
         tracker = PerformanceTracker(sampler=mock_sampler)
@@ -229,12 +231,12 @@ class TestSamplerIntegration:
 
     async def test_behavioral_strategy_failure_does_not_block(self) -> None:
         """If behavioral strategy.score() raises, the record is stored."""
-        mock_strategy = AsyncMock()
+        mock_strategy = AsyncMock(spec=CollaborationScoringStrategy)
         mock_strategy.score = AsyncMock(
             side_effect=RuntimeError("Strategy error"),
         )
         mock_strategy.name = "broken_strategy"
-        mock_sampler = MagicMock()
+        mock_sampler = MagicMock(spec=LlmCalibrationSampler)
         mock_sampler.should_sample.return_value = True
         mock_sampler.sample = AsyncMock()
         tracker = PerformanceTracker(

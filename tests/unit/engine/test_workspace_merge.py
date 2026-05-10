@@ -10,6 +10,7 @@ from synthorg.engine.workspace.merge import MergeOrchestrator
 from synthorg.engine.workspace.models import (
     MergeConflict,
 )
+from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 
 from .conftest import make_merge_result, make_workspace
 
@@ -400,7 +401,7 @@ class TestSemanticConflictEscalation:
         ws2 = make_workspace(workspace_id="ws-2")
 
         sc = _make_semantic_conflict()
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=WorkspaceIsolationStrategy)
         strategy.merge_workspace.side_effect = [
             make_merge_result(
                 workspace_id="ws-1",
@@ -425,7 +426,7 @@ class TestSemanticConflictEscalation:
         ws2 = make_workspace(workspace_id="ws-2")
 
         sc = _make_semantic_conflict()
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=WorkspaceIsolationStrategy)
         strategy.merge_workspace.side_effect = [
             make_merge_result(
                 workspace_id="ws-1",

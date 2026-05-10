@@ -588,7 +588,10 @@ class TestSetupComplete:
         # Make provider config loading raise to simulate reload failure.
         monkeypatch.setattr(
             "synthorg.providers.registry.ProviderRegistry.from_config",
-            MagicMock(side_effect=RuntimeError("provider config broken")),
+            MagicMock(
+                spec=ProviderRegistry.from_config,
+                side_effect=RuntimeError("provider config broken"),
+            ),
         )
 
         try:

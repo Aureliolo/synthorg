@@ -20,6 +20,7 @@ from synthorg.memory.retrieval.models import (
     RetrievalCandidate,
     RetrievalQuery,
 )
+from synthorg.providers.protocol import CompletionProvider
 
 
 def _make_query(text: str = "how do I implement auth?") -> RetrievalQuery:
@@ -106,7 +107,7 @@ class TestSupervisorRouterRouting:
 
     @pytest.mark.unit
     async def test_route_fallback_on_llm_error(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete = AsyncMock(
             side_effect=RuntimeError("LLM unavailable"),
         )
@@ -239,7 +240,7 @@ class TestSupervisorRouterRetry:
 
     @pytest.mark.unit
     async def test_evaluate_fallback_on_llm_error(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete = AsyncMock(
             side_effect=RuntimeError("LLM error"),
         )

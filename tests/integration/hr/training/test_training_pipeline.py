@@ -17,6 +17,8 @@ from synthorg.core.enums import (
     MemoryCategory,
     SeniorityLevel,
 )
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )
@@ -43,6 +45,8 @@ from synthorg.hr.training.source_selectors.role_top_performers import (
     RoleTopPerformers,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 
 def _now() -> datetime:
@@ -119,17 +123,17 @@ def _build_service(
     """Build a real TrainingService with mocked backends."""
     if registry is None:
         senior = _make_identity(agent_id="senior-1")
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.list_active.return_value = (senior,)
 
     if tracker is None:
-        tracker = AsyncMock()
+        tracker = AsyncMock(spec=PerformanceTracker)
         snapshot = MagicMock()
         snapshot.overall_quality_score = 0.8
         tracker.get_snapshot.return_value = snapshot
 
     if backend is None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve.return_value = (
             _make_memory_entry(content="Procedural lesson 1"),
             _make_memory_entry(content="Procedural lesson 2"),
@@ -137,7 +141,7 @@ def _build_service(
         backend.store.return_value = "stored-id"
 
     if tool_tracker is None:
-        tool_tracker = AsyncMock()
+        tool_tracker = AsyncMock(spec=ToolInvocationTracker)
         record = MagicMock()
         record.tool_name = "api_tool"
         record.is_success = True

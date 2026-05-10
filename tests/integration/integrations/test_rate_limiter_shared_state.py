@@ -11,6 +11,7 @@ import asyncio
 import pytest
 
 from synthorg.communication.bus.memory import InMemoryMessageBus
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.integrations.errors import ConnectionRateLimitError
 from synthorg.integrations.rate_limiting import shared_state as shared_state_module
 from synthorg.integrations.rate_limiting.shared_state import (
@@ -111,7 +112,7 @@ class TestCoordinatorFactory:
         original_coordinators = dict(shared_state_module._coordinators)
         try:
             shared_state_module._coordinators.clear()
-            bus = MagicMock()
+            bus = MagicMock(spec=MessageBus)
             set_coordinator_factory_sync(
                 lambda name: SharedRateLimitCoordinator(
                     bus=bus,

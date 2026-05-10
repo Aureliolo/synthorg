@@ -14,6 +14,7 @@ from synthorg.memory.consolidation.wiki_export import (
     WikiExportResult,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
 
 
 def _make_raw_entry(entry_id: str = "det-1") -> MemoryEntry:
@@ -197,7 +198,7 @@ class TestWikiExporter:
             enabled=True,
             export_root=str(tmp_path / "wiki"),
         )
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(
             side_effect=RuntimeError("backend down"),
         )

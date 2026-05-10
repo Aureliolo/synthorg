@@ -14,6 +14,8 @@ import pytest
 
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
+from synthorg.api.state import AppState
+from synthorg.settings.service import SettingsService
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.per_op_rate_limit_subscriber import (
     PerOpRateLimitSettingsSubscriber,
@@ -51,10 +53,10 @@ def _make_subscriber(
     Returns the subscriber plus the AppState mock so the caller can
     assert on its ``swap_*`` calls.
     """
-    settings_service = MagicMock()
+    settings_service = MagicMock(spec=SettingsService)
     settings_service.get = _settings_map_to_async_mock(settings_values or {})
 
-    app_state = MagicMock()
+    app_state = MagicMock(spec=AppState)
     app_state.has_per_op_rate_limit_config = existing_rl is not None
     app_state.has_per_op_concurrency_config = existing_concurrency is not None
     app_state.per_op_rate_limit_config = (

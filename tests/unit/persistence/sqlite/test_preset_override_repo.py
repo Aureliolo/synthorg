@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiosqlite.core import Connection
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.sqlite.preset_override_repo import (
@@ -47,7 +48,7 @@ def _make_row(  # noqa: PLR0913 -- test factory with explicit knobs
 
 def _build_repo() -> SQLitePresetOverrideRepo:
     """Build a repo with a no-op connection (we only call _row_to_override)."""
-    db = AsyncMock()
+    db = AsyncMock(spec=Connection)
     return SQLitePresetOverrideRepo(db=db)
 
 
@@ -174,7 +175,7 @@ class TestGetWrapsCorruptionAsQueryError:
         bad_row = _make_row(updated_by=None)
         cursor = MagicMock()
         cursor.fetchone = AsyncMock(return_value=bad_row)
-        db = MagicMock()
+        db = MagicMock(spec=Connection)
         db.execute = AsyncMock(return_value=cursor)
 
         repo = SQLitePresetOverrideRepo(db=db)

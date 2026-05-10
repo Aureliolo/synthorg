@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.settings.service import SettingsService
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.observability_subscriber import (
     ObservabilitySettingsSubscriber,
@@ -22,7 +23,7 @@ def _make_subscriber(
     Returns:
         Tuple of (subscriber, mock_settings_service).
     """
-    settings_service = MagicMock()
+    settings_service = MagicMock(spec=SettingsService)
 
     async def _mock_get(namespace: str, key: str) -> MagicMock:
         result = MagicMock()

@@ -9,6 +9,7 @@ from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.training.curation.llm_curated import LLMCurated
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.providers.errors import ProviderError
+from synthorg.providers.protocol import CompletionProvider
 
 
 def _now() -> datetime:
@@ -60,7 +61,7 @@ class TestLLMCurated:
         assert result == ()
 
     async def test_provider_success(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         response = MagicMock()
         response.content = "0, 2"
         provider.complete.return_value = response
@@ -80,7 +81,7 @@ class TestLLMCurated:
         provider.complete.assert_awaited_once()
 
     async def test_provider_error_falls_back(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete.side_effect = ProviderError("provider unavailable")
 
         items = tuple(_make_item(content=f"Item {i}") for i in range(5))
@@ -95,7 +96,7 @@ class TestLLMCurated:
         assert len(result) == 3
 
     async def test_empty_llm_response_falls_back(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         response = MagicMock()
         response.content = "no valid indices here"
         provider.complete.return_value = response

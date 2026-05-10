@@ -7,6 +7,7 @@ import pytest
 
 from synthorg.ontology.config import DriftDetectionConfig
 from synthorg.ontology.drift.noop import NoDriftDetection
+from synthorg.ontology.drift.protocol import DriftDetectionStrategy
 from synthorg.ontology.drift.service import DriftDetectionService
 from synthorg.ontology.models import (
     DriftAction,
@@ -15,6 +16,7 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
+from synthorg.persistence.ontology_protocol import OntologyDriftReportRepository
 
 _NOW = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
@@ -65,7 +67,7 @@ class TestDriftDetectionService:
         """check_entity persists report when store is provided."""
         ontology = _make_ontology()
         config = DriftDetectionConfig()
-        store = AsyncMock()
+        store = AsyncMock(spec=OntologyDriftReportRepository)
         store.store_report = AsyncMock()
 
         service = DriftDetectionService(
@@ -136,7 +138,7 @@ class TestDriftDetectionService:
             canonical_version=1,
             recommendation=DriftAction.ESCALATE,
         )
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=DriftDetectionStrategy)
         strategy.detect = AsyncMock(return_value=high_report)
         strategy.strategy_name = "mock"
 

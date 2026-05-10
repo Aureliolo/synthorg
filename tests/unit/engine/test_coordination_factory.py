@@ -17,6 +17,8 @@ from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import DecompositionError
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.service import TaskRoutingService
+from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
+from synthorg.providers.protocol import CompletionProvider
 
 
 def _mock_engine() -> MagicMock:
@@ -127,7 +129,7 @@ class TestBuildCoordinator:
                 config=CoordinationSectionConfig(),
                 engine=_mock_engine(),
                 task_assignment_config=TaskAssignmentConfig(),
-                provider=AsyncMock(),
+                provider=AsyncMock(spec=CompletionProvider),
             )
 
     def test_model_only_raises_value_error(self) -> None:
@@ -147,7 +149,7 @@ class TestBuildCoordinator:
                 config=CoordinationSectionConfig(),
                 engine=_mock_engine(),
                 task_assignment_config=TaskAssignmentConfig(),
-                workspace_strategy=MagicMock(),
+                workspace_strategy=MagicMock(spec=WorkspaceIsolationStrategy),
             )
 
     def test_workspace_config_only_raises_value_error(self) -> None:
@@ -170,9 +172,14 @@ class TestNoProviderDecompositionStrategy:
     """Placeholder strategy raises clear error."""
 
     async def test_raises_decomposition_error(self) -> None:
+        from synthorg.core.task import Task
+        from synthorg.engine.decomposition.models import DecompositionContext
+
         strategy = _NoProviderDecompositionStrategy()
+        task_mock = MagicMock(spec=Task)
+        context_mock = MagicMock(spec=DecompositionContext)
         with pytest.raises(
             DecompositionError,
             match="No LLM provider configured",
         ):
-            await strategy.decompose(MagicMock(), MagicMock())
+            await strategy.decompose(task_mock, context_mock)

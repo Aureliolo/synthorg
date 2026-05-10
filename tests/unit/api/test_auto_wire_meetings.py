@@ -13,6 +13,8 @@ from synthorg.communication.meeting.participant import (
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.providers.registry import ProviderRegistry
 
 
 def _default_config() -> RootConfig:
@@ -168,12 +170,12 @@ class TestAutoWireMeetings:
         [
             pytest.param(
                 None,
-                MagicMock(),
+                MagicMock(spec=ProviderRegistry),
                 ("agent_registry",),
                 id="only-agent-missing",
             ),
             pytest.param(
-                MagicMock(),
+                MagicMock(spec=AgentRegistryService),
                 None,
                 ("provider_registry",),
                 id="only-provider-missing",

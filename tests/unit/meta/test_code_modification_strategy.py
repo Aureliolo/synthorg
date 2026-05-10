@@ -24,6 +24,7 @@ from synthorg.meta.strategies.code_modification import (
     CodeModificationStrategy,
 )
 from synthorg.meta.validation.scope_validator import ScopeValidator
+from synthorg.providers.base import BaseCompletionProvider
 
 pytestmark = pytest.mark.unit
 
@@ -247,7 +248,7 @@ class TestCodeModificationStrategy:
         assert len(proposals) == 0
 
     async def test_provider_exception_produces_no_proposal(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=BaseCompletionProvider)
         provider.complete = AsyncMock(
             side_effect=RuntimeError("provider error"),
         )
@@ -390,7 +391,7 @@ class TestCodeModificationStrategy:
         assert len(proposals) == 0
 
     async def test_memory_error_propagates(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=BaseCompletionProvider)
         provider.complete = AsyncMock(side_effect=MemoryError)
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,

@@ -11,6 +11,7 @@ from synthorg.memory.consolidation.config import RetentionConfig
 from synthorg.memory.consolidation.models import RetentionRule
 from synthorg.memory.consolidation.retention import RetentionEnforcer
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability.events.consolidation import (
     RETENTION_AGENT_OVERRIDE_APPLIED,
 )
@@ -35,7 +36,7 @@ class TestRetentionEnforcer:
     """RetentionEnforcer cleanup behaviour."""
 
     async def test_no_rules_no_deletions(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         config = RetentionConfig()
         enforcer = RetentionEnforcer(config=config, backend=backend)
         deleted = await enforcer.cleanup_expired(_AGENT_ID, now=_NOW)
@@ -44,7 +45,7 @@ class TestRetentionEnforcer:
 
     async def test_cleanup_per_category(self) -> None:
         expired_entry = _make_entry("m1", MemoryCategory.WORKING)
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=(expired_entry,))
         backend.delete = AsyncMock(return_value=True)
 
@@ -61,7 +62,7 @@ class TestRetentionEnforcer:
         assert deleted == 1
 
     async def test_default_retention_applies_to_all(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
         backend.delete = AsyncMock(return_value=True)
 
@@ -71,7 +72,7 @@ class TestRetentionEnforcer:
         assert backend.retrieve.call_count == len(MemoryCategory)
 
     async def test_no_expired_entries(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
 
         config = RetentionConfig(
@@ -90,7 +91,7 @@ class TestRetentionEnforcer:
         working_entry = _make_entry("w1", MemoryCategory.WORKING)
         # e1 is created but not expired -- no assignment needed
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(
             side_effect=lambda *a, **kw: (
                 (working_entry,)
@@ -131,7 +132,7 @@ class TestRetentionEnforcer:
                 return (episodic_entry,)
             return ()
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(side_effect=_mock_retrieve)
         backend.delete = AsyncMock(return_value=True)
 
@@ -155,7 +156,7 @@ class TestRetentionEnforcer:
 
     async def test_delete_returns_false_not_counted(self) -> None:
         expired_entry = _make_entry("m1", MemoryCategory.WORKING)
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=(expired_entry,))
         backend.delete = AsyncMock(return_value=False)
 
@@ -345,7 +346,7 @@ class TestRetentionEnforcerAgentOverrides:
 
     async def test_no_overrides_unchanged_behavior(self) -> None:
         """Without overrides, cleanup behaves identically to base."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
 
         config = RetentionConfig(
@@ -365,7 +366,7 @@ class TestRetentionEnforcerAgentOverrides:
     async def test_cleanup_with_agent_category_override(self) -> None:
         """Agent override changes the cutoff date for a category."""
         expired_entry = _make_entry("m1", MemoryCategory.WORKING)
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=(expired_entry,))
         backend.delete = AsyncMock(return_value=True)
 
@@ -398,7 +399,7 @@ class TestRetentionEnforcerAgentOverrides:
 
     async def test_cleanup_with_agent_default_adds_categories(self) -> None:
         """Agent default_retention_days causes all categories to be checked."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
 
         # Company has no rules at all
@@ -422,7 +423,7 @@ class TestRetentionEnforcerAgentOverrides:
 
     async def test_agent_default_cutoff_correctness(self) -> None:
         """Agent default_retention_days produces correct cutoff dates."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
 
         config = RetentionConfig()
@@ -441,7 +442,7 @@ class TestRetentionEnforcerAgentOverrides:
 
     async def test_agent_default_beats_company_default(self) -> None:
         """Agent default overrides company default for non-rule categories."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
 
         # Company has default_retention_days=30 (no explicit rules)
@@ -461,7 +462,7 @@ class TestRetentionEnforcerAgentOverrides:
 
     async def test_override_log_event_fires(self) -> None:
         """RETENTION_AGENT_OVERRIDE_APPLIED log event fires with overrides."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
 
         config = RetentionConfig()
@@ -484,7 +485,7 @@ class TestRetentionEnforcerAgentOverrides:
 
     async def test_fast_path_returns_precomputed_categories(self) -> None:
         """Without overrides, _resolve_for_agent returns cached tuple."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
 
         config = RetentionConfig(
@@ -502,7 +503,7 @@ class TestRetentionEnforcerAgentOverrides:
 
     async def test_cleanup_with_both_overrides_simultaneously(self) -> None:
         """Both agent_category_overrides and agent_default combined."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
 
         config = RetentionConfig(

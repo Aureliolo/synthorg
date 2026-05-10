@@ -20,6 +20,8 @@ from synthorg.engine.loop_protocol import (
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
 
+from synthorg.engine.loop_protocol import ExecutionLoop
+
 from .conftest import make_completion_response as _make_completion_response
 
 
@@ -111,7 +113,7 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.MAX_TURNS,
         )
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(return_value=mock_result)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -145,7 +147,7 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.BUDGET_EXHAUSTED,
         )
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(return_value=mock_result)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -180,7 +182,7 @@ class TestAgentEnginePostExecutionTransitions:
             termination_reason=TerminationReason.ERROR,
             error_message="something failed",
         )
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(return_value=mock_result)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -215,7 +217,7 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.SHUTDOWN,
         )
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(return_value=mock_result)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -248,7 +250,7 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.SHUTDOWN,
         )
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(return_value=mock_result)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -279,7 +281,7 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.COMPLETED,
         )
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(return_value=mock_result)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -311,7 +313,7 @@ class TestAgentEngineTimeout:
             msg = "Should not reach here"
             raise AssertionError(msg)
 
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = slow_execute
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -423,7 +425,7 @@ class TestAgentEngineTimeoutEdgeCases:
             msg = "inner timeout"
             raise TimeoutError(msg)
 
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = raises_timeout
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -455,7 +457,7 @@ class TestAgentEngineTimeoutEdgeCases:
         mock_tracker.budget_config = None
         mock_tracker.record = AsyncMock()
 
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = slow_execute
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -504,7 +506,7 @@ class TestAgentEnginePostExecutionResilience:
             context=ctx_bad,
             termination_reason=TerminationReason.COMPLETED,
         )
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(return_value=mock_result)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -545,7 +547,7 @@ class TestAgentEnginePostExecutionResilience:
             context=ctx_bad,
             termination_reason=TerminationReason.SHUTDOWN,
         )
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(return_value=mock_result)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 

@@ -13,6 +13,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.config import (
     ArgumentTruncationStrategy,
     LlmFallbackConfig,
@@ -118,7 +119,7 @@ def _make_evaluator(
         driver_b.complete = AsyncMock(return_value=_make_completion_response())
         driver_map = {"provider-a": driver_a, "provider-b": driver_b}
 
-    registry = MagicMock()
+    registry = MagicMock(spec=ProviderRegistry)
     registry.get = MagicMock(side_effect=lambda name: driver_map[name])
     registry.list_providers = MagicMock(
         return_value=tuple(sorted(driver_map.keys())),

@@ -9,6 +9,7 @@ import pytest
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutActionType
 from synthorg.security.timeout.models import TimeoutAction
+from synthorg.security.timeout.protocol import TimeoutPolicy
 from synthorg.security.timeout.timeout_checker import TimeoutChecker
 
 
@@ -144,7 +145,7 @@ class TestTimeoutCheckerCheckAndResolve:
 
     async def test_policy_error_defaults_to_wait(self) -> None:
         """When policy.determine_action raises, checker defaults to WAIT."""
-        mock_policy = AsyncMock()
+        mock_policy = AsyncMock(spec=TimeoutPolicy)
         mock_policy.determine_action.side_effect = RuntimeError("boom")
         checker = TimeoutChecker(policy=mock_policy)
         item = _make_approval_item()

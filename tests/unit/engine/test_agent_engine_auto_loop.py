@@ -366,7 +366,7 @@ class TestAutoLoopResumePath:
 
         resolved_loop = MagicMock()
         resolved_loop.execute = AsyncMock(return_value=exec_result)
-        resolve_mock = AsyncMock(return_value=resolved_loop)
+        resolve_mock = AsyncMock(spec=engine._resolve_loop, return_value=resolved_loop)
 
         with patch.object(engine, "_resolve_loop", resolve_mock):
             await engine._execute_resumed_loop(

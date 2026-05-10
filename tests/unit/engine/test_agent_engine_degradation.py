@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
 
+from synthorg.providers.registry import ProviderRegistry
+
 from .conftest import (
     MockCompletionProvider,
     make_completion_response,
@@ -60,12 +62,15 @@ class TestEngineDegradation:
             patch.object(
                 enforcer,
                 "check_can_execute",
-                new=AsyncMock(return_value=PreFlightResult()),
+                new=AsyncMock(
+                    spec=enforcer.check_can_execute, return_value=PreFlightResult()
+                ),
             ) as mock_check,
             patch.object(
                 enforcer,
                 "resolve_model",
                 new=AsyncMock(
+                    spec=enforcer.resolve_model,
                     return_value=sample_agent_with_personality,
                 ),
             ),
@@ -104,7 +109,9 @@ class TestEngineDegradation:
         with patch.object(
             enforcer,
             "check_can_execute",
-            new=AsyncMock(return_value=fallback_result),
+            new=AsyncMock(
+                spec=enforcer.check_can_execute, return_value=fallback_result
+            ),
         ):
             result = await engine.run(
                 identity=sample_agent_with_personality,
@@ -130,7 +137,7 @@ class TestEngineDegradation:
         )
 
         # Mock registry
-        mock_registry = AsyncMock()
+        mock_registry = AsyncMock(spec=ProviderRegistry)
         mock_registry.get = lambda name: (
             fallback_provider if name == "fallback-provider" else primary_provider
         )
@@ -153,12 +160,16 @@ class TestEngineDegradation:
             patch.object(
                 enforcer,
                 "check_can_execute",
-                new=AsyncMock(return_value=fallback_result),
+                new=AsyncMock(
+                    spec=enforcer.check_can_execute, return_value=fallback_result
+                ),
             ),
             patch.object(
                 enforcer,
                 "resolve_model",
-                new=AsyncMock(side_effect=lambda ident: ident),
+                new=AsyncMock(
+                    spec=enforcer.resolve_model, side_effect=lambda ident: ident
+                ),
             ),
         ):
             await engine.run(
@@ -195,12 +206,15 @@ class TestEngineDegradation:
             patch.object(
                 enforcer,
                 "check_can_execute",
-                new=AsyncMock(return_value=queue_result),
+                new=AsyncMock(
+                    spec=enforcer.check_can_execute, return_value=queue_result
+                ),
             ),
             patch.object(
                 enforcer,
                 "resolve_model",
                 new=AsyncMock(
+                    spec=enforcer.resolve_model,
                     return_value=sample_agent_with_personality,
                 ),
             ),
@@ -227,7 +241,7 @@ class TestEngineDegradation:
             [make_completion_response(content="Done.")],
         )
 
-        mock_registry = AsyncMock()
+        mock_registry = AsyncMock(spec=ProviderRegistry)
         mock_registry.get = lambda name: (_ for _ in ()).throw(
             DriverNotRegisteredError(f"No driver for {name!r}"),
         )
@@ -249,7 +263,9 @@ class TestEngineDegradation:
         with patch.object(
             enforcer,
             "check_can_execute",
-            new=AsyncMock(return_value=fallback_result),
+            new=AsyncMock(
+                spec=enforcer.check_can_execute, return_value=fallback_result
+            ),
         ):
             result = await engine.run(
                 identity=sample_agent_with_personality,

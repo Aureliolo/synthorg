@@ -1,5 +1,6 @@
 """Tests for the subprocess transport cleanup utility."""
 
+from asyncio.subprocess import Process
 from unittest.mock import MagicMock, PropertyMock
 
 import pytest
@@ -14,7 +15,7 @@ class TestCloseSubprocessTransport:
 
     def test_noop_when_transport_is_none(self) -> None:
         """No-op when _transport attribute is absent."""
-        proc = MagicMock()
+        proc = MagicMock(spec=Process)
         proc._transport = None
         close_subprocess_transport(proc)
         # Should not raise
@@ -26,7 +27,7 @@ class TestCloseSubprocessTransport:
 
     def test_noop_when_transport_is_closing(self) -> None:
         """No-op when transport is already closing."""
-        proc = MagicMock()
+        proc = MagicMock(spec=Process)
         transport = MagicMock()
         transport.is_closing.return_value = True
         proc._transport = transport
@@ -35,7 +36,7 @@ class TestCloseSubprocessTransport:
 
     def test_closes_open_transport(self) -> None:
         """Closes transport when it is open."""
-        proc = MagicMock()
+        proc = MagicMock(spec=Process)
         transport = MagicMock()
         transport.is_closing.return_value = False
         proc._transport = transport
@@ -44,7 +45,7 @@ class TestCloseSubprocessTransport:
 
     def test_suppresses_close_exception(self) -> None:
         """Exception from transport.close() is logged and suppressed."""
-        proc = MagicMock()
+        proc = MagicMock(spec=Process)
         transport = MagicMock()
         transport.is_closing.return_value = False
         transport.close.side_effect = OSError("pipe broken")
@@ -54,7 +55,7 @@ class TestCloseSubprocessTransport:
 
     def test_suppresses_is_closing_exception(self) -> None:
         """Exception from transport.is_closing() is logged and suppressed."""
-        proc = MagicMock()
+        proc = MagicMock(spec=Process)
         transport = MagicMock()
         transport.is_closing.side_effect = AttributeError("no method")
         proc._transport = transport
@@ -63,7 +64,7 @@ class TestCloseSubprocessTransport:
 
     def test_suppresses_is_closing_on_non_transport(self) -> None:
         """When _transport exists but is not a real transport, no crash."""
-        proc = MagicMock()
+        proc = MagicMock(spec=Process)
         # _transport is a string (not a transport object)
         type(proc)._transport = PropertyMock(return_value="not-a-transport")
         # Should not raise

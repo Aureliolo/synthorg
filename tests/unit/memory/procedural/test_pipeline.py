@@ -28,6 +28,8 @@ from synthorg.memory.procedural.pipeline import (
     materialize_skill_md,
     propose_procedural_memory,
 )
+from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_ERROR,
     PROCEDURAL_MEMORY_SKILL_MD,
@@ -237,9 +239,9 @@ class TestFormatProceduralContent:
 @pytest.mark.unit
 class TestProposeProceduralMemory:
     async def test_happy_path_stores_and_returns_id(self) -> None:
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(return_value=_make_proposal())
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-001")
 
         execution = _make_execution_result()
@@ -269,9 +271,9 @@ class TestProposeProceduralMemory:
         assert PROCEDURAL_MEMORY_STORED in events
 
     async def test_proposer_returns_none_skips_store(self) -> None:
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(return_value=None)
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
 
         execution = _make_execution_result()
         recovery = _make_recovery_result()
@@ -292,9 +294,9 @@ class TestProposeProceduralMemory:
         assert PROCEDURAL_MEMORY_SKIPPED in events
 
     async def test_store_failure_returns_none(self) -> None:
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(return_value=_make_proposal())
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(side_effect=RuntimeError("store failed"))
 
         execution = _make_execution_result()
@@ -315,11 +317,11 @@ class TestProposeProceduralMemory:
         assert PROCEDURAL_MEMORY_STORE_FAILED in events
 
     async def test_tags_include_proposal_tags(self) -> None:
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(
             return_value=_make_proposal(tags=("api_error", "retry")),
         )
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-002")
 
         execution = _make_execution_result()
@@ -340,11 +342,11 @@ class TestProposeProceduralMemory:
         assert "retry" in request.metadata.tags
 
     async def test_confidence_passed_to_metadata(self) -> None:
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(
             return_value=_make_proposal(confidence=0.72),
         )
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-003")
 
         execution = _make_execution_result()
@@ -364,9 +366,9 @@ class TestProposeProceduralMemory:
 
     async def test_memory_error_propagates_from_store(self) -> None:
         """MemoryError from backend.store is never swallowed."""
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(return_value=_make_proposal())
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(side_effect=MemoryError("oom"))
 
         execution = _make_execution_result()
@@ -384,8 +386,8 @@ class TestProposeProceduralMemory:
 
     async def test_payload_build_failure_returns_none(self) -> None:
         """If _build_payload raises, pipeline returns None gracefully."""
-        proposer = AsyncMock()
-        backend = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
+        backend = AsyncMock(spec=MemoryBackend)
 
         # Use an execution result with no turns and a recovery result
         # whose task has invalid data to trigger a build error.
@@ -478,9 +480,9 @@ class TestMaterializeSkillMd:
 class TestProposeWithSkillMdConfig:
     async def test_propose_with_skill_md_config(self, tmp_path: Any) -> None:
         """When config has skill_md_directory, SKILL.md is written."""
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(return_value=_make_proposal())
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-010")
         config = ProceduralMemoryConfig(
             skill_md_directory=str(tmp_path),
@@ -512,9 +514,9 @@ class TestProposeWithSkillMdConfig:
         tmp_path: Any,
     ) -> None:
         """Filesystem error in materialize does not prevent memory_id return."""
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(return_value=_make_proposal())
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-011")
         # Use an invalid directory path to trigger a write error
         config = ProceduralMemoryConfig(
@@ -548,9 +550,9 @@ class TestProposeWithSkillMdConfig:
 class TestProposerExceptionHandling:
     async def test_proposer_exception_returns_none(self) -> None:
         """RuntimeError from proposer.propose is caught, returns None."""
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(side_effect=RuntimeError("boom"))
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
 
         execution = _make_execution_result()
         recovery = _make_recovery_result()
@@ -571,9 +573,9 @@ class TestProposerExceptionHandling:
 
     async def test_memory_error_from_proposer_propagates(self) -> None:
         """MemoryError from proposer.propose is never swallowed."""
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(side_effect=MemoryError("oom"))
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
 
         execution = _make_execution_result()
         recovery = _make_recovery_result()
@@ -596,9 +598,9 @@ class TestProposerExceptionHandling:
 class TestRecursionErrorPropagation:
     async def test_recursion_error_propagates_from_store(self) -> None:
         """RecursionError from backend.store is never swallowed."""
-        proposer = AsyncMock()
+        proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(return_value=_make_proposal())
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(side_effect=RecursionError("stack overflow"))
 
         execution = _make_execution_result()

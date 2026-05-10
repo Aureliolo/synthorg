@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.scaling.service import ScalingService
 from synthorg.meta.models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -109,7 +111,7 @@ class TestPerformanceSignalAggregator:
         assert result.avg_collaboration_score == 6.0
 
     async def test_multiple_agents_averaged(self) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=PerformanceTracker)
         s1 = MagicMock()
         s1.overall_quality_score = 8.0
         s1.overall_collaboration_score = 7.0
@@ -166,7 +168,7 @@ class TestPerformanceSignalAggregator:
                 assert m.value == 0.85
 
     async def test_tracker_failure_returns_empty(self) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=PerformanceTracker)
         tracker.get_snapshot = AsyncMock(side_effect=RuntimeError("tracker broken"))
         agg = PerformanceSignalAggregator(
             tracker=tracker,
@@ -205,7 +207,7 @@ class TestScalingSignalAggregator:
     """Scaling aggregator tests."""
 
     async def test_returns_scaling_summary(self) -> None:
-        service = MagicMock()
+        service = MagicMock(spec=ScalingService)
         service.get_recent_decisions = MagicMock(return_value=())
         service.get_recent_actions = MagicMock(return_value=())
         agg = ScalingSignalAggregator(service=service)
@@ -249,7 +251,7 @@ class TestSnapshotBuilder:
     def _make_builder(self) -> SnapshotBuilder:
         """Create a builder with default aggregators."""
         tracker = _make_mock_tracker()
-        scaling_service = MagicMock()
+        scaling_service = MagicMock(spec=ScalingService)
         scaling_service.get_recent_decisions = MagicMock(return_value=())
         scaling_service.get_recent_actions = MagicMock(return_value=())
         return SnapshotBuilder(

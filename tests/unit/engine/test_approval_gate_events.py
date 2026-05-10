@@ -13,6 +13,8 @@ from synthorg.communication.event_stream.interrupt import (
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.persistence.parked_context_protocol import ParkedContextRepository
+from synthorg.security.timeout.park_service import ParkService
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 
 pytestmark = pytest.mark.unit
@@ -20,7 +22,7 @@ pytestmark = pytest.mark.unit
 
 class TestApprovalGateEventStream:
     async def test_park_publishes_approval_interrupt(self) -> None:
-        park_service = MagicMock()
+        park_service = MagicMock(spec=ParkService)
         parked = MagicMock()
         parked.id = "parked-001"
         park_service.park.return_value = parked
@@ -57,7 +59,7 @@ class TestApprovalGateEventStream:
         assert event.payload["approval_id"] == "approval-001"
 
     async def test_park_creates_interrupt_in_store(self) -> None:
-        park_service = MagicMock()
+        park_service = MagicMock(spec=ParkService)
         parked = MagicMock()
         parked.id = "parked-001"
         park_service.park.return_value = parked
@@ -88,7 +90,7 @@ class TestApprovalGateEventStream:
         assert pending[0].tool_name == "deploy_service"
 
     async def test_park_without_hub_no_error(self) -> None:
-        park_service = MagicMock()
+        park_service = MagicMock(spec=ParkService)
         parked = MagicMock()
         parked.id = "parked-001"
         park_service.park.return_value = parked
@@ -104,7 +106,7 @@ class TestApprovalGateEventStream:
         assert result is parked
 
     async def test_resume_publishes_approval_resumed(self) -> None:
-        park_service = MagicMock()
+        park_service = MagicMock(spec=ParkService)
         parked = MagicMock()
         parked.id = "parked-001"
         parked.agent_id = "agent-eng-001"
@@ -112,7 +114,7 @@ class TestApprovalGateEventStream:
         parked.metadata = {}
         park_service.resume.return_value = MagicMock()
 
-        repo = AsyncMock()
+        repo = AsyncMock(spec=ParkedContextRepository)
         repo.get_by_approval.return_value = parked
         repo.delete.return_value = True
 
@@ -136,7 +138,7 @@ class TestApprovalGateEventStream:
         assert event.payload["approval_id"] == "approval-001"
 
     async def test_resume_resolves_interrupt(self) -> None:
-        park_service = MagicMock()
+        park_service = MagicMock(spec=ParkService)
         parked = MagicMock()
         parked.id = "parked-001"
         parked.agent_id = "agent-eng-001"
@@ -144,7 +146,7 @@ class TestApprovalGateEventStream:
         parked.metadata = {"interrupt_id": "int-resume-001"}
         park_service.resume.return_value = MagicMock()
 
-        repo = AsyncMock()
+        repo = AsyncMock(spec=ParkedContextRepository)
         repo.get_by_approval.return_value = parked
         repo.delete.return_value = True
 

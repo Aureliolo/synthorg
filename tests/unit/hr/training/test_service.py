@@ -13,7 +13,9 @@ from synthorg.hr.training.models import (
     TrainingPlan,
     TrainingPlanStatus,
 )
+from synthorg.hr.training.protocol import CurationStrategy, SourceSelector
 from synthorg.hr.training.service import TrainingService
+from synthorg.memory.protocol import MemoryBackend
 
 
 def _now() -> datetime:
@@ -73,7 +75,7 @@ def _make_service(
 ) -> TrainingService:
     """Build a TrainingService with mocked dependencies."""
     if selector is None:
-        selector = AsyncMock()
+        selector = AsyncMock(spec=SourceSelector)
         selector.select.return_value = ("senior-1",)
 
     if extractors is None:
@@ -97,7 +99,7 @@ def _make_service(
         }
 
     if curation is None:
-        curation = AsyncMock()
+        curation = AsyncMock(spec=CurationStrategy)
         curation.curate.side_effect = lambda items, **kw: items
 
     if guards is None:
@@ -106,7 +108,7 @@ def _make_service(
         guards = (guard,)
 
     if memory_backend is None:
-        memory_backend = AsyncMock()
+        memory_backend = AsyncMock(spec=MemoryBackend)
         memory_backend.store.return_value = "stored-id"
 
     return TrainingService(

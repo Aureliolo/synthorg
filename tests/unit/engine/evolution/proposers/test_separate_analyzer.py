@@ -23,6 +23,7 @@ from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
 )
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.hr.performance.models import TaskMetricRecord
@@ -636,7 +637,7 @@ class TestSummaryCapValidation:
 
         with pytest.raises(ValueError, match="non-negative"):
             SeparateAnalyzerProposer(
-                AsyncMock(),
+                AsyncMock(spec=CompletionProvider),
                 model="test-model",
                 summary_cap=-1,
             )

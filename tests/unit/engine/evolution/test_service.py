@@ -19,8 +19,13 @@ from synthorg.engine.evolution.models import (
     AdaptationProposal,
     AdaptationSource,
 )
-from synthorg.engine.evolution.protocols import AdaptationAdapter
+from synthorg.engine.evolution.protocols import (
+    AdaptationAdapter,
+    AdaptationGuard,
+    AdaptationProposer,
+)
 from synthorg.engine.evolution.service import EvolutionService
+from synthorg.hr.performance.tracker import PerformanceTracker
 
 _AGENT_ID = str(uuid4())
 
@@ -86,15 +91,15 @@ def _make_service(
         store.get_current = AsyncMock(return_value=_make_identity())
         store.list_versions = AsyncMock(return_value=())
 
-    tracker = MagicMock()
+    tracker = MagicMock(spec=PerformanceTracker)
     tracker.get_snapshot = AsyncMock(return_value=None)
     tracker.get_task_metrics = MagicMock(return_value=())
 
-    proposer = AsyncMock()
+    proposer = AsyncMock(spec=AdaptationProposer)
     proposer.name = "test_proposer"
     proposer.propose = AsyncMock(return_value=proposals)
 
-    guard = AsyncMock()
+    guard = AsyncMock(spec=AdaptationGuard)
     guard.name = "test_guard"
 
     def _make_guard_decision(proposal: AdaptationProposal) -> AdaptationDecision:

@@ -11,6 +11,7 @@ from synthorg.memory.procedural.pruning.hybrid_strategy import (
 from synthorg.memory.procedural.pruning.pareto_strategy import (
     ParetoPruningStrategy,
 )
+from synthorg.memory.procedural.pruning.protocol import PruningStrategy
 from synthorg.memory.procedural.pruning.ttl_strategy import TtlPruningStrategy
 
 
@@ -150,11 +151,11 @@ class TestHybridPruningStrategy:
     @pytest.mark.unit
     async def test_injected_ttl_and_pareto_strategies(self) -> None:
         """Test with custom injected strategies."""
-        mock_ttl = AsyncMock()
+        mock_ttl = AsyncMock(spec=PruningStrategy)
         mock_ttl.name = "mock-ttl"
         mock_ttl.prune = AsyncMock(return_value=("mem-expired",))
 
-        mock_pareto = AsyncMock()
+        mock_pareto = AsyncMock(spec=PruningStrategy)
         mock_pareto.name = "mock-pareto"
         mock_pareto.prune = AsyncMock(return_value=("mem-low-relevance",))
 

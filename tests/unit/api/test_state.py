@@ -8,6 +8,12 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.training.service import TrainingService
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -106,7 +112,7 @@ class TestAppStateTaskEngine:
     def test_task_engine_returns_when_set(self) -> None:
         from unittest.mock import MagicMock
 
-        engine = MagicMock()
+        engine = MagicMock(spec=TaskEngine)
         state = _make_state(task_engine=engine)
         assert state.task_engine is engine
 
@@ -117,14 +123,14 @@ class TestAppStateTaskEngine:
     def test_has_task_engine_true_when_set(self) -> None:
         from unittest.mock import MagicMock
 
-        engine = MagicMock()
+        engine = MagicMock(spec=TaskEngine)
         state = _make_state(task_engine=engine)
         assert state.has_task_engine is True
 
     def test_set_task_engine_succeeds_once(self) -> None:
         from unittest.mock import MagicMock
 
-        engine = MagicMock()
+        engine = MagicMock(spec=TaskEngine)
         state = _make_state()
         state.set_task_engine(engine)
         assert state.task_engine is engine
@@ -132,7 +138,7 @@ class TestAppStateTaskEngine:
     def test_set_task_engine_twice_raises(self) -> None:
         from unittest.mock import MagicMock
 
-        engine = MagicMock()
+        engine = MagicMock(spec=TaskEngine)
         state = _make_state(task_engine=engine)
         with pytest.raises(RuntimeError, match="already configured"):
             state.set_task_engine(engine)
@@ -150,7 +156,7 @@ class TestAppStateCoordinator:
     def test_coordinator_returns_when_set(self) -> None:
         from unittest.mock import MagicMock
 
-        coordinator = MagicMock()
+        coordinator = MagicMock(spec=MultiAgentCoordinator)
         state = _make_state(coordinator=coordinator)
         assert state.coordinator is coordinator
 
@@ -161,7 +167,7 @@ class TestAppStateCoordinator:
     def test_has_coordinator_true_when_set(self) -> None:
         from unittest.mock import MagicMock
 
-        coordinator = MagicMock()
+        coordinator = MagicMock(spec=MultiAgentCoordinator)
         state = _make_state(coordinator=coordinator)
         assert state.has_coordinator is True
 
@@ -233,7 +239,7 @@ class TestAppStateSettingsServiceFlag:
         assert state.has_settings_service is False
 
     def test_has_settings_service_true_when_set(self) -> None:
-        mock_svc = AsyncMock()
+        mock_svc = AsyncMock(spec=SettingsService)
         state = _make_state(settings_service=mock_svc)
         assert state.has_settings_service is True
 
@@ -249,7 +255,7 @@ class TestAppStateReviewGateService:
     def test_set_review_gate_service_succeeds_once(self) -> None:
         from unittest.mock import MagicMock
 
-        svc = MagicMock()
+        svc = MagicMock(spec=ReviewGateService)
         state = _make_state()
         state.set_review_gate_service(svc)
         assert state.review_gate_service is svc
@@ -257,7 +263,7 @@ class TestAppStateReviewGateService:
     def test_set_review_gate_service_twice_raises(self) -> None:
         from unittest.mock import MagicMock
 
-        svc = MagicMock()
+        svc = MagicMock(spec=ReviewGateService)
         state = _make_state()
         state.set_review_gate_service(svc)
         with pytest.raises(RuntimeError, match="already configured"):
@@ -275,7 +281,7 @@ class TestAppStateApprovalTimeoutScheduler:
     def test_set_approval_timeout_scheduler_succeeds_once(self) -> None:
         from unittest.mock import MagicMock
 
-        scheduler = MagicMock()
+        scheduler = MagicMock(spec=ApprovalTimeoutScheduler)
         state = _make_state()
         state.set_approval_timeout_scheduler(scheduler)
         assert state.approval_timeout_scheduler is scheduler
@@ -283,7 +289,7 @@ class TestAppStateApprovalTimeoutScheduler:
     def test_set_approval_timeout_scheduler_twice_raises(self) -> None:
         from unittest.mock import MagicMock
 
-        scheduler = MagicMock()
+        scheduler = MagicMock(spec=ApprovalTimeoutScheduler)
         state = _make_state()
         state.set_approval_timeout_scheduler(scheduler)
         with pytest.raises(RuntimeError, match="already configured"):
@@ -302,14 +308,14 @@ class TestAppStateConfigResolver:
     def test_config_resolver_returns_when_settings_service_set(self) -> None:
         from synthorg.settings.resolver import ConfigResolver
 
-        mock_svc = AsyncMock()
+        mock_svc = AsyncMock(spec=SettingsService)
         state = _make_state(settings_service=mock_svc)
         resolver = state.config_resolver
         assert isinstance(resolver, ConfigResolver)
 
     def test_config_resolver_is_singleton(self) -> None:
         """Successive property accesses return the same cached instance."""
-        mock_svc = AsyncMock()
+        mock_svc = AsyncMock(spec=SettingsService)
         state = _make_state(settings_service=mock_svc)
         first = state.config_resolver
         second = state.config_resolver
@@ -320,7 +326,7 @@ class TestAppStateConfigResolver:
         assert state.has_config_resolver is False
 
     def test_has_config_resolver_true_when_set(self) -> None:
-        mock_svc = AsyncMock()
+        mock_svc = AsyncMock(spec=SettingsService)
         state = _make_state(settings_service=mock_svc)
         assert state.has_config_resolver is True
 
@@ -340,14 +346,14 @@ class TestAppStateTrainingService:
 
     def test_set_training_service_once(self) -> None:
         state = _make_state()
-        mock_svc = AsyncMock()
+        mock_svc = AsyncMock(spec=TrainingService)
         state.set_training_service(mock_svc)
         assert state.training_service is mock_svc
         assert state.has_training_service is True
 
     def test_set_training_service_twice_raises(self) -> None:
         state = _make_state()
-        mock_svc = AsyncMock()
+        mock_svc = AsyncMock(spec=TrainingService)
         state.set_training_service(mock_svc)
         with pytest.raises(RuntimeError, match="already configured"):
             state.set_training_service(mock_svc)
