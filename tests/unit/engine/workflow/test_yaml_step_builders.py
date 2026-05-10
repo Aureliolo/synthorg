@@ -91,6 +91,43 @@ class TestTaskBuilder:
         STEP_BUILDERS[WorkflowNodeType.TASK](_ctx(step, {"title": "Plain"}))
         assert "agent_assignment" not in step
 
+    def test_skips_null_and_empty_assignment_fields(self) -> None:
+        """None / blank assignment values must not surface as ``"None"``/empty."""
+        step = _new_step("t1", WorkflowNodeType.TASK)
+        config = {
+            "title": "Review",
+            "routing_strategy": "cost_optimized",
+            "role_filter": None,
+            "agent_name": "   ",
+        }
+        STEP_BUILDERS[WorkflowNodeType.TASK](_ctx(step, config))
+        assert step["agent_assignment"] == {"strategy": "cost_optimized"}
+
+    def test_no_embedded_assignment_when_all_fields_blank(self) -> None:
+        step = _new_step("t1", WorkflowNodeType.TASK)
+        config = {
+            "title": "Plain",
+            "routing_strategy": None,
+            "role_filter": "",
+            "agent_name": None,
+        }
+        STEP_BUILDERS[WorkflowNodeType.TASK](_ctx(step, config))
+        assert "agent_assignment" not in step
+
+    def test_preserves_non_string_assignment_value_types(self) -> None:
+        """Non-string assignment values pass through verbatim (no ``str()``)."""
+        step = _new_step("t1", WorkflowNodeType.TASK)
+        config = {
+            "title": "Numeric",
+            "routing_strategy": "round_robin",
+            "agent_name": 42,
+        }
+        STEP_BUILDERS[WorkflowNodeType.TASK](_ctx(step, config))
+        assert step["agent_assignment"] == {
+            "strategy": "round_robin",
+            "agent_name": 42,
+        }
+
 
 # ── AGENT_ASSIGNMENT ─────────────────────────────────────────────
 
@@ -114,6 +151,18 @@ class TestAssignmentBuilder:
         STEP_BUILDERS[WorkflowNodeType.AGENT_ASSIGNMENT](
             _ctx(step, {"routing_strategy": "role_based"}),
         )
+        assert step["strategy"] == "role_based"
+        assert "role" not in step
+        assert "agent_name" not in step
+
+    def test_skips_null_and_empty_fields(self) -> None:
+        step = _new_step("a1", WorkflowNodeType.AGENT_ASSIGNMENT)
+        config = {
+            "routing_strategy": "role_based",
+            "role_filter": None,
+            "agent_name": "   ",
+        }
+        STEP_BUILDERS[WorkflowNodeType.AGENT_ASSIGNMENT](_ctx(step, config))
         assert step["strategy"] == "role_based"
         assert "role" not in step
         assert "agent_name" not in step

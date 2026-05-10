@@ -61,25 +61,39 @@ class StepBuildContext:
 type StepBuilder = Callable[[StepBuildContext], None]
 
 
+def _assignment_fields(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Return remapped assignment fields, preserving original value types.
+
+    Skips keys whose value is ``None`` or a blank/whitespace-only string so
+    callers can rely on the result being safe to splat into the YAML output
+    without surfacing ``"None"`` placeholders or empty fields.
+    """
+    out: dict[str, Any] = {}
+    for key in _ASSIGNMENT_KEYS:
+        if key not in config:
+            continue
+        value = config[key]
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        out[_ASSIGNMENT_STEP_MAP[key]] = value
+    return out
+
+
 def _build_task(ctx: StepBuildContext) -> None:
     """Copy task config fields into the step, plus an optional embedded assignment."""
     for key in _TASK_CONFIG_KEYS:
         if key in ctx.config:
             ctx.step[key] = ctx.config[key]
-    if "routing_strategy" in ctx.config or "role_filter" in ctx.config:
-        assignment = {
-            _ASSIGNMENT_STEP_MAP[k]: str(ctx.config[k])
-            for k in _ASSIGNMENT_KEYS
-            if k in ctx.config
-        }
+    assignment = _assignment_fields(ctx.config)
+    if assignment:
         ctx.step["agent_assignment"] = assignment
 
 
 def _build_assignment(ctx: StepBuildContext) -> None:
     """Copy agent assignment fields into the step, remapped via the step map."""
-    for key in _ASSIGNMENT_KEYS:
-        if key in ctx.config:
-            ctx.step[_ASSIGNMENT_STEP_MAP[key]] = ctx.config[key]
+    ctx.step.update(_assignment_fields(ctx.config))
 
 
 def _build_conditional(ctx: StepBuildContext) -> None:

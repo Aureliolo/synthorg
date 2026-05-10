@@ -12,6 +12,7 @@ shape validators run after a successful parse for a tighter contract.
 """
 
 import json
+import math
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Final
@@ -19,6 +20,7 @@ from typing import Final
 from synthorg.observability import safe_error_description
 from synthorg.settings.enums import SettingType
 from synthorg.settings.errors import SettingValidationError
+from synthorg.settings.json_validators import get_json_validator
 from synthorg.settings.models import SettingDefinition
 
 _SENSITIVE_MASK: Final[str] = "********"
@@ -49,6 +51,12 @@ def _validate_float(definition: SettingDefinition, value: str) -> None:
         display = _SENSITIVE_MASK if definition.sensitive else repr(value)
         msg = f"Expected float, got {display}"
         raise SettingValidationError(msg) from exc
+    if not math.isfinite(float_val):
+        # NaN comparisons silently return False, so _check_range can't reject
+        # nan/inf -- guard explicitly to keep range constraints meaningful.
+        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
+        msg = f"Expected finite float, got {display}"
+        raise SettingValidationError(msg)
     _check_range(definition, float_val)
 
 
@@ -84,10 +92,6 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
     # which we re-wrap as ``SettingValidationError`` to keep the error
     # surface uniform; sensitive payloads are masked the same way the
     # parse-error branch above masks them.
-    from synthorg.settings.json_validators import (  # noqa: PLC0415
-        get_json_validator,
-    )
-
     validator = get_json_validator(str(definition.namespace), definition.key)
     if validator is None:
         return

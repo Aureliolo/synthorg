@@ -167,6 +167,36 @@ class TestValidateFloat:
                 value,
             )
 
+    @pytest.mark.parametrize("value", ["nan", "NaN", "inf", "-inf", "Infinity"])
+    def test_rejects_non_finite(self, value: str) -> None:
+        with pytest.raises(SettingValidationError, match="Expected finite float"):
+            validate_by_type(
+                _make_definition(setting_type=SettingType.FLOAT),
+                value,
+            )
+
+    def test_non_finite_rejected_before_range_check(self) -> None:
+        definition = _make_definition(
+            setting_type=SettingType.FLOAT,
+            min_value=0.0,
+            max_value=10.0,
+        )
+        with pytest.raises(SettingValidationError, match="Expected finite float"):
+            validate_by_type(definition, "nan")
+
+    def test_non_finite_sensitive_value_masked(self) -> None:
+        with pytest.raises(SettingValidationError) as exc_info:
+            validate_by_type(
+                _make_definition(setting_type=SettingType.FLOAT, sensitive=True),
+                "inf",
+            )
+        # The displayed payload must be the mask, not the literal "inf".
+        # The error message text itself contains "finite" but does not
+        # embed an "inf" substring on its own.
+        message = str(exc_info.value)
+        assert "********" in message
+        assert "'inf'" not in message
+
     def test_below_min_rejected(self) -> None:
         definition = _make_definition(setting_type=SettingType.FLOAT, min_value=1.0)
         with pytest.raises(SettingValidationError, match="below minimum"):
