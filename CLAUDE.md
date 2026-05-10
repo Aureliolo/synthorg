@@ -15,7 +15,7 @@ Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (use `go -C cli`, never `cd c
 - **Configuration Precedence (MANDATORY)**: DB > env > YAML > code default via `SettingsService`/`ConfigResolver`; no `os.environ.get` outside startup. See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md).
 - **No Hardcoded Values (MANDATORY)**: numerics live in `settings/definitions/`; allowlist 0/1/-1, HTTP codes, hex masks, powers-of-2. Enforced by `scripts/check_no_magic_numbers.py`.
 - **Doc Numeric Claims (MANDATORY)**: numerics in README + public docs sourced from `data/runtime_stats.yaml` via `<!--RS:NAME-->` markers. See `data/README.md`.
-- **Test Regression (MANDATORY)**: timeout/slow failures = source-code regression; never edit `tests/baselines/unit_timing.json`.
+- **Test Regression (MANDATORY)**: timeout/slow failures = source-code regression; never edit `tests/baselines/unit_timing.json` or any `scripts/*_baseline.{txt,json}` / `scripts/_*_baseline.py`. Both families are PreToolUse-blocked. Per-invocation bypass for gate baselines: `ALLOW_BASELINE_GROWTH=1 git commit ...` (requires explicit user approval).
 - **Post-Implementation + Pre-PR Review (MANDATORY)**: after issue: branch + commit + push (no auto-PR); use `/pre-pr-review` (gh pr create is hookify-blocked). After PR: `/aurelio-review-pr` for external feedback. Fix EVERYTHING valid; no deferring.
 
 ## Quick Commands

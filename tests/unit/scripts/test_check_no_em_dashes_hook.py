@@ -136,3 +136,30 @@ def test_allows_empty_content() -> None:
 def test_allows_when_no_file_path() -> None:
     result = _run({"tool_input": {}})
     assert result.returncode == 0
+
+
+@_BASH_AVAILABLE
+def test_allows_when_tool_input_missing() -> None:
+    result = _run({})
+    assert result.returncode == 0
+
+
+@_BASH_AVAILABLE
+def test_allows_malformed_json_envelope() -> None:
+    """Malformed stdin must not crash the hook; falls through to allow.
+
+    Choosing fail-closed (block) here would brick Edit/Write across the entire
+    session if jq itself misbehaved or the harness sent a non-JSON envelope.
+    Allowing through is the deliberate posture: the pre-commit gate
+    `scripts/check_no_em_dashes.py` is the diff-time backstop.
+    """
+    assert _BASH is not None
+    result = subprocess.run(  # noqa: S603
+        [_BASH, str(_SCRIPT)],
+        input="this is not json at all { ",
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+    )
+    assert result.returncode == 0

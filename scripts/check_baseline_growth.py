@@ -24,6 +24,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EXIT_OK = 0
 EXIT_GROWTH_DETECTED = 1
+EXIT_INVALID_BASELINE = 2
+
+
+class InvalidBaselineError(Exception):
+    """Raised when a staged baseline file cannot be parsed."""
 
 
 def _is_baseline_path(path: str) -> bool:
@@ -39,10 +44,17 @@ def _is_baseline_path(path: str) -> bool:
 
 
 def _count_json_entries(text: str) -> int:
+    """Count entries in a JSON baseline; raise ``InvalidBaselineError`` on parse failure.
+
+    A corrupt baseline must block the commit, never silently pass. The previous
+    sentinel return of -1 was less-than every non-negative ``head_count``, which
+    let malformed baselines slip through the ``staged > head`` comparison.
+    """
     try:
         payload = json.loads(text)
-    except json.JSONDecodeError:
-        return -1
+    except json.JSONDecodeError as exc:
+        msg = f"baseline JSON failed to parse: {exc.msg} at line {exc.lineno}"
+        raise InvalidBaselineError(msg) from exc
     if isinstance(payload, dict):
         locations = payload.get("locations")
         if isinstance(locations, dict):
@@ -71,7 +83,13 @@ def _staged_entries(text: str, suffix: str) -> int:
 
 
 def _read_head(path: str) -> str | None:
-    """Return the file at ``HEAD`` or ``None`` if it did not exist there."""
+    """Return the file at ``HEAD`` or ``None`` if it did not exist there.
+
+    ``FileNotFoundError`` from a missing ``git`` binary is treated the same as
+    "no HEAD content", matching the not-yet-committed-baseline path. Any other
+    OS error is surfaced via stderr so a broken environment is visible rather
+    than silently letting growth through.
+    """
     try:
         result = subprocess.run(
             ["git", "show", f"HEAD:{path}"],
@@ -79,7 +97,10 @@ def _read_head(path: str) -> str | None:
             capture_output=True,
             text=True,
         )
-    except OSError:
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        print(f"WARNING: git show failed for {path}: {exc}", file=sys.stderr)
         return None
     if result.returncode != 0:
         return None
@@ -94,6 +115,34 @@ def _classify(path: str) -> str:
     return ".txt"
 
 
+def _inspect_path(
+    path: str,
+    grown: list[tuple[str, int, int]],
+    invalid: list[tuple[str, str]],
+) -> None:
+    """Compare one staged baseline against HEAD; record growth or parse failure."""
+    suffix = _classify(path)
+    absolute = REPO_ROOT / path
+    try:
+        staged_text = absolute.read_text(encoding="utf-8")
+    except OSError:
+        return
+    try:
+        staged_count = _staged_entries(staged_text, suffix)
+    except InvalidBaselineError as exc:
+        invalid.append((path, str(exc)))
+        return
+    head_text = _read_head(path)
+    head_count = 0
+    if head_text is not None:
+        try:
+            head_count = _staged_entries(head_text, suffix)
+        except InvalidBaselineError:
+            head_count = 0
+    if staged_count > head_count:
+        grown.append((path, head_count, staged_count))
+
+
 def main(argv: list[str]) -> int:
     """Compare staged baseline files against HEAD; reject growth."""
     if os.environ.get("ALLOW_BASELINE_GROWTH") == "1":
@@ -102,18 +151,17 @@ def main(argv: list[str]) -> int:
     if not paths:
         return EXIT_OK
     grown: list[tuple[str, int, int]] = []
+    invalid: list[tuple[str, str]] = []
     for path in paths:
-        suffix = _classify(path)
-        absolute = REPO_ROOT / path
-        try:
-            staged_text = absolute.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        head_text = _read_head(path)
-        head_count = _staged_entries(head_text, suffix) if head_text is not None else 0
-        staged_count = _staged_entries(staged_text, suffix)
-        if staged_count > head_count:
-            grown.append((path, head_count, staged_count))
+        _inspect_path(path, grown, invalid)
+    if invalid:
+        print(
+            "Gate suppression baselines failed to parse:",
+            file=sys.stderr,
+        )
+        for path, reason in invalid:
+            print(f"  {path}: {reason}", file=sys.stderr)
+        return EXIT_INVALID_BASELINE
     if not grown:
         return EXIT_OK
     print(

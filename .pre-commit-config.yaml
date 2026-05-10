@@ -220,7 +220,7 @@ repos:
         entry: uv
         args: [run, python, scripts/check_baseline_growth.py]
         language: system
-        files: ^scripts/(_?[a-z_]+_baseline\.(txt|json|py))$
+        files: ^scripts/(([a-z][a-z_]*_baseline\.(txt|json))|(_[a-z][a-z_]*_baseline\.py))$
 
       - id: no-release-please-token
         name: forbid new RELEASE_PLEASE_TOKEN references

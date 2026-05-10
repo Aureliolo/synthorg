@@ -90,8 +90,9 @@ def test_count_json_entries_top_level_list() -> None:
     assert _MODULE._count_json_entries(text) == 4
 
 
-def test_count_json_entries_invalid_returns_negative() -> None:
-    assert _MODULE._count_json_entries("not json") == -1
+def test_count_json_entries_invalid_raises() -> None:
+    with pytest.raises(_MODULE.InvalidBaselineError):
+        _MODULE._count_json_entries("not json")
 
 
 def test_count_json_entries_no_locations_dict() -> None:
@@ -215,3 +216,113 @@ def test_read_head_returns_none_for_missing(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(_MODULE.subprocess, "run", fake_run)
     assert _MODULE._read_head("scripts/does_not_exist.txt") is None
+
+
+def test_read_head_returns_none_when_git_binary_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        cmd: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del cmd, kwargs
+        msg = "git binary not on PATH"
+        raise FileNotFoundError(msg)
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", fake_run)
+    assert _MODULE._read_head("scripts/does_not_exist.txt") is None
+
+
+def test_read_head_warns_on_unexpected_oserror(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(
+        cmd: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del cmd, kwargs
+        msg = "git denied"
+        raise PermissionError(msg)
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", fake_run)
+    assert _MODULE._read_head("scripts/some_baseline.txt") is None
+    captured = capsys.readouterr()
+    assert "git show failed" in captured.err
+    assert "some_baseline.txt" in captured.err
+
+
+def test_main_blocks_invalid_json_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    baseline = tmp_path / "scripts" / "_fake_baseline.json"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("{ this is not valid json ", encoding="utf-8")
+    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
+    monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
+    with patch.object(_MODULE, "_read_head", return_value="{}"):
+        rc: int = _MODULE.main(
+            ["check_baseline_growth.py", "scripts/_fake_baseline.json"],
+        )
+    assert rc == _MODULE.EXIT_INVALID_BASELINE
+    captured = capsys.readouterr()
+    assert "_fake_baseline.json" in captured.err
+    assert "failed to parse" in captured.err
+
+
+def test_main_skips_unreadable_staged_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A staged file that disappears between staging and the gate is silently skipped.
+
+    Pre-commit cannot reach this case in practice because the file is staged,
+    but a hostile filesystem (anti-virus quarantine, race with cleanup) could
+    surface OSError. Skipping silently matches the intent: the gate has nothing
+    to compare against.
+    """
+    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
+    monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
+    rc: int = _MODULE.main(
+        ["check_baseline_growth.py", "scripts/missing_baseline.txt"],
+    )
+    assert rc == 0
+
+
+def test_main_handles_multiple_paths_mixed_states(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    grew = tmp_path / "scripts" / "grew_baseline.txt"
+    shrank = tmp_path / "scripts" / "shrank_baseline.txt"
+    grew.parent.mkdir(parents=True)
+    grew.write_text("a\nb\nc\nd\n", encoding="utf-8")
+    shrank.write_text("a\n", encoding="utf-8")
+    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
+    monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
+    head_lookup = {
+        "scripts/grew_baseline.txt": "a\nb\n",
+        "scripts/shrank_baseline.txt": "a\nb\nc\n",
+        "scripts/missing_baseline.txt": None,
+    }
+
+    def fake_read_head(path: str) -> str | None:
+        return head_lookup[path]
+
+    with patch.object(_MODULE, "_read_head", side_effect=fake_read_head):
+        rc: int = _MODULE.main(
+            [
+                "check_baseline_growth.py",
+                "scripts/grew_baseline.txt",
+                "scripts/shrank_baseline.txt",
+                "scripts/missing_baseline.txt",
+            ],
+        )
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "grew_baseline.txt" in captured.err
+    assert "shrank_baseline.txt" not in captured.err
+    assert "missing_baseline.txt" not in captured.err

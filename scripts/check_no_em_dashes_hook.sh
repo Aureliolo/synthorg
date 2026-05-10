@@ -22,9 +22,7 @@
 
 set -euo pipefail
 
-if ! INPUT=$(cat); then
-    exit 0
-fi
+INPUT=$(cat || true)
 if [[ -z "$INPUT" ]]; then
     exit 0
 fi
@@ -34,14 +32,14 @@ if [[ -z "$FILE_PATH" ]]; then
     exit 0
 fi
 
+# Skip regenerated changelog (release-please rewrites this file from git history).
 case "$FILE_PATH" in
     */.github/CHANGELOG.md|.github/CHANGELOG.md)
         exit 0
         ;;
 esac
 
-# Write tool: .tool_input.content
-# Edit tool: .tool_input.new_string
+# Extract content: Write tool uses .tool_input.content, Edit tool uses .tool_input.new_string.
 CONTENT=$(jq -r '.tool_input.content // .tool_input.new_string // ""' <<<"$INPUT" 2>/dev/null || true)
 if [[ -z "$CONTENT" ]]; then
     exit 0
@@ -55,15 +53,9 @@ HTML_HEX="${AMP}#x2014;"
 
 if grep -qF -e "$EM_DASH" -e "$HTML_NAMED" -e "$HTML_DEC" -e "$HTML_HEX" <<<"$CONTENT"; then
     REASON="Em-dash (U+2014) detected in the content being written. Replace with the ASCII punctuation that matches the sentence: ':' (colon), ';' (semicolon), ',' (comma), '.' (period), '( ... )' (parens), or '-' (hyphen, compound only). Bare '--' is almost never right; prefer one of the above or rewrite."
-    cat <<ENDJSON
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": "$REASON"
-  }
-}
-ENDJSON
+    jq -nc \
+        --arg reason "$REASON" \
+        '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}'
     exit 2
 fi
 

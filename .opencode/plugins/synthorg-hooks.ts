@@ -195,16 +195,19 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               }
             }
 
-            const payload = { tool_input: { file_path: filePath } } as Record<string, unknown>;
+            const filePathInput = { file_path: filePath } as Record<string, unknown>;
 
+            // Order must match `.claude/settings.json` PreToolUse Edit|Write:
+            //   migration, baseline, em-dash (richer payload), triage-gate.
+            // The em-dash hook runs between baseline and triage-gate to enforce
+            // content-correctness before the workflow-lock fires.
             for (const script of [
               "scripts/check_no_edit_migration.sh",
               "scripts/check_no_edit_baseline.sh",
-              "scripts/check_pre_pr_review_triage_gate.sh",
             ]) {
               const outcome = runHookScript(
                 script,
-                payload.tool_input as Record<string, unknown>,
+                filePathInput,
                 5000,
               );
               const denyReason = denyReasonFromOutcome(outcome);
@@ -214,21 +217,31 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             }
 
             // check_no_em_dashes_hook.sh: inspects the candidate content
-            // (`.tool_input.content` for Write, `.tool_input.new_string` for
-            // Edit) so the em-dash never lands on disk. Mirrors the
-            // pre-commit gate in scripts/check_no_em_dashes.py.
+            // before it lands on disk (mirrors scripts/check_no_em_dashes.py).
+            const args = (output.args ?? {}) as Record<string, unknown>;
+            const emDashInput = { ...filePathInput } as Record<string, unknown>;
+            if (typeof args.content === "string") {
+              emDashInput.content = args.content;
+            }
+            if (typeof args.new_string === "string") {
+              emDashInput.new_string = args.new_string;
+            }
             {
-              const args = (output.args ?? {}) as Record<string, unknown>;
-              const emDashInput: Record<string, unknown> = { file_path: filePath };
-              if (typeof args.content === "string") {
-                emDashInput.content = args.content;
-              }
-              if (typeof args.new_string === "string") {
-                emDashInput.new_string = args.new_string;
-              }
               const outcome = runHookScript(
                 "scripts/check_no_em_dashes_hook.sh",
                 emDashInput,
+                5000,
+              );
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
+              }
+            }
+
+            {
+              const outcome = runHookScript(
+                "scripts/check_pre_pr_review_triage_gate.sh",
+                filePathInput,
                 5000,
               );
               const denyReason = denyReasonFromOutcome(outcome);
