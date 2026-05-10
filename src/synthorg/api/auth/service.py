@@ -52,8 +52,46 @@ _hasher = argon2.PasswordHasher(
 class AuthService:
     """Immutable authentication operations.
 
+    Owns the cryptographic primitives behind login: Argon2id password
+    hashing and verification, JWT mint and decode, HMAC-SHA256 API
+    key hashing, secure API key generation, and refresh-token
+    persistence through the auth-domain boundary.
+
     Args:
         config: Authentication configuration (carries JWT secret).
+
+    **Async vs sync.** Methods follow a single rule: an operation is
+    declared ``async`` only when it touches an event-loop boundary --
+    either offloading CPU-bound work via :func:`asyncio.to_thread`,
+    or awaiting a repository write. Everything else stays sync.
+
+    - :meth:`hash_password_async` and :meth:`verify_password_async`
+      are async because Argon2id is CPU-bound (3 time-cost iterations
+      over 64MiB of memory by default); :func:`asyncio.to_thread`
+      keeps a single login from stalling every concurrent request
+      waiting on the loop.
+    - :meth:`persist_refresh_token` is async because it awaits a
+      repository write through the auth-domain boundary.
+    - :meth:`create_token`, :meth:`decode_token`, :meth:`hash_api_key`,
+      and :meth:`generate_api_key` are sync: each is either pure CPU
+      with bounded sub-millisecond cost (HMAC, ``secrets.token_urlsafe``)
+      or an in-process JWT codec call with no I/O.
+
+    **Thread-safety.** Instances are safe to share across the
+    request-handler pool without external locking. After
+    :meth:`__init__`, the only state held is ``_config: AuthConfig``
+    -- itself a Pydantic ``frozen=True`` model. The module-global
+    :class:`argon2.PasswordHasher` is configured once at import and
+    treated as a deployment-wide concern (Argon2 parameter selection
+    is not per-request); the underlying ``argon2`` and ``jwt``
+    libraries are stateless and thread-safe.
+
+    **Out of scope.** This service does not implement token
+    revocation (the auth middleware enforces that by checking
+    ``pwd_sig`` on every request), session storage (handled by the
+    refresh-token repository), or SYSTEM-role token minting
+    (rejected by :meth:`create_token`; SYSTEM tokens are minted by
+    the Go CLI with :data:`SYSTEM_ISSUER` / :data:`SYSTEM_AUDIENCE`).
     """
 
     def __init__(self, config: AuthConfig) -> None:
