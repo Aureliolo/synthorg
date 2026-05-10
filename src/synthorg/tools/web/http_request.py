@@ -12,6 +12,7 @@ import httpx
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_REQUEST_FAILED,
@@ -280,7 +281,9 @@ class HttpRequestTool(BaseWebTool):
         parsed = urlparse(url)
 
         # Always normalize Host header (case-insensitive dedup).
-        normalized_headers = {k: v for k, v in headers.items() if k.lower() != "host"}
+        normalized_headers = {
+            k: v for k, v in headers.items() if not compare_ci(k, "host")
+        }
         normalized_headers["Host"] = parsed.hostname or ""
 
         if not validation.resolved_ips or validation.is_https:

@@ -16,6 +16,7 @@ from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
 )
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_DEPARTMENT_CREATED,
@@ -185,7 +186,7 @@ class OrgDepartmentMutationsMixin:
             updates = self._collect_department_updates(data)
             updated = existing.model_copy(update=updates, deep=True)
             new_departments = tuple(
-                updated if d.name.lower() == name.lower() else d for d in departments
+                updated if compare_ci(d.name, name) else d for d in departments
             )
             self._check_budget_sum(new_departments)
             captured_updates.update(updates)
@@ -246,7 +247,7 @@ class OrgDepartmentMutationsMixin:
             self._check_no_attached_agents(name, agents)
 
             new_departments = tuple(
-                d for d in departments if d.name.lower() != name.lower()
+                d for d in departments if not compare_ci(d.name, name)
             )
             payload = {
                 "departments": new_departments,
@@ -286,9 +287,7 @@ class OrgDepartmentMutationsMixin:
         agents: Sequence[AgentConfig],
     ) -> None:
         """Raise ConflictError when any agent references the department."""
-        attached = tuple(
-            a for a in agents if a.department.lower() == department_name.lower()
-        )
+        attached = tuple(a for a in agents if compare_ci(a.department, department_name))
         if not attached:
             return
         msg = (

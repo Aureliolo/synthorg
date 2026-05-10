@@ -10,6 +10,7 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
@@ -388,7 +389,7 @@ def _parse_replan_decision(content: str) -> bool:
             if isinstance(raw, bool):
                 return raw
             if isinstance(raw, str):
-                return raw.lower() == "true"
+                return compare_ci(raw, "true")
             # Non-bool, non-str, or missing -- treat as no-replan
             return False
         logger.debug(

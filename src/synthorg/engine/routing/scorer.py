@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final, Protocol
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
+from synthorg.core.normalization import compare_ci
 from synthorg.engine.routing.models import RoutingCandidate
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_routing import (
@@ -324,9 +325,8 @@ def _score_role(
     config: RoutingScorerConfig,
 ) -> float:
     """Award the role-match bonus when the agent's role matches required_role."""
-    if (
-        subtask.required_role is not None
-        and agent.role.casefold() == subtask.required_role.casefold()
+    if subtask.required_role is not None and compare_ci(
+        agent.role, subtask.required_role
     ):
         reasons.append("role match")
         return config.role_match_bonus

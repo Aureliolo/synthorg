@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
+from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
@@ -407,7 +408,7 @@ async def validate_url_host(  # noqa: PLR0911, PLR0912, C901
         return f"Could not extract hostname from URL: {url!r}"
 
     normalized = hostname.lower()
-    is_https = urlparse(url).scheme.casefold() == "https"
+    is_https = compare_ci(urlparse(url).scheme, "https")
 
     port: int | None = None
     try:

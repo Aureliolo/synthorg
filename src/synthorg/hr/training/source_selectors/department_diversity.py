@@ -7,11 +7,13 @@ from the new hire's department.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
     HR_TRAINING_SELECTION_SKIPPED,
+    HR_TRAINING_SELECTOR_CONFIG_INVALID,
 )
 
 if TYPE_CHECKING:
@@ -59,7 +61,13 @@ class DepartmentDiversitySampling:
                 f">= 0, got top={top_performer_count}, "
                 f"complementary={complementary_count}"
             )
-            logger.warning(msg)
+            logger.warning(
+                HR_TRAINING_SELECTOR_CONFIG_INVALID,
+                selector="department_diversity",
+                top_performer_count=top_performer_count,
+                complementary_count=complementary_count,
+                reason=msg,
+            )
             raise ValueError(msg)
         self._registry = registry
         self._tracker = tracker
@@ -100,7 +108,7 @@ class DepartmentDiversitySampling:
             return ()
 
         department = str(new_agent_department)
-        role_lower = str(new_agent_role).lower()
+        role = str(new_agent_role)
 
         dept_agents = await self._registry.list_by_department(department)
         if not dept_agents:
@@ -112,8 +120,8 @@ class DepartmentDiversitySampling:
             )
             return ()
 
-        same_role = [a for a in dept_agents if str(a.role).lower() == role_lower]
-        diff_role = [a for a in dept_agents if str(a.role).lower() != role_lower]
+        same_role = [a for a in dept_agents if compare_ci(str(a.role), role)]
+        diff_role = [a for a in dept_agents if not compare_ci(str(a.role), role)]
 
         top_performers = await self._rank_by_quality(
             same_role,

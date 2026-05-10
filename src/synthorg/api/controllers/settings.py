@@ -34,6 +34,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
+from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
@@ -619,7 +620,7 @@ class SettingsController(Controller):
             _get_setting_or_default(svc, "enable_correlation", "true"),
         )
         root_level = _parse_root_level(raw_level)
-        enable_correlation = raw_correlation.lower() == "true"
+        enable_correlation = compare_ci(raw_correlation, "true")
 
         try:
             result = build_log_config_from_settings(

@@ -7,6 +7,7 @@ special values like ``"all"``, literal IDs) into agent ID tuples.
 from typing import Any, Protocol, runtime_checkable
 
 from synthorg.communication.meeting.errors import NoParticipantsResolvedError
+from synthorg.core.normalization import compare_ci
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
@@ -246,7 +247,7 @@ class RegistryParticipantResolver:
         Returns:
             List of agent ID strings.
         """
-        if entry.lower() == "all":
+        if compare_ci(entry, "all"):
             agents = await self._registry.list_active()
             return [str(a.id) for a in agents]
 

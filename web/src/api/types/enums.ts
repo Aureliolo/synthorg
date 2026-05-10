@@ -1,76 +1,64 @@
 /** Enum types and their runtime VALUES arrays shared across the dashboard.
  *
- * Type definitions are re-exported from ``generated.d.ts`` (produced by
- * ``openapi-typescript`` against ``docs/openapi/openapi.json``) so the
- * shapes track the backend schema automatically.  The runtime ``*_VALUES``
- * arrays are hand-maintained because OpenAPI does not emit runtime
- * iterables -- new enum members must be added to both the schema and
- * the matching ``_VALUES`` array below.
+ * Each runtime ``*_VALUES`` tuple is the single source of truth; the
+ * matching type is derived as ``(typeof FOO_VALUES)[number]`` so type
+ * and value stay in lockstep with one edit.  The shapes mirror the
+ * Pydantic ``StrEnum`` / ``Literal`` types in the Python backend; new
+ * enum members must be added to both sides together.
  */
-
-import type { components } from './generated'
-
-type Schemas = components['schemas']
-
-export type TaskStatus = Schemas['TaskStatus']
-export type TaskType = Schemas['TaskType']
-export type TaskSource = Schemas['TaskSource']
-export type Priority = Schemas['Priority']
-export type Complexity = Schemas['Complexity']
-export type ApprovalStatus = Schemas['ApprovalStatus']
-export type ApprovalRiskLevel = Schemas['ApprovalRiskLevel']
-export type UrgencyLevel = Schemas['UrgencyLevel']
-export type SeniorityLevel = Schemas['SeniorityLevel']
-export type AgentStatus = Schemas['AgentStatus']
-export type AutonomyLevel = Schemas['AutonomyLevel']
-export type OrgRole = Schemas['OrgRole']
-export type HumanRole = Schemas['HumanRole']
-export type DepartmentName = Schemas['DepartmentName']
-export type ProjectStatus = Schemas['ProjectStatus']
-export type ArtifactType = Schemas['ArtifactType']
 
 export const SENIORITY_LEVEL_VALUES = [
   'junior', 'mid', 'senior', 'lead', 'principal', 'director', 'vp', 'c_suite',
-] as const satisfies readonly SeniorityLevel[]
+] as const satisfies readonly string[]
+export type SeniorityLevel = (typeof SENIORITY_LEVEL_VALUES)[number]
 
 export const AGENT_STATUS_VALUES = [
   'active', 'onboarding', 'on_leave', 'terminated',
-] as const satisfies readonly AgentStatus[]
+] as const satisfies readonly string[]
+export type AgentStatus = (typeof AGENT_STATUS_VALUES)[number]
 
 export const TASK_STATUS_VALUES = [
   'created', 'assigned', 'in_progress', 'in_review', 'completed',
   'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
   'rejected', 'auth_required',
-] as const satisfies readonly TaskStatus[]
+] as const satisfies readonly string[]
+export type TaskStatus = (typeof TASK_STATUS_VALUES)[number]
 
 export const TASK_TYPE_VALUES = [
   'development', 'design', 'research', 'review', 'meeting', 'admin',
-] as const satisfies readonly TaskType[]
+] as const satisfies readonly string[]
+export type TaskType = (typeof TASK_TYPE_VALUES)[number]
 
 export const PRIORITY_VALUES = [
   'critical', 'high', 'medium', 'low',
-] as const satisfies readonly Priority[]
+] as const satisfies readonly string[]
+export type Priority = (typeof PRIORITY_VALUES)[number]
 
 export const APPROVAL_STATUS_VALUES = [
   'pending', 'approved', 'rejected', 'expired',
-] as const satisfies readonly ApprovalStatus[]
+] as const satisfies readonly string[]
+export type ApprovalStatus = (typeof APPROVAL_STATUS_VALUES)[number]
 
 export const APPROVAL_RISK_LEVEL_VALUES = [
   'low', 'medium', 'high', 'critical',
-] as const satisfies readonly ApprovalRiskLevel[]
+] as const satisfies readonly string[]
+export type ApprovalRiskLevel = (typeof APPROVAL_RISK_LEVEL_VALUES)[number]
 
 export const URGENCY_LEVEL_VALUES = [
   'critical', 'high', 'normal', 'no_expiry',
-] as const satisfies readonly UrgencyLevel[]
+] as const satisfies readonly string[]
+export type UrgencyLevel = (typeof URGENCY_LEVEL_VALUES)[number]
 
 export const TASK_SOURCE_VALUES = [
   'internal', 'client', 'simulation',
-] as const satisfies readonly TaskSource[]
+] as const satisfies readonly string[]
+export type TaskSource = (typeof TASK_SOURCE_VALUES)[number]
 
 export const DEPARTMENT_NAME_VALUES = [
   'executive', 'product', 'design', 'engineering', 'quality_assurance',
   'data_analytics', 'operations', 'creative_marketing', 'security',
-] as const satisfies readonly DepartmentName[]
+] as const satisfies readonly string[]
+export type DepartmentName = (typeof DEPARTMENT_NAME_VALUES)[number]
 
 const DEPARTMENT_NAME_SET: ReadonlySet<string> = new Set(DEPARTMENT_NAME_VALUES)
 
@@ -85,16 +73,37 @@ export function isDepartmentName(value: string): value is DepartmentName {
 
 export const PROJECT_STATUS_VALUES = [
   'planning', 'active', 'on_hold', 'completed', 'cancelled',
-] as const satisfies readonly ProjectStatus[]
+] as const satisfies readonly string[]
+export type ProjectStatus = (typeof PROJECT_STATUS_VALUES)[number]
 
 export const ARTIFACT_TYPE_VALUES = [
   'code', 'tests', 'documentation',
-] as const satisfies readonly ArtifactType[]
+] as const satisfies readonly string[]
+export type ArtifactType = (typeof ARTIFACT_TYPE_VALUES)[number]
+
+export const COMPLEXITY_VALUES = [
+  'simple', 'medium', 'complex', 'epic',
+] as const satisfies readonly string[]
+export type Complexity = (typeof COMPLEXITY_VALUES)[number]
+
+export const AUTONOMY_LEVEL_VALUES = [
+  'full', 'semi', 'supervised', 'locked',
+] as const satisfies readonly string[]
+export type AutonomyLevel = (typeof AUTONOMY_LEVEL_VALUES)[number]
+
+export const ORG_ROLE_VALUES = [
+  'owner', 'department_admin', 'editor', 'viewer',
+] as const satisfies readonly string[]
+export type OrgRole = (typeof ORG_ROLE_VALUES)[number]
+
+export const HUMAN_ROLE_VALUES = [
+  'ceo', 'manager', 'board_member', 'pair_programmer', 'observer', 'system',
+] as const satisfies readonly string[]
+export type HumanRole = (typeof HUMAN_ROLE_VALUES)[number]
 
 // The following types are not yet exposed in the OpenAPI surface;
 // they remain hand-maintained until the backend enums land in the
-// schema.  Moving them to the generated types is mechanical once
-// the API models pick them up.
+// schema.
 export type RiskTolerance = 'low' | 'medium' | 'high'
 export type CreativityLevel = 'low' | 'medium' | 'high'
 export type DecisionMakingStyle = 'analytical' | 'intuitive' | 'consultative' | 'directive'

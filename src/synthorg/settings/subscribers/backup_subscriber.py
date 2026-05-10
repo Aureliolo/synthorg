@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
 
@@ -110,7 +111,7 @@ class BackupSettingsSubscriber:
             return
 
         scheduler = self._backup_service.scheduler
-        enabled = str(result.value).lower() == "true"
+        enabled = compare_ci(str(result.value), "true")
 
         if enabled and not scheduler.is_running:
             try:

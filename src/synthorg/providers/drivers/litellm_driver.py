@@ -44,6 +44,7 @@ from litellm.exceptions import (
 )
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_AUTH_ERROR,
@@ -720,7 +721,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         # Case-insensitive lookup per HTTP semantics
         raw: str | None = None
         for key, value in headers.items():
-            if isinstance(key, str) and key.lower() == "retry-after":
+            if isinstance(key, str) and compare_ci(key, "retry-after"):
                 raw = value
                 break
         if raw is None:

@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     WEBHOOK_SIGNATURE_INVALID,
@@ -49,7 +50,7 @@ class GenericHmacVerifier:
             (
                 value
                 for key, value in headers.items()
-                if key.lower() == self._header_name
+                if compare_ci(key, self._header_name)
             ),
             "",
         )

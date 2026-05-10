@@ -213,6 +213,8 @@ def _read_if_none_match(headers: list[tuple[bytes, bytes]]) -> str | None:
     Build a comma-joined merged value so :func:`match_etag` walks all
     of them.
     """
+    # Bytes-typed ASGI header lowering is exempt from
+    # ``compare_ci`` (str-only); see normalization.py.
     values = [
         value.decode("latin-1")
         for name, value in headers
@@ -356,6 +358,8 @@ async def _emit_passthrough(
     headers: list[tuple[bytes, bytes]] = (
         list(headers_value) if isinstance(headers_value, list | tuple) else []
     )
+    # Bytes-typed ASGI header lowering is exempt from
+    # ``compare_ci`` (str-only); see normalization.py.
     headers = [(k, v) for k, v in headers if k.lower() != b"content-length"]
     headers.append((b"content-length", str(len(body)).encode("ascii")))
     forwarded_start = dict(captured_start)

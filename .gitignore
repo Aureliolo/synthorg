@@ -85,10 +85,6 @@ _site/
 docs/openapi/reference.html
 docs/openapi/openapi.json
 
-# Generated TS types from OpenAPI (built by `npm --prefix web
-# run generate-types`, invoked as a pre-hook before type-check/build).
-web/src/api/types/generated.d.ts
-
 # Intermediate i18n catalog built by scripts/extract_web_strings.py
 # (hand-off artefact for issue #1417; regenerate locally as needed).
 web/src/i18n/_extracted_catalog.json

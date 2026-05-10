@@ -1,12 +1,29 @@
 import { apiClient, unwrap, unwrapPaginated } from '../client'
-import type { components } from '../types/generated'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
-type Schemas = components['schemas']
+export const REPORT_PERIOD_VALUES = ['daily', 'weekly', 'monthly'] as const satisfies readonly string[]
+export type ReportPeriod = (typeof REPORT_PERIOD_VALUES)[number]
 
-export type ReportPeriod = Schemas['ReportPeriod']
-export type ReportResponse = Schemas['ReportResponse']
-export type GenerateReportRequest = Schemas['GenerateReportRequest']
+const REPORT_PERIOD_SET: ReadonlySet<string> = new Set(REPORT_PERIOD_VALUES)
+
+function isReportPeriod(value: unknown): value is ReportPeriod {
+  return typeof value === 'string' && REPORT_PERIOD_SET.has(value)
+}
+
+export interface ReportResponse {
+  period: ReportPeriod
+  start: string
+  end: string
+  has_spending: boolean
+  has_performance: boolean
+  has_task_completion: boolean
+  has_risk_trends: boolean
+  generated_at: string
+}
+
+export interface GenerateReportRequest {
+  period: ReportPeriod
+}
 
 export interface ListReportPeriodsOptions {
   signal?: AbortSignal
@@ -18,20 +35,40 @@ export async function listReportPeriods(
   // Backend returns ``PaginatedResponse[ReportPeriod]`` (the period set
   // is bounded but paginated for shape consistency with the rest of
   // the list surface). Default page size covers all known periods, so
-  // we discard the cursor metadata at the call site.
-  const response = await apiClient.get<PaginatedResponse<ReportPeriod>>(
+  // we discard the cursor metadata at the call site. The wire payload
+  // is validated against ``REPORT_PERIOD_VALUES`` before narrowing so a
+  // backend rolling out a new period cannot break exhaustive switches
+  // downstream.
+  const response = await apiClient.get<PaginatedResponse<string>>(
     '/reports/periods',
     { signal: options.signal },
   )
-  return unwrapPaginated<ReportPeriod>(response).data
+  const periods = unwrapPaginated<string>(response).data
+  if (!periods.every(isReportPeriod)) {
+    throw new Error(
+      `Unknown report period in /reports/periods response (allowed: ${REPORT_PERIOD_VALUES.join(', ')})`,
+    )
+  }
+  return periods
 }
 
 export async function generateReport(
   period: ReportPeriod,
 ): Promise<ReportResponse> {
+  // Same defensive narrowing as ``listReportPeriods``: the wire
+  // payload's ``period`` is validated against ``REPORT_PERIOD_VALUES``
+  // before the response is handed back as a typed ``ReportResponse``,
+  // so a backend rolling out a new period cannot silently bypass
+  // ``ReportPeriod`` and break exhaustive switches downstream.
   const response = await apiClient.post<ApiResponse<ReportResponse>>(
     '/reports/generate',
     { period } satisfies GenerateReportRequest,
   )
-  return unwrap(response)
+  const report = unwrap(response)
+  if (!isReportPeriod(report.period)) {
+    throw new Error(
+      `Unknown report period in /reports/generate response (allowed: ${REPORT_PERIOD_VALUES.join(', ')})`,
+    )
+  }
+  return report
 }

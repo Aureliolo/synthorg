@@ -15,6 +15,11 @@ from synthorg.core.enums import (
     ApprovalStatus,
     AutonomyLevel,
 )
+from synthorg.core.normalization import (
+    compare_ci,
+    find_by_name_ci,
+    normalize_identifier,
+)
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     AgentNotFoundError,
@@ -201,11 +206,7 @@ class AgentRegistryService:
             The first matching agent, or None.
         """
         async with self._lock:
-            name_lower = str(name).lower()
-            for identity in self._agents.values():
-                if str(identity.name).lower() == name_lower:
-                    return identity
-            return None
+            return find_by_name_ci(self._agents.values(), str(name))
 
     async def get_by_names(
         self,
@@ -246,13 +247,17 @@ class AgentRegistryService:
             )
             raise ValueError(msg)
         async with self._lock:
-            by_lower_name: dict[str, AgentIdentity] = {}
+            by_normalised_name: dict[str, AgentIdentity] = {}
             for identity in self._agents.values():
-                key = str(identity.name).lower()
+                key = normalize_identifier(str(identity.name))
                 # First registration wins on name collision, matching
-                # ``get_by_name`` semantics.
-                by_lower_name.setdefault(key, identity)
-            return tuple(by_lower_name.get(str(name).lower()) for name in names)
+                # ``get_by_name`` semantics (which routes through
+                # ``find_by_name_ci`` -- casefold + whitespace strip).
+                by_normalised_name.setdefault(key, identity)
+            return tuple(
+                by_normalised_name.get(normalize_identifier(str(name)))
+                for name in names
+            )
 
     async def list_active(self) -> tuple[AgentIdentity, ...]:
         """List all agents with ACTIVE status.
@@ -278,11 +283,10 @@ class AgentRegistryService:
             Tuple of matching agent identities.
         """
         async with self._lock:
-            dept_lower = str(department).lower()
             return tuple(
                 a
                 for a in self._agents.values()
-                if str(a.department).lower() == dept_lower
+                if compare_ci(str(a.department), str(department))
             )
 
     async def update_status(

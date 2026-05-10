@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 from collections.abc import AsyncGenerator, Sequence
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 
@@ -13,6 +14,7 @@ from synthorg.communication.errors import ChannelAlreadyExistsError
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.resolver import ConfigResolver
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -46,6 +48,54 @@ def _envelope(msg: Message) -> DeliveryEnvelope:
         channel_name="#settings",
         delivered_at=datetime.now(UTC),
     )
+
+
+class _FakeConfigResolver:
+    """Minimal resolver stub used to inject deterministic dispatcher tunables.
+
+    The dispatcher reads ``settings.dispatcher_max_consecutive_errors``
+    and ``settings.dispatcher_stop_drain_timeout_seconds`` via
+    ``ConfigResolver``; tests inject this stub when they need to
+    exercise either knob without standing up the full
+    ``SettingsService`` stack.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_consecutive_errors: int | None = None,
+        stop_drain_timeout_seconds: float | None = None,
+        enabled: bool = True,
+    ) -> None:
+        self._max_consecutive_errors = max_consecutive_errors
+        self._stop_drain_timeout_seconds = stop_drain_timeout_seconds
+        self._enabled = enabled
+
+    async def get_int(self, namespace: str, key: str) -> int:
+        if (
+            namespace == "settings"
+            and key == "dispatcher_max_consecutive_errors"
+            and self._max_consecutive_errors is not None
+        ):
+            return self._max_consecutive_errors
+        msg = f"unexpected get_int({namespace!r}, {key!r})"
+        raise KeyError(msg)
+
+    async def get_float(self, namespace: str, key: str) -> float:
+        if (
+            namespace == "settings"
+            and key == "dispatcher_stop_drain_timeout_seconds"
+            and self._stop_drain_timeout_seconds is not None
+        ):
+            return self._stop_drain_timeout_seconds
+        msg = f"unexpected get_float({namespace!r}, {key!r})"
+        raise KeyError(msg)
+
+    async def get_bool(self, namespace: str, key: str) -> bool:
+        if namespace == "settings" and key == "dispatcher_enabled":
+            return self._enabled
+        msg = f"unexpected get_bool({namespace!r}, {key!r})"
+        raise KeyError(msg)
 
 
 class _FakeSubscriber:
@@ -526,7 +576,12 @@ class TestDoneCallback:
         assert d._task is not None
         with contextlib.suppress(Exception):
             await asyncio.wait_for(d._task, timeout=2.0)
-        # done_callback should have set _running to False
+        # The done callback schedules a follow-up coroutine that
+        # acquires ``_lifecycle_lock`` before clearing ``_running``;
+        # wait for it to finish so the assertion observes the
+        # post-lock state instead of the in-flight intermediate.
+        if d._post_done_tasks:
+            await asyncio.gather(*d._post_done_tasks)
         assert d._running is False
 
 
@@ -564,7 +619,6 @@ class TestConsecutiveErrors:
         import synthorg.settings.dispatcher as _mod
 
         monkeypatch.setattr(_mod, "_ERROR_BACKOFF", 0.01)
-        monkeypatch.setattr(_mod, "_MAX_CONSECUTIVE_ERRORS", 5)
 
         sub = _FakeSubscriber("sub", frozenset({("ns", "k")}))
         call_count = 0
@@ -594,6 +648,9 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
+            config_resolver=cast(
+                ConfigResolver, _FakeConfigResolver(max_consecutive_errors=5)
+            ),
         )
         await d.start()
         try:
@@ -606,11 +663,10 @@ class TestConsecutiveErrors:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Loop exits after _MAX_CONSECUTIVE_ERRORS OSErrors."""
+        """Loop exits after the configured max-consecutive-errors OSErrors."""
         import synthorg.settings.dispatcher as _mod
 
         monkeypatch.setattr(_mod, "_ERROR_BACKOFF", 0.01)
-        monkeypatch.setattr(_mod, "_MAX_CONSECUTIVE_ERRORS", 5)
 
         class _PermanentErrorBus(_FakeBus):
             async def receive(
@@ -628,9 +684,205 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
+            config_resolver=cast(
+                ConfigResolver, _FakeConfigResolver(max_consecutive_errors=5)
+            ),
         )
         await d.start()
         assert d._task is not None
         with contextlib.suppress(Exception):
             await asyncio.wait_for(d._task, timeout=10.0)
+        if d._post_done_tasks:
+            await asyncio.gather(*d._post_done_tasks)
         assert d._running is False
+
+
+class _RaisingResolver:
+    """Resolver stub that raises on every read.
+
+    Exercises the dispatcher's bootstrap-fallback / resolve-failure
+    paths: ``_resolve_enabled`` resolves to ``True``,
+    ``_resolve_max_consecutive_errors`` to ``30``, and
+    ``_resolve_stop_drain_timeout`` to ``10.0``, in each case via
+    the broad ``except Exception`` branch in the dispatcher.
+    """
+
+    async def get_bool(self, namespace: str, key: str) -> bool:
+        msg = f"resolver-down on get_bool({namespace!r}, {key!r})"
+        raise RuntimeError(msg)
+
+    async def get_int(self, namespace: str, key: str) -> int:
+        msg = f"resolver-down on get_int({namespace!r}, {key!r})"
+        raise RuntimeError(msg)
+
+    async def get_float(self, namespace: str, key: str) -> float:
+        msg = f"resolver-down on get_float({namespace!r}, {key!r})"
+        raise RuntimeError(msg)
+
+
+@pytest.mark.unit
+class TestResolverHelpers:
+    """Direct exercises of the new bootstrap-fallback resolver helpers."""
+
+    async def test_resolve_enabled_no_resolver_returns_true(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
+        assert await d._resolve_enabled() is True
+
+    async def test_resolve_enabled_uses_resolver_value(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(),
+            config_resolver=cast(ConfigResolver, _FakeConfigResolver(enabled=False)),
+        )
+        assert await d._resolve_enabled() is False
+
+    async def test_resolve_enabled_resolver_failure_returns_true(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(),
+            config_resolver=cast(ConfigResolver, _RaisingResolver()),
+        )
+        assert await d._resolve_enabled() is True
+        assert d._resolve_failed_logged is True
+        assert await d._resolve_enabled() is True
+
+    async def test_resolve_max_consecutive_errors_no_resolver(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
+        assert await d._resolve_max_consecutive_errors() == 30
+
+    async def test_resolve_max_consecutive_errors_uses_resolver(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(),
+            config_resolver=cast(
+                ConfigResolver,
+                _FakeConfigResolver(max_consecutive_errors=7),
+            ),
+        )
+        assert await d._resolve_max_consecutive_errors() == 7
+
+    async def test_resolve_max_consecutive_errors_resolver_failure(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(),
+            config_resolver=cast(ConfigResolver, _RaisingResolver()),
+        )
+        assert await d._resolve_max_consecutive_errors() == 30
+
+    async def test_resolve_stop_drain_timeout_no_resolver(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
+        assert await d._resolve_stop_drain_timeout() == 10.0
+
+    async def test_resolve_stop_drain_timeout_uses_resolver(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(),
+            config_resolver=cast(
+                ConfigResolver,
+                _FakeConfigResolver(stop_drain_timeout_seconds=2.5),
+            ),
+        )
+        assert await d._resolve_stop_drain_timeout() == 2.5
+
+    async def test_resolve_stop_drain_timeout_resolver_failure(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(),
+            config_resolver=cast(ConfigResolver, _RaisingResolver()),
+        )
+        assert await d._resolve_stop_drain_timeout() == 10.0
+
+
+@pytest.mark.unit
+class TestKillSwitch:
+    """End-to-end coverage of the dispatcher_enabled kill switch path."""
+
+    async def test_disabled_loop_skips_bus_receive(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Loop sleeps without consuming bus when dispatcher_enabled=False."""
+        import synthorg.settings.dispatcher as _mod
+
+        monkeypatch.setattr(_mod, "_POLL_TIMEOUT", 0.01)
+
+        receive_calls = 0
+
+        class _CountingBus(_FakeBus):
+            async def receive(
+                self,
+                channel_name: str,
+                subscriber_id: str,
+                *,
+                timeout: float | None = None,  # noqa: ASYNC109
+            ) -> DeliveryEnvelope | None:
+                nonlocal receive_calls
+                receive_calls += 1
+                await asyncio.Event().wait()
+                return None
+
+        bus = _CountingBus()
+        sub = _FakeSubscriber("sub", frozenset())
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(sub,),
+            config_resolver=cast(ConfigResolver, _FakeConfigResolver(enabled=False)),
+        )
+        await d.start()
+        try:
+            # Allow several loop iterations; with kill switch False the
+            # body sleeps+continues without ever calling bus.receive.
+            await asyncio.sleep(0.05)
+            assert receive_calls == 0
+        finally:
+            await d.stop()
+
+
+@pytest.mark.unit
+class TestLazyLifecycleLock:
+    """Coverage for the lazy-init lifecycle lock + cross-loop helpers."""
+
+    async def test_init_does_not_construct_lock(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
+        assert d._lifecycle_lock is None
+
+    async def test_start_constructs_lock_on_first_call(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
+        await d.start()
+        try:
+            assert d._lifecycle_lock is not None
+        finally:
+            await d.stop()
+
+    async def test_stop_without_start_is_noop(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
+        await d.stop()
+        assert d._lifecycle_lock is None
+        assert d._running is False
+
+    async def test_task_is_on_current_loop_handles_no_task(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
+        assert d._task_is_on_current_loop() is True
+
+    async def test_drop_stale_loop_state_clears_task_and_lock(self) -> None:
+        bus = _FakeBus()
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
+        await d.start()
+        await d.stop()
+        d._lifecycle_lock = asyncio.Lock()
+        d._drop_stale_loop_state()
+        assert d._task is None
+        assert d._lifecycle_lock is None
