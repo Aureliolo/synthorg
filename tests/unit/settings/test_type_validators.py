@@ -90,9 +90,11 @@ class TestRegistryShape:
 
 @pytest.mark.unit
 class TestValidateString:
-    def test_string_is_no_op(self) -> None:
-        validate_by_type(_make_definition(setting_type=SettingType.STRING), "anything")
-        validate_by_type(_make_definition(setting_type=SettingType.STRING), "")
+    @pytest.mark.parametrize("value", ["anything", "", "with spaces", "0", "false"])
+    def test_string_is_no_op(self, value: str) -> None:
+        # No assertion needed: validate_by_type returns None and STRING raises
+        # nothing for any input. The test passes iff the call doesn't raise.
+        validate_by_type(_make_definition(setting_type=SettingType.STRING), value)
 
 
 # ── INTEGER ──────────────────────────────────────────────────────
@@ -100,24 +102,16 @@ class TestValidateString:
 
 @pytest.mark.unit
 class TestValidateInteger:
-    def test_accepts_integer_string(self) -> None:
-        validate_by_type(_make_definition(setting_type=SettingType.INTEGER), "42")
+    @pytest.mark.parametrize("value", ["42", "-7", "0", "1000000"])
+    def test_accepts_integer_strings(self, value: str) -> None:
+        validate_by_type(_make_definition(setting_type=SettingType.INTEGER), value)
 
-    def test_accepts_negative(self) -> None:
-        validate_by_type(_make_definition(setting_type=SettingType.INTEGER), "-7")
-
-    def test_rejects_non_integer(self) -> None:
+    @pytest.mark.parametrize("value", ["abc", "3.14", "", "1e10", "0x10"])
+    def test_rejects_non_integer(self, value: str) -> None:
         with pytest.raises(SettingValidationError, match="Expected integer"):
             validate_by_type(
                 _make_definition(setting_type=SettingType.INTEGER),
-                "abc",
-            )
-
-    def test_rejects_float_string(self) -> None:
-        with pytest.raises(SettingValidationError, match="Expected integer"):
-            validate_by_type(
-                _make_definition(setting_type=SettingType.INTEGER),
-                "3.14",
+                value,
             )
 
     def test_sensitive_value_masked_in_error(self) -> None:
@@ -161,17 +155,16 @@ class TestValidateInteger:
 
 @pytest.mark.unit
 class TestValidateFloat:
-    def test_accepts_float_string(self) -> None:
-        validate_by_type(_make_definition(setting_type=SettingType.FLOAT), "3.14")
+    @pytest.mark.parametrize("value", ["3.14", "5", "-2.5", "0", "0.0", "1e10"])
+    def test_accepts_float_strings(self, value: str) -> None:
+        validate_by_type(_make_definition(setting_type=SettingType.FLOAT), value)
 
-    def test_accepts_integer_string(self) -> None:
-        validate_by_type(_make_definition(setting_type=SettingType.FLOAT), "5")
-
-    def test_rejects_non_numeric(self) -> None:
+    @pytest.mark.parametrize("value", ["abc", "", "3.14.15", "0x10"])
+    def test_rejects_non_numeric(self, value: str) -> None:
         with pytest.raises(SettingValidationError, match="Expected float"):
             validate_by_type(
                 _make_definition(setting_type=SettingType.FLOAT),
-                "abc",
+                value,
             )
 
     def test_below_min_rejected(self) -> None:

@@ -1,14 +1,20 @@
 """Per-`WorkflowNodeType` step builders dispatched through a registry.
 
-Each builder mutates the partially-assembled YAML step dict in place,
-adding type-specific fields.  The registry covers every
-:class:`~synthorg.core.enums.WorkflowNodeType` member that reaches the
-builder pipeline; ``START`` and ``END`` are filtered upstream in
-``yaml_export._generate_steps`` and are intentionally absent from the
-registry so a stray START/END node would surface as a ``KeyError``.
+Each builder mutates ``StepBuildContext.step`` in place, adding type-specific
+fields.  Wrapping the step dict, the read-only node config, and the
+read-only outgoing-edge list in a frozen :class:`StepBuildContext` keeps
+the handler contract self-documenting: ``step`` is the mutable output
+slot, while ``config`` and ``outgoing_edges`` are read-only inputs.
+
+The registry covers every :class:`~synthorg.core.enums.WorkflowNodeType`
+member that reaches the builder pipeline; ``START`` and ``END`` are
+filtered upstream in ``yaml_export._generate_steps`` and are intentionally
+absent from the registry so a stray START/END node would surface as a
+``KeyError``.
 """
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final
 
@@ -35,103 +41,84 @@ _ASSIGNMENT_STEP_MAP: Final[Mapping[str, str]] = MappingProxyType(
 )
 
 
-type StepBuilder = Callable[
-    [dict[str, Any], dict[str, Any], list[tuple[str, WorkflowEdgeType]]],
-    None,
-]
+@dataclass(frozen=True, slots=True)
+class StepBuildContext:
+    """Inputs for a single step-builder invocation.
+
+    Attributes:
+        step: The partially-assembled YAML step dict; builders mutate
+            this in place to add type-specific fields.
+        config: Read-only node config copied from the WorkflowNode.
+        outgoing_edges: Read-only list of ``(target_node_id, edge_type)``
+            tuples for branch enumeration.
+    """
+
+    step: dict[str, Any]
+    config: dict[str, Any]
+    outgoing_edges: list[tuple[str, WorkflowEdgeType]]
 
 
-def _build_task(
-    step: dict[str, Any],
-    config: dict[str, Any],
-    outgoing_edges: list[tuple[str, WorkflowEdgeType]],
-) -> None:
+type StepBuilder = Callable[[StepBuildContext], None]
+
+
+def _build_task(ctx: StepBuildContext) -> None:
     """Copy task config fields into the step, plus an optional embedded assignment."""
-    del outgoing_edges
     for key in _TASK_CONFIG_KEYS:
-        if key in config:
-            step[key] = config[key]
-    if "routing_strategy" in config or "role_filter" in config:
+        if key in ctx.config:
+            ctx.step[key] = ctx.config[key]
+    if "routing_strategy" in ctx.config or "role_filter" in ctx.config:
         assignment = {
-            _ASSIGNMENT_STEP_MAP[k]: str(config[k])
+            _ASSIGNMENT_STEP_MAP[k]: str(ctx.config[k])
             for k in _ASSIGNMENT_KEYS
-            if k in config
+            if k in ctx.config
         }
-        step["agent_assignment"] = assignment
+        ctx.step["agent_assignment"] = assignment
 
 
-def _build_assignment(
-    step: dict[str, Any],
-    config: dict[str, Any],
-    outgoing_edges: list[tuple[str, WorkflowEdgeType]],
-) -> None:
+def _build_assignment(ctx: StepBuildContext) -> None:
     """Copy agent assignment fields into the step, remapped via the step map."""
-    del outgoing_edges
     for key in _ASSIGNMENT_KEYS:
-        if key in config:
-            step[_ASSIGNMENT_STEP_MAP[key]] = config[key]
+        if key in ctx.config:
+            ctx.step[_ASSIGNMENT_STEP_MAP[key]] = ctx.config[key]
 
 
-def _build_conditional(
-    step: dict[str, Any],
-    config: dict[str, Any],
-    outgoing_edges: list[tuple[str, WorkflowEdgeType]],
-) -> None:
+def _build_conditional(ctx: StepBuildContext) -> None:
     """Add the conditional expression as a top-level ``condition`` field."""
-    del outgoing_edges
-    if "condition_expression" in config:
-        step["condition"] = config["condition_expression"]
+    if "condition_expression" in ctx.config:
+        ctx.step["condition"] = ctx.config["condition_expression"]
 
 
-def _build_parallel_split(
-    step: dict[str, Any],
-    config: dict[str, Any],
-    outgoing_edges: list[tuple[str, WorkflowEdgeType]],
-) -> None:
+def _build_parallel_split(ctx: StepBuildContext) -> None:
     """Emit branch targets and optional ``max_concurrency`` for a split node."""
-    step["branches"] = [
+    ctx.step["branches"] = [
         target
-        for target, edge_type in outgoing_edges
+        for target, edge_type in ctx.outgoing_edges
         if edge_type == WorkflowEdgeType.PARALLEL_BRANCH
     ]
-    if "max_concurrency" in config:
-        step["max_concurrency"] = config["max_concurrency"]
+    if "max_concurrency" in ctx.config:
+        ctx.step["max_concurrency"] = ctx.config["max_concurrency"]
 
 
-def _build_parallel_join(
-    step: dict[str, Any],
-    config: dict[str, Any],
-    outgoing_edges: list[tuple[str, WorkflowEdgeType]],
-) -> None:
+def _build_parallel_join(ctx: StepBuildContext) -> None:
     """Emit ``join_strategy`` defaulting to ``"all"``."""
-    del outgoing_edges
-    step["join_strategy"] = config.get("join_strategy", "all")
+    ctx.step["join_strategy"] = ctx.config.get("join_strategy", "all")
 
 
-def _build_subworkflow(
-    step: dict[str, Any],
-    config: dict[str, Any],
-    outgoing_edges: list[tuple[str, WorkflowEdgeType]],
-) -> None:
+def _build_subworkflow(ctx: StepBuildContext) -> None:
     """Copy the subworkflow reference and optional binding maps."""
-    del outgoing_edges
-    if "subworkflow_id" in config:
-        step["subworkflow_id"] = config["subworkflow_id"]
-    if "version" in config:
-        step["version"] = config["version"]
-    if config.get("input_bindings"):
-        step["input_bindings"] = dict(config["input_bindings"])
-    if config.get("output_bindings"):
-        step["output_bindings"] = dict(config["output_bindings"])
+    if "subworkflow_id" in ctx.config:
+        ctx.step["subworkflow_id"] = ctx.config["subworkflow_id"]
+    if "version" in ctx.config:
+        ctx.step["version"] = ctx.config["version"]
+    if ctx.config.get("input_bindings"):
+        ctx.step["input_bindings"] = dict(ctx.config["input_bindings"])
+    if ctx.config.get("output_bindings"):
+        ctx.step["output_bindings"] = dict(ctx.config["output_bindings"])
 
 
-def _build_verification(
-    step: dict[str, Any],
-    config: dict[str, Any],
-    outgoing_edges: list[tuple[str, WorkflowEdgeType]],
-) -> None:
+def _build_verification(ctx: StepBuildContext) -> None:
     """No-op: verification nodes carry no extra fields in the YAML output."""
-    del step, config, outgoing_edges
+    del ctx
 
 
 STEP_BUILDERS: Final[Mapping[WorkflowNodeType, StepBuilder]] = MappingProxyType(

@@ -14,7 +14,10 @@ from synthorg.engine.workflow.graph_utils import (
     build_adjacency_maps,
     topological_sort,
 )
-from synthorg.engine.workflow.yaml_step_builders import STEP_BUILDERS
+from synthorg.engine.workflow.yaml_step_builders import (
+    STEP_BUILDERS,
+    StepBuildContext,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_EXPORT_FAILED,
@@ -37,7 +40,9 @@ def _build_step(
     """Build a single step dict for the YAML output."""
     step: dict[str, Any] = {"id": node_id, "type": node_type.value}
 
-    STEP_BUILDERS[node_type](step, config, outgoing_edges)
+    STEP_BUILDERS[node_type](
+        StepBuildContext(step=step, config=config, outgoing_edges=outgoing_edges),
+    )
 
     depends_on = [nid for nid in incoming_node_ids if nid != node_id]
     if depends_on:

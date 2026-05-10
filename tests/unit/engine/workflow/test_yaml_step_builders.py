@@ -5,11 +5,26 @@ from typing import Any
 import pytest
 
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
-from synthorg.engine.workflow.yaml_step_builders import STEP_BUILDERS
+from synthorg.engine.workflow.yaml_step_builders import (
+    STEP_BUILDERS,
+    StepBuildContext,
+)
 
 
 def _new_step(node_id: str, node_type: WorkflowNodeType) -> dict[str, Any]:
     return {"id": node_id, "type": node_type.value}
+
+
+def _ctx(
+    step: dict[str, Any],
+    config: dict[str, Any] | None = None,
+    outgoing: list[tuple[str, WorkflowEdgeType]] | None = None,
+) -> StepBuildContext:
+    return StepBuildContext(
+        step=step,
+        config=config if config is not None else {},
+        outgoing_edges=outgoing if outgoing is not None else [],
+    )
 
 
 # ── Registry exhaustiveness ──────────────────────────────────────
@@ -46,7 +61,7 @@ class TestTaskBuilder:
             "complexity": "medium",
             "coordination_topology": "centralized",
         }
-        STEP_BUILDERS[WorkflowNodeType.TASK](step, config, [])
+        STEP_BUILDERS[WorkflowNodeType.TASK](_ctx(step, config))
         assert step["title"] == "Design"
         assert step["task_type"] == "design"
         assert step["priority"] == "high"
@@ -55,7 +70,7 @@ class TestTaskBuilder:
 
     def test_skips_missing_task_keys(self) -> None:
         step = _new_step("t1", WorkflowNodeType.TASK)
-        STEP_BUILDERS[WorkflowNodeType.TASK](step, {"title": "Only title"}, [])
+        STEP_BUILDERS[WorkflowNodeType.TASK](_ctx(step, {"title": "Only title"}))
         assert step == {"id": "t1", "type": "task", "title": "Only title"}
 
     def test_embedded_assignment_when_routing_present(self) -> None:
@@ -65,7 +80,7 @@ class TestTaskBuilder:
             "routing_strategy": "cost_optimized",
             "role_filter": "senior_engineer",
         }
-        STEP_BUILDERS[WorkflowNodeType.TASK](step, config, [])
+        STEP_BUILDERS[WorkflowNodeType.TASK](_ctx(step, config))
         assert step["agent_assignment"] == {
             "strategy": "cost_optimized",
             "role": "senior_engineer",
@@ -73,7 +88,7 @@ class TestTaskBuilder:
 
     def test_no_embedded_assignment_when_routing_absent(self) -> None:
         step = _new_step("t1", WorkflowNodeType.TASK)
-        STEP_BUILDERS[WorkflowNodeType.TASK](step, {"title": "Plain"}, [])
+        STEP_BUILDERS[WorkflowNodeType.TASK](_ctx(step, {"title": "Plain"}))
         assert "agent_assignment" not in step
 
 
@@ -89,7 +104,7 @@ class TestAssignmentBuilder:
             "role_filter": "engineer",
             "agent_name": "agent-007",
         }
-        STEP_BUILDERS[WorkflowNodeType.AGENT_ASSIGNMENT](step, config, [])
+        STEP_BUILDERS[WorkflowNodeType.AGENT_ASSIGNMENT](_ctx(step, config))
         assert step["strategy"] == "role_based"
         assert step["role"] == "engineer"
         assert step["agent_name"] == "agent-007"
@@ -97,9 +112,7 @@ class TestAssignmentBuilder:
     def test_partial_assignment_only_emits_present_keys(self) -> None:
         step = _new_step("a1", WorkflowNodeType.AGENT_ASSIGNMENT)
         STEP_BUILDERS[WorkflowNodeType.AGENT_ASSIGNMENT](
-            step,
-            {"routing_strategy": "role_based"},
-            [],
+            _ctx(step, {"routing_strategy": "role_based"}),
         )
         assert step["strategy"] == "role_based"
         assert "role" not in step
@@ -114,15 +127,13 @@ class TestConditionalBuilder:
     def test_adds_condition_when_expression_present(self) -> None:
         step = _new_step("c1", WorkflowNodeType.CONDITIONAL)
         STEP_BUILDERS[WorkflowNodeType.CONDITIONAL](
-            step,
-            {"condition_expression": "x > 0"},
-            [],
+            _ctx(step, {"condition_expression": "x > 0"}),
         )
         assert step["condition"] == "x > 0"
 
     def test_no_condition_field_when_expression_absent(self) -> None:
         step = _new_step("c1", WorkflowNodeType.CONDITIONAL)
-        STEP_BUILDERS[WorkflowNodeType.CONDITIONAL](step, {}, [])
+        STEP_BUILDERS[WorkflowNodeType.CONDITIONAL](_ctx(step))
         assert "condition" not in step
 
 
@@ -138,21 +149,23 @@ class TestParallelSplitBuilder:
             ("b", WorkflowEdgeType.PARALLEL_BRANCH),
             ("c", WorkflowEdgeType.SEQUENTIAL),
         ]
-        STEP_BUILDERS[WorkflowNodeType.PARALLEL_SPLIT](step, {}, outgoing)
+        STEP_BUILDERS[WorkflowNodeType.PARALLEL_SPLIT](_ctx(step, outgoing=outgoing))
         assert step["branches"] == ["a", "b"]
 
     def test_max_concurrency_copied_when_present(self) -> None:
         step = _new_step("s1", WorkflowNodeType.PARALLEL_SPLIT)
         STEP_BUILDERS[WorkflowNodeType.PARALLEL_SPLIT](
-            step,
-            {"max_concurrency": 4},
-            [("a", WorkflowEdgeType.PARALLEL_BRANCH)],
+            _ctx(
+                step,
+                {"max_concurrency": 4},
+                [("a", WorkflowEdgeType.PARALLEL_BRANCH)],
+            ),
         )
         assert step["max_concurrency"] == 4
 
     def test_max_concurrency_omitted_when_absent(self) -> None:
         step = _new_step("s1", WorkflowNodeType.PARALLEL_SPLIT)
-        STEP_BUILDERS[WorkflowNodeType.PARALLEL_SPLIT](step, {}, [])
+        STEP_BUILDERS[WorkflowNodeType.PARALLEL_SPLIT](_ctx(step))
         assert "max_concurrency" not in step
 
 
@@ -163,15 +176,13 @@ class TestParallelSplitBuilder:
 class TestParallelJoinBuilder:
     def test_join_strategy_default_all(self) -> None:
         step = _new_step("j1", WorkflowNodeType.PARALLEL_JOIN)
-        STEP_BUILDERS[WorkflowNodeType.PARALLEL_JOIN](step, {}, [])
+        STEP_BUILDERS[WorkflowNodeType.PARALLEL_JOIN](_ctx(step))
         assert step["join_strategy"] == "all"
 
     def test_join_strategy_from_config(self) -> None:
         step = _new_step("j1", WorkflowNodeType.PARALLEL_JOIN)
         STEP_BUILDERS[WorkflowNodeType.PARALLEL_JOIN](
-            step,
-            {"join_strategy": "any"},
-            [],
+            _ctx(step, {"join_strategy": "any"}),
         )
         assert step["join_strategy"] == "any"
 
@@ -189,7 +200,7 @@ class TestSubworkflowBuilder:
             "input_bindings": {"a": "$x"},
             "output_bindings": {"y": "$b"},
         }
-        STEP_BUILDERS[WorkflowNodeType.SUBWORKFLOW](step, config, [])
+        STEP_BUILDERS[WorkflowNodeType.SUBWORKFLOW](_ctx(step, config))
         assert step["subworkflow_id"] == "wf-42"
         assert step["version"] == "v3"
         assert step["input_bindings"] == {"a": "$x"}
@@ -198,9 +209,7 @@ class TestSubworkflowBuilder:
     def test_omits_empty_bindings(self) -> None:
         step = _new_step("sw1", WorkflowNodeType.SUBWORKFLOW)
         STEP_BUILDERS[WorkflowNodeType.SUBWORKFLOW](
-            step,
-            {"subworkflow_id": "wf-42"},
-            [],
+            _ctx(step, {"subworkflow_id": "wf-42"}),
         )
         assert step["subworkflow_id"] == "wf-42"
         assert "input_bindings" not in step
@@ -209,13 +218,14 @@ class TestSubworkflowBuilder:
     def test_omits_falsy_bindings(self) -> None:
         step = _new_step("sw1", WorkflowNodeType.SUBWORKFLOW)
         STEP_BUILDERS[WorkflowNodeType.SUBWORKFLOW](
-            step,
-            {
-                "subworkflow_id": "wf-42",
-                "input_bindings": {},
-                "output_bindings": None,
-            },
-            [],
+            _ctx(
+                step,
+                {
+                    "subworkflow_id": "wf-42",
+                    "input_bindings": {},
+                    "output_bindings": None,
+                },
+            ),
         )
         assert "input_bindings" not in step
         assert "output_bindings" not in step
@@ -229,8 +239,10 @@ class TestVerificationBuilder:
     def test_verification_is_no_op(self) -> None:
         step = _new_step("v1", WorkflowNodeType.VERIFICATION)
         STEP_BUILDERS[WorkflowNodeType.VERIFICATION](
-            step,
-            {"rubric_name": "ignored"},
-            [("x", WorkflowEdgeType.VERIFICATION_PASS)],
+            _ctx(
+                step,
+                {"rubric_name": "ignored"},
+                [("x", WorkflowEdgeType.VERIFICATION_PASS)],
+            ),
         )
         assert step == {"id": "v1", "type": "verification"}

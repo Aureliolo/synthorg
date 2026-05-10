@@ -22,16 +22,25 @@ from synthorg.communication.event_stream.interrupt import (
     InterruptType,
 )
 
-type ResolutionValidator = Callable[[InterruptResolution], str | None]
+# ``None`` means the resolution payload satisfies the interrupt's contract;
+# a ``str`` is the short note the dispatcher passes verbatim as ``note=`` on
+# the ``EVENT_STREAM_INVALID_RESUME_PAYLOAD`` warning. Naming the alias makes
+# that convention type-checkable instead of docstring-only.
+type ResolutionValidationResult = str | None
+type ResolutionValidator = Callable[[InterruptResolution], ResolutionValidationResult]
 
 
-def _validate_tool_approval(resolution: InterruptResolution) -> str | None:
+def _validate_tool_approval(
+    resolution: InterruptResolution,
+) -> ResolutionValidationResult:
     if resolution.decision is None:
         return "TOOL_APPROVAL requires decision"
     return None
 
 
-def _validate_info_request(resolution: InterruptResolution) -> str | None:
+def _validate_info_request(
+    resolution: InterruptResolution,
+) -> ResolutionValidationResult:
     if resolution.response is None:
         return "INFO_REQUEST requires response"
     return None
