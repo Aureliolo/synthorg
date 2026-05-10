@@ -17,6 +17,7 @@ commit ...`` or set ``ALLOW_BASELINE_GROWTH=1`` in the environment.
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +26,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 EXIT_OK = 0
 EXIT_GROWTH_DETECTED = 1
 EXIT_INVALID_BASELINE = 2
+
+_SCRIPTS_DIRNAME = "scripts"
+_BASELINE_BASENAME_RE = re.compile(r"^_?[a-z][a-z_]*_baseline\.(?:txt|json|py)$")
 
 
 class InvalidBaselineError(Exception):
@@ -123,18 +127,25 @@ def _classify(path: str) -> str:
 
 
 def _safe_baseline_path(path: str) -> Path | None:
-    """Resolve ``path`` against ``REPO_ROOT`` and confirm it stays inside the repo.
+    """Convert a staged baseline path into an absolute ``Path`` inside ``REPO_ROOT``.
 
     Defends against path-injection: pre-commit feeds this gate a list of staged
-    paths from argv. ``_is_baseline_path`` already restricts the shape, but a
-    resolved path that escapes ``REPO_ROOT`` (symlinks, exotic basenames) must
-    still be rejected before any filesystem read.
+    paths from argv. Rather than passing the user-controlled string into
+    ``Path.resolve()`` and hoping the resolved location stays inside the repo,
+    extract the basename, validate it against a strict regex, and construct the
+    filesystem path from a hardcoded directory plus the validated basename. The
+    user-supplied directory portion is discarded; only the regex-clean basename
+    is joined to ``REPO_ROOT / "scripts"``. Returns ``None`` for any input that
+    does not match the canonical ``scripts/<allowed-basename>`` shape.
     """
-    repo_root = REPO_ROOT.resolve()
-    candidate = (repo_root / path).resolve()
-    if candidate == repo_root or not candidate.is_relative_to(repo_root):
+    if not path.startswith(f"{_SCRIPTS_DIRNAME}/"):
         return None
-    return candidate
+    basename = path[len(_SCRIPTS_DIRNAME) + 1 :]
+    if "/" in basename or "\\" in basename:
+        return None
+    if not _BASELINE_BASENAME_RE.fullmatch(basename):
+        return None
+    return REPO_ROOT / _SCRIPTS_DIRNAME / basename
 
 
 def _inspect_path(
@@ -161,7 +172,13 @@ def _inspect_path(
     if head_text is not None:
         try:
             head_count = _staged_entries(head_text, suffix)
-        except InvalidBaselineError:
+        except InvalidBaselineError as exc:
+            print(
+                f"WARNING: HEAD baseline {path} failed to parse ({exc}); "
+                "falling back to head_count=0. The growth check may be "
+                "over-strict for this file until HEAD is repaired.",
+                file=sys.stderr,
+            )
             head_count = 0
     if staged_count > head_count:
         grown.append((path, head_count, staged_count))

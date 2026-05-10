@@ -301,23 +301,75 @@ def test_main_skips_unreadable_staged_file(
     assert rc == 0
 
 
-def test_safe_baseline_path_rejects_repo_escape(
+def test_safe_baseline_path_rejects_path_injection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``_safe_baseline_path`` rejects paths that resolve outside REPO_ROOT.
+    """``_safe_baseline_path`` rejects any input outside the canonical shape.
 
-    Defends against path-injection from untrusted argv: even if a baseline-shaped
-    string slips through ``_is_baseline_path``, the resolved location must remain
-    inside the repository before the gate touches the filesystem.
+    Defends against path-injection from untrusted argv. The implementation
+    validates the basename against a strict regex and joins it to a hardcoded
+    ``REPO_ROOT / "scripts"``, so even a baseline-shaped string that slips
+    through ``_is_baseline_path`` cannot redirect the filesystem read.
     """
     monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
-    assert _MODULE._safe_baseline_path("../escape_baseline.txt") is None
-    assert _MODULE._safe_baseline_path("scripts/../../escape_baseline.txt") is None
-    assert (
-        _MODULE._safe_baseline_path("scripts/legit_baseline.txt")
-        == (tmp_path / "scripts" / "legit_baseline.txt").resolve()
-    )
+    rejected = [
+        "../escape_baseline.txt",
+        "scripts/../../escape_baseline.txt",
+        r"scripts/..\..\escape_baseline.txt",
+        "scripts/subdir/legit_baseline.txt",
+        "scripts/legit_baseline.exe",
+        "scripts/Capitalised_Baseline.txt",
+        "scripts/legit_baseline",
+        "scripts/legit-baseline.txt",
+    ]
+    for path in rejected:
+        assert _MODULE._safe_baseline_path(path) is None, path
+    accepted = {
+        "scripts/legit_baseline.txt": "legit_baseline.txt",
+        "scripts/_workflow_shell_git_commits_baseline.json": (
+            "_workflow_shell_git_commits_baseline.json"
+        ),
+        "scripts/_schema_drift_baseline.py": "_schema_drift_baseline.py",
+    }
+    for path, basename in accepted.items():
+        assert _MODULE._safe_baseline_path(path) == tmp_path / "scripts" / basename, (
+            path
+        )
+
+
+def test_inspect_path_warns_on_corrupt_head_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A corrupt HEAD baseline emits a stderr warning before falling back to 0.
+
+    Silent fallback masked HEAD corruption; the warning makes the over-strict
+    growth check visible without changing the safe behaviour (head_count=0
+    still rejects any non-empty staged baseline as growth).
+    """
+    baseline = tmp_path / "scripts" / "_corrupt_head_baseline.json"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text(json.dumps({"locations": {"a": 1}}), encoding="utf-8")
+    monkeypatch.setattr(_MODULE, "REPO_ROOT", tmp_path)
+    monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
+    with patch.object(
+        _MODULE,
+        "_read_head",
+        return_value="{ this is not valid json ",
+    ):
+        rc: int = _MODULE.main(
+            [
+                "check_baseline_growth.py",
+                "scripts/_corrupt_head_baseline.json",
+            ],
+        )
+    assert rc == _MODULE.EXIT_GROWTH_DETECTED
+    captured = capsys.readouterr()
+    assert "WARNING: HEAD baseline" in captured.err
+    assert "_corrupt_head_baseline.json" in captured.err
+    assert "failed to parse" in captured.err
 
 
 def test_main_handles_multiple_paths_mixed_states(

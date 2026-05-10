@@ -23,9 +23,13 @@ if [[ -z "$FILE_PATH" ]]; then
     exit 0
 fi
 
+# Normalise Windows-style backslashes to forward slashes so the case patterns
+# below match `C:\repo\scripts\foo_baseline.txt` the same as the POSIX form.
+NORMALISED_FILE_PATH=${FILE_PATH//\\//}
+
 REASON=""
 
-case "$FILE_PATH" in
+case "$NORMALISED_FILE_PATH" in
     */tests/baselines/*.json|tests/baselines/*.json)
         REASON="Test timing baselines require explicit user approval to modify. Do not bump baselines to bypass regression guards -- fix the source code or tests instead."
         ;;
