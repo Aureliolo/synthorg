@@ -176,6 +176,8 @@ def _parse_cookies(
     """
     result: dict[str, str] = {}
     for name, value in headers:
+        # Bytes-typed ASGI header lowering is exempt from
+        # ``compare_ci`` (str-only); see normalization.py.
         if name.lower() == b"cookie":
             try:
                 morsel = SimpleCookie(value.decode("latin-1"))
@@ -202,6 +204,8 @@ def _get_header(
     """
     target = name.lower().encode("latin-1")
     for hdr_name, hdr_value in headers:
+        # Bytes-typed ASGI header lowering is exempt from
+        # ``compare_ci`` (str-only); see normalization.py.
         if hdr_name.lower() == target:
             return hdr_value.decode("latin-1")
     return None

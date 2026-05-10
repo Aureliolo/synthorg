@@ -7,6 +7,7 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 
 from synthorg.core.normalization import (
+    compare_ci,
     find_by_name_ci,
     normalize_identifier,
     normalize_optional_string,
@@ -70,6 +71,47 @@ class TestNormalizeIdentifier:
         """Applying the helper twice yields the same result as once."""
         once = normalize_identifier(value)
         assert normalize_identifier(once) == once
+
+
+@pytest.mark.unit
+class TestCompareCi:
+    """``compare_ci`` -- whitespace- and case-insensitive string equality."""
+
+    @pytest.mark.parametrize(
+        ("a", "b", "expected"),
+        [
+            ("alice", "alice", True),
+            ("Alice", "alice", True),
+            ("  Alice  ", "alice", True),
+            ("alice", "  Alice  ", True),
+            ("alice", "bob", False),
+            ("", "", True),
+            ("   ", "", True),
+            # German sharp-s folds to "ss" via casefold (not via lower).
+            ("Straße", "STRASSE", True),
+            # Greek capital sigma vs lowercase sigma forms (final-sigma
+            # preserved consistently by casefold).
+            ("ΣΊΓΜΑ", "σίγμα", True),
+            # Turkish dotted-I folds to ``i`` + combining dot above
+            # under locale-independent casefold.
+            ("İstanbul", "i̇stanbul", True),
+            ("https", "HTTPS", True),
+            ("https", "http", False),
+        ],
+    )
+    def test_cases(self, a: str, b: str, expected: bool) -> None:
+        assert compare_ci(a, b) is expected
+
+    def test_symmetric(self) -> None:
+        assert compare_ci("Alice", "ALICE") == compare_ci("ALICE", "Alice")
+
+    @example(a="Straße", b="STRASSE")
+    @example(a="ΣΊΓΜΑ", b="σίγμα")
+    @example(a="  Alice ", b="alice")
+    @given(a=st.text(), b=st.text())
+    def test_matches_normalize_identifier_contract(self, a: str, b: str) -> None:
+        """Pin the contract: ``compare_ci`` is exactly normalised equality."""
+        assert compare_ci(a, b) == (normalize_identifier(a) == normalize_identifier(b))
 
 
 @pytest.mark.unit

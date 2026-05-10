@@ -14,6 +14,7 @@ from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_HTML_PARSE_ERROR,
@@ -335,7 +336,7 @@ class HTMLParseGuard:
             if element.get("hidden") is not None:
                 elements_to_drop.append(element)
                 continue
-            if element.get("aria-hidden", "").lower() == "true":
+            if compare_ci(element.get("aria-hidden", ""), "true"):
                 elements_to_drop.append(element)
                 continue
             style = element.get("style", "")

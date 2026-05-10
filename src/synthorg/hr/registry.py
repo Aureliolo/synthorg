@@ -15,6 +15,7 @@ from synthorg.core.enums import (
     ApprovalStatus,
     AutonomyLevel,
 )
+from synthorg.core.normalization import compare_ci, find_by_name_ci
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     AgentNotFoundError,
@@ -201,11 +202,7 @@ class AgentRegistryService:
             The first matching agent, or None.
         """
         async with self._lock:
-            name_lower = str(name).lower()
-            for identity in self._agents.values():
-                if str(identity.name).lower() == name_lower:
-                    return identity
-            return None
+            return find_by_name_ci(self._agents.values(), str(name))
 
     async def get_by_names(
         self,
@@ -278,11 +275,10 @@ class AgentRegistryService:
             Tuple of matching agent identities.
         """
         async with self._lock:
-            dept_lower = str(department).lower()
             return tuple(
                 a
                 for a in self._agents.values()
-                if str(a.department).lower() == dept_lower
+                if compare_ci(str(a.department), str(department))
             )
 
     async def update_status(

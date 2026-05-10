@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     WEBHOOK_SIGNATURE_INVALID,
@@ -21,9 +22,8 @@ def _lookup_header_case_insensitive(
     Returns ``""`` when no match is found so callers can keep the
     existing empty-string fallback behaviour.
     """
-    lowered = name.lower()
     for key, value in headers.items():
-        if key.lower() == lowered:
+        if compare_ci(key, name):
             return value
     return ""
 

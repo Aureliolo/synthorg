@@ -20,6 +20,7 @@ from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_recor
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import AgentStatus
+from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_REQUEST_ERROR
@@ -103,8 +104,7 @@ def filter_agents_by_department(
     dept_name: str,
 ) -> tuple[AgentConfig, ...]:
     """Return agents belonging to the named department (case-insensitive)."""
-    lower = dept_name.lower()
-    return tuple(a for a in agents if a.department.lower() == lower)
+    return tuple(a for a in agents if compare_ci(a.department, dept_name))
 
 
 async def _resolve_active_count(

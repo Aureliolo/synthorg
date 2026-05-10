@@ -7,6 +7,7 @@ from the new hire's department.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
@@ -100,7 +101,7 @@ class DepartmentDiversitySampling:
             return ()
 
         department = str(new_agent_department)
-        role_lower = str(new_agent_role).lower()
+        role = str(new_agent_role)
 
         dept_agents = await self._registry.list_by_department(department)
         if not dept_agents:
@@ -112,8 +113,8 @@ class DepartmentDiversitySampling:
             )
             return ()
 
-        same_role = [a for a in dept_agents if str(a.role).lower() == role_lower]
-        diff_role = [a for a in dept_agents if str(a.role).lower() != role_lower]
+        same_role = [a for a in dept_agents if compare_ci(str(a.role), role)]
+        diff_role = [a for a in dept_agents if not compare_ci(str(a.role), role)]
 
         top_performers = await self._rank_by_quality(
             same_role,

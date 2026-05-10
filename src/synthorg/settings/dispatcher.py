@@ -11,6 +11,7 @@ from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType
 from synthorg.communication.errors import ChannelAlreadyExistsError
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
@@ -442,5 +443,5 @@ def _extract_metadata(
     # Default to True (fail-safe): missing/corrupted metadata prevents hot-reload
     # rather than accidentally allowing it for restart-required settings.
     restart_raw = extra.get("restart_required", "True")
-    restart_required = str(restart_raw).lower() != "false"
+    restart_required = not compare_ci(str(restart_raw), "false")
     return _ChangeMetadata(namespace, key, restart_required)

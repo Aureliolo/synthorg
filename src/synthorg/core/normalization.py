@@ -44,6 +44,34 @@ def normalize_identifier(value: str) -> str:
     return value.strip().casefold()
 
 
+def compare_ci(a: str, b: str) -> bool:
+    """Return ``True`` if ``a`` and ``b`` are equal under :func:`normalize_identifier`.
+
+    Both inputs are stripped and case-folded before comparison, so
+    ``compare_ci("  Alice ", "alice") is True`` and
+    ``compare_ci("Straße", "STRASSE") is True``.
+
+    Use this for single-string equality checks (HTTP scheme, role
+    names, yes/no flags). For picking the first item out of an
+    iterable of objects by attribute, prefer :func:`find_by_name_ci`.
+
+    The helper is ``str``-only by design. Three ASGI-layer call
+    sites that compare bytes-typed header names
+    (``synthorg.api.auth.csrf`` and ``synthorg.api.etag``) keep
+    the inline ``name.lower() == b"..."`` pattern: byte equality is
+    idiomatic at that level and decoding to ``str`` purely to call
+    this helper would add overhead in the hot request path.
+
+    Args:
+        a: First string.
+        b: Second string.
+
+    Returns:
+        ``True`` if ``normalize_identifier(a) == normalize_identifier(b)``.
+    """
+    return normalize_identifier(a) == normalize_identifier(b)
+
+
 def find_by_name_ci[T](
     items: Iterable[T],
     target: str,

@@ -7,6 +7,7 @@ quality score from the performance tracker.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
@@ -79,8 +80,7 @@ class RoleTopPerformers:
             Agent IDs ordered by quality score descending.
         """
         active = await self._registry.list_active()
-        role_lower = str(new_agent_role).lower()
-        candidates = [a for a in active if str(a.role).lower() == role_lower]
+        candidates = [a for a in active if compare_ci(str(a.role), str(new_agent_role))]
 
         if not candidates:
             logger.debug(

@@ -16,6 +16,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.enums import SeniorityLevel
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_CREATED,
@@ -167,7 +168,7 @@ class OrgAgentMutationsMixin:
 
         if "name" in fields_set and data.name is not None:
             if self._find_agent(
-                tuple(a for a in agents if a.name.lower() != name.lower()),
+                tuple(a for a in agents if not compare_ci(a.name, name)),
                 str(data.name),
             ):
                 msg = f"Agent {data.name!r} already exists"
@@ -234,7 +235,7 @@ class OrgAgentMutationsMixin:
             updates = await self._validate_agent_update(name, data, agents)
             updated = existing.model_copy(update=updates, deep=True)
             new_agents = tuple(
-                updated if a.name.lower() == name.lower() else a for a in agents
+                updated if compare_ci(a.name, name) else a for a in agents
             )
             captured_updates.update(updates)
             captured["updated"] = updated
@@ -274,9 +275,8 @@ class OrgAgentMutationsMixin:
                 logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
                 raise NotFoundError(msg)
 
-            if (
-                existing.level == SeniorityLevel.C_SUITE
-                and existing.role.lower() == "ceo"
+            if existing.level == SeniorityLevel.C_SUITE and compare_ci(
+                existing.role, "ceo"
             ):
                 msg = f"Cannot delete CEO agent {name!r} -- reassign or demote first"
                 logger.warning(
@@ -289,7 +289,7 @@ class OrgAgentMutationsMixin:
                 raise ConflictError(msg)
 
             captured["resolved"] = existing
-            new_agents = tuple(a for a in agents if a.name.lower() != name.lower())
+            new_agents = tuple(a for a in agents if not compare_ci(a.name, name))
             return new_agents, version
 
         async def write(
@@ -332,7 +332,7 @@ class OrgAgentMutationsMixin:
 
             agents = await self._read_agents()
             dept_agents = tuple(
-                a for a in agents if a.department.lower() == dept_name.lower()
+                a for a in agents if compare_ci(a.department, dept_name)
             )
             current_names = tuple(a.name for a in dept_agents)
             self._validate_permutation(current_names, data.agent_names, "agent")
@@ -343,9 +343,8 @@ class OrgAgentMutationsMixin:
 
             new_agents: list[AgentConfig] = []
             dept_inserted = False
-            dept_lower = dept_name.lower()
             for a in agents:
-                if a.department.lower() == dept_lower:
+                if compare_ci(a.department, dept_name):
                     if not dept_inserted:
                         new_agents.extend(reordered_dept)
                         dept_inserted = True

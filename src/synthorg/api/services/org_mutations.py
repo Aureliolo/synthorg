@@ -22,6 +22,7 @@ from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.company import Company, Department
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import ValidationError
+from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -184,11 +185,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         name: str,
     ) -> Department | None:
         """Case-insensitive department lookup."""
-        lower = name.lower()
-        for dept in departments:
-            if dept.name.lower() == lower:
-                return dept
-        return None
+        return find_by_name_ci(departments, name)
 
     @staticmethod
     def _collect_department_updates(
@@ -214,11 +211,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         name: str,
     ) -> AgentConfig | None:
         """Case-insensitive agent lookup."""
-        lower = name.lower()
-        for agent in agents:
-            if agent.name.lower() == lower:
-                return agent
-        return None
+        return find_by_name_ci(agents, name)
 
     def _validate_permutation(
         self,
