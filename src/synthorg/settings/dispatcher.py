@@ -179,7 +179,18 @@ class SettingsChangeDispatcher:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(
+            # Recovery requires the stale registration to be gone
+            # before subscribe() runs further down start(). Continuing
+            # past this point on a non-idempotent bus (NATS) would
+            # leave two ``__settings_dispatcher__`` registrations
+            # alive and double-deliver every settings change -- the
+            # exact corruption mode this helper exists to prevent.
+            # Mark the dispatcher unrestartable and re-raise so
+            # start() exits before subscribe() runs again.
+            self._running = False
+            self._task = None
+            self._stop_failed = True
+            logger.error(
                 SETTINGS_DISPATCHER_START_REJECTED,
                 error=(
                     "unsubscribe of crashed-task registration "
@@ -189,6 +200,12 @@ class SettingsChangeDispatcher:
                 error_type=type(exc).__name__,
                 error_description=safe_error_description(exc),
             )
+            msg = (
+                "start() recovery could not remove the stale settings "
+                "subscription; dispatcher marked unrestartable, "
+                "construct a fresh dispatcher instead"
+            )
+            raise RuntimeError(msg) from exc
         self._running = False
         self._task = None
 
@@ -404,6 +421,17 @@ class SettingsChangeDispatcher:
 
             self._running = False
             logger.info(SETTINGS_DISPATCHER_STOPPED)
+        # Drop the lifecycle lock outside the ``async with`` block so
+        # the next ``start()`` (potentially on a different event loop --
+        # e.g. pytest-asyncio's per-test loop, or a process that tore
+        # down the prior loop and rebuilt one) constructs a fresh
+        # ``asyncio.Lock`` bound to the new loop. Without this clear,
+        # ``async with self._lifecycle_lock:`` in the next start()
+        # would raise ``RuntimeError: <Lock> is bound to a different
+        # event loop`` since the cross-loop guard only fires when
+        # ``self._task`` is non-None and stop() has just set it to
+        # None on the way through.
+        self._lifecycle_lock = None
 
     def _on_task_done(self, task: asyncio.Task[None]) -> None:
         """Handle unexpected poll-loop exit.
