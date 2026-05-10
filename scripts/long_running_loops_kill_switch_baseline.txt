@@ -28,7 +28,7 @@ src/synthorg/persistence/sqlite/escalation_repo.py:SQLiteEscalationRepository:_n
 src/synthorg/providers/resilience/rate_limiter.py:RateLimiter:_wait_for_rpm_slot:148
 src/synthorg/providers/resilience/rate_limiter.py:RateLimiter:acquire:71
 src/synthorg/security/timeout/scheduler.py:ApprovalTimeoutScheduler:_run_loop:288
-src/synthorg/settings/dispatcher.py:SettingsChangeDispatcher:_poll_loop:382
+src/synthorg/settings/dispatcher.py:SettingsChangeDispatcher:_poll_loop:392
 src/synthorg/telemetry/collector.py:TelemetryCollector:_heartbeat_loop:777
 src/synthorg/tools/sandbox/lifecycle/per_agent.py:PerAgentStrategy:_idle_expire:277
 src/synthorg/workers/worker.py:Worker:run:115
