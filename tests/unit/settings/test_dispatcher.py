@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 from collections.abc import AsyncGenerator, Sequence
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 
@@ -13,6 +14,7 @@ from synthorg.communication.errors import ChannelAlreadyExistsError
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.resolver import ConfigResolver
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -646,7 +648,9 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
-            config_resolver=_FakeConfigResolver(max_consecutive_errors=5),
+            config_resolver=cast(
+                ConfigResolver, _FakeConfigResolver(max_consecutive_errors=5)
+            ),
         )
         await d.start()
         try:
@@ -680,7 +684,9 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
-            config_resolver=_FakeConfigResolver(max_consecutive_errors=5),
+            config_resolver=cast(
+                ConfigResolver, _FakeConfigResolver(max_consecutive_errors=5)
+            ),
         )
         await d.start()
         assert d._task is not None
