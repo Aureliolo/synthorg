@@ -182,6 +182,11 @@ class TestHumanEscalationFullLoop:
                 decided_by="human:op-x",
             )
 
+    def test_invalid_mode_raises_value_error(self) -> None:
+        """Constructor rejects unknown mode + logs WARNING before raising."""
+        with pytest.raises(ValueError, match="mode must be"):
+            HumanDecisionProcessor(mode="bogus")  # type: ignore[arg-type]
+
     async def test_timeout_returns_escalated_outcome(self) -> None:
         # ``timeout_seconds=0`` triggers the TimeoutError branch
         # deterministically (no real wall-clock sleep).  The resolver

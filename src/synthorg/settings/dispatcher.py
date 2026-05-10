@@ -515,6 +515,15 @@ class SettingsChangeDispatcher:
         budget without a dispatcher restart. Resolver outage falls
         back to the bootstrap default so the loop keeps pumping with
         a sane default rather than aborting on the first error.
+
+        The bootstrap literal (30) duplicates the registered default
+        in ``settings/definitions/settings_ns.py``
+        (``dispatcher_max_consecutive_errors``); kept inline as a
+        literal because importing the registry value at module-load
+        risks a circular import (registry depends on settings models;
+        settings models depend on enums; the dispatcher module is on
+        the resolution path back). Keep both in lockstep when
+        adjusting the registered default.
         """
         bootstrap_default = 30
         if self._config_resolver is None:
@@ -537,6 +546,13 @@ class SettingsChangeDispatcher:
         deadline ahead of a planned drain without code changes.
         Resolver outage falls back to the bootstrap default so the
         drain still bounds the lifecycle lock.
+
+        The bootstrap literal (10.0) duplicates the registered
+        default in ``settings/definitions/settings_ns.py``
+        (``dispatcher_stop_drain_timeout_seconds``); kept inline
+        for the same circular-import reason described on
+        ``_resolve_max_consecutive_errors``. Keep both in lockstep
+        when adjusting the registered default.
         """
         bootstrap_default = 10.0
         if self._config_resolver is None:
