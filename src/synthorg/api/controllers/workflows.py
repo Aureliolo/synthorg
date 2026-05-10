@@ -3,14 +3,15 @@
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
-from litestar import Controller, Request, Response, delete, get, patch, post
+from litestar import Controller, Response, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import ValidationError
 
+from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.controllers._workflow_builders import (
     apply_update,
     build_definition_from_blueprint,
@@ -18,7 +19,6 @@ from synthorg.api.controllers._workflow_builders import (
     run_subworkflow_validation,
     wf_versioning,
 )
-from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.dto_workflow import (
     BlueprintInfoResponse,
@@ -166,12 +166,11 @@ class WorkflowController(Controller):
     )
     async def create_from_blueprint(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         data: CreateFromBlueprintRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Create a new workflow definition from a blueprint."""
-        creator = get_auth_user_id(request)
+        creator = get_authenticated_user_id()
         logger.info(
             BLUEPRINT_INSTANTIATE_START,
             blueprint_name=data.blueprint_name,
@@ -237,12 +236,11 @@ class WorkflowController(Controller):
     )
     async def create_workflow(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         data: CreateWorkflowDefinitionRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Create a new workflow definition."""
-        creator = get_auth_user_id(request)
+        creator = get_authenticated_user_id()
         now = datetime.now(UTC)
         try:
             nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
@@ -317,7 +315,6 @@ class WorkflowController(Controller):
     )
     async def update_workflow(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         workflow_id: PathId,
         data: UpdateWorkflowDefinitionRequest,
@@ -337,7 +334,7 @@ class WorkflowController(Controller):
             msg = f"Subworkflow validation failed: {messages}"
             raise WorkflowDefinitionValidationError(msg)
 
-        updater = get_auth_user_id(request)
+        updater = get_authenticated_user_id()
         # Pre-persist intent log -- captures the operator's request
         # even if the update fails. ``WORKFLOW_DEFINITION_CHANGED``
         # below confirms actual success.
@@ -379,12 +376,11 @@ class WorkflowController(Controller):
     )
     async def delete_workflow(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         workflow_id: PathId,
     ) -> None:
         """Delete a workflow definition and its version history."""
-        actor = get_auth_user_id(request)
+        actor = get_authenticated_user_id()
         # Pre-delete intent log -- captures the operator's request even
         # if the delete itself fails.
         logger.info(

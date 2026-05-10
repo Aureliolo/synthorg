@@ -762,7 +762,6 @@ class TestProviderControllerErrorSanitization:
     ) -> None:
         from unittest.mock import patch
 
-        from litestar import Request
         from pydantic import SecretStr
 
         from synthorg.core.domain_errors import ValidationError
@@ -777,10 +776,9 @@ class TestProviderControllerErrorSanitization:
         mgmt.rotate_credentials.side_effect = boom
 
         ctrl = _provider_controller()
-        request = MagicMock(spec=Request)
         with (
             patch(
-                "synthorg.api.controllers.providers.request_audit_actor",
+                "synthorg.api.controllers.providers.audit_actor_from_context",
                 return_value="actor",
             ),
             pytest.raises(ValidationError) as info,
@@ -788,7 +786,6 @@ class TestProviderControllerErrorSanitization:
             await ctrl.rotate_credentials.fn(
                 ctrl,
                 state=state,
-                request=request,
                 name="test-provider",
                 data=_ApiKeyRotation(
                     auth_type=AuthType.API_KEY,
@@ -802,8 +799,6 @@ class TestProviderControllerErrorSanitization:
     ) -> None:
         from unittest.mock import patch
 
-        from litestar import Request
-
         from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.capability_dtos import (
@@ -815,10 +810,9 @@ class TestProviderControllerErrorSanitization:
         mgmt.update_rate_limits.side_effect = boom
 
         ctrl = _provider_controller()
-        request = MagicMock(spec=Request)
         with (
             patch(
-                "synthorg.api.controllers.providers.request_audit_actor",
+                "synthorg.api.controllers.providers.audit_actor_from_context",
                 return_value="actor",
             ),
             pytest.raises(ValidationError) as info,
@@ -826,7 +820,6 @@ class TestProviderControllerErrorSanitization:
             await ctrl.update_rate_limits.fn(
                 ctrl,
                 state=state,
-                request=request,
                 name="test-provider",
                 data=RateLimitsUpdateRequest(requests_per_minute=10),
             )
@@ -834,8 +827,6 @@ class TestProviderControllerErrorSanitization:
 
     async def test_sync_models_validation_uses_sanitized_text(self) -> None:
         from unittest.mock import patch
-
-        from litestar import Request
 
         from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.errors import ProviderValidationError
@@ -848,10 +839,9 @@ class TestProviderControllerErrorSanitization:
         mgmt.sync_models.side_effect = boom
 
         ctrl = _provider_controller()
-        request = MagicMock(spec=Request)
         with (
             patch(
-                "synthorg.api.controllers.providers.request_audit_actor",
+                "synthorg.api.controllers.providers.audit_actor_from_context",
                 return_value="actor",
             ),
             pytest.raises(ValidationError) as info,
@@ -859,7 +849,6 @@ class TestProviderControllerErrorSanitization:
             await ctrl.sync_models.fn(
                 ctrl,
                 state=state,
-                request=request,
                 name="test-provider",
                 data=SyncModelsRequest(),
             )

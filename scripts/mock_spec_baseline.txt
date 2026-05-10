@@ -340,7 +340,6 @@ tests/unit/api/controllers/test_setup_has_gpu.py:76:27
 tests/unit/api/controllers/test_sse_keepalive_setting.py:28:31
 tests/unit/api/controllers/test_sse_keepalive_setting.py:29:41
 tests/unit/api/controllers/test_sse_revalidate.py:44:21
-tests/unit/api/controllers/test_workflow_helpers.py:24:14
 tests/unit/api/controllers/test_ws.py:608:21
 tests/unit/api/controllers/test_ws.py:614:45
 tests/unit/api/controllers/test_ws.py:633:17
@@ -379,10 +378,10 @@ tests/unit/api/test_app.py:912:28
 tests/unit/api/test_app.py:970:30
 tests/unit/api/test_app.py:971:36
 tests/unit/api/test_app.py:974:35
-tests/unit/api/test_app.py:1354:18
-tests/unit/api/test_app.py:1355:15
-tests/unit/api/test_app.py:1365:18
-tests/unit/api/test_app.py:1378:18
+tests/unit/api/test_app.py:1355:18
+tests/unit/api/test_app.py:1356:15
+tests/unit/api/test_app.py:1366:18
+tests/unit/api/test_app.py:1379:18
 tests/unit/api/test_approval_store.py:309:19
 tests/unit/api/test_approval_store.py:329:19
 tests/unit/api/test_auto_wire_meetings.py:24:11

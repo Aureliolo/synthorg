@@ -1,63 +1,48 @@
-"""Shared helpers for workflow controllers."""
+"""Shared helpers for controllers that derive an audit actor from auth.
 
-from typing import TYPE_CHECKING, Any
+Identity (``user_id``) is exposed via
+:func:`synthorg.api.auth.context.get_authenticated_user_id`; this module
+adds the audit-row helpers that wrap the bound user as a
+:class:`ProviderAuditActor`. Background tasks that legitimately run
+without an authenticated user opt into the ``api`` sentinel via the
+:data:`BACKGROUND_AUDIT_ACTOR` constant.
+"""
 
-from synthorg.core.auth.models import AuthenticatedUser
-from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_AUTH_USER_FALLBACK
+from typing import TYPE_CHECKING, Final
+
+from synthorg.api.auth.context import get_authenticated_user
 
 if TYPE_CHECKING:
-    from litestar import Request
-
     from synthorg.api.dto_provider_capabilities import ProviderAuditActor
 
-logger = get_logger(__name__)
 
+def audit_actor_from_context() -> ProviderAuditActor:
+    """Build a :class:`ProviderAuditActor` from the bound authenticated user.
 
-def get_auth_user_id(request: Request[Any, Any, Any]) -> str:
-    """Extract the authenticated user ID from a request.
-
-    Args:
-        request: The incoming Litestar request.
-
-    Returns:
-        The user ID string, or ``"api"`` when no
-        ``AuthenticatedUser`` is in scope.
-    """
-    auth_user = request.scope.get("user")
-    if isinstance(auth_user, AuthenticatedUser):
-        return auth_user.user_id
-    logger.debug(
-        API_AUTH_USER_FALLBACK,
-        reason="no AuthenticatedUser in scope",
-        path=request.url.path,
-    )
-    return "api"
-
-
-def request_audit_actor(
-    request: Request[Any, Any, Any],
-) -> ProviderAuditActor:
-    """Derive a ``ProviderAuditActor`` from the request scope.
-
-    Falls back to the ``api`` sentinel id (mirroring
-    :func:`get_auth_user_id`) when no ``AuthenticatedUser`` is
-    bound, so audit rows are still emitted from background paths
-    without leaking that as a privileged actor.
+    Raises:
+        AuthContextMissingError: When no authenticated user is bound to
+            the request scope (middleware misconfiguration). Background
+            paths that legitimately have no user should reference
+            :data:`BACKGROUND_AUDIT_ACTOR` instead of calling this.
     """
     from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
         ProviderAuditActor,
     )
 
-    auth_user = request.scope.get("user")
-    if isinstance(auth_user, AuthenticatedUser):
-        return ProviderAuditActor(
-            id=auth_user.user_id,
-            label=auth_user.username,
-        )
-    logger.debug(
-        API_AUTH_USER_FALLBACK,
-        reason="no AuthenticatedUser in scope",
-        path=request.url.path,
+    user = get_authenticated_user()
+    return ProviderAuditActor(id=user.user_id, label=user.username)
+
+
+def _build_background_actor() -> ProviderAuditActor:
+    from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
+        ProviderAuditActor,
     )
+
     return ProviderAuditActor(id="api", label="api")
+
+
+# Sentinel actor for background paths that legitimately have no
+# authenticated user (scheduled jobs, startup probes). Callers must
+# reference this constant explicitly so the ``api`` actor cannot be
+# emitted by accident from a request-coupled code path.
+BACKGROUND_AUDIT_ACTOR: Final[ProviderAuditActor] = _build_background_actor()

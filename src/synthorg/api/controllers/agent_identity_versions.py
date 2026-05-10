@@ -1,14 +1,14 @@
 """Agent identity version history API -- list, get, diff, rollback."""
 
 import asyncio
-from typing import Annotated, Any
+from typing import Annotated
 
-from litestar import Controller, Request, get, post
+from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import InternalServerException
 from litestar.params import Parameter
 
-from synthorg.api.controllers._workflow_helpers import get_auth_user_id
+from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import (
     ApiResponse,
@@ -262,7 +262,6 @@ class AgentIdentityVersionController(Controller):
     )
     async def rollback_identity(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         agent_id: PathId,
         data: RollbackAgentIdentityRequest,
@@ -296,7 +295,7 @@ class AgentIdentityVersionController(Controller):
             msg = "Target version belongs to a different agent"
             raise ValidationError(msg)
 
-        actor = get_auth_user_id(request)
+        actor = get_authenticated_user_id()
         rationale = f"rollback to v{data.target_version} by {actor}"
         if data.reason is not None:
             rationale = f"{rationale}: {data.reason}"

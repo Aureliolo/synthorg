@@ -2,13 +2,13 @@
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
-from litestar import Controller, Request, Response, get, post
+from litestar import Controller, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
-from synthorg.api.controllers._workflow_helpers import get_auth_user_id
+from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_workflow import (
@@ -318,7 +318,6 @@ class WorkflowVersionController(Controller):
     )
     async def rollback_workflow(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         workflow_id: PathId,
         data: RollbackWorkflowRequest,
@@ -333,7 +332,7 @@ class WorkflowVersionController(Controller):
             workflow_id,
             data,
         )
-        updater = get_auth_user_id(request)
+        updater = get_authenticated_user_id()
         rolled_back = _build_rolled_back_definition(
             existing,
             target,
