@@ -41,7 +41,9 @@ class ProtocolEntry:
 
 def _enumerate_protocols() -> list[ProtocolEntry]:
     """Walk SRC and yield every class declared as ``class X(... Protocol ...):``."""
-    pattern = re.compile(r"^class (\w+)\((?:[\w\s,\.]*\b)Protocol\b")
+    pattern = re.compile(
+        r"^class (\w+)(?:\[[^\]]+\])?\((?:[\w\s,\.]*\b)Protocol\b",
+    )
     rc_pattern = re.compile(r"^@runtime_checkable\s*$")
     entries: list[ProtocolEntry] = []
     for py_file in sorted(SRC.rglob("*.py")):
@@ -77,7 +79,14 @@ def _enumerate_protocols() -> list[ProtocolEntry]:
 
 
 def _count(pattern: str, root: Path) -> int:
-    """Count matches via system grep -rE; return 0 on no matches."""
+    """Count matches via system grep -rE.
+
+    Raises ``RuntimeError`` on a missing grep binary or a non-zero
+    grep failure exit code (>1). Silent-zero fallback would
+    misclassify protocols as unused and quietly taint the audit
+    table; the script is invoked manually so failing loudly is the
+    right default.
+    """
     try:
         result = subprocess.run(
             ["grep", "-rE", "--include=*.py", pattern, str(root)],
@@ -85,10 +94,18 @@ def _count(pattern: str, root: Path) -> int:
             capture_output=True,
             text=True,
         )
-    except FileNotFoundError:
-        return 0
+    except FileNotFoundError as exc:
+        msg = (
+            "grep binary not found on PATH; install GNU grep or run "
+            "the audit on a system that ships it."
+        )
+        raise RuntimeError(msg) from exc
     if result.returncode > 1:
-        return 0
+        msg = (
+            f"grep exited with code {result.returncode} for pattern "
+            f"{pattern!r} under {root}: {result.stderr.strip()}"
+        )
+        raise RuntimeError(msg)
     return sum(1 for line in result.stdout.splitlines() if line.strip())
 
 

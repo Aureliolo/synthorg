@@ -144,7 +144,7 @@ class HumanDecisionProcessor:
                     decided_by=decided_by,
                     decision_type=getattr(decision, "type", type(decision).__name__),
                     strategy=ConflictResolutionStrategy.HUMAN.value,
-                    note="winner_select_rejected_non_winner",
+                    note="winner_mode_rejected_reject_decision",
                 )
                 raise ValueError(msg)
             return self._build_reject_resolution(
@@ -236,6 +236,6 @@ class HumanDecisionProcessor:
             decided_by=decided_by,
             strategy=ConflictResolutionStrategy.HUMAN.value,
             outcome=resolution.outcome.value,
-            note="hybrid_processor_rejected",
+            note="hybrid_mode_rejected_decision",
         )
         return resolution

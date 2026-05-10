@@ -16,7 +16,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.enums import SeniorityLevel
-from synthorg.core.normalization import compare_ci
+from synthorg.core.normalization import compare_ci, normalize_identifier
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_CREATED,
@@ -337,8 +337,10 @@ class OrgAgentMutationsMixin:
             current_names = tuple(a.name for a in dept_agents)
             self._validate_permutation(current_names, data.agent_names, "agent")
 
-            agent_by_lower = {a.name.lower(): a for a in dept_agents}
-            reordered_dept = tuple(agent_by_lower[n.lower()] for n in data.agent_names)
+            agent_by_normalised = {normalize_identifier(a.name): a for a in dept_agents}
+            reordered_dept = tuple(
+                agent_by_normalised[normalize_identifier(n)] for n in data.agent_names
+            )
             captured["reordered_dept"] = reordered_dept
 
             new_agents: list[AgentConfig] = []

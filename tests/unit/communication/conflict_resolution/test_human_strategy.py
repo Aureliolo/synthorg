@@ -159,7 +159,7 @@ class TestHumanEscalationFullLoop:
         assert resolution.winning_agent_id is None
         assert resolution.decided_by == "human:op-2"
 
-    async def test_winner_select_rejects_reject_decision(self) -> None:
+    async def test_winner_mode_rejects_reject_decision(self) -> None:
         processor = HumanDecisionProcessor(mode="winner")
         conflict = make_conflict()
         with pytest.raises(ValueError, match="only accepts 'winner'"):
@@ -169,7 +169,7 @@ class TestHumanEscalationFullLoop:
                 decided_by="human:op-x",
             )
 
-    async def test_winner_select_rejects_unknown_agent(self) -> None:
+    async def test_winner_mode_rejects_unknown_agent(self) -> None:
         processor = HumanDecisionProcessor(mode="winner")
         conflict = make_conflict()
         with pytest.raises(ValueError, match="does not match"):

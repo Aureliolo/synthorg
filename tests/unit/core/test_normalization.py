@@ -105,9 +105,16 @@ class TestCompareCi:
     def test_symmetric(self) -> None:
         assert compare_ci("Alice", "ALICE") == compare_ci("ALICE", "Alice")
 
+    @example(a="", b="")
+    @example(a="alice", b="ALICE")
     @example(a="Straße", b="STRASSE")
     @example(a="ΣΊΓΜΑ", b="σίγμα")
     @example(a="  Alice ", b="alice")
+    @example(a="\t alpha \n", b="ALPHA")
+    @example(a="café", b="CAFÉ")
+    @example(a="123abc", b="123ABC")
+    @example(a="a", b="b")
+    @example(a="long" * 64, b=("LONG" * 64).lower())
     @given(a=st.text(), b=st.text())
     def test_matches_normalize_identifier_contract(self, a: str, b: str) -> None:
         """Pin the contract: ``compare_ci`` is exactly normalised equality."""

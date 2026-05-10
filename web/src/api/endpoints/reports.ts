@@ -55,9 +55,20 @@ export async function listReportPeriods(
 export async function generateReport(
   period: ReportPeriod,
 ): Promise<ReportResponse> {
+  // Same defensive narrowing as ``listReportPeriods``: the wire
+  // payload's ``period`` is validated against ``REPORT_PERIOD_VALUES``
+  // before the response is handed back as a typed ``ReportResponse``,
+  // so a backend rolling out a new period cannot silently bypass
+  // ``ReportPeriod`` and break exhaustive switches downstream.
   const response = await apiClient.post<ApiResponse<ReportResponse>>(
     '/reports/generate',
     { period } satisfies GenerateReportRequest,
   )
-  return unwrap(response)
+  const report = unwrap(response)
+  if (!isReportPeriod(report.period)) {
+    throw new Error(
+      `Unknown report period in /reports/generate response (allowed: ${REPORT_PERIOD_VALUES.join(', ')})`,
+    )
+  }
+  return report
 }
