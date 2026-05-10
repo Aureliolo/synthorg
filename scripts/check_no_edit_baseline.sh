@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# PreToolUse hook: block Edit/Write on test timing baselines.
+# PreToolUse hook: block Edit/Write on protected baseline files.
 # Baseline files must only be updated with explicit user approval.
-# Claude must never autonomously bump baselines to bypass regression guards.
+# Claude must never autonomously bump baselines to bypass regression guards
+# or grow gate-suppression debt.
 #
 # Protected files:
-#   - tests/baselines/unit_timing.json
-#   - tests/baselines/*.json (all baselines)
+#   - tests/baselines/*.json            (test timing baselines)
+#   - scripts/*_baseline.txt            (gate suppression baselines)
+#   - scripts/*_baseline.json           (gate suppression baselines)
+#   - scripts/_*_baseline.py            (gate suppression baselines, py-format)
 #
 # Exit behavior:
 #   - Non-baseline files: exit 0 (allow)
@@ -20,8 +23,18 @@ if [[ -z "$FILE_PATH" ]]; then
     exit 0
 fi
 
-if [[ "$FILE_PATH" == */tests/baselines/*.json || "$FILE_PATH" == tests/baselines/*.json ]]; then
-    REASON="Test timing baselines require explicit user approval to modify. Do not bump baselines to bypass regression guards -- fix the source code or tests instead."
+REASON=""
+
+case "$FILE_PATH" in
+    */tests/baselines/*.json|tests/baselines/*.json)
+        REASON="Test timing baselines require explicit user approval to modify. Do not bump baselines to bypass regression guards -- fix the source code or tests instead."
+        ;;
+    */scripts/*_baseline.txt|scripts/*_baseline.txt|*/scripts/*_baseline.json|scripts/*_baseline.json|*/scripts/_*_baseline.py|scripts/_*_baseline.py)
+        REASON="Gate suppression baselines require explicit user approval to modify. Do not grow them to silence new violations -- fix the source instead. If a legitimate exception exists, ask the user before regenerating with the gate's --update-baseline flag."
+        ;;
+esac
+
+if [[ -n "$REASON" ]]; then
     cat <<ENDJSON
 {
   "hookSpecificOutput": {
