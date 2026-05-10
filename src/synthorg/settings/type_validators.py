@@ -41,7 +41,10 @@ def _validate_integer(definition: SettingDefinition, value: str) -> None:
         display = _SENSITIVE_MASK if definition.sensitive else repr(value)
         msg = f"Expected integer, got {display}"
         raise SettingValidationError(msg) from exc
-    _check_range(definition, float(int_val))
+    # Pass the int directly: ``float(huge_int)`` raises OverflowError for
+    # arbitrarily-large ints, and Python's int↔float comparisons work
+    # natively against the ``min_value`` / ``max_value`` bounds.
+    _check_range(definition, int_val)
 
 
 def _validate_float(definition: SettingDefinition, value: str) -> None:
@@ -111,7 +114,7 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
         raise SettingValidationError(msg) from exc
 
 
-def _check_range(definition: SettingDefinition, value: float) -> None:
+def _check_range(definition: SettingDefinition, value: int | float) -> None:
     """Check numeric range constraints."""
     display = _SENSITIVE_MASK if definition.sensitive else str(value)
     if definition.min_value is not None and value < definition.min_value:

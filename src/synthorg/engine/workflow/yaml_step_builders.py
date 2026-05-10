@@ -13,7 +13,7 @@ absent from the registry so a stray START/END node would surface as a
 ``KeyError``.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final
@@ -54,8 +54,19 @@ class StepBuildContext:
     """
 
     step: dict[str, Any]
-    config: dict[str, Any]
-    outgoing_edges: list[tuple[str, WorkflowEdgeType]]
+    config: Mapping[str, Any]
+    outgoing_edges: Sequence[tuple[str, WorkflowEdgeType]]
+
+    def __post_init__(self) -> None:
+        """Freeze the read-only inputs so handlers cannot mutate them.
+
+        ``step`` stays mutable: it is the intended output slot the builders
+        write to. ``config`` and ``outgoing_edges`` are wrapped in
+        ``MappingProxyType`` / ``tuple`` at construction, even if a caller
+        passed a mutable ``dict`` / ``list``.
+        """
+        object.__setattr__(self, "config", MappingProxyType(dict(self.config)))
+        object.__setattr__(self, "outgoing_edges", tuple(self.outgoing_edges))
 
 
 type StepBuilder = Callable[[StepBuildContext], None]

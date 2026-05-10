@@ -1,5 +1,6 @@
 """Unit tests for the WorkflowNodeType step-builder registry."""
 
+from types import MappingProxyType
 from typing import Any
 
 import pytest
@@ -25,6 +26,39 @@ def _ctx(
         config=config if config is not None else {},
         outgoing_edges=outgoing if outgoing is not None else [],
     )
+
+
+# ── Context immutability ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestStepBuildContextImmutability:
+    """Read-only inputs are frozen at construction time."""
+
+    def test_config_is_wrapped_in_mappingproxy(self) -> None:
+        original: dict[str, Any] = {"k": "v"}
+        ctx = _ctx(_new_step("n", WorkflowNodeType.TASK), original)
+        assert isinstance(ctx.config, MappingProxyType)
+
+    def test_config_mutation_via_context_is_blocked(self) -> None:
+        ctx = _ctx(_new_step("n", WorkflowNodeType.TASK), {"k": "v"})
+        with pytest.raises(TypeError):
+            ctx.config["k"] = "mutated"  # type: ignore[index]
+
+    def test_config_caller_mutation_after_construction_does_not_leak(self) -> None:
+        original: dict[str, Any] = {"k": "v"}
+        ctx = _ctx(_new_step("n", WorkflowNodeType.TASK), original)
+        original["k"] = "mutated"
+        original["new"] = "value"
+        assert ctx.config["k"] == "v"
+        assert "new" not in ctx.config
+
+    def test_outgoing_edges_is_tuple(self) -> None:
+        ctx = _ctx(
+            _new_step("n", WorkflowNodeType.PARALLEL_SPLIT),
+            outgoing=[("a", WorkflowEdgeType.PARALLEL_BRANCH)],
+        )
+        assert isinstance(ctx.outgoing_edges, tuple)
 
 
 # ── Registry exhaustiveness ──────────────────────────────────────

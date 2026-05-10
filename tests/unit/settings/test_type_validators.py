@@ -149,6 +149,21 @@ class TestValidateInteger:
         definition = _make_definition(setting_type=SettingType.INTEGER, max_value=5.0)
         validate_by_type(definition, "5")
 
+    def test_huge_integer_does_not_overflow(self) -> None:
+        """``float(int("9"*4000))`` raises OverflowError; range check must not."""
+        definition = _make_definition(
+            setting_type=SettingType.INTEGER,
+            max_value=10.0,
+        )
+        with pytest.raises(SettingValidationError, match="above maximum"):
+            validate_by_type(definition, "9" * 4000)
+
+    def test_huge_integer_passes_when_unbounded(self) -> None:
+        validate_by_type(
+            _make_definition(setting_type=SettingType.INTEGER),
+            "9" * 4000,
+        )
+
 
 # ── FLOAT ────────────────────────────────────────────────────────
 
