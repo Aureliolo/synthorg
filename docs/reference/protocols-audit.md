@@ -6,7 +6,7 @@ Tracker: [#1850](https://github.com/Aureliolo/synthorg/issues/1850) sub-task **I
 
 ## Methodology
 
-Generated mechanically. The helper script lives in the gitignored `_audit/` working area; reproduce the table with `uv run python _audit/protocol_audit.py` from the repo root, run against the commit recorded by the file's most recent edit (the date in the title above tracks that commit). The script walks `src/synthorg/` for every `class X(...Protocol...):` definition and records:
+Generated mechanically by [`scripts/protocol_audit.py`](../../scripts/protocol_audit.py); regenerate with `uv run python scripts/protocol_audit.py` from the repo root against the commit recorded by the date in the title above. The script walks `src/synthorg/` for every `class X(...Protocol...):` definition and records:
 
 - **Path + line** of the `class X(Protocol)` line.
 - **`@runtime_checkable`** decorator presence.
@@ -381,7 +381,7 @@ The `REMOVE` and `REVIEW` candidates above are filed as separate cleanup issues 
 - `[CLEANUP] Protocols audit follow-up: REMOVE pass for engine/strategy/ + engine/quality/ + engine/review/`
 - `[CLEANUP] Protocols audit follow-up: REMOVE pass for memory/procedural/`
 - `[CLEANUP] Protocols audit follow-up: REMOVE pass for security/ + integrations/connections/health/tunnel/ + ontology/ + tools/sandbox/web_search`
-- ``[CLEANUP] Protocols audit follow-up: REVIEW pass for `_PrivatePrefixed` typing seams``
+- `[CLEANUP] Protocols audit follow-up: REVIEW pass for _PrivatePrefixed typing seams`
 - `[CLEANUP] Protocols audit follow-up: fold duplicate-named protocols (ConflictDetector, SignalAggregator)`
 - `[CLEANUP] Protocols audit follow-up: meta-tracking issue umbrella`
 

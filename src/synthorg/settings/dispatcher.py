@@ -137,8 +137,30 @@ class SettingsChangeDispatcher:
             # still queued behind us. _on_task_done's reset coroutine
             # is best-effort cleanup; doing it eagerly here closes the
             # window between the sync callback firing and the locked
-            # reset actually running.
+            # reset actually running. Unsubscribe the dead poll task's
+            # bus registration too: only ``stop()`` and the spawn-
+            # rollback path call ``unsubscribe`` today, so a crash
+            # leaves ``__settings_dispatcher__`` registered on
+            # ``#settings``. The subscribe() further down would then
+            # double-register on bus implementations whose subscribe
+            # is not idempotent (NATS in particular).
             if self._task is not None and self._task.done():
+                try:
+                    await self._bus.unsubscribe(
+                        _SETTINGS_CHANNEL,
+                        _SUBSCRIBER_ID,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        SETTINGS_DISPATCHER_START_REJECTED,
+                        error=(
+                            "unsubscribe of crashed-task registration "
+                            "failed during start() recovery"
+                        ),
+                        reason="recovery_unsubscribe_failed",
+                        error_type=type(exc).__name__,
+                        error_description=safe_error_description(exc),
+                    )
                 self._running = False
                 self._task = None
             if self._running:

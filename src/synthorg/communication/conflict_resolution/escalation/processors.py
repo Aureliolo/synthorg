@@ -217,7 +217,7 @@ class HumanDecisionProcessor:
     @staticmethod
     def _build_reject_resolution(
         conflict: Conflict,
-        decision: EscalationDecision,
+        decision: RejectDecision,
         *,
         decided_by: NotBlankStr,
     ) -> ConflictResolution:
