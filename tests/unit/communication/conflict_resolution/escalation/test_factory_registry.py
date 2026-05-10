@@ -30,8 +30,7 @@ from synthorg.communication.conflict_resolution.escalation.notify import (
     PostgresEscalationNotifySubscriber,
 )
 from synthorg.communication.conflict_resolution.escalation.processors import (
-    HybridDecisionProcessor,
-    WinnerSelectProcessor,
+    HumanDecisionProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     CrossInstanceNotifyCapableStore,
@@ -301,15 +300,17 @@ class TestNotifySubscriberCapabilityCheck:
 class TestDecisionProcessorRegistry:
     """``build_decision_processor`` dispatches via the registry map."""
 
-    def test_winner_strategy_returns_winner_select(self) -> None:
+    def test_winner_strategy_returns_winner_mode(self) -> None:
         config = EscalationQueueConfig(decision_strategy="winner")
         processor = build_decision_processor(config)
-        assert isinstance(processor, WinnerSelectProcessor)
+        assert isinstance(processor, HumanDecisionProcessor)
+        assert processor.mode == "winner"
 
-    def test_hybrid_strategy_returns_hybrid(self) -> None:
+    def test_hybrid_strategy_returns_hybrid_mode(self) -> None:
         config = EscalationQueueConfig(decision_strategy="hybrid")
         processor = build_decision_processor(config)
-        assert isinstance(processor, HybridDecisionProcessor)
+        assert isinstance(processor, HumanDecisionProcessor)
+        assert processor.mode == "hybrid"
 
 
 class TestRegistryFallback:

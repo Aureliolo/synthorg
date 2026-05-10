@@ -22,8 +22,7 @@ from synthorg.communication.conflict_resolution.escalation.notify import (
     NoopEscalationNotifySubscriber,
 )
 from synthorg.communication.conflict_resolution.escalation.processors import (
-    HybridDecisionProcessor,
-    WinnerSelectProcessor,
+    HumanDecisionProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     CrossInstanceNotifyCapableStore,
@@ -312,8 +311,8 @@ def build_escalation_notify_subscriber(  # noqa: PLR0913 -- factory threading
 _DECISION_PROCESSOR_FACTORIES: Mapping[str, _DecisionProcessorFactory] = (
     MappingProxyType(
         {
-            "winner": WinnerSelectProcessor,
-            "hybrid": HybridDecisionProcessor,
+            "winner": lambda: HumanDecisionProcessor(mode="winner"),
+            "hybrid": lambda: HumanDecisionProcessor(mode="hybrid"),
         },
     )
 )

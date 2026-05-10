@@ -16,8 +16,7 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     WinnerDecision,
 )
 from synthorg.communication.conflict_resolution.escalation.processors import (
-    HybridDecisionProcessor,
-    WinnerSelectProcessor,
+    HumanDecisionProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.registry import (
     PendingFuturesRegistry,
@@ -96,7 +95,7 @@ class TestHumanEscalationFullLoop:
         registry, enqueued = _tracking_registry()
         resolver = HumanEscalationResolver(
             store=store,
-            processor=WinnerSelectProcessor(),
+            processor=HumanDecisionProcessor(mode="winner"),
             registry=registry,
             timeout_seconds=5,
         )
@@ -137,7 +136,7 @@ class TestHumanEscalationFullLoop:
         registry, enqueued = _tracking_registry()
         resolver = HumanEscalationResolver(
             store=store,
-            processor=HybridDecisionProcessor(),
+            processor=HumanDecisionProcessor(mode="hybrid"),
             registry=registry,
             timeout_seconds=5,
         )
@@ -161,7 +160,7 @@ class TestHumanEscalationFullLoop:
         assert resolution.decided_by == "human:op-2"
 
     async def test_winner_select_rejects_reject_decision(self) -> None:
-        processor = WinnerSelectProcessor()
+        processor = HumanDecisionProcessor(mode="winner")
         conflict = make_conflict()
         with pytest.raises(ValueError, match="only accepts 'winner'"):
             processor.process(
@@ -171,7 +170,7 @@ class TestHumanEscalationFullLoop:
             )
 
     async def test_winner_select_rejects_unknown_agent(self) -> None:
-        processor = WinnerSelectProcessor()
+        processor = HumanDecisionProcessor(mode="winner")
         conflict = make_conflict()
         with pytest.raises(ValueError, match="does not match"):
             processor.process(
@@ -211,7 +210,7 @@ class TestHumanEscalationFullLoop:
         resolver = HumanEscalationResolver(
             store=store,
             registry=registry,
-            processor=WinnerSelectProcessor(),
+            processor=HumanDecisionProcessor(mode="winner"),
             timeout_seconds=0,
         )
         conflict = make_conflict()

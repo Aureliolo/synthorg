@@ -1,6 +1,7 @@
-"""Decision processor strategies for the escalation queue."""
+"""Decision processor strategy for the escalation queue."""
 
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import uuid4
 
 from synthorg.communication.conflict_resolution.escalation.models import (
@@ -20,6 +21,8 @@ from synthorg.observability.events.conflict import (
 )
 
 logger = get_logger(__name__)
+
+DecisionMode = Literal["winner", "hybrid"]
 
 _NO_WINNER_OUTCOMES = frozenset(
     {
@@ -59,14 +62,37 @@ def _build_dissent_records_from_resolution(
     )
 
 
-class WinnerSelectProcessor:
-    """Default strategy: accept only :class:`WinnerDecision`.
+class HumanDecisionProcessor:
+    """Build a :class:`ConflictResolution` from an operator decision.
 
-    Rejects ``RejectDecision`` with a precise ``ValueError`` so the
-    REST layer can surface a 422 Unprocessable Entity instead of a 500.
+    The ``mode`` discriminator selects which decision shapes are
+    accepted:
+
+    - ``mode="winner"`` (safest surface) accepts only
+      :class:`WinnerDecision`. A :class:`RejectDecision` raises a
+      precise ``ValueError`` so the REST layer can surface a
+      ``422 Unprocessable Entity`` instead of a 500.
+    - ``mode="hybrid"`` additionally accepts
+      :class:`RejectDecision`, producing a ``REJECTED_BY_HUMAN``
+      outcome with no winner so the caller can fall back to a
+      different strategy (retry, alternative resolution, manual
+      intervention).
+
+    Args:
+        mode: Strategy discriminator.  Defaults to ``"winner"``.
     """
 
-    __slots__ = ()
+    __slots__ = ("_mode",)
+
+    _mode: DecisionMode
+
+    def __init__(self, mode: DecisionMode = "winner") -> None:
+        self._mode = mode
+
+    @property
+    def mode(self) -> DecisionMode:
+        """The strategy discriminator (``"winner"`` or ``"hybrid"``)."""
+        return self._mode
 
     def process(
         self,
@@ -75,21 +101,32 @@ class WinnerSelectProcessor:
         *,
         decided_by: str,
     ) -> ConflictResolution:
-        """Build a RESOLVED_BY_HUMAN resolution from a winner decision.
+        """Build a resolution matching the decision and the configured mode.
 
         Raises:
-            ValueError: ``decision`` is not a :class:`WinnerDecision`,
-                or its ``winning_agent_id`` is not a participant.
+            ValueError: ``decision`` is not a :class:`WinnerDecision`
+                and the processor is in ``"winner"`` mode, or
+                ``decision`` is a :class:`WinnerDecision` whose
+                ``winning_agent_id`` does not match any participant.
         """
-        if not isinstance(decision, WinnerDecision):
+        if isinstance(decision, WinnerDecision):
+            return self._build_winner_resolution(
+                conflict,
+                decision,
+                decided_by=decided_by,
+            )
+        # Union ``EscalationDecision`` is exhaustive (``WinnerDecision``
+        # | ``RejectDecision``); reaching this branch means the decision
+        # is a ``RejectDecision``.
+        if self._mode == "winner":
             # Raised as ValueError (rather than TypeError) because the
             # caller is the REST layer validating payload shapes; the
             # escalations controller translates this into a 422
             # ValidationError.
             msg = (
-                "WinnerSelectProcessor only accepts 'winner' decisions. "
-                "Configure decision_strategy='hybrid' to allow "
-                "'reject' decisions."
+                "HumanDecisionProcessor in 'winner' mode only accepts "
+                "'winner' decisions. Configure decision_strategy='hybrid' "
+                "to allow 'reject' decisions."
             )
             logger.warning(
                 CONFLICT_ESCALATION_RESOLVED,
@@ -99,7 +136,28 @@ class WinnerSelectProcessor:
                 strategy=ConflictResolutionStrategy.HUMAN.value,
                 note="winner_select_rejected_non_winner",
             )
-            raise ValueError(msg)  # noqa: TRY004
+            raise ValueError(msg)
+        return self._build_reject_resolution(
+            conflict,
+            decision,
+            decided_by=decided_by,
+        )
+
+    def build_dissent_records(
+        self,
+        conflict: Conflict,
+        resolution: ConflictResolution,
+    ) -> tuple[DissentRecord, ...]:
+        """Build dissent records covering all non-winning positions."""
+        return _build_dissent_records_from_resolution(conflict, resolution)
+
+    @staticmethod
+    def _build_winner_resolution(
+        conflict: Conflict,
+        decision: WinnerDecision,
+        *,
+        decided_by: str,
+    ) -> ConflictResolution:
         winning_position = next(
             (
                 p.position
@@ -141,43 +199,13 @@ class WinnerSelectProcessor:
         )
         return resolution
 
-    def build_dissent_records(
-        self,
-        conflict: Conflict,
-        resolution: ConflictResolution,
-    ) -> tuple[DissentRecord, ...]:
-        """Build dissent records for the losing positions."""
-        return _build_dissent_records_from_resolution(conflict, resolution)
-
-
-class HybridDecisionProcessor:
-    """Permissive strategy: accepts both winner and reject decisions.
-
-    Reject decisions produce a ``REJECTED_BY_HUMAN`` outcome with no
-    winner, signalling to the caller that the conflict could not be
-    resolved through the human queue and another path (retry,
-    fallback strategy, manual intervention) is required.
-    """
-
-    __slots__ = ()
-
-    def process(
-        self,
+    @staticmethod
+    def _build_reject_resolution(
         conflict: Conflict,
         decision: EscalationDecision,
         *,
         decided_by: str,
     ) -> ConflictResolution:
-        """Build a resolution matching the decision's discriminator."""
-        if isinstance(decision, WinnerDecision):
-            return WinnerSelectProcessor().process(
-                conflict,
-                decision,
-                decided_by=decided_by,
-            )
-        # Union is exhaustive (``winner`` | ``reject``) per
-        # :data:`EscalationDecision`.  mypy confirms no other member
-        # can reach this branch.
         resolution = ConflictResolution(
             conflict_id=conflict.id,
             outcome=ConflictResolutionOutcome.REJECTED_BY_HUMAN,
@@ -196,11 +224,3 @@ class HybridDecisionProcessor:
             note="hybrid_processor_rejected",
         )
         return resolution
-
-    def build_dissent_records(
-        self,
-        conflict: Conflict,
-        resolution: ConflictResolution,
-    ) -> tuple[DissentRecord, ...]:
-        """Build dissent records covering all non-winning positions."""
-        return _build_dissent_records_from_resolution(conflict, resolution)

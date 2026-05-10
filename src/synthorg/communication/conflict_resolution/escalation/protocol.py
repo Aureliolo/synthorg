@@ -175,12 +175,14 @@ class CrossInstanceNotifyCapableStore(Protocol):
 class DecisionProcessor(Protocol):
     """Converts an operator decision into a :class:`ConflictResolution`.
 
-    Strategies differ in which decision shapes they accept:
+    Concrete implementations differ in which decision shapes they
+    accept:
 
-    - :class:`WinnerSelectProcessor` (default) accepts only
-      ``WinnerDecision`` -- safest surface.
-    - :class:`HybridDecisionProcessor` additionally accepts
-      ``RejectDecision`` and produces a ``REJECTED_BY_HUMAN`` outcome.
+    - :class:`HumanDecisionProcessor` (the bundled implementation)
+      carries a ``mode`` discriminator: ``"winner"`` accepts only
+      :class:`WinnerDecision` (safest surface, the default); ``"hybrid"``
+      additionally accepts :class:`RejectDecision` and produces a
+      ``REJECTED_BY_HUMAN`` outcome.
     """
 
     def process(
