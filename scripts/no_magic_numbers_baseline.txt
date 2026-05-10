@@ -373,7 +373,7 @@ src/synthorg/hr/performance/theil_sen_strategy.py:62:37
 src/synthorg/hr/performance/theil_sen_strategy.py:63:37
 src/synthorg/hr/performance/tracker.py:73:41
 src/synthorg/hr/persistence_protocol.py:42:21
-src/synthorg/hr/registry.py:46:37
+src/synthorg/hr/registry.py:50:37
 src/synthorg/hr/scaling/guards/approval_gate.py:49:27
 src/synthorg/hr/scaling/guards/conflict_resolver.py:30:19
 src/synthorg/hr/scaling/guards/cooldown.py:34:32
