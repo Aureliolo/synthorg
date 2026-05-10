@@ -16,6 +16,7 @@ from litestar.middleware.rate_limit import (
     get_remote_address,
 )
 
+from synthorg.api.auth.context import AuthContextMiddleware
 from synthorg.api.auth.csrf import create_csrf_middleware_class
 from synthorg.api.auth.middleware import create_auth_middleware_class
 from synthorg.api.etag import ETagMiddleware
@@ -394,11 +395,28 @@ def _build_middleware(
     #      per-resource version stamp) plumbed in front of the inner
     #      stack -- not scoped here.
     #   3. auth_middleware -- resolves identity, populates scope["user"]
-    #   4. csrf_middleware -- validates double-submit for cookie sessions
-    #   5. unauth_rl -- 20/min/IP for requests where user is None
-    #   6. RequestLoggingMiddleware
-    #   7. auth_rl -- per-user cap for authenticated requests
-    #   8. PerOpConcurrencyMiddleware -- per-op inflight cap;
+    #   4. AuthContextMiddleware -- binds scope["user"] into the
+    #      per-task ContextVar so controllers and helpers can read the
+    #      authenticated user without threading a ``Request``. Sits
+    #      directly after auth so every downstream middleware (CSRF,
+    #      rate limits, logging) and every handler observes the bound
+    #      user. Reset is token-based and runs in finally, so the var
+    #      is unbound the moment dispatch returns.
+    #
+    #      INVARIANT: AuthContextMiddleware MUST run immediately after
+    #      auth_middleware AND before any middleware that calls
+    #      ``get_authenticated_user_id`` / ``audit_actor_from_context``.
+    #      ``scope["user"]`` is treated as immutable from this point
+    #      onward; mutating it downstream silently corrupts the binding
+    #      (the ContextVar still points at the original user). Any
+    #      mutation surfaces as a debug ``API_AUTH_CONTEXT_SKIPPED``
+    #      event the next time AuthContextMiddleware runs in the chain
+    #      (it never does today, but the gate is there for defence).
+    #   5. csrf_middleware -- validates double-submit for cookie sessions
+    #   6. unauth_rl -- 20/min/IP for requests where user is None
+    #   7. RequestLoggingMiddleware
+    #   8. auth_rl -- per-user cap for authenticated requests
+    #   9. PerOpConcurrencyMiddleware -- per-op inflight cap;
     #      innermost so ``scope["user"]`` is already populated and the
     #      permit is held only during actual handler execution.
     #
@@ -423,6 +441,7 @@ def _build_middleware(
             ip_floor.middleware,
             ETagMiddleware,
             auth_middleware,
+            AuthContextMiddleware(),
             csrf_middleware,
             unauth_rl.middleware,
             RequestLoggingMiddleware,
@@ -439,6 +458,7 @@ def _build_middleware(
     return [
         ETagMiddleware,
         auth_middleware,
+        AuthContextMiddleware(),
         csrf_middleware,
         RequestLoggingMiddleware,
         PerOpConcurrencyMiddleware(),

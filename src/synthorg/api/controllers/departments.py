@@ -8,6 +8,7 @@ from litestar import Controller, Request, Response, delete, get, patch, post, pu
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
+from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
 from synthorg.api.controllers._department_health import (
@@ -15,7 +16,6 @@ from synthorg.api.controllers._department_health import (
     assemble_department_health,
     filter_agents_by_department,
 )
-from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateDepartmentRequest,
@@ -465,7 +465,7 @@ class DepartmentController(Controller):
         app_state: AppState = state.app_state
         dept = await app_state.org_mutation_service.create_department(
             data,
-            saved_by=get_auth_user_id(request),
+            saved_by=get_authenticated_user_id(),
         )
         publish_ws_event(
             request,
@@ -507,7 +507,7 @@ class DepartmentController(Controller):
         updated = await app_state.org_mutation_service.update_department(
             name,
             data,
-            saved_by=get_auth_user_id(request),
+            saved_by=get_authenticated_user_id(),
             if_match=if_match,
         )
         publish_ws_event(
@@ -554,7 +554,7 @@ class DepartmentController(Controller):
         app_state: AppState = state.app_state
         await app_state.org_mutation_service.delete_department(
             name,
-            saved_by=get_auth_user_id(request),
+            saved_by=get_authenticated_user_id(),
         )
         publish_ws_event(
             request,

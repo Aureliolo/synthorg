@@ -6,12 +6,12 @@ from typing import Any
 from litestar import Controller, Request, Response, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 
+from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import (
     CHANNEL_COMPANY,
     CHANNEL_DEPARTMENTS,
     publish_ws_event,
 )
-from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     ReorderDepartmentsRequest,
@@ -100,7 +100,7 @@ class CompanyController(Controller):
         updated, new_etag = await app_state.org_mutation_service.update_company(
             data,
             if_match=if_match,
-            saved_by=get_auth_user_id(request),
+            saved_by=get_authenticated_user_id(),
         )
         publish_ws_event(
             request,
@@ -143,7 +143,7 @@ class CompanyController(Controller):
         app_state: AppState = state.app_state
         reordered = await app_state.org_mutation_service.reorder_departments(
             data,
-            saved_by=get_auth_user_id(request),
+            saved_by=get_authenticated_user_id(),
         )
         publish_ws_event(
             request,

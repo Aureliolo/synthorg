@@ -757,110 +757,68 @@ class TestProviderControllerErrorSanitization:
             )
         assert str(info.value) == self._safe(boom)
 
-    async def test_rotate_credentials_validation_uses_sanitized_text(
-        self,
-    ) -> None:
-        from unittest.mock import patch
+    async def test_capability_mutations_sanitize_validation_text(self) -> None:
+        """Three capability mutations all sanitize ProviderValidationError text.
 
-        from litestar import Request
+        Drives the real ``audit_actor_from_context`` code path via
+        ``authenticated_user_scope`` rather than monkey-patching the
+        import; a future refactor that drops the import will surface
+        as a real ``AuthContextMissingError`` rather than a silent
+        no-op patch.
+        """
         from pydantic import SecretStr
 
+        from synthorg.api.auth import authenticated_user_scope
+        from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+        from synthorg.core.auth.roles import HumanRole
         from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.enums import AuthType
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.capability_dtos import (
+            RateLimitsUpdateRequest,
+            SyncModelsRequest,
             _ApiKeyRotation,
         )
 
-        state, mgmt = _make_provider_state_and_mgmt()
-        boom = ProviderValidationError("auth_type mismatch")
-        mgmt.rotate_credentials.side_effect = boom
-
-        ctrl = _provider_controller()
-        request = MagicMock(spec=Request)
-        with (
-            patch(
-                "synthorg.api.controllers.providers.request_audit_actor",
-                return_value="actor",
-            ),
-            pytest.raises(ValidationError) as info,
-        ):
-            await ctrl.rotate_credentials.fn(
-                ctrl,
-                state=state,
-                request=request,
-                name="test-provider",
-                data=_ApiKeyRotation(
+        cases = [
+            (
+                "rotate_credentials",
+                "auth_type mismatch",
+                _ApiKeyRotation(
                     auth_type=AuthType.API_KEY,
                     api_key=SecretStr("test-key"),
                 ),
-            )
-        assert str(info.value) == self._safe(boom)
-
-    async def test_update_rate_limits_validation_uses_sanitized_text(
-        self,
-    ) -> None:
-        from unittest.mock import patch
-
-        from litestar import Request
-
-        from synthorg.core.domain_errors import ValidationError
-        from synthorg.providers.errors import ProviderValidationError
-        from synthorg.providers.management.capability_dtos import (
-            RateLimitsUpdateRequest,
+            ),
+            (
+                "update_rate_limits",
+                "requests_per_minute too low",
+                RateLimitsUpdateRequest(requests_per_minute=10),
+            ),
+            (
+                "sync_models",
+                "base_url is required",
+                SyncModelsRequest(),
+            ),
+        ]
+        user = AuthenticatedUser(
+            user_id="actor",
+            username="actor@example.com",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
         )
 
-        state, mgmt = _make_provider_state_and_mgmt()
-        boom = ProviderValidationError("requests_per_minute too low")
-        mgmt.update_rate_limits.side_effect = boom
-
-        ctrl = _provider_controller()
-        request = MagicMock(spec=Request)
-        with (
-            patch(
-                "synthorg.api.controllers.providers.request_audit_actor",
-                return_value="actor",
-            ),
-            pytest.raises(ValidationError) as info,
-        ):
-            await ctrl.update_rate_limits.fn(
-                ctrl,
-                state=state,
-                request=request,
-                name="test-provider",
-                data=RateLimitsUpdateRequest(requests_per_minute=10),
-            )
-        assert str(info.value) == self._safe(boom)
-
-    async def test_sync_models_validation_uses_sanitized_text(self) -> None:
-        from unittest.mock import patch
-
-        from litestar import Request
-
-        from synthorg.core.domain_errors import ValidationError
-        from synthorg.providers.errors import ProviderValidationError
-        from synthorg.providers.management.capability_dtos import (
-            SyncModelsRequest,
-        )
-
-        state, mgmt = _make_provider_state_and_mgmt()
-        boom = ProviderValidationError("base_url is required")
-        mgmt.sync_models.side_effect = boom
-
-        ctrl = _provider_controller()
-        request = MagicMock(spec=Request)
-        with (
-            patch(
-                "synthorg.api.controllers.providers.request_audit_actor",
-                return_value="actor",
-            ),
-            pytest.raises(ValidationError) as info,
-        ):
-            await ctrl.sync_models.fn(
-                ctrl,
-                state=state,
-                request=request,
-                name="test-provider",
-                data=SyncModelsRequest(),
-            )
-        assert str(info.value) == self._safe(boom)
+        for mutation_name, error_msg, data in cases:
+            state, mgmt = _make_provider_state_and_mgmt()
+            boom = ProviderValidationError(error_msg)
+            getattr(mgmt, mutation_name).side_effect = boom
+            ctrl = _provider_controller()
+            handler = getattr(ctrl, mutation_name).fn
+            async with authenticated_user_scope(user):
+                with pytest.raises(ValidationError) as info:
+                    await handler(
+                        ctrl,
+                        state=state,
+                        name="test-provider",
+                        data=data,
+                    )
+            assert str(info.value) == self._safe(boom), f"mutation={mutation_name!r}"

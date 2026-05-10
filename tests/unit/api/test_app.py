@@ -1258,17 +1258,25 @@ def _raise_runtime_error(_config: object) -> None:
 class TestBuildMiddleware:
     """Tests for the tiered rate-limit middleware stack."""
 
-    def test_middleware_stack_has_eight_entries(
+    def test_middleware_stack_has_nine_entries(
         self,
         root_config: Any,
     ) -> None:
+        from synthorg.api.auth.context import AuthContextMiddleware
         from synthorg.api.middleware_factory import _build_middleware
 
         mw = _build_middleware(root_config.api)
-        # Eight layers (outside-in): ip_floor, ETagMiddleware,
-        # auth_mw, csrf_mw, unauth_rl, RequestLoggingMiddleware,
-        # auth_rl, and the innermost PerOpConcurrencyMiddleware.
-        assert len(mw) == 8
+        # Nine layers (outside-in): ip_floor, ETagMiddleware,
+        # auth_mw, AuthContextMiddleware, csrf_mw, unauth_rl,
+        # RequestLoggingMiddleware, auth_rl, and the innermost
+        # PerOpConcurrencyMiddleware.
+        assert len(mw) == 9
+        # Lock the position of AuthContextMiddleware: any middleware
+        # after auth_mw that reads scope["user"] (CSRF, the rate-limit
+        # tiers, request logging) depends on the per-task ContextVar
+        # being already bound, so reordering this entry would silently
+        # break get_authenticated_user_id() in those layers.
+        assert isinstance(mw[3], AuthContextMiddleware)
 
     def test_three_rate_limiters_have_distinct_stores(
         self,
@@ -1349,10 +1357,13 @@ class TestAuthIdentifierForRequest:
     def test_returns_user_id_when_user_in_scope(self) -> None:
         from unittest.mock import MagicMock
 
-        from synthorg.api.middleware_factory import _auth_identifier_for_request
+        from litestar import Request
 
-        request = MagicMock()
-        user = MagicMock()
+        from synthorg.api.middleware_factory import _auth_identifier_for_request
+        from synthorg.core.auth.models import AuthenticatedUser
+
+        request = MagicMock(spec=Request)
+        user = MagicMock(spec=AuthenticatedUser)
         user.user_id = "user-abc-123"
         request.scope = {"user": user}
         assert _auth_identifier_for_request(request) == "user-abc-123"
@@ -1360,9 +1371,11 @@ class TestAuthIdentifierForRequest:
     def test_falls_back_to_ip_when_no_user(self) -> None:
         from unittest.mock import MagicMock, patch
 
+        from litestar import Request
+
         from synthorg.api.middleware_factory import _auth_identifier_for_request
 
-        request = MagicMock()
+        request = MagicMock(spec=Request)
         request.scope = {}
         with patch(
             "synthorg.api.middleware_factory.get_remote_address",
@@ -1373,9 +1386,11 @@ class TestAuthIdentifierForRequest:
     def test_falls_back_to_ip_when_user_is_none(self) -> None:
         from unittest.mock import MagicMock, patch
 
+        from litestar import Request
+
         from synthorg.api.middleware_factory import _auth_identifier_for_request
 
-        request = MagicMock()
+        request = MagicMock(spec=Request)
         request.scope = {"user": None}
         with patch(
             "synthorg.api.middleware_factory.get_remote_address",

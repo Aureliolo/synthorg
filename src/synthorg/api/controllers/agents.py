@@ -8,9 +8,9 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
-from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateAgentOrgRequest,
@@ -320,7 +320,7 @@ class AgentController(Controller):
             agent_name=updated.name,
             previous_agent_name=agent_name,
             fields_changed=tuple(sorted(data.model_fields_set)),
-            actor=get_auth_user_id(request),
+            actor=get_authenticated_user_id(),
         )
         publish_ws_event(
             request,
@@ -362,7 +362,7 @@ class AgentController(Controller):
             agent_name: Agent name.
         """
         app_state: AppState = state.app_state
-        actor = get_auth_user_id(request)
+        actor = get_authenticated_user_id()
         # Pre-delete intent log -- fires BEFORE persistence so the
         # forensic audit chain captures the operator's request even if
         # the delete itself fails. ``AGENT_DELETED_AUDIT`` below confirms

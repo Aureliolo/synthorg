@@ -7,15 +7,15 @@ subworkflow registry.
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import uuid4
 
-from litestar import Controller, Request, Response, delete, get, post
+from litestar import Controller, Response, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from synthorg.api.controllers._workflow_helpers import get_auth_user_id
+from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
@@ -301,12 +301,11 @@ class SubworkflowController(Controller):
     @post("", guards=[require_write_access])
     async def create_subworkflow(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         data: CreateSubworkflowRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Publish a new subworkflow version to the registry."""
-        creator = get_auth_user_id(request)
+        creator = get_authenticated_user_id()
         now = datetime.now(UTC)
         subworkflow_id = data.subworkflow_id or f"sub-{uuid4().hex[:12]}"
         try:

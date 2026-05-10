@@ -5,19 +5,19 @@ import json as _json
 from collections.abc import (
     Mapping,  # noqa: TC003  # Litestar inspects runtime return-type annotation
 )
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-from litestar import Controller, Request, delete, get, patch, post, put
+from litestar import Controller, delete, get, patch, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.controllers._provider_helpers import enrich_with_usage, sse_error
-from synthorg.api.controllers._workflow_helpers import request_audit_actor
+from synthorg.api.controllers._workflow_helpers import audit_actor_from_context
 from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
 from synthorg.api.dto import (
     DEFAULT_LIMIT,
@@ -1007,7 +1007,6 @@ class ProviderController(Controller):
     async def add_model(
         self,
         state: State,
-        request: Request[Any, Any, Any],
         name: PathName,
         data: AddModelRequest,
     ) -> ApiResponse[ProviderResponse]:
@@ -1015,7 +1014,6 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
-            request: Litestar request, used to derive the audit actor.
             name: Provider name.
             data: Payload carrying the new model spec.
 
@@ -1028,7 +1026,7 @@ class ProviderController(Controller):
                 persisted on the provider.
         """
         app_state: AppState = state.app_state
-        actor = request_audit_actor(request)
+        actor = audit_actor_from_context()
         try:
             updated = await app_state.provider_management.add_model(
                 name,
@@ -1063,7 +1061,6 @@ class ProviderController(Controller):
     async def sync_models(
         self,
         state: State,
-        request: Request[Any, Any, Any],
         name: PathName,
         data: SyncModelsRequest,
     ) -> ApiResponse[SyncModelsResponse]:
@@ -1071,7 +1068,6 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
-            request: Litestar request, used to derive the audit actor.
             name: Provider name.
             data: Sync request (``replace_existing`` flag, optional
                 ``preset_hint``).
@@ -1084,7 +1080,7 @@ class ProviderController(Controller):
             NotFoundError: If the provider does not exist.
         """
         app_state: AppState = state.app_state
-        actor = request_audit_actor(request)
+        actor = audit_actor_from_context()
         try:
             result = await app_state.provider_management.sync_models(
                 name,
@@ -1128,7 +1124,6 @@ class ProviderController(Controller):
     async def rotate_credentials(
         self,
         state: State,
-        request: Request[Any, Any, Any],
         name: PathName,
         data: CredentialsRotateRequest,
     ) -> ApiResponse[ProviderResponse]:
@@ -1136,7 +1131,6 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
-            request: Litestar request, used to derive the audit actor.
             name: Provider name.
             data: Discriminated-union rotation payload keyed by
                 ``auth_type``.
@@ -1150,7 +1144,7 @@ class ProviderController(Controller):
                 does not match the provider's persisted ``auth_type``.
         """
         app_state: AppState = state.app_state
-        actor = request_audit_actor(request)
+        actor = audit_actor_from_context()
         try:
             updated = await app_state.provider_management.rotate_credentials(
                 name,
@@ -1226,7 +1220,6 @@ class ProviderController(Controller):
     async def update_preset_override(
         self,
         state: State,
-        request: Request[Any, Any, Any],
         preset_name: PathName,
         data: PresetOverrideUpdateRequest,
     ) -> ApiResponse[PresetOverride]:
@@ -1234,7 +1227,6 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
-            request: Litestar request, used to derive the audit actor.
             preset_name: Preset whose override to write.
             data: Partial override payload.
 
@@ -1247,7 +1239,7 @@ class ProviderController(Controller):
                 the preset's kind (cloud vs local).
         """
         app_state: AppState = state.app_state
-        actor = request_audit_actor(request)
+        actor = audit_actor_from_context()
         # Preflight existence check: classifying "preset not found"
         # vs "override invalid for this preset's kind" via substring
         # match on the error message is brittle and silently misroutes
@@ -1294,7 +1286,6 @@ class ProviderController(Controller):
     async def delete_preset_override(
         self,
         state: State,
-        request: Request[Any, Any, Any],
         preset_name: PathName,
     ) -> None:
         """Drop the override for ``preset_name``.
@@ -1305,11 +1296,10 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
-            request: Litestar request, used to derive the audit actor.
             preset_name: Preset whose override to delete.
         """
         app_state: AppState = state.app_state
-        actor = request_audit_actor(request)
+        actor = audit_actor_from_context()
         # Match the upsert path's preflight: an unknown preset name
         # is a 404, not a silent no-op.  Without this, callers can
         # DELETE arbitrary strings with no signal -- defeats the
@@ -1376,7 +1366,6 @@ class ProviderController(Controller):
     async def update_rate_limits(
         self,
         state: State,
-        request: Request[Any, Any, Any],
         name: PathName,
         data: RateLimitsUpdateRequest,
     ) -> ApiResponse[RateLimitsResponse]:
@@ -1384,7 +1373,6 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
-            request: Litestar request, used to derive the audit actor.
             name: Provider name.
             data: Partial-update payload; at least one field required.
 
@@ -1396,7 +1384,7 @@ class ProviderController(Controller):
             ValidationError: If the merged config fails validation.
         """
         app_state: AppState = state.app_state
-        actor = request_audit_actor(request)
+        actor = audit_actor_from_context()
         try:
             updated = await app_state.provider_management.update_rate_limits(
                 name,
