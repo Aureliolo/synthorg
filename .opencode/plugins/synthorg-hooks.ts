@@ -13,6 +13,7 @@
  *   PreToolUse (Bash | Edit): scripts/check_no_bulk_edit.py
  *   PreToolUse (Edit|Write): scripts/check_no_edit_migration.sh
  *   PreToolUse (Edit|Write): scripts/check_no_edit_baseline.sh
+ *   PreToolUse (Edit|Write): scripts/check_no_em_dashes_hook.sh
  *   PreToolUse (Edit|Write): scripts/check_pre_pr_review_triage_gate.sh
  *   PostToolUse (Edit|Write): scripts/check_web_design_system.py
  *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
@@ -204,6 +205,30 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               const outcome = runHookScript(
                 script,
                 payload.tool_input as Record<string, unknown>,
+                5000,
+              );
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
+              }
+            }
+
+            // check_no_em_dashes_hook.sh: inspects the candidate content
+            // (`.tool_input.content` for Write, `.tool_input.new_string` for
+            // Edit) so the em-dash never lands on disk. Mirrors the
+            // pre-commit gate in scripts/check_no_em_dashes.py.
+            {
+              const args = (output.args ?? {}) as Record<string, unknown>;
+              const emDashInput: Record<string, unknown> = { file_path: filePath };
+              if (typeof args.content === "string") {
+                emDashInput.content = args.content;
+              }
+              if (typeof args.new_string === "string") {
+                emDashInput.new_string = args.new_string;
+              }
+              const outcome = runHookScript(
+                "scripts/check_no_em_dashes_hook.sh",
+                emDashInput,
                 5000,
               );
               const denyReason = denyReasonFromOutcome(outcome);
