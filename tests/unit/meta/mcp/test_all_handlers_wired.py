@@ -93,11 +93,11 @@ def fake_app_state() -> SimpleNamespace:
     defrepo.list_definitions.return_value = ()
     defrepo.get.return_value = None
     defrepo.delete.return_value = False
-    from synthorg.persistence.protocol import (
+    from synthorg.persistence.fine_tune_protocol import (
         FineTuneCheckpointRepository,
         FineTuneRunRepository,
-        VersionRepository,
     )
+    from synthorg.persistence.version_protocol import VersionRepository
 
     ns.persistence = SimpleNamespace(
         workflow_definitions=defrepo,

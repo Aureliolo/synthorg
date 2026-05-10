@@ -191,6 +191,25 @@ def test_async_function_typed_return_caught(write_test_file: WriteTestFile) -> N
     assert hits[0][0] == 4
 
 
+def test_yield_from_typed_return_caught(write_test_file: WriteTestFile) -> None:
+    """`yield from Mock()` in a typed-return generator is caught.
+
+    Locks the `ast.YieldFrom` branch of `_decide_direct`. Without this
+    test, removing `YieldFrom` from the parent-isinstance tuple would
+    silently weaken the gate.
+    """
+    src = (
+        "from collections.abc import Iterator\n"
+        "from unittest.mock import Mock\n"
+        "class Service: ...\n"
+        "def factory() -> Iterator[Service]:\n"
+        "    yield from Mock()\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
+    assert len(hits) == 1
+    assert hits[0][0] == 5
+
+
 def test_propertymock_recognised_as_mock_class(write_test_file: WriteTestFile) -> None:
     src = (
         "from unittest.mock import PropertyMock\n"
@@ -270,6 +289,17 @@ def test_list_element_skipped(write_test_file: WriteTestFile) -> None:
 
 def test_tuple_element_skipped(write_test_file: WriteTestFile) -> None:
     src = "from unittest.mock import MagicMock\nxs = (MagicMock(), MagicMock())\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_set_element_skipped(write_test_file: WriteTestFile) -> None:
+    """Set literals are part of the collection-skip branch.
+
+    Locks `ast.Set` in the `(ast.List, ast.Tuple, ast.Set, ast.Dict)`
+    parent-isinstance tuple. Removing `Set` would flip these sites
+    into spurious CATCH verdicts.
+    """
+    src = "from unittest.mock import MagicMock\nxs = {MagicMock(), MagicMock()}\n"
     assert _MODULE._scan_file(write_test_file(src)) == []
 
 

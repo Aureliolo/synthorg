@@ -23,7 +23,7 @@ from synthorg.persistence.workflow_definition_protocol import (
 
 
 def _service() -> WorkflowService:
-    from synthorg.persistence.protocol import VersionRepository
+    from synthorg.persistence.version_protocol import VersionRepository
 
     return WorkflowService(
         definition_repo=AsyncMock(spec=WorkflowDefinitionRepository),

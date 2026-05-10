@@ -170,6 +170,7 @@ def _terminal_callee_name(value: ast.expr) -> str | None:
 
 
 def _is_empty_splat(value: ast.expr) -> bool:
+    """True if *value* is `()`, `[]`, or `{}` (an empty splat target)."""
     if isinstance(value, (ast.Tuple, ast.List)):
         return not value.elts
     if isinstance(value, ast.Dict):
@@ -178,10 +179,12 @@ def _is_empty_splat(value: ast.expr) -> bool:
 
 
 def _is_literal_none(value: ast.expr) -> bool:
+    """True if *value* is the literal `None` constant."""
     return isinstance(value, ast.Constant) and value.value is None
 
 
 def _has_spec_positional(args: list[ast.expr]) -> bool:
+    """True if the first positional arg is a non-None spec target."""
     if not args:
         return False
     first = args[0]
@@ -191,6 +194,7 @@ def _has_spec_positional(args: list[ast.expr]) -> bool:
 
 
 def _has_spec_keyword(keywords: list[ast.keyword]) -> bool:
+    """True if `spec=` or `spec_set=` is bound to a non-None value."""
     return any(
         kw.arg in ("spec", "spec_set") and not _is_literal_none(kw.value)
         for kw in keywords
@@ -201,6 +205,7 @@ def _has_dynamic_splat(
     args: list[ast.expr],
     keywords: list[ast.keyword],
 ) -> bool:
+    """True if call has a non-empty `*args` or `**kwargs` splat we cannot inspect."""
     if any(
         isinstance(arg, ast.Starred) and not _is_empty_splat(arg.value) for arg in args
     ):

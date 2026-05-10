@@ -42,6 +42,7 @@ _CATCH_MARKER = "_Verdict.CATCH"
 
 
 def _load_gate() -> Any:
+    """Dynamically import the gate module so the hook always sees live source."""
     spec = importlib.util.spec_from_file_location(
         "_ratchet_check_mock_spec",
         _GATE_PATH,
@@ -66,7 +67,12 @@ def _scan_text(gate: Any, text: str, suffix: str = ".py") -> int:
         tmp_path = Path(fp.name)
     try:
         return len(gate._scan_file(tmp_path))  # noqa: SLF001 -- consume gate API
-    except Exception:
+    except Exception as exc:
+        print(
+            f"check_mock_spec_ratchet: gate scan failed, allowing edit: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return 0
     finally:
         with contextlib.suppress(OSError):
@@ -102,7 +108,12 @@ def _check_test_file(path: Path, before: str, after: str) -> int:
     """Block if AFTER count > BEFORE count."""
     try:
         gate = _load_gate()
-    except Exception:
+    except Exception as exc:
+        print(
+            f"check_mock_spec_ratchet: gate load failed, allowing edit to "
+            f"{path.name}: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return 0
     before_count = _scan_text(gate, before) if before else 0
     after_count = _scan_text(gate, after)

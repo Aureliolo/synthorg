@@ -11,6 +11,7 @@
  *   PreToolUse (Bash): scripts/check_bash_no_write.sh
  *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
  *   PreToolUse (Bash | Edit): scripts/check_no_bulk_edit.py
+ *   PreToolUse (Edit|Write): scripts/check_mock_spec_ratchet.py
  *   PreToolUse (Edit|Write): scripts/check_no_edit_migration.sh
  *   PreToolUse (Edit|Write): scripts/check_no_edit_baseline.sh
  *   PreToolUse (Edit|Write): scripts/check_no_em_dashes_hook.sh
