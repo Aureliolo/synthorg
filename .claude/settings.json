@@ -31,6 +31,11 @@
           },
           {
             "type": "command",
+            "command": "bash scripts/check_no_baseline_update.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
             "command": "bash scripts/check_bash_no_write.sh",
             "timeout": 5000
           },
@@ -67,6 +72,11 @@
           {
             "type": "command",
             "command": "bash scripts/check_no_edit_baseline.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_em_dashes_hook.sh",
             "timeout": 5000
           },
           {
