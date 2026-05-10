@@ -242,3 +242,38 @@ class TestAuthContextMiddleware:
             await _drive(middleware, scope, next_app)
         assert next_app.observed_user is user
         assert _authenticated_user.get() is None
+
+    async def test_skipped_path_clears_inherited_principal(self) -> None:
+        # If the middleware's skipped branch (excluded paths or a
+        # non-AuthenticatedUser scope.user) bypassed the ContextVar,
+        # an outer binding inherited via context-copy semantics could
+        # leak into helpers reading the var from the inner dispatch.
+        # Bind a user in the surrounding context, then run the
+        # middleware with no scope.user, and assert the dispatch sees
+        # None -- not the inherited principal.
+        next_app = _CaptureApp()
+        middleware = AuthContextMiddleware()
+        outer = _make_user("outer-id", "outer@example.com")
+        async with authenticated_user_scope(outer):
+            assert _authenticated_user.get() is outer
+            scope: dict[str, Any] = {"type": "http", "path": "/api/health"}
+            await _drive(middleware, scope, next_app)
+            assert next_app.observed_user is None
+            # Outer binding restored after the middleware's reset.
+            assert _authenticated_user.get() is outer
+
+    async def test_skipped_path_clears_when_scope_user_wrong_type(self) -> None:
+        # Same invariant for the "present but not AuthenticatedUser"
+        # branch: an inherited binding must not leak through.
+        next_app = _CaptureApp()
+        middleware = AuthContextMiddleware()
+        outer = _make_user("outer-id", "outer@example.com")
+        async with authenticated_user_scope(outer):
+            scope: dict[str, Any] = {
+                "type": "http",
+                "path": "/api/health",
+                "user": {"id": "spoof"},
+            }
+            await _drive(middleware, scope, next_app)
+            assert next_app.observed_user is None
+            assert _authenticated_user.get() is outer

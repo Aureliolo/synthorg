@@ -144,26 +144,31 @@ class AuthContextMiddleware(ASGIMiddleware):
     ) -> None:
         """Bind ``scope["user"]`` for the duration of the inner dispatch."""
         scope_user: Any = scope.get("user")
-        if not isinstance(scope_user, AuthenticatedUser):
-            # When scope.user is missing entirely (excluded paths) the
-            # passthrough is normal; when it's present but a different
-            # type, a downstream middleware mutated it or the auth
-            # middleware was reordered. Surface the latter as a debug
-            # log so the wiring bug is observable.
+        bound_user: AuthenticatedUser | None
+        if isinstance(scope_user, AuthenticatedUser):
+            bound_user = scope_user
+            logger.debug(
+                API_AUTH_CONTEXT_BOUND,
+                user_id=scope_user.user_id,
+                path=scope.get("path", ""),
+            )
+        else:
+            # Excluded paths legitimately have no scope.user; a present
+            # value of any other type means a downstream middleware
+            # mutated it or auth was reordered, which is a wiring bug
+            # the operator must see.
+            bound_user = None
             if scope_user is not None:
-                logger.debug(
+                logger.warning(
                     API_AUTH_CONTEXT_SKIPPED,
                     scope_user_type=type(scope_user).__name__,
                     path=scope.get("path", ""),
                 )
-            await next_app(scope, receive, send)
-            return
-        token = _authenticated_user.set(scope_user)
-        logger.debug(
-            API_AUTH_CONTEXT_BOUND,
-            user_id=scope_user.user_id,
-            path=scope.get("path", ""),
-        )
+        # Always bind a token (None on the skipped path) so a context
+        # inherited from an outer task cannot leak a stale principal
+        # into helpers reading the var; reset unconditionally restores
+        # the prior binding.
+        token = _authenticated_user.set(bound_user)
         try:
             await next_app(scope, receive, send)
         finally:
