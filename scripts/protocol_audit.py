@@ -79,7 +79,14 @@ def _enumerate_protocols() -> list[ProtocolEntry]:
 
 
 def _count(pattern: str, root: Path) -> int:
-    """Count matches via system grep -rE.
+    """Count matches via system ``grep -rEo``.
+
+    The ``-o`` flag emits one line per match (rather than one line
+    per matched file-line), so the splitlines-based counting below
+    sees actual occurrence counts. Without it the helper would
+    silently undercount any source line that contains multiple
+    references to the same protocol (common in ``: <Name> | ->
+    <Name>`` annotations).
 
     Raises ``RuntimeError`` on a missing grep binary or a non-zero
     grep failure exit code (>1). Silent-zero fallback would
@@ -89,7 +96,7 @@ def _count(pattern: str, root: Path) -> int:
     """
     try:
         result = subprocess.run(
-            ["grep", "-rE", "--include=*.py", pattern, str(root)],
+            ["grep", "-rEo", "--include=*.py", pattern, str(root)],
             check=False,
             capture_output=True,
             text=True,
