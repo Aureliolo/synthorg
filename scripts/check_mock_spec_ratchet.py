@@ -150,7 +150,7 @@ def _check_gate_file(before: str, after: str) -> int:
     return 0
 
 
-def main() -> int:  # noqa: C901, PLR0911 -- guard cascade is flat by design
+def main() -> int:  # noqa: PLR0911 -- guard cascade is flat by design
     """Read the PreToolUse JSON envelope from stdin and return an exit code."""
     raw = sys.stdin.read()
     if not raw.strip():
@@ -172,16 +172,12 @@ def main() -> int:  # noqa: C901, PLR0911 -- guard cascade is flat by design
     if path.suffix != ".py":
         return 0
 
-    is_gate = path == _GATE_PATH.resolve()
-    in_tests = False
-    try:
-        in_tests = path.is_relative_to(_TESTS_ROOT)
-    except ValueError:
-        in_tests = False
-    if in_tests:
-        shared_dir = (_TESTS_ROOT / "_shared").resolve()
-        if shared_dir in path.parents:
-            in_tests = False
+    gate_path = _GATE_PATH.resolve()
+    tests_root = _TESTS_ROOT.resolve()
+    shared_dir = (tests_root / "_shared").resolve()
+
+    is_gate = path == gate_path
+    in_tests = path.is_relative_to(tests_root) and shared_dir not in path.parents
     if not is_gate and not in_tests:
         return 0
 

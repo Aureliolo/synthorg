@@ -29,6 +29,7 @@ from synthorg.meta.signals.performance import (
 from synthorg.meta.signals.scaling import ScalingSignalAggregator
 from synthorg.meta.signals.snapshot import SnapshotBuilder
 from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -111,7 +112,7 @@ class TestPerformanceSignalAggregator:
         assert result.avg_collaboration_score == 6.0
 
     async def test_multiple_agents_averaged(self) -> None:
-        tracker = MagicMock(spec=PerformanceTracker)
+        tracker = mock_of[PerformanceTracker]()
         s1 = MagicMock()
         s1.overall_quality_score = 8.0
         s1.overall_collaboration_score = 7.0
@@ -168,8 +169,9 @@ class TestPerformanceSignalAggregator:
                 assert m.value == 0.85
 
     async def test_tracker_failure_returns_empty(self) -> None:
-        tracker = MagicMock(spec=PerformanceTracker)
-        tracker.get_snapshot = AsyncMock(side_effect=RuntimeError("tracker broken"))
+        tracker = mock_of[PerformanceTracker](
+            get_snapshot=AsyncMock(side_effect=RuntimeError("tracker broken")),
+        )
         agg = PerformanceSignalAggregator(
             tracker=tracker,
             agent_ids_provider=lambda: ["agent-1"],
@@ -207,9 +209,10 @@ class TestScalingSignalAggregator:
     """Scaling aggregator tests."""
 
     async def test_returns_scaling_summary(self) -> None:
-        service = MagicMock(spec=ScalingService)
-        service.get_recent_decisions = MagicMock(return_value=())
-        service.get_recent_actions = MagicMock(return_value=())
+        service = mock_of[ScalingService](
+            get_recent_decisions=MagicMock(return_value=()),
+            get_recent_actions=MagicMock(return_value=()),
+        )
         agg = ScalingSignalAggregator(service=service)
         result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgScalingSummary)
@@ -251,9 +254,10 @@ class TestSnapshotBuilder:
     def _make_builder(self) -> SnapshotBuilder:
         """Create a builder with default aggregators."""
         tracker = _make_mock_tracker()
-        scaling_service = MagicMock(spec=ScalingService)
-        scaling_service.get_recent_decisions = MagicMock(return_value=())
-        scaling_service.get_recent_actions = MagicMock(return_value=())
+        scaling_service = mock_of[ScalingService](
+            get_recent_decisions=MagicMock(return_value=()),
+            get_recent_actions=MagicMock(return_value=()),
+        )
         return SnapshotBuilder(
             performance=PerformanceSignalAggregator(
                 tracker=tracker,

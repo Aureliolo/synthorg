@@ -71,12 +71,13 @@ _MOCK_NAMES: frozenset[str] = frozenset(
 )
 """Class names whose bare-call form is the candidate set for Pass 1."""
 
-_MOCK_FACTORY_NAMES: frozenset[str] = frozenset({"create_autospec"})
+_MOCK_FACTORY_NAMES: frozenset[str] = frozenset({"create_autospec", "mock_of"})
 """Factory names treated as Mock-class for SKIP purposes in Pass 2.
 
-A ``create_autospec(T, ...)`` call is already typed by construction,
-so a bare ``Mock()`` passed as a kwarg to it (``return_value=Mock()``)
-configures the autospec rather than crossing a typed boundary.
+A ``create_autospec(T, ...)`` or ``mock_of[T](...)`` call is already
+typed by construction, so a bare ``Mock()`` passed as a kwarg to it
+(``return_value=Mock()``) configures the autospec rather than crossing
+a typed boundary.
 """
 
 _MOCK_TYPE_PATTERN: re.Pattern[str] = re.compile(
@@ -161,11 +162,17 @@ def _is_bare_mock_call(node: ast.Call) -> bool:
 
 
 def _terminal_callee_name(value: ast.expr) -> str | None:
-    """Terminal identifier of a callee expression, or None."""
+    """Terminal identifier of a callee expression, or None.
+
+    Recurses into ``ast.Subscript`` so generic-subscript factory
+    expressions (``mock_of[T]``) resolve to their base name.
+    """
     if isinstance(value, ast.Name):
         return value.id
     if isinstance(value, ast.Attribute):
         return value.attr
+    if isinstance(value, ast.Subscript):
+        return _terminal_callee_name(value.value)
     return None
 
 
@@ -388,10 +395,15 @@ def _rel(path: Path) -> str:
 
 
 def _iter_test_files() -> Iterable[Path]:
-    """Walk ``tests/`` for ``.py`` files (excluding ``_shared``)."""
-    shared_dir = _TESTS_ROOT / "_shared"
+    """Walk ``tests/`` for ``.py`` files (excluding ``_shared``).
+
+    Both ``shared_dir`` and each yielded ``path`` are resolved so the
+    parent-set comparison is robust to symlinks / bind-mounts between
+    ``_TESTS_ROOT`` and the actual ``_shared`` directory.
+    """
+    shared_dir = (_TESTS_ROOT / "_shared").resolve()
     for path in sorted(_TESTS_ROOT.rglob("*.py")):
-        if shared_dir in path.parents:
+        if shared_dir in path.resolve().parents:
             continue
         yield path
 
@@ -426,11 +438,12 @@ def cmd_scan_paths(paths: Iterable[str]) -> int:
     utilities that the gate's own helper tests live in, and is
     excluded by convention from the scan.
     """
-    shared_dir = _TESTS_ROOT / "_shared"
+    shared_dir = (_TESTS_ROOT / "_shared").resolve()
+    tests_root = _TESTS_ROOT.resolve()
     violations: list[str] = []
     for p in paths:
         path = Path(p).resolve()
-        if not path.is_relative_to(_TESTS_ROOT):
+        if not path.is_relative_to(tests_root):
             continue
         if shared_dir in path.parents:
             continue

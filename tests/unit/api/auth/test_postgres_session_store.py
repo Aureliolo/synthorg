@@ -24,6 +24,7 @@ from synthorg.persistence.postgres.session_repo import (
 from synthorg.persistence.sqlite.session_repo import (
     SQLiteSessionRepository as SqliteSessionStore,
 )
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -118,7 +119,7 @@ def test_concrete_stores_expose_protocol_shape() -> None:
     shared protocol (e.g. a renamed or dropped method).
     """
     pg_pool = MagicMock()
-    sqlite_db = MagicMock(spec=Connection)
+    sqlite_db = mock_of[Connection]()
     pg_store = PostgresSessionStore(pg_pool)
     sqlite_store = SqliteSessionStore(sqlite_db)
     assert isinstance(pg_store, SessionStore)

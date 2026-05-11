@@ -48,7 +48,7 @@ def test_mock_of_unknown_override_key_raises() -> None:
 
 
 def test_mock_of_with_protocol() -> None:
-    m = cast(Any, mock_of[_Renderer]())  # type: ignore[type-abstract]
+    m = cast(Any, mock_of[_Renderer]())
     m.render.return_value = "rendered"
     assert m.render(7) == "rendered"
 

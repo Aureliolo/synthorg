@@ -39,13 +39,24 @@ class _MockOfFactory[T]:
     def __init__(self, spec: type[T]) -> None:
         self._spec = spec
 
-    def __call__(self, **overrides: Any) -> T:
+    def __call__(self, **overrides: Any) -> Any:
         """Return an autospec'd instance of ``T`` with overrides applied.
 
         Each override key must name an attribute that exists on the
         spec type. Unknown keys raise ``AttributeError`` naming the
         spec, so a typo at the call site fails loudly instead of
         silently absorbing the mistake into an attribute-bag mock.
+
+        The static return type is ``Any`` (not ``T``) so callers can
+        configure the resulting ``unittest.mock`` instance with the
+        usual mock API (``mock.method.return_value = ...``,
+        ``mock.method.assert_*()``) without a per-call
+        ``cast(Any, ...)`` wrapper. The runtime invariants (autospec,
+        ``spec_set=True``, override-key validation) are unchanged --
+        only the static-type ergonomics shift. The typed-boundary
+        contract still reads from the ``mock_of[T]`` subscript form
+        at the construction site, which is the documentation value
+        the helper carries over the looser ``MagicMock(spec=T)``.
 
         Args:
             **overrides: Attribute names mapped to replacement values
@@ -54,8 +65,7 @@ class _MockOfFactory[T]:
 
         Returns:
             An ``unittest.mock.create_autospec`` instance built with
-            ``instance=True, spec_set=True``, typed as ``T`` for
-            mypy strict mode.
+            ``instance=True, spec_set=True``.
         """
         instance = create_autospec(self._spec, instance=True, spec_set=True)
         for name, value in overrides.items():
@@ -67,7 +77,7 @@ class _MockOfFactory[T]:
                     f"{name!r}; attribute not present on spec type."
                 )
                 raise AttributeError(msg) from exc
-        return instance  # type: ignore[no-any-return]
+        return instance
 
 
 class _MockOfMeta(type):
@@ -78,9 +88,16 @@ class _MockOfMeta(type):
     ``mock_of[T]`` as ``_MockOfMeta.__getitem__(mock_of, T)``, which
     has a precise return-type annotation, instead of trying to
     interpret ``mock_of`` itself as a generic class.
+
+    The ``spec`` parameter is annotated as ``Any`` rather than
+    ``type[T]`` so callers can subscript with abstract ``Protocol``
+    classes (the most common test-double target) without tripping
+    mypy's ``type-abstract`` strict check. The runtime path always
+    forwards ``spec`` to ``create_autospec``, which accepts any
+    callable-like object, so the looser annotation is faithful.
     """
 
-    def __getitem__(cls, spec: type[T]) -> _MockOfFactory[T]:
+    def __getitem__(cls, spec: Any) -> _MockOfFactory[Any]:
         return _MockOfFactory(spec)
 
 

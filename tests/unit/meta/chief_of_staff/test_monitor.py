@@ -1,6 +1,7 @@
 """Unit tests for OrgInflectionMonitor."""
 
 from datetime import UTC, datetime
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -20,6 +21,7 @@ from synthorg.meta.models import (
     RuleSeverity,
 )
 from synthorg.meta.signals.snapshot import SnapshotBuilder
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -64,8 +66,12 @@ class TestOrgInflectionMonitor:
     """OrgInflectionMonitor lifecycle tests."""
 
     async def test_start_idempotent(self) -> None:
-        builder = AsyncMock(spec=SnapshotBuilder)
-        builder.build.return_value = _snap()
+        builder = cast(
+            Any,
+            mock_of[SnapshotBuilder](
+                build=AsyncMock(return_value=_snap()),
+            ),
+        )
         monitor = OrgInflectionMonitor(
             detector=OrgInflectionDetector(),
             snapshot_builder=builder,
@@ -79,8 +85,12 @@ class TestOrgInflectionMonitor:
         await monitor.stop()
 
     async def test_stop_cleans_up_task(self) -> None:
-        builder = AsyncMock(spec=SnapshotBuilder)
-        builder.build.return_value = _snap()
+        builder = cast(
+            Any,
+            mock_of[SnapshotBuilder](
+                build=AsyncMock(return_value=_snap()),
+            ),
+        )
         monitor = OrgInflectionMonitor(
             detector=OrgInflectionDetector(),
             snapshot_builder=builder,
@@ -95,15 +105,19 @@ class TestOrgInflectionMonitor:
     async def test_stop_without_start(self) -> None:
         monitor = OrgInflectionMonitor(
             detector=OrgInflectionDetector(),
-            snapshot_builder=AsyncMock(spec=SnapshotBuilder),
+            snapshot_builder=mock_of[SnapshotBuilder](),
             sinks=(),
         )
         await monitor.stop()
 
     async def test_first_tick_initializes_snapshot(self) -> None:
-        builder = AsyncMock(spec=SnapshotBuilder)
-        builder.build.return_value = _snap()
-        detector = AsyncMock(spec=OrgInflectionDetector)
+        builder = cast(
+            Any,
+            mock_of[SnapshotBuilder](
+                build=AsyncMock(return_value=_snap()),
+            ),
+        )
+        detector = cast(Any, mock_of[OrgInflectionDetector]())
         monitor = OrgInflectionMonitor(
             detector=detector,
             snapshot_builder=builder,
@@ -116,10 +130,18 @@ class TestOrgInflectionMonitor:
     async def test_second_tick_calls_detector(self) -> None:
         snap1 = _snap(quality=7.5)
         snap2 = _snap(quality=7.5)
-        builder = AsyncMock(spec=SnapshotBuilder)
-        builder.build.side_effect = [snap1, snap2]
-        detector = AsyncMock(spec=OrgInflectionDetector)
-        detector.detect.return_value = ()
+        builder = cast(
+            Any,
+            mock_of[SnapshotBuilder](
+                build=AsyncMock(side_effect=[snap1, snap2]),
+            ),
+        )
+        detector = cast(
+            Any,
+            mock_of[OrgInflectionDetector](
+                detect=AsyncMock(return_value=()),
+            ),
+        )
         monitor = OrgInflectionMonitor(
             detector=detector,
             snapshot_builder=builder,
@@ -135,8 +157,12 @@ class TestOrgInflectionMonitor:
     async def test_inflection_emitted_to_sinks(self) -> None:
         snap1 = _snap(quality=7.5)
         snap2 = _snap(quality=4.0)
-        builder = AsyncMock(spec=SnapshotBuilder)
-        builder.build.side_effect = [snap1, snap2]
+        builder = cast(
+            Any,
+            mock_of[SnapshotBuilder](
+                build=AsyncMock(side_effect=[snap1, snap2]),
+            ),
+        )
         inflection = OrgInflection(
             severity=RuleSeverity.WARNING,
             affected_domains=("performance",),
@@ -146,8 +172,12 @@ class TestOrgInflectionMonitor:
             description="Quality dropped",
             detected_at=_NOW,
         )
-        detector = AsyncMock(spec=OrgInflectionDetector)
-        detector.detect.return_value = (inflection,)
+        detector = cast(
+            Any,
+            mock_of[OrgInflectionDetector](
+                detect=AsyncMock(return_value=(inflection,)),
+            ),
+        )
         sink = _CollectingSink()
         monitor = OrgInflectionMonitor(
             detector=detector,
@@ -162,8 +192,12 @@ class TestOrgInflectionMonitor:
     async def test_sink_error_does_not_crash(self) -> None:
         snap1 = _snap()
         snap2 = _snap(quality=4.0)
-        builder = AsyncMock(spec=SnapshotBuilder)
-        builder.build.side_effect = [snap1, snap2]
+        builder = cast(
+            Any,
+            mock_of[SnapshotBuilder](
+                build=AsyncMock(side_effect=[snap1, snap2]),
+            ),
+        )
         inflection = OrgInflection(
             severity=RuleSeverity.WARNING,
             affected_domains=("performance",),
@@ -173,8 +207,12 @@ class TestOrgInflectionMonitor:
             description="Quality dropped",
             detected_at=_NOW,
         )
-        detector = AsyncMock(spec=OrgInflectionDetector)
-        detector.detect.return_value = (inflection,)
+        detector = cast(
+            Any,
+            mock_of[OrgInflectionDetector](
+                detect=AsyncMock(return_value=(inflection,)),
+            ),
+        )
 
         failing_sink = AsyncMock()
         failing_sink.on_inflection.side_effect = ValueError("sink error")

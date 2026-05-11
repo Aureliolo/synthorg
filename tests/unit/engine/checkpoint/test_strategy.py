@@ -1,6 +1,6 @@
 """Tests for CheckpointRecoveryStrategy."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -20,6 +20,7 @@ from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
 )
+from tests._shared import mock_of
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -501,11 +502,11 @@ class TestCheckpointRecoveryFallbackCleanup:
             sample_agent_with_personality,
             sample_task_with_criteria,
         )
-        cp_repo = AsyncMock(spec=CheckpointRepository)
-        cp_repo.get_latest = AsyncMock(return_value=None)
-        cp_repo.delete_by_execution = AsyncMock(return_value=0)
-        hb_repo = AsyncMock(spec=HeartbeatRepository)
-        hb_repo.delete = AsyncMock()
+        cp_repo = mock_of[CheckpointRepository](
+            get_latest=AsyncMock(return_value=None),
+            delete_by_execution=AsyncMock(return_value=0),
+        )
+        hb_repo = mock_of[HeartbeatRepository](delete=AsyncMock())
 
         strategy = CheckpointRecoveryStrategy(
             checkpoint_repo=cp_repo,
@@ -520,10 +521,10 @@ class TestCheckpointRecoveryFallbackCleanup:
         )
 
         # Cleanup was called before fallback
-        cp_repo.delete_by_execution.assert_awaited_once_with(
+        cast(Any, cp_repo.delete_by_execution).assert_awaited_once_with(
             ctx.execution_id,
         )
-        hb_repo.delete.assert_awaited_once_with(ctx.execution_id)
+        cast(Any, hb_repo.delete).assert_awaited_once_with(ctx.execution_id)
 
     async def test_exhausted_attempts_calls_cleanup(
         self,

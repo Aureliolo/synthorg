@@ -19,6 +19,7 @@ from synthorg.hr.evaluation.loop_coordinator import (
 from synthorg.hr.evaluation.models import EvaluationReport
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.training.service import TrainingService
+from tests._shared import mock_of
 
 
 def _make_coordinator(
@@ -28,22 +29,21 @@ def _make_coordinator(
     eval_report: MagicMock | None = None,
 ) -> EvalLoopCoordinator:
     """Build an EvalLoopCoordinator with mocked dependencies."""
-    tracker = MagicMock(spec=PerformanceTracker)
-    tracker.get_task_metrics.return_value = task_metrics
+    tracker = mock_of[PerformanceTracker](
+        get_task_metrics=MagicMock(return_value=task_metrics),
+    )
 
-    evaluation = MagicMock(spec=EvaluationService)
-    # evaluate must return None (indicating skip) to avoid Pydantic
-    # validation of MagicMock as EvaluationReport in EvalCycleReport.
-    if eval_report is not None:
-        evaluation.evaluate = AsyncMock(return_value=eval_report)
-    else:
-        evaluation.evaluate = AsyncMock(return_value=None)
+    evaluate_return = eval_report if eval_report is not None else None
+    evaluation = mock_of[EvaluationService](
+        evaluate=AsyncMock(return_value=evaluate_return),
+    )
 
-    scorer = MagicMock(spec=TrajectoryScorer)
-    training = MagicMock(spec=TrainingService)
-    dataset_builder = MagicMock(spec=DogfoodingDatasetBuilder)
-    benchmark_registry = MagicMock(spec=ExternalBenchmarkRegistry)
-    benchmark_registry.list_registered.return_value = ()
+    scorer = mock_of[TrajectoryScorer]()
+    training = mock_of[TrainingService]()
+    dataset_builder = mock_of[DogfoodingDatasetBuilder]()
+    benchmark_registry = mock_of[ExternalBenchmarkRegistry](
+        list_registered=MagicMock(return_value=()),
+    )
 
     return EvalLoopCoordinator(
         performance_tracker=tracker,

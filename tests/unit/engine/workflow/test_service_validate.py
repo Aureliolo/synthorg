@@ -1,7 +1,6 @@
 """Tests for WorkflowService.validate_definition()."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -20,14 +19,15 @@ from synthorg.engine.workflow.validation_types import (
 from synthorg.persistence.workflow_definition_protocol import (
     WorkflowDefinitionRepository,
 )
+from tests._shared import mock_of
 
 
 def _service() -> WorkflowService:
     from synthorg.persistence.version_protocol import VersionRepository
 
     return WorkflowService(
-        definition_repo=AsyncMock(spec=WorkflowDefinitionRepository),
-        version_repo=AsyncMock(spec=VersionRepository),
+        definition_repo=mock_of[WorkflowDefinitionRepository](),
+        version_repo=mock_of[VersionRepository](),
     )
 
 

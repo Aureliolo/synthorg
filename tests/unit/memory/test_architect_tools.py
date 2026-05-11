@@ -15,6 +15,7 @@ from synthorg.memory.tools import (
     KnowledgeArchitectWriteTool,
 )
 from synthorg.persistence.memory_protocol import OrgFactRepository
+from tests._shared import mock_of
 
 
 def _mock_org_backend() -> AsyncMock:
@@ -194,8 +195,9 @@ class TestKnowledgeArchitectDeleteTool:
     @pytest.mark.unit
     async def test_delete_denied_at_full_autonomy(self) -> None:
         backend = _mock_org_backend()
-        fact_store = AsyncMock(spec=OrgFactRepository)
-        fact_store.delete = AsyncMock(return_value=True)
+        fact_store = mock_of[OrgFactRepository](
+            delete=AsyncMock(return_value=True),
+        )
         tool = KnowledgeArchitectDeleteTool(
             org_backend=backend,
             fact_store=fact_store,
@@ -212,8 +214,9 @@ class TestKnowledgeArchitectDeleteTool:
     @pytest.mark.unit
     async def test_delete_allowed_at_supervised(self) -> None:
         backend = _mock_org_backend()
-        fact_store = AsyncMock(spec=OrgFactRepository)
-        fact_store.delete = AsyncMock(return_value=True)
+        fact_store = mock_of[OrgFactRepository](
+            delete=AsyncMock(return_value=True),
+        )
         tool = KnowledgeArchitectDeleteTool(
             org_backend=backend,
             fact_store=fact_store,
@@ -245,7 +248,7 @@ class TestKnowledgeArchitectBrowseWikiTool:
     async def test_export_succeeds(self) -> None:
         from types import SimpleNamespace
 
-        exporter = AsyncMock(spec=WikiExporter)
+        exporter = mock_of[WikiExporter]()
         exporter.export = AsyncMock(
             return_value=SimpleNamespace(
                 raw_count=2,
@@ -266,7 +269,7 @@ class TestKnowledgeArchitectBrowseWikiTool:
     async def test_include_raw_false_omits_raw_count(self) -> None:
         from types import SimpleNamespace
 
-        exporter = AsyncMock(spec=WikiExporter)
+        exporter = mock_of[WikiExporter]()
         exporter.export = AsyncMock(
             return_value=SimpleNamespace(
                 raw_count=2,

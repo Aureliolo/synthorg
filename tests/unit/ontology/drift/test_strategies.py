@@ -17,6 +17,7 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
+from tests._shared import mock_of
 
 _NOW = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
@@ -245,10 +246,12 @@ class TestLayeredDetectionStrategy:
             canonical_version=1,
             recommendation=DriftAction.NO_ACTION,
         )
-        core = AsyncMock(spec=DriftDetectionStrategy)
-        core.detect = AsyncMock(return_value=clean_report)
-        user = AsyncMock(spec=DriftDetectionStrategy)
-        user.detect = AsyncMock()
+        core = mock_of[DriftDetectionStrategy](
+            detect=AsyncMock(return_value=clean_report),
+        )
+        user = mock_of[DriftDetectionStrategy](
+            detect=AsyncMock(),
+        )
 
         strategy = LayeredDetectionStrategy(
             ontology=ontology,
@@ -274,10 +277,12 @@ class TestLayeredDetectionStrategy:
             canonical_version=1,
             recommendation=DriftAction.NO_ACTION,
         )
-        core = AsyncMock(spec=DriftDetectionStrategy)
-        core.detect = AsyncMock()
-        user = AsyncMock(spec=DriftDetectionStrategy)
-        user.detect = AsyncMock(return_value=clean_report)
+        core = mock_of[DriftDetectionStrategy](
+            detect=AsyncMock(),
+        )
+        user = mock_of[DriftDetectionStrategy](
+            detect=AsyncMock(return_value=clean_report),
+        )
 
         strategy = LayeredDetectionStrategy(
             ontology=ontology,

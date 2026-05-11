@@ -1,6 +1,7 @@
 """Unit tests for training onboarding integration."""
 
 from datetime import UTC, datetime
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,6 +15,7 @@ from synthorg.hr.training.onboarding_integration import (
     TrainingOnboardingBridge,
 )
 from synthorg.hr.training.service import TrainingService
+from tests._shared import mock_of
 
 
 def _now() -> datetime:
@@ -49,13 +51,13 @@ class TestTrainingOnboardingBridge:
     """TrainingOnboardingBridge tests."""
 
     async def test_runs_training_and_completes_step(self) -> None:
-        registry = AsyncMock(spec=AgentRegistryService)
-        registry.get.return_value = _make_identity()
-
-        training_service = AsyncMock(spec=TrainingService)
-        training_service.execute.return_value = _make_empty_result()
-
-        onboarding = AsyncMock(spec=OnboardingService)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=_make_identity()),
+        )
+        training_service = mock_of[TrainingService](
+            execute=AsyncMock(return_value=_make_empty_result()),
+        )
+        onboarding = mock_of[OnboardingService]()
 
         bridge = TrainingOnboardingBridge(
             registry=registry,
@@ -65,21 +67,21 @@ class TestTrainingOnboardingBridge:
 
         result = await bridge.run_training_step("new-1")
 
-        training_service.execute.assert_awaited_once()
-        onboarding.complete_step.assert_awaited_once_with(
+        cast(Any, training_service.execute).assert_awaited_once()
+        cast(Any, onboarding.complete_step).assert_awaited_once_with(
             "new-1",
             OnboardingStep.LEARNED_FROM_SENIORS,
             notes=result.id,
         )
 
     async def test_skip_training(self) -> None:
-        registry = AsyncMock(spec=AgentRegistryService)
-        registry.get.return_value = _make_identity()
-
-        training_service = AsyncMock(spec=TrainingService)
-        training_service.execute.return_value = _make_empty_result()
-
-        onboarding = AsyncMock(spec=OnboardingService)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=_make_identity()),
+        )
+        training_service = mock_of[TrainingService](
+            execute=AsyncMock(return_value=_make_empty_result()),
+        )
+        onboarding = mock_of[OnboardingService]()
 
         bridge = TrainingOnboardingBridge(
             registry=registry,
@@ -89,18 +91,18 @@ class TestTrainingOnboardingBridge:
 
         await bridge.run_training_step("new-1", skip_training=True)
         # Training service still runs (it short-circuits internally on skip)
-        training_service.execute.assert_awaited_once()
+        cast(Any, training_service.execute).assert_awaited_once()
         # Onboarding step should still complete since no review is pending.
-        onboarding.complete_step.assert_awaited_once()
+        cast(Any, onboarding.complete_step).assert_awaited_once()
 
     async def test_passes_override_sources(self) -> None:
-        registry = AsyncMock(spec=AgentRegistryService)
-        registry.get.return_value = _make_identity()
-
-        training_service = AsyncMock(spec=TrainingService)
-        training_service.execute.return_value = _make_empty_result()
-
-        onboarding = AsyncMock(spec=OnboardingService)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=_make_identity()),
+        )
+        training_service = mock_of[TrainingService](
+            execute=AsyncMock(return_value=_make_empty_result()),
+        )
+        onboarding = mock_of[OnboardingService]()
 
         bridge = TrainingOnboardingBridge(
             registry=registry,
@@ -113,13 +115,14 @@ class TestTrainingOnboardingBridge:
             override_sources=("senior-a", "senior-b"),
         )
 
-        call_args = training_service.execute.call_args
+        call_args = cast(Any, training_service.execute).call_args
         plan = call_args[0][0]
         assert plan.override_sources == ("senior-a", "senior-b")
 
     async def test_raises_when_agent_not_found(self) -> None:
-        registry = AsyncMock(spec=AgentRegistryService)
-        registry.get.return_value = None
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=None),
+        )
 
         bridge = TrainingOnboardingBridge(
             registry=registry,

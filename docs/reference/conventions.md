@@ -332,7 +332,7 @@ bottom:
    real class. Use `mock_of[T](**overrides)` from `tests._shared` for
    the common case (autospec with `instance=True, spec_set=True`,
    plus optional kwarg-overrides); reach for raw
-   `create_autospec(T, instance=True)` when the call site needs the
+   `create_autospec(T, instance=True, spec_set=True)` when the call site needs the
    lower-level API. Missing methods raise `AttributeError`; renames
    in production fail tests immediately.
 3. **`SimpleNamespace`**: a plain attribute bag for scratch data

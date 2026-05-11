@@ -7,7 +7,7 @@ that operators query for "recent activity in this project" or
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -18,6 +18,7 @@ from synthorg.core.enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity_service import ActivityFeedService
 from synthorg.hr.performance.models import TaskMetricRecord
+from tests._shared import mock_of
 
 
 def _now() -> datetime:
@@ -180,10 +181,11 @@ class TestListRecentActivity:
             project_id="proj-other",
             cost=2.0,
         )
-        cost_tracker = AsyncMock(spec=CostTracker)
-        cost_tracker.get_records.return_value = (
-            cost_in_scope,
-            cost_out_of_scope,
+        cost_tracker = cast(
+            Any,
+            mock_of[CostTracker](
+                get_records=AsyncMock(return_value=(cost_in_scope, cost_out_of_scope)),
+            ),
         )
         service = ActivityFeedService(
             performance_tracker=performance_tracker,

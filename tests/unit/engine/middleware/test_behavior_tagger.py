@@ -143,6 +143,10 @@ class TestAfterModel:
 
     async def test_returns_original_on_exception(self) -> None:
         mw = BehaviorTaggerMiddleware()
+        # AgentMiddlewareContext is a Pydantic BaseModel; create_autospec
+        # (and therefore mock_of[T]) does not expose Pydantic Field()
+        # annotations as settable attributes, so the looser MagicMock
+        # spec is the right rung here for an attribute-bag stand-in.
         ctx = MagicMock(spec=AgentMiddlewareContext)
         ctx.agent_id = "test-agent"
         ctx.task_id = "test-task"

@@ -22,6 +22,7 @@ from synthorg.security.safety_classifier import (
 )
 from synthorg.security.service import SecOpsService
 from synthorg.security.uncertainty import UncertaintyResult
+from tests._shared import mock_of
 
 # ── Helpers ───────────────────────────────────────────────────────
 
@@ -59,8 +60,9 @@ def _make_service(
     config: SecurityConfig | None = None,
 ) -> SecOpsService:
     """Build a SecOpsService with mock dependencies."""
-    approval_store = AsyncMock(spec=ApprovalStoreProtocol)
-    approval_store.add = AsyncMock()
+    approval_store = mock_of[ApprovalStoreProtocol](
+        add=AsyncMock(),
+    )
 
     cfg = config or SecurityConfig()
 

@@ -255,6 +255,36 @@ def test_create_autospec_inner_mock_skipped(write_test_file: WriteTestFile) -> N
     assert _MODULE._scan_file(write_test_file(src)) == []
 
 
+def test_mock_of_subscript_factory_skipped(write_test_file: WriteTestFile) -> None:
+    """``mock_of[T](return_value=Mock())`` resolves to a factory call.
+
+    Locks the ``ast.Subscript`` recursion in ``_terminal_callee_name``
+    and the presence of ``"mock_of"`` in ``_MOCK_FACTORY_NAMES`` so
+    the typed-factory subscript form is treated identically to
+    ``create_autospec``.
+    """
+    src = (
+        "from unittest.mock import Mock\n"
+        "class _Factory:\n"
+        "    def __getitem__(self, t): return lambda **kw: t()\n"
+        "mock_of = _Factory()\n"
+        "class Foo: ...\n"
+        "x = mock_of[Foo](return_value=Mock())\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_return_value_chain_skipped(write_test_file: WriteTestFile) -> None:
+    """``x.return_value = Mock()`` is attribute reconfiguration, not a boundary.
+
+    Pairs with ``test_inner_mock_in_mock_class_call_skipped`` so the
+    two ways of wiring a child mock onto a parent (kwarg at
+    construction, attribute write afterwards) are both locked as SKIP.
+    """
+    src = "from unittest.mock import Mock\nx = Mock()\nx.return_value = Mock()\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
 def test_attr_assign_to_mock_skipped(write_test_file: WriteTestFile) -> None:
     src = (
         "from unittest.mock import AsyncMock, Mock\n"

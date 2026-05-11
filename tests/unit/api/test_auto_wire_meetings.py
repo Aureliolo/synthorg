@@ -15,15 +15,16 @@ from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.registry import ProviderRegistry
+from tests._shared import mock_of
 
 
 def _default_config() -> RootConfig:
     return RootConfig(company_name="test-company")
 
 
-def _fake_registries() -> tuple[MagicMock, MagicMock]:
+def _fake_registries() -> tuple[AgentRegistryService, ProviderRegistry]:
     """Return (agent_registry, provider_registry) fakes for wiring tests."""
-    return MagicMock(), MagicMock()
+    return mock_of[AgentRegistryService](), mock_of[ProviderRegistry]()
 
 
 @pytest.mark.unit

@@ -1,6 +1,7 @@
 """Tests for MemoryConsolidationService."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,6 +23,7 @@ from synthorg.memory.consolidation.service import MemoryConsolidationService
 from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
+from tests._shared import mock_of
 
 _NOW = datetime.now(UTC)
 _AGENT_ID = "test-agent"
@@ -41,12 +43,15 @@ def _make_entry(entry_id: str) -> MemoryEntry:
 def _make_backend_mock(
     entries: tuple[MemoryEntry, ...] = (),
     count: int = 0,
-) -> AsyncMock:
-    backend = AsyncMock()
-    backend.retrieve = AsyncMock(return_value=entries)
-    backend.delete = AsyncMock(return_value=True)
-    backend.count = AsyncMock(return_value=count)
-    return backend
+) -> Any:
+    return cast(
+        Any,
+        mock_of[MemoryBackend](
+            retrieve=AsyncMock(return_value=entries),
+            delete=AsyncMock(return_value=True),
+            count=AsyncMock(return_value=count),
+        ),
+    )
 
 
 @pytest.mark.unit

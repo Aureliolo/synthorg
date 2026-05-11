@@ -20,6 +20,7 @@ from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
 )
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -209,11 +210,10 @@ class TestAggregate:
         assert summary.total_decisions == 4
 
     async def test_service_exception_returns_empty_and_logs(self) -> None:
-        service = MagicMock(spec=ScalingService)
-        service.get_recent_decisions = MagicMock(
-            side_effect=RuntimeError("boom"),
+        service = mock_of[ScalingService](
+            get_recent_decisions=MagicMock(side_effect=RuntimeError("boom")),
+            get_recent_actions=MagicMock(return_value=()),
         )
-        service.get_recent_actions = MagicMock(return_value=())
         agg = ScalingSignalAggregator(service=service)
         since, until = _window()
 
@@ -242,9 +242,10 @@ class TestAggregate:
         """
         broken = MagicMock()
         broken.created_at = MagicMock()  # not a datetime -> comparison fails
-        service = MagicMock(spec=ScalingService)
-        service.get_recent_decisions = MagicMock(return_value=(broken,))
-        service.get_recent_actions = MagicMock(return_value=())
+        service = mock_of[ScalingService](
+            get_recent_decisions=MagicMock(return_value=(broken,)),
+            get_recent_actions=MagicMock(return_value=()),
+        )
         agg = ScalingSignalAggregator(service=service)
         since, until = _window()
 
