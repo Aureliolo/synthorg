@@ -1,7 +1,7 @@
 """Heuristic rubric grader -- rule-based, deterministic."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,30 +20,9 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.engine.quality.verification import AtomicProbe
     from synthorg.engine.workflow.handoff import HandoffArtifact
+    from synthorg.settings.bridge_configs import EngineBridgeConfig
 
 logger = get_logger(__name__)
-
-
-class _HeuristicGraderBridge(Protocol):
-    """Structural type for the EngineBridgeConfig quality_heuristic_* fields.
-
-    Local Protocol declaration keeps the grader module free of a
-    runtime import of ``settings.bridge_configs``. The fields are
-    exposed as ``@property`` so this Protocol matches frozen Pydantic
-    models (whose attributes are read-only); mypy validates the
-    attribute mapping in ``from_bridge_config``.
-    """
-
-    @property
-    def quality_heuristic_pass_threshold(self) -> float: ...
-    @property
-    def quality_heuristic_pass_grade(self) -> float: ...
-    @property
-    def quality_heuristic_fail_grade(self) -> float: ...
-    @property
-    def quality_heuristic_confidence_ceiling(self) -> float: ...
-    @property
-    def quality_heuristic_confidence_bias(self) -> float: ...
 
 
 class HeuristicGraderConfig(BaseModel):
@@ -70,15 +49,13 @@ class HeuristicGraderConfig(BaseModel):
     confidence_bias: float = Field(default=0.1, ge=0.0, le=1.0)
 
     @classmethod
-    def from_bridge_config(
-        cls, bridge: _HeuristicGraderBridge
-    ) -> HeuristicGraderConfig:
+    def from_bridge_config(cls, bridge: EngineBridgeConfig) -> HeuristicGraderConfig:
         """Project the heuristic-grader subset out of an ``EngineBridgeConfig``.
 
-        Typed via the local ``_HeuristicGraderBridge`` Protocol so mypy
-        validates the attribute mapping without a runtime import of
-        ``settings.bridge_configs`` (which would cycle through the
-        engine namespace).
+        ``EngineBridgeConfig`` is imported under ``TYPE_CHECKING`` so the
+        grader module stays free of a runtime dependency on
+        ``settings.bridge_configs`` (which would cycle through the engine
+        namespace).
         """
         return cls(
             pass_threshold=bridge.quality_heuristic_pass_threshold,

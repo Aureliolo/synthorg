@@ -52,6 +52,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+# Narrows the mixin's self-type to the 3 attrs + 3 methods consumed;
+# host: ProviderManagementService (composed via MRO in service.py).
 class _ServiceProtocol(Protocol):
     """Subset of ``ProviderManagementService`` accessed by the mixin.
 

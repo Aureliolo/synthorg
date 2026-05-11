@@ -83,6 +83,8 @@ service-teardown sequence continues regardless.
 """
 
 
+# Structural seam over the optional synthorg[distributed] JetStreamTaskQueue;
+# consumers: _cleanup_on_failure, _safe_shutdown.
 class _AsyncStartStop(Protocol):
     """Minimal async lifecycle Protocol used by the distributed task queue hook.
 

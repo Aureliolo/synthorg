@@ -157,6 +157,8 @@ def row_to_audit_entry(row: dict[str, object]) -> AuditEntry:
         raise MalformedRowError(msg) from exc
 
 
+# Driver-abstraction predicate; impls: sqlite._shared.is_unique_constraint_error,
+# postgres.audit_repository._postgres_is_duplicate.
 class IsDuplicate(Protocol):
     """Driver-specific predicate that classifies an INSERT failure.
 

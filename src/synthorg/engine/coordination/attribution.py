@@ -6,7 +6,7 @@ without modifying the frozen ``CoordinationResult``. The wrapper
 with attribution data built from routing decisions and wave outcomes.
 """
 
-from typing import TYPE_CHECKING, Literal, Protocol, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -27,17 +27,6 @@ from synthorg.observability.events.coordination import (
 logger = get_logger(__name__)
 
 
-if TYPE_CHECKING:
-
-    class _ExecutionResultLike(Protocol):
-        error_message: str | None
-
-    class _AgentRunResultLike(Protocol):
-        is_success: bool
-        termination_reason: TerminationReason | None
-        execution_result: _ExecutionResultLike | None
-
-
 FailureAttribution = Literal[
     "direct",
     "upstream_contamination",
@@ -48,7 +37,7 @@ FailureAttribution = Literal[
 # Internal constant by design: defensive truncation of evidence text
 # attached to failure attributions; prevents oversized error-evidence
 # payloads.  Not exposed to the settings registry.
-_MAX_EVIDENCE_LENGTH = 500
+_MAX_EVIDENCE_LENGTH: Final[int] = 500
 
 # Map FailureCategory -> FailureAttribution for error-based outcomes.
 _CATEGORY_TO_ATTRIBUTION: dict[FailureCategory, FailureAttribution] = {
@@ -256,9 +245,12 @@ def _score_outcome(
             evidence=outcome_error[:_MAX_EVIDENCE_LENGTH],
         )
 
-    # Case 2: Execution completed -- check if successful.
-    # outcome_result conforms to _AgentRunResultLike; typed as object
-    # at runtime to avoid circular import.
+    # Case 2: Execution completed -- check if successful. The
+    # ``outcome_result`` is duck-typed (an ``AgentRunResult`` in practice)
+    # so this module avoids importing ``engine.run_result`` and the cycle
+    # it would pull in; we expect ``.is_success: bool``,
+    # ``.termination_reason: TerminationReason | None``, and
+    # ``.execution_result: <obj with .error_message: str | None> | None``.
     if outcome_result is not None:
         is_success = getattr(outcome_result, "is_success", False)
         if is_success:
