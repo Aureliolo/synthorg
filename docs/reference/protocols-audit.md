@@ -37,13 +37,13 @@ The counts are deliberately approximate: they're a triage tool, not a removal lo
 
 The 2026-05-10 snapshot counts in the original table were aggregated by hand and undercounted both the REMOVE and REVIEW rows. The table below reflects (a) the per-area row totals as they actually appear in the snapshot tables, and (b) the post-2026-05-11 cleanup outcome captured in the "Post-cleanup status" section.
 
-| Total | Recommendation (2026-05-10 snapshot row counts) | After 2026-05-11 cleanup (#1864) |
-|---|---|---|
-| Protocol classes inventoried | 250 | 248 (2 deleted) |
-| KEEP | 193 | 237 (44 audit re-flagged, plus pre-existing 193) |
-| MAKE-RUNTIME-CHECKABLE | 0 (no `isinstance` sites surveyed) | 0 |
-| REMOVE candidates (flag-only; must be re-verified at cleanup time) | 46 | 0 (2 deleted, 44 reclassified KEEP) |
-| REVIEW (`_PrivatePrefixed` typing seams; intent inspection needed) | 11 | 11 (unchanged; #1865 owns these) |
+| Total | Snapshot (2026-05-10) | After #1864 (2026-05-11) | After #1865 (2026-05-11) |
+|---|---|---|---|
+| Protocol classes inventoried | 250 | 248 (2 deleted) | 241 (7 more deleted) |
+| KEEP | 193 | 237 (44 audit re-flagged, plus pre-existing 193) | 241 (5 `_PrivatePrefixed` retained with rationale; 1 fold-deletion drops conflict_detection.py's KEEP) |
+| MAKE-RUNTIME-CHECKABLE | 0 (no `isinstance` sites surveyed) | 0 | 0 |
+| REMOVE candidates (flag-only; must be re-verified at cleanup time) | 46 | 0 (2 deleted, 44 reclassified KEEP) | 0 |
+| REVIEW (`_PrivatePrefixed` typing seams; intent inspection needed) | 11 | 11 (unchanged; #1865 owns these) | 0 (5 retained with rationale, 5 deleted, 1 fold-deleted) |
 
 `@runtime_checkable` decoration: 209 of 250 (84%). The 41 without the decorator are listed inline below; absence is not a defect on its own; only a few need it.
 
@@ -404,6 +404,34 @@ Categories of re-flag rationale:
 4. **Vendor-agnostic public extension surface** (no built-in impl by design; consumed via injection from MCP / user / external integration). Examples: `JudgeEvaluator` (debate/hybrid LLM judge), `WebSearchProvider` (threaded through `tools/factory.py` at 4 callsites), `ShadowAgentRunner` (production wires to `AgentEngine.run` via caller-supplied adapter), `TunnelProvider` (ngrok/cloudflared abstraction wired via `IntegrationsBundle`), `OrgInflectionSink` and `AlertSink` (downstream observability hooks).
 
 5. **Multi-impl injection points missed by the audit doc's own duplicate detection**. `ParticipantResolver`@`meeting/participant.py:56` was flagged as a "dead duplicate" of an alleged twin in `meeting/protocol.py`; the twin does not exist. The participant.py copy has 2 impls (`PassthroughParticipantResolver`, `RegistryParticipantResolver`) in the same file and 3 test files.
+
+### Issue #1865 outcomes (REVIEW pass + duplicate folds)
+
+Issue [#1865](https://github.com/Aureliolo/synthorg/issues/1865) closed out the 11 REVIEW rows (10 `_PrivatePrefixed` typing seams plus the 2 duplicate-named pair REVIEW rows). The 5 retained protocols each carry a one-line `# <reason>` rationale comment naming the consumer that justifies the seam; the 7 deletions collapsed single-consumer seams or removed pure dead code.
+
+#### Retained with rationale (5 protocols)
+
+Each gets a one-line `# <reason>` design-rationale comment immediately above the `class` line.
+
+| Path | Line | Name | Rationale |
+|---|---|---|---|
+| api/lifecycle.py | 86 | `_AsyncStartStop` | Structural seam over the optional `synthorg[distributed]` `JetStreamTaskQueue`; consumed by `_cleanup_on_failure` and `_safe_shutdown`. |
+| core/state_machine.py | 36 | `_HasValue` | Generic bound for `StateMachine[S]`; 4 structural users: `TaskStatus`, `RequestStatus`, `KanbanColumn`, `SprintStatus`. |
+| persistence/_shared/audit.py | 160 | `IsDuplicate` | Driver-abstraction predicate; impls: `sqlite._shared.is_unique_constraint_error`, `postgres.audit_repository._postgres_is_duplicate`. |
+| templates/_inheritance.py | 24 | `_RenderToDictFn` | Self-referential recursive callback for `render_parent_config`; consumer: `templates.renderer._render_to_dict` passes itself in to walk the parent chain. |
+| providers/management/_capabilities_mixin.py | 55 | `_ServiceProtocol` | Narrows the mixin's `self`-type to the 3 attrs + 3 methods consumed; host: `ProviderManagementService`. |
+
+#### Deleted (7 protocols)
+
+| Path | Line | Name | Outcome |
+|---|---|---|---|
+| engine/quality/graders/heuristic.py | 27 | `_HeuristicGraderBridge` | Deleted. Collapsed to `bridge: EngineBridgeConfig` with a `TYPE_CHECKING` import; the single structural consumer was already `EngineBridgeConfig`. |
+| engine/routing/scorer.py | 40 | `_RoutingScorerBridge` | Deleted. Same collapse as `_HeuristicGraderBridge`. |
+| templates/model_matcher.py | 370 | `_ModelMatcherBridge` | Deleted. Same collapse as `_HeuristicGraderBridge`. |
+| engine/coordination/attribution.py | 32 | `_ExecutionResultLike` | Deleted. Defined inside `if TYPE_CHECKING:` but never referenced as an annotation; runtime code already used `getattr()` on untyped values. Duck-type contract documented inline at the call site. |
+| engine/coordination/attribution.py | 35 | `_AgentRunResultLike` | Deleted. Same as `_ExecutionResultLike`. |
+| communication/meeting/conflict_detection.py | 39 | `ConflictDetector` (fold duplicate) | Deleted. Folded into the canonical definition at `communication/meeting/protocol.py:41`. The 5 importers already pointed at `protocol.py`; the `conflict_detection.py` copy was unimported dead code. |
+| meta/signals/protocol.py | 26 | `SignalAggregator` (fold duplicate) | Deleted. File removed entirely (zero importers; sole content was this dead protocol). Folded into the canonical definition at `meta/protocol.py:38`. |
 
 ### Recommended next pass for `scripts/protocol_audit.py`
 

@@ -12,7 +12,7 @@ Strategies include:
 """
 
 import re
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.observability import get_logger
@@ -33,26 +33,6 @@ logger = get_logger(__name__)
 # value, above this they agree closely enough to skip the discussion
 # phase.  Shared by EmbeddingSimilarityDetector and HybridDetector.
 _DEFAULT_SIMILARITY_THRESHOLD: float = 0.7
-
-
-@runtime_checkable
-class ConflictDetector(Protocol):
-    """Protocol for pluggable conflict detection strategies.
-
-    All conflict detectors share this interface so consumers can
-    type against the pluggable API under mypy strict mode.
-    """
-
-    def detect(self, response_content: str) -> bool:
-        """Determine whether the response indicates conflicts.
-
-        Args:
-            response_content: The conflict-check agent response text.
-
-        Returns:
-            True if conflicts detected, False otherwise.
-        """
-        ...
 
 
 _MIN_POSITIONS_FOR_CONFLICT: int = 2
