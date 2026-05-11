@@ -6,7 +6,7 @@ import re
 import smtplib
 import ssl
 from email.message import EmailMessage
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from synthorg.notifications.models import Notification
 
 logger = get_logger(__name__)
+_DEFAULT_PORT: Final[int] = 587
+_DEFAULT_SMTP_TIMEOUT_SECONDS: Final[float] = 10.0
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -63,13 +65,13 @@ class EmailNotificationSink:
         self,
         *,
         host: str,
-        port: int = 587,
+        port: int = _DEFAULT_PORT,
         username: str | None = None,
         password: str | None = None,
         from_addr: str,
         to_addrs: tuple[str, ...],
         use_tls: bool = True,
-        smtp_timeout_seconds: float = 10.0,
+        smtp_timeout_seconds: float = _DEFAULT_SMTP_TIMEOUT_SECONDS,
     ) -> None:
         if not math.isfinite(smtp_timeout_seconds) or smtp_timeout_seconds <= 0:
             msg = (

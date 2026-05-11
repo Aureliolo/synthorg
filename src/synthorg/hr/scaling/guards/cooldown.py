@@ -6,7 +6,7 @@ recent same-type action on the same target.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
+_DEFAULT_COOLDOWN_SECONDS: Final[int] = 3600
 
 
 class CooldownGuard:
@@ -31,7 +32,7 @@ class CooldownGuard:
     def __init__(
         self,
         *,
-        cooldown_seconds: int = 3600,
+        cooldown_seconds: int = _DEFAULT_COOLDOWN_SECONDS,
     ) -> None:
         if cooldown_seconds < 0:
             msg = f"cooldown_seconds must be >= 0, got {cooldown_seconds}"

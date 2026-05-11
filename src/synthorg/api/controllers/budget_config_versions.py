@@ -1,7 +1,7 @@
 """Budget config version history controller -- list, get."""
 
 import asyncio
-from typing import Annotated
+from typing import Annotated, Final
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
@@ -25,6 +25,7 @@ from synthorg.observability.events.versioning import (
 from synthorg.versioning import VersionSnapshot
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 20
 
 SnapshotT = VersionSnapshot[BudgetConfig]
 
@@ -43,7 +44,7 @@ class BudgetConfigVersionController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 20,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> Response[PaginatedResponse[SnapshotT]]:
         """List version history for budget configuration."""
         secret = state.app_state.cursor_secret

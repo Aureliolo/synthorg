@@ -5,6 +5,7 @@ endpoints for the ontology subsystem.
 """
 
 from datetime import UTC, datetime
+from typing import Final
 
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
@@ -59,6 +60,7 @@ from synthorg.ontology.models import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 def _entity_to_response(entity: EntityDefinition) -> EntityResponse:
@@ -128,7 +130,7 @@ class OntologyController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
         tier: str | None = None,
     ) -> PaginatedResponse[EntityResponse]:
         """List all entity definitions, filterable by tier."""
@@ -356,7 +358,7 @@ class OntologyController(Controller):
         state: State,
         name: PathName,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[EntityVersionResponse]:
         """List all versions of an entity definition."""
         app_state: AppState = state.app_state
@@ -447,7 +449,7 @@ class OntologyController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[DriftReportResponse]:
         """Get latest drift reports for all entities."""
         app_state: AppState = state.app_state

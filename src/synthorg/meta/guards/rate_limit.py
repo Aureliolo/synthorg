@@ -7,6 +7,7 @@ limit within the configured window.
 import asyncio
 from collections import deque
 from datetime import UTC, datetime, timedelta
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
@@ -21,6 +22,8 @@ from synthorg.observability.events.meta import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_PROPOSALS: Final[int] = 10
+_DEFAULT_WINDOW_HOURS: Final[int] = 24
 
 
 class RateLimitGuard:
@@ -36,8 +39,8 @@ class RateLimitGuard:
     def __init__(
         self,
         *,
-        max_proposals: int = 10,
-        window_hours: int = 24,
+        max_proposals: int = _DEFAULT_MAX_PROPOSALS,
+        window_hours: int = _DEFAULT_WINDOW_HOURS,
     ) -> None:
         self._max_proposals = max_proposals
         self._window = timedelta(hours=window_hours)

@@ -2,7 +2,7 @@
 
 import asyncio
 import math
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 import httpx
 
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from synthorg.notifications.models import Notification
 
 logger = get_logger(__name__)
+_DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0
 
 
 def _escape_mrkdwn(text: str) -> str:
@@ -89,7 +90,7 @@ class SlackNotificationSink:
         self,
         *,
         webhook_url: str,
-        webhook_timeout_seconds: float = 10.0,
+        webhook_timeout_seconds: float = _DEFAULT_WEBHOOK_TIMEOUT_SECONDS,
     ) -> None:
         _validate_outbound_url(webhook_url, "webhook_url")
         if not math.isfinite(webhook_timeout_seconds) or webhook_timeout_seconds <= 0:

@@ -1,7 +1,7 @@
 """Client simulation CRUD endpoints at /clients."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
 from litestar import Controller, Request, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -29,6 +29,7 @@ from synthorg.observability.events.api import (
 from synthorg.settings.bridge_configs import ClientBridgeConfig
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 class CreateClientRequest(BaseModel):
@@ -213,7 +214,7 @@ class ClientController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ClientProfile]:
         """List all configured clients (paginated)."""
         app_state: AppState = state.app_state

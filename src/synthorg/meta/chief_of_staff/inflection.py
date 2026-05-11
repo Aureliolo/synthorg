@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = get_logger(__name__)
+_DEFAULT_WARNING_THRESHOLD: Final[float] = 0.15
+_DEFAULT_CRITICAL_THRESHOLD: Final[float] = 0.3
 
 _EPSILON: Final[float] = 1e-9
 
@@ -77,8 +79,8 @@ class OrgInflectionDetector:
     def __init__(
         self,
         *,
-        warning_threshold: float = 0.15,
-        critical_threshold: float = 0.30,
+        warning_threshold: float = _DEFAULT_WARNING_THRESHOLD,
+        critical_threshold: float = _DEFAULT_CRITICAL_THRESHOLD,
     ) -> None:
         self._warning = warning_threshold
         self._critical = critical_threshold

@@ -8,7 +8,7 @@ the observed elapsed time.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 
 logger = get_logger(__name__)
+_DEFAULT_CHECK_INTERVAL_HOURS: Final[float] = 4.0
 
 SnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
 """Coroutine producing the current org-wide signal snapshot."""
@@ -66,7 +67,7 @@ class BeforeAfterRollout:
         *,
         clock: Clock | None = None,
         snapshot_builder: SnapshotBuilder | None = None,
-        check_interval_hours: float = 4.0,
+        check_interval_hours: float = _DEFAULT_CHECK_INTERVAL_HOURS,
         thresholds: RegressionThresholds | None = None,
     ) -> None:
         if check_interval_hours <= 0.0:

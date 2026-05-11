@@ -7,7 +7,7 @@ honored (handlers never reach into ``app_state.persistence`` directly).
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.observability import get_logger
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from synthorg.versioning.models import VersionSnapshot
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 class WorkflowVersionService:
@@ -40,7 +41,7 @@ class WorkflowVersionService:
         definition_id: NotBlankStr,
         *,
         offset: int = 0,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIMIT,
     ) -> tuple[tuple[VersionSnapshot[WorkflowDefinition], ...], int]:
         """Return a paginated list of version snapshots and the total count.
 

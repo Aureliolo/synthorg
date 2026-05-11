@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from synthorg.meta.telemetry.protocol import AnalyticsCollector
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_DEPLOYMENTS: Final[int] = 3
+_DEFAULT_MIN_OBSERVATIONS: Final[int] = 10
 
 # Pattern-level thresholds that gate relax / tighten recommendations.
 # Empirically tuned from v0.6.x rollout data: 0.7 approval / success
@@ -110,8 +112,8 @@ class DefaultThresholdRecommender:
     def __init__(
         self,
         *,
-        min_deployments: int = 3,
-        min_observations: int = 10,
+        min_deployments: int = _DEFAULT_MIN_DEPLOYMENTS,
+        min_observations: int = _DEFAULT_MIN_OBSERVATIONS,
     ) -> None:
         self._min_deployments = min_deployments
         self._min_observations = min_observations

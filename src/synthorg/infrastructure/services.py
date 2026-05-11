@@ -29,7 +29,7 @@ import asyncio
 import copy
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
@@ -69,6 +69,7 @@ if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 100
 
 
 def _capability_missing(
@@ -914,7 +915,7 @@ class AuditReadService:
         self,
         *,
         offset: int = 0,
-        limit: int = 100,
+        limit: int = _DEFAULT_LIMIT,
     ) -> tuple[tuple[object, ...], int]:
         """Return paginated audit entries plus the unfiltered total.
 
@@ -954,7 +955,7 @@ class EventsReadService:
         self,
         *,
         offset: int = 0,
-        limit: int = 100,
+        limit: int = _DEFAULT_LIMIT,
     ) -> tuple[tuple[object, ...], int]:
         """Return paginated recent events plus the unfiltered total.
 

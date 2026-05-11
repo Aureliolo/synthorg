@@ -8,7 +8,7 @@ as calibration records for drift analysis against the behavioral strategy.
 import json
 import random
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
@@ -37,6 +37,8 @@ if TYPE_CHECKING:
     from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
+_DEFAULT_SAMPLING_RATE: Final[float] = 0.01
+_DEFAULT_RETENTION_DAYS: Final[int] = 90
 
 #: Static head of the calibration prompt (no user-controlled data).
 #:
@@ -79,8 +81,8 @@ class LlmCalibrationSampler:
         *,
         provider: CompletionProvider,
         model: NotBlankStr,
-        sampling_rate: float = 0.01,
-        retention_days: int = 90,
+        sampling_rate: float = _DEFAULT_SAMPLING_RATE,
+        retention_days: int = _DEFAULT_RETENTION_DAYS,
         currency: CurrencyCode = DEFAULT_CURRENCY,
         cost_tracker: CostTracker | None = None,
     ) -> None:

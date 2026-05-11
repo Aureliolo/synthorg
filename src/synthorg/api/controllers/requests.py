@@ -1,6 +1,6 @@
 """Client request lifecycle endpoints at /requests."""
 
-from typing import Any
+from typing import Any, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -23,6 +23,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 class CreateRequestPayload(BaseModel):
@@ -86,7 +87,7 @@ class RequestController(Controller):
         state: State,
         status: RequestStatus | None = None,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ClientRequest]:
         """List stored client requests, optionally filtered by status."""
         app_state: AppState = state.app_state

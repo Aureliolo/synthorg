@@ -60,6 +60,7 @@ from synthorg.observability.events.security import (
 _REVEAL_GENERIC_ERROR = "Connection or credential field not found"
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 _MAX_BASE_URL_LEN: Final[int] = 2048
@@ -153,7 +154,7 @@ class ConnectionsController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Connection]:
         """List all connections in the catalog (paginated).
 

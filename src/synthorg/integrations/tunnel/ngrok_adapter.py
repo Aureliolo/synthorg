@@ -12,7 +12,7 @@ the tunnel feature simply do not call the start endpoint.
 
 import asyncio
 import os
-from typing import Any
+from typing import Any, Final
 
 from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
@@ -26,6 +26,7 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_PORT: Final[int] = 8000
 
 
 class NgrokAdapter:
@@ -50,7 +51,7 @@ class NgrokAdapter:
         self,
         *,
         auth_token_env: str = "NGROK_AUTHTOKEN",  # noqa: S107
-        port: int = 8000,
+        port: int = _DEFAULT_PORT,
     ) -> None:
         self._port = port
         # The ngrok auth token is a bootstrap secret read from the

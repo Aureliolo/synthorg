@@ -6,7 +6,7 @@ for dry-run evaluation.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -53,6 +53,7 @@ from synthorg.observability.events.security import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 def _service(state: State) -> CustomRulesService:
@@ -202,7 +203,7 @@ class CustomRuleController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[dict[str, Any]]:
         """List all custom rules (paginated).
 
@@ -432,7 +433,7 @@ class CustomRuleController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[dict[str, Any]]:
         """List available snapshot metrics for rule building (paginated).
 

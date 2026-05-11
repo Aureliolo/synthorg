@@ -7,7 +7,7 @@ actions like devil's advocate or escalation.
 """
 
 import difflib
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -24,6 +24,7 @@ from synthorg.observability.events.strategy import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_DISAGREEMENTS: Final[int] = 2
 
 
 class ConsensusVelocityResult(BaseModel):
@@ -82,7 +83,7 @@ class ConsensusVelocityDetector:
     recommendations.
     """
 
-    def __init__(self, *, min_disagreements: int = 2) -> None:
+    def __init__(self, *, min_disagreements: int = _DEFAULT_MIN_DISAGREEMENTS) -> None:
         """Initialize detector.
 
         Args:

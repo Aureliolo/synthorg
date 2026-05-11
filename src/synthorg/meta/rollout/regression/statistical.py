@@ -14,7 +14,7 @@ detector refuses to fire without data rather than guessing.
 import math
 from datetime import datetime  # noqa: TC003 -- Pydantic needs at runtime
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -38,6 +38,8 @@ from synthorg.observability.events.meta import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_DATA_POINTS: Final[int] = 10
+_DEFAULT_SIGNIFICANCE_LEVEL: Final[float] = 0.05
 
 
 class WindowSamples(BaseModel):
@@ -115,8 +117,8 @@ class StatisticalDetector:
     def __init__(
         self,
         *,
-        min_data_points: int = 10,
-        significance_level: float = 0.05,
+        min_data_points: int = _DEFAULT_MIN_DATA_POINTS,
+        significance_level: float = _DEFAULT_SIGNIFICANCE_LEVEL,
         sample_source: StatisticalSampleSource | None = None,
     ) -> None:
         if min_data_points < 2:  # noqa: PLR2004 -- Welch requires n>=2

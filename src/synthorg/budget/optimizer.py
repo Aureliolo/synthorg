@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
+_DEFAULT_WINDOW_COUNT: Final[int] = 5
 
 # Same ordering as BudgetEnforcer._ALERT_LEVEL_ORDER
 _ALERT_LEVEL_ORDER: dict[BudgetAlertLevel, int] = {
@@ -115,7 +116,7 @@ class CostOptimizer:
         *,
         start: datetime,
         end: datetime,
-        window_count: int = 5,
+        window_count: int = _DEFAULT_WINDOW_COUNT,
     ) -> AnomalyDetectionResult:
         """Detect spending anomalies in the given period.
 

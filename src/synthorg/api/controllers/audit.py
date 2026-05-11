@@ -35,6 +35,7 @@ from synthorg.security.models import AuditEntry
 from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 _MAX_AUDIT_QUERY: Final[int] = 10_000
 """Fallback cap applied when no settings resolver is wired in."""
@@ -101,7 +102,7 @@ class AuditController(Controller):
         since: datetime | None = None,
         until: datetime | None = None,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
         jsonb_contains: Annotated[str, Parameter(max_length=2048)] | None = None,
         jsonb_key_exists: Annotated[str, Parameter(max_length=256)] | None = None,
     ) -> PaginatedResponse[AuditEntry]:

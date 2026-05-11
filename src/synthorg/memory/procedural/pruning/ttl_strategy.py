@@ -4,7 +4,7 @@ Removes procedural memory entries that have exceeded a maximum age.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from synthorg.memory.models import MemoryEntry
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_AGE_DAYS: Final[int] = 90
 
 
 class TtlPruningStrategy:
@@ -22,7 +23,7 @@ class TtlPruningStrategy:
         max_age_days: Maximum age in days for entries (default 90).
     """
 
-    def __init__(self, max_age_days: int = 90) -> None:
+    def __init__(self, max_age_days: int = _DEFAULT_MAX_AGE_DAYS) -> None:
         """Initialize TTL pruning strategy.
 
         Args:

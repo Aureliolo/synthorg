@@ -40,6 +40,8 @@ if TYPE_CHECKING:
     from synthorg.meta.signals.service import SignalsService
 
 logger = get_logger(__name__)
+_DEFAULT_HORIZON_DAYS: Final[int] = 30
+_DEFAULT_SAMPLE_COUNT: Final[int] = 8
 
 _MAX_HISTORY_SAMPLE_COUNT: Final[int] = 128
 
@@ -115,7 +117,7 @@ class AnalyticsService:
         *,
         since: datetime,
         until: datetime,
-        horizon_days: int = 30,
+        horizon_days: int = _DEFAULT_HORIZON_DAYS,
     ) -> AnalyticsForecast:
         """Return a simple linear forecast derived from the budget window."""
         if horizon_days < 1:
@@ -183,7 +185,7 @@ class AnalyticsService:
         since: datetime,
         until: datetime,
         metric_names: Sequence[str],
-        sample_count: int = 8,
+        sample_count: int = _DEFAULT_SAMPLE_COUNT,
     ) -> MetricsHistory:
         """Return evenly-spaced point-in-time samples across the window.
 

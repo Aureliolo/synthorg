@@ -1,6 +1,6 @@
 """Personality preset controller -- discovery and CRUD endpoints."""
 
-from typing import Any
+from typing import Any, Final
 
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
@@ -28,6 +28,7 @@ from synthorg.templates.preset_service import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 def _to_summary(entry: PresetEntry) -> PresetSummaryResponse:
@@ -73,7 +74,7 @@ class PersonalityPresetController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[PresetSummaryResponse]:
         """List all personality presets (builtin + custom)."""
         service = _get_service(state)

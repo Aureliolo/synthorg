@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_RECENT: Final[int] = 10
 
 _DEFAULT_MAX_RESULTS: Final[int] = 5_000
 """Default ring-buffer capacity.
@@ -130,7 +131,7 @@ class InMemoryEvolutionOutcomeStore:
         *,
         since: datetime,
         until: datetime,
-        max_recent: int = 10,
+        max_recent: int = _DEFAULT_MAX_RECENT,
     ) -> OrgEvolutionSummary:
         """Roll recorded outcomes into an :class:`OrgEvolutionSummary`."""
         if max_recent < 1:

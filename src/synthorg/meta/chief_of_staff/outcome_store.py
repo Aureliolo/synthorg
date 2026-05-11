@@ -6,7 +6,7 @@ Persists ``ProposalOutcome`` records as episodic memories in the
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from synthorg.meta.models import ProposalAltitude
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_OUTCOMES: Final[int] = 3
+_DEFAULT_LIMIT: Final[int] = 10
 
 _NAMESPACE = NotBlankStr("chief_of_staff")
 
@@ -47,7 +49,7 @@ class MemoryBackendOutcomeStore:
         *,
         backend: MemoryBackend,
         agent_id: NotBlankStr,
-        min_outcomes: int = 3,
+        min_outcomes: int = _DEFAULT_MIN_OUTCOMES,
     ) -> None:
         self._backend = backend
         self._agent_id = agent_id
@@ -161,7 +163,7 @@ class MemoryBackendOutcomeStore:
         *,
         rule_name: NotBlankStr | None = None,
         altitude: ProposalAltitude | None = None,
-        limit: int = 10,
+        limit: int = _DEFAULT_LIMIT,
     ) -> tuple[ProposalOutcome, ...]:
         """Retrieve recent outcomes with optional filtering.
 

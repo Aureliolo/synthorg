@@ -26,6 +26,8 @@ from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
 
 logger = get_logger(__name__)
+_DEFAULT_WIDTH: Final[int] = 1024
+_DEFAULT_HEIGHT: Final[int] = 1024
 
 
 class ImageResult(BaseModel):
@@ -60,8 +62,8 @@ class ImageProvider(Protocol):
         self,
         *,
         prompt: str,
-        width: int = 1024,
-        height: int = 1024,
+        width: int = _DEFAULT_WIDTH,
+        height: int = _DEFAULT_HEIGHT,
         style: str = "realistic",
         quality: str = "standard",
     ) -> ImageResult:

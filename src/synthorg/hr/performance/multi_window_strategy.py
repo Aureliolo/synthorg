@@ -7,7 +7,7 @@ Returns None for aggregate values when data points < min_data_points.
 import math
 import re
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.types import NotBlankStr
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_DATA_POINTS: Final[int] = 5
 
 # Pattern for parsing window size strings (e.g. '7d', '30d', '90d').
 _WINDOW_PATTERN = re.compile(r"^(\d+)d$")
@@ -59,7 +60,7 @@ class MultiWindowStrategy:
         self,
         *,
         windows: tuple[str, ...] = ("7d", "30d", "90d"),
-        min_data_points: int = 5,
+        min_data_points: int = _DEFAULT_MIN_DATA_POINTS,
     ) -> None:
         self._windows = windows
         self._min_data_points = min_data_points

@@ -7,7 +7,7 @@ tokens before they expire.
 import asyncio
 import contextlib
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
+_DEFAULT_REFRESH_THRESHOLD_SECONDS: Final[int] = 300
+_DEFAULT_CHECK_INTERVAL_SECONDS: Final[int] = 60
 
 
 class OAuthTokenManager:
@@ -57,8 +59,8 @@ class OAuthTokenManager:
         self,
         catalog: ConnectionCatalog,
         *,
-        refresh_threshold_seconds: int = 300,
-        check_interval_seconds: int = 60,
+        refresh_threshold_seconds: int = _DEFAULT_REFRESH_THRESHOLD_SECONDS,
+        check_interval_seconds: int = _DEFAULT_CHECK_INTERVAL_SECONDS,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._catalog = catalog

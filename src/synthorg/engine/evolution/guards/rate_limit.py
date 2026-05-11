@@ -2,12 +2,14 @@
 
 import asyncio
 from datetime import datetime, timedelta
+from typing import Final
 
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import EVOLUTION_RATE_LIMITED
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_PER_DAY: Final[int] = 3
 
 
 class RateLimitGuard:
@@ -18,7 +20,7 @@ class RateLimitGuard:
     cleaned up.
     """
 
-    def __init__(self, max_per_day: int = 3) -> None:
+    def __init__(self, max_per_day: int = _DEFAULT_MAX_PER_DAY) -> None:
         """Initialize RateLimitGuard.
 
         Args:

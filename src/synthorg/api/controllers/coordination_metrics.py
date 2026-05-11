@@ -30,6 +30,7 @@ from synthorg.observability.events.api import (
 from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 _MAX_METRICS_QUERY: Final[int] = 10_000
 """Fallback cap applied when no settings resolver is wired in."""
@@ -93,7 +94,7 @@ class CoordinationMetricsController(Controller):
         since: datetime | None = None,
         until: datetime | None = None,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[CoordinationMetricsRecord]:
         """Query coordination metrics with optional filters.
 

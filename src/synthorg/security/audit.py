@@ -1,6 +1,7 @@
 """Append-only in-memory audit log for security evaluations."""
 
 from collections import deque
+from typing import Final
 
 from pydantic import AwareDatetime  # noqa: TC002
 
@@ -15,6 +16,8 @@ from synthorg.observability.events.security import (
 from synthorg.security.models import AuditEntry  # noqa: TC001
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_ENTRIES: Final[int] = 100000
+_DEFAULT_LIMIT: Final[int] = 100
 
 
 class AuditLog:
@@ -27,7 +30,7 @@ class AuditLog:
     Future: backed by ``PersistenceBackend`` (see Memory design page).
     """
 
-    def __init__(self, *, max_entries: int = 100_000) -> None:
+    def __init__(self, *, max_entries: int = _DEFAULT_MAX_ENTRIES) -> None:
         """Initialize the audit log.
 
         Args:
@@ -96,7 +99,7 @@ class AuditLog:
         action_type: str | None = None,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = _DEFAULT_LIMIT,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters.
 

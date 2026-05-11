@@ -10,7 +10,7 @@ Concrete middleware for the coordination pipeline:
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from synthorg.core.enums import AutonomyLevel
 from synthorg.engine.middleware.coordination_protocol import (
@@ -40,6 +40,9 @@ if TYPE_CHECKING:
     from synthorg.budget.enforcer import BudgetEnforcer
 
 logger = get_logger(__name__)
+_DEFAULT_ESCALATION_THRESHOLD: Final[int] = 3
+_DEFAULT_MAX_STALL_COUNT: Final[int] = 3
+_DEFAULT_MAX_RESET_COUNT: Final[int] = 2
 
 
 # ── TaskLedgerMiddleware ──────────────────────────────────────────
@@ -127,7 +130,7 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
     def __init__(
         self,
         *,
-        escalation_threshold: int = 3,
+        escalation_threshold: int = _DEFAULT_ESCALATION_THRESHOLD,
         **_kwargs: object,
     ) -> None:
         super().__init__(name="progress_ledger")
@@ -254,8 +257,8 @@ class MagenticReplanHook:
     def __init__(
         self,
         *,
-        max_stall_count: int = 3,
-        max_reset_count: int = 2,
+        max_stall_count: int = _DEFAULT_MAX_STALL_COUNT,
+        max_reset_count: int = _DEFAULT_MAX_RESET_COUNT,
         budget_enforcer: BudgetEnforcer | None = None,
     ) -> None:
         self._max_stall_count = max_stall_count

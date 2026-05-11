@@ -20,7 +20,7 @@ stay on the API namespace because they carry no audit-chain
 implication.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 100
 
 
 class SsrfViolationService:
@@ -138,7 +139,7 @@ class SsrfViolationService:
         self,
         *,
         status: SsrfViolationStatus | None = None,
-        limit: int = 100,
+        limit: int = _DEFAULT_LIMIT,
     ) -> tuple[SsrfViolation, ...]:
         """List violations with an optional ``status`` filter.
 

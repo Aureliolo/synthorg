@@ -6,7 +6,7 @@ to RelevanceScoreCuration when no provider is available or when
 the provider call fails.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -43,6 +43,8 @@ if TYPE_CHECKING:
     from synthorg.core.enums import SeniorityLevel
 
 logger = get_logger(__name__)
+_DEFAULT_TEMPERATURE: Final[float] = 0.3
+_DEFAULT_TOP_K: Final[int] = 50
 
 
 class LLMCurated:
@@ -66,8 +68,8 @@ class LLMCurated:
         *,
         provider: CompletionProvider | None = None,
         model: str = "example-small-001",
-        temperature: float = 0.3,
-        top_k: int = 50,
+        temperature: float = _DEFAULT_TEMPERATURE,
+        top_k: int = _DEFAULT_TOP_K,
         cost_tracker: CostTracker | None = None,
     ) -> None:
         if top_k <= 0:

@@ -6,7 +6,7 @@ shared URL validation helper.
 """
 
 from abc import ABC
-from typing import Any
+from typing import Any, Final
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger
@@ -20,6 +20,7 @@ from synthorg.tools.network_validator import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_REQUEST_TIMEOUT: Final[float] = 30.0
 
 
 class BaseWebTool(BaseTool, ABC):
@@ -38,7 +39,7 @@ class BaseWebTool(BaseTool, ABC):
         parameters_schema: dict[str, Any] | None = None,
         action_type: str | None = None,
         network_policy: NetworkPolicy | None = None,
-        request_timeout: float = 30.0,
+        request_timeout: float = _DEFAULT_REQUEST_TIMEOUT,
     ) -> None:
         """Initialize a web tool with network policy.
 

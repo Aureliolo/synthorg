@@ -3,7 +3,7 @@
 import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, NamedTuple
+from typing import TYPE_CHECKING, Annotated, Final, NamedTuple
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.models import TaskMetricRecord
 
 logger = get_logger(__name__)
+_DEFAULT_HORIZON_DAYS: Final[int] = 14
 
 
 # ── Response models ────────────────────────────────────────────
@@ -642,7 +643,7 @@ class AnalyticsController(Controller):
                 le=90,
                 description="Projection horizon in days",
             ),
-        ] = 14,
+        ] = _DEFAULT_HORIZON_DAYS,
     ) -> ApiResponse[ForecastResponse]:
         """Return budget spend projection.
 

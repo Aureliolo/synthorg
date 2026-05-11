@@ -1,6 +1,6 @@
 """Task controller -- full CRUD via TaskEngine."""
 
-from typing import Annotated
+from typing import Annotated, Final
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -55,6 +55,7 @@ from synthorg.observability.events.task import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 def _extract_requester(state: State) -> str:
@@ -169,7 +170,7 @@ class TaskController(Controller):
         assigned_to: Annotated[str, Parameter(max_length=256)] | None = None,
         project: Annotated[str, Parameter(max_length=256)] | None = None,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Task]:
         """List tasks with optional filters.
 

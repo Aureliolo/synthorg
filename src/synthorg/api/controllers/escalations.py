@@ -9,7 +9,7 @@ client cannot flood the queue.  Error responses use the shared RFC
 9457 handlers registered by :mod:`synthorg.api.exception_handlers`.
 """
 
-from typing import Any
+from typing import Any, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -43,6 +43,7 @@ from synthorg.observability.events.conflict import (
 from synthorg.observability.metrics_hub import record_escalation_outcome
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 # ── Request / response DTOs ─────────────────────────────────────
@@ -130,7 +131,7 @@ class EscalationsController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
         status: EscalationStatus = EscalationStatus.PENDING,
     ) -> PaginatedResponse[EscalationResponse]:
         """Page over escalations filtered by ``status`` (default PENDING)."""

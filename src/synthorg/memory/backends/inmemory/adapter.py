@@ -10,6 +10,7 @@ backend.
 import asyncio
 import uuid
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -39,6 +40,7 @@ from synthorg.observability.events.memory import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_MEMORIES_PER_AGENT: Final[int] = 10000
 
 _ALL_CATEGORIES: frozenset[MemoryCategory] = frozenset(MemoryCategory)
 
@@ -55,7 +57,7 @@ class InMemoryBackend:
     def __init__(
         self,
         *,
-        max_memories_per_agent: int = 10_000,
+        max_memories_per_agent: int = _DEFAULT_MAX_MEMORIES_PER_AGENT,
     ) -> None:
         if max_memories_per_agent < 1:
             msg = f"max_memories_per_agent must be >= 1, got {max_memories_per_agent}"

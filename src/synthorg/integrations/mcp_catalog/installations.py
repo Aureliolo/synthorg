@@ -11,11 +11,13 @@ re-installing the same entry is a safe upsert that refreshes
 ``installed_at`` and overwrites the associated ``connection_name``.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+_DEFAULT_LIMIT: Final[int] = 100
 
 
 class McpInstallation(BaseModel):
@@ -50,7 +52,7 @@ class McpInstallationRepository(Protocol):
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = _DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
         """List recorded installations.

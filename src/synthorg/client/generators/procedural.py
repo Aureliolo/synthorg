@@ -2,6 +2,7 @@
 
 import hashlib
 import random
+from typing import Final
 
 from synthorg.client.models import (
     GenerationContext,
@@ -12,6 +13,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
 
 logger = get_logger(__name__)
+_DEFAULT_SEED: Final[int] = 42
 
 
 _TITLE_TEMPLATES: tuple[str, ...] = (
@@ -63,7 +65,7 @@ class ProceduralGenerator:
     and fuzzing runs reproducible.
     """
 
-    def __init__(self, *, seed: int = 42) -> None:
+    def __init__(self, *, seed: int = _DEFAULT_SEED) -> None:
         """Initialize the procedural generator.
 
         Args:

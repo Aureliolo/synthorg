@@ -59,6 +59,7 @@ from synthorg.observability.events.api import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 # Safety cap for lifecycle event queries to prevent unbounded memory
 # allocation.  The paginate() helper already caps the returned page
@@ -187,7 +188,7 @@ class AgentController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[AgentConfig]:
         """List all configured agents.
 
@@ -423,7 +424,7 @@ class AgentController(Controller):
         state: State,
         agent_name: PathName,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ActivityEvent]:
         """Get an agent's activity timeline (paginated).
 

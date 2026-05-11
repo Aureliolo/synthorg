@@ -7,7 +7,7 @@ reduce redundant calls to external MCP servers.
 import copy
 import threading
 from collections import OrderedDict
-from typing import Any
+from typing import Any, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
@@ -22,6 +22,8 @@ from synthorg.tools.base import ToolExecutionResult  # noqa: TC001
 _CACHE_NAME = "mcp_result"
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_SIZE: Final[int] = 256
+_DEFAULT_TTL_SECONDS: Final[float] = 60.0
 
 
 class MCPResultCache:
@@ -45,8 +47,8 @@ class MCPResultCache:
     def __init__(
         self,
         *,
-        max_size: int = 256,
-        ttl_seconds: float = 60.0,
+        max_size: int = _DEFAULT_MAX_SIZE,
+        ttl_seconds: float = _DEFAULT_TTL_SECONDS,
         clock: Clock | None = None,
     ) -> None:
         self._max_size = max_size

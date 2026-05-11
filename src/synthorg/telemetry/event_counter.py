@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from synthorg.telemetry.protocol import TelemetryEvent
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_TOP: Final[int] = 10
 
 _DEFAULT_MAX_EVENTS: Final[int] = 10_000
 """Default ring-buffer capacity for telemetry events.
@@ -113,7 +114,7 @@ class InMemoryTelemetryEventCounter:
         *,
         since: datetime,
         until: datetime,
-        max_top: int = 10,
+        max_top: int = _DEFAULT_MAX_TOP,
     ) -> OrgTelemetrySummary:
         """Roll recorded events into an :class:`OrgTelemetrySummary`."""
         _validate_window(since, until)

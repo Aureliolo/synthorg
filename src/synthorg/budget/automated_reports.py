@@ -12,7 +12,7 @@ import datetime as _dt
 import math
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.report_config import ReportPeriod
 from synthorg.budget.report_templates import (
@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
+_DEFAULT_TOP_N: Final[int] = 10
 
 
 class AutomatedReportService:
@@ -84,7 +85,7 @@ class AutomatedReportService:
         *,
         start: datetime,
         end: datetime,
-        top_n: int = 10,
+        top_n: int = _DEFAULT_TOP_N,
     ) -> SpendingReport:
         """Generate a spending report. Delegates to ``ReportGenerator``."""
         return await self._report_generator.generate_report(

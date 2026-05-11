@@ -7,6 +7,7 @@ most important information.
 """
 
 import re
+from typing import Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
@@ -14,6 +15,8 @@ from synthorg.observability.events.consolidation import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_FACTS: Final[int] = 20
+_DEFAULT_ANCHOR_LENGTH: Final[int] = 150
 
 # ── Extraction patterns ─────────────────────────────────────────
 
@@ -111,8 +114,8 @@ class ExtractivePreserver:
     def __init__(
         self,
         *,
-        max_facts: int = 20,
-        anchor_length: int = 150,
+        max_facts: int = _DEFAULT_MAX_FACTS,
+        anchor_length: int = _DEFAULT_ANCHOR_LENGTH,
     ) -> None:
         if max_facts < 1:
             msg = f"max_facts must be >= 1, got {max_facts}"

@@ -1,6 +1,6 @@
 """Artifact controller -- endpoints for artifact management, storage, and retrieval."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, Response, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
@@ -43,6 +43,7 @@ from synthorg.observability.events.persistence import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 def _service(state: State) -> ArtifactService:
@@ -178,7 +179,7 @@ class ArtifactController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
         task_id: TaskIdFilter = None,
         created_by: CreatedByFilter = None,
         type: TypeFilter = None,  # noqa: A002

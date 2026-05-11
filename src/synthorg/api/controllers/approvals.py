@@ -4,7 +4,7 @@ import asyncio
 import math
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 from uuid import uuid4
 
 from litestar import Controller, Request, get, post
@@ -70,6 +70,7 @@ from synthorg.observability.metrics_hub import record_approval_decision
 from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 _URGENCY_CRITICAL_FALLBACK_SECONDS: float = 3600.0
 _URGENCY_HIGH_FALLBACK_SECONDS: float = 14400.0
@@ -516,7 +517,7 @@ class ApprovalsController(Controller):
         action_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
         | None = None,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ApprovalResponse]:
         """List approval items with optional filters.
 

@@ -3,7 +3,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Final
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -39,6 +39,7 @@ from synthorg.observability.events.api import (
 from synthorg.tools.invocation_record import ToolInvocationRecord  # noqa: TC001
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 # Degraded source names -- used in responses and tests.
@@ -315,7 +316,7 @@ class ActivityController(Controller):
         request: Request[Any, Any, Any],
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
         event_type: Annotated[
             ActivityEventType | None,
             Parameter(

@@ -57,6 +57,7 @@ from synthorg.observability.events.a2a import (
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 
 logger = get_logger(__name__)
+_DEFAULT_HTTP_STATUS: Final[int] = 400
 
 _SUPPORTED_METHODS = frozenset(
     {
@@ -627,7 +628,7 @@ class _A2AMethodError(DomainError):
         code: int,
         message: str,
         *,
-        http_status: int = 400,
+        http_status: int = _DEFAULT_HTTP_STATUS,
     ) -> None:
         super().__init__(message)
         self.code = code

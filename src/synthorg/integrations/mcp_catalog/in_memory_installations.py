@@ -6,6 +6,8 @@ only for the lifetime of the running process; a persistence backend
 is the source of truth in production.
 """
 
+from typing import Final
+
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.mcp_catalog.installations import (
     McpInstallation,  # noqa: TC001
@@ -21,6 +23,7 @@ from synthorg.observability.events.persistence import (
 from synthorg.persistence._shared.pagination import validate_pagination_args
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 100
 
 
 class InMemoryMcpInstallationRepository:
@@ -62,7 +65,7 @@ class InMemoryMcpInstallationRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = _DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
         """List installations ordered by ``installed_at, catalog_entry_id`` ASC.

@@ -1,11 +1,15 @@
 """Adversarial strict feedback strategy for stress testing."""
 
+from typing import Final
+
 from synthorg.client.models import ClientFeedback, ReviewContext
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import CLIENT_REVIEW_COMPLETED
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_LENGTH: Final[int] = 200
+_DEFAULT_MIN_WORDS: Final[int] = 30
 
 
 class AdversarialFeedback:
@@ -27,8 +31,8 @@ class AdversarialFeedback:
         self,
         *,
         client_id: NotBlankStr,
-        min_length: int = 200,
-        min_words: int = 30,
+        min_length: int = _DEFAULT_MIN_LENGTH,
+        min_words: int = _DEFAULT_MIN_WORDS,
     ) -> None:
         """Initialize the adversarial feedback strategy.
 

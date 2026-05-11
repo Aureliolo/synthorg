@@ -6,6 +6,7 @@ evaluation cycle.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -15,6 +16,7 @@ from synthorg.observability.events.hr import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_INTERVAL_SECONDS: Final[int] = 900
 
 
 class BatchedScalingTrigger:
@@ -30,7 +32,7 @@ class BatchedScalingTrigger:
     def __init__(
         self,
         *,
-        interval_seconds: int = 900,
+        interval_seconds: int = _DEFAULT_INTERVAL_SECONDS,
     ) -> None:
         self._interval = max(1, interval_seconds)
         self._last_run: datetime | None = None

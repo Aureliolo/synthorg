@@ -4,7 +4,7 @@ Removes entries that are dominated on multiple dimensions (relevance,
 recency). Entries on the Pareto frontier are preserved.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from synthorg.memory.models import MemoryEntry
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_ENTRIES: Final[int] = 100
 
 
 class ParetoPruningStrategy:
@@ -29,7 +30,7 @@ class ParetoPruningStrategy:
         max_entries: Maximum entries to keep (default 100).
     """
 
-    def __init__(self, max_entries: int = 100) -> None:
+    def __init__(self, max_entries: int = _DEFAULT_MAX_ENTRIES) -> None:
         """Initialize Pareto pruning strategy.
 
         Args:

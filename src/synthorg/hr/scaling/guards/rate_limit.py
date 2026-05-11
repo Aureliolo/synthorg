@@ -5,7 +5,7 @@ Hard cap on the number of scaling actions per rolling window.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_HIRES_PER_DAY: Final[int] = 3
 
 
 class RateLimitGuard:
@@ -32,7 +33,7 @@ class RateLimitGuard:
     def __init__(
         self,
         *,
-        max_hires_per_day: int = 3,
+        max_hires_per_day: int = _DEFAULT_MAX_HIRES_PER_DAY,
         max_prunes_per_day: int = 1,
     ) -> None:
         self._limits: dict[str, int] = {

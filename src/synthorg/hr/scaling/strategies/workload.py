@@ -5,6 +5,7 @@ windows, and pruning when utilization drops below a floor.
 """
 
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
@@ -13,6 +14,8 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_STRATEGY_EVALUATED
 
 logger = get_logger(__name__)
+_DEFAULT_HIRE_THRESHOLD: Final[float] = 0.85
+_DEFAULT_PRUNE_THRESHOLD: Final[float] = 0.3
 
 _NAME = NotBlankStr("workload")
 _ACTION_TYPES = frozenset({ScalingActionType.HIRE, ScalingActionType.PRUNE})
@@ -38,8 +41,8 @@ class WorkloadAutoScaleStrategy:
     def __init__(
         self,
         *,
-        hire_threshold: float = 0.85,
-        prune_threshold: float = 0.30,
+        hire_threshold: float = _DEFAULT_HIRE_THRESHOLD,
+        prune_threshold: float = _DEFAULT_PRUNE_THRESHOLD,
     ) -> None:
         if not 0.0 <= prune_threshold < hire_threshold <= 1.0:
             msg = (

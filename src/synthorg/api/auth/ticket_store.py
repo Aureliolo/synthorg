@@ -24,7 +24,7 @@ cap or observe a half-mutated dict.
 import math
 import secrets
 import threading
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict
 
@@ -44,6 +44,7 @@ from synthorg.observability.events.api import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_TTL_SECONDS: Final[float] = 30.0
 
 
 class TicketLimitExceededError(PerOperationRateLimitError):
@@ -108,7 +109,7 @@ class WsTicketStore:
 
     def __init__(
         self,
-        ttl_seconds: float = 30.0,
+        ttl_seconds: float = _DEFAULT_TTL_SECONDS,
         *,
         max_pending_per_user: int = _MAX_PENDING_PER_USER,
         clock: Clock | None = None,

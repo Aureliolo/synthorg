@@ -4,6 +4,8 @@ Provides endpoints for event ingestion (collector role),
 pattern querying, and threshold recommendations.
 """
 
+from typing import Final
+
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
@@ -29,6 +31,8 @@ from synthorg.meta.telemetry.recommender import (
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_DEPLOYMENTS_FLOOR: Final[int] = 3
+_DEFAULT_LIMIT: Final[int] = 50
 
 # Module-level singleton instances.
 # Created lazily by the app startup hook; None when collector is disabled.
@@ -41,7 +45,7 @@ def configure_analytics_controller(
     collector: InMemoryAnalyticsCollector | None,
     recommender: DefaultThresholdRecommender | None,
     *,
-    min_deployments_floor: int = 3,
+    min_deployments_floor: int = _DEFAULT_MIN_DEPLOYMENTS_FLOOR,
 ) -> None:
     """Configure the analytics controller with collector and recommender.
 
@@ -112,7 +116,7 @@ class MetaAnalyticsController(Controller):
         state: State,
         min_deployments: int = Parameter(default=3, ge=1, le=100),
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[AggregatedPattern]:
         """Query aggregated cross-deployment patterns (paginated).
 
@@ -142,7 +146,7 @@ class MetaAnalyticsController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ThresholdRecommendation]:
         """Get threshold recommendations from aggregated data (paginated)."""
         collector = _require_collector()

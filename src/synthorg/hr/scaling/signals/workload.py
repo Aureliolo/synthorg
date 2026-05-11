@@ -1,7 +1,7 @@
 """Workload signal source -- reads agent utilization from assignment."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.models import ScalingSignal
@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from synthorg.engine.assignment.models import AgentWorkload
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_CONCURRENT_TASKS: Final[int] = 3
 
 _SOURCE_NAME = NotBlankStr("workload")
 
@@ -30,7 +31,7 @@ class WorkloadSignalSource:
     def __init__(
         self,
         *,
-        max_concurrent_tasks: int = 3,
+        max_concurrent_tasks: int = _DEFAULT_MAX_CONCURRENT_TASKS,
     ) -> None:
         if max_concurrent_tasks <= 0:
             msg = "max_concurrent_tasks must be > 0"
