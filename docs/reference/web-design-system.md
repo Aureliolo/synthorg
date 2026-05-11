@@ -55,7 +55,8 @@ Every shared building block in `web/src/components/ui/`. Reuse before creating n
 | Component | Import | Use for |
 |-----------|--------|---------|
 | `Button` | `@/components/ui/button` | Standard button (shadcn). |
-| `InputField` | `@/components/ui/input-field` | Labeled text input with error / hint display, optional multiline textarea mode, optional `leadingIcon` (decorative, pointer-events-none) / `trailingElement` (interactive slot, e.g. clear button) positioned relative to the input box, not the labeled wrapper. |
+| `InputField` | `@/components/ui/input-field` | Labeled text input with error / hint display, optional multiline textarea mode, optional `leadingIcon` (decorative, pointer-events-none) / `trailingElement` (interactive slot, e.g. clear button) positioned relative to the input box, not the labeled wrapper. When `type="password"`, automatically renders a built-in eye / eye-off visibility toggle as the trailing element; opt out via `hidePasswordToggle?: boolean`, or override entirely by supplying your own `trailingElement` (which takes precedence). |
+| `PasswordVisibilityGroup` | `@/components/ui/input-field` | Context provider co-located with `InputField`. Wraps semantically-paired password / secret fields (e.g. Password + Confirm Password on the Create Admin Account screen) so a single eye toggle reveals or hides every field in the group at once. Independent secrets in the same dialog (e.g. an OAuth client secret next to a header value) should stay outside the provider so each toggles on its own. |
 | `SelectField` | `@/components/ui/select-field` | Labeled select dropdown with error / hint and placeholder support. |
 | `SliderField` | `@/components/ui/slider-field` | Labeled range slider with custom value formatter and aria-live display. |
 | `ToggleField` | `@/components/ui/toggle-field` | Labeled toggle switch (`role="switch"`) with optional description text. |
