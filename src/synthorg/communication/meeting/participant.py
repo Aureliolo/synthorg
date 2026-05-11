@@ -52,6 +52,8 @@ def _resolve_context_value(entry: str, val: Any) -> list[str]:
     return []
 
 
+# 2 impls (Passthrough/Registry) in this file; MeetingScheduler consumer.
+# Plug-in extension surface.
 @runtime_checkable
 class ParticipantResolver(Protocol):
     """Protocol for resolving participant references to agent IDs."""

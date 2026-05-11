@@ -17,6 +17,8 @@ from synthorg.observability.events.strategy import STRATEGY_CONFIDENCE_FORMATTED
 logger = get_logger(__name__)
 
 
+# 4 impls (Structured/Narrative/Both/Probability) + _FORMATTERS factory dict
+# + get_formatter() in this file.
 @runtime_checkable
 class ConfidenceFormatter(Protocol):
     """Protocol for formatting confidence metadata."""

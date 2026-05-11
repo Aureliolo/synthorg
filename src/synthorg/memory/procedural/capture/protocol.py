@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
 
 
+# Pluggable procedural-memory capture seam for capture/factory.py dispatch
+# and HybridCaptureStrategy composition.
 @runtime_checkable
 class CaptureStrategy(Protocol):
     """Strategy for capturing procedural memories from executions.

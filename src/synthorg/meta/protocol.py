@@ -342,6 +342,8 @@ class GitHubAPI(Protocol):
         ...
 
 
+# Default impl in meta/validation/ci_validator.py; injected via
+# meta/factory.py and consumed by meta/appliers/code_applier.py.
 @runtime_checkable
 class CIValidator(Protocol):
     """Validates proposed code changes against CI checks.

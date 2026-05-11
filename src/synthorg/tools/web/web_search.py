@@ -41,6 +41,9 @@ class SearchResult(BaseModel):
     snippet: str
 
 
+# Vendor-agnostic public extension surface; tools/factory.py threads it
+# through 4 callsites; intentional no-built-in-impl design
+# (MCP / user-supplied).
 @runtime_checkable
 class WebSearchProvider(Protocol):
     """Abstracted web search provider protocol.
@@ -52,7 +55,7 @@ class WebSearchProvider(Protocol):
     async def search(
         self,
         query: str,
-        max_results: int = 10,
+        max_results: int = 10,  # lint-allow: magic-numbers -- protocol default arg.
     ) -> list[SearchResult]:
         """Execute a web search query.
 

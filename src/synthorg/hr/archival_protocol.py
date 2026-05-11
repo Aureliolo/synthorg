@@ -35,6 +35,8 @@ class ArchivalResult(BaseModel):
     strategy_name: NotBlankStr = Field(description="Archival strategy used")
 
 
+# FullSnapshotStrategy impl in hr/full_snapshot_strategy.py + OffboardingService
+# injection point with safe default.
 @runtime_checkable
 class MemoryArchivalStrategy(Protocol):
     """Strategy for archiving agent memories during offboarding.

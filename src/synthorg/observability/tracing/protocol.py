@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
 
 
+# NoopTraceHandler impl in this file + OtlpTraceHandler impl in
+# otlp_trace_handler.py + tracing/factory.py + AppState wiring.
 class TraceHandler(Protocol):
     """Interface for the tracing subsystem's process-singleton handler.
 
@@ -34,7 +36,10 @@ class TraceHandler(Protocol):
         """Return a tracer identified by instrumentation library *name*."""
         ...
 
-    async def force_flush(self, timeout_sec: float = 5.0) -> None:
+    async def force_flush(
+        self,
+        timeout_sec: float = 5.0,  # lint-allow: magic-numbers -- default.
+    ) -> None:
         """Block until pending spans are exported or the deadline fires."""
         ...
 
@@ -57,9 +62,12 @@ class NoopTraceHandler:
         """Return OTel's no-op tracer regardless of *name*."""
         return self._TRACER
 
-    async def force_flush(self, timeout_sec: float = 5.0) -> None:  # noqa: ARG002
+    async def force_flush(
+        self,
+        timeout_sec: float = 5.0,  # lint-allow: magic-numbers -- mirror protocol arg
+    ) -> None:
         """No-op: there is no exporter to flush."""
-        return
+        del timeout_sec
 
     async def shutdown(self) -> None:
         """No-op."""

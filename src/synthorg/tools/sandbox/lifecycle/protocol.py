@@ -32,6 +32,8 @@ class ContainerHandle:
             raise ValueError(msg)
 
 
+# 3 impls (PerAgent/PerTask/PerCall) + create_lifecycle_strategy
+# config-discriminated factory.
 @runtime_checkable
 class SandboxLifecycleStrategy(Protocol):
     """Pluggable strategy for sandbox container creation and reuse.

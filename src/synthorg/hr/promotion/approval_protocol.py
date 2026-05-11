@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     )
 
 
+# Pluggable approval seam: SeniorityApprovalStrategy in
+# seniority_approval_strategy.py plugs into PromotionService.
 @runtime_checkable
 class PromotionApprovalStrategy(Protocol):
     """Protocol for promotion approval decisions.
