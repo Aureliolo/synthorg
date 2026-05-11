@@ -64,10 +64,10 @@ class NoopTraceHandler:
 
     async def force_flush(
         self,
-        timeout_sec: float = 5.0,  # lint-allow: magic-numbers -- mirror  # noqa: ARG002
+        timeout_sec: float = 5.0,  # lint-allow: magic-numbers -- mirror protocol arg
     ) -> None:
         """No-op: there is no exporter to flush."""
-        return
+        del timeout_sec
 
     async def shutdown(self) -> None:
         """No-op."""

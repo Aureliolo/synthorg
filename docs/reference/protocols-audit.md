@@ -35,15 +35,17 @@ The counts are deliberately approximate: they're a triage tool, not a removal lo
 
 ## Summary
 
-| Total | Recommendation |
-|---|---|
-| **237** | Protocol classes inventoried |
-| **193** | KEEP |
-| **0** | MAKE-RUNTIME-CHECKABLE (no `isinstance` sites surveyed; deferred to per-area cleanup PRs) |
-| **31** | REMOVE candidates (flag-only; must be re-verified at cleanup time) |
-| **13** | REVIEW (`_PrivatePrefixed` typing seams; intent inspection needed) |
+The 2026-05-10 snapshot counts in the original table were aggregated by hand and undercounted both the REMOVE and REVIEW rows. The table below reflects (a) the per-area row totals as they actually appear in the snapshot tables, and (b) the post-2026-05-11 cleanup outcome captured in the "Post-cleanup status" section.
 
-`@runtime_checkable` decoration: 209 of 237 (88%). The 28 without the decorator are listed inline below; absence is not a defect on its own; only a few need it.
+| Total | Recommendation (2026-05-10 snapshot row counts) | After 2026-05-11 cleanup (#1864) |
+|---|---|---|
+| Protocol classes inventoried | 250 | 248 (2 deleted) |
+| KEEP | 193 | 237 (44 audit re-flagged, plus pre-existing 193) |
+| MAKE-RUNTIME-CHECKABLE | 0 (no `isinstance` sites surveyed) | 0 |
+| REMOVE candidates (flag-only; must be re-verified at cleanup time) | 46 | 0 (2 deleted, 44 reclassified KEEP) |
+| REVIEW (`_PrivatePrefixed` typing seams; intent inspection needed) | 11 | 11 (unchanged; #1865 owns these) |
+
+`@runtime_checkable` decoration: 209 of 250 (84%). The 41 without the decorator are listed inline below; absence is not a defect on its own; only a few need it.
 
 ## Per-area classification
 
@@ -389,7 +391,7 @@ The script's classification matched reality: zero structural impls, zero consume
 
 ### Audit re-flagged to KEEP (44 protocols)
 
-Each retained protocol carries a one-line `# audit-keep 2026-05-10: <reason>` comment immediately above the `class` line so subsequent regenerations of this document can flag-and-skip rather than re-flag for removal. See the per-area tables below for the original REMOVE rows; the in-code marker captures the cleanup-time rationale.
+Each retained protocol carries a one-line `# audit-keep 2026-05-10: <reason>` comment immediately above the `class` line so subsequent regenerations of this document can flag-and-skip rather than re-flag for removal. See the per-area tables above for the original REMOVE rows; the in-code marker captures the cleanup-time rationale.
 
 Categories of re-flag rationale:
 
