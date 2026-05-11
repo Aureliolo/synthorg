@@ -6,7 +6,7 @@ Computes pairwise and team-level compatibility scores from
 
 import itertools
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import CollaborationPreference, ConflictApproach
 from synthorg.observability import get_logger
@@ -22,16 +22,16 @@ logger = get_logger(__name__)
 
 # ── Weight configuration ─────────────────────────────────────────
 
-_WEIGHT_BIG_FIVE = 0.6
-_WEIGHT_COLLABORATION = 0.2
-_WEIGHT_CONFLICT = 0.2
+_WEIGHT_BIG_FIVE: Final[float] = 0.6
+_WEIGHT_COLLABORATION: Final[float] = 0.2
+_WEIGHT_CONFLICT: Final[float] = 0.2
 
 # Big Five dimension weights (sum to 1.0 within the Big Five component).
-_BF_OPENNESS = 0.2
-_BF_CONSCIENTIOUSNESS = 0.25
-_BF_EXTRAVERSION = 0.15
-_BF_AGREEABLENESS = 0.25
-_BF_STRESS = 0.15
+_BF_OPENNESS: Final[float] = 0.2
+_BF_CONSCIENTIOUSNESS: Final[float] = 0.25
+_BF_EXTRAVERSION: Final[float] = 0.15
+_BF_AGREEABLENESS: Final[float] = 0.25
+_BF_STRESS: Final[float] = 0.15
 
 # Collaboration adjacency: INDEPENDENT <-> PAIR <-> TEAM
 _COLLAB_ORDER: MappingProxyType[CollaborationPreference, int] = MappingProxyType(

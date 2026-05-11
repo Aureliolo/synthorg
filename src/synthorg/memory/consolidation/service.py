@@ -6,7 +6,7 @@ max-memories enforcement into a single maintenance entry point.
 
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -47,15 +47,15 @@ from synthorg.observability.events.consolidation import (
 
 logger = get_logger(__name__)
 
-_MAX_ENFORCE_BATCH = 1000
-_MAX_ENFORCE_BATCH_MIN = 100
-_MAX_ENFORCE_BATCH_MAX = 10_000
+_MAX_ENFORCE_BATCH: Final[int] = 1000
+_MAX_ENFORCE_BATCH_MIN: Final[int] = 100
+_MAX_ENFORCE_BATCH_MAX: Final[int] = 10_000
 # ``MemoryQuery.limit`` has its own schema bound (``le=1000``); the
 # max-enforce batch settings allows up to 10k records, so each
 # per-batch fetch has to be clamped to the query-layer bound before
 # constructing the MemoryQuery below. The enforce loop just issues
 # more MemoryQuery fetches to cover any excess.
-_MEMORY_QUERY_MAX_LIMIT = 1000
+_MEMORY_QUERY_MAX_LIMIT: Final[int] = 1000
 
 
 class MemoryConsolidationService:

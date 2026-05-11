@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -34,10 +34,10 @@ from synthorg.observability.events.provider import (
 
 logger = get_logger(__name__)
 
-_HEALTH_WINDOW_HOURS = 24
-_DEGRADED_THRESHOLD = 10.0  # error_rate >= 10% -> DEGRADED
-_DOWN_THRESHOLD = 50.0  # error_rate >= 50% -> DOWN
-_AUTO_PRUNE_THRESHOLD = 100_000
+_HEALTH_WINDOW_HOURS: Final[int] = 24
+_DEGRADED_THRESHOLD: Final[float] = 10.0  # error_rate >= 10% -> DEGRADED
+_DOWN_THRESHOLD: Final[float] = 50.0  # error_rate >= 50% -> DOWN
+_AUTO_PRUNE_THRESHOLD: Final[int] = 100_000
 
 
 class ProviderHealthStatus(StrEnum):

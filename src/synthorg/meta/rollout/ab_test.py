@@ -10,7 +10,7 @@ exceeds the configured threshold.
 import asyncio
 import hashlib
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
@@ -51,6 +51,13 @@ if TYPE_CHECKING:
     from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 
 logger = get_logger(__name__)
+
+_DEFAULT_CONTROL_FRACTION: Final[float] = 0.5
+_DEFAULT_MIN_AGENTS_PER_GROUP: Final[int] = 5
+_DEFAULT_MIN_OBSERVATIONS_PER_GROUP: Final[int] = 10
+_DEFAULT_IMPROVEMENT_THRESHOLD: Final[float] = 0.15
+_DEFAULT_SIGNIFICANCE_LEVEL: Final[float] = 0.05
+_DEFAULT_CHECK_INTERVAL_HOURS: Final[float] = 4.0
 
 
 class _NullGroupAggregator:
@@ -93,16 +100,16 @@ class ABTestRollout:
     def __init__(  # noqa: PLR0913
         self,
         *,
-        control_fraction: float = 0.5,
-        min_agents_per_group: int = 5,
-        min_observations_per_group: int = 10,
-        improvement_threshold: float = 0.15,
-        significance_level: float = 0.05,
+        control_fraction: float = _DEFAULT_CONTROL_FRACTION,
+        min_agents_per_group: int = _DEFAULT_MIN_AGENTS_PER_GROUP,
+        min_observations_per_group: int = _DEFAULT_MIN_OBSERVATIONS_PER_GROUP,
+        improvement_threshold: float = _DEFAULT_IMPROVEMENT_THRESHOLD,
+        significance_level: float = _DEFAULT_SIGNIFICANCE_LEVEL,
         comparator: ABTestComparator | None = None,
         clock: Clock | None = None,
         roster: OrgRoster | None = None,
         group_aggregator: GroupSignalAggregator | None = None,
-        check_interval_hours: float = 4.0,
+        check_interval_hours: float = _DEFAULT_CHECK_INTERVAL_HOURS,
         thresholds: RegressionThresholds | None = None,
     ) -> None:
         if control_fraction <= 0.0 or control_fraction >= 1.0:

@@ -9,7 +9,7 @@ as failures (POST may not have been stored).
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 import httpx
 
@@ -41,14 +41,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MAX_RETRIES = 3
-_BACKOFF_BASE_SECONDS = 1.0
-_BACKOFF_CAP_SECONDS = 30.0
-_SUCCESS_MIN = 200
-_SUCCESS_MAX = 300
-_CLIENT_ERROR_MIN = 400
-_SERVER_ERROR_MIN = 500
-_LOG_BODY_MAX_LEN = 500
+_MAX_RETRIES: Final[int] = 3
+_BACKOFF_BASE_SECONDS: Final[float] = 1.0
+_BACKOFF_CAP_SECONDS: Final[float] = 30.0
+_SUCCESS_MIN: Final[int] = 200
+_SUCCESS_MAX: Final[int] = 300
+_CLIENT_ERROR_MIN: Final[int] = 400
+_SERVER_ERROR_MIN: Final[int] = 500
+_LOG_BODY_MAX_LEN: Final[int] = 500
 
 
 class _TransientPostError(

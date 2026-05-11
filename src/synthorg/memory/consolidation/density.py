@@ -34,13 +34,13 @@ class ContentDensity(StrEnum):
 
 # ── Heuristic signal weights ────────────────────────────────────
 
-_WEIGHT_CODE = 0.30
-_WEIGHT_STRUCTURED = 0.25
-_WEIGHT_IDENTIFIERS = 0.20
-_WEIGHT_NUMERIC = 0.10
-_WEIGHT_LINE_STRUCTURE = 0.15
+_WEIGHT_CODE: Final[float] = 0.30
+_WEIGHT_STRUCTURED: Final[float] = 0.25
+_WEIGHT_IDENTIFIERS: Final[float] = 0.20
+_WEIGHT_NUMERIC: Final[float] = 0.10
+_WEIGHT_LINE_STRUCTURE: Final[float] = 0.15
 
-_WEIGHT_SUM_TOLERANCE = 1e-9
+_WEIGHT_SUM_TOLERANCE: Final[float] = 1e-9
 
 # Guard: weights must sum to 1.0 for threshold interpretability.
 assert (  # noqa: S101

@@ -8,7 +8,7 @@ All thresholds are configurable via constructor arguments
 with sensible defaults.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
@@ -24,6 +24,17 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_DEFAULT_QUALITY_DECLINING_THRESHOLD: Final[float] = 5.0
+_DEFAULT_SUCCESS_RATE_DROP_THRESHOLD: Final[float] = 0.7
+_DEFAULT_BUDGET_OVERRUN_DAYS_THRESHOLD: Final[int] = 14
+_DEFAULT_COORDINATION_COST_RATIO_THRESHOLD: Final[float] = 0.4
+_DEFAULT_COORDINATION_OVERHEAD_THRESHOLD_PCT: Final[float] = 35.0
+_DEFAULT_STRAGGLER_BOTTLENECK_THRESHOLD: Final[float] = 2.0
+_DEFAULT_REDUNDANCY_THRESHOLD: Final[float] = 0.3
+_DEFAULT_SCALING_FAILURE_THRESHOLD: Final[float] = 0.5
+_DEFAULT_SCALING_MIN_DECISIONS: Final[int] = 3
+_DEFAULT_ERROR_SPIKE_THRESHOLD: Final[int] = 10
+
 # ── Performance rules ──────────────────────────────────────────────
 
 
@@ -37,7 +48,9 @@ class QualityDecliningRule:
         threshold: Minimum acceptable quality (0-10, default 5.0).
     """
 
-    def __init__(self, *, threshold: float = 5.0) -> None:
+    def __init__(
+        self, *, threshold: float = _DEFAULT_QUALITY_DECLINING_THRESHOLD
+    ) -> None:
         self._threshold = threshold
 
     @property
@@ -84,7 +97,9 @@ class SuccessRateDropRule:
         threshold: Minimum acceptable success rate (0-1, default 0.7).
     """
 
-    def __init__(self, *, threshold: float = 0.7) -> None:
+    def __init__(
+        self, *, threshold: float = _DEFAULT_SUCCESS_RATE_DROP_THRESHOLD
+    ) -> None:
         self._threshold = threshold
 
     @property
@@ -130,7 +145,9 @@ class BudgetOverrunRule:
             (default 14).
     """
 
-    def __init__(self, *, days_threshold: int = 14) -> None:
+    def __init__(
+        self, *, days_threshold: int = _DEFAULT_BUDGET_OVERRUN_DAYS_THRESHOLD
+    ) -> None:
         self._days_threshold = days_threshold
 
     @property
@@ -175,7 +192,9 @@ class CoordinationCostRatioRule:
         threshold: Max acceptable coordination ratio (0-1, default 0.4).
     """
 
-    def __init__(self, *, threshold: float = 0.4) -> None:
+    def __init__(
+        self, *, threshold: float = _DEFAULT_COORDINATION_COST_RATIO_THRESHOLD
+    ) -> None:
         self._threshold = threshold
 
     @property
@@ -222,7 +241,9 @@ class CoordinationOverheadRule:
         threshold: Max acceptable overhead % (default 35.0).
     """
 
-    def __init__(self, *, threshold: float = 35.0) -> None:
+    def __init__(
+        self, *, threshold: float = _DEFAULT_COORDINATION_OVERHEAD_THRESHOLD_PCT
+    ) -> None:
         self._threshold = threshold
 
     @property
@@ -266,7 +287,9 @@ class StragglerBottleneckRule:
         threshold: Max acceptable straggler ratio (default 2.0).
     """
 
-    def __init__(self, *, threshold: float = 2.0) -> None:
+    def __init__(
+        self, *, threshold: float = _DEFAULT_STRAGGLER_BOTTLENECK_THRESHOLD
+    ) -> None:
         self._threshold = threshold
 
     @property
@@ -313,7 +336,7 @@ class RedundancyRule:
         threshold: Max acceptable redundancy rate (0-1, default 0.3).
     """
 
-    def __init__(self, *, threshold: float = 0.3) -> None:
+    def __init__(self, *, threshold: float = _DEFAULT_REDUNDANCY_THRESHOLD) -> None:
         self._threshold = threshold
 
     @property
@@ -364,8 +387,8 @@ class ScalingFailureRule:
     def __init__(
         self,
         *,
-        threshold: float = 0.5,
-        min_decisions: int = 3,
+        threshold: float = _DEFAULT_SCALING_FAILURE_THRESHOLD,
+        min_decisions: int = _DEFAULT_SCALING_MIN_DECISIONS,
     ) -> None:
         self._threshold = threshold
         self._min_decisions = min_decisions
@@ -417,7 +440,7 @@ class ErrorSpikeRule:
         threshold: Max acceptable total findings (default 10).
     """
 
-    def __init__(self, *, threshold: int = 10) -> None:
+    def __init__(self, *, threshold: int = _DEFAULT_ERROR_SPIKE_THRESHOLD) -> None:
         self._threshold = threshold
 
     @property

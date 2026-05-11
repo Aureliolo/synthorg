@@ -7,7 +7,7 @@ with historical approval rates from the outcome store:
 - **Bayesian**: Beta-conjugate posterior blend.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -21,6 +21,11 @@ if TYPE_CHECKING:
     from synthorg.meta.models import ImprovementProposal
 
 logger = get_logger(__name__)
+
+_DEFAULT_EMA_ALPHA: Final[float] = 0.5
+_DEFAULT_BAYESIAN_PRIOR_ALPHA: Final[float] = 2.0
+_DEFAULT_BAYESIAN_PRIOR_BETA: Final[float] = 2.0
+_DEFAULT_BAYESIAN_BLEND: Final[float] = 0.7
 
 
 class ExponentialMovingAverageAdjuster:
@@ -39,7 +44,7 @@ class ExponentialMovingAverageAdjuster:
         alpha: Blend factor between base confidence and history.
     """
 
-    def __init__(self, *, alpha: float = 0.5) -> None:
+    def __init__(self, *, alpha: float = _DEFAULT_EMA_ALPHA) -> None:
         self._alpha = alpha
 
     @property
@@ -112,9 +117,9 @@ class BayesianConfidenceAdjuster:
     def __init__(
         self,
         *,
-        prior_alpha: float = 2.0,
-        prior_beta: float = 2.0,
-        blend: float = 0.7,
+        prior_alpha: float = _DEFAULT_BAYESIAN_PRIOR_ALPHA,
+        prior_beta: float = _DEFAULT_BAYESIAN_PRIOR_BETA,
+        blend: float = _DEFAULT_BAYESIAN_BLEND,
     ) -> None:
         self._prior_alpha = prior_alpha
         self._prior_beta = prior_beta

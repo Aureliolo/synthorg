@@ -20,7 +20,7 @@ import asyncio
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import ClassVar
+from typing import ClassVar, Final
 from uuid import uuid4
 
 from synthorg.communication.event_stream.types import (
@@ -43,12 +43,12 @@ from synthorg.observability.events.event_stream import (
 
 logger = get_logger(__name__)
 
-_DEFAULT_MAX_QUEUE_SIZE = 256
-_DEFAULT_DEDUP_TTL_SECONDS = 60.0
-_DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION = 1024
-_DEFAULT_SUBSCRIBER_IDLE_TTL_SECONDS = 86400.0
-_DEFAULT_JANITOR_INTERVAL_SECONDS = 300.0
-_DEFAULT_JANITOR_STOP_TIMEOUT_SECONDS = 10.0
+_DEFAULT_MAX_QUEUE_SIZE: Final[int] = 256
+_DEFAULT_DEDUP_TTL_SECONDS: Final[float] = 60.0
+_DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION: Final[int] = 1024
+_DEFAULT_SUBSCRIBER_IDLE_TTL_SECONDS: Final[float] = 86400.0
+_DEFAULT_JANITOR_INTERVAL_SECONDS: Final[float] = 300.0
+_DEFAULT_JANITOR_STOP_TIMEOUT_SECONDS: Final[float] = 10.0
 
 
 class EventStreamHubUnrestartableError(ConflictError):
