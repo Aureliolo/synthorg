@@ -711,7 +711,7 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database query or deserialization fails.
         """
-        validate_pagination_args(
+        limit = validate_pagination_args(
             limit,
             offset,
             event=PERSISTENCE_API_KEY_LIST_FAILED,

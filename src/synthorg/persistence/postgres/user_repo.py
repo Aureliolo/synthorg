@@ -540,7 +540,7 @@ class PostgresApiKeyRepository:
         Defaults to :data:`DEFAULT_LIST_LIMIT`; callers needing more
         must paginate with ``offset``.
         """
-        validate_pagination_args(
+        limit = validate_pagination_args(
             limit,
             offset,
             event=PERSISTENCE_API_KEY_LIST_FAILED,
