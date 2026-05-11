@@ -8,6 +8,8 @@ from synthorg.integrations.connections.models import (
 )
 
 
+# audit-keep 2026-05-10: _CHECK_REGISTRY dispatch in prober.py with per
+# connection-type health-check impls.
 @runtime_checkable
 class ConnectionHealthCheck(Protocol):
     """Per-type health check implementation.
