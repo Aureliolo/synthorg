@@ -24,11 +24,13 @@ from synthorg.engine.workspace.models import (
 from synthorg.engine.workspace.protocol import (
     WorkspaceIsolationStrategy,
 )
+from synthorg.engine.workspace.semantic_analyzer import SemanticAnalyzer
 from synthorg.engine.workspace.semantic_git_ops import (
     _validate_file_path,
     get_base_sources,
     get_changed_files,
     get_merge_base,
+    run_semantic_analysis,
 )
 
 from .conftest import make_workspace
@@ -119,7 +121,9 @@ class TestSetupWorkspace:
     async def test_setup_creates_branch_and_worktree(self) -> None:
         """Setup creates git branch and worktree, returns Workspace."""
         strategy = _make_strategy()
-        mock_run_git = AsyncMock(return_value=(0, "", ""))
+        mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git, return_value=(0, "", "")
+        )
 
         with patch.object(
             PlannerWorktreeStrategy,
@@ -156,7 +160,9 @@ class TestSetupWorkspace:
                 max_concurrent_worktrees=1,
             )
         )
-        mock_run_git = AsyncMock(return_value=(0, "", ""))
+        mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git, return_value=(0, "", "")
+        )
 
         with patch.object(
             PlannerWorktreeStrategy,
@@ -177,6 +183,7 @@ class TestSetupWorkspace:
         """Setup raises WorkspaceSetupError on git branch failure."""
         strategy = _make_strategy()
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(1, "", "fatal: branch already exists"),
         )
 
@@ -198,6 +205,7 @@ class TestSetupWorkspace:
         strategy = _make_strategy()
         # branch succeeds, worktree fails, branch cleanup succeeds
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             side_effect=[
                 (0, "", ""),  # branch
                 (1, "", "fatal: worktree path already exists"),  # worktree
@@ -271,6 +279,7 @@ class TestMergeWorkspace:
 
         # checkout, pre-merge rev-parse, merge, post-merge rev-parse
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             side_effect=[
                 (0, "", ""),  # checkout base
                 (0, "pre123", ""),  # rev-parse HEAD (pre-merge)
@@ -299,6 +308,7 @@ class TestMergeWorkspace:
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             side_effect=[
                 (0, "", ""),  # checkout base
                 (0, "pre123", ""),  # rev-parse HEAD (pre-merge)
@@ -328,6 +338,7 @@ class TestMergeWorkspace:
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(1, "", "error: checkout failed"),
         )
 
@@ -349,6 +360,7 @@ class TestMergeWorkspace:
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             side_effect=[
                 (0, "", ""),  # checkout
                 (0, "pre123", ""),  # rev-parse HEAD (pre-merge)
@@ -376,6 +388,7 @@ class TestMergeWorkspace:
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             side_effect=[
                 (0, "", ""),  # checkout
                 (0, "pre123", ""),  # rev-parse HEAD (pre-merge)
@@ -410,7 +423,9 @@ class TestTeardownWorkspace:
         ws = make_workspace()
         strategy._active_workspaces[ws.workspace_id] = ws
 
-        mock_run_git = AsyncMock(return_value=(0, "", ""))
+        mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git, return_value=(0, "", "")
+        )
 
         with patch.object(
             PlannerWorktreeStrategy,
@@ -432,6 +447,7 @@ class TestTeardownWorkspace:
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             side_effect=[
                 (1, "", "error: cannot remove"),  # worktree fails
                 (0, "", ""),  # branch -D succeeds
@@ -460,6 +476,7 @@ class TestTeardownWorkspace:
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             side_effect=[
                 (0, "", ""),  # worktree remove succeeds
                 (1, "", "error: branch not found"),  # branch -D fails
@@ -582,6 +599,7 @@ class TestCollectConflicts:
         """When git diff fails, WorkspaceMergeError is raised."""
         strategy = _make_strategy()
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(1, "", "error: diff failed"),
         )
 
@@ -599,7 +617,9 @@ class TestCollectConflicts:
     async def test_empty_stdout_returns_empty(self) -> None:
         """When diff returns no files, returns empty tuple."""
         strategy = _make_strategy()
-        mock_run_git = AsyncMock(return_value=(0, "", ""))
+        mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git, return_value=(0, "", "")
+        )
 
         with patch.object(
             PlannerWorktreeStrategy,
@@ -784,6 +804,7 @@ class TestGetMergeBase:
     async def test_success_returns_sha(self) -> None:
         """Returns stripped SHA when git merge-base succeeds."""
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(0, "abc123def\n", ""),
         )
 
@@ -801,6 +822,7 @@ class TestGetMergeBase:
     async def test_failure_returns_empty(self) -> None:
         """Returns empty string and logs warning on failure."""
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(1, "", "not a valid ref"),
         )
 
@@ -822,6 +844,7 @@ class TestGetChangedFiles:
         """Returns tuple of file paths from git diff output."""
         stdout = "src/main.py\nsrc/utils.py\n"
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(0, stdout, ""),
         )
 
@@ -833,6 +856,7 @@ class TestGetChangedFiles:
     async def test_failure_returns_empty(self) -> None:
         """Returns empty tuple and logs warning on failure."""
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(1, "", "error: bad revision"),
         )
 
@@ -844,6 +868,7 @@ class TestGetChangedFiles:
     async def test_empty_stdout_returns_empty(self) -> None:
         """Returns empty tuple when diff produces no output."""
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(0, "", ""),
         )
 
@@ -856,6 +881,7 @@ class TestGetChangedFiles:
         """Unsafe file paths are excluded from results."""
         stdout = "src/good.py\n--malicious\n../escape.py\nsrc/also-good.py\n"
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(0, stdout, ""),
         )
 
@@ -930,6 +956,7 @@ class TestGetBaseSources:
     async def test_skips_unsafe_file_paths(self) -> None:
         """Unsafe file paths are skipped (logged at warning)."""
         mock_run_git = AsyncMock(
+            spec=PlannerWorktreeStrategy._run_git,
             return_value=(0, "content", ""),
         )
 
@@ -954,7 +981,7 @@ class TestGetBaseSources:
         passes neither must fail loud with a message pointing at the
         config field.
         """
-        mock_run_git = AsyncMock()
+        mock_run_git = AsyncMock(spec=PlannerWorktreeStrategy._run_git)
         with pytest.raises(
             ValueError,
             match=r"get_base_sources requires either concurrency",
@@ -977,7 +1004,7 @@ class TestGetBaseSources:
         values raise at Semaphore construction but the error message
         is opaque.  Validate at call time instead.
         """
-        mock_run_git = AsyncMock()
+        mock_run_git = AsyncMock(spec=PlannerWorktreeStrategy._run_git)
         with pytest.raises(
             ValueError,
             match=r"concurrency must be > 0",
@@ -1017,7 +1044,7 @@ class TestRunSemanticAnalysis:
         self,
     ) -> None:
         """Returns () when pre_merge_sha is empty."""
-        mock_analyzer = AsyncMock()
+        mock_analyzer = AsyncMock(spec=SemanticAnalyzer)
         strategy = _make_strategy(
             config=PlannerWorktreesConfig(
                 semantic_analysis=SemanticAnalysisConfig(
@@ -1039,7 +1066,7 @@ class TestRunSemanticAnalysis:
     @pytest.mark.unit
     async def test_returns_empty_when_disabled(self) -> None:
         """Returns () when semantic_analysis.enabled is False."""
-        mock_analyzer = AsyncMock()
+        mock_analyzer = AsyncMock(spec=SemanticAnalyzer)
         strategy = _make_strategy(
             config=PlannerWorktreesConfig(
                 semantic_analysis=SemanticAnalysisConfig(
@@ -1063,7 +1090,7 @@ class TestRunSemanticAnalysis:
         self,
     ) -> None:
         """Delegates to semantic_git_ops.run_semantic_analysis."""
-        mock_analyzer = AsyncMock()
+        mock_analyzer = AsyncMock(spec=SemanticAnalyzer)
         strategy = _make_strategy(
             config=PlannerWorktreesConfig(
                 semantic_analysis=SemanticAnalysisConfig(
@@ -1074,7 +1101,7 @@ class TestRunSemanticAnalysis:
         )
         ws = make_workspace()
 
-        mock_fn = AsyncMock(return_value=())
+        mock_fn = AsyncMock(spec=run_semantic_analysis, return_value=())
         with patch(
             "synthorg.engine.workspace.git_worktree.run_semantic_analysis",
             mock_fn,
@@ -1108,7 +1135,7 @@ class TestRunSemanticAnalysis:
             conflict_type=ConflictType.SEMANTIC,
             description="removed reference",
         )
-        mock_analyzer = AsyncMock()
+        mock_analyzer = AsyncMock(spec=SemanticAnalyzer)
         strategy = _make_strategy(
             config=PlannerWorktreesConfig(
                 semantic_analysis=SemanticAnalysisConfig(
@@ -1119,7 +1146,7 @@ class TestRunSemanticAnalysis:
         )
         ws = make_workspace()
 
-        mock_fn = AsyncMock(return_value=(conflict,))
+        mock_fn = AsyncMock(spec=run_semantic_analysis, return_value=(conflict,))
         with patch(
             "synthorg.engine.workspace.git_worktree.run_semantic_analysis",
             mock_fn,
@@ -1145,7 +1172,7 @@ class TestDoSemanticAnalysis:
     @pytest.mark.unit
     async def test_catches_non_cancelled_exception(self) -> None:
         """Non-CancelledError exceptions are caught, returns ()."""
-        mock_analyzer = AsyncMock()
+        mock_analyzer = AsyncMock(spec=SemanticAnalyzer)
         strategy = _make_strategy(
             config=PlannerWorktreesConfig(
                 semantic_analysis=SemanticAnalysisConfig(
@@ -1158,6 +1185,7 @@ class TestDoSemanticAnalysis:
 
         # Make get_merge_base raise a RuntimeError
         mock_base = AsyncMock(
+            spec=get_merge_base,
             side_effect=RuntimeError("git crashed"),
         )
         with patch(
@@ -1175,7 +1203,7 @@ class TestDoSemanticAnalysis:
     @pytest.mark.unit
     async def test_reraises_cancelled_error(self) -> None:
         """CancelledError is re-raised, not swallowed."""
-        mock_analyzer = AsyncMock()
+        mock_analyzer = AsyncMock(spec=SemanticAnalyzer)
         strategy = _make_strategy(
             config=PlannerWorktreesConfig(
                 semantic_analysis=SemanticAnalysisConfig(
@@ -1187,6 +1215,7 @@ class TestDoSemanticAnalysis:
         ws = make_workspace()
 
         mock_base = AsyncMock(
+            spec=get_merge_base,
             side_effect=asyncio.CancelledError,
         )
         with (
@@ -1206,7 +1235,7 @@ class TestDoSemanticAnalysis:
     async def test_pre_filters_files_by_extension(self) -> None:
         """Only files matching configured extensions are analyzed."""
 
-        mock_analyzer = AsyncMock()
+        mock_analyzer = AsyncMock(spec=SemanticAnalyzer)
         mock_analyzer.analyze = AsyncMock(return_value=())
         strategy = _make_strategy(
             config=PlannerWorktreesConfig(
@@ -1219,8 +1248,9 @@ class TestDoSemanticAnalysis:
         )
         ws = make_workspace()
 
-        mock_base = AsyncMock(return_value="abc123")
+        mock_base = AsyncMock(spec=get_merge_base, return_value="abc123")
         mock_changed = AsyncMock(
+            spec=get_changed_files,
             return_value=(
                 "src/main.py",
                 "README.txt",
@@ -1229,6 +1259,7 @@ class TestDoSemanticAnalysis:
         )
         # get_base_sources is called twice (base + merged)
         mock_sources = AsyncMock(
+            spec=get_base_sources,
             return_value={
                 "src/main.py": "code1",
                 "src/utils.py": "code2",

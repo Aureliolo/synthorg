@@ -1,7 +1,7 @@
 """Unit tests for AgentEngine post-execution transitions, timeout, and metrics."""
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,9 +16,12 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from tests._shared import mock_of
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
+
+from synthorg.engine.loop_protocol import ExecutionLoop
 
 from .conftest import make_completion_response as _make_completion_response
 
@@ -111,9 +114,10 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.MAX_TURNS,
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
@@ -145,9 +149,10 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.BUDGET_EXHAUSTED,
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
@@ -180,9 +185,10 @@ class TestAgentEnginePostExecutionTransitions:
             termination_reason=TerminationReason.ERROR,
             error_message="something failed",
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
@@ -215,9 +221,10 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.SHUTDOWN,
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
@@ -248,9 +255,10 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.SHUTDOWN,
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
@@ -279,9 +287,10 @@ class TestAgentEnginePostExecutionTransitions:
             context=ctx,
             termination_reason=TerminationReason.COMPLETED,
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
@@ -311,9 +320,10 @@ class TestAgentEngineTimeout:
             msg = "Should not reach here"
             raise AssertionError(msg)
 
-        mock_loop = MagicMock()
-        mock_loop.execute = slow_execute
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=slow_execute,
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
@@ -423,9 +433,10 @@ class TestAgentEngineTimeoutEdgeCases:
             msg = "inner timeout"
             raise TimeoutError(msg)
 
-        mock_loop = MagicMock()
-        mock_loop.execute = raises_timeout
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=raises_timeout,
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
@@ -451,13 +462,15 @@ class TestAgentEngineTimeoutEdgeCases:
             msg = "Should not reach here"
             raise AssertionError(msg)
 
-        mock_tracker = MagicMock(spec=CostTracker)
-        mock_tracker.budget_config = None
-        mock_tracker.record = AsyncMock()
+        mock_tracker = mock_of[CostTracker](
+            budget_config=None,
+            record=AsyncMock(),
+        )
 
-        mock_loop = MagicMock()
-        mock_loop.execute = slow_execute
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=slow_execute,
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(
@@ -473,7 +486,7 @@ class TestAgentEngineTimeoutEdgeCases:
         )
 
         assert result.termination_reason == TerminationReason.ERROR
-        mock_tracker.record.assert_not_called()
+        cast(Any, mock_tracker.record).assert_not_called()
 
 
 @pytest.mark.unit
@@ -504,9 +517,10 @@ class TestAgentEnginePostExecutionResilience:
             context=ctx_bad,
             termination_reason=TerminationReason.COMPLETED,
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
@@ -545,9 +559,10 @@ class TestAgentEnginePostExecutionResilience:
             context=ctx_bad,
             termination_reason=TerminationReason.SHUTDOWN,
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)

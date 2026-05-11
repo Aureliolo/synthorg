@@ -20,13 +20,16 @@ from synthorg.hr.training.models import (
     TrainingPlan,
     TrainingPlanStatus,
 )
+from synthorg.hr.training.protocol import CurationStrategy, SourceSelector
 from synthorg.hr.training.service import TrainingService
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.persistence.sqlite.training_plan_repo import (
     SQLiteTrainingPlanRepository,
 )
 from synthorg.persistence.sqlite.training_result_repo import (
     SQLiteTrainingResultRepository,
 )
+from tests._shared import mock_of
 
 
 def _make_item(
@@ -75,13 +78,13 @@ class TestTrainingPersistencePipeline:
 
         # 2. Build TrainingService with mocked components.
         items = (_make_item(),)
-        mock_selector = AsyncMock()
+        mock_selector = mock_of[SourceSelector]()
         mock_selector.select.return_value = (NotBlankStr("senior-1"),)
         mock_extractor = AsyncMock()
         mock_extractor.content_type = ContentType.PROCEDURAL
         mock_extractor.extract.return_value = items
 
-        mock_curation = AsyncMock()
+        mock_curation = mock_of[CurationStrategy]()
         mock_curation.curate.return_value = items
 
         # Pass-through guard that approves everything.
@@ -93,7 +96,7 @@ class TestTrainingPersistencePipeline:
             guard_name="pass_through",
         )
 
-        mock_memory = AsyncMock()
+        mock_memory = mock_of[MemoryBackend]()
 
         service = TrainingService(
             selector=mock_selector,

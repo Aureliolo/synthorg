@@ -275,11 +275,13 @@ class TestRegistryWithApprovalTool:
     """registry_with_approval_tool() factory function."""
 
     def test_returns_original_when_no_store(self) -> None:
+        from synthorg.core.agent import AgentIdentity
+
         registry = MagicMock()
         result = registry_with_approval_tool(
             registry,
             None,
-            MagicMock(id="agent-1"),
+            MagicMock(spec=AgentIdentity, id="agent-1"),
         )
         assert result is registry
 

@@ -11,6 +11,7 @@ helpers directly, matching the pattern in
 ``test_check_persistence_boundary.py``.
 """
 
+import ast
 import importlib.util
 from pathlib import Path
 from typing import Protocol, cast
@@ -53,6 +54,14 @@ class _ScriptModule(Protocol):
     def _write_baseline(hits: list[_Hit], path: Path) -> None: ...
     @staticmethod
     def _baseline_sort_key(entry: str) -> tuple[str, int, int]: ...
+    @staticmethod
+    def _annotation_marks_as_named_constant(
+        annotation: ast.expr | None,
+    ) -> bool: ...
+
+    _NAMED_CONSTANT_TYPE_NAMES: frozenset[str]
+    _NAMED_CONSTANT_FINAL_SLICES: frozenset[str]
+
     @staticmethod
     def main(argv: list[str] | None = None) -> int: ...
 
@@ -144,14 +153,6 @@ def test_string_constant_not_flagged(write_py: WritePy) -> None:
     assert hits[0].value == "3.14"
 
 
-def test_module_level_annassign_flagged(write_py: WritePy) -> None:
-    """``X: int = 1024`` (PEP 526) is the same shape and should flag."""
-    src = "_FOO: int = 1024\n"
-    path = write_py(src)
-    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
-    assert len(hits) == 1
-
-
 def test_nested_assign_not_flagged(write_py: WritePy) -> None:
     """Assignments inside class/function bodies are out of scope."""
     src = (
@@ -170,6 +171,176 @@ def test_bool_literal_not_flagged(write_py: WritePy) -> None:
     src = "_FLAG = True\n"
     path = write_py(src)
     assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
+
+
+# ── Named-constant skip rule (typed module-level constants) ─────
+
+
+def test_annassign_int_named_constant_not_flagged(write_py: WritePy) -> None:
+    """``_FOO: int = 1024`` declares the literal IS the named constant."""
+    src = "_GC_THRESHOLD: int = 1024\n"
+    path = write_py(src)
+    assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
+
+
+def test_annassign_float_named_constant_not_flagged(write_py: WritePy) -> None:
+    """``_FOO: float = 0.7`` declares the literal IS the named constant."""
+    src = "_PASS_THRESHOLD: float = 0.7\n"
+    path = write_py(src)
+    assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
+
+
+def test_annassign_final_int_named_constant_not_flagged(
+    write_py: WritePy,
+) -> None:
+    """``_FOO: Final[int] = 1024`` is the canonical typed-constant shape."""
+    src = "from typing import Final\n_GC_THRESHOLD: Final[int] = 1024\n"
+    path = write_py(src)
+    assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
+
+
+def test_annassign_final_float_named_constant_not_flagged(
+    write_py: WritePy,
+) -> None:
+    """``_FOO: Final[float] = 0.7`` is the canonical typed-constant shape."""
+    src = "from typing import Final\n_PASS_THRESHOLD: Final[float] = 0.7\n"
+    path = write_py(src)
+    assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
+
+
+def test_annassign_bare_final_named_constant_not_flagged(
+    write_py: WritePy,
+) -> None:
+    """``_FOO: Final = 256`` (no subscript) marks a named constant.
+
+    The bare-Final form is idiomatic when the value type is obvious
+    from the literal and adding the subscript would only repeat it.
+    """
+    src = "from typing import Final\n_MAX_LOG_STR_LEN: Final = 256\n"
+    path = write_py(src)
+    assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
+
+
+def test_annassign_negative_named_constant_not_flagged(
+    write_py: WritePy,
+) -> None:
+    """Negative annotated constants do not flag.
+
+    Wire-protocol error codes such as ``JSONRPC_PARSE_ERROR: int = -32700``
+    are exactly the named protocol constants the rule wants to encourage,
+    not debt; the negation must not change the classification.
+    """
+    src = "JSONRPC_PARSE_ERROR: int = -32700\n"
+    path = write_py(src)
+    assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
+
+
+def test_unannotated_module_assign_still_flagged(write_py: WritePy) -> None:
+    """Regression guard: bare ``NAME = literal`` (no annotation) still flags.
+
+    The skip rule applies only when the developer has explicitly typed
+    the assignment as a named constant; without that signal the gate
+    cannot tell a one-time computation apart from a constant.
+    """
+    src = "_GC_THRESHOLD = 1024\n"
+    path = write_py(src)
+    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
+    assert len(hits) == 1
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "bytes",
+        "str",
+        "MyAlias",
+        "list[int]",
+        "int | None",
+        "Final[Path]",
+        "Final[str]",
+        "Final[None]",
+    ],
+)
+def test_annassign_non_numeric_annotation_still_flagged(
+    write_py: WritePy, annotation: str
+) -> None:
+    """Only ``int``/``float``/``Final``/``Final[int]``/``Final[float]`` skip.
+
+    Locks the boundary: unions, custom aliases, container types, and
+    ``Final[<non-numeric>]`` all still flag.
+    """
+    src = (
+        "from typing import Final\n"
+        "from pathlib import Path\n"
+        "MyAlias = int\n"
+        f"_FOO: {annotation} = 1024\n"
+    )
+    path = write_py(src)
+    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
+    assert len(hits) == 1
+    assert hits[0].value == "1024"
+
+
+def test_qualified_typing_final_still_flags(write_py: WritePy) -> None:
+    """Locks the scope decision: ``typing.Final[int]`` (qualified) STILL flags.
+
+    The medium-scope rule recognises ``Final`` only when imported
+    directly (``from typing import Final``). Qualified usage is rare
+    enough in this codebase that the AST classifier deliberately does
+    not handle :class:`ast.Attribute` annotations; the developer must
+    switch to a direct import to silence the gate.
+    """
+    src = "import typing\n_FOO: typing.Final[int] = 1024\n"
+    path = write_py(src)
+    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
+    assert len(hits) == 1
+    assert hits[0].value == "1024"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("_FOO: int = 1024", True),
+        ("_FOO: float = 1.5", True),
+        ("_FOO: Final = 16", True),
+        ("_FOO: Final[int] = 1024", True),
+        ("_FOO: Final[float] = 0.7", True),
+        ("JSONRPC_PARSE_ERROR: int = -32700", True),
+        ("_FOO: Final[int] = -1", True),
+        ("_FOO: bytes = 4", False),
+        ("_FOO: str = 'x'", False),
+        ("_FOO: int | None = 1", False),
+        ("_FOO: list[int] = [1]", False),
+        ("_FOO: Final[Path] = 0", False),
+        ("_FOO: Final[bytes] = b''", False),
+        ("_FOO: Final[str] = 'x'", False),
+        ("_FOO: Final[None] = 0", False),
+        ("import typing\n_FOO: typing.Final[int] = 1024", False),
+        ("_FOO = 1024", False),
+    ],
+)
+def test_annotation_marks_as_named_constant_helper(source: str, expected: bool) -> None:
+    """Direct coverage of the annotation classifier helper.
+
+    Parses each shape and asserts the helper's boolean directly, so a
+    regression in the AST traversal surfaces as a wrong row instead of
+    a count mismatch from a full scan.
+    """
+    module = ast.parse(source)
+    stmt = module.body[-1]
+    annotation = stmt.annotation if isinstance(stmt, ast.AnnAssign) else None
+    assert _MODULE._annotation_marks_as_named_constant(annotation) is expected
+
+
+def test_named_constant_allowlist_contents() -> None:
+    """Locks the exact membership of the named-constant allowlist sets.
+
+    Effect-tests catch behaviour regressions; this structural assertion
+    catches accidental additions / deletions of allowed annotation
+    names before they reach the AST traversal.
+    """
+    assert frozenset({"int", "float", "Final"}) == _MODULE._NAMED_CONSTANT_TYPE_NAMES
+    assert frozenset({"int", "float"}) == _MODULE._NAMED_CONSTANT_FINAL_SLICES
 
 
 # ── Default-arg detection ───────────────────────────────────────
@@ -207,33 +378,108 @@ def test_async_def_default_flagged(write_py: WritePy) -> None:
     assert len(hits) == 1
 
 
-def test_status_code_default_allowlisted(write_py: WritePy) -> None:
-    """``def f(*, status_code: int = 404)`` is HTTP convention; allowed."""
-    src = (
-        "def make_response(*, status_code: int = 404) -> int:\n    return status_code\n"
-    )
+@pytest.mark.parametrize("kwarg", ["status_code", "status"])
+@pytest.mark.parametrize("code", [200, 401, 403, 404, 500, 503])
+def test_status_default_allowlisted_all_kwargs(
+    write_py: WritePy, kwarg: str, code: int
+) -> None:
+    """Every ``{status_code, status}`` x HTTP code default is allowlisted.
+
+    Locks ``_HTTP_STATUS_KEYWORDS``: if either kwarg name is removed
+    from the carve-out set, the corresponding parametrize row fails.
+    """
+    src = f"def make_response(*, {kwarg}: int = {code}) -> int:\n    return {kwarg}\n"
     path = write_py(src)
     assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
 
 
-def test_io_buffering_default_allowlisted(write_py: WritePy) -> None:
-    """``def f(buffering: int = 8192)`` is I/O convention; allowed."""
-    src = "def reader(buffering: int = 8192) -> int:\n    return buffering\n"
+def test_status_kwarg_skips_regardless_of_value(write_py: WritePy) -> None:
+    """The gate matches by kwarg name, not by whether the value is a real HTTP code.
+
+    Documents existing behaviour: a default of ``999`` on a ``status``
+    kwarg still skips because the gate inspects the signature, not the
+    value. Changing this would require reading the value too, which is
+    outside the carve-out's scope.
+    """
+    src = "def make_response(*, status: int = 999) -> int:\n    return status\n"
     path = write_py(src)
     assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
 
 
-def test_io_chunk_size_default_now_flagged(write_py: WritePy) -> None:
-    """``chunk_size`` is no longer in the I/O allowlist; defaults flag."""
-    src = "def stream(chunk_size: int = 4096) -> int:\n    return chunk_size\n"
+@pytest.mark.parametrize(
+    "kwarg",
+    ["buffering", "buffer_size", "bufsize", "blocksize", "block_size"],
+)
+@pytest.mark.parametrize(
+    "size",
+    [1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
+)
+def test_io_default_allowlisted_all_kwargs_all_pow2(
+    write_py: WritePy, kwarg: str, size: int
+) -> None:
+    """Every I/O kwarg x every allowed power-of-2 default is allowlisted.
+
+    Locks ``_IO_KEYWORD_NAMES`` and ``_IO_ALLOWED_POWERS_OF_2``: any
+    deletion from either set surfaces as a failing parametrize row.
+    """
+    src = f"def reader({kwarg}: int = {size}) -> int:\n    return {kwarg}\n"
+    path = write_py(src)
+    assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
+
+
+@pytest.mark.parametrize(
+    "kwarg",
+    ["buffering", "buffer_size", "bufsize", "blocksize", "block_size"],
+)
+@pytest.mark.parametrize("size", [-1024, -8192, -131072])
+def test_io_negative_pow2_still_flagged(
+    write_py: WritePy, kwarg: str, size: int
+) -> None:
+    """Negative I/O defaults are nonsensical buffer sizes; they flag.
+
+    Locks the negation semantics through ``_unwrap_unary``: a literal
+    such as ``buffering: int = -1024`` is a negated power-of-2; the
+    allowlist matches the magnitude only for positive values, so the
+    negated form is not in ``_IO_ALLOWED_POWERS_OF_2`` and must flag.
+    """
+    src = f"def reader({kwarg}: int = {size}) -> int:\n    return {kwarg}\n"
     path = write_py(src)
     hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
     assert len(hits) == 1
 
 
-def test_io_keyword_with_non_pow2_still_flagged(write_py: WritePy) -> None:
-    """``buffer_size=3000`` is policy disguised as I/O size; flag it."""
-    src = "def stream(buffer_size: int = 3000) -> int:\n    return buffer_size\n"
+@pytest.mark.parametrize(
+    "kwarg",
+    ["buffering", "buffer_size", "bufsize", "blocksize", "block_size"],
+)
+@pytest.mark.parametrize("size", [3000, 4097, 100000])
+def test_io_kwarg_with_non_pow2_still_flagged(
+    write_py: WritePy, kwarg: str, size: int
+) -> None:
+    """Off-pow2 defaults on I/O kwargs are policy in disguise; flag them.
+
+    Locks the value half of the carve-out: only values in
+    ``_IO_ALLOWED_POWERS_OF_2`` skip; anything else flags even on a
+    qualifying kwarg name.
+    """
+    src = f"def reader({kwarg}: int = {size}) -> int:\n    return {kwarg}\n"
+    path = write_py(src)
+    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
+    assert len(hits) == 1
+
+
+@pytest.mark.parametrize(
+    "size",
+    [1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
+)
+def test_chunk_size_default_flags_at_all_pow2(write_py: WritePy, size: int) -> None:
+    """``chunk_size`` is intentionally NOT in ``_IO_KEYWORD_NAMES``.
+
+    Locks the exclusion documented in the module docstring: the name
+    is generic enough that ``chunk_size=N`` may legitimately be
+    business policy, so every power-of-2 default flags.
+    """
+    src = f"def stream(chunk_size: int = {size}) -> int:\n    return chunk_size\n"
     path = write_py(src)
     hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
     assert len(hits) == 1
@@ -306,6 +552,27 @@ def test_file_prefix_allowlist(rel: str) -> None:
     ],
 )
 def test_file_prefix_not_in_allowlist(rel: str) -> None:
+    assert not _MODULE._is_file_allowlisted(rel)
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "src/synthorg/settings/definitions_other.py",
+        "src/synthorg/persistence/migrations_helpers.py",
+        "src/synthorg/observability/event_decoder.py",
+        "prefix_src/synthorg/settings/definitions/api.py",
+        "src/synthorg/settings/definitionsapi.py",
+    ],
+)
+def test_file_prefix_allowlist_does_not_match_substring(rel: str) -> None:
+    """Locks ``_FILE_ALLOWLIST_PREFIXES`` to true path-prefix matches only.
+
+    A sibling directory like ``definitions_other`` or a file like
+    ``event_decoder.py`` whose path *contains* an allowlisted segment
+    must NOT be allowlisted: the carve-out is anchored at the slash
+    boundary the prefix already encodes.
+    """
     assert not _MODULE._is_file_allowlisted(rel)
 
 

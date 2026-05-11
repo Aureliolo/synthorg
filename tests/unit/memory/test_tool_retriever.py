@@ -9,6 +9,7 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.memory.injection import InjectionStrategy, MemoryInjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.reformulation import QueryReformulator, SufficiencyChecker
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tool_retriever_helpers import merge_results
@@ -356,9 +357,9 @@ class TestSearchWithReformulation:
         backend = _make_backend(entries)
 
         # Use sufficiency checker that would return False
-        sufficiency = AsyncMock()
+        sufficiency = AsyncMock(spec=SufficiencyChecker)
         sufficiency.check_sufficiency = AsyncMock(return_value=False)
-        reformulator = AsyncMock()
+        reformulator = AsyncMock(spec=QueryReformulator)
         reformulator.reformulate = AsyncMock(return_value="new query")
 
         strategy = ToolBasedInjectionStrategy(
@@ -394,7 +395,7 @@ class TestSearchWithReformulation:
                 backend=backend,
                 config=_reformulation_config(),
                 reformulator=None,
-                sufficiency_checker=AsyncMock(),
+                sufficiency_checker=AsyncMock(spec=SufficiencyChecker),
             )
 
     async def test_missing_sufficiency_checker_raises(self) -> None:
@@ -408,7 +409,7 @@ class TestSearchWithReformulation:
             ToolBasedInjectionStrategy(
                 backend=backend,
                 config=_reformulation_config(),
-                reformulator=AsyncMock(),
+                reformulator=AsyncMock(spec=QueryReformulator),
                 sufficiency_checker=None,
             )
 
@@ -417,9 +418,9 @@ class TestSearchWithReformulation:
         entries = (_make_entry(entry_id="a"),)
         backend = _make_backend(entries)
 
-        sufficiency = AsyncMock()
+        sufficiency = AsyncMock(spec=SufficiencyChecker)
         sufficiency.check_sufficiency = AsyncMock(return_value=True)
-        reformulator = AsyncMock()
+        reformulator = AsyncMock(spec=QueryReformulator)
         reformulator.reformulate = AsyncMock(return_value="unused")
 
         strategy = ToolBasedInjectionStrategy(
@@ -445,12 +446,12 @@ class TestSearchWithReformulation:
         initial = (_make_entry(entry_id="a", content="initial"),)
         refined = (_make_entry(entry_id="b", content="refined"),)
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(side_effect=[initial, refined])
 
-        sufficiency = AsyncMock()
+        sufficiency = AsyncMock(spec=SufficiencyChecker)
         sufficiency.check_sufficiency = AsyncMock(side_effect=[False, True])
-        reformulator = AsyncMock()
+        reformulator = AsyncMock(spec=QueryReformulator)
         reformulator.reformulate = AsyncMock(return_value="refined query")
 
         strategy = ToolBasedInjectionStrategy(
@@ -475,13 +476,13 @@ class TestSearchWithReformulation:
     async def test_max_rounds_reached(self) -> None:
         """Stops after max_reformulation_rounds."""
         entries = (_make_entry(entry_id="a"),)
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=entries)
 
-        sufficiency = AsyncMock()
+        sufficiency = AsyncMock(spec=SufficiencyChecker)
         # Always insufficient
         sufficiency.check_sufficiency = AsyncMock(return_value=False)
-        reformulator = AsyncMock()
+        reformulator = AsyncMock(spec=QueryReformulator)
         # Return a new query each round (alternating)
         reformulator.reformulate = AsyncMock(
             side_effect=["query1", "query2", "query3", "query4"],
@@ -510,12 +511,12 @@ class TestSearchWithReformulation:
     async def test_reformulator_returns_none_stops_loop(self) -> None:
         """Returns current results when reformulator returns None."""
         entries = (_make_entry(entry_id="a"),)
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=entries)
 
-        sufficiency = AsyncMock()
+        sufficiency = AsyncMock(spec=SufficiencyChecker)
         sufficiency.check_sufficiency = AsyncMock(return_value=False)
-        reformulator = AsyncMock()
+        reformulator = AsyncMock(spec=QueryReformulator)
         reformulator.reformulate = AsyncMock(return_value=None)
 
         strategy = ToolBasedInjectionStrategy(
@@ -538,12 +539,12 @@ class TestSearchWithReformulation:
     async def test_reformulator_returns_same_query_stops(self) -> None:
         """Loop stops when reformulator returns the same query."""
         entries = (_make_entry(entry_id="a"),)
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=entries)
 
-        sufficiency = AsyncMock()
+        sufficiency = AsyncMock(spec=SufficiencyChecker)
         sufficiency.check_sufficiency = AsyncMock(return_value=False)
-        reformulator = AsyncMock()
+        reformulator = AsyncMock(spec=QueryReformulator)
         reformulator.reformulate = AsyncMock(return_value="original")
 
         strategy = ToolBasedInjectionStrategy(
@@ -571,12 +572,12 @@ class TestSearchWithReformulation:
         )
         new_entry = _make_entry(entry_id="new-1", content="new content")
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(side_effect=[(shared,), (shared, new_entry)])
 
-        sufficiency = AsyncMock()
+        sufficiency = AsyncMock(spec=SufficiencyChecker)
         sufficiency.check_sufficiency = AsyncMock(side_effect=[False, True])
-        reformulator = AsyncMock()
+        reformulator = AsyncMock(spec=QueryReformulator)
         reformulator.reformulate = AsyncMock(return_value="refined")
 
         strategy = ToolBasedInjectionStrategy(
@@ -600,14 +601,14 @@ class TestSearchWithReformulation:
     ) -> None:
         """A sufficiency checker exception degrades to current entries."""
         entries = (_make_entry(entry_id="a", content="initial"),)
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=entries)
 
-        sufficiency = AsyncMock()
+        sufficiency = AsyncMock(spec=SufficiencyChecker)
         sufficiency.check_sufficiency = AsyncMock(
             side_effect=RuntimeError("checker down"),
         )
-        reformulator = AsyncMock()
+        reformulator = AsyncMock(spec=QueryReformulator)
 
         strategy = ToolBasedInjectionStrategy(
             backend=backend,
@@ -630,12 +631,12 @@ class TestSearchWithReformulation:
     async def test_reformulator_error_returns_current_entries(self) -> None:
         """A reformulator exception degrades to current entries."""
         entries = (_make_entry(entry_id="a", content="initial"),)
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=entries)
 
-        sufficiency = AsyncMock()
+        sufficiency = AsyncMock(spec=SufficiencyChecker)
         sufficiency.check_sufficiency = AsyncMock(return_value=False)
-        reformulator = AsyncMock()
+        reformulator = AsyncMock(spec=QueryReformulator)
         reformulator.reformulate = AsyncMock(
             side_effect=RuntimeError("reformulator down"),
         )

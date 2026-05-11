@@ -4,9 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.memory.models import MemoryEntry
 from synthorg.memory.procedural.propagation.no_propagation import (
     NoPropagation,
 )
+from synthorg.memory.protocol import MemoryBackend
 
 
 class TestNoPropagation:
@@ -22,9 +25,9 @@ class TestNoPropagation:
     async def test_propagate_returns_zero(self) -> None:
         """Test that propagate always returns 0."""
         strategy = NoPropagation()
-        memory_entry = MagicMock()
-        registry = AsyncMock()
-        backend = AsyncMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
+        registry = AsyncMock(spec=AgentRegistryService)
+        backend = AsyncMock(spec=MemoryBackend)
 
         result = await strategy.propagate(
             source_agent_id="agent-1",
@@ -39,9 +42,9 @@ class TestNoPropagation:
     async def test_propagate_does_not_call_registry(self) -> None:
         """Test that registry is not called."""
         strategy = NoPropagation()
-        memory_entry = MagicMock()
-        registry = AsyncMock()
-        backend = AsyncMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
+        registry = AsyncMock(spec=AgentRegistryService)
+        backend = AsyncMock(spec=MemoryBackend)
 
         await strategy.propagate(
             source_agent_id="agent-1",
@@ -56,9 +59,9 @@ class TestNoPropagation:
     async def test_propagate_does_not_call_backend(self) -> None:
         """Test that memory backend is not called."""
         strategy = NoPropagation()
-        memory_entry = MagicMock()
-        registry = AsyncMock()
-        backend = AsyncMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
+        registry = AsyncMock(spec=AgentRegistryService)
+        backend = AsyncMock(spec=MemoryBackend)
 
         await strategy.propagate(
             source_agent_id="agent-1",
@@ -73,11 +76,11 @@ class TestNoPropagation:
     async def test_multiple_calls_return_zero(self) -> None:
         """Test multiple calls all return 0."""
         strategy = NoPropagation()
-        registry = AsyncMock()
-        backend = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
+        backend = AsyncMock(spec=MemoryBackend)
 
         for i in range(5):
-            entry = MagicMock()
+            entry = MagicMock(spec=MemoryEntry)
             result = await strategy.propagate(
                 source_agent_id=f"agent-{i}",
                 memory_entry=entry,

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     )
 
 
+# Impl in telemetry/emitter.py + telemetry/factory.py.
 @runtime_checkable
 class AnalyticsEmitter(Protocol):
     """Emits anonymized outcome events to a collector.
@@ -62,6 +63,8 @@ class AnalyticsEmitter(Protocol):
         ...
 
 
+# Impl in telemetry/collector.py + telemetry/factory.py;
+# API controller consumer.
 @runtime_checkable
 class AnalyticsCollector(Protocol):
     """Receives and stores anonymized events from deployments.
@@ -87,7 +90,7 @@ class AnalyticsCollector(Protocol):
     async def query_patterns(
         self,
         *,
-        min_deployments: int = 3,
+        min_deployments: int = 3,  # lint-allow: magic-numbers -- protocol default arg.
     ) -> tuple[AggregatedPattern, ...]:
         """Query cross-deployment patterns.
 
@@ -101,6 +104,7 @@ class AnalyticsCollector(Protocol):
         ...
 
 
+# Impl in telemetry/recommender.py + factory wiring.
 @runtime_checkable
 class RecommendationProvider(Protocol):
     """Generates threshold recommendations from aggregated patterns.

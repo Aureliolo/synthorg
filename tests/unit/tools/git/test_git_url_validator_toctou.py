@@ -119,7 +119,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=dns_result("93.184.216.34")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=dns_result("93.184.216.34")),
         )
         result = await verify_dns_consistency(
             "example.com",
@@ -134,7 +134,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=dns_result("93.184.216.34")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=dns_result("93.184.216.34")),
         )
         result = await verify_dns_consistency(
             "example.com",
@@ -149,7 +149,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=dns_result("5.6.7.8")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=dns_result("5.6.7.8")),
         )
         result = await verify_dns_consistency(
             "example.com",
@@ -167,7 +167,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=dns_result("127.0.0.1")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=dns_result("127.0.0.1")),
         )
         result = await verify_dns_consistency(
             "example.com",
@@ -185,7 +185,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(side_effect=OSError("DNS failed")),
+            AsyncMock(spec=loop.getaddrinfo, side_effect=OSError("DNS failed")),
         )
         result = await verify_dns_consistency(
             "example.com",
@@ -203,7 +203,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(side_effect=TimeoutError("DNS timed out")),
+            AsyncMock(spec=loop.getaddrinfo, side_effect=TimeoutError("DNS timed out")),
         )
         result = await verify_dns_consistency(
             "example.com",

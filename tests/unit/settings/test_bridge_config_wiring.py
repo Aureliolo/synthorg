@@ -35,7 +35,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.api.bus_bridge import MessageBusBridge
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.oauth.callback_handler import (
     resolve_oauth_http_timeout,
 )
@@ -57,6 +60,7 @@ from synthorg.notifications.config import (
 )
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.settings.bridge_configs import NotificationsBridgeConfig
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 # ── Notification adapters: positive timeout validation ─────────
@@ -181,21 +185,21 @@ class TestOAuthTokenManagerConfigResolver:
 
     @pytest.mark.unit
     def test_set_config_resolver_stores_reference(self) -> None:
-        mgr = OAuthTokenManager(catalog=MagicMock())
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         resolver = MagicMock()
         mgr.set_config_resolver(resolver)
         assert mgr._config_resolver is resolver
 
     @pytest.mark.unit
     async def test_resolve_flow_timeout_noop_without_resolver(self) -> None:
-        mgr = OAuthTokenManager(catalog=MagicMock())
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         original = mgr._flow
         await mgr._resolve_flow_timeout()
         assert mgr._flow is original
 
     @pytest.mark.unit
     async def test_resolve_flow_timeout_rebuilds_flow(self) -> None:
-        mgr = OAuthTokenManager(catalog=MagicMock())
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         resolver = MagicMock()
         resolver.get_float = AsyncMock(return_value=45.0)
         mgr.set_config_resolver(resolver)
@@ -205,7 +209,7 @@ class TestOAuthTokenManagerConfigResolver:
 
     @pytest.mark.unit
     async def test_resolve_flow_timeout_tolerates_outage(self) -> None:
-        mgr = OAuthTokenManager(catalog=MagicMock())
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         resolver = MagicMock()
         resolver.get_float = AsyncMock(side_effect=RuntimeError("boom"))
         mgr.set_config_resolver(resolver)
@@ -221,7 +225,10 @@ class TestOAuthTokenManagerConfigResolver:
 class TestWebhookEventBridgeConfigResolver:
     @pytest.mark.unit
     def test_set_config_resolver_stores_reference(self) -> None:
-        bridge = WebhookEventBridge(bus=MagicMock(), ceremony_scheduler=MagicMock())
+        bridge = WebhookEventBridge(
+            bus=MagicMock(spec=MessageBus),
+            ceremony_scheduler=MagicMock(spec=CeremonyScheduler),
+        )
         resolver = MagicMock()
         bridge.set_config_resolver(resolver)
         assert bridge._config_resolver is resolver
@@ -238,7 +245,7 @@ class TestMessageBusBridgeFallbackLogging:
         bus = MagicMock()
         bus.receive = AsyncMock(return_value=None)
         plugin = MagicMock()
-        resolver = MagicMock()
+        resolver = MagicMock(spec=ConfigResolver)
         resolver.get_float = AsyncMock(side_effect=RuntimeError("boom"))
         bridge = MessageBusBridge(bus, plugin, config_resolver=resolver)
         # First failure logs; second and third do not (flag stays set).
@@ -254,7 +261,7 @@ class TestMessageBusBridgeFallbackLogging:
     async def test_max_errors_logs_once_per_failure_run(self) -> None:
         bus = MagicMock()
         plugin = MagicMock()
-        resolver = MagicMock()
+        resolver = MagicMock(spec=ConfigResolver)
         resolver.get_int = AsyncMock(side_effect=RuntimeError("boom"))
         bridge = MessageBusBridge(bus, plugin, config_resolver=resolver)
         await bridge._get_max_consecutive_errors()

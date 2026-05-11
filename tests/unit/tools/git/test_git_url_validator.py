@@ -368,7 +368,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("93.184.216.34")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("93.184.216.34")),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host("https://example.com/repo.git", policy)
@@ -389,6 +389,7 @@ class TestValidateCloneUrlHost:
             loop,
             "getaddrinfo",
             AsyncMock(
+                spec=loop.getaddrinfo,
                 return_value=_dns_result("93.184.216.34", "93.184.216.34"),
             ),
         )
@@ -403,7 +404,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("93.184.216.34")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("93.184.216.34")),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host(
@@ -418,7 +419,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("93.184.216.34")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("93.184.216.34")),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host("ssh://git@example.com/repo.git", policy)
@@ -432,7 +433,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("93.184.216.34")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("93.184.216.34")),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host("git@example.com:repo.git", policy)
@@ -445,7 +446,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("127.0.0.1")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("127.0.0.1")),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host(
@@ -537,7 +538,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(side_effect=TimeoutError("DNS timeout")),
+            AsyncMock(spec=loop.getaddrinfo, side_effect=TimeoutError("DNS timeout")),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host(
@@ -552,7 +553,9 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(side_effect=OSError("Name or service not known")),
+            AsyncMock(
+                spec=loop.getaddrinfo, side_effect=OSError("Name or service not known")
+            ),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host(
@@ -569,7 +572,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(side_effect=RuntimeError("unexpected")),
+            AsyncMock(spec=loop.getaddrinfo, side_effect=RuntimeError("unexpected")),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host(
@@ -586,7 +589,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=[]),
+            AsyncMock(spec=loop.getaddrinfo, return_value=[]),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host(
@@ -610,7 +613,10 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("93.184.216.34", "127.0.0.1")),
+            AsyncMock(
+                spec=loop.getaddrinfo,
+                return_value=_dns_result("93.184.216.34", "127.0.0.1"),
+            ),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host(
@@ -627,7 +633,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("10.0.0.5")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("10.0.0.5")),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host("git@internal-host:repo.git", policy)
@@ -649,7 +655,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result_v6("::1")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result_v6("::1")),
         )
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host(
@@ -666,7 +672,7 @@ class TestValidateCloneUrlHost:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("93.184.216.34")),
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("93.184.216.34")),
         )
         policy = GitCloneNetworkPolicy(dns_rebinding_mitigation=False)
         result = await validate_clone_url_host("https://example.com/repo.git", policy)

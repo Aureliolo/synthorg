@@ -392,9 +392,11 @@ class TestMigrate:
         backend = PostgresPersistenceBackend(_cfg())
         await backend.connect()
 
+        from synthorg.persistence.atlas import migrate_apply as _real_migrate_apply
+
         with patch(
             "synthorg.persistence.postgres.backend_migration.atlas.migrate_apply",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(spec=_real_migrate_apply, return_value=None),
         ) as migrate_apply:
             await backend.migrate()
 

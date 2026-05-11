@@ -53,6 +53,8 @@ _TIME_HORIZON_SCORES: Mapping[str, float] = MappingProxyType(
 )
 
 
+# 3 impls (CompositeImpactScorer, ExplicitImpactScorer, HybridImpactScorer)
+# in this file.
 @runtime_checkable
 class ImpactScorer(Protocol):
     """Protocol for scoring the impact of a strategic decision."""

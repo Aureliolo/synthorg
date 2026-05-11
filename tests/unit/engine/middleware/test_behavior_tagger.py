@@ -10,6 +10,7 @@ from synthorg.engine.middleware.behavior_tagger import (
     _DEFAULT_TOOL_TAG_MAP,
     BehaviorTaggerMiddleware,
 )
+from synthorg.engine.middleware.models import AgentMiddlewareContext
 
 
 def _make_ctx(**metadata: Any) -> MagicMock:
@@ -142,7 +143,11 @@ class TestAfterModel:
 
     async def test_returns_original_on_exception(self) -> None:
         mw = BehaviorTaggerMiddleware()
-        ctx = MagicMock()
+        # AgentMiddlewareContext is a Pydantic BaseModel; create_autospec
+        # (and therefore mock_of[T]) does not expose Pydantic Field()
+        # annotations as settable attributes, so the looser MagicMock
+        # spec is the right rung here for an attribute-bag stand-in.
+        ctx = MagicMock(spec=AgentMiddlewareContext)
         ctx.agent_id = "test-agent"
         ctx.task_id = "test-task"
         ctx.metadata = None  # Will cause AttributeError in _infer_tags

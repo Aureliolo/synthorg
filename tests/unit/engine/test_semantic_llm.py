@@ -14,6 +14,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from synthorg.providers.protocol import CompletionProvider
 
 pytestmark = pytest.mark.unit
 
@@ -56,12 +57,12 @@ class TestLlmSemanticAnalyzer:
     """Tests for the LLM semantic analyzer."""
 
     def test_rejects_blank_model(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         with pytest.raises(ValueError, match="non-blank"):
             LlmSemanticAnalyzer(provider=provider, model="")
 
     async def test_returns_conflicts_from_llm(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete.return_value = _make_provider_response(
             conflicts=[
                 {
@@ -91,7 +92,7 @@ class TestLlmSemanticAnalyzer:
         provider.complete.assert_called_once()
 
     async def test_returns_empty_on_no_conflicts(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete.return_value = _make_provider_response(conflicts=[])
 
         analyzer = LlmSemanticAnalyzer(
@@ -109,7 +110,7 @@ class TestLlmSemanticAnalyzer:
         assert result == ()
 
     async def test_returns_empty_on_no_matching_files(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         analyzer = LlmSemanticAnalyzer(
             provider=provider,
             model="test-medium-001",
@@ -126,7 +127,7 @@ class TestLlmSemanticAnalyzer:
         provider.complete.assert_not_called()
 
     async def test_returns_empty_on_provider_error(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete.side_effect = RuntimeError("provider down")
 
         analyzer = LlmSemanticAnalyzer(
@@ -158,7 +159,7 @@ class TestLlmSemanticAnalyzer:
             ],
         )
 
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete.side_effect = [bad_response, good_response]
 
         analyzer = LlmSemanticAnalyzer(

@@ -15,6 +15,20 @@ from synthorg.memory.procedural.trajectory_aggregator import (
     AggregatedTrajectory,
     TrajectoryAggregator,
 )
+from synthorg.memory.protocol import MemoryBackend
+
+
+class _ProposerLike:
+    """Spec target for ``AsyncMock`` substitutes that stand in for the
+    duck-typed ``proposer: object`` parameter on
+    ``AutonomousSkillEvolver``. The production type is ``object`` so
+    no real protocol is available; this lightweight class declares
+    the shape the evolver actually invokes (``propose`` only) so the
+    typed-boundary gate has a non-trivial spec target.
+    """
+
+    async def propose(self, *_args: object, **_kwargs: object) -> object:
+        return None
 
 
 def _make_trajectory(**overrides: object) -> AggregatedTrajectory:
@@ -49,9 +63,9 @@ def _make_evolver(
         min_agents_for_pattern=min_agents,
     )
     return AutonomousSkillEvolver(
-        memory_backend=AsyncMock(),
+        memory_backend=AsyncMock(spec=MemoryBackend),
         trajectory_aggregator=aggregator,
-        proposer=AsyncMock(),
+        proposer=AsyncMock(spec=_ProposerLike),
         config=config,
         existing_org_proposals=existing_org,
     )
@@ -188,13 +202,13 @@ class TestEvolverNoOrgWrite:
 
     async def test_org_memory_store_never_called(self) -> None:
         """Regression test: evolver never calls store on memory backend."""
-        memory_backend = AsyncMock()
+        memory_backend = AsyncMock(spec=MemoryBackend)
         evolver = AutonomousSkillEvolver(
             memory_backend=memory_backend,
             trajectory_aggregator=TrajectoryAggregator(
                 min_agents_for_pattern=3,
             ),
-            proposer=AsyncMock(),
+            proposer=AsyncMock(spec=_ProposerLike),
             config=EvolverConfig(enabled=True),
         )
         trajectories = tuple(

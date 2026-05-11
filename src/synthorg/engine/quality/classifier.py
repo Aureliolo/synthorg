@@ -40,6 +40,8 @@ _DEFAULT_CONFIDENCE_RULE_MATCHED: float = 0.7
 _DEFAULT_CONFIDENCE_FALLBACK: float = 0.5
 
 
+# RuleBasedStepClassifier impl in same file; pluggable design
+# (rule-based / LLM-based / hybrid).
 @runtime_checkable
 class StepQualityClassifier(Protocol):
     """Protocol for step-level quality classification.

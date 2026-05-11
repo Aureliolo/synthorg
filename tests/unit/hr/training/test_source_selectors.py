@@ -6,6 +6,8 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.enums import AgentStatus, SeniorityLevel
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.training.source_selectors.composite import (
     CompositeSelector,
 )
@@ -54,8 +56,8 @@ class TestRoleTopPerformers:
 
     def test_name(self) -> None:
         selector = RoleTopPerformers(
-            registry=AsyncMock(),
-            tracker=AsyncMock(),
+            registry=AsyncMock(spec=AgentRegistryService),
+            tracker=AsyncMock(spec=PerformanceTracker),
         )
         assert selector.name == "role_top_performers"
 
@@ -66,10 +68,10 @@ class TestRoleTopPerformers:
             _make_identity(role="engineer"),
             _make_identity(role="engineer"),
         ]
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.list_active.return_value = tuple(agents)
 
-        tracker = AsyncMock()
+        tracker = AsyncMock(spec=PerformanceTracker)
         snapshots = [
             _make_snapshot(quality_score=0.5),
             _make_snapshot(quality_score=0.9),
@@ -98,10 +100,10 @@ class TestRoleTopPerformers:
             _make_identity(role="designer"),
             _make_identity(role="engineer"),
         ]
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.list_active.return_value = tuple(agents)
 
-        tracker = AsyncMock()
+        tracker = AsyncMock(spec=PerformanceTracker)
         tracker.get_snapshot.side_effect = [
             _make_snapshot(quality_score=0.8),
             _make_snapshot(quality_score=0.6),
@@ -119,12 +121,12 @@ class TestRoleTopPerformers:
         assert len(result) == 2
 
     async def test_returns_empty_when_no_matching_agents(self) -> None:
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.list_active.return_value = ()
 
         selector = RoleTopPerformers(
             registry=registry,
-            tracker=AsyncMock(),
+            tracker=AsyncMock(spec=PerformanceTracker),
         )
         result = await selector.select(
             new_agent_role="engineer",
@@ -134,10 +136,10 @@ class TestRoleTopPerformers:
 
     async def test_handles_none_quality_score(self) -> None:
         agents = [_make_identity(role="engineer")]
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.list_active.return_value = tuple(agents)
 
-        tracker = AsyncMock()
+        tracker = AsyncMock(spec=PerformanceTracker)
         snapshot = _make_snapshot()
         snapshot.overall_quality_score = None
         tracker.get_snapshot.return_value = snapshot
@@ -155,10 +157,10 @@ class TestRoleTopPerformers:
 
     async def test_default_top_n_is_three(self) -> None:
         agents = [_make_identity(role="eng") for _ in range(5)]
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.list_active.return_value = tuple(agents)
 
-        tracker = AsyncMock()
+        tracker = AsyncMock(spec=PerformanceTracker)
         tracker.get_snapshot.side_effect = [
             _make_snapshot(quality_score=i * 0.2) for i in range(5)
         ]
@@ -183,8 +185,8 @@ class TestDepartmentDiversitySampling:
 
     def test_name(self) -> None:
         selector = DepartmentDiversitySampling(
-            registry=AsyncMock(),
-            tracker=AsyncMock(),
+            registry=AsyncMock(spec=AgentRegistryService),
+            tracker=AsyncMock(spec=PerformanceTracker),
         )
         assert selector.name == "department_diversity"
 
@@ -198,10 +200,10 @@ class TestDepartmentDiversitySampling:
             _make_identity(role="qa", department="eng"),
         ]
         all_agents = same_role + diff_role
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.list_by_department.return_value = tuple(all_agents)
 
-        tracker = AsyncMock()
+        tracker = AsyncMock(spec=PerformanceTracker)
         tracker.get_snapshot.side_effect = [
             _make_snapshot(quality_score=0.9),
             _make_snapshot(quality_score=0.7),
@@ -224,10 +226,10 @@ class TestDepartmentDiversitySampling:
 
     async def test_returns_empty_when_department_missing(self) -> None:
         """Selector skips when plan has no new_agent_department."""
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         selector = DepartmentDiversitySampling(
             registry=registry,
-            tracker=AsyncMock(),
+            tracker=AsyncMock(spec=PerformanceTracker),
         )
         result = await selector.select(
             new_agent_role="engineer",
@@ -237,12 +239,12 @@ class TestDepartmentDiversitySampling:
         registry.list_by_department.assert_not_called()
 
     async def test_returns_empty_when_no_department_agents(self) -> None:
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.list_by_department.return_value = ()
 
         selector = DepartmentDiversitySampling(
             registry=registry,
-            tracker=AsyncMock(),
+            tracker=AsyncMock(spec=PerformanceTracker),
         )
         result = await selector.select(
             new_agent_role="engineer",
@@ -261,13 +263,13 @@ class TestUserCuratedList:
 
     def test_name(self) -> None:
         selector = UserCuratedList(
-            registry=AsyncMock(),
+            registry=AsyncMock(spec=AgentRegistryService),
             agent_ids=("agent-1", "agent-2"),
         )
         assert selector.name == "user_curated"
 
     async def test_returns_provided_ids(self) -> None:
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get.side_effect = [MagicMock(), MagicMock()]
 
         selector = UserCuratedList(
@@ -281,7 +283,7 @@ class TestUserCuratedList:
         assert result == ("agent-1", "agent-2")
 
     async def test_filters_nonexistent_agents(self) -> None:
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get.side_effect = [MagicMock(), None]
 
         selector = UserCuratedList(
@@ -296,7 +298,7 @@ class TestUserCuratedList:
 
     async def test_empty_list(self) -> None:
         selector = UserCuratedList(
-            registry=AsyncMock(),
+            registry=AsyncMock(spec=AgentRegistryService),
             agent_ids=(),
         )
         result = await selector.select(

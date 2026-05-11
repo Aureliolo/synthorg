@@ -12,6 +12,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.config import SafetyClassifierConfig
 from synthorg.security.safety_classifier import (
     SafetyClassification,
@@ -71,7 +72,7 @@ def _make_classifier(
         )
         driver_map = {"provider-a": mock_driver, "provider-b": mock_driver}
 
-    registry = MagicMock()
+    registry = MagicMock(spec=ProviderRegistry)
     registry.get = MagicMock(side_effect=lambda name: driver_map[name])
     registry.list_providers = MagicMock(
         return_value=tuple(sorted(driver_map.keys())),
@@ -234,7 +235,7 @@ class TestErrorHandling:
         assert result.classification == SafetyClassification.SUSPICIOUS
 
     async def test_no_providers_returns_suspicious(self) -> None:
-        registry = MagicMock()
+        registry = MagicMock(spec=ProviderRegistry)
         registry.list_providers = MagicMock(return_value=())
 
         config_a = MagicMock()

@@ -279,7 +279,13 @@ class TestDeleteMemoryEntryEndpoint:
         from synthorg.api.controllers.memory import MemoryAdminController
 
         # Stub MemoryService to avoid the full _build_memory_service path.
-        fake_service = SimpleNamespace(delete_memory_entry=AsyncMock(return_value=True))
+        async def _delete_stub(agent_id: str, memory_id: str) -> bool:
+            del agent_id, memory_id
+            return False
+
+        fake_service = SimpleNamespace(
+            delete_memory_entry=AsyncMock(spec=_delete_stub, return_value=True),
+        )
 
         def _fake_build(
             _app_state: object,
@@ -317,8 +323,12 @@ class TestDeleteMemoryEntryEndpoint:
         from synthorg.api.controllers.memory import MemoryAdminController
         from synthorg.core.domain_errors import NotFoundError
 
+        async def _delete_stub(agent_id: str, memory_id: str) -> bool:
+            del agent_id, memory_id
+            return False
+
         fake_service = SimpleNamespace(
-            delete_memory_entry=AsyncMock(return_value=False),
+            delete_memory_entry=AsyncMock(spec=_delete_stub, return_value=False),
         )
 
         def _fake_build(
@@ -357,8 +367,13 @@ class TestDeleteMemoryEntryEndpoint:
         from synthorg.core.domain_errors import FeatureNotImplementedError
         from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 
+        async def _delete_stub(agent_id: str, memory_id: str) -> bool:
+            del agent_id, memory_id
+            return False
+
         fake_service = SimpleNamespace(
             delete_memory_entry=AsyncMock(
+                spec=_delete_stub,
                 side_effect=MemoryBackendUnsupportedError("no memory backend wired"),
             ),
         )

@@ -32,6 +32,7 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -298,7 +299,7 @@ class TestSemanticDetectorBehavior:
         provider.complete.assert_not_awaited()
 
     async def test_provider_error_returns_empty(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=BaseCompletionProvider)
         provider.complete = AsyncMock(
             side_effect=RuntimeError("provider down"),
         )

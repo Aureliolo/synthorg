@@ -13,6 +13,8 @@ from synthorg.hr.performance.models import (
 )
 
 
+# BehavioralTelemetryStrategy impl in behavioral_collaboration_strategy.py
+# + PerformanceTracker plug-in slot.
 @runtime_checkable
 class CollaborationScoringStrategy(Protocol):
     """Strategy for scoring agent collaboration behavior.

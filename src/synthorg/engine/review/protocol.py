@@ -10,6 +10,8 @@ if TYPE_CHECKING:
     from synthorg.engine.review.models import ReviewStageResult
 
 
+# Pluggable pipeline stage: 2 impls (ClientReviewStage, InternalReviewStage)
+# walked by ReviewPipeline.
 @runtime_checkable
 class ReviewStage(Protocol):
     """Protocol for a single stage in the review pipeline.

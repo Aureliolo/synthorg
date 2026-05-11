@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
 
+# TheilSenTrendStrategy impl in theil_sen_strategy.py + PerformanceTracker
+# plug-in slot.
 @runtime_checkable
 class TrendDetectionStrategy(Protocol):
     """Strategy for detecting trends in metric time series.

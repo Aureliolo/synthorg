@@ -347,6 +347,7 @@ class TestProviderHealthUsageEnrichment:
                 tracker,
                 "get_provider_usage",
                 new=AsyncMock(
+                    spec=tracker.get_provider_usage,
                     side_effect=RuntimeError("cost tracker broken"),
                 ),
             ),

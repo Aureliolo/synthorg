@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
 
+# MultiWindowStrategy impl in multi_window_strategy.py + PerformanceTracker
+# plug-in slot.
 @runtime_checkable
 class MetricsWindowStrategy(Protocol):
     """Strategy for computing rolling-window aggregate metrics.

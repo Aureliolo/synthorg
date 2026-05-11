@@ -15,6 +15,8 @@ Generated mechanically by [`scripts/protocol_audit.py`](../../scripts/protocol_a
 
 The counts are deliberately approximate: they're a triage tool, not a removal lockbox. Every `REMOVE` recommendation in the per-area tables below is a **flag**, not a pre-approved deletion: each follow-up issue must re-verify usage at cleanup time.
 
+**Important caveat on `impl=0`.** The script's regex matches only explicit `class X(ProtocolName):` inheritance; it cannot detect Pythonic *structural* implementations (classes that satisfy the Protocol by shape without inheriting), factory dispatch dicts that return Protocol-typed values, or default-impl injection patterns. In practice, most flagged `REMOVE` rows turned out to be real plug-in surfaces once re-grepped at cleanup time. The 2026-05-11 cleanup (issue #1864) hand-reviewed every REMOVE row and reclassified 44 of 46 candidates back to KEEP after finding structural impls in sibling files, factory wiring, or vendor-agnostic injection design. See the **Post-cleanup status (2026-05-11)** section below.
+
 ## Classification rules
 
 - **KEEP**: leave the protocol unchanged. Applies when:
@@ -33,15 +35,17 @@ The counts are deliberately approximate: they're a triage tool, not a removal lo
 
 ## Summary
 
-| Total | Recommendation |
-|---|---|
-| **237** | Protocol classes inventoried |
-| **193** | KEEP |
-| **0** | MAKE-RUNTIME-CHECKABLE (no `isinstance` sites surveyed; deferred to per-area cleanup PRs) |
-| **31** | REMOVE candidates (flag-only; must be re-verified at cleanup time) |
-| **13** | REVIEW (`_PrivatePrefixed` typing seams; intent inspection needed) |
+The 2026-05-10 snapshot counts in the original table were aggregated by hand and undercounted both the REMOVE and REVIEW rows. The table below reflects (a) the per-area row totals as they actually appear in the snapshot tables, and (b) the post-2026-05-11 cleanup outcome captured in the "Post-cleanup status" section.
 
-`@runtime_checkable` decoration: 209 of 237 (88%). The 28 without the decorator are listed inline below; absence is not a defect on its own; only a few need it.
+| Total | Recommendation (2026-05-10 snapshot row counts) | After 2026-05-11 cleanup (#1864) |
+|---|---|---|
+| Protocol classes inventoried | 250 | 248 (2 deleted) |
+| KEEP | 193 | 237 (44 audit re-flagged, plus pre-existing 193) |
+| MAKE-RUNTIME-CHECKABLE | 0 (no `isinstance` sites surveyed) | 0 |
+| REMOVE candidates (flag-only; must be re-verified at cleanup time) | 46 | 0 (2 deleted, 44 reclassified KEEP) |
+| REVIEW (`_PrivatePrefixed` typing seams; intent inspection needed) | 11 | 11 (unchanged; #1865 owns these) |
+
+`@runtime_checkable` decoration: 209 of 250 (84%). The 41 without the decorator are listed inline below; absence is not a defect on its own; only a few need it.
 
 ## Per-area classification
 
@@ -371,6 +375,39 @@ All 45 persistence protocols are listed; every one is a plug-in `Repository` / `
 | tools/discovery.py | 44 | `ToolDisclosureManager` | 1 | 0 | 4 | KEEP | Plug-in `Manager`. |
 | tools/protocol.py | 25 | `ToolInvokerProtocol` | 1 | 0 | 7 | KEEP | Public extension surface. |
 | tools/sandbox/protocol.py | 17 | `SandboxBackend` | 1 | 0 | 41 | KEEP | Pluggable subsystem. |
+
+## Post-cleanup status (2026-05-11)
+
+Issue [#1864](https://github.com/Aureliolo/synthorg/issues/1864) hand-reviewed every REMOVE row below. The verification protocol was: (1) re-grep the protocol name across `src/synthorg/` and `tests/`, (2) inspect sibling files in the same directory for structural impls, (3) confirm whether a factory dispatch dict / config discriminator / multi-slot injection / vendor-agnostic design exists. The script's `impl=0` reliably under-counts these patterns.
+
+### Deleted (2 protocols)
+
+The script's classification matched reality: zero structural impls, zero consumers (or single-file Callable seam).
+
+| Path | Line | Name | Outcome |
+|---|---|---|---|
+| api/auto_wire.py | 93 | `BuildDispatcherFn` | Deleted. Collapsed to `Callable[..., SettingsChangeDispatcher \| None]` at the single annotation site (`auto_wire_settings`). |
+| communication/event_stream/consumer.py | 15 | `EventStreamConsumer` | Deleted. File removed (zero refs anywhere in repo). |
+
+### Audit re-flagged to KEEP (44 protocols)
+
+Each retained protocol carries a one-line `# <reason>` design-rationale comment immediately above the `class` line describing the implementation(s), factory dispatch, and consumer wiring that justify keeping it. The categories below explain the structural patterns the audit script's regex missed; the in-code comments name the concrete impls/factories/consumers so future readers can verify the wiring without re-running the audit.
+
+Categories of re-flag rationale:
+
+1. **Multiple structural impls in the same file or sibling file** (impl count missed by the regex). Examples: `ConfidenceFormatter` (4 impls + `_FORMATTERS` factory in same file), `ImpactScorer` (3 impls), `StrategicContextProvider` (2 impls), `CostTierResolver` (2 impls + factory), `ShadowTaskProvider` (2 impls in `shadow_providers.py`), `TimestampProvider` (2 impls in same file), `TraceHandler` (`NoopTraceHandler` in same file + `OtlpTraceHandler` in sibling), `TrustStrategy` (4 strategy files + 117 test occurrences), 9 of 10 hr/ candidates (impl files named `*_strategy.py`), `LocalModelManager` (`OllamaModelManager` in same file).
+
+2. **Factory or registry dispatch** that the script's regex cannot see. Examples: `ConnectionAuthenticator` (registry in `connections/types/__init__.py`), `ConnectionHealthCheck` (`_CHECK_REGISTRY` in `prober.py`), `CaptureStrategy`/`PropagationStrategy`/`PruningStrategy` (each backed by a per-area `factory.py` with 3 impls), `OntologyInjectionStrategy` (`injection/factory.py`), `RiskTierClassifier` (`timeout/factory.py` + `engine/_security_factory`), `SandboxLifecycleStrategy` (`create_lifecycle_strategy` config-discriminated factory with 3 impls).
+
+3. **Default-impl injection with safe fallback**. Examples: `MemoryArchivalStrategy` (`FullSnapshotStrategy` default + `OffboardingService` injection), `TaskReassignmentStrategy` (`QueueReturnStrategy` default), `AutonomyChangeStrategy` (`HumanOnlyPromotionStrategy`), `ReviewStage` (`ClientReviewStage` + `InternalReviewStage` walked by `ReviewPipeline`), `OutcomeStore`, `ConfidenceAdjuster`, `CIValidator`, `AnalyticsEmitter`/`Collector`/`RecommendationProvider` (full telemetry trio with `meta/telemetry/factory.py`), `DriftDetectionStrategy` (`LayeredDriftDetector`), `StepQualityClassifier` (`RuleBasedStepClassifier`).
+
+4. **Vendor-agnostic public extension surface** (no built-in impl by design; consumed via injection from MCP / user / external integration). Examples: `JudgeEvaluator` (debate/hybrid LLM judge), `WebSearchProvider` (threaded through `tools/factory.py` at 4 callsites), `ShadowAgentRunner` (production wires to `AgentEngine.run` via caller-supplied adapter), `TunnelProvider` (ngrok/cloudflared abstraction wired via `IntegrationsBundle`), `OrgInflectionSink` and `AlertSink` (downstream observability hooks).
+
+5. **Multi-impl injection points missed by the audit doc's own duplicate detection**. `ParticipantResolver`@`meeting/participant.py:56` was flagged as a "dead duplicate" of an alleged twin in `meeting/protocol.py`; the twin does not exist. The participant.py copy has 2 impls (`PassthroughParticipantResolver`, `RegistryParticipantResolver`) in the same file and 3 test files.
+
+### Recommended next pass for `scripts/protocol_audit.py`
+
+A follow-up issue should teach the audit script to (a) consult a manual override file (e.g. `data/protocols_audit_overrides.yaml`) keyed on `path:line:name` so KEEP decisions made here survive future regenerations, and (b) detect structural impls heuristically (same-file `class X:` siblings whose method names match the Protocol's, factory return type annotations) to reduce false-positive REMOVE flags.
 
 ## Follow-up issues
 

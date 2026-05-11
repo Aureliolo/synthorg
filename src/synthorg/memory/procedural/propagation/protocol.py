@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
 
 
+# propagation/factory.py with 3 impls (No/RoleScoped/DepartmentScoped
+# propagation); pluggable seam.
 @runtime_checkable
 class PropagationStrategy(Protocol):
     """Strategy for propagating procedural memories across agents.

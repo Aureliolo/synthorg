@@ -4,11 +4,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import MemoryCategory
-from synthorg.memory.models import MemoryMetadata
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.procedural.propagation.role_scoped import (
     RoleScopedPropagation,
 )
+from synthorg.memory.protocol import MemoryBackend
 
 
 class TestRoleScopedPropagation:
@@ -36,14 +39,14 @@ class TestRoleScopedPropagation:
         target_agent2.id = "agent-3"
         target_agent2.role = "engineer"
 
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get = AsyncMock(return_value=source_agent)
         registry.list_active = AsyncMock(return_value=(target_agent1, target_agent2))
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-copy-1")
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -72,16 +75,16 @@ class TestRoleScopedPropagation:
         target_agent.id = "agent-2"
         target_agent.role = "engineer"
 
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get = AsyncMock(return_value=source_agent)
         registry.list_active = AsyncMock(
             return_value=(source_agent, target_agent),
         )
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-copy-1")
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -115,16 +118,16 @@ class TestRoleScopedPropagation:
         manager.id = "agent-3"
         manager.role = "manager"
 
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get = AsyncMock(return_value=source_agent)
         registry.list_active = AsyncMock(
             return_value=(engineer1, manager),
         )
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-copy-1")
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -152,19 +155,19 @@ class TestRoleScopedPropagation:
 
         targets = []
         for i in range(5):
-            agent = MagicMock()
+            agent = MagicMock(spec=AgentIdentity)
             agent.id = f"agent-{i + 2}"
             agent.role = "engineer"
             targets.append(agent)
 
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get = AsyncMock(return_value=source_agent)
         registry.list_active = AsyncMock(return_value=tuple(targets))
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-copy-1")
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -194,14 +197,14 @@ class TestRoleScopedPropagation:
         target_agent.id = "agent-2"
         target_agent.role = "engineer"
 
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get = AsyncMock(return_value=source_agent)
         registry.list_active = AsyncMock(return_value=(target_agent,))
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-copy-1")
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -236,14 +239,14 @@ class TestRoleScopedPropagation:
         different_role_agent.id = "agent-2"
         different_role_agent.role = "designer"
 
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get = AsyncMock(return_value=source_agent)
         registry.list_active = AsyncMock(return_value=(different_role_agent,))
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-copy-1")
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -274,14 +277,14 @@ class TestRoleScopedPropagation:
         source_agent.id = "agent-1"
         source_agent.role = "engineer"
 
-        registry = AsyncMock()
+        registry = AsyncMock(spec=AgentRegistryService)
         registry.get = AsyncMock(return_value=source_agent)
         registry.list_active = AsyncMock(return_value=())
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-copy-1")
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"

@@ -10,6 +10,8 @@ from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
+# QueueReturnStrategy impl in hr/queue_return_strategy.py; OffboardingService
+# injection point with safe default.
 @runtime_checkable
 class TaskReassignmentStrategy(Protocol):
     """Strategy for reassigning tasks from a departing agent.

@@ -16,6 +16,8 @@ import pytest
 from synthorg.communication.config import MeetingsConfig, MeetingTypeConfig
 from synthorg.communication.meeting.errors import SchedulerAlreadyRunningError
 from synthorg.communication.meeting.frequency import MeetingFrequency
+from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
+from synthorg.communication.meeting.participant import ParticipantResolver
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 
 
@@ -56,8 +58,8 @@ class TestConcurrentStart:
         config = _build_config()
         scheduler = MeetingScheduler(
             config=config,
-            orchestrator=MagicMock(),
-            participant_resolver=MagicMock(),
+            orchestrator=MagicMock(spec=MeetingOrchestrator),
+            participant_resolver=MagicMock(spec=ParticipantResolver),
         )
 
         # Force both ``start()`` callers into the lifecycle-lock

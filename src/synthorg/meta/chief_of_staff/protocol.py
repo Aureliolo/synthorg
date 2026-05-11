@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from synthorg.meta.models import ImprovementProposal, ProposalAltitude
 
 
+# MemoryOutcomeStore impl in chief_of_staff/outcome_store.py + factory wiring
+# + 3 consumers (service/learning/chat).
 @runtime_checkable
 class OutcomeStore(Protocol):
     """Store and retrieve proposal decision outcomes.
@@ -65,7 +67,7 @@ class OutcomeStore(Protocol):
         *,
         rule_name: NotBlankStr | None = None,
         altitude: ProposalAltitude | None = None,
-        limit: int = 10,
+        limit: int = 10,  # lint-allow: magic-numbers -- protocol default arg.
     ) -> tuple[ProposalOutcome, ...]:
         """Retrieve recent outcomes with optional filtering.
 
@@ -80,6 +82,7 @@ class OutcomeStore(Protocol):
         ...
 
 
+# Default impl + factory + 3 consumers (service/learning/factory).
 @runtime_checkable
 class ConfidenceAdjuster(Protocol):
     """Adjust proposal confidence based on historical patterns.
@@ -117,6 +120,8 @@ class ConfidenceAdjuster(Protocol):
         ...
 
 
+# Public extension surface for downstream observability hooks (same shape
+# as NotificationSink, TelemetrySubscriber).
 @runtime_checkable
 class OrgInflectionSink(Protocol):
     """Consumer of org-level inflection events.
@@ -135,6 +140,8 @@ class OrgInflectionSink(Protocol):
         ...
 
 
+# Public extension surface for proactive-alert plumbing in
+# chief_of_staff/alerts.py.
 @runtime_checkable
 class AlertSink(Protocol):
     """Consumer of proactive alerts.

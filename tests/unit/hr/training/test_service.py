@@ -1,6 +1,7 @@
 """Unit tests for training mode service orchestrator."""
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -13,7 +14,10 @@ from synthorg.hr.training.models import (
     TrainingPlan,
     TrainingPlanStatus,
 )
+from synthorg.hr.training.protocol import CurationStrategy, SourceSelector
 from synthorg.hr.training.service import TrainingService
+from synthorg.memory.protocol import MemoryBackend
+from tests._shared import mock_of
 
 
 def _now() -> datetime:
@@ -65,16 +69,17 @@ def _make_guard_decision(
 
 def _make_service(
     *,
-    selector: AsyncMock | None = None,
+    selector: Any = None,
     extractors: dict[ContentType, AsyncMock] | None = None,
-    curation: AsyncMock | None = None,
+    curation: Any = None,
     guards: tuple[AsyncMock, ...] | None = None,
-    memory_backend: AsyncMock | None = None,
+    memory_backend: Any = None,
 ) -> TrainingService:
     """Build a TrainingService with mocked dependencies."""
     if selector is None:
-        selector = AsyncMock()
-        selector.select.return_value = ("senior-1",)
+        selector = mock_of[SourceSelector](
+            select=AsyncMock(return_value=("senior-1",)),
+        )
 
     if extractors is None:
         proc_ext = AsyncMock()
@@ -97,8 +102,9 @@ def _make_service(
         }
 
     if curation is None:
-        curation = AsyncMock()
-        curation.curate.side_effect = lambda items, **kw: items
+        curation = mock_of[CurationStrategy](
+            curate=AsyncMock(side_effect=lambda items, **kw: items),
+        )
 
     if guards is None:
         guard = AsyncMock()
@@ -106,8 +112,9 @@ def _make_service(
         guards = (guard,)
 
     if memory_backend is None:
-        memory_backend = AsyncMock()
-        memory_backend.store.return_value = "stored-id"
+        memory_backend = mock_of[MemoryBackend](
+            store=AsyncMock(return_value="stored-id"),
+        )
 
     return TrainingService(
         selector=selector,

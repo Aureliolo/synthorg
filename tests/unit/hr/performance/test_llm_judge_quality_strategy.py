@@ -15,6 +15,7 @@ from synthorg.hr.performance.llm_judge_quality_strategy import (
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.providers.protocol import CompletionProvider
 
 from .conftest import make_acceptance_criterion, make_task_metric
 
@@ -333,7 +334,7 @@ class TestErrorHandling:
 
     async def test_provider_exception(self) -> None:
         """Provider exception returns confidence=0.0 fallback."""
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete.side_effect = RuntimeError("Connection failed")
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
@@ -352,7 +353,7 @@ class TestErrorHandling:
 
     async def test_empty_content(self) -> None:
         """LLM returning None content returns confidence=0.0 fallback."""
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete.return_value = CompletionResponse(
             content=None,
             tool_calls=(),

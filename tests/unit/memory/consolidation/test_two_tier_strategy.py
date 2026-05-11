@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.compressor import ExperienceCompressor
 from synthorg.memory.consolidation.config import ExperienceCompressorConfig
 from synthorg.memory.consolidation.models import (
     CompressedExperience,
@@ -143,7 +144,7 @@ class TestTwoTierCompressionStrategy:
     @pytest.mark.unit
     async def test_compressor_error_isolates_per_entry(self) -> None:
         backend = _mock_backend()
-        compressor = AsyncMock()
+        compressor = AsyncMock(spec=ExperienceCompressor)
         compressor.compress = AsyncMock(
             side_effect=RuntimeError("LLM error"),
         )

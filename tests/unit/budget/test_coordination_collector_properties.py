@@ -10,6 +10,7 @@ from synthorg.budget.baseline_store import BaselineRecord, BaselineStore
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.budget.tracker import CostTracker
 from synthorg.providers.enums import FinishReason
 
 # ---------------------------------------------------------------------------
@@ -66,7 +67,7 @@ class TestCoordinationCollectorProperties:
         """collect() always returns a CoordinationMetrics instance."""
         collector = CoordinationMetricsCollector(
             config=_cfg(),
-            cost_tracker=MagicMock(),
+            cost_tracker=MagicMock(spec=CostTracker),
         )
         result = await collector.collect(
             execution_result=_execution_result(_turn()),
@@ -81,7 +82,7 @@ class TestCoordinationCollectorProperties:
         """When config.enabled=False, all metric fields are None."""
         collector = CoordinationMetricsCollector(
             config=_cfg(enabled=False),
-            cost_tracker=MagicMock(),
+            cost_tracker=MagicMock(spec=CostTracker),
         )
         result = await collector.collect(
             execution_result=_execution_result(_turn()),
@@ -107,7 +108,7 @@ class TestCoordinationCollectorProperties:
         store = BaselineStore(window_size=100)
         collector = CoordinationMetricsCollector(
             config=_cfg(),
-            cost_tracker=MagicMock(),
+            cost_tracker=MagicMock(spec=CostTracker),
             baseline_store=store,
         )
         for i in range(n_calls):
@@ -130,7 +131,7 @@ class TestCoordinationCollectorProperties:
         store = _baseline_store_with_record(turns=float(turns_sas))
         collector = CoordinationMetricsCollector(
             config=CoordinationMetricsConfig(enabled=True),
-            cost_tracker=MagicMock(),
+            cost_tracker=MagicMock(spec=CostTracker),
             baseline_store=store,
         )
         turns = tuple(_turn() for _ in range(turns_mas))

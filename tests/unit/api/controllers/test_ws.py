@@ -611,7 +611,12 @@ class TestWsTicketAuth:
 
         # Guard must not raise PermissionDeniedException when user is
         # absent -- this is the expected state for WS connections.
-        require_password_changed(connection, MagicMock())
+        # Second arg is annotated as `object`; pass a SimpleNamespace
+        # since the gate forbids bare MagicMock at typed boundaries
+        # and `object` is too broad to spec usefully.
+        from types import SimpleNamespace
+
+        require_password_changed(connection, SimpleNamespace())
         # Reaching here without PermissionDeniedException confirms
         # the guard passes through for WS scope with no user.
 

@@ -128,6 +128,31 @@ clean: there is exactly one env var name per setting.
    the env var via `os.environ` at startup (init-time).  Direct env
    reads in application code outside startup are forbidden.
 
+## Protocol constants are not settings
+
+Wire-protocol numerics such as JSON-RPC error codes
+(`JSONRPC_PARSE_ERROR: int = -32700`), framing thresholds, or
+specification-mandated limits are NOT operator-tunable policy: changing
+the value silently breaks interop with peers that read the public
+spec. Express them as typed module-level constants and let
+`scripts/check_no_magic_numbers.py` recognise the annotation as the
+named-constant signal. Import `Final` directly from `typing`; the
+gate matches only the bare names `int`, `float`, `Final`, `Final[int]`,
+and `Final[float]`, so qualified forms such as `typing.Final[int]`
+still flag. Examples:
+
+```python
+from typing import Final
+
+JSONRPC_PARSE_ERROR: int = -32700
+A2A_TASK_NOT_FOUND: int = -32001
+_MAX_FRAME_SIZE: Final[int] = 16384
+```
+
+Do not register these in `settings/definitions/`. The precedence
+chain is for values that an operator may legitimately tune; protocol
+constants are part of the algorithm.
+
 ## Migration path
 
 When a previously-direct env-var read needs to become a registry

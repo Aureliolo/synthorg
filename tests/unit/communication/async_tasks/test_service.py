@@ -9,9 +9,11 @@ from synthorg.communication.async_tasks.models import (
     TaskSpec,
 )
 from synthorg.communication.async_tasks.service import AsyncTaskService
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.enums import MessageType
 from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.engine.task_engine import TaskEngine
 
 
 def _make_task(**overrides: object) -> Task:
@@ -35,8 +37,8 @@ def _make_task(**overrides: object) -> Task:
 
 
 def _make_service() -> tuple[AsyncTaskService, AsyncMock, AsyncMock]:
-    engine = AsyncMock()
-    bus = AsyncMock()
+    engine = AsyncMock(spec=TaskEngine)
+    bus = AsyncMock(spec=MessageBus)
     service = AsyncTaskService(task_engine=engine, message_bus=bus)
     return service, engine, bus
 

@@ -80,6 +80,7 @@ class TestRerankPromptContract:
 
         provider = SimpleNamespace(
             complete=AsyncMock(
+                spec=CompletionProvider.complete,
                 return_value=SimpleNamespace(content=json.dumps({"ranking": [0]})),
             ),
         )

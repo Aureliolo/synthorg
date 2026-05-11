@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.security.config import SafetyClassifierConfig, SecurityConfig
 from synthorg.security.denial_tracker import DenialTracker
@@ -21,6 +22,7 @@ from synthorg.security.safety_classifier import (
 )
 from synthorg.security.service import SecOpsService
 from synthorg.security.uncertainty import UncertaintyResult
+from tests._shared import mock_of
 
 # ── Helpers ───────────────────────────────────────────────────────
 
@@ -58,8 +60,9 @@ def _make_service(
     config: SecurityConfig | None = None,
 ) -> SecOpsService:
     """Build a SecOpsService with mock dependencies."""
-    approval_store = AsyncMock()
-    approval_store.add = AsyncMock()
+    approval_store = mock_of[ApprovalStoreProtocol](
+        add=AsyncMock(),
+    )
 
     cfg = config or SecurityConfig()
 

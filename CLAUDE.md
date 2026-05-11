@@ -13,7 +13,7 @@ Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (use `go -C cli`, never `cd c
 - **Persistence Boundary (MANDATORY)**: only `src/synthorg/persistence/` may import sqlite/psycopg or emit raw SQL. See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md).
 - **Convention Rollout (MANDATORY)**: every convention PR ships its enforcement gate. See [docs/reference/convention-gates.md](docs/reference/convention-gates.md).
 - **Configuration Precedence (MANDATORY)**: DB > env > YAML > code default via `SettingsService`/`ConfigResolver`; no `os.environ.get` outside startup. See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md).
-- **No Hardcoded Values (MANDATORY)**: numerics live in `settings/definitions/`; allowlist 0/1/-1, HTTP codes, hex masks, powers-of-2. Enforced by `scripts/check_no_magic_numbers.py`.
+- **No Hardcoded Values (MANDATORY)**: numerics live in `settings/definitions/`; allowlist 0/1/-1, HTTP codes, hex masks, powers-of-2, and module-level annotated named constants of the form `NAME: int|float|Final|Final[int]|Final[float] = literal`. Enforced by `scripts/check_no_magic_numbers.py`.
 - **Doc Numeric Claims (MANDATORY)**: numerics in README + public docs sourced from `data/runtime_stats.yaml` via `<!--RS:NAME-->` markers. See `data/README.md`.
 - **Test Regression (MANDATORY)**: timeout/slow failures = source-code regression; never edit `tests/baselines/unit_timing.json` or any `scripts/*_baseline.{txt,json}` / `scripts/_*_baseline.py`. Both families are PreToolUse-blocked. Per-invocation bypass for gate baselines: `ALLOW_BASELINE_GROWTH=1 git commit ...` (requires explicit user approval).
 - **Post-Implementation + Pre-PR Review (MANDATORY)**: after issue: branch + commit + push (no auto-PR); use `/pre-pr-review` (gh pr create is hookify-blocked). After PR: `/aurelio-review-pr` for external feedback. Fix EVERYTHING valid; no deferring.
@@ -42,7 +42,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 - [docs/reference/claude-reference.md](docs/reference/claude-reference.md): Doc layout, Docker, releasing, CI, dependencies, Hypothesis deep-dive
 - [docs/reference/conventions.md](docs/reference/conventions.md): repository CRUD, lifecycle, response wrapping, validators, event imports, domain errors, file structure, frozen ConfigDict, args models, Pydantic v2, async, Clock seam, observability event-name inventory, repository CRUD method names, MCP handler logging centralisation, repository file structure, registering MANDATORY rules, `activate_*` / `deactivate_*` lifecycle naming
-- [docs/reference/convention-gates.md](docs/reference/convention-gates.md): gate inventory (35 enforcement gates + meta-gate)
+- [docs/reference/convention-gates.md](docs/reference/convention-gates.md): gate inventory (39 enforcement gates + meta-gate + PreToolUse hooks)
 - [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md), [persistence-boundary.md](docs/reference/persistence-boundary.md), [configuration-precedence.md](docs/reference/configuration-precedence.md), [errors.md](docs/reference/errors.md), [sec-prompt-safety.md](docs/reference/sec-prompt-safety.md), [lifecycle-sync.md](docs/reference/lifecycle-sync.md), [mcp-handler-contract.md](docs/reference/mcp-handler-contract.md), [typed-boundaries.md](docs/reference/typed-boundaries.md), [retry-patterns.md](docs/reference/retry-patterns.md), [scaffolding.md](docs/reference/scaffolding.md), [audit-category-gate-coverage.md](docs/reference/audit-category-gate-coverage.md), [dead-api-endpoints.md](docs/reference/dead-api-endpoints.md), [pluggable-subsystems.md](docs/reference/pluggable-subsystems.md), [protocols-audit.md](docs/reference/protocols-audit.md), [telemetry.md](docs/reference/telemetry.md)
 
 ## Diagrams
@@ -82,8 +82,8 @@ PYTHONPATH=. uv run zensical build                  # docs
 - Markers: `@pytest.mark.{unit,integration,e2e,slow}`. Async `auto`. Timeout 30s global. Coverage 80% min.
 - xdist `-n 8 --dist=loadfile` auto-applied via pyproject `addopts` (`loadfile` prevents 3.14+Windows ProactorEventLoop leak).
 - Windows: unit tests use `WindowsSelectorEventLoopPolicy` (3.14 IOCP teardown race). Subprocess tests override back.
-- Mock-spec: every Mock declares `spec=ConcreteClass`; baseline at `scripts/mock_spec_baseline.txt`.
-- FakeClock from `tests._shared.fake_clock`; inject via `clock=`.
+- Test doubles: ladder in [conventions.md](docs/reference/conventions.md) section 12.1. `FakeClock` for the Clock seam, `mock_of[T](**overrides)` for typed-boundary substitutions, `SimpleNamespace` for attribute-bags. Bare `MagicMock` at a typed boundary (constructor / fn arg / annotated local / typed fixture return) is blocked by `scripts/check_mock_spec.py` (zero-tolerance, no baseline).
+- FakeClock and `mock_of` import from `tests._shared`; inject via `clock=` and the helper's spec subscript.
 - Vendor-agnostic: NEVER use real vendor names in project code/tests. Use `example-provider`, `test-provider`, `example-{large,medium,small}-001`. Allowed in `.claude/`, third-party imports, `providers/presets.py`, `web/public/provider-logos/`.
 - Hypothesis: 10 deterministic CI examples; failures are real bugs (fix + add `@example(...)`).
 - Flaky: NEVER skip/xfail; fix fundamentally. Use `asyncio.Event().wait()` not `sleep(large)`.

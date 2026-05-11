@@ -6,7 +6,7 @@ artifacts (4), ontology (4).
 
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -20,6 +20,8 @@ from synthorg.integrations.mcp_services import (
 )
 from synthorg.meta.mcp.handlers.integrations import INTEGRATION_HANDLERS
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.persistence.artifact_storage import ArtifactStorageBackend
+from tests._shared import mock_of
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -60,8 +62,9 @@ def real_clients() -> ClientFacadeService:
 def real_artifacts() -> ArtifactFacadeService:
     # Storage backend needs an awaitable ``delete`` that returns truthy
     # so the destructive happy-path test can exercise the real service.
-    storage = MagicMock()
-    storage.delete = AsyncMock(return_value=True)
+    storage = mock_of[ArtifactStorageBackend](
+        delete=AsyncMock(return_value=True),
+    )
     return ArtifactFacadeService(storage=storage)
 
 

@@ -10,6 +10,7 @@ from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.providers.protocol import CompletionProvider
 
 _NOW = datetime.now(UTC)
 
@@ -78,7 +79,7 @@ class TestAbstractiveSummarizer:
         assert call_args[0][1] == "test-medium-001"
 
     async def test_fallback_on_provider_error(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM down"))
         summarizer = AbstractiveSummarizer(
             provider=provider,
@@ -107,7 +108,7 @@ class TestAbstractiveSummarizer:
             AbstractiveSummarizer(provider=_make_provider(), model="   ")
 
     async def test_memory_error_propagates(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=MemoryError("out of memory"))
         summarizer = AbstractiveSummarizer(
             provider=provider,
@@ -117,7 +118,7 @@ class TestAbstractiveSummarizer:
             await summarizer.summarize("Some content")
 
     async def test_recursion_error_propagates(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RecursionError("max depth"))
         summarizer = AbstractiveSummarizer(
             provider=provider,
@@ -147,7 +148,7 @@ class TestAbstractiveSummarizerBatch:
         assert result[1] == ("m2", "Batch summary.")
 
     async def test_batch_continues_on_individual_failure(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete = AsyncMock(
             side_effect=[
                 CompletionResponse(

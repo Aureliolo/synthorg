@@ -36,6 +36,8 @@ class TimeoutPolicy(Protocol):
         ...
 
 
+# ConfigurableRiskTierClassifier impl in timeout/risk_tier_classifier.py;
+# wired via timeout/factory.py and engine/_security_factory.
 @runtime_checkable
 class RiskTierClassifier(Protocol):
     """Classifies action types into risk tiers for tiered timeouts."""
