@@ -6,7 +6,7 @@ constitutional principles in the strategy configuration.
 quality, duplicates, and conflicting evolution modes.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.meta.models import (
     ApplyResult,
@@ -26,8 +26,8 @@ from synthorg.observability.events.meta import (
 
 logger = get_logger(__name__)
 
-_PRINCIPLE_MIN_CHARS = 10
-_PRINCIPLE_MAX_CHARS = 4000
+_PRINCIPLE_MIN_CHARS: Final[int] = 10
+_PRINCIPLE_MAX_CHARS: Final[int] = 4000
 _SCOPE_ALL = "all"
 
 

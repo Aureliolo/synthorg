@@ -9,7 +9,7 @@ from collections.abc import (
     Mapping,  # noqa: TC003  # runtime annotation on driver method
 )
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import litellm as _litellm
 from litellm.exceptions import (
@@ -94,7 +94,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_CREDENTIAL_CACHE_TTL = 300.0
+_CREDENTIAL_CACHE_TTL: Final[float] = 300.0
 """Cached credentials from the connection catalog are refreshed at
 most every ``_CREDENTIAL_CACHE_TTL`` seconds. Prevents pinning stale
 OAuth/rotating tokens for the lifetime of the driver."""

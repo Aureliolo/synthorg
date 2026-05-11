@@ -1,5 +1,7 @@
 """Factory for creating timeout policy instances from configuration."""
 
+from typing import Final
+
 from synthorg.observability import get_logger
 from synthorg.observability.events.timeout import TIMEOUT_FACTORY_UNKNOWN_CONFIG
 from synthorg.security.timeout.config import (
@@ -20,7 +22,7 @@ from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassi
 
 logger = get_logger(__name__)
 
-_SECONDS_PER_MINUTE = 60.0
+_SECONDS_PER_MINUTE: Final[float] = 60.0
 
 
 def create_timeout_policy(

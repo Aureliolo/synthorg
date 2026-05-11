@@ -15,7 +15,7 @@ reimplementing windowed counts and top-type ranking.
 
 import threading
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.meta.signal_models import OrgTelemetrySummary
 from synthorg.observability import get_logger, safe_error_description
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_MAX_EVENTS = 10_000
+_DEFAULT_MAX_EVENTS: Final[int] = 10_000
 """Default ring-buffer capacity for telemetry events.
 
 Telemetry events fire on deployment lifecycle boundaries + heartbeat;

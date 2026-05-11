@@ -5,7 +5,7 @@ source agents and converts them to training items.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.hr.training.models import ContentType, TrainingItem
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MAX_ENTRIES_PER_AGENT = 100
+_MAX_ENTRIES_PER_AGENT: Final[int] = 100
 
 
 class SemanticMemoryExtractor:

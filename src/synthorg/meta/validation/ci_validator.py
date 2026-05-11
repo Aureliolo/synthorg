@@ -8,6 +8,7 @@ wasting time on later steps.
 import asyncio
 import contextlib
 from pathlib import Path
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.meta.models import CIValidationResult
@@ -20,7 +21,9 @@ from synthorg.observability.events.meta import (
 
 logger = get_logger(__name__)
 
-_MAX_ERROR_OUTPUT_LENGTH = 2000
+_DEFAULT_TIMEOUT_SECONDS: Final[int] = 300
+
+_MAX_ERROR_OUTPUT_LENGTH: Final[int] = 2000
 
 
 class LocalCIValidator:
@@ -36,7 +39,7 @@ class LocalCIValidator:
     def __init__(
         self,
         *,
-        timeout_seconds: int = 300,
+        timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
         clock: Clock | None = None,
     ) -> None:
         self._timeout = timeout_seconds

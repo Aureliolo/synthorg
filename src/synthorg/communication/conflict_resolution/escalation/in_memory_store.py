@@ -10,6 +10,7 @@ import asyncio
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -31,7 +32,7 @@ from synthorg.persistence._shared import parse_iso_utc
 
 logger = get_logger(__name__)
 
-_DEFAULT_LIMIT = 50
+_DEFAULT_LIMIT: Final[int] = 50
 _DEFAULT_OFFSET = 0
 
 

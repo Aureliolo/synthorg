@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_TRANSITION_REASON_CRITERIA_CAP = 5
+_TRANSITION_REASON_CRITERIA_CAP: Final[int] = 5
 
 
 class AgentEnginePostExecMixin:

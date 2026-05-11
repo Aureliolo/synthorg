@@ -4,7 +4,7 @@ Mandatory, non-bypassable guard that redacts sensitive content
 from training items using the shared sanitize_message utility.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.hr.training.models import (
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_MAX_LENGTH = 2000
+_DEFAULT_MAX_LENGTH: Final[int] = 2000
 
 
 class SanitizationGuard:

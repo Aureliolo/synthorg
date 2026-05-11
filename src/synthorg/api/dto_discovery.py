@@ -1,5 +1,7 @@
 """Discovery allowlist DTOs for the provider management API."""
 
+from typing import Final
+
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -12,7 +14,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 _HOST_PORT_PATTERN = r"^[a-zA-Z0-9._\[\]%-]+:[0-9]{1,5}$"
 
-_MAX_PORT = 65535
+_MAX_PORT: Final[int] = 65535
 
 
 class DiscoveryPolicyResponse(BaseModel):

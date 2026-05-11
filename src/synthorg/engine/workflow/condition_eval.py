@@ -34,7 +34,7 @@ boolean.  Parse errors are logged at WARNING level.
 """
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.condition_eval import (
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Maximum number of tokens accepted before rejecting as too complex.
-_MAX_TOKEN_COUNT = 256
+_MAX_TOKEN_COUNT: Final[int] = 256
 
 
 def _eval_comparison(

@@ -5,7 +5,7 @@ based on the Engine design page.
 """
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import TaskStructure
 from synthorg.observability import get_logger
@@ -40,7 +40,7 @@ _PARALLEL_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 
 # Artifact count at or below which sequential is favoured
-_ARTIFACT_COUNT_THRESHOLD = 4
+_ARTIFACT_COUNT_THRESHOLD: Final[int] = 4
 
 
 class TaskStructureClassifier:

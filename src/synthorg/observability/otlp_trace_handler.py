@@ -12,7 +12,7 @@ forwards to the global provider.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from opentelemetry import trace as _ot_trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
@@ -37,6 +37,8 @@ if TYPE_CHECKING:
     from synthorg.observability.tracing.config import OtlpHttpTraceConfig
 
 logger = get_logger(__name__)
+
+_DEFAULT_FORCE_FLUSH_TIMEOUT_SECONDS: Final[float] = 5.0
 
 _TRACES_ENDPOINT_SUFFIX = "/v1/traces"
 
@@ -144,7 +146,9 @@ class OtlpTraceHandler:
         """Return a tracer bound to this handler's provider."""
         return self._provider.get_tracer(name)
 
-    async def force_flush(self, timeout_sec: float = 5.0) -> None:
+    async def force_flush(
+        self, timeout_sec: float = _DEFAULT_FORCE_FLUSH_TIMEOUT_SECONDS
+    ) -> None:
         """Block until pending spans are exported or the deadline fires."""
         timeout_ms = int(timeout_sec * 1000)
         flushed = await asyncio.to_thread(

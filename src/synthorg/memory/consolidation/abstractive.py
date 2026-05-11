@@ -6,6 +6,7 @@ if the LLM call fails.
 """
 
 import asyncio
+from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -35,7 +36,10 @@ from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
 
-_TRUNCATE_LENGTH = 200
+_DEFAULT_MAX_SUMMARY_TOKENS: Final[int] = 200
+_DEFAULT_TEMPERATURE: Final[float] = 0.3
+
+_TRUNCATE_LENGTH: Final[int] = 200
 
 _SYSTEM_PROMPT = (
     "You are a memory consolidation assistant. Summarize the following "
@@ -74,8 +78,8 @@ class AbstractiveSummarizer:
         *,
         provider: CompletionProvider,
         model: NotBlankStr,
-        max_summary_tokens: int = 200,
-        temperature: float = 0.3,
+        max_summary_tokens: int = _DEFAULT_MAX_SUMMARY_TOKENS,
+        temperature: float = _DEFAULT_TEMPERATURE,
         cost_tracker: CostTracker | None = None,
     ) -> None:
         if not model or not model.strip():

@@ -7,7 +7,7 @@ to the workspace manager -- this module only signals.
 
 import asyncio
 from pathlib import Path  # noqa: TC003
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,7 +23,7 @@ from .config import PlannerWorktreesConfig  # noqa: TC001
 
 logger = get_logger(__name__)
 
-_BYTES_PER_GB = 1_073_741_824
+_BYTES_PER_GB: Final[int] = 1_073_741_824
 
 
 class DiskQuotaStatus(BaseModel):

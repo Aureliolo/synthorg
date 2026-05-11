@@ -6,7 +6,7 @@ coordination metrics from completed multi-agent runs.
 
 import asyncio
 from datetime import datetime  # noqa: TC003
-from typing import Annotated
+from typing import Annotated, Final
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
@@ -31,7 +31,7 @@ from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
 
-_MAX_METRICS_QUERY = 10_000
+_MAX_METRICS_QUERY: Final[int] = 10_000
 """Fallback cap applied when no settings resolver is wired in."""
 
 # Module-level log-once guard for the settings-resolution fallback:

@@ -7,7 +7,7 @@ making this safe to run inside Docker containers.
 
 import base64
 import re
-from typing import Any, ClassVar, Self
+from typing import Any, ClassVar, Final, Self
 
 import httpx
 
@@ -59,7 +59,7 @@ class GitHubAuthError(GitHubAPIError):
 
 logger = get_logger(__name__)
 
-_DEFAULT_TIMEOUT = 30
+_DEFAULT_TIMEOUT: Final[int] = 30
 
 
 class HttpGitHubClient:

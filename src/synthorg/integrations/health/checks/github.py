@@ -2,6 +2,7 @@
 
 import time
 from datetime import UTC, datetime
+from typing import Final
 from urllib.parse import urlparse
 
 import httpx
@@ -27,8 +28,8 @@ setting.  Production callers inject the resolved value via
 without its own ``base_url`` falls through to the operator-configured
 endpoint rather than the public GitHub API."""
 
-_TIMEOUT = 10.0
-_HTTP_OK = 200
+_TIMEOUT: Final[float] = 10.0
+_HTTP_OK: Final[int] = 200
 
 # Allow-list of hostnames the GitHub health check will send a bearer
 # token to. Prevents token exfiltration when a malicious operator

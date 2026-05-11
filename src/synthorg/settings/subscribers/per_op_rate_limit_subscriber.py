@@ -15,7 +15,7 @@ switching backends is not a hot-reload concern.
 
 import json
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.config.rate_limits import (
     PerOpConcurrencyConfig,
@@ -47,7 +47,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         (_NAMESPACE, _CONCURRENCY_OVERRIDES),
     }
 )
-_RATE_LIMIT_OVERRIDE_TUPLE_LEN = 2
+_RATE_LIMIT_OVERRIDE_TUPLE_LEN: Final[int] = 2
 # JSON numbers arrive either as Python ``int`` (preferred) or as
 # string digits for operators who wrote ``"5"`` instead of ``5`` in
 # the settings payload.  We accept both but reject floats, booleans,

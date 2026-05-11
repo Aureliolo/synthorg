@@ -9,6 +9,8 @@ default agent chain.  Enable by adding ``"behavior_tagger"``
 to the company's ``AgentMiddlewareConfig.chain``.
 """
 
+from typing import Final
+
 from synthorg.engine.loop_protocol import BehaviorTag
 from synthorg.engine.middleware.models import AgentMiddlewareContext  # noqa: TC001
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware
@@ -57,7 +59,7 @@ _DEFAULT_TOOL_TAG_MAP: dict[str, BehaviorTag] = {
 }
 
 # Output token threshold for inferring SUMMARIZATION vs CONVERSATION.
-_SUMMARIZATION_TOKEN_THRESHOLD = 500
+_SUMMARIZATION_TOKEN_THRESHOLD: Final[int] = 500
 
 
 class BehaviorTaggerMiddleware(BaseAgentMiddleware):

@@ -7,7 +7,7 @@ patterns and rule context.
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 from uuid import uuid4
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -477,7 +477,7 @@ def _parse_items(
     return changes
 
 
-_MAX_MANIFEST_CHARS = 4000
+_MAX_MANIFEST_CHARS: Final[int] = 4000
 
 
 def _build_file_manifest(

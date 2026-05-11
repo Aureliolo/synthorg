@@ -7,7 +7,7 @@ separate LLM call.
 Never proposes identity axis (too risky for self-report).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_HIGH_QUALITY_THRESHOLD = 9.0
+_HIGH_QUALITY_THRESHOLD: Final[float] = 9.0
 """Quality score threshold for strategy adaptation proposals."""
 
 

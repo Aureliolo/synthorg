@@ -9,7 +9,7 @@ handles IDF scoring server-side, so only term frequencies are stored.
 import re
 import unicodedata
 from collections import Counter
-from typing import Self
+from typing import Final, Self
 
 import mmh3
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -77,7 +77,7 @@ _STOP_WORDS: frozenset[str] = frozenset(
 )
 
 _TOKEN_SPLIT_RE = re.compile(r"[\W_]+")
-_MIN_INDICES_FOR_SORT_CHECK = 2
+_MIN_INDICES_FOR_SORT_CHECK: Final[int] = 2
 
 
 class SparseVector(BaseModel):

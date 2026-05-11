@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_LIMIT = 50
+_DEFAULT_LIMIT: Final[int] = 50
 _DEFAULT_OFFSET = 0
 
 # Postgres unquoted identifier regex (defence-in-depth for LISTEN /

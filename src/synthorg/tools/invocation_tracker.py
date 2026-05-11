@@ -7,7 +7,7 @@ count exceeds ``max_records``, oldest entries are evicted (FIFO).
 
 import asyncio
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_MAX_RECORDS = 10_000
+_DEFAULT_MAX_RECORDS: Final[int] = 10_000
 
 
 class ToolInvocationTracker:

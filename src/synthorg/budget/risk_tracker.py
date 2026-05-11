@@ -11,7 +11,7 @@ The implementation mirrors :class:`CostTracker` for consistency.
 import asyncio
 import math
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.risk_budget import (
@@ -31,8 +31,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_RISK_WINDOW_HOURS = 168  # 7 days
-_AUTO_PRUNE_THRESHOLD = 100_000
+_RISK_WINDOW_HOURS: Final[int] = 168  # 7 days
+_AUTO_PRUNE_THRESHOLD: Final[int] = 100_000
 
 
 class RiskTracker:

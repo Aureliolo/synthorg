@@ -16,7 +16,7 @@ import subprocess
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Literal
+from typing import Final, Literal
 
 from synthorg.core.persistence_errors import MigrationError
 from synthorg.observability import get_logger, safe_error_description
@@ -37,8 +37,8 @@ BackendName = Literal["sqlite", "postgres"]
 # Protects callers from hanging indefinitely if Atlas gets stuck on a
 # lock, network hang, or malformed migration.  Applied via
 # ``Popen.wait(timeout=...)`` in ``_run_atlas``.
-_ATLAS_SUBPROCESS_TIMEOUT_SECONDS = 120.0
-_ATLAS_KILL_GRACE_SECONDS = 5.0
+_ATLAS_SUBPROCESS_TIMEOUT_SECONDS: Final[float] = 120.0
+_ATLAS_KILL_GRACE_SECONDS: Final[float] = 5.0
 """Hardcoded fallback grace period for the Atlas subprocess after kill.
 
 The value matches the default of the

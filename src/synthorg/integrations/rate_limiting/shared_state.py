@@ -15,6 +15,7 @@ from collections import deque
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from types import MappingProxyType
+from typing import Final
 from uuid import uuid4
 
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
@@ -43,8 +44,10 @@ def _wall_clock_seconds() -> float:
 
 logger = get_logger(__name__)
 
+_DEFAULT_MAX_RPM: Final[int] = 60
+
 _RATELIMIT_CHANNEL = Channel(name="#ratelimit", type=ChannelType.TOPIC)
-_POLL_TIMEOUT = 0.5
+_POLL_TIMEOUT: Final[float] = 0.5
 _SUBSCRIBER_PREFIX = "__ratelimit_"
 
 
@@ -62,7 +65,7 @@ class SharedRateLimitCoordinator:
         bus: MessageBus,
         connection_name: str,
         *,
-        max_rpm: int = 60,
+        max_rpm: int = _DEFAULT_MAX_RPM,
     ) -> None:
         self._bus = bus
         self._connection_name = connection_name

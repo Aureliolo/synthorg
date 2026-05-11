@@ -7,7 +7,7 @@ agents, aggregates by tool name, and produces summary items.
 import asyncio
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.hr.training.models import ContentType, TrainingItem
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_LOOKBACK_DAYS = 90
+_DEFAULT_LOOKBACK_DAYS: Final[int] = 90
 
 
 class ToolPatternExtractor:

@@ -9,7 +9,7 @@ middleware chain explicitly.
 """
 
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MAX_SKIPPED_LOGGED = 1024
+_MAX_SKIPPED_LOGGED: Final[int] = 1024
 _SKIPPED_LOGGED: dict[str, None] = {}
 _SKIPPED_LOCK = threading.Lock()
 

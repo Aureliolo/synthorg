@@ -13,7 +13,7 @@ Service layer backing the CFO role (see Operations design page).
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget._aggregation import group_by_agent
 from synthorg.budget._optimizer_helpers import (
@@ -73,7 +73,7 @@ _ALERT_LEVEL_ORDER: dict[BudgetAlertLevel, int] = {
 
 # Maximum number of time windows for anomaly detection to avoid
 # excessive memory/compute from pathological inputs.
-_MAX_WINDOW_COUNT = 1000
+_MAX_WINDOW_COUNT: Final[int] = 1000
 
 
 class CostOptimizer:

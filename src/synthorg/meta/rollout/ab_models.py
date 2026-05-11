@@ -7,7 +7,7 @@ result models used by ``ABTestRollout`` and ``ABTestComparator``.
 import math
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Self
+from typing import Final, Self
 from uuid import UUID  # noqa: TC003 -- Pydantic needs at runtime
 
 from pydantic import (
@@ -71,7 +71,7 @@ class GroupAssignment(BaseModel):
         return self
 
 
-_MAX_QUALITY = 10.0
+_MAX_QUALITY: Final[float] = 10.0
 
 
 class GroupMetrics(BaseModel):

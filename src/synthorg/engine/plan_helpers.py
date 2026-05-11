@@ -4,7 +4,7 @@ Stateless helpers used by both ``PlanExecuteLoop`` and ``HybridLoop``
 for common plan-step operations.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
@@ -16,7 +16,7 @@ from synthorg.providers.enums import FinishReason, MessageRole
 
 logger = get_logger(__name__)
 
-_MAX_TASK_SUMMARY_LENGTH = 200
+_MAX_TASK_SUMMARY_LENGTH: Final[int] = 200
 """Internal constant by design: maximum character length for task
 summary strings; defensive truncation prevents bloated summaries.
 Not exposed to the settings registry."""

@@ -15,6 +15,7 @@ import hashlib
 import math
 import threading
 from collections import OrderedDict
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
@@ -22,8 +23,8 @@ from synthorg.observability.events.integrations import WEBHOOK_REPLAY_DETECTED
 
 logger = get_logger(__name__)
 
-_DEFAULT_WINDOW_SECONDS = 300
-_DEFAULT_MAX_ENTRIES = 10_000
+_DEFAULT_WINDOW_SECONDS: Final[int] = 300
+_DEFAULT_MAX_ENTRIES: Final[int] = 10_000
 # Attacker-controlled nonces are hashed to a fixed 32-byte digest
 # before being stored in ``_seen`` so the cache's per-entry memory
 # is bounded regardless of how long the incoming header is.

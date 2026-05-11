@@ -2,6 +2,7 @@
 
 import time
 from datetime import UTC, datetime
+from typing import Final
 
 import httpx
 
@@ -19,7 +20,7 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_TIMEOUT = 10.0
+_TIMEOUT: Final[float] = 10.0
 
 
 class SlackHealthCheck:

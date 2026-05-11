@@ -1,7 +1,7 @@
 """Escalation queue configuration."""
 
 import re
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 # letter/digit/underscore, starting with a letter or underscore) is
 # also friendly to every driver we care about.
 _NOTIFY_CHANNEL_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
-_NOTIFY_CHANNEL_MAX_LEN = 63  # PostgreSQL's NAMEDATALEN-1
+_NOTIFY_CHANNEL_MAX_LEN: Final[int] = 63  # PostgreSQL's NAMEDATALEN-1
 
 NotifyChannel = Annotated[
     str,

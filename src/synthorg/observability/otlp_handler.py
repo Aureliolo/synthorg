@@ -13,7 +13,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
@@ -59,6 +59,11 @@ _SEVERITY_MAP: dict[int, int] = {
 }
 
 
+_DEFAULT_BATCH_SIZE: Final[int] = 100
+_DEFAULT_FLUSH_INTERVAL_SECONDS: Final[float] = 5.0
+_DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
+
+
 class OtlpHandler(logging.Handler):
     """Handler that batches log records and exports them as OTLP log records.
 
@@ -86,9 +91,9 @@ class OtlpHandler(logging.Handler):
         *,
         protocol: OtlpProtocol = OtlpProtocol.HTTP_JSON,
         headers: tuple[tuple[str, str], ...] = (),
-        batch_size: int = 100,
-        flush_interval: float = 5.0,
-        timeout: float = 10.0,
+        batch_size: int = _DEFAULT_BATCH_SIZE,
+        flush_interval: float = _DEFAULT_FLUSH_INTERVAL_SECONDS,
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
         _start_flusher: bool = True,
     ) -> None:
         super().__init__()

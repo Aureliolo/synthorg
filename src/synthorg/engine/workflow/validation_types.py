@@ -1,13 +1,14 @@
 """Types and constants for workflow validation."""
 
 from enum import StrEnum
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.enums import WorkflowEdgeType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
-_MIN_SPLIT_BRANCHES = 2
+_MIN_SPLIT_BRANCHES: Final[int] = 2
 
 _CONDITIONAL_EDGE_TYPES = frozenset(
     {

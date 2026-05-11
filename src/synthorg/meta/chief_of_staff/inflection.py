@@ -5,7 +5,7 @@ significant metric changes that exceed configurable thresholds.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import OrgInflection
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_EPSILON = 1e-9
+_EPSILON: Final[float] = 1e-9
 
 
 def _perf_quality(s: OrgSignalSnapshot) -> float:

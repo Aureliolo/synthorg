@@ -15,7 +15,7 @@ growing this module.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.analytics.models import (
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MAX_HISTORY_SAMPLE_COUNT = 128
+_MAX_HISTORY_SAMPLE_COUNT: Final[int] = 128
 
 
 class AnalyticsService:

@@ -7,6 +7,7 @@ small-tier model and re-orders by LLM-assigned ranking.
 import builtins
 import hashlib
 import json
+from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.types import NotBlankStr
@@ -57,7 +58,7 @@ most to least relevant. Include ALL indices exactly once.
     "\n\n" + untrusted_content_directive((TAG_TASK_DATA,))
 )
 
-_MAX_CANDIDATE_CONTENT_CHARS = 500
+_MAX_CANDIDATE_CONTENT_CHARS: Final[int] = 500
 
 
 def _build_cache_key(

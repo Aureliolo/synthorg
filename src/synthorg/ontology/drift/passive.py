@@ -5,7 +5,7 @@ divergence via keyword overlap between stored content and the
 canonical entity definition.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
@@ -39,8 +39,9 @@ def _keyword_overlap(text_a: str, text_b: str) -> float:
     return len(words_a & words_b) / len(words_b)
 
 
-_NOTIFY_THRESHOLD = 0.5
-_RETRAIN_THRESHOLD = 0.7
+_NOTIFY_THRESHOLD: Final[float] = 0.5
+_RETRAIN_THRESHOLD: Final[float] = 0.7
+_DEFAULT_DRIFT_DETECT_THRESHOLD: Final[float] = 0.3
 
 
 def _recommend(score: float, threshold: float) -> DriftAction:
@@ -82,7 +83,7 @@ class PassiveMonitorStrategy:
         *,
         ontology: OntologyBackend,
         memory: MemoryBackend,
-        threshold: float = 0.3,
+        threshold: float = _DEFAULT_DRIFT_DETECT_THRESHOLD,
     ) -> None:
         self._ontology = ontology
         self._memory = memory

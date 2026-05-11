@@ -9,7 +9,7 @@ on version conflict.
 
 import json
 import math
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto_org import (  # noqa: TC001
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_BUDGET_PERCENT_CAP = 100.0
+_BUDGET_PERCENT_CAP: Final[float] = 100.0
 
 
 class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):

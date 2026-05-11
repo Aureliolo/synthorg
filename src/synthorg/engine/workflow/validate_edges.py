@@ -4,7 +4,7 @@ Covers conditional edges (TRUE/FALSE), parallel split branches,
 and verification edges (PASS/FAIL/REFER).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.validation_types import (
@@ -15,7 +15,7 @@ from synthorg.engine.workflow.validation_types import (
 if TYPE_CHECKING:
     from synthorg.engine.workflow.definition import WorkflowDefinition
 
-_MIN_SPLIT_BRANCHES = 2
+_MIN_SPLIT_BRANCHES: Final[int] = 2
 
 _CONDITIONAL_EDGE_TYPES = frozenset(
     {

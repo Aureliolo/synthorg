@@ -1,7 +1,7 @@
 """Agent configuration, performance, activity, history, and CRUD mutations."""
 
 import json
-from typing import Any, Self
+from typing import Any, Final, Self
 
 from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -63,7 +63,7 @@ logger = get_logger(__name__)
 # Safety cap for lifecycle event queries to prevent unbounded memory
 # allocation.  The paginate() helper already caps the returned page
 # to MAX_LIMIT, but the underlying fetch is uncapped without this.
-_MAX_LIFECYCLE_EVENTS = 10_000
+_MAX_LIFECYCLE_EVENTS: Final[int] = 10_000
 
 
 async def _resolve_agent_id(
