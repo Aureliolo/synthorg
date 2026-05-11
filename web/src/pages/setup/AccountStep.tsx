@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createLogger } from '@/lib/logger'
-import { InputField } from '@/components/ui/input-field'
+import { InputField, PasswordVisibilityGroup } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { useAuthStore } from '@/stores/auth'
@@ -147,40 +147,42 @@ export function AccountStep() {
           disabled={loading}
         />
 
-        <div className="space-y-1.5">
+        <PasswordVisibilityGroup>
+          <div className="space-y-1.5">
+            <InputField
+              label="Password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.currentTarget.value)}
+              placeholder={`Min ${minPasswordLength} characters`}
+              disabled={loading}
+              hint={`Min ${minPasswordLength} characters`}
+            />
+            {password.length > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 flex-1 rounded-full bg-border">
+                  <div
+                    className={cn('h-full rounded-full transition-all', strength.color)}
+                    style={{ width: `${strength.percent}%` }}
+                  />
+                </div>
+                <span className="text-compact text-muted-foreground">{strength.label}</span>
+              </div>
+            )}
+          </div>
+
           <InputField
-            label="Password"
+            label="Confirm Password"
             type="password"
             required
-            value={password}
-            onChange={(e) => setPassword(e.currentTarget.value)}
-            placeholder={`Min ${minPasswordLength} characters`}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+            placeholder="Repeat password"
             disabled={loading}
-            hint={`Min ${minPasswordLength} characters`}
+            error={confirmPassword.length > 0 && password !== confirmPassword ? 'Passwords do not match' : null}
           />
-          {password.length > 0 && (
-            <div className="flex items-center gap-2">
-              <div className="h-1.5 flex-1 rounded-full bg-border">
-                <div
-                  className={cn('h-full rounded-full transition-all', strength.color)}
-                  style={{ width: `${strength.percent}%` }}
-                />
-              </div>
-              <span className="text-compact text-muted-foreground">{strength.label}</span>
-            </div>
-          )}
-        </div>
-
-        <InputField
-          label="Confirm Password"
-          type="password"
-          required
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.currentTarget.value)}
-          placeholder="Repeat password"
-          disabled={loading}
-          error={confirmPassword.length > 0 && password !== confirmPassword ? 'Passwords do not match' : null}
-        />
+        </PasswordVisibilityGroup>
 
         {policyError && (
           <ErrorBanner

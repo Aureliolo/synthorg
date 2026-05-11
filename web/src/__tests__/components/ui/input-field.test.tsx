@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { InputField } from '@/components/ui/input-field'
+import { InputField, PasswordVisibilityGroup } from '@/components/ui/input-field'
 
 describe('InputField', () => {
   it('renders label text', () => {
@@ -112,5 +112,111 @@ describe('InputField', () => {
     const input = screen.getByLabelText('Plain')
     expect(input).not.toHaveClass('pl-8')
     expect(input).not.toHaveClass('pr-8')
+  })
+
+  describe('password visibility toggle', () => {
+    it('renders an eye toggle button when type="password"', () => {
+      render(<InputField label="Password" type="password" />)
+      const button = screen.getByRole('button', { name: 'Show password' })
+      expect(button).toBeInTheDocument()
+      expect(button).toHaveAttribute('aria-pressed', 'false')
+      expect(button).toHaveAttribute('type', 'button')
+    })
+
+    it('starts hidden (type="password" on the input)', () => {
+      render(<InputField label="Password" type="password" />)
+      expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password')
+    })
+
+    it('reveals the value when the toggle is clicked', async () => {
+      const user = userEvent.setup()
+      render(<InputField label="Password" type="password" />)
+      await user.click(screen.getByRole('button', { name: 'Show password' }))
+      expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'text')
+      const button = screen.getByRole('button', { name: 'Hide password' })
+      expect(button).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('hides the value when toggled twice', async () => {
+      const user = userEvent.setup()
+      render(<InputField label="Password" type="password" />)
+      const initial = screen.getByRole('button', { name: 'Show password' })
+      await user.click(initial)
+      await user.click(screen.getByRole('button', { name: 'Hide password' }))
+      expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password')
+    })
+
+    it('does not render the toggle when hidePasswordToggle is set', () => {
+      render(<InputField label="Password" type="password" hidePasswordToggle />)
+      expect(screen.queryByRole('button', { name: 'Show password' })).not.toBeInTheDocument()
+    })
+
+    it('does not render the toggle when caller supplies trailingElement', () => {
+      render(
+        <InputField
+          label="Password"
+          type="password"
+          trailingElement={<span data-testid="custom-trail">x</span>}
+        />,
+      )
+      expect(screen.queryByRole('button', { name: 'Show password' })).not.toBeInTheDocument()
+      expect(screen.getByTestId('custom-trail')).toBeInTheDocument()
+    })
+
+    it('does not render the toggle on non-password fields', () => {
+      render(<InputField label="Username" type="text" />)
+      expect(screen.queryByRole('button', { name: 'Show password' })).not.toBeInTheDocument()
+    })
+
+    it('disables the toggle when the field is disabled', () => {
+      render(<InputField label="Password" type="password" disabled />)
+      expect(screen.getByRole('button', { name: 'Show password' })).toBeDisabled()
+    })
+
+    it('does not submit a wrapping form when clicked', async () => {
+      const user = userEvent.setup()
+      const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault())
+      render(
+        <form onSubmit={onSubmit}>
+          <InputField label="Password" type="password" />
+        </form>,
+      )
+      await user.click(screen.getByRole('button', { name: 'Show password' }))
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    it('shares visibility across fields inside PasswordVisibilityGroup', async () => {
+      const user = userEvent.setup()
+      render(
+        <PasswordVisibilityGroup>
+          <InputField label="Password" type="password" />
+          <InputField label="Confirm Password" type="password" />
+        </PasswordVisibilityGroup>,
+      )
+      const toggles = screen.getAllByRole('button', { name: 'Show password' })
+      expect(toggles).toHaveLength(2)
+      const [firstToggle] = toggles
+      if (!firstToggle) throw new Error('expected toggle button')
+      await user.click(firstToggle)
+      expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'text')
+      expect(screen.getByLabelText('Confirm Password')).toHaveAttribute('type', 'text')
+      expect(screen.getAllByRole('button', { name: 'Hide password' })).toHaveLength(2)
+    })
+
+    it('keeps fields independent when not wrapped in a group', async () => {
+      const user = userEvent.setup()
+      render(
+        <>
+          <InputField label="Password" type="password" />
+          <InputField label="Confirm Password" type="password" />
+        </>,
+      )
+      const toggles = screen.getAllByRole('button', { name: 'Show password' })
+      const [firstToggle] = toggles
+      if (!firstToggle) throw new Error('expected toggle button')
+      await user.click(firstToggle)
+      expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'text')
+      expect(screen.getByLabelText('Confirm Password')).toHaveAttribute('type', 'password')
+    })
   })
 })

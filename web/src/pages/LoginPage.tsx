@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { InputField } from '@/components/ui/input-field'
+import { InputField, PasswordVisibilityGroup } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginLockout } from '@/hooks/useLoginLockout'
@@ -169,26 +169,28 @@ export default function LoginPage() {
                   autoFocus
                 />
 
-                <InputField
-                  label="Password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.currentTarget.value)}
-                  disabled={disabled}
-                  autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
-                  hint={mode === 'setup' ? `At least ${minPasswordLength} characters` : undefined}
-                />
-
-                {mode === 'setup' && (
+                <PasswordVisibilityGroup>
                   <InputField
-                    label="Confirm Password"
+                    label="Password"
                     type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+                    value={password}
+                    onChange={(e) => setPassword(e.currentTarget.value)}
                     disabled={disabled}
-                    autoComplete="new-password"
+                    autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
+                    hint={mode === 'setup' ? `At least ${minPasswordLength} characters` : undefined}
                   />
-                )}
+
+                  {mode === 'setup' && (
+                    <InputField
+                      label="Confirm Password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+                      disabled={disabled}
+                      autoComplete="new-password"
+                    />
+                  )}
+                </PasswordVisibilityGroup>
               </div>
 
               {/* Error */}
