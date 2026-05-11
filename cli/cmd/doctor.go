@@ -433,6 +433,11 @@ func renderDoctorContainers(out *ui.UI, r diagnostics.Report) {
 			out.Error(fmt.Sprintf("%-24s %s", c.Name, status))
 		case c.Health != "":
 			out.Warn(fmt.Sprintf("%-24s %s (%s)", c.Name, c.State, c.Health))
+		case c.State == "running":
+			// No docker-level healthcheck declared (e.g. NATS). Treat
+			// running as healthy so the row matches probed-healthy peers
+			// instead of looking indefinitely "in progress".
+			out.Success(fmt.Sprintf("%-24s healthy", c.Name))
 		default:
 			out.Step(fmt.Sprintf("%-24s %s", c.Name, c.State))
 		}
