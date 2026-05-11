@@ -315,13 +315,15 @@ def fake_gate(
     """Redirect the ratchet's ``_GATE_PATH`` to a stub gate file.
 
     The stub does NOT need to be importable; the gate-edit branch
-    only counts the literal substring ``_Verdict.CATCH``.
+    counts ``ast.Return`` nodes whose value is the
+    ``_Verdict.CATCH`` attribute. Wrap each branch in a tiny function
+    so the AST walker finds three matching Return nodes.
     """
     gate = tmp_path / "fake_gate.py"
     gate.write_text(
-        "_Verdict.CATCH  # branch 1\n"
-        "_Verdict.CATCH  # branch 2\n"
-        "_Verdict.CATCH  # branch 3\n",
+        "def _a(): return _Verdict.CATCH  # branch 1\n"
+        "def _b(): return _Verdict.CATCH  # branch 2\n"
+        "def _c(): return _Verdict.CATCH  # branch 3\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(_MODULE, "_GATE_PATH", gate)
@@ -357,7 +359,7 @@ def test_gate_edit_removing_branch_blocks(
             "Edit",
             {
                 "file_path": str(fake_gate),
-                "old_string": "_Verdict.CATCH  # branch 2\n",
+                "old_string": "def _b(): return _Verdict.CATCH  # branch 2\n",
                 "new_string": "",
             },
         ),
@@ -378,13 +380,49 @@ def test_gate_edit_adding_branch_allows(
             "Edit",
             {
                 "file_path": str(fake_gate),
-                "old_string": "_Verdict.CATCH  # branch 3\n",
+                "old_string": "def _c(): return _Verdict.CATCH  # branch 3\n",
                 "new_string": (
-                    "_Verdict.CATCH  # branch 3\n_Verdict.CATCH  # branch 4\n"
+                    "def _c(): return _Verdict.CATCH  # branch 3\n"
+                    "def _d(): return _Verdict.CATCH  # branch 4\n"
                 ),
             },
         ),
     )
+    assert _MODULE.main() == 0
+
+
+def test_gate_edit_docstring_wording_change_allows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Editing a docstring that mentions ``_Verdict.CATCH`` must not block.
+
+    Locks the AST-based counting in ``_count_catch_returns``: the
+    naive substring counter blew the gate up when an innocuous
+    wording change touched the literal string, and the new AST walk
+    only counts real ``return _Verdict.CATCH`` statements.
+    """
+    gate = tmp_path / "fake_gate.py"
+    before = (
+        '"""Doc mentioning _Verdict.CATCH and _Verdict.CATCH again."""\n'
+        "def _a(): return _Verdict.CATCH  # branch 1\n"
+        "def _b(): return _Verdict.CATCH  # branch 2\n"
+    )
+    gate.write_text(before, encoding="utf-8")
+    monkeypatch.setattr(_MODULE, "_GATE_PATH", gate)
+    _stub_stdin(
+        monkeypatch,
+        _envelope(
+            "Edit",
+            {
+                "file_path": str(gate),
+                "old_string": "Doc mentioning _Verdict.CATCH and _Verdict.CATCH again.",
+                "new_string": "Doc reworded with no marker references.",
+            },
+        ),
+    )
+    # Substring count would drop from 4 to 2 and block; AST count
+    # stays at 2 both before and after.
     assert _MODULE.main() == 0
 
 

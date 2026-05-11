@@ -5,7 +5,6 @@ curation, guards, and memory storage.
 """
 
 from datetime import UTC, datetime
-from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -48,7 +47,6 @@ from synthorg.hr.training.source_selectors.role_top_performers import (
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
-from tests._shared import mock_of
 
 
 def _now() -> datetime:
@@ -116,57 +114,52 @@ def _make_plan(
 
 def _build_service(
     *,
-    registry: Any = None,
-    tracker: Any = None,
-    backend: Any = None,
-    tool_tracker: Any = None,
-    approval_store: Any = None,
+    registry: AsyncMock | None = None,
+    tracker: AsyncMock | None = None,
+    backend: AsyncMock | None = None,
+    tool_tracker: AsyncMock | None = None,
+    approval_store: AsyncMock | None = None,
 ) -> TrainingService:
-    """Build a real TrainingService with mocked backends."""
+    """Build a real TrainingService with mocked backends.
+
+    The collaborators stay on the looser ``AsyncMock(spec=Protocol)``
+    rung rather than ``mock_of[Protocol]``: ``TrainingService.__init__``
+    deep-copies the extractors dict, and the ``create_autospec(Protocol,
+    instance=True, spec_set=True)`` instances that ``mock_of`` produces
+    carry references to ``_abc._abc_data`` (Protocol's abstract-method
+    registry) which is unpicklable. ``copy.deepcopy`` falls through to
+    the pickle protocol for those nodes and raises
+    ``TypeError: cannot pickle 'module' object`` /
+    ``cannot pickle '_abc._abc_data' object``. ``AsyncMock(spec=X)``
+    stores ``X`` as a class reference without the autospec proxy
+    layer, so deepcopy succeeds.
+    """
     if registry is None:
         senior = _make_identity(agent_id="senior-1")
-        registry = cast(
-            Any,
-            mock_of[AgentRegistryService](
-                list_active=AsyncMock(return_value=(senior,)),
-            ),
-        )
+        registry = AsyncMock(spec=AgentRegistryService)
+        registry.list_active.return_value = (senior,)
 
     if tracker is None:
+        tracker = AsyncMock(spec=PerformanceTracker)
         snapshot = MagicMock()
         snapshot.overall_quality_score = 0.8
-        tracker = cast(
-            Any,
-            mock_of[PerformanceTracker](
-                get_snapshot=AsyncMock(return_value=snapshot),
-            ),
-        )
+        tracker.get_snapshot.return_value = snapshot
 
     if backend is None:
-        backend = cast(
-            Any,
-            mock_of[MemoryBackend](
-                retrieve=AsyncMock(
-                    return_value=(
-                        _make_memory_entry(content="Procedural lesson 1"),
-                        _make_memory_entry(content="Procedural lesson 2"),
-                    )
-                ),
-                store=AsyncMock(return_value="stored-id"),
-            ),
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve.return_value = (
+            _make_memory_entry(content="Procedural lesson 1"),
+            _make_memory_entry(content="Procedural lesson 2"),
         )
+        backend.store.return_value = "stored-id"
 
     if tool_tracker is None:
+        tool_tracker = AsyncMock(spec=ToolInvocationTracker)
         record = MagicMock()
         record.tool_name = "api_tool"
         record.is_success = True
         record.agent_id = "senior-1"
-        tool_tracker = cast(
-            Any,
-            mock_of[ToolInvocationTracker](
-                get_records=AsyncMock(return_value=(record,)),
-            ),
-        )
+        tool_tracker.get_records.return_value = (record,)
 
     selector = RoleTopPerformers(
         registry=registry,
