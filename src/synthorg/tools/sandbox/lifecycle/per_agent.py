@@ -274,11 +274,10 @@ class PerAgentStrategy:
             return
 
         async def _idle_expire() -> None:
-            # lint-allow: long-running-loop-kill-switch -- per-owner
-            # task; exits naturally when the owner is removed or
-            # idle is exceeded, and cleanup_all() cancels it on
-            # shutdown, so a cooperative _stop_event is intentionally
-            # not used here.
+            # Per-owner pump: exits naturally when the owner is
+            # removed or idle is exceeded; cleanup_all() cancels it
+            # on shutdown, so a cooperative _stop_event is not used.
+            # lint-allow: long-running-loop-kill-switch -- per-owner; cleanup cancels.
             while True:
                 async with self._lock:
                     last = self._last_used.get(owner_id)
