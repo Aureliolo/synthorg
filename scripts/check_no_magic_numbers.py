@@ -95,7 +95,7 @@ import subprocess
 import sys
 import tokenize
 from pathlib import Path
-from typing import Final
+from typing import Final, TypeGuard, cast
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _BASELINE_PATH: Final[Path] = _REPO_ROOT / "scripts" / "no_magic_numbers_baseline.txt"
@@ -277,12 +277,14 @@ def _line_has_trailing_marker(line: str) -> bool:
 # ── Detection ───────────────────────────────────────────────────
 
 
-def _is_numeric_constant(node: ast.expr) -> bool:
+def _is_numeric_constant(node: ast.expr) -> TypeGuard[ast.Constant]:
     """Return True iff *node* is an int/float :class:`ast.Constant`.
 
     Booleans are excluded -- ``True``/``False`` are :class:`ast.Constant`
     with ``isinstance(value, int)`` due to bool's int subclass quirk,
-    but they are not magic numbers under any reading of the rule.
+    but they are not magic numbers under any reading of the rule. The
+    :class:`TypeGuard` return lets callers access ``node.value`` directly
+    without re-checking the constant/non-bool invariant.
     """
     if not isinstance(node, ast.Constant):
         return False
@@ -559,7 +561,7 @@ def _hit_is_suppressed(hit: _Hit, source_lines: list[str]) -> bool:
     return _line_has_trailing_marker(source_lines[line_idx])
 
 
-def _classify_module_assign(  # noqa: PLR0911
+def _classify_module_assign(
     name: str,
     value_node: ast.expr,
     annotation: ast.expr | None,
@@ -582,11 +584,7 @@ def _classify_module_assign(  # noqa: PLR0911
     value = _effective_value(value_node)
     if value is None or value in _TRIVIAL_VALUES:
         return None
-    if not isinstance(inner, ast.Constant):
-        return None
-    raw = inner.value
-    if not isinstance(raw, (int, float)) or isinstance(raw, bool):
-        return None
+    raw = cast("int | float", inner.value)
     return _Hit(
         rel=rel,
         lineno=value_node.lineno,

@@ -136,9 +136,14 @@ specification-mandated limits are NOT operator-tunable policy: changing
 the value silently breaks interop with peers that read the public
 spec. Express them as typed module-level constants and let
 `scripts/check_no_magic_numbers.py` recognise the annotation as the
-named-constant signal. Examples:
+named-constant signal. Import `Final` directly from `typing`; the
+gate matches only the bare names `int`, `float`, `Final`, `Final[int]`,
+and `Final[float]`, so qualified forms such as `typing.Final[int]`
+still flag. Examples:
 
 ```python
+from typing import Final
+
 JSONRPC_PARSE_ERROR: int = -32700
 A2A_TASK_NOT_FOUND: int = -32001
 _MAX_FRAME_SIZE: Final[int] = 16384
