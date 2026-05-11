@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     from synthorg.core.enums import SeniorityLevel
 
 
+# audit-keep 2026-05-10: SeniorityModelMapping impl in seniority_model_mapping.py
+# + 1 of 3 PromotionService strategy slots.
 @runtime_checkable
 class ModelMappingStrategy(Protocol):
     """Protocol for mapping seniority to LLM models.

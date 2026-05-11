@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     )
 
 
+# audit-keep 2026-05-10: SeniorityApprovalStrategy impl in
+# seniority_approval_strategy.py + 1 of 3 PromotionService strategy slots.
 @runtime_checkable
 class PromotionApprovalStrategy(Protocol):
     """Protocol for promotion approval decisions.
