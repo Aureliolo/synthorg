@@ -13,7 +13,7 @@ connects and migrations complete.
 """
 
 import contextlib
-from typing import TYPE_CHECKING, NamedTuple, Protocol
+from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.api.channels import ALL_CHANNELS
 from synthorg.budget.tracker import CostTracker
@@ -35,7 +35,7 @@ from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
@@ -88,20 +88,6 @@ class MeetingWireResult(NamedTuple):
     meeting_orchestrator: MeetingOrchestrator
     meeting_scheduler: MeetingScheduler | None
     ceremony_scheduler: CeremonyScheduler | None
-
-
-class BuildDispatcherFn(Protocol):
-    """Protocol for the dispatcher builder callback."""
-
-    def __call__(  # noqa: D102, PLR0913 -- mirrors _build_settings_dispatcher signature
-        self,
-        message_bus: MessageBus | None,
-        settings_service: SettingsService | None,
-        config: RootConfig,
-        app_state: AppState,
-        backup_service: BackupService | None = None,
-        approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
-    ) -> SettingsChangeDispatcher | None: ...
 
 
 def auto_wire_phase1(  # noqa: PLR0913
@@ -696,7 +682,17 @@ async def auto_wire_settings(  # noqa: PLR0913
     effective_config: RootConfig,
     app_state: AppState,
     backup_service: BackupService | None,
-    build_dispatcher: BuildDispatcherFn,
+    build_dispatcher: Callable[
+        [
+            MessageBus | None,
+            SettingsService | None,
+            RootConfig,
+            AppState,
+            BackupService | None,
+            ApprovalTimeoutScheduler | None,
+        ],
+        SettingsChangeDispatcher | None,
+    ],
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
 ) -> SettingsChangeDispatcher | None:
     """On-startup auto-wire: create SettingsService after persistence connects.

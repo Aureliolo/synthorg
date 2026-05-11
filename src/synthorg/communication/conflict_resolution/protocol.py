@@ -67,6 +67,8 @@ class ConflictResolver(Protocol):
         ...
 
 
+# audit-keep 2026-05-10: vendor-agnostic LLM-judge injection surface for
+# debate/hybrid strategies; no built-in impl by design (like WebSearchProvider).
 class JudgeEvaluator(Protocol):
     """Protocol for LLM-based judge evaluation.
 
