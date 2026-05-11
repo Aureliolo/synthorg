@@ -33,6 +33,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+# Generic bound for StateMachine[S]; structural users: TaskStatus,
+# RequestStatus, KanbanColumn, SprintStatus.
 class _HasValue(Protocol):
     """Structural type for enum-like states (e.g. ``StrEnum`` members)."""
 

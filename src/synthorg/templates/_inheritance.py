@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from synthorg.templates.schema import CompanyTemplate
 
 
+# Self-referential callback for render_parent_config; consumer:
+# templates.renderer._render_to_dict passes itself in to walk the parent chain.
 class _RenderToDictFn(Protocol):
     """Callback protocol for ``_render_to_dict``."""
 
