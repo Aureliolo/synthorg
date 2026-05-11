@@ -12,26 +12,31 @@ Source: SlopCodeBench (arXiv:2603.24755) -- adapted from code
 quality metrics to tool-integrated reasoning traces.
 """
 
+from typing import Final
+
 from synthorg.engine.loop_protocol import TurnRecord  # noqa: TC001
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
 # Composite weights (sum to 1.0).
-_WEIGHT_DUPLICATED: float = 0.4
-_WEIGHT_CYCLOMATIC: float = 0.4
-_WEIGHT_DEAD_BRANCH: float = 0.2
+_WEIGHT_DUPLICATED: Final[float] = 0.4
+_WEIGHT_CYCLOMATIC: Final[float] = 0.4
+_WEIGHT_DEAD_BRANCH: Final[float] = 0.2
 
 # Minimum turn thresholds for each sub-metric.
-_MIN_TURNS_DUPLICATED: int = 2
-_MIN_TURNS_CYCLOMATIC: int = 4
-_MIN_TURNS_DEAD_BRANCH: int = 3
+_MIN_TURNS_DUPLICATED: Final[int] = 2
+_MIN_TURNS_CYCLOMATIC: Final[int] = 4
+_MIN_TURNS_DEAD_BRANCH: Final[int] = 3
+
+# Default sliding-window size for the four detect_* helpers.
+_DEFAULT_WINDOW_SIZE: Final[int] = 10
 
 
 def detect_duplicated_blocks(
     turns: tuple[TurnRecord, ...],
     *,
-    window_size: int = 10,
+    window_size: int = _DEFAULT_WINDOW_SIZE,
 ) -> float:
     """Fraction of turns whose fingerprints duplicate an earlier turn.
 
@@ -66,7 +71,7 @@ def detect_duplicated_blocks(
 def compute_cyclomatic_complexity_delta(
     turns: tuple[TurnRecord, ...],
     *,
-    window_size: int = 10,
+    window_size: int = _DEFAULT_WINDOW_SIZE,
 ) -> float:
     """Growth in distinct tool-call patterns between window halves.
 
@@ -104,7 +109,7 @@ def compute_cyclomatic_complexity_delta(
 def detect_dead_branches(
     turns: tuple[TurnRecord, ...],
     *,
-    window_size: int = 10,
+    window_size: int = _DEFAULT_WINDOW_SIZE,
 ) -> float:
     """Fraction of tool calls whose results were never consumed.
 
@@ -144,7 +149,7 @@ def detect_dead_branches(
 def compute_structural_erosion_score(
     turns: tuple[TurnRecord, ...],
     *,
-    window_size: int = 10,
+    window_size: int = _DEFAULT_WINDOW_SIZE,
 ) -> float:
     """Composite structural erosion score.
 

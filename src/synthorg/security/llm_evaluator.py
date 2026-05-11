@@ -31,7 +31,7 @@ import time
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
@@ -78,16 +78,16 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Maximum length for serialized arguments in the prompt.
-_MAX_ARGS_DISPLAY = 1500
+_MAX_ARGS_DISPLAY: Final[int] = 1500
 
 # Per-value truncation limit (chars) when using PER_VALUE or
 # KEYS_AND_VALUES strategy.
-_MAX_VALUE_LENGTH = 200
+_MAX_VALUE_LENGTH: Final[int] = 200
 
 # Maximum length for LLM-returned reason string (defense against
 # prompt injection exfiltration -- the reason flows into audit log
 # and approval queue).
-_MAX_REASON_LENGTH = 300
+_MAX_REASON_LENGTH: Final[int] = 300
 
 # Regex to strip control characters from LLM-returned reason.
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
