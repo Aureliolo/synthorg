@@ -206,7 +206,8 @@ class ApiKeyRepository(Protocol):
 
         Args:
             user_id: The owner user ID.
-            limit: Maximum keys to return (default 100). Must be >= 1.
+            limit: Maximum keys to return (default
+                :data:`DEFAULT_LIST_LIMIT`). Must be >= 1.
             offset: Keys to skip; applied before *limit*. Must be >= 0.
 
         Returns:

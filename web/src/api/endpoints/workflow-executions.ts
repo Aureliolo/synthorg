@@ -2,11 +2,12 @@
  * Workflow execution endpoints.
  *
  * Mirrors the backend ``synthorg.api.controllers.workflow_executions``
- * surface: list executions for a workflow, cancel an in-flight
- * execution. Field names and the response wire shape match the
- * backend Pydantic ``WorkflowExecution`` model 1:1 (no envelope
- * wrapper around the list -- the controller returns the raw list
- * inside ``ApiResponse.data``).
+ * surface: list executions for a workflow (cursor-paginated), cancel
+ * an in-flight execution. Field names match the backend Pydantic
+ * ``WorkflowExecution`` model 1:1. The list endpoint returns
+ * ``PaginatedResponse<WorkflowExecution>`` -- an envelope that wraps
+ * the rows in ``data`` alongside ``next_cursor`` and ``has_more``
+ * pagination metadata.
  */
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'

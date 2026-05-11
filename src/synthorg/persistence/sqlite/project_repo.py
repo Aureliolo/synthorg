@@ -341,7 +341,9 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query, deserialization, or
                 pagination validation fails.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_PROJECT_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_PROJECT_LIST_FAILED
+        )
         # Clamp under the hard ceiling so a caller-supplied limit
         # cannot exceed the table-scan safety bound.
         effective_limit = min(limit, _MAX_LIST_ROWS)

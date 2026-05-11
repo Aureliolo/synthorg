@@ -247,7 +247,9 @@ class PostgresProjectRepository:
             limit: Maximum projects to return (default
                 :data:`DEFAULT_LIST_LIMIT`).
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_PROJECT_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_PROJECT_LIST_FAILED
+        )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         conditions: list[str] = []
         params: list[object] = []

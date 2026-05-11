@@ -139,17 +139,16 @@ FROM lifecycle_events"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC"
-        # Validate ``limit`` at the boundary: SQLite's ``LIMIT -1``
-        # idiom would silently lift the cap, and Postgres rejects
-        # negative LIMIT outright. Match the Postgres sibling's
-        # validation so a bad caller fails loud on both backends.
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-            msg = f"limit must be a positive integer, got {limit!r}"
-            logger.warning(
-                PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
-                error=msg,
-            )
-            raise QueryError(msg)
+        # This repository uses limit-only pagination; offset=0 is a
+        # deliberate placeholder so the shared validator runs its
+        # type-check and bounds-check on the limit value. SQLite's
+        # ``LIMIT -1`` idiom would silently lift the cap, and Postgres
+        # rejects negative LIMIT outright -- the shared validator
+        # blocks both ahead of the DB call so the two backends fail
+        # identically on a bad caller.
+        limit = validate_pagination_args(
+            limit, offset=0, event=PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED
+        )
         sql += " LIMIT ?"
         params.append(limit)
 

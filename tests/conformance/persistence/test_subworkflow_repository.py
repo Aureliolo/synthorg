@@ -105,7 +105,7 @@ class TestSubworkflowRepository:
             )
 
         rows = await backend.subworkflows.list_summaries(limit=3)
-        assert len(rows) <= 3
+        assert len(rows) == 3
 
     async def test_list_versions_respects_limit(
         self, backend: PersistenceBackend
@@ -116,7 +116,7 @@ class TestSubworkflowRepository:
         versions = await backend.subworkflows.list_versions(
             NotBlankStr("sub-001"), limit=3
         )
-        assert len(versions) <= 3
+        assert len(versions) == 3
 
     async def test_search_by_name(self, backend: PersistenceBackend) -> None:
         await backend.subworkflows.save(

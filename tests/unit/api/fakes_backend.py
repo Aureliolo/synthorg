@@ -13,6 +13,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, TrainingResult
 from synthorg.meta.rules.custom import CustomRuleDefinition
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.integration_stubs import (
     InMemoryConnectionRepository,
     InMemoryConnectionSecretRepository,
@@ -79,6 +80,7 @@ class FakeRiskOverrideRepository:
         *,
         limit: int = 100,
     ) -> tuple[RiskTierOverride, ...]:
+        limit = validate_pagination_args(limit, offset=0, event="fake.list_active")
         active = [o for o in self._overrides.values() if o.is_active]
         active.sort(key=lambda o: o.created_at, reverse=True)
         return tuple(active[:limit])
@@ -429,6 +431,7 @@ class FakeCustomRuleRepository:
         enabled_only: bool = False,
         limit: int = 100,
     ) -> tuple[CustomRuleDefinition, ...]:
+        limit = validate_pagination_args(limit, offset=0, event="fake.list_rules")
         rules = list(self._rules.values())
         if enabled_only:
             rules = [r for r in rules if r.enabled]

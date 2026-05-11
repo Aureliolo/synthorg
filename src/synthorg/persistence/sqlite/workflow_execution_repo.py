@@ -389,8 +389,11 @@ WHERE id = ? AND version = ?""",
             QueryError: If the database query or pagination validation
                 fails.
         """
+        # This repository uses limit-only pagination; offset=0 is a
+        # deliberate placeholder so the shared validator runs its
+        # type-check and bounds-check on the limit value.
         limit = validate_pagination_args(
-            limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
+            limit, offset=0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
@@ -442,8 +445,11 @@ WHERE id = ? AND version = ?""",
             QueryError: If the database query or pagination validation
                 fails.
         """
+        # This repository uses limit-only pagination; offset=0 is a
+        # deliberate placeholder so the shared validator runs its
+        # type-check and bounds-check on the limit value.
         limit = validate_pagination_args(
-            limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
+            limit, offset=0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:

@@ -364,7 +364,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         )
         try:
             cursor = await self._db.execute(
-                "SELECT semver FROM subworkflows WHERE subworkflow_id = ? LIMIT ?",
+                "SELECT semver FROM subworkflows WHERE subworkflow_id = ? "
+                "ORDER BY created_at DESC LIMIT ?",
                 (subworkflow_id, limit),
             )
             rows = await cursor.fetchall()

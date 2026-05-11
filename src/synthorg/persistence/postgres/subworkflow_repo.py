@@ -304,7 +304,8 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             ):
                 await cur.execute(
                     "SELECT semver FROM subworkflows "
-                    "WHERE subworkflow_id = %s LIMIT %s",
+                    "WHERE subworkflow_id = %s "
+                    "ORDER BY created_at DESC LIMIT %s",
                     (subworkflow_id, limit),
                 )
                 rows = await cur.fetchall()

@@ -47,7 +47,7 @@ from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_REGISTERED,
     SUBWORKFLOW_RESOLVED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from synthorg.persistence.subworkflow_protocol import (
     SubworkflowRepository,  # noqa: TC001 -- runtime-resolvable annotation
 )
@@ -245,7 +245,10 @@ class SubworkflowRegistry:
             ``True`` when an additional summary was observed past the
             requested page.
         """
-        all_summaries = await self._repo.list_summaries()
+        # Pull the full population so cursor pagination and has_more
+        # reflect the entire roster, not just the repo's default page
+        # of summaries (which would silently truncate large catalogs).
+        all_summaries = await self._repo.list_summaries(limit=MAX_LIST_LIMIT)
         sorted_summaries = sorted(
             all_summaries,
             key=lambda s: (s.name, s.latest_version, s.subworkflow_id),

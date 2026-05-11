@@ -332,7 +332,7 @@ LIMIT 1""",
                 """\
 SELECT * FROM training_plans
 WHERE new_agent_id = ?
-ORDER BY created_at DESC LIMIT ?""",
+ORDER BY created_at DESC, id DESC LIMIT ?""",
                 (str(agent_id), limit),
             )
             rows = await cursor.fetchall()

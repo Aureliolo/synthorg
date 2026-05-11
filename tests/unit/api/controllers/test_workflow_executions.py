@@ -204,7 +204,7 @@ class TestListExecutions:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert len(body["data"]) <= 2
+        assert len(body["data"]) == 2
         assert body["pagination"]["has_more"] is True
         assert body["pagination"]["next_cursor"] is not None
 

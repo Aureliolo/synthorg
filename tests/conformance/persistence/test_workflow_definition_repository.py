@@ -164,7 +164,7 @@ class TestWorkflowDefinitionRepository:
             await repo.save(_make_workflow_definition(definition_id=f"wf-lim-{i}"))
 
         rows = await repo.list_definitions(limit=3)
-        assert len(rows) <= 3
+        assert len(rows) == 3
 
     async def test_update_workflow_definition(
         self,

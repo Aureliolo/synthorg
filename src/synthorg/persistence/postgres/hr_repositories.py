@@ -142,17 +142,12 @@ FROM lifecycle_events"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC"
-        # Validate at the repository boundary so callers cannot
-        # accidentally pass a float, bool, or negative value into
-        # the raw "LIMIT %s" parameter and get a confusing DB-side
-        # error (or worse, a silently-wrong result).
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-            msg = f"limit must be a positive integer, got {limit!r}"
-            logger.warning(
-                PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
-                error=msg,
-            )
-            raise QueryError(msg)
+        # This repository uses limit-only pagination; offset=0 is a
+        # deliberate placeholder so the shared validator runs its
+        # type-check and bounds-check on the limit value.
+        limit = validate_pagination_args(
+            limit, offset=0, event=PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED
+        )
         sql += " LIMIT %s"
         params.append(limit)
 

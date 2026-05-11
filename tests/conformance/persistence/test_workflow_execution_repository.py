@@ -238,7 +238,7 @@ class TestWorkflowExecutionRepository:
             )
 
         rows = await exec_repo.list_by_definition("wf-lim", limit=3)
-        assert len(rows) <= 3
+        assert len(rows) == 3
 
     async def test_list_by_status_respects_limit(
         self,
@@ -258,7 +258,7 @@ class TestWorkflowExecutionRepository:
             )
 
         rows = await exec_repo.list_by_status(WorkflowExecutionStatus.PENDING, limit=3)
-        assert len(rows) <= 3
+        assert len(rows) == 3
 
     async def test_find_by_task_id(
         self,

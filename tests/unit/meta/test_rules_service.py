@@ -16,6 +16,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.meta.rules.service import CustomRuleNotFoundError, CustomRulesService
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 pytestmark = pytest.mark.unit
 
@@ -42,7 +43,7 @@ class _FakeCustomRuleRepository:
         self,
         *,
         enabled_only: bool = False,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CustomRuleDefinition, ...]:
         rows = [r for r in self._rows.values() if not enabled_only or r.enabled]
         return tuple(sorted(rows, key=lambda r: r.name)[:limit])

@@ -306,7 +306,7 @@ LIMIT 1""",
                     """\
 SELECT * FROM training_plans
 WHERE new_agent_id = %s
-ORDER BY created_at DESC LIMIT %s""",
+ORDER BY created_at DESC, id DESC LIMIT %s""",
                     (str(agent_id), limit),
                 )
                 rows = await cur.fetchall()

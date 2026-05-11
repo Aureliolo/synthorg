@@ -86,7 +86,7 @@ class TestProjectRepository:
             await backend.projects.save(_project(project_id=f"p-{i:02d}"))
 
         rows = await backend.projects.list_projects(limit=3)
-        assert len(rows) <= 3
+        assert len(rows) == 3
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())

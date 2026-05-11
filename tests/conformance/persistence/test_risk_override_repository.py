@@ -103,7 +103,7 @@ class TestRiskOverrideRepository:
             await backend.risk_overrides.save(_override(override_id=f"ovr-lim-{i}"))
 
         rows = await backend.risk_overrides.list_active(limit=3)
-        assert len(rows) <= 3
+        assert len(rows) == 3
 
     async def test_revoke_missing_returns_false(
         self, backend: PersistenceBackend
