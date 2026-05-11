@@ -13,7 +13,7 @@ hybrid selections are downgraded to plan_execute.  An optional
 ``hybrid_fallback`` can redirect hybrid to another loop type.
 """
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -225,12 +225,15 @@ def _apply_hybrid_fallback(
     return loop_type
 
 
+_DEFAULT_BUDGET_TIGHT_THRESHOLD: Final[int] = 80
+
+
 def select_loop_type(  # noqa: PLR0913
     *,
     complexity: Complexity,
     rules: tuple[AutoLoopRule, ...],
     budget_utilization_pct: float | None = None,
-    budget_tight_threshold: int = 80,
+    budget_tight_threshold: int = _DEFAULT_BUDGET_TIGHT_THRESHOLD,
     hybrid_fallback: str | None = None,
     default_loop_type: str = "react",
 ) -> str:

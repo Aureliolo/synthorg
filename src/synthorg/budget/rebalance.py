@@ -6,7 +6,7 @@ application).
 """
 
 from enum import StrEnum
-from typing import Any, NamedTuple
+from typing import Any, Final, NamedTuple
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
@@ -42,12 +42,15 @@ class RebalanceResult(NamedTuple):
     rejected: bool
 
 
+_DEFAULT_MAX_BUDGET: Final[float] = 100.0
+
+
 def compute_rebalance(
     existing_depts: list[dict[str, Any]],
     new_depts: list[dict[str, Any]],
     mode: RebalanceMode,
     *,
-    max_budget: float = 100.0,
+    max_budget: float = _DEFAULT_MAX_BUDGET,
     rounding_precision: int = BUDGET_ROUNDING_PRECISION,
 ) -> RebalanceResult:
     """Compute rebalanced department budgets after adding new departments.

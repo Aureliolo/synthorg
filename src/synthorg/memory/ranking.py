@@ -325,11 +325,15 @@ def _accumulate_rrf_scores(
     return scores, entries, duplicate_count
 
 
+_DEFAULT_K: Final[int] = 60
+_DEFAULT_MAX_RESULTS: Final[int] = 20
+
+
 def fuse_ranked_lists(
     ranked_lists: tuple[tuple[MemoryEntry, ...], ...],
     *,
-    k: int = 60,
-    max_results: int = 20,
+    k: int = _DEFAULT_K,
+    max_results: int = _DEFAULT_MAX_RESULTS,
 ) -> tuple[ScoredMemory, ...]:
     """Merge multiple pre-ranked lists via Reciprocal Rank Fusion.
 
@@ -448,10 +452,13 @@ def bigram_jaccard(text_a: str, text_b: str) -> float:
     return intersection / union
 
 
+_DEFAULT_DIVERSITY_LAMBDA: Final[float] = 0.7
+
+
 def apply_diversity_penalty(
     scored: tuple[ScoredMemory, ...],
     *,
-    diversity_lambda: float = 0.7,
+    diversity_lambda: float = _DEFAULT_DIVERSITY_LAMBDA,
     similarity_fn: Callable[[str, str], float] | None = None,
 ) -> tuple[ScoredMemory, ...]:
     """Re-rank scored memories using Maximal Marginal Relevance.

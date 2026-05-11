@@ -6,6 +6,7 @@ count.
 """
 
 from collections import Counter, defaultdict
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.telemetry.models import AggregatedPattern, AnonymizedOutcomeEvent
@@ -14,10 +15,13 @@ from synthorg.observability import get_logger
 logger = get_logger(__name__)
 
 
+_DEFAULT_MIN_DEPLOYMENTS: Final[int] = 3
+
+
 def aggregate_patterns(
     events: tuple[AnonymizedOutcomeEvent, ...],
     *,
-    min_deployments: int = 3,
+    min_deployments: int = _DEFAULT_MIN_DEPLOYMENTS,
 ) -> tuple[AggregatedPattern, ...]:
     """Identify cross-deployment patterns from anonymized events.
 

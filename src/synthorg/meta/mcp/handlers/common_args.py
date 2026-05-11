@@ -26,7 +26,7 @@ rather than the description text.
 
 import copy
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import invalid_argument
@@ -316,10 +316,13 @@ def parse_time_window(
     return since, until
 
 
+_DEFAULT_DEFAULT_LIMIT: Final[int] = 50
+
+
 def coerce_pagination(
     arguments: dict[str, Any],
     *,
-    default_limit: int = 50,
+    default_limit: int = _DEFAULT_DEFAULT_LIMIT,
 ) -> tuple[int, int]:
     """Parse ``offset``/``limit`` as ints with strict bounds + bool rejection.
 

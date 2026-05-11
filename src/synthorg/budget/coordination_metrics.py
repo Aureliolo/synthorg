@@ -693,11 +693,14 @@ def compute_token_speedup_ratio(
     )
 
 
+_DEFAULT_QUADRATIC_THRESHOLD: Final[float] = 0.5
+
+
 def compute_message_overhead(
     *,
     team_size: int,
     message_count: int,
-    quadratic_threshold: float = 0.5,
+    quadratic_threshold: float = _DEFAULT_QUADRATIC_THRESHOLD,
 ) -> MessageOverhead:
     """Compute message overhead and detect O(n^2) growth.
 

@@ -5,6 +5,8 @@ budget.  When the budget is insufficient for K candidates, the
 caller falls back to single-candidate execution.
 """
 
+from typing import Final
+
 from synthorg.observability import get_logger
 from synthorg.observability.events.trajectory import (
     TRAJECTORY_BUDGET_GUARD_BLOCKED,
@@ -13,12 +15,15 @@ from synthorg.observability.events.trajectory import (
 logger = get_logger(__name__)
 
 
+_DEFAULT_MARGIN: Final[float] = 0.2
+
+
 def check_trajectory_budget(
     *,
     remaining_budget: float,
     estimated_step_cost: float,
     k: int,
-    margin: float = 0.2,
+    margin: float = _DEFAULT_MARGIN,
 ) -> bool:
     """Check if K-candidate sampling fits within the budget.
 
