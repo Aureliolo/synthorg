@@ -7,7 +7,7 @@ according to the requirement's priority axis.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.config.schema import ProviderModelConfig
+    from synthorg.settings.bridge_configs import EngineBridgeConfig
     from synthorg.templates.model_requirements import ModelRequirement
 
 logger = get_logger(__name__)
@@ -367,28 +368,6 @@ def _rank_by_priority(
     return min(models, key=lambda m: abs(m.cost_per_1k_input - mid))
 
 
-class _ModelMatcherBridge(Protocol):
-    """Structural type for the EngineBridgeConfig matcher_* fields.
-
-    Declared locally to keep ``model_matcher`` free of a top-level
-    import of ``settings.bridge_configs``; the fields are exposed as
-    ``@property`` so this Protocol matches frozen Pydantic models
-    (whose attributes are read-only). Mypy validates the attribute
-    mapping in ``from_bridge_config`` against this Protocol.
-    """
-
-    @property
-    def matcher_tier_base_score(self) -> float: ...
-    @property
-    def matcher_headroom_max_bonus(self) -> float: ...
-    @property
-    def matcher_priority_max_bonus(self) -> float: ...
-    @property
-    def matcher_headroom_ratio_cap(self) -> float: ...
-    @property
-    def matcher_balanced_partial_credit(self) -> float: ...
-
-
 class ModelMatcherConfig(BaseModel):
     """Operator-tunable score weights for the model matcher.
 
@@ -418,8 +397,14 @@ class ModelMatcherConfig(BaseModel):
     balanced_partial_credit: float = Field(default=0.125, ge=0.0, le=1.0)
 
     @classmethod
-    def from_bridge_config(cls, bridge: _ModelMatcherBridge) -> ModelMatcherConfig:
-        """Project the matcher subset out of an ``EngineBridgeConfig``."""
+    def from_bridge_config(cls, bridge: EngineBridgeConfig) -> ModelMatcherConfig:
+        """Project the matcher subset out of an ``EngineBridgeConfig``.
+
+        ``EngineBridgeConfig`` is imported under ``TYPE_CHECKING`` to keep
+        ``model_matcher`` free of a top-level dependency on
+        ``settings.bridge_configs`` (which already imports several engine
+        types).
+        """
         return cls(
             tier_base_score=bridge.matcher_tier_base_score,
             headroom_max_bonus=bridge.matcher_headroom_max_bonus,
