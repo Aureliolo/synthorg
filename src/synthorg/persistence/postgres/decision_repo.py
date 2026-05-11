@@ -40,7 +40,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
 )
-from synthorg.persistence._shared import validate_pagination_args
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, validate_pagination_args
 from synthorg.persistence.decision_protocol import DecisionRole  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -435,7 +435,7 @@ class PostgresDecisionRepository:
         self,
         task_id: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records for a task, oldest first.
@@ -511,7 +511,7 @@ class PostgresDecisionRepository:
         agent_id: NotBlankStr,
         *,
         role: DecisionRole,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records where the agent acted in the given role.

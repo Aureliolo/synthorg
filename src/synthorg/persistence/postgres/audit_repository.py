@@ -13,6 +13,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence._shared.audit import (
     AUDIT_COLUMNS,
     audit_entry_to_payload,
@@ -99,7 +100,7 @@ class PostgresAuditRepository:
         risk_level: ApprovalRiskLevel | None = None,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters (newest first).
 
@@ -356,7 +357,7 @@ class PostgresAuditRepository:
         *,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
         """Query audit entries where *column* contains *value*.
@@ -381,7 +382,7 @@ class PostgresAuditRepository:
         *,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
         """Query audit entries where *column* has a top-level *key*.

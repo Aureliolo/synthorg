@@ -10,7 +10,7 @@ drawer.
 import asyncio
 import json
 import sqlite3
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import aiosqlite
 
@@ -33,6 +33,8 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
+
+_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 _INSERT_SQL = """
 INSERT INTO provider_audit_events (
@@ -113,7 +115,7 @@ class SQLiteProviderAuditRepo:
         *,
         provider_name: NotBlankStr,
         after_id: int | None = None,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
         """List events for one provider, newest first, with ``has_more`` overflow."""
         if limit < 1:

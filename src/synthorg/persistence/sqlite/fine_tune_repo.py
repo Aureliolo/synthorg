@@ -5,6 +5,7 @@ import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
+from typing import Final
 
 import aiosqlite
 
@@ -24,6 +25,8 @@ from synthorg.observability.events.memory import (
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 
 logger = get_logger(__name__)
+
+_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 _ACTIVE_STAGES = tuple(
     s.value
@@ -209,7 +212,7 @@ class SQLiteFineTuneRunRepository:
     async def list_runs(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
         """List runs ordered by start time descending.
@@ -416,7 +419,7 @@ class SQLiteFineTuneCheckpointRepository:
     async def list_checkpoints(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[CheckpointRecord, ...], int]:
         """List checkpoints ordered by creation time descending.

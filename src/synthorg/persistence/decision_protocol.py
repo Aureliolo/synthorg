@@ -6,6 +6,7 @@ from pydantic import AwareDatetime  # noqa: TC002
 
 from synthorg.core.enums import DecisionOutcome  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from synthorg.engine.decisions import DecisionRecord
@@ -98,7 +99,7 @@ class DecisionRepository(Protocol):
         self,
         task_id: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records for a task (paginated, oldest first).
@@ -122,7 +123,7 @@ class DecisionRepository(Protocol):
         agent_id: NotBlankStr,
         *,
         role: DecisionRole,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records by agent role (paginated, newest first).

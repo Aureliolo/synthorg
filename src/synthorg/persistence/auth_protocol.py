@@ -8,6 +8,8 @@ interface exposes durable read/write operations plus the cache.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
@@ -50,7 +52,7 @@ class SessionRepository(Protocol):
         self,
         user_id: str,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List active sessions for a user, optionally paginated."""
@@ -59,7 +61,7 @@ class SessionRepository(Protocol):
     async def list_all(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all active sessions, optionally paginated."""

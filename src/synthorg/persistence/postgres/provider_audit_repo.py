@@ -7,7 +7,7 @@ on SQLite) and TIMESTAMPTZ for ``occurred_at`` (vs ISO 8601 TEXT).
 """
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import psycopg
 from psycopg.rows import dict_row
@@ -31,6 +31,8 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
+
+_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 _INSERT_SQL = """
 INSERT INTO provider_audit_events (
@@ -105,7 +107,7 @@ class PostgresProviderAuditRepo:
         *,
         provider_name: NotBlankStr,
         after_id: int | None = None,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
         """List events for one provider, newest first, with ``has_more``."""
         if limit < 1:

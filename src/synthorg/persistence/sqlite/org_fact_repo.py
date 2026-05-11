@@ -6,7 +6,7 @@ import json
 import sqlite3
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 import aiosqlite  # noqa: TC002
 from pydantic import AwareDatetime, ValidationError
@@ -37,9 +37,15 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
-from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 
 logger = get_logger(__name__)
+
+_DEFAULT_LIST_LIMIT_5: Final[int] = 5
 
 
 def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
@@ -436,7 +442,7 @@ class SQLiteOrgFactRepository:
         *,
         categories: frozenset[OrgFactCategory] | None = None,
         text: str | None = None,
-        limit: int = 5,
+        limit: int = _DEFAULT_LIST_LIMIT_5,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """Query active facts by category and/or text content."""
@@ -488,7 +494,7 @@ class SQLiteOrgFactRepository:
         self,
         category: OrgFactCategory,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """List all active facts in a category, optionally paginated."""

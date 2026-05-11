@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -42,7 +43,7 @@ class TaskRepository(Protocol):
         status: TaskStatus | None = None,
         assigned_to: NotBlankStr | None = None,
         project: NotBlankStr | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         """List tasks with optional filters and pagination.

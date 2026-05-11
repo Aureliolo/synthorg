@@ -16,6 +16,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -124,7 +125,7 @@ class PostgresSessionRepository:
         self,
         user_id: str,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
@@ -152,7 +153,7 @@ class PostgresSessionRepository:
     async def list_all(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""

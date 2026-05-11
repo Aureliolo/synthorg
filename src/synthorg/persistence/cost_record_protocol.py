@@ -4,6 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -26,7 +27,7 @@ class CostRecordRepository(Protocol):
         *,
         agent_id: NotBlankStr | None = None,
         task_id: NotBlankStr | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Query cost records with optional filters and pagination.

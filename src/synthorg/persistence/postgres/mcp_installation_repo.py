@@ -25,7 +25,11 @@ from synthorg.observability.events.integrations import (
 from synthorg.observability.events.persistence import (
     PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
 )
-from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    coerce_row_timestamp,
+    normalize_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 
 if TYPE_CHECKING:
@@ -131,7 +135,7 @@ class PostgresMcpInstallationRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
         """List recorded installations in a deterministic order.

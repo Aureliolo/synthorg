@@ -25,7 +25,7 @@ Example::
 
 import re
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import psycopg
 from psycopg.rows import dict_row
@@ -51,6 +51,8 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
+
+_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 #: Allowed table name pattern -- lowercase letters, digits, underscores.
 _TABLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -336,7 +338,7 @@ class PostgresVersionRepository[T: BaseModel]:
         self,
         entity_id: NotBlankStr,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[VersionSnapshot[T], ...]:
         """List version snapshots ordered by version descending."""

@@ -13,7 +13,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
-from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
@@ -153,7 +157,7 @@ class SQLiteSsrfViolationRepository:
         self,
         *,
         status: SsrfViolationStatus | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[SsrfViolation, ...]:
         """List violations, optionally filtered by status."""
         if limit <= 0:

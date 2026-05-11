@@ -6,6 +6,7 @@ from pydantic import AwareDatetime  # noqa: TC002
 
 from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
 
 
@@ -44,7 +45,7 @@ class AuditRepository(Protocol):
         risk_level: ApprovalRiskLevel | None = None,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters.
 

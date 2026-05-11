@@ -21,10 +21,12 @@ operator changed about provider config*.  They share the spirit
 write path.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.api.dto_provider_capabilities import ProviderAuditEvent  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 
 @runtime_checkable
@@ -59,7 +61,7 @@ class ProviderAuditRepo(Protocol):
         *,
         provider_name: NotBlankStr,
         after_id: int | None = None,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
         """List events for one provider, newest first, with keyset paging.
 

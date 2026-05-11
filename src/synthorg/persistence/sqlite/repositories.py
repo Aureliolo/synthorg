@@ -41,6 +41,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_LISTED,
     PERSISTENCE_TASK_SAVE_FAILED,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 
 logger = get_logger(__name__)
@@ -212,7 +213,7 @@ id, title, description, type, priority, project, created_by,
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         """List tasks with optional filters and pagination.
@@ -370,7 +371,7 @@ INSERT INTO cost_records (
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Query cost records with optional filters and pagination."""
@@ -624,7 +625,7 @@ INSERT INTO messages (
         self,
         channel: str,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[Message, ...]:
         """Retrieve message history for a channel, newest first."""
         if limit is not None and limit < 1:

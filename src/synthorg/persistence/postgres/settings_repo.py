@@ -7,7 +7,7 @@ from ISO strings at the boundary so the protocol surface
 """
 
 from collections.abc import Mapping, Sequence  # noqa: TC003
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 import psycopg
 from psycopg.rows import dict_row
@@ -29,6 +29,8 @@ from synthorg.observability.events.settings import (
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 
 logger = get_logger(__name__)
+
+_DEFAULT_LIST_LIMIT_200: Final[int] = 200
 
 
 class _CASConflictError(
@@ -124,7 +126,7 @@ class PostgresSettingsRepository:
     async def get_all(
         self,
         *,
-        limit: int = 200,
+        limit: int = _DEFAULT_LIST_LIMIT_200,
         offset: int = 0,
     ) -> tuple[tuple[str, str, str, str], ...]:
         """Return all (namespace, key, value, updated_at) (paginated)."""

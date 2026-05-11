@@ -9,7 +9,7 @@ backends return identical Pydantic models.
 
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import psycopg
 from psycopg.rows import dict_row
@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
+
+_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 _ACTIVE_STAGES: tuple[str, ...] = tuple(
     s.value
@@ -241,7 +243,7 @@ ON CONFLICT (id) DO UPDATE SET
     async def list_runs(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
         """List runs ordered by start time descending.
@@ -453,7 +455,7 @@ ON CONFLICT (id) DO UPDATE SET
     async def list_checkpoints(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[CheckpointRecord, ...], int]:
         """List checkpoints ordered by creation time descending.

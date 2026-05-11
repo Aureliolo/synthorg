@@ -1,7 +1,7 @@
 """Postgres-backed drift report repository."""
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
@@ -9,6 +9,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
 )
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -24,6 +25,8 @@ def _import_dict_row() -> Any:
 
 
 logger = get_logger(__name__)
+
+_DEFAULT_LIST_LIMIT_10: Final[int] = 10
 
 
 def _row_to_report(row: dict[str, Any]) -> DriftReport:
@@ -102,7 +105,7 @@ class PostgresOntologyDriftReportRepository:
         self,
         entity_name: NotBlankStr,
         *,
-        limit: int = 10,
+        limit: int = _DEFAULT_LIST_LIMIT_10,
     ) -> tuple[DriftReport, ...]:
         """Return most recent drift reports for an entity.
 
@@ -129,7 +132,7 @@ class PostgresOntologyDriftReportRepository:
     async def get_all_latest(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[DriftReport, ...]:
         """Return the latest drift report for each entity.
 

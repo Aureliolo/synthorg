@@ -22,7 +22,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
 )
-from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    coerce_row_timestamp,
+    normalize_utc,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -144,7 +148,7 @@ class PostgresWebhookReceiptRepository:
         self,
         connection_name: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List receipts for *connection_name*, newest-first up to *limit*."""

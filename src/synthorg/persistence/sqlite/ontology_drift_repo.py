@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import json
 import sqlite3
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import aiosqlite
 
@@ -14,11 +14,14 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
 )
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
+
+_DEFAULT_LIST_LIMIT_10: Final[int] = 10
 
 
 def _row_to_report(row: Any) -> DriftReport:
@@ -109,7 +112,7 @@ class SQLiteOntologyDriftReportRepository:
         self,
         entity_name: NotBlankStr,
         *,
-        limit: int = 10,
+        limit: int = _DEFAULT_LIST_LIMIT_10,
     ) -> tuple[DriftReport, ...]:
         """Return most recent drift reports for an entity."""
         cursor = await self._db.execute(
@@ -126,7 +129,7 @@ class SQLiteOntologyDriftReportRepository:
     async def get_all_latest(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[DriftReport, ...]:
         """Return the latest drift report for each entity."""
         cursor = await self._db.execute(
