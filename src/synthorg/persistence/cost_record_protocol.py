@@ -35,10 +35,10 @@ class CostRecordRepository(Protocol):
         Args:
             agent_id: Filter by agent identifier.
             task_id: Filter by task identifier.
-            limit: Maximum rows to return; ``None`` (default) preserves
-                fetch-all semantics.
-            offset: Rows to skip before applying *limit*; ignored when
-                *limit* is ``None``.
+            limit: Maximum rows to return.  Defaults to
+                ``DEFAULT_LIST_LIMIT``; pass a larger positive integer
+                for a wider window.
+            offset: Rows to skip before applying *limit*.
 
         Returns:
             Matching cost records as a tuple.

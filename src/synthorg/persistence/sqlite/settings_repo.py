@@ -3,7 +3,6 @@
 import asyncio
 import sqlite3
 from collections.abc import Mapping, Sequence  # noqa: TC003
-from typing import Final
 
 import aiosqlite
 
@@ -16,10 +15,9 @@ from synthorg.observability.events.settings import (
     SETTINGS_SET_FAILED,
     SETTINGS_VALUE_SET,
 )
+from synthorg.persistence.settings_protocol import _DEFAULT_LIST_LIMIT_200
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIST_LIMIT_200: Final[int] = 200
 
 
 class SQLiteSettingsRepository:

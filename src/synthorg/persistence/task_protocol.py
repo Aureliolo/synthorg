@@ -52,9 +52,9 @@ class TaskRepository(Protocol):
             status: Filter by task status.
             assigned_to: Filter by assignee agent ID.
             project: Filter by project ID.
-            limit: Maximum rows to return.  ``None`` means "no
-                repository-level cap" (the caller remains free to
-                impose a safety cap above).
+            limit: Maximum rows to return.  Defaults to
+                ``DEFAULT_LIST_LIMIT``; callers may pass a larger
+                positive integer when they need a wider window.
             offset: Rows to skip before the window (``0`` = no offset).
                 Paired with ``limit`` for cursor/offset pagination.
 

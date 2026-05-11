@@ -49,6 +49,9 @@ _BUILDABLE_LOOP_TYPES: frozenset[str] = frozenset(
 )
 """Loop types that ``build_execution_loop`` can instantiate."""
 
+_DEFAULT_BUDGET_TIGHT_THRESHOLD: Final[int] = 80
+"""Default budget utilization threshold for tight-budget downgrade."""
+
 
 class AutoLoopRule(BaseModel):
     """Maps a task complexity level to an execution loop type.
@@ -115,7 +118,7 @@ class AutoLoopConfig(BaseModel):
         description="Complexity-to-loop mapping rules",
     )
     budget_tight_threshold: int = Field(
-        default=80,
+        default=_DEFAULT_BUDGET_TIGHT_THRESHOLD,
         ge=0,
         le=100,
         description="Budget utilization % that triggers tight-budget mode",
@@ -223,9 +226,6 @@ def _apply_hybrid_fallback(
         )
         return hybrid_fallback
     return loop_type
-
-
-_DEFAULT_BUDGET_TIGHT_THRESHOLD: Final[int] = 80
 
 
 def select_loop_type(  # noqa: PLR0913

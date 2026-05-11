@@ -10,7 +10,7 @@ drawer.
 import asyncio
 import json
 import sqlite3
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 import aiosqlite
 
@@ -28,13 +28,12 @@ from synthorg.persistence._shared.datetime_marshaller import (
     format_iso_utc,
     parse_iso_utc,
 )
+from synthorg.persistence.provider_audit_protocol import _DEFAULT_LIST_LIMIT_50
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 _INSERT_SQL = """
 INSERT INTO provider_audit_events (

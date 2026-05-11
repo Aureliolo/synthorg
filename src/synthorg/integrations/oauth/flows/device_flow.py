@@ -256,7 +256,7 @@ class DeviceFlow:
             return raw
 
         interval_value = _positive_int("interval", self._default_poll_interval_seconds)
-        expires_in_value = _positive_int("expires_in", 600)
+        expires_in_value = _positive_int("expires_in", _DEFAULT_EXPIRES_IN)
 
         # user_code is an active credential -- do not log it at
         # INFO. Only the verification URI is safe to surface.

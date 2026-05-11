@@ -7,7 +7,7 @@ from ISO strings at the boundary so the protocol surface
 """
 
 from collections.abc import Mapping, Sequence  # noqa: TC003
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, cast
 
 import psycopg
 from psycopg.rows import dict_row
@@ -27,10 +27,9 @@ from synthorg.observability.events.settings import (
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence.settings_protocol import _DEFAULT_LIST_LIMIT_200
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIST_LIMIT_200: Final[int] = 200
 
 
 class _CASConflictError(

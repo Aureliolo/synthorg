@@ -9,7 +9,7 @@ backends return identical Pydantic models.
 
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -30,13 +30,12 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence.fine_tune_protocol import _DEFAULT_LIST_LIMIT_50
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 _ACTIVE_STAGES: tuple[str, ...] = tuple(
     s.value

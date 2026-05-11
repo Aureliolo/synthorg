@@ -37,10 +37,11 @@ class ConnectionRepository(Protocol):
     ) -> tuple[Connection, ...]:
         """List all connections, optionally bounded by *limit* / *offset*.
 
-        Sorted by ``name`` ascending; pass ``limit=None`` (default) to
-        retain the legacy fetch-all semantics, or set both to consume
-        a paginated window. ``limit <= 0`` returns ``()``; negative
-        ``offset`` is treated as ``0``.
+        Sorted by ``name`` ascending; ``limit`` defaults to
+        ``DEFAULT_LIST_LIMIT`` so callers receive at most that many
+        connections unless they pass a larger positive integer.
+        ``limit <= 0`` returns ``()``; negative ``offset`` is treated
+        as ``0``.
         """
         ...
 

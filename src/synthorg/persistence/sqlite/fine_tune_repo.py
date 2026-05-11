@@ -5,7 +5,6 @@ import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
-from typing import Final
 
 import aiosqlite
 
@@ -23,10 +22,9 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence.fine_tune_protocol import _DEFAULT_LIST_LIMIT_50
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 _ACTIVE_STAGES = tuple(
     s.value

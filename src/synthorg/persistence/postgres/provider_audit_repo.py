@@ -7,7 +7,7 @@ on SQLite) and TIMESTAMPTZ for ``occurred_at`` (vs ISO 8601 TEXT).
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -24,6 +24,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence.provider_audit_protocol import _DEFAULT_LIST_LIMIT_50
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -31,8 +32,6 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 _INSERT_SQL = """
 INSERT INTO provider_audit_events (

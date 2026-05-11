@@ -6,7 +6,7 @@ import json
 import sqlite3
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Final, Literal
+from typing import Any, Literal
 
 import aiosqlite  # noqa: TC002
 from pydantic import AwareDatetime, ValidationError
@@ -42,10 +42,9 @@ from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
 )
+from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_5
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIST_LIMIT_5: Final[int] = 5
 
 
 def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:

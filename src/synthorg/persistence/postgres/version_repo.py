@@ -25,7 +25,7 @@ Example::
 
 import re
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import dict_row
@@ -43,6 +43,7 @@ from synthorg.observability.events.versioning import (
     VERSION_LISTED,
     VERSION_SAVE_FAILED,
 )
+from synthorg.persistence.version_protocol import _DEFAULT_LIST_LIMIT_50
 from synthorg.versioning.models import VersionSnapshot
 
 if TYPE_CHECKING:
@@ -51,8 +52,6 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 #: Allowed table name pattern -- lowercase letters, digits, underscores.
 _TABLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")

@@ -12,7 +12,6 @@ import sqlite3
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Final
 
 import aiosqlite
 from aiosqlite import Row
@@ -24,6 +23,8 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationStatus,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
+    _DEFAULT_LIMIT,
+    _DEFAULT_OFFSET,
     EscalationQueueStore,
 )
 from synthorg.communication.conflict_resolution.models import Conflict
@@ -33,9 +34,6 @@ from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIMIT: Final[int] = 50
-_DEFAULT_OFFSET = 0
 
 _decision_adapter: TypeAdapter[EscalationDecision] = TypeAdapter(EscalationDecision)
 
