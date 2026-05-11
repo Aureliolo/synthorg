@@ -124,6 +124,8 @@ class PullProgressEvent(BaseModel):
         return self
 
 
+# audit-keep 2026-05-10: vendor-agnostic local-model abstraction;
+# OllamaModelManager impl in same file; designed for additional vendors.
 @runtime_checkable
 class LocalModelManager(Protocol):
     """Protocol for local provider model management."""

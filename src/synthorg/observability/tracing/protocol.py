@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
 
 
+# audit-keep 2026-05-10: NoopTraceHandler impl in this file + OtlpTraceHandler
+# impl in otlp_trace_handler.py + tracing/factory.py + AppState wiring.
 class TraceHandler(Protocol):
     """Interface for the tracing subsystem's process-singleton handler.
 

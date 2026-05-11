@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from synthorg.providers.models import ChatMessage, ToolDefinition
 
 
+# audit-keep 2026-05-10: injection/factory.py dispatch (prompt/tool/hybrid/
+# memory) + agent_engine.py consumer.
 @runtime_checkable
 class OntologyInjectionStrategy(Protocol):
     """Pluggable strategy for making entity definitions available to agents.
