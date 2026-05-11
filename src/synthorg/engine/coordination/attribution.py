@@ -6,7 +6,7 @@ without modifying the frozen ``CoordinationResult``. The wrapper
 with attribution data built from routing decisions and wave outcomes.
 """
 
-from typing import Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -37,7 +37,7 @@ FailureAttribution = Literal[
 # Internal constant by design: defensive truncation of evidence text
 # attached to failure attributions; prevents oversized error-evidence
 # payloads.  Not exposed to the settings registry.
-_MAX_EVIDENCE_LENGTH = 500
+_MAX_EVIDENCE_LENGTH: Final[int] = 500
 
 # Map FailureCategory -> FailureAttribution for error-based outcomes.
 _CATEGORY_TO_ATTRIBUTION: dict[FailureCategory, FailureAttribution] = {

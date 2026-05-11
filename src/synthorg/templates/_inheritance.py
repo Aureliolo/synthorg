@@ -5,7 +5,7 @@ parent-child merge, variable flow, and post-merge name deduplication.
 Extracted from ``renderer.py`` to keep file sizes under 800 lines.
 """
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
@@ -41,7 +41,7 @@ class _RenderToDictFn(Protocol):
 logger = get_logger(__name__)
 
 # Maximum inheritance chain depth.
-_MAX_INHERITANCE_DEPTH = 10
+_MAX_INHERITANCE_DEPTH: Final[int] = 10
 
 
 def _validate_inheritance_chain(
