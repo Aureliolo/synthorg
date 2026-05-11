@@ -160,13 +160,9 @@ _FILE_ALLOWLIST_PREFIXES: Final[tuple[str, ...]] = (
     "src/synthorg/observability/events/",
 )
 
-# Module-level annotation shapes that mark the assignment as a
-# numeric named constant: ``NAME: int|float|Final = literal`` and
-# ``NAME: Final[int|float] = literal``. The annotation IS the
-# developer's declaration that the literal is the named constant
-# the rule wants to encourage, so the RHS is skipped.
-# Locked by: test_annotation_marks_as_named_constant_helper and
-#            the test_annassign_*_named_constant_not_flagged family.
+# Module-level annotation shapes that mark a numeric named constant.
+# Locked by: test_named_constant_allowlist_contents +
+#            test_annotation_marks_as_named_constant_helper.
 _NAMED_CONSTANT_TYPE_NAMES: Final[frozenset[str]] = frozenset(
     {"int", "float", "Final"},
 )
@@ -321,21 +317,12 @@ def _effective_value(node: ast.expr) -> float | None:
 def _annotation_marks_as_named_constant(annotation: ast.expr | None) -> bool:
     """Return True iff *annotation* declares a numeric named constant.
 
-    Matched shapes (PEP 526 / :data:`typing.Final`)::
-
-        NAME: int = ...
-        NAME: float = ...
-        NAME: Final = ...
-        NAME: Final[int] = ...
-        NAME: Final[float] = ...
-
-    Any of these annotations on a module-level
-    ``NAME: <annotation> = <literal>`` is the developer's explicit
-    declaration that the literal IS the named constant the gate wants
-    to encourage; flagging it produces only noise. Bare
-    ``NAME = literal`` (no annotation) is intentionally not matched --
-    without the type signal the gate cannot tell a named constant
-    apart from a one-time module-load computation.
+    The gate treats an annotated module-level assignment as the
+    developer's explicit declaration that the literal IS the named
+    constant; an unannotated assignment is ambiguous (could be a
+    one-time module-load computation) and continues to flag. Qualified
+    forms like ``typing.Final[int]`` are deliberately not matched --
+    direct ``Final`` imports are the project convention.
     """
     if annotation is None:
         return False
@@ -581,11 +568,9 @@ def _classify_module_assign(  # noqa: PLR0911
 ) -> _Hit | None:
     """Module-level ``NAME = <number>`` -> hit if not allowlisted.
 
-    When *annotation* is a numeric named-constant marker
-    (``int`` / ``float`` / ``Final`` / ``Final[int]`` / ``Final[float]``),
-    the literal RHS is the named constant the rule wants to encourage
-    and is skipped. ``annotation=None`` is passed for bare ``NAME = literal``,
-    which still flags so the gate retains its discriminating power.
+    *annotation* is the PEP-526 annotation for ``ast.AnnAssign`` or
+    ``None`` for bare ``ast.Assign``. A numeric named-constant marker
+    short-circuits to ``None``; bare assignments still flag.
     """
     if _annotation_marks_as_named_constant(annotation):
         return None
