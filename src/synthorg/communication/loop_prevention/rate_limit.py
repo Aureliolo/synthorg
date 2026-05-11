@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Callable  # noqa: TC003
+from typing import Final
 
 from synthorg.communication.config import RateLimitConfig  # noqa: TC001
 from synthorg.communication.loop_prevention._pair_key import pair_key
@@ -14,7 +15,7 @@ from synthorg.observability.events.delegation import (
 logger = get_logger(__name__)
 
 _MECHANISM = "rate_limit"
-_DEFAULT_WINDOW_SECONDS = 60.0  # lint-allow: magic-numbers -- bootstrap
+_DEFAULT_WINDOW_SECONDS: Final[float] = 60.0
 
 
 class DelegationRateLimiter:

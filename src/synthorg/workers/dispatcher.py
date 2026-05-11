@@ -49,7 +49,7 @@ so it is deliberately omitted.
 Values are matched case-insensitively against ``TaskStatus.value``.
 """
 
-_PUBLISH_MAX_ATTEMPTS: Final[int] = 3  # lint-allow: magic-numbers -- bootstrap
+_PUBLISH_MAX_ATTEMPTS: Final[int] = 3
 """Max publish attempts per claim before giving up.
 
 A transient NATS hiccup (reconnect, brief server unavailability)
@@ -64,10 +64,10 @@ eventually be picked up again the next time the engine replays
 observer events (e.g., on engine restart).
 """
 
-_PUBLISH_BACKOFF_BASE_SECONDS: Final[float] = 0.1  # lint-allow: magic-numbers -- boot
+_PUBLISH_BACKOFF_BASE_SECONDS: Final[float] = 0.1
 """Base delay for exponential backoff between publish retries."""
 
-_PUBLISH_BACKOFF_CAP_SECONDS: Final[float] = 1.0  # lint-allow: magic-numbers -- boot
+_PUBLISH_BACKOFF_CAP_SECONDS: Final[float] = 1.0
 """Upper bound on a single inter-attempt delay.
 
 With ``base=0.1`` and ``max_attempts=3`` the unbounded delays are

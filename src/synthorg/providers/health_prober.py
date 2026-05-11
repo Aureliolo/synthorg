@@ -46,18 +46,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_INTERVAL_SECONDS: Final[int] = (
-    1800  # lint-allow: magic-numbers -- 30 min ctor-kwarg default
-)
-_PROBE_TIMEOUT_SECONDS: Final[float] = (
-    10.0  # lint-allow: magic-numbers -- HTTP client timeout baseline
-)
-_HTTP_SERVER_ERROR_THRESHOLD: Final[int] = (
-    500  # lint-allow: magic-numbers -- HTTP 5xx protocol constant
-)
-_MAX_ERROR_MESSAGE_LENGTH: Final[int] = (
-    200  # lint-allow: magic-numbers -- log truncation limit
-)
+_DEFAULT_INTERVAL_SECONDS: Final[int] = 1800
+_PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
+_HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
+_MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
 
 
 def _build_ping_url(

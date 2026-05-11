@@ -19,7 +19,7 @@ import math
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
@@ -73,6 +73,8 @@ _INPROCESS_DEP_HINT = (
     "`pip install 'synthorg[fine-tune-gpu]'` or "
     "`pip install 'synthorg[fine-tune-cpu]'`."
 )
+
+_DEFAULT_CHUNK_SIZE_WORDS: Final[int] = 512
 
 
 def _import_sentence_transformers() -> ModuleType:
@@ -138,7 +140,7 @@ def _ensure_dir(path: str) -> Path:
 
 def _chunk_text(
     text: str,
-    chunk_size: int = 512,  # lint-allow: magic-numbers -- bootstrap
+    chunk_size: int = _DEFAULT_CHUNK_SIZE_WORDS,
 ) -> list[str]:
     """Split text into word-boundary chunks.
 

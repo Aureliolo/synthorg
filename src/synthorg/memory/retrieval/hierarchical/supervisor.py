@@ -6,6 +6,7 @@ and whether to retry with corrected queries when results are poor.
 
 import builtins
 import json
+from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -77,8 +78,10 @@ or null, "alternative_strategy": "..." or null, "reason": "..."}}
     + _UNTRUSTED_DIRECTIVE
 )
 
-_DEFAULT_QUALITY_THRESHOLD = 0.3
+_DEFAULT_QUALITY_THRESHOLD: Final[float] = 0.3
 _DEFAULT_FALLBACK_WORKERS = ("semantic",)
+_DEFAULT_MAX_WORKERS_PER_QUERY: Final[int] = 2
+_DEFAULT_MAX_RETRY_COUNT: Final[int] = 2
 
 # Routing decisions and retry-evaluation must be deterministic so the
 # same query produces the same worker selection across runs; pin
@@ -104,9 +107,9 @@ class SupervisorRouter:
         *,
         provider: CompletionProvider,
         model: NotBlankStr,
-        max_workers_per_query: int = 2,  # lint-allow: magic-numbers -- bounded fan-out
+        max_workers_per_query: int = _DEFAULT_MAX_WORKERS_PER_QUERY,
         reflective_retry_enabled: bool = True,
-        max_retry_count: int = 2,  # lint-allow: magic-numbers -- bounded retry budget
+        max_retry_count: int = _DEFAULT_MAX_RETRY_COUNT,
         quality_threshold: float = _DEFAULT_QUALITY_THRESHOLD,
         cost_tracker: CostTracker | None = None,
     ) -> None:

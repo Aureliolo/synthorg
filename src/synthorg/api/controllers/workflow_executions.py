@@ -1,6 +1,6 @@
 """Workflow execution controller -- activate, list, get, cancel."""
 
-from typing import Any
+from typing import Any, Final
 
 from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -37,6 +37,8 @@ from synthorg.observability.events.workflow_execution import (
 )
 
 logger = get_logger(__name__)
+
+_DEFAULT_PAGE_SIZE: Final[int] = 50
 
 
 def _extract_username(request: Request[Any, Any, Any]) -> str:
@@ -149,7 +151,7 @@ class WorkflowExecutionController(Controller):
         state: State,
         workflow_id: PathId,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- pagination default
+        limit: CursorLimit = _DEFAULT_PAGE_SIZE,
     ) -> Response[PaginatedResponse[WorkflowExecution] | ApiResponse[None]]:
         """List executions for a workflow definition with cursor pagination."""
         service = await _build_service(state)

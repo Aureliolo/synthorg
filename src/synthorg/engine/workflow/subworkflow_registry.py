@@ -20,6 +20,7 @@ DB > env > YAML > code-default settings resolution path.
 """
 
 import json
+from typing import Final
 
 from packaging.version import InvalidVersion, Version
 
@@ -54,7 +55,7 @@ from synthorg.persistence.subworkflow_protocol import (
 
 logger = get_logger(__name__)
 
-_SUBWORKFLOW_KEYSET_ARITY = 3  # lint-allow: magic-numbers -- composite-key arity
+_SUBWORKFLOW_KEYSET_ARITY: Final[int] = 3
 
 
 def encode_subworkflow_keyset(summary: SubworkflowSummary) -> str:

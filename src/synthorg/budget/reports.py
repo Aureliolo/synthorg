@@ -11,7 +11,7 @@ Service layer backing CFO reporting (see Operations design page).
 import math
 from collections import defaultdict
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -38,6 +38,8 @@ if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
+
+_DEFAULT_TOP_N: Final[int] = 10
 
 
 # ── Report Models ─────────────────────────────────────────────────
@@ -295,7 +297,7 @@ class ReportGenerator:
         *,
         start: datetime,
         end: datetime,
-        top_n: int = 10,  # lint-allow: magic-numbers -- caller-tunable rank cap
+        top_n: int = _DEFAULT_TOP_N,
         include_period_comparison: bool = True,
     ) -> SpendingReport:
         """Generate a spending report for the given period.

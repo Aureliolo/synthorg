@@ -35,9 +35,9 @@ logger = get_logger(__name__)
 _SUBSCRIBER_ID: Final[str] = "__api_bridge__"
 _POLL_TIMEOUT: Final[float] = 1.0
 """Fallback poll timeout used when no resolver is wired in."""
-_MAX_CONSECUTIVE_ERRORS: Final[int] = 30  # lint-allow: magic-numbers -- bootstrap
+_MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Fallback error budget used when no resolver is wired in."""
-_STOP_DRAIN_TIMEOUT_SECONDS: Final[float] = 10.0  # lint-allow: magic-numbers -- boot
+_STOP_DRAIN_TIMEOUT_SECONDS: Final[float] = 10.0
 """Fallback hard deadline for the ``stop()`` drain.
 
 10 seconds is the standard graceful-shutdown grace period across

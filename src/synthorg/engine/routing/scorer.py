@@ -34,8 +34,8 @@ logger = get_logger(__name__)
 # from settings because the validator runs at Pydantic construction
 # time -- before any resolver is available -- and the values describe
 # a documented design envelope, not an operator-tunable knob.
-_DOC_WEIGHT_SUM_MAX: Final[float] = 1.1  # lint-allow: magic-numbers -- envelope
-_WEIGHT_SUM_WARN_CEILING: Final[float] = 1.3  # lint-allow: magic-numbers -- ceiling
+_DOC_WEIGHT_SUM_MAX: Final[float] = 1.1
+_WEIGHT_SUM_WARN_CEILING: Final[float] = 1.3
 
 
 class RoutingScorerConfig(BaseModel):

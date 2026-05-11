@@ -139,7 +139,6 @@ src/synthorg/engine/classification/sinks.py:268:32
 src/synthorg/engine/classification/taxonomy_store.py:47:23
 src/synthorg/engine/compaction/epistemic.py:58:20
 src/synthorg/engine/compaction/epistemic.py:103:21
-src/synthorg/engine/coordination/attribution.py:51:23
 src/synthorg/engine/decomposition/classifier.py:43:28
 src/synthorg/engine/evolution/guards/rate_limit.py:21:42
 src/synthorg/engine/evolution/guards/rollback.py:28:28
@@ -194,7 +193,6 @@ src/synthorg/hr/performance/quality_override_store.py:26:25
 src/synthorg/hr/performance/theil_sen_strategy.py:61:31
 src/synthorg/hr/performance/theil_sen_strategy.py:62:37
 src/synthorg/hr/performance/theil_sen_strategy.py:63:37
-src/synthorg/hr/persistence_protocol.py:43:21
 src/synthorg/hr/scaling/guards/approval_gate.py:49:27
 src/synthorg/hr/scaling/guards/conflict_resolver.py:30:19
 src/synthorg/hr/scaling/guards/cooldown.py:34:32
@@ -271,13 +269,13 @@ src/synthorg/memory/consolidation/simple_strategy.py:24:27
 src/synthorg/memory/consolidation/simple_strategy.py:26:27
 src/synthorg/memory/consolidation/simple_strategy.py:28:23
 src/synthorg/memory/consolidation/two_tier_strategy.py:39:23
-src/synthorg/memory/embedding/fine_tune.py:182:30
-src/synthorg/memory/embedding/fine_tune.py:285:17
-src/synthorg/memory/embedding/fine_tune.py:409:18
-src/synthorg/memory/embedding/fine_tune.py:410:27
-src/synthorg/memory/embedding/fine_tune.py:411:25
-src/synthorg/memory/embedding/fine_tune.py:412:22
-src/synthorg/memory/embedding/fine_tune.py:645:13
+src/synthorg/memory/embedding/fine_tune.py:184:30
+src/synthorg/memory/embedding/fine_tune.py:287:17
+src/synthorg/memory/embedding/fine_tune.py:411:18
+src/synthorg/memory/embedding/fine_tune.py:412:27
+src/synthorg/memory/embedding/fine_tune.py:413:25
+src/synthorg/memory/embedding/fine_tune.py:414:22
+src/synthorg/memory/embedding/fine_tune.py:647:13
 src/synthorg/memory/fine_tune_plan.py:40:36
 src/synthorg/memory/procedural/capture/success_capture.py:50:35
 src/synthorg/memory/procedural/propagation/department_scoped.py:31:42
@@ -288,7 +286,6 @@ src/synthorg/memory/procedural/trajectory_aggregator.py:124:56
 src/synthorg/memory/ranking.py:331:13
 src/synthorg/memory/ranking.py:332:23
 src/synthorg/memory/ranking.py:454:30
-src/synthorg/memory/retrieval/hierarchical/supervisor.py:80:29
 src/synthorg/memory/retrieval/hierarchical/workers.py:42:33
 src/synthorg/memory/retrieval/reranking/cache.py:26:23
 src/synthorg/memory/retrieval/reranking/cache.py:27:20
@@ -318,7 +315,6 @@ src/synthorg/meta/chief_of_staff/learning.py:117:23
 src/synthorg/meta/chief_of_staff/monitor.py:68:38
 src/synthorg/meta/chief_of_staff/outcome_store.py:50:28
 src/synthorg/meta/chief_of_staff/outcome_store.py:164:21
-src/synthorg/meta/chief_of_staff/protocol.py:68:21
 src/synthorg/meta/evolution/outcome_store.py:35:23
 src/synthorg/meta/evolution/outcome_store.py:133:26
 src/synthorg/meta/evolution/outcome_store_protocol.py:85:26
@@ -370,7 +366,6 @@ src/synthorg/meta/telemetry/emitter.py:48:15
 src/synthorg/meta/telemetry/emitter.py:49:20
 src/synthorg/meta/telemetry/emitter.py:50:20
 src/synthorg/meta/telemetry/emitter.py:51:20
-src/synthorg/meta/telemetry/protocol.py:90:31
 src/synthorg/meta/telemetry/recommender.py:113:31
 src/synthorg/meta/telemetry/recommender.py:114:32
 src/synthorg/meta/validation/ci_validator.py:23:27
@@ -389,8 +384,6 @@ src/synthorg/observability/otlp_handler.py:89:26
 src/synthorg/observability/otlp_handler.py:90:32
 src/synthorg/observability/otlp_handler.py:91:25
 src/synthorg/observability/otlp_trace_handler.py:147:53
-src/synthorg/observability/tracing/protocol.py:37:53
-src/synthorg/observability/tracing/protocol.py:60:53
 src/synthorg/ontology/drift/active.py:37:27
 src/synthorg/ontology/drift/passive.py:42:20
 src/synthorg/ontology/drift/passive.py:43:21
@@ -437,7 +430,6 @@ src/synthorg/persistence/postgres/decision_repo.py:514:21
 src/synthorg/persistence/postgres/escalation_repo.py:42:17
 src/synthorg/persistence/postgres/fine_tune_repo.py:244:21
 src/synthorg/persistence/postgres/fine_tune_repo.py:456:21
-src/synthorg/persistence/postgres/hr_repositories.py:120:21
 src/synthorg/persistence/postgres/mcp_installation_repo.py:134:21
 src/synthorg/persistence/postgres/ontology_drift_repo.py:105:21
 src/synthorg/persistence/postgres/ontology_drift_repo.py:132:21
@@ -453,7 +445,6 @@ src/synthorg/persistence/postgres/session_repo.py:127:21
 src/synthorg/persistence/postgres/session_repo.py:155:21
 src/synthorg/persistence/postgres/settings_repo.py:127:21
 src/synthorg/persistence/postgres/ssrf_violation_repo.py:143:21
-src/synthorg/persistence/postgres/user_repo.py:535:21
 src/synthorg/persistence/postgres/version_repo.py:339:21
 src/synthorg/persistence/postgres/webhook_receipt_repo.py:147:21
 src/synthorg/persistence/provider_audit_protocol.py:62:21
@@ -467,7 +458,6 @@ src/synthorg/persistence/sqlite/decision_repo.py:556:21
 src/synthorg/persistence/sqlite/escalation_repo.py:36:17
 src/synthorg/persistence/sqlite/fine_tune_repo.py:212:21
 src/synthorg/persistence/sqlite/fine_tune_repo.py:419:21
-src/synthorg/persistence/sqlite/hr_repositories.py:117:21
 src/synthorg/persistence/sqlite/mcp_installation_repo.py:109:21
 src/synthorg/persistence/sqlite/ontology_drift_repo.py:112:21
 src/synthorg/persistence/sqlite/ontology_drift_repo.py:129:21
@@ -483,12 +473,10 @@ src/synthorg/persistence/sqlite/session_repo.py:145:21
 src/synthorg/persistence/sqlite/session_repo.py:167:21
 src/synthorg/persistence/sqlite/settings_repo.py:98:21
 src/synthorg/persistence/sqlite/ssrf_violation_repo.py:156:21
-src/synthorg/persistence/sqlite/user_repo.py:695:21
 src/synthorg/persistence/sqlite/version_repo.py:331:21
 src/synthorg/persistence/sqlite/webhook_receipt_repo.py:126:21
 src/synthorg/persistence/ssrf_violation_protocol.py:49:21
 src/synthorg/persistence/task_protocol.py:45:21
-src/synthorg/persistence/user_protocol.py:202:21
 src/synthorg/persistence/version_protocol.py:107:21
 src/synthorg/providers/drivers/litellm_driver.py:97:24
 src/synthorg/providers/health.py:37:23
@@ -508,7 +496,6 @@ src/synthorg/settings/subscribers/per_op_rate_limit_subscriber.py:50:33
 src/synthorg/telemetry/event_counter.py:34:22
 src/synthorg/telemetry/event_counter.py:116:23
 src/synthorg/telemetry/event_counter_protocol.py:61:23
-src/synthorg/templates/_inheritance.py:42:25
 src/synthorg/tools/design/image_generator.py:63:21
 src/synthorg/tools/design/image_generator.py:64:22
 src/synthorg/tools/factory.py:107:30
@@ -520,5 +507,4 @@ src/synthorg/tools/sandbox/docker_config.py:26:19
 src/synthorg/tools/web/base_web_tool.py:41:33
 src/synthorg/tools/web/http_request.py:65:34
 src/synthorg/tools/web/http_request.py:66:33
-src/synthorg/tools/web/web_search.py:55:27
 src/synthorg/workers/__main__.py:48:24

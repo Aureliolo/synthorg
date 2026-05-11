@@ -69,9 +69,9 @@ logger = get_logger(__name__)
 # even when a task body shields ``CancelledError`` (third-party
 # callees, hung I/O); the orchestrator's SIGKILL deadline must not
 # slip past ``graceful_shutdown`` (75s in api/server.py).
-_TICKET_CLEANUP_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- bootstrap
-_AUDIT_RETENTION_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- bootstrap
-_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- bootstrap
+_TICKET_CLEANUP_SHUTDOWN_SECONDS: float = 2.0
+_AUDIT_RETENTION_SHUTDOWN_SECONDS: float = 2.0
+_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS: float = 2.0
 
 
 async def _cancel_with_timeout(
