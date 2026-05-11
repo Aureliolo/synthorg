@@ -6,29 +6,3 @@
 # New violations not on this list fail the gate; entries here
 # that no longer match the scan emit a stale-baseline warning
 # (gate still passes; regenerate via --update-baseline).
-src/synthorg/api/controllers/ws.py:_outbound_consumer:341
-src/synthorg/api/controllers/ws.py:_receive_loop:735
-src/synthorg/api/controllers/ws_revalidation.py:_periodic_revalidate:112
-src/synthorg/api/services/idempotency_service.py:IdempotencyService:run_idempotent:185
-src/synthorg/backup/scheduler.py:BackupScheduler:_run_loop:279
-src/synthorg/budget/quota_poller.py:QuotaPoller:_poll_loop:137
-src/synthorg/communication/bus/_nats_history.py:collect_history_batches:89
-src/synthorg/communication/bus/_nats_receive.py:receive_blocking:388
-src/synthorg/communication/bus/_nats_receive.py:receive_with_timeout:428
-src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:InMemoryEscalationStore:_never:304
-src/synthorg/communication/event_stream/stream.py:EventStreamHub:_janitor_loop:348
-src/synthorg/communication/meeting/scheduler.py:MeetingScheduler:_run_periodic:492
-src/synthorg/engine/task_engine_loops.py:TaskEngineLoopsMixin:_observer_dispatch_loop:303
-src/synthorg/hr/pruning/service.py:PruningService:_run_loop:769
-src/synthorg/integrations/health/prober.py:HealthProberService:_probe_loop:156
-src/synthorg/integrations/oauth/token_manager.py:OAuthTokenManager:_refresh_loop:144
-src/synthorg/integrations/rate_limiting/shared_state.py:SharedRateLimitCoordinator:_poll_loop:225
-src/synthorg/meta/chief_of_staff/monitor.py:OrgInflectionMonitor:_loop:192
-src/synthorg/persistence/sqlite/escalation_repo.py:SQLiteEscalationRepository:_never:331
-src/synthorg/providers/resilience/rate_limiter.py:RateLimiter:_wait_for_rpm_slot:148
-src/synthorg/providers/resilience/rate_limiter.py:RateLimiter:acquire:71
-src/synthorg/security/timeout/scheduler.py:ApprovalTimeoutScheduler:_run_loop:288
-src/synthorg/settings/dispatcher.py:SettingsChangeDispatcher:_poll_loop:414
-src/synthorg/telemetry/collector.py:TelemetryCollector:_heartbeat_loop:777
-src/synthorg/tools/sandbox/lifecycle/per_agent.py:PerAgentStrategy:_idle_expire:277
-src/synthorg/workers/worker.py:Worker:run:115

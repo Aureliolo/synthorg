@@ -153,7 +153,9 @@ class WorkflowExecutionController(Controller):
     ) -> Response[PaginatedResponse[WorkflowExecution] | ApiResponse[None]]:
         """List executions for a workflow definition with cursor pagination."""
         service = await _build_service(state)
-        executions = await service.list_executions(workflow_id)
+        # Over-fetch by one page so the cursor paginator can detect
+        # has_more without a separate COUNT round-trip.
+        executions = await service.list_executions(workflow_id, limit=limit + 1)
         page, meta = paginate_cursor(
             tuple(executions),
             limit=limit,

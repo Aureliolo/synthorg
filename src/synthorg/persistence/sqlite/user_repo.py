@@ -38,7 +38,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
 )
-from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -241,7 +244,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             user = _row_to_user(row)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize user {user_id!r}"
             logger.warning(
                 PERSISTENCE_USER_FETCH_FAILED,
@@ -283,7 +286,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             return _row_to_user(row)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize user {username!r}"
             logger.warning(
                 PERSISTENCE_USER_FETCH_FAILED,
@@ -293,22 +296,35 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-    async def list_users(self) -> tuple[User, ...]:
-        """List all human users ordered by creation date.
+    async def list_users(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[User, ...]:
+        """List human users ordered by creation date.
 
         The system user (internal CLI identity) is excluded from the
         result.  Use ``get`` with the system user ID if you need it.
+        For cursor-stable pagination across large user bases use
+        :meth:`list_users_paginated` instead.
+
+        Args:
+            limit: Maximum users to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of human ``User`` records, oldest first.
+            Tuple of human ``User`` records, oldest first, capped at
+            *limit* rows.
 
         Raises:
-            QueryError: If the database query or deserialization fails.
+            QueryError: If the database query or deserialization fails,
+                or *limit* is non-int / non-positive.
         """
+        limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM users WHERE role != ? ORDER BY created_at, id",
-                (HumanRole.SYSTEM.value,),
+                "SELECT * FROM users WHERE role != ? ORDER BY created_at, id LIMIT ?",
+                (HumanRole.SYSTEM.value, limit),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -321,7 +337,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             users = tuple(_row_to_user(row) for row in rows)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = "Failed to deserialize users"
             logger.warning(
                 PERSISTENCE_USER_LIST_FAILED,
@@ -621,7 +637,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             key = _row_to_api_key(row)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize API key {key_id!r}"
             logger.warning(
                 PERSISTENCE_API_KEY_FETCH_FAILED,
@@ -663,7 +679,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             return _row_to_api_key(row)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = "Failed to deserialize API key by hash"
             logger.warning(
                 PERSISTENCE_API_KEY_FETCH_FAILED,
@@ -676,13 +692,13 @@ ON CONFLICT(id) DO UPDATE SET
         self,
         user_id: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
         """List up to ``limit`` API keys for a user, ordered by creation date.
 
-        Defaults to a 100-key page; callers needing more must paginate
-        with ``offset``.
+        Defaults to :data:`DEFAULT_LIST_LIMIT`; callers needing more
+        must paginate with ``offset``.
 
         Args:
             user_id: Owner user identifier.
@@ -695,7 +711,7 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database query or deserialization fails.
         """
-        validate_pagination_args(
+        limit = validate_pagination_args(
             limit,
             offset,
             event=PERSISTENCE_API_KEY_LIST_FAILED,
@@ -719,7 +735,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             keys = tuple(_row_to_api_key(row) for row in rows)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize API keys for user {user_id!r}"
             logger.warning(
                 PERSISTENCE_API_KEY_LIST_FAILED,

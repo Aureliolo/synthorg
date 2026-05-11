@@ -128,9 +128,13 @@ class HealthProberService:
         self._degraded_threshold = degraded_threshold
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._failure_counts: dict[str, int] = {}
-        self._failure_lock = asyncio.Lock()
+        # Eager init: ``_record_failure`` may be invoked outside the
+        # probe loop (manual reporting paths), so the lock must exist
+        # before the first acquire.
+        self._failure_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
         self._task: asyncio.Task[None] | None = None
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager init: stop() must be safe before any start() call.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
     async def start(self) -> None:
         """Start the background probe loop."""
@@ -153,6 +157,7 @@ class HealthProberService:
 
     async def _probe_loop(self) -> None:
         """Run probes indefinitely at the configured interval."""
+        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
                 await self._probe_all()

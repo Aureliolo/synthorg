@@ -16,6 +16,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.meta.rules.service import CustomRuleNotFoundError, CustomRulesService
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 pytestmark = pytest.mark.unit
 
@@ -42,9 +44,13 @@ class _FakeCustomRuleRepository:
         self,
         *,
         enabled_only: bool = False,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CustomRuleDefinition, ...]:
+        limit = validate_pagination_args(
+            limit, offset=0, event="fake.custom_rules.list_rules"
+        )
         rows = [r for r in self._rows.values() if not enabled_only or r.enabled]
-        return tuple(sorted(rows, key=lambda r: r.name))
+        return tuple(sorted(rows, key=lambda r: r.name)[:limit])
 
     async def delete(self, rule_id: NotBlankStr) -> bool:
         return self._rows.pop(str(rule_id), None) is not None
@@ -86,6 +92,23 @@ class TestCustomRulesServiceCRUD:
         assert total == 1
         assert len(page) == 1
         assert page[0].name == "quality-watch"
+
+    @pytest.mark.parametrize(
+        ("seed_count", "requested_limit"),
+        [(5, 2), (5, 3), (10, 1), (3, 10)],
+    )
+    async def test_list_rules_respects_limit(
+        self, seed_count: int, requested_limit: int
+    ) -> None:
+        """``list_rules(limit=N)`` truncates to N when more rules exist."""
+        service = CustomRulesService(repo=_FakeCustomRuleRepository())
+        for i in range(seed_count):
+            await service.create(_rule(name=f"rule-{i:02d}"))
+
+        page, total = await service.list_rules(limit=requested_limit)
+        assert total == seed_count
+        assert len(page) <= requested_limit
+        assert len(page) == min(seed_count, requested_limit)
 
     async def test_delete_missing_raises(self) -> None:
         service = CustomRulesService(repo=_FakeCustomRuleRepository())

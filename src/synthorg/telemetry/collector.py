@@ -318,7 +318,8 @@ class TelemetryCollector:
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._heartbeat_snapshot_provider = heartbeat_snapshot_provider
         self._session_summary_snapshot_provider = session_summary_snapshot_provider
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager init: shutdown() must be safe before any start() call.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         # ``shutdown()`` flips this so a stray second ``start()`` is
         # rejected loudly rather than silently re-using a torn-down
         # reporter. Restart-after-shutdown is not a supported flow:
@@ -774,6 +775,7 @@ class TelemetryCollector:
         re-raised for graceful shutdown.
         """
         interval = self._config.heartbeat_interval_hours * 3600
+        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
                 await asyncio.sleep(interval)

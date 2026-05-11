@@ -328,6 +328,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             # as an async generator; put one behind an always-false
             # gate so it is never actually emitted.  The outer ``await``
             # blocks until ``stop`` is set on context-manager exit.
+            # lint-allow: long-running-loop-kill-switch -- sentinel coroutine.
             while not stop.is_set():
                 await stop.wait()
                 if stop.is_set():

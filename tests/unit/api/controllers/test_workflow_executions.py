@@ -187,6 +187,27 @@ class TestListExecutions:
         body = resp.json()
         assert len(body["data"]) == 1
 
+    @pytest.mark.unit
+    def test_list_has_more_with_overflow(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_definition(test_client)
+        for _ in range(4):
+            test_client.post(
+                "/api/v1/workflow-executions/activate/wfdef-test001",
+                json={"project": "proj"},
+            )
+
+        resp = test_client.get(
+            "/api/v1/workflow-executions/by-definition/wfdef-test001?limit=2",
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 2
+        assert body["pagination"]["has_more"] is True
+        assert body["pagination"]["next_cursor"] is not None
+
 
 # ── Get execution endpoint ────────────────────────────────────────
 

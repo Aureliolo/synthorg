@@ -39,7 +39,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
 )
-from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -234,16 +237,35 @@ class PostgresUserRepository:
             )
             raise QueryError(msg) from exc
 
-    async def list_users(self) -> tuple[User, ...]:
-        """List all human users ordered by creation date (excludes system user)."""
+    async def list_users(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[User, ...]:
+        """List human users ordered by creation date (excludes system user).
+
+        Bounded by *limit* so an unauth'd caller cannot materialise an
+        unbounded tuple of users. For cursor-stable pagination across
+        large user bases use :meth:`list_users_paginated` instead.
+
+        Args:
+            limit: Maximum users to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
+
+        Raises:
+            QueryError: If the database query, deserialization, or
+                pagination validation fails.
+        """
+        limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT * FROM users WHERE role != %s ORDER BY created_at, id",
-                    (HumanRole.SYSTEM.value,),
+                    "SELECT * FROM users WHERE role != %s "
+                    "ORDER BY created_at, id LIMIT %s",
+                    (HumanRole.SYSTEM.value, limit),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -510,15 +532,15 @@ class PostgresApiKeyRepository:
         self,
         user_id: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
         """List up to ``limit`` API keys for a user, ordered by creation date.
 
-        Defaults to a 100-key page; callers needing more must paginate
-        with ``offset``.
+        Defaults to :data:`DEFAULT_LIST_LIMIT`; callers needing more
+        must paginate with ``offset``.
         """
-        validate_pagination_args(
+        limit = validate_pagination_args(
             limit,
             offset,
             event=PERSISTENCE_API_KEY_LIST_FAILED,

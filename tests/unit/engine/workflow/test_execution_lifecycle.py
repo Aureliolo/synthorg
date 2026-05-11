@@ -72,7 +72,9 @@ class FakeDefinitionRepo:
         self,
         *,
         workflow_type: object = None,
+        limit: int = 100,
     ) -> tuple[WorkflowDefinition, ...]:
+        del workflow_type, limit
         return tuple(self._store.values())
 
     async def delete(self, definition_id: str) -> bool:
@@ -110,20 +112,24 @@ class FakeExecutionRepo:
     async def list_by_definition(
         self,
         definition_id: str,
+        *,
+        limit: int = 100,
     ) -> tuple[WorkflowExecution, ...]:
         return tuple(
             copy.deepcopy(e)
             for e in self._store.values()
             if e.definition_id == definition_id
-        )
+        )[:limit]
 
     async def list_by_status(
         self,
         status: object,
+        *,
+        limit: int = 100,
     ) -> tuple[WorkflowExecution, ...]:
         return tuple(
             copy.deepcopy(e) for e in self._store.values() if e.status == status
-        )
+        )[:limit]
 
     async def find_by_task_id(
         self,

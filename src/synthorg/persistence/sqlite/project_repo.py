@@ -25,6 +25,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_LISTED,
     PERSISTENCE_PROJECT_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 
 logger = get_logger(__name__)
@@ -320,22 +324,32 @@ ON CONFLICT(id) DO UPDATE SET
         *,
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[Project, ...]:
         """List projects with optional filters.
 
         Args:
             status: Filter by project status.
             lead: Filter by project lead agent ID.
+            limit: Maximum projects to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching projects as a tuple.
+            Matching projects as a tuple, capped at *limit* rows.
 
         Raises:
-            QueryError: If the database query or deserialization fails.
+            QueryError: If the database query, deserialization, or
+                pagination validation fails.
         """
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_PROJECT_LIST_FAILED
+        )
+        # Clamp under the hard ceiling so a caller-supplied limit
+        # cannot exceed the table-scan safety bound.
+        effective_limit = min(limit, _MAX_LIST_ROWS)
         query = "SELECT * FROM projects"
         conditions: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
 
         if status is not None:
             conditions.append("status = ?")
@@ -346,7 +360,8 @@ ON CONFLICT(id) DO UPDATE SET
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        query += f" ORDER BY id LIMIT {_MAX_LIST_ROWS}"
+        query += " ORDER BY id LIMIT ?"
+        params.append(effective_limit)
 
         try:
             cursor = await self._db.execute(query, params)

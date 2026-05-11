@@ -7,6 +7,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,  # noqa: TC001
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -54,15 +55,19 @@ class WorkflowExecutionRepository(Protocol):
     async def list_by_definition(
         self,
         definition_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowExecution, ...]:
         """List executions for a given workflow definition.
 
         Args:
             definition_id: The source definition identifier.
+            limit: Maximum executions to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
             Matching executions as a tuple, ordered by
-            ``updated_at`` descending.
+            ``updated_at`` descending, capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -72,15 +77,19 @@ class WorkflowExecutionRepository(Protocol):
     async def list_by_status(
         self,
         status: WorkflowExecutionStatus,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowExecution, ...]:
         """List executions with a given status.
 
         Args:
             status: The execution status to filter by.
+            limit: Maximum executions to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
             Matching executions as a tuple, ordered by
-            ``updated_at`` descending.
+            ``updated_at`` descending, capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.

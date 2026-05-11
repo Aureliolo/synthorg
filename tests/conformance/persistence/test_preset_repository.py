@@ -78,6 +78,19 @@ class TestPersonalityPresetRepository:
         names = {r.name for r in rows}
         assert {"alpha", "beta"} <= names
 
+    async def test_list_all_respects_limit(self, backend: PersistenceBackend) -> None:
+        for i in range(5):
+            await backend.custom_presets.save(
+                name=NotBlankStr(f"preset-{i:02d}"),
+                config_json="{}",
+                description="",
+                created_at=_NOW_ISO,
+                updated_at=_NOW_ISO,
+            )
+
+        rows = await backend.custom_presets.list_all(limit=3)
+        assert len(rows) == 3
+
     async def test_count(self, backend: PersistenceBackend) -> None:
         assert await backend.custom_presets.count() == 0
 

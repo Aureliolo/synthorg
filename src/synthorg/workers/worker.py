@@ -80,7 +80,10 @@ class Worker:
         self._executor = executor
         self._worker_id = worker_id
         self._running = False
-        self._stop_event = asyncio.Event()
+        # Eager init: ``stop()`` may set the event before ``run()`` has
+        # ever entered the loop, so a half-published attribute would
+        # race with shutdown signalling.
+        self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init -- see above.
         # Dedicated lifecycle lock per docs/reference/lifecycle-sync.md.
         # Held across the full body of run() and stop() so a racing
         # start cannot see _running=False mid-drain and spawn a new
@@ -88,8 +91,9 @@ class Worker:
         # an "in-place runner" (start runs the loop on the calling
         # coroutine), so the lock guards only the _running transition;
         # holding it across the whole loop body would deadlock a
-        # second concurrent caller.
-        self._lifecycle_lock = asyncio.Lock()
+        # second concurrent caller. Eager init: stop() must be safe
+        # before any run() call.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
     @property
     def is_running(self) -> bool:
@@ -112,6 +116,7 @@ class Worker:
             logger.info(WORKERS_WORKER_STARTED, worker_id=self._worker_id)
 
         try:
+            # lint-allow: long-running-loop-kill-switch -- _stop_event drives shutdown.
             while not self._stop_event.is_set():
                 await self._run_once()
         finally:

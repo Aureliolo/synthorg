@@ -301,6 +301,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
         stop = asyncio.Event()
 
         async def _never() -> AsyncIterator[str]:
+            # lint-allow: long-running-loop-kill-switch -- sentinel coroutine.
             while not stop.is_set():
                 await stop.wait()
                 if stop.is_set():

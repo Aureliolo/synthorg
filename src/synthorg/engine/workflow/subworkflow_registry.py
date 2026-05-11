@@ -47,6 +47,7 @@ from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_REGISTERED,
     SUBWORKFLOW_RESOLVED,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from synthorg.persistence.subworkflow_protocol import (
     SubworkflowRepository,  # noqa: TC001 -- runtime-resolvable annotation
 )
@@ -178,21 +179,31 @@ class SubworkflowRegistry:
     async def list_versions(
         self,
         subworkflow_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[str, ...]:
-        """List semver strings for a subworkflow, newest first."""
-        return await self._repo.list_versions(subworkflow_id)
+        """List semver strings for a subworkflow, newest first (bounded by *limit*)."""
+        return await self._repo.list_versions(subworkflow_id, limit=limit)
 
     async def latest_version(
         self,
         subworkflow_id: NotBlankStr,
     ) -> str | None:
-        """Return the highest semver for a subworkflow, or ``None``."""
+        """Return the highest semver for a subworkflow, or ``None``.
+
+        Fetches a single-page slice; the underlying repo bounds the
+        scan and the registry takes the first (newest) entry.
+        """
         versions = await self._repo.list_versions(subworkflow_id)
         return versions[0] if versions else None
 
-    async def list_all(self) -> tuple[SubworkflowSummary, ...]:
-        """Return summaries for every unique subworkflow in the registry."""
-        return await self._repo.list_summaries()
+    async def list_all(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[SubworkflowSummary, ...]:
+        """Return summaries for unique subworkflows (bounded by *limit*)."""
+        return await self._repo.list_summaries(limit=limit)
 
     async def list_page(
         self,
@@ -234,7 +245,10 @@ class SubworkflowRegistry:
             ``True`` when an additional summary was observed past the
             requested page.
         """
-        all_summaries = await self._repo.list_summaries()
+        # Pull the full population so cursor pagination and has_more
+        # reflect the entire roster, not just the repo's default page
+        # of summaries (which would silently truncate large catalogs).
+        all_summaries = await self._repo.list_summaries(limit=MAX_LIST_LIMIT)
         sorted_summaries = sorted(
             all_summaries,
             key=lambda s: (s.name, s.latest_version, s.subworkflow_id),

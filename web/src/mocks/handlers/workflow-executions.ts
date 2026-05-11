@@ -3,7 +3,7 @@ import type {
   listWorkflowExecutions,
   WorkflowExecution,
 } from '@/api/endpoints/workflow-executions'
-import { apiSuccess, successFor } from './helpers'
+import { apiSuccess, paginatedFor } from './helpers'
 
 /**
  * Build a happy-path ``WorkflowExecution`` row for stories and tests.
@@ -52,7 +52,13 @@ export const workflowExecutionsHandlers = [
       definition_id: workflowId,
     }))
     return HttpResponse.json(
-      successFor<typeof listWorkflowExecutions>(rows),
+      paginatedFor<typeof listWorkflowExecutions>({
+        data: rows,
+        limit: 50,
+        nextCursor: null,
+        hasMore: false,
+        pagination: { limit: 50, next_cursor: null, has_more: false },
+      }),
     )
   }),
 

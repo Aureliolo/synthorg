@@ -276,6 +276,7 @@ class BackupScheduler:
         if wake_event is None or stop_event is None:  # defensive
             msg = "_run_loop invoked without initialised lifecycle events"
             raise RuntimeError(msg)
+        # lint-allow: long-running-loop-kill-switch -- stop_event drives shutdown.
         while not stop_event.is_set():
             wake_event.clear()
             try:

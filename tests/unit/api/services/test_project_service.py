@@ -52,13 +52,14 @@ class _FakeProjectRepo:
         *,
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
+        limit: int = 100,
     ) -> tuple[Project, ...]:
         rows = sorted(self._rows.values(), key=lambda p: p.id)
         if status is not None:
             rows = [p for p in rows if p.status == status]
         if lead is not None:
             rows = [p for p in rows if p.lead == lead]
-        return tuple(rows)
+        return tuple(rows[:limit])
 
     async def delete(self, project_id: NotBlankStr) -> bool:
         return self._rows.pop(project_id, None) is not None
@@ -275,3 +276,31 @@ async def test_list_projects_filters_by_status_and_lead() -> None:
         lead=None,
     )
     assert only_active == (p3,)
+
+
+@pytest.mark.parametrize(
+    ("seed_count", "requested_limit"),
+    [
+        (5, 2),
+        (5, 3),
+        (10, 1),
+        (3, 10),
+    ],
+)
+async def test_list_projects_respects_limit(
+    seed_count: int,
+    requested_limit: int,
+) -> None:
+    """``list_projects`` truncates to *limit* when more rows exist."""
+    repo = _FakeProjectRepo()
+    service = ProjectService(repo=repo)
+    for i in range(seed_count):
+        await repo.save(_make_project(project_id=f"proj-{i:02d}"))
+
+    rows = await service.list_projects(
+        status=None,
+        lead=None,
+        limit=requested_limit,
+    )
+    assert len(rows) <= requested_limit
+    assert len(rows) == min(seed_count, requested_limit)

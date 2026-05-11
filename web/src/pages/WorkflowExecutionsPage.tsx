@@ -99,9 +99,9 @@ export default function WorkflowExecutionsPage() {
       )
     }
     try {
-      const rows = await listWorkflowExecutions(requestedFor)
+      const result = await listWorkflowExecutions(requestedFor)
       if (isStale()) return
-      setExecutions(rows)
+      setExecutions(result.data)
     } catch (err) {
       if (isStale()) return
       const message = getErrorMessage(err)

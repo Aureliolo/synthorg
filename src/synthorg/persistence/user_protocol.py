@@ -9,6 +9,7 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.auth.models import ApiKey, User  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -54,11 +55,23 @@ class UserRepository(Protocol):
         """
         ...
 
-    async def list_users(self) -> tuple[User, ...]:
-        """List all human users (excludes the system user).
+    async def list_users(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[User, ...]:
+        """List human users (excludes the system user).
+
+        Bounded by ``limit`` so an unauth'd caller cannot materialise an
+        unbounded tuple of users. For cursor-stable pagination across
+        large user bases use :meth:`list_users_paginated` instead.
+
+        Args:
+            limit: Maximum users to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Human users as a tuple.
+            Human users as a tuple, capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -186,21 +199,19 @@ class ApiKeyRepository(Protocol):
         self,
         user_id: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
         """List API keys belonging to a user, optionally paginated.
 
         Args:
             user_id: The owner user ID.
-            limit: Maximum keys to return; ``None`` (default) preserves
-                fetch-all semantics.
-            offset: Keys to skip; applied independently of *limit*.
-                ``offset > 0`` with ``limit=None`` yields a tail
-                window starting after *offset* rows.
+            limit: Maximum keys to return (default
+                :data:`DEFAULT_LIST_LIMIT`). Must be >= 1.
+            offset: Keys to skip; applied before *limit*. Must be >= 0.
 
         Returns:
-            API keys for the user.
+            API keys for the user, capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.

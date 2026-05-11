@@ -62,6 +62,7 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED,
     WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -687,11 +688,14 @@ class WorkflowExecutionService:
     async def list_executions(
         self,
         definition_id: str,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowExecution, ...]:
-        """List executions for a workflow definition."""
+        """List executions for a workflow definition (bounded by *limit*)."""
         return await lifecycle.list_executions(
             self._execution_repo,
             definition_id,
+            limit=limit,
         )
 
     async def cancel_execution(

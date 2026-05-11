@@ -336,7 +336,10 @@ exceptions:
   `since < until` ordering.
 - `parse_str_sequence(arguments, key)`: optional sequence-of-non-blank-strings.
 - `coerce_pagination(arguments, *, default_limit=50)`: offset/limit
-  parsing with strict bounds and explicit bool rejection.
+  parsing with strict bounds and explicit bool rejection. MCP tools
+  default to 50; this is intentionally lower than the repository-layer
+  `DEFAULT_LIST_LIMIT = 100` so paginated MCP responses stay terse for
+  assistants.
 - `actor_id(actor)` / `require_actor_id(actor)` / `actor_label(actor)`:
   actor identity helpers. Use `actor_id` for optional attribution,
   `require_actor_id` when attribution is mandatory (raises if

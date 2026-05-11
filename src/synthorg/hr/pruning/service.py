@@ -94,13 +94,18 @@ class PruningService:
         self._config = config or PruningServiceConfig()
         self._on_notification = on_notification
         self._task: asyncio.Task[None] | None = None
-        self._wake_event = asyncio.Event()
-        self._stop_event: asyncio.Event = asyncio.Event()
+        # Eager init: wake / stop events are signalled by callers that
+        # may run before the background loop, so half-published event
+        # attributes would race with the first ``stop()`` or
+        # ``request_immediate_run``.
+        self._wake_event = asyncio.Event()  # lint-allow: loop-bound-init -- see.
+        self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init -- see.
         # Per ``docs/reference/lifecycle-sync.md``: dedicated lifecycle
         # primitives, kept distinct from the hot-path
         # ``_processing_lock`` so a concurrent pruning cycle cannot
-        # block lifecycle transitions.
-        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        # block lifecycle transitions. Eager init: ``stop()`` must be
+        # safe before any ``start()`` call.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._stop_failed: bool = False
         self._stop_drain_timeout_seconds: float = 30.0
         self._pending_requests: dict[str, PruningRequest] = {}
@@ -126,7 +131,9 @@ class PruningService:
         # retries; absence from the processed set is intentional on
         # those paths, not an oversight.
         self._in_flight_approvals: set[str] = set()
-        self._processing_lock = asyncio.Lock()
+        # Eager init: hot-path lock used by ``_process_decided_approvals``
+        # which may run before ``start()`` if a manual sweep is invoked.
+        self._processing_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
     @property
     def is_running(self) -> bool:
@@ -766,6 +773,7 @@ class PruningService:
         wakes the loop cooperatively. ``self._wake_event`` continues
         to interrupt the sleep for ad-hoc ``wake()`` triggers.
         """
+        # lint-allow: long-running-loop-kill-switch -- _stop_event drives shutdown.
         while not self._stop_event.is_set():
             try:
                 await asyncio.wait_for(

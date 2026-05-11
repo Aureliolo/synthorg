@@ -197,7 +197,11 @@ async def _workflows_list(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        items = await _service(app_state).list_definitions()
+        # MCP list handlers paginate the in-memory tuple; fetch one
+        # page-worth at the repository layer so unbounded scans cannot
+        # be triggered from MCP. ``limit + offset`` covers the slice the
+        # paginator will hand back without over-fetching.
+        items = await _service(app_state).list_definitions(limit=limit + offset)
         page, meta = paginate_sequence(items, offset=offset, limit=limit)
     except MemoryError, RecursionError:
         raise

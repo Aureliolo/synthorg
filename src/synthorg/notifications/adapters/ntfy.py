@@ -113,7 +113,9 @@ class NtfyNotificationSink:
         self._token = token
         self._webhook_timeout_seconds = webhook_timeout_seconds
         self._client: httpx.AsyncClient | None = None
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager init: stop() must be safe before any start() call,
+        # so the lock is created here rather than lazily in start().
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init
 
     @property
     def sink_name(self) -> str:

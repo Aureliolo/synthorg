@@ -13,6 +13,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, TrainingResult
 from synthorg.meta.rules.custom import CustomRuleDefinition
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.integration_stubs import (
     InMemoryConnectionRepository,
     InMemoryConnectionSecretRepository,
@@ -74,10 +75,15 @@ class FakeRiskOverrideRepository:
     ) -> RiskTierOverride | None:
         return self._overrides.get(override_id)
 
-    async def list_active(self) -> tuple[RiskTierOverride, ...]:
+    async def list_active(
+        self,
+        *,
+        limit: int = 100,
+    ) -> tuple[RiskTierOverride, ...]:
+        limit = validate_pagination_args(limit, offset=0, event="fake.list_active")
         active = [o for o in self._overrides.values() if o.is_active]
         active.sort(key=lambda o: o.created_at, reverse=True)
-        return tuple(active)
+        return tuple(active[:limit])
 
     async def revoke(
         self,
@@ -423,11 +429,13 @@ class FakeCustomRuleRepository:
         self,
         *,
         enabled_only: bool = False,
+        limit: int = 100,
     ) -> tuple[CustomRuleDefinition, ...]:
+        limit = validate_pagination_args(limit, offset=0, event="fake.list_rules")
         rules = list(self._rules.values())
         if enabled_only:
             rules = [r for r in rules if r.enabled]
-        return tuple(sorted(rules, key=lambda r: r.name))
+        return tuple(sorted(rules, key=lambda r: r.name)[:limit])
 
     async def delete(self, rule_id: NotBlankStr) -> bool:
         key = str(rule_id)

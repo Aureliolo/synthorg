@@ -182,6 +182,7 @@ class IdempotencyService:
         churn under sustained leader failures.
         """
         retries_after_leader_failure = 0
+        # lint-allow: long-running-loop-kill-switch -- per-request retry-wait.
         while True:
             outcome_value, fresh, timed_out = await self._run_idempotent_once(
                 scope=scope,

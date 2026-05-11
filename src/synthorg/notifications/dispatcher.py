@@ -89,7 +89,9 @@ class NotificationDispatcher:
     ) -> None:
         self._sinks = list(sinks)
         self._min_severity = min_severity
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager init: ``aclose`` must be safe before any ``dispatch``;
+        # the lock guards the running-flag check-and-set.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._started = False
         # Optional resolver enables the runtime kill-switch
         # (``notifications.dispatcher_enabled``).  ``None`` is the
@@ -110,7 +112,10 @@ class NotificationDispatcher:
         # asyncio), so no separate lock is needed.
         self._stopping = False
         self._dispatch_inflight = 0
-        self._dispatch_idle = asyncio.Event()
+        # Eager init: ``dispatch`` increments the counter and clears
+        # this event before any background task fires; the event must
+        # exist for the counter-paired drain semantics to work.
+        self._dispatch_idle = asyncio.Event()  # lint-allow: loop-bound-init -- see.
         self._dispatch_idle.set()
         for sink in sinks:
             logger.info(

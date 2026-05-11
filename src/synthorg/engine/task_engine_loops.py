@@ -300,6 +300,7 @@ class TaskEngineLoopsMixin:
 
     async def _observer_dispatch_loop(self) -> None:
         """Background loop: dequeue and dispatch observer events."""
+        # lint-allow: long-running-loop-kill-switch -- stop() sentinel drains queue.
         while True:
             try:
                 event = await asyncio.wait_for(

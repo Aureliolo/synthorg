@@ -338,6 +338,7 @@ async def _outbound_consumer(
     the socket with code 1011 and exits; the surrounding
     ``run_in_background`` context tears the subscription down.
     """
+    # lint-allow: long-running-loop-kill-switch -- per-request WS consumer.
     while True:
         event_data = await queue.get()
         try:
@@ -732,6 +733,7 @@ async def _receive_loop(  # noqa: PLR0913 -- one extra optional kw arg for the t
         app_state = socket.app.state["app_state"]
         frame_timeout_seconds = app_state.ws_frame_timeout_seconds
     try:
+        # lint-allow: long-running-loop-kill-switch -- per-request WS receive.
         while True:
             try:
                 data = await asyncio.wait_for(

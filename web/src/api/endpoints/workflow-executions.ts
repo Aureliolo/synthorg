@@ -2,14 +2,15 @@
  * Workflow execution endpoints.
  *
  * Mirrors the backend ``synthorg.api.controllers.workflow_executions``
- * surface: list executions for a workflow, cancel an in-flight
- * execution. Field names and the response wire shape match the
- * backend Pydantic ``WorkflowExecution`` model 1:1 (no envelope
- * wrapper around the list -- the controller returns the raw list
- * inside ``ApiResponse.data``).
+ * surface: list executions for a workflow (cursor-paginated), cancel
+ * an in-flight execution. Field names match the backend Pydantic
+ * ``WorkflowExecution`` model 1:1. The list endpoint returns
+ * ``PaginatedResponse<WorkflowExecution>`` -- an envelope that wraps
+ * the rows in ``data`` alongside ``next_cursor`` and ``has_more``
+ * pagination metadata.
  */
-import { apiClient, unwrap } from '../client'
-import type { ApiResponse } from '../types/http'
+import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 /** Mirrors ``synthorg.core.enums.WorkflowExecutionStatus``. */
 export type WorkflowExecutionStatus =
@@ -55,17 +56,20 @@ export interface WorkflowExecution {
 /**
  * GET /workflow-executions/by-definition/{workflow_id}
  *
- * Backend returns ``ApiResponse[list[WorkflowExecution]]`` -- a flat
- * list inside ``data``, NOT a ``{ executions: ... }`` wrapper. The
- * unwrap is direct.
+ * Backend returns ``PaginatedResponse[WorkflowExecution]`` (cursor
+ * pagination). Callers receive a ``PaginatedResult`` carrying the
+ * page rows plus ``nextCursor`` / ``hasMore`` so they can drive
+ * subsequent fetches.
  */
 export async function listWorkflowExecutions(
   workflowId: string,
-): Promise<readonly WorkflowExecution[]> {
-  const response = await apiClient.get<ApiResponse<WorkflowExecution[]>>(
+  params: { cursor?: string | null; limit?: number } = {},
+): Promise<PaginatedResult<WorkflowExecution>> {
+  const response = await apiClient.get<PaginatedResponse<WorkflowExecution>>(
     `/workflow-executions/by-definition/${encodeURIComponent(workflowId)}`,
+    { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<WorkflowExecution>(response)
 }
 
 /**

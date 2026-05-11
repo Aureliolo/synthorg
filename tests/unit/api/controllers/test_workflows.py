@@ -202,6 +202,19 @@ class TestWorkflowController:
         body = resp.json()
         assert body["data"][0]["name"] == "wf-par"
 
+    def test_list_workflows_has_more_with_overflow(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        for i in range(4):
+            _create_workflow(test_client, name=f"wf-page-{i:02d}")
+
+        resp = test_client.get("/api/v1/workflows?limit=2")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 2
+        assert body["pagination"]["has_more"] is True
+        assert body["pagination"]["next_cursor"] is not None
+
     @pytest.mark.parametrize(
         "bad_type",
         ["bogus", "not_a_type", "KANBAN"],

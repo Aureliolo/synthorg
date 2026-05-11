@@ -2,6 +2,8 @@
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
@@ -39,11 +41,20 @@ class RiskOverrideRepository(Protocol):
         """
         ...
 
-    async def list_active(self) -> tuple[RiskTierOverride, ...]:
-        """Return all active (non-expired, non-revoked) overrides.
+    async def list_active(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[RiskTierOverride, ...]:
+        """Return active (non-expired, non-revoked) overrides.
+
+        Args:
+            limit: Maximum overrides to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of active overrides, ordered by created_at DESC.
+            Tuple of active overrides ordered by created_at DESC,
+            capped at *limit* rows.
         """
         ...
 

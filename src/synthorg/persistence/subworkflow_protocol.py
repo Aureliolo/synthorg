@@ -22,6 +22,7 @@ from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runt
     ParentReference,
     SubworkflowSummary,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 __all__ = ["SubworkflowRepository"]
 
@@ -68,23 +69,35 @@ class SubworkflowRepository(Protocol):
     async def list_versions(
         self,
         subworkflow_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[NotBlankStr, ...]:
-        """List all semver strings for a subworkflow, newest first.
+        """List semver strings for a subworkflow, newest first.
 
         Args:
             subworkflow_id: The subworkflow identifier.
+            limit: Maximum versions to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
             Tuple of semver strings sorted by ``packaging.version``
-            comparison descending.  Empty when the subworkflow does
-            not exist.
+            comparison descending, capped at *limit* rows. Empty when
+            the subworkflow does not exist.
         """
         ...
 
-    async def list_summaries(self) -> tuple[SubworkflowSummary, ...]:
-        """Return a summary for every unique subworkflow in the registry.
+    async def list_summaries(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[SubworkflowSummary, ...]:
+        """Return summaries for unique subworkflows in the registry.
 
         The summary reflects the latest version of each subworkflow.
+
+        Args:
+            limit: Maximum summaries to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
         """
         ...
 

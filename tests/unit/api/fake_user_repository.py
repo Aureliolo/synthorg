@@ -11,6 +11,10 @@ from synthorg.core.auth.models import OrgRole, User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -94,10 +98,16 @@ class FakeUserRepository:
                 return copy.deepcopy(user)
         return None
 
-    async def list_users(self) -> tuple[User, ...]:
-        return tuple(
+    async def list_users(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[User, ...]:
+        limit = validate_pagination_args(limit, offset=0, event="fake.list_users")
+        humans = tuple(
             copy.deepcopy(u) for u in self._users.values() if u.role != HumanRole.SYSTEM
         )
+        return humans[:limit]
 
     async def list_users_paginated(
         self,

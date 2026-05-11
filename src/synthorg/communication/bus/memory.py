@@ -107,7 +107,10 @@ class InMemoryMessageBus:
     ) -> None:
         self._config = config
         self._clock = clock or SystemClock()
-        self._lock = asyncio.Lock()
+        # Eager init: ``publish`` / ``subscribe`` / ``receive`` may be
+        # called before any background lifecycle task runs, so the
+        # bus lock must exist before the first hot-path acquire.
+        self._lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
         self._channels: dict[str, Channel] = {}
         self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope | None]] = {}
         self._history: dict[str, deque[Message]] = {}
@@ -122,7 +125,9 @@ class InMemoryMessageBus:
         # ``max_subscriber_queue_size``.
         self._waiters: dict[tuple[str, str], set[asyncio.Future[None]]] = {}
         self._running = False
-        self._shutdown_event = asyncio.Event()
+        # Eager init: ``stop()`` may publish a shutdown signal before
+        # any tick has fired; a half-published event would race.
+        self._shutdown_event = asyncio.Event()  # lint-allow: loop-bound-init -- see.
         self._idle_poll_count: int = 0
         self._last_idle_summary: float = self._clock.monotonic()
 

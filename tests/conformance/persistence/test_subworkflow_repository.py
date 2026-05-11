@@ -96,6 +96,28 @@ class TestSubworkflowRepository:
         ids = {s.subworkflow_id for s in summaries}
         assert {"a", "b"} <= ids
 
+    async def test_list_summaries_respects_limit(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for i in range(5):
+            await backend.subworkflows.save(
+                _subworkflow(subworkflow_id=f"sub-lim-{i}", version="1.0.0"),
+            )
+
+        rows = await backend.subworkflows.list_summaries(limit=3)
+        assert len(rows) == 3
+
+    async def test_list_versions_respects_limit(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for v in ("1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"):
+            await backend.subworkflows.save(_subworkflow(version=v))
+
+        versions = await backend.subworkflows.list_versions(
+            NotBlankStr("sub-001"), limit=3
+        )
+        assert versions == ("1.4.0", "1.3.0", "1.2.0")
+
     async def test_search_by_name(self, backend: PersistenceBackend) -> None:
         await backend.subworkflows.save(
             _subworkflow(subworkflow_id="searchable", name="DataCleaner"),

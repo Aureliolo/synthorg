@@ -155,6 +155,17 @@ class TestWorkflowDefinitionRepository:
         )
         assert not any(d.id == "wf-parallel" for d in sequential_only)
 
+    async def test_list_definitions_respects_limit(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = backend.workflow_definitions
+        for i in range(5):
+            await repo.save(_make_workflow_definition(definition_id=f"wf-lim-{i}"))
+
+        rows = await repo.list_definitions(limit=3)
+        assert len(rows) == 3
+
     async def test_update_workflow_definition(
         self,
         backend: PersistenceBackend,

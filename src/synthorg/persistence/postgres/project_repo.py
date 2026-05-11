@@ -25,6 +25,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_LISTED,
     PERSISTENCE_PROJECT_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -233,11 +237,22 @@ class PostgresProjectRepository:
         *,
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[Project, ...]:
-        """List projects with optional filters."""
-        query = "SELECT * FROM projects"
+        """List projects with optional filters.
+
+        Args:
+            status: Filter by project status.
+            lead: Filter by project lead agent ID.
+            limit: Maximum projects to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
+        """
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_PROJECT_LIST_FAILED
+        )
+        effective_limit = min(limit, _MAX_LIST_ROWS)
         conditions: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
 
         if status is not None:
             conditions.append("status = %s")
@@ -246,9 +261,13 @@ class PostgresProjectRepository:
             conditions.append("lead = %s")
             params.append(lead)
 
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += f" ORDER BY id LIMIT {_MAX_LIST_ROWS}"
+        # Safety invariant: ``conditions`` only ever contains hardcoded
+        # ``"<col> = %s"`` fragments built above; the filter values flow
+        # through ``params`` and stay parameterized. Never interpolate
+        # user-supplied text into ``conditions``.
+        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        query = f"SELECT * FROM projects{where_clause} ORDER BY id LIMIT %s"  # noqa: S608
+        params.append(effective_limit)
 
         try:
             async with (

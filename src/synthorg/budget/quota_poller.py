@@ -61,7 +61,9 @@ class QuotaPoller:
         # Held across the full body of ``start`` and ``stop`` so the
         # check-and-mutate of ``self._task`` is atomic against
         # concurrent callers, per CLAUDE.md "Lifecycle synchronization".
-        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        # Eager init: stop() must be safe to call before start() has
+        # ever run, so a half-published lock attribute would race.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._cooldown: dict[_CooldownKey, float] = {}
 
     async def start(self) -> None:
@@ -134,6 +136,7 @@ class QuotaPoller:
 
     async def _poll_loop(self) -> None:
         """Background task: poll repeatedly until cancelled."""
+        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
                 await self.poll_once()

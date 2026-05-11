@@ -72,8 +72,8 @@ class NgrokAdapter:
         # not own a background task; it forwards to pyngrok in a
         # worker thread and the lock is sufficient to prevent two
         # ``start()`` calls from racing on the single-tunnel
-        # invariant.
-        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        # invariant. Eager init: stop() must be safe before start().
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
     async def start(self) -> str:
         """Start the ngrok tunnel.

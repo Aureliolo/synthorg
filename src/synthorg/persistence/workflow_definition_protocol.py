@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.enums import WorkflowType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import WorkflowDefinition  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -93,14 +94,17 @@ class WorkflowDefinitionRepository(Protocol):
         self,
         *,
         workflow_type: WorkflowType | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowDefinition, ...]:
         """List workflow definitions with optional filters.
 
         Args:
             workflow_type: Filter by workflow type.
+            limit: Maximum definitions to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching definitions as a tuple.
+            Matching definitions as a tuple, capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.

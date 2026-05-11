@@ -31,6 +31,7 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from synthorg.engine.workflow.validation_types import (
@@ -153,10 +154,16 @@ class WorkflowService:
         self,
         *,
         workflow_type: WorkflowType | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowDefinition, ...]:
-        """List definitions filtered by optional workflow type."""
+        """List definitions filtered by optional workflow type.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`) so an
+        unauth'd caller cannot materialise the full table.
+        """
         return await self._definitions.list_definitions(
             workflow_type=workflow_type,
+            limit=limit,
         )
 
     async def get_definition(

@@ -26,6 +26,7 @@ from synthorg.observability.events.security import (
     SECURITY_USER_DELETED,
     SECURITY_USER_UPDATED,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from synthorg.persistence.auth_protocol import RefreshTokenRepository
@@ -69,9 +70,19 @@ class UserService:
         """Fetch a user by id, or ``None`` when no row matches."""
         return await self._repo.get(user_id)
 
-    async def list_users(self) -> tuple[User, ...]:
-        """List all users (sans system user)."""
-        users = await self._repo.list_users()
+    async def list_users(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[User, ...]:
+        """List human users (sans system user), capped at ``limit`` rows.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`) so an
+        unauth'd caller cannot materialise an unbounded tuple of users.
+        Callers paginating over large user bases should use
+        :meth:`list_users_page` instead, which exposes a stable cursor.
+        """
+        users = await self._repo.list_users(limit=limit)
         logger.debug(API_USER_LISTED, count=len(users))
         return users
 

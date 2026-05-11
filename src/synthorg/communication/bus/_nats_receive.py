@@ -385,6 +385,7 @@ async def receive_blocking(
     sub: Any,
 ) -> DeliveryEnvelope | None:
     """Block on a fetch loop until a message arrives or the bus stops."""
+    # lint-allow: long-running-loop-kill-switch -- per-call subscribe pump.
     while True:
         if state.shutdown_event.is_set():
             return None
@@ -425,6 +426,7 @@ async def receive_with_timeout(
 ) -> DeliveryEnvelope | None:
     """Wait up to ``timeout`` seconds across one or more fetch polls."""
     deadline = state.clock.monotonic() + timeout
+    # lint-allow: long-running-loop-kill-switch -- per-call timed pump.
     while True:
         remaining = deadline - state.clock.monotonic()
         if remaining <= 0.0:

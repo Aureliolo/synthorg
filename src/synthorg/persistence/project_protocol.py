@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.enums import ProjectStatus  # noqa: TC001
 from synthorg.core.project import Project  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -81,18 +82,22 @@ class ProjectRepository(Protocol):
         *,
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[Project, ...]:
         """List projects with optional filters.
 
         Results are ordered by project ID ascending to ensure
-        deterministic pagination across backends.
+        deterministic pagination across backends. Bounded by *limit* so
+        an unauth'd caller cannot materialise the full table.
 
         Args:
             status: Filter by project status.
             lead: Filter by project lead agent ID.
+            limit: Maximum projects to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching projects ordered by ID, as a tuple.
+            Matching projects ordered by ID, capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.

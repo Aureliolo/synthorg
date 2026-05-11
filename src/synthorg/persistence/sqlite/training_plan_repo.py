@@ -25,6 +25,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 logger = get_logger(__name__)
 
@@ -309,22 +313,27 @@ LIMIT 1""",
     async def list_by_agent(
         self,
         agent_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TrainingPlan, ...]:
-        """Return all plans for an agent ordered by created_at desc.
+        """Return plans for an agent ordered by created_at desc.
 
         Args:
             agent_id: Target agent identifier.
+            limit: Maximum plans to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of plans (may be empty).
+            Tuple of plans (may be empty), capped at *limit* rows.
         """
+        limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
         try:
             cursor = await self._db.execute(
                 """\
 SELECT * FROM training_plans
 WHERE new_agent_id = ?
-ORDER BY created_at DESC""",
-                (str(agent_id),),
+ORDER BY created_at DESC, id DESC LIMIT ?""",
+                (str(agent_id), limit),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

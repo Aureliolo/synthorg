@@ -13,6 +13,7 @@ slice.
 from typing import NamedTuple, Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 class PresetRow(NamedTuple):
@@ -83,11 +84,17 @@ class PersonalityPresetRepository(Protocol):
 
     async def list_all(
         self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[PresetListRow, ...]:
-        """List all custom presets ordered by name.
+        """List custom presets ordered by name.
+
+        Args:
+            limit: Maximum presets to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of ``PresetListRow`` named tuples.
+            Tuple of ``PresetListRow`` named tuples, capped at *limit*.
 
         Raises:
             QueryError: If the operation fails.

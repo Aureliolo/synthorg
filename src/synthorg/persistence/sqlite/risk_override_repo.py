@@ -16,6 +16,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 from synthorg.security.rules.risk_override import RiskTierOverride
 
@@ -142,15 +146,31 @@ class SQLiteRiskOverrideRepository:
             return None
         return _row_to_override(row)
 
-    async def list_active(self) -> tuple[RiskTierOverride, ...]:
-        """Return all active (non-expired, non-revoked) overrides."""
+    async def list_active(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[RiskTierOverride, ...]:
+        """Return active overrides bounded by *limit*.
+
+        Args:
+            limit: Maximum overrides to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
+
+        Raises:
+            PersistenceError: If the query or pagination validation
+                fails.
+        """
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
+        )
         now_utc = format_iso_utc(datetime.now(UTC))
         try:
             cursor = await self._db.execute(
                 f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
                 "WHERE revoked_at IS NULL AND expires_at > ? "
-                "ORDER BY created_at DESC",
-                (now_utc,),
+                "ORDER BY created_at DESC LIMIT ?",
+                (now_utc, limit),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

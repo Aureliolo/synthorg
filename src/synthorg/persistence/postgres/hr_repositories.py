@@ -36,6 +36,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_METRIC_QUERY_FAILED,
     PERSISTENCE_TASK_METRIC_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -113,9 +117,12 @@ class PostgresLifecycleEventRepository:
         agent_id: str | None = None,
         event_type: LifecycleEventType | None = None,
         since: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AgentLifecycleEvent, ...]:
-        """List lifecycle events with optional filters."""
+        """List lifecycle events with optional filters.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+        """
         clauses: list[str] = []
         params: list[Any] = []
         if agent_id is not None:
@@ -135,17 +142,12 @@ FROM lifecycle_events"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC"
-        # Validate at the repository boundary so callers cannot
-        # accidentally pass a float, bool, or negative value into
-        # the raw "LIMIT %s" parameter and get a confusing DB-side
-        # error (or worse, a silently-wrong result).
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-            msg = f"limit must be a positive integer, got {limit!r}"
-            logger.warning(
-                PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
-                error=msg,
-            )
-            raise QueryError(msg)
+        # This repository uses limit-only pagination; offset=0 is a
+        # deliberate placeholder so the shared validator runs its
+        # type-check and bounds-check on the limit value.
+        limit = validate_pagination_args(
+            limit, offset=0, event=PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED
+        )
         sql += " LIMIT %s"
         params.append(limit)
 
@@ -243,8 +245,15 @@ class PostgresTaskMetricRepository:
         agent_id: str | None = None,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TaskMetricRecord, ...]:
-        """Query task metric records with optional filters."""
+        """Query task metric records with optional filters.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+        """
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED
+        )
         clauses: list[str] = []
         params: list[Any] = []
         if agent_id is not None:
@@ -264,7 +273,8 @@ SELECT id, agent_id, task_id, task_type, completed_at,
 FROM task_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY completed_at DESC"
+        sql += " ORDER BY completed_at DESC LIMIT %s"
+        params.append(limit)
 
         try:
             async with (
@@ -356,8 +366,15 @@ class PostgresCollaborationMetricRepository:
         *,
         agent_id: str | None = None,
         since: AwareDatetime | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CollaborationMetricRecord, ...]:
-        """Query collaboration metric records with optional filters."""
+        """Query collaboration metric records with optional filters.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+        """
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED
+        )
         clauses: list[str] = []
         params: list[Any] = []
         if agent_id is not None:
@@ -374,7 +391,8 @@ SELECT id, agent_id, recorded_at, delegation_success,
 FROM collaboration_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY recorded_at DESC"
+        sql += " ORDER BY recorded_at DESC LIMIT %s"
+        params.append(limit)
 
         try:
             async with (

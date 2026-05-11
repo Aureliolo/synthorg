@@ -220,6 +220,46 @@ class TestWorkflowExecutionRepository:
         assert len(running_only) >= 1
         assert any(e.id == "exec-running" for e in running_only)
 
+    async def test_list_by_definition_respects_limit(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        defn_repo = backend.workflow_definitions
+        exec_repo = backend.workflow_executions
+        defn = _make_workflow_definition("wf-lim", "Test")
+        await defn_repo.save(defn)
+        for i in range(5):
+            await exec_repo.save(
+                _make_workflow_execution(
+                    execution_id=f"exec-lim-{i}",
+                    definition_id="wf-lim",
+                    status=WorkflowExecutionStatus.PENDING,
+                ),
+            )
+
+        rows = await exec_repo.list_by_definition("wf-lim", limit=3)
+        assert len(rows) == 3
+
+    async def test_list_by_status_respects_limit(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        defn_repo = backend.workflow_definitions
+        exec_repo = backend.workflow_executions
+        defn = _make_workflow_definition("wf-lim-status", "Test")
+        await defn_repo.save(defn)
+        for i in range(5):
+            await exec_repo.save(
+                _make_workflow_execution(
+                    execution_id=f"exec-lim-st-{i}",
+                    definition_id="wf-lim-status",
+                    status=WorkflowExecutionStatus.PENDING,
+                ),
+            )
+
+        rows = await exec_repo.list_by_status(WorkflowExecutionStatus.PENDING, limit=3)
+        assert len(rows) == 3
+
     async def test_find_by_task_id(
         self,
         backend: PersistenceBackend,
