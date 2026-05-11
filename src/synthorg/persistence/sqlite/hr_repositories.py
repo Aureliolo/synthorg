@@ -114,9 +114,12 @@ INSERT INTO lifecycle_events (
         agent_id: str | None = None,
         event_type: LifecycleEventType | None = None,
         since: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AgentLifecycleEvent, ...]:
-        """List lifecycle events with optional filters."""
+        """List lifecycle events with optional filters.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+        """
         clauses: list[str] = []
         params: list[str | int] = []
         if agent_id is not None:
@@ -243,7 +246,9 @@ INSERT INTO task_metrics (
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED
+        )
         clauses: list[str] = []
         params: list[object] = []
         if agent_id is not None:
@@ -362,7 +367,9 @@ INSERT INTO collaboration_metrics (
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED
+        )
         clauses: list[str] = []
         params: list[object] = []
         if agent_id is not None:

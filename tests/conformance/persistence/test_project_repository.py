@@ -79,6 +79,15 @@ class TestProjectRepository:
         rows = await backend.projects.list_projects(lead=NotBlankStr("alice"))
         assert [r.id for r in rows] == ["alpha"]
 
+    async def test_list_projects_respects_limit(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for i in range(5):
+            await backend.projects.save(_project(project_id=f"p-{i:02d}"))
+
+        rows = await backend.projects.list_projects(limit=3)
+        assert len(rows) <= 3
+
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
 

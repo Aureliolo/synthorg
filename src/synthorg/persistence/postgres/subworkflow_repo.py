@@ -294,7 +294,9 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,
@@ -333,7 +335,9 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         client-side aggregator still sees the full version set per
         included subworkflow.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,

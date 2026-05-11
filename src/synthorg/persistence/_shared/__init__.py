@@ -21,11 +21,13 @@ from synthorg.persistence._shared.datetime_marshaller import (
 )
 from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
+    MAX_LIST_LIMIT,
     validate_pagination_args,
 )
 
 __all__ = (
     "DEFAULT_LIST_LIMIT",
+    "MAX_LIST_LIMIT",
     "coerce_row_timestamp",
     "format_iso_utc",
     "normalize_utc",

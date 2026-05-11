@@ -280,7 +280,6 @@ class FakeSubworkflowRepository:
         *,
         limit: int = 100,
     ) -> tuple[SubworkflowSummary, ...]:
-        del limit  # fake aggregates client-side; limit applied at end below
         grouped: dict[str, list[WorkflowDefinition]] = {}
         for definition in self._rows.values():
             grouped.setdefault(definition.id, []).append(definition)
@@ -300,7 +299,7 @@ class FakeSubworkflowRepository:
                 ),
             )
         summaries.sort(key=lambda s: s.subworkflow_id)
-        return tuple(summaries)
+        return tuple(summaries)[:limit]
 
     async def search(
         self,

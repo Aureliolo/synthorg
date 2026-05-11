@@ -775,7 +775,7 @@ class TelemetryCollector:
         re-raised for graceful shutdown.
         """
         interval = self._config.heartbeat_interval_hours * 3600
-        # lint-allow: long-running-loop-kill-switch -- telemetry.enabled gates work.
+        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
                 await asyncio.sleep(interval)

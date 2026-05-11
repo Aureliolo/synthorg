@@ -326,7 +326,7 @@ LIMIT 1""",
         Returns:
             Tuple of plans (may be empty), capped at *limit* rows.
         """
-        validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
+        limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
         try:
             cursor = await self._db.execute(
                 """\

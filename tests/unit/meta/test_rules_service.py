@@ -88,6 +88,23 @@ class TestCustomRulesServiceCRUD:
         assert len(page) == 1
         assert page[0].name == "quality-watch"
 
+    @pytest.mark.parametrize(
+        ("seed_count", "requested_limit"),
+        [(5, 2), (5, 3), (10, 1), (3, 10)],
+    )
+    async def test_list_rules_respects_limit(
+        self, seed_count: int, requested_limit: int
+    ) -> None:
+        """``list_rules(limit=N)`` truncates to N when more rules exist."""
+        service = CustomRulesService(repo=_FakeCustomRuleRepository())
+        for i in range(seed_count):
+            await service.create(_rule(name=f"rule-{i:02d}"))
+
+        page, total = await service.list_rules(limit=requested_limit)
+        assert total == seed_count
+        assert len(page) <= requested_limit
+        assert len(page) == min(seed_count, requested_limit)
+
     async def test_delete_missing_raises(self) -> None:
         service = CustomRulesService(repo=_FakeCustomRuleRepository())
         with pytest.raises(CustomRuleNotFoundError):

@@ -276,3 +276,31 @@ async def test_list_projects_filters_by_status_and_lead() -> None:
         lead=None,
     )
     assert only_active == (p3,)
+
+
+@pytest.mark.parametrize(
+    ("seed_count", "requested_limit"),
+    [
+        (5, 2),
+        (5, 3),
+        (10, 1),
+        (3, 10),
+    ],
+)
+async def test_list_projects_respects_limit(
+    seed_count: int,
+    requested_limit: int,
+) -> None:
+    """``list_projects`` truncates to *limit* when more rows exist."""
+    repo = _FakeProjectRepo()
+    service = ProjectService(repo=repo)
+    for i in range(seed_count):
+        await repo.save(_make_project(project_id=f"proj-{i:02d}"))
+
+    rows = await service.list_projects(
+        status=None,
+        lead=None,
+        limit=requested_limit,
+    )
+    assert len(rows) <= requested_limit
+    assert len(rows) == min(seed_count, requested_limit)

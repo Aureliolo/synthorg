@@ -152,7 +152,7 @@ ON CONFLICT(name) DO UPDATE SET
             QueryError: If the database query or pagination validation
                 fails.
         """
-        validate_pagination_args(limit, 0, event=PRESET_CUSTOM_LIST_FAILED)
+        limit = validate_pagination_args(limit, 0, event=PRESET_CUSTOM_LIST_FAILED)
         try:
             async with self._db.execute(
                 "SELECT name, config_json, description, created_at, "

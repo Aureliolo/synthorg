@@ -298,7 +298,7 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the query or pagination validation fails.
         """
-        validate_pagination_args(limit, 0, event=META_CUSTOM_RULE_LIST_FAILED)
+        limit = validate_pagination_args(limit, 0, event=META_CUSTOM_RULE_LIST_FAILED)
         base = (
             "SELECT id, name, description, metric_path, "
             "comparator, threshold, severity, target_altitudes, "

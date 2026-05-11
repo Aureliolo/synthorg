@@ -259,6 +259,10 @@ class PostgresProjectRepository:
             conditions.append("lead = %s")
             params.append(lead)
 
+        # Safety invariant: ``conditions`` only ever contains hardcoded
+        # ``"<col> = %s"`` fragments built above; the filter values flow
+        # through ``params`` and stay parameterized. Never interpolate
+        # user-supplied text into ``conditions``.
         where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
         query = f"SELECT * FROM projects{where_clause} ORDER BY id LIMIT %s"  # noqa: S608
         params.append(effective_limit)

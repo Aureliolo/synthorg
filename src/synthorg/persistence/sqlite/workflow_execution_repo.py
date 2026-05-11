@@ -389,7 +389,9 @@ WHERE id = ? AND version = ?""",
             QueryError: If the database query or pagination validation
                 fails.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
+        )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
             cursor = await self._db.execute(
@@ -440,7 +442,9 @@ WHERE id = ? AND version = ?""",
             QueryError: If the database query or pagination validation
                 fails.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
+        )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
             cursor = await self._db.execute(

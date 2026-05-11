@@ -359,7 +359,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             QueryError: If the database query or pagination validation
                 fails.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT semver FROM subworkflows WHERE subworkflow_id = ? LIMIT ?",
@@ -397,7 +399,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             QueryError: If the database query or pagination validation
                 fails.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608

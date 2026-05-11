@@ -62,6 +62,23 @@ class TestProjectController:
         body = resp.json()
         assert len(body["data"]) == 2
 
+    def test_list_projects_has_more_with_overflow(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        for i in range(4):
+            test_client.post(
+                "/api/v1/projects",
+                json={"name": f"P-page-{i:02d}"},
+                headers=make_auth_headers("ceo"),
+            )
+
+        resp = test_client.get("/api/v1/projects?limit=2")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) <= 2
+        assert body["pagination"]["has_more"] is True
+        assert body["pagination"]["next_cursor"] is not None
+
     def test_create_project_with_deadline(self, test_client: TestClient[Any]) -> None:
         resp = test_client.post(
             "/api/v1/projects",

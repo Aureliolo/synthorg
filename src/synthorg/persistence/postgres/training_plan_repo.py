@@ -296,7 +296,7 @@ LIMIT 1""",
             Tuple of plans ordered by ``created_at`` descending,
             capped at *limit* rows.
         """
-        validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
+        limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
         try:
             async with (
                 self._pool.connection() as conn,

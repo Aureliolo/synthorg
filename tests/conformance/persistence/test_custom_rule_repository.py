@@ -111,6 +111,13 @@ class TestCustomRuleRepositoryConformance:
         rows = await backend.custom_rules.list_rules(enabled_only=True)
         assert {r.name for r in rows} == {"on"}
 
+    async def test_list_rules_respects_limit(self, backend: PersistenceBackend) -> None:
+        for i in range(5):
+            await backend.custom_rules.save(_make_rule(name=f"rule-lim-{i:02d}"))
+
+        rows = await backend.custom_rules.list_rules(limit=3)
+        assert len(rows) <= 3
+
     async def test_list_rules_empty(self, backend: PersistenceBackend) -> None:
         rows = await backend.custom_rules.list_rules()
         assert rows == ()

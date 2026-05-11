@@ -478,7 +478,9 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             QueryError: If the database query, deserialization, or
                 pagination validation fails.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
+        )
         conditions: list[str] = []
         params: list[object] = []
 

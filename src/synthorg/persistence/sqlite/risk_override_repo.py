@@ -161,7 +161,9 @@ class SQLiteRiskOverrideRepository:
             PersistenceError: If the query or pagination validation
                 fails.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
+        )
         now_utc = format_iso_utc(datetime.now(UTC))
         try:
             cursor = await self._db.execute(

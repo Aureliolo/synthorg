@@ -320,7 +320,7 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query or deserialization fails,
                 or *limit* is non-int / non-positive.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
+        limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM users WHERE role != ? ORDER BY created_at, id LIMIT ?",

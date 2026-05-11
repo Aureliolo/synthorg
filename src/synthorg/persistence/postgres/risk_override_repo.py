@@ -153,7 +153,9 @@ class PostgresRiskOverrideRepository:
         Raises:
             QueryError: If the query or pagination validation fails.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED)
+        limit = validate_pagination_args(
+            limit, 0, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
+        )
         now_utc = datetime.now(tz=UTC)
         try:
             async with (

@@ -256,7 +256,7 @@ class PostgresUserRepository:
             QueryError: If the database query, deserialization, or
                 pagination validation fails.
         """
-        validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
+        limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
         try:
             async with (
                 self._pool.connection() as conn,

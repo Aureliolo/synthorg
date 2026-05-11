@@ -23,6 +23,14 @@ logger = get_logger(__name__)
 # the codebase (30+ repositories already default ``limit`` to 100).
 DEFAULT_LIST_LIMIT: Final[int] = 100
 
+# Hard upper bound on ``list_*`` / ``query`` page sizes regardless of
+# caller-supplied limit. Defense-in-depth: the API layer's
+# ``CursorLimit`` already caps caller input at 200, but internal
+# service calls that bypass the API would not see that bound. The
+# 10_000 ceiling matches the established per-repo ``_MAX_LIST_ROWS``
+# precedent in ``persistence/{sqlite,postgres}/project_repo.py``.
+MAX_LIST_LIMIT: Final[int] = 10_000
+
 
 def validate_pagination_args(
     limit: object,
@@ -30,7 +38,7 @@ def validate_pagination_args(
     *,
     event: str,
     **context: object,
-) -> None:
+) -> int:
     """Type-check + bounds-check pagination args; log + raise on failure.
 
     Args:
@@ -43,6 +51,11 @@ def validate_pagination_args(
             ``PERSISTENCE_DECISION_RECORD_QUERY_FAILED``).
         **context: Extra structured fields the caller wants to attach
             to the log line (e.g. ``task_id`` or ``agent_id``).
+
+    Returns:
+        ``limit`` clamped to ``[1, MAX_LIST_LIMIT]`` so repository
+        callers cannot trigger an unbounded scan even when an internal
+        path bypasses the API layer's ``CursorLimit`` bound.
 
     Raises:
         QueryError: If either argument fails the type or bounds check.
@@ -85,3 +98,4 @@ def validate_pagination_args(
             **context,
         )
         raise QueryError(msg)
+    return min(limit, MAX_LIST_LIMIT)

@@ -206,14 +206,11 @@ class ApiKeyRepository(Protocol):
 
         Args:
             user_id: The owner user ID.
-            limit: Maximum keys to return; ``None`` (default) preserves
-                fetch-all semantics.
-            offset: Keys to skip; applied independently of *limit*.
-                ``offset > 0`` with ``limit=None`` yields a tail
-                window starting after *offset* rows.
+            limit: Maximum keys to return (default 100). Must be >= 1.
+            offset: Keys to skip; applied before *limit*. Must be >= 0.
 
         Returns:
-            API keys for the user.
+            API keys for the user, capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.

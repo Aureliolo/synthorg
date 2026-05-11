@@ -40,7 +40,7 @@ class LifecycleEventRepository(Protocol):
         agent_id: NotBlankStr | None = None,
         event_type: LifecycleEventType | None = None,
         since: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AgentLifecycleEvent, ...]:
         """List lifecycle events with optional filters.
 
@@ -48,10 +48,11 @@ class LifecycleEventRepository(Protocol):
             agent_id: Filter by agent identifier.
             event_type: Filter by event type.
             since: Filter events after this timestamp.
-            limit: Maximum number of events to return.
+            limit: Maximum events to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching lifecycle events.
+            Matching lifecycle events capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.

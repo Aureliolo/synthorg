@@ -8,8 +8,8 @@
  * wrapper around the list -- the controller returns the raw list
  * inside ``ApiResponse.data``).
  */
-import { apiClient, unwrap } from '../client'
-import type { ApiResponse } from '../types/http'
+import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 /** Mirrors ``synthorg.core.enums.WorkflowExecutionStatus``. */
 export type WorkflowExecutionStatus =
@@ -55,17 +55,20 @@ export interface WorkflowExecution {
 /**
  * GET /workflow-executions/by-definition/{workflow_id}
  *
- * Backend returns ``ApiResponse[list[WorkflowExecution]]`` -- a flat
- * list inside ``data``, NOT a ``{ executions: ... }`` wrapper. The
- * unwrap is direct.
+ * Backend returns ``PaginatedResponse[WorkflowExecution]`` (cursor
+ * pagination). Callers receive a ``PaginatedResult`` carrying the
+ * page rows plus ``nextCursor`` / ``hasMore`` so they can drive
+ * subsequent fetches.
  */
 export async function listWorkflowExecutions(
   workflowId: string,
-): Promise<readonly WorkflowExecution[]> {
-  const response = await apiClient.get<ApiResponse<WorkflowExecution[]>>(
+  params: { cursor?: string | null; limit?: number } = {},
+): Promise<PaginatedResult<WorkflowExecution>> {
+  const response = await apiClient.get<PaginatedResponse<WorkflowExecution>>(
     `/workflow-executions/by-definition/${encodeURIComponent(workflowId)}`,
+    { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<WorkflowExecution>(response)
 }
 
 /**

@@ -489,7 +489,7 @@ class MeetingScheduler:
 
         # Sleep-first: avoids duplicate meetings on restart/deploy.
         try:
-            # lint-allow: long-running-loop-kill-switch -- meetings_enabled gates work.
+            # lint-allow: long-running-loop-kill-switch -- stop() cancel.
             while True:
                 await asyncio.sleep(interval)
                 logger.info(

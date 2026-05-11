@@ -59,7 +59,7 @@ Use the helpers in `common_args.py` for tools without `args_model`:
 - `require_dict(arguments, key, *, value_type=None, deep_copy=True)` for dict args; pass `value_type=str` for `dict[str, str]` validation.
 - `parse_time_window(arguments, *, until_required=True)` for ISO 8601 since/until parsing.
 - `parse_str_sequence(arguments, key)` for optional sequence-of-non-blank-strings args.
-- `coerce_pagination(arguments, *, default_limit=50)` for offset/limit with bool rejection and bound enforcement.
+- `coerce_pagination(arguments, *, default_limit=50)` for offset/limit with bool rejection and bound enforcement. (MCP tools default to 50; this is intentionally lower than the repository-layer `DEFAULT_LIST_LIMIT = 100` so paginated MCP responses stay terse for assistants.)
 
 For actor identity: use `actor_id(actor)` for optional attribution, `require_actor_id(actor)` when attribution is mandatory (raises if missing), and `actor_label(actor)` only for emit-only paths where a `"mcp-anonymous"` fallback is acceptable.
 

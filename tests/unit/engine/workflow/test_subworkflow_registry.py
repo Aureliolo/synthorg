@@ -118,7 +118,6 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         *,
         limit: int = 100,
     ) -> tuple[SubworkflowSummary, ...]:
-        del limit
         grouped: dict[str, list[WorkflowDefinition]] = {}
         for definition in self._rows.values():
             grouped.setdefault(definition.id, []).append(definition)
@@ -139,7 +138,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
                     version_count=len(items),
                 ),
             )
-        return tuple(summaries)
+        return tuple(summaries)[:limit]
 
     async def search(self, query: str) -> tuple[SubworkflowSummary, ...]:
         q = query.lower()

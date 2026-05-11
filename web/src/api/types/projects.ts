@@ -26,6 +26,6 @@ export interface CreateProjectRequest {
 export interface ProjectFilters {
   status?: ProjectStatus
   lead?: string
-  offset?: number
+  cursor?: string | null
   limit?: number
 }
