@@ -132,7 +132,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <form
           onSubmit={handleSubmit}
-          className="rounded-lg border border-border bg-card p-8 space-y-6"
+          className="rounded-lg border border-border bg-card p-8 space-y-section-gap"
         >
           {/* Wordmark */}
           <p className="text-center font-sans text-2xl font-bold text-accent">

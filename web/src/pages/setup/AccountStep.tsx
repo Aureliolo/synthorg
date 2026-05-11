@@ -158,6 +158,7 @@ export function AccountStep() {
               placeholder={`Min ${minPasswordLength} characters`}
               disabled={loading}
               hint={`Min ${minPasswordLength} characters`}
+              autoComplete="new-password"
             />
             {password.length > 0 && (
               <div className="flex items-center gap-2">
@@ -181,6 +182,7 @@ export function AccountStep() {
             placeholder="Repeat password"
             disabled={loading}
             error={confirmPassword.length > 0 && password !== confirmPassword ? 'Passwords do not match' : null}
+            autoComplete="new-password"
           />
         </PasswordVisibilityGroup>
 

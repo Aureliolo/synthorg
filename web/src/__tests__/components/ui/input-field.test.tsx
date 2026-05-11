@@ -146,6 +146,27 @@ describe('InputField', () => {
       expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password')
     })
 
+    it('activates the toggle via keyboard (Enter and Space)', async () => {
+      const user = userEvent.setup()
+      render(<InputField label="Password" type="password" />)
+      const button = screen.getByRole('button', { name: 'Show password' })
+      button.focus()
+      await user.keyboard('{Enter}')
+      expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'text')
+      screen.getByRole('button', { name: 'Hide password' }).focus()
+      await user.keyboard(' ')
+      expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password')
+    })
+
+    it('captures typed value while the field is revealed', async () => {
+      const user = userEvent.setup()
+      render(<InputField label="Password" type="password" />)
+      await user.click(screen.getByRole('button', { name: 'Show password' }))
+      const input = screen.getByLabelText('Password')
+      await user.type(input, 'SecurePass123')
+      expect(input).toHaveValue('SecurePass123')
+    })
+
     it('does not render the toggle when hidePasswordToggle is set', () => {
       render(<InputField label="Password" type="password" hidePasswordToggle />)
       expect(screen.queryByRole('button', { name: 'Show password' })).not.toBeInTheDocument()
