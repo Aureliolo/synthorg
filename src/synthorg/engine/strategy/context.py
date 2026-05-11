@@ -56,8 +56,8 @@ class _StrategicContextOverridesArgs(BaseModel):
     competitive_position: NotBlankStr | None = None
 
 
-# audit-keep 2026-05-10: 2 impls (ConfigContextProvider, MemoryContextProvider)
-# in this file; composition via fallback param.
+# 2 impls (ConfigContextProvider, MemoryContextProvider) in this file;
+# composition via fallback param.
 @runtime_checkable
 class StrategicContextProvider(Protocol):
     """Protocol for providing strategic context."""

@@ -66,8 +66,8 @@ class ShadowTaskOutcome(BaseModel):
         return self
 
 
-# audit-keep 2026-05-10: 2 impls in shadow_providers.py (Configured/Recent)
-# + ShadowEvaluationGuard consumer; plug-in extension surface.
+# 2 impls in shadow_providers.py (Configured/Recent) + ShadowEvaluationGuard
+# consumer; plug-in extension surface.
 class ShadowTaskProvider(Protocol):
     """Sources the sample task suite for a shadow evaluation run."""
 
@@ -99,8 +99,8 @@ class ShadowTaskProvider(Protocol):
         ...
 
 
-# audit-keep 2026-05-10: vendor-injection surface; production wires to
-# AgentEngine.run via caller-supplied adapter, tests supply a fake.
+# Vendor-injection surface: production wires to AgentEngine.run via a
+# caller-supplied adapter; tests supply a fake.
 class ShadowAgentRunner(Protocol):
     """Executes one task against a given identity with optional proposal."""
 

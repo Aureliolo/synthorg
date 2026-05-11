@@ -61,8 +61,8 @@ _SECURITY_INCIDENT_EXCEPTIONS: tuple[type[TsaError], ...] = (
 )
 
 
-# audit-keep 2026-05-10: 2 impls in this file (LocalClockProvider,
-# ResilientTimestampProvider) + AuditChainSink consumer + 3 test files.
+# 2 impls in this file (LocalClockProvider, ResilientTimestampProvider)
+# + AuditChainSink consumer + 3 test files.
 class TimestampProvider(Protocol):
     """Protocol for audit chain timestamp sources."""
 

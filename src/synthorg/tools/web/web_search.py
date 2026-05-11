@@ -41,9 +41,9 @@ class SearchResult(BaseModel):
     snippet: str
 
 
-# audit-keep 2026-05-10: vendor-agnostic public extension surface;
-# tools/factory.py threads it through 4 callsites; intentional
-# no-built-in-impl design (MCP / user-supplied).
+# Vendor-agnostic public extension surface; tools/factory.py threads it
+# through 4 callsites; intentional no-built-in-impl design
+# (MCP / user-supplied).
 @runtime_checkable
 class WebSearchProvider(Protocol):
     """Abstracted web search provider protocol.

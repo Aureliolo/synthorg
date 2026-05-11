@@ -7,8 +7,8 @@ if TYPE_CHECKING:
     from synthorg.ontology.models import DriftReport
 
 
-# audit-keep 2026-05-10: LayeredDriftDetector impl in drift/layered.py
-# + drift service consumer + 2 test files.
+# LayeredDriftDetector impl in drift/layered.py + drift service consumer
+# + 2 test files.
 @runtime_checkable
 class DriftDetectionStrategy(Protocol):
     """Pluggable strategy for detecting entity semantic drift.

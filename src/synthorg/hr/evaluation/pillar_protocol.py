@@ -13,8 +13,8 @@ from synthorg.hr.evaluation.models import (
 )
 
 
-# audit-keep 2026-05-10: 5 strategy slots in EvaluationService (intelligence/
-# efficiency/resilience/governance/ux) + ConfigurablePillarScorer default impl.
+# 5 strategy slots in EvaluationService (intelligence/efficiency/resilience/
+# governance/ux) + ConfigurablePillarScorer default impl.
 @runtime_checkable
 class PillarScoringStrategy(Protocol):
     """Strategy for scoring a single evaluation pillar.

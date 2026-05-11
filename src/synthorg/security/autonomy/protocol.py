@@ -6,8 +6,8 @@ from synthorg.core.enums import AutonomyLevel, DowngradeReason  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
-# audit-keep 2026-05-10: HumanOnlyPromotionStrategy impl in
-# autonomy/change_strategy.py + pluggable promotion/downgrade strategy seam.
+# HumanOnlyPromotionStrategy impl in autonomy/change_strategy.py;
+# pluggable promotion/downgrade strategy seam.
 @runtime_checkable
 class AutonomyChangeStrategy(Protocol):
     """Strategy for managing runtime autonomy level changes.

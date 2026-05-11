@@ -3,9 +3,9 @@
 from typing import Protocol, runtime_checkable
 
 
-# audit-keep 2026-05-10: multi-consumer wiring via IntegrationsBundle
-# (state, state_services, integrations_wiring, mcp_service); vendor-agnostic
-# tunnel abstraction (ngrok, cloudflared, etc.).
+# Multi-consumer wiring via IntegrationsBundle (state, state_services,
+# integrations_wiring, mcp_service); vendor-agnostic tunnel abstraction
+# (ngrok, cloudflared, etc.).
 @runtime_checkable
 class TunnelProvider(Protocol):
     """Public URL tunnel for webhook reception during local dev.

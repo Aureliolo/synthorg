@@ -28,8 +28,8 @@ logger = get_logger(__name__)
 _EXPECTED_WINDOWS = ("7d", "30d", "90d")
 
 
-# audit-keep 2026-05-10: ThresholdPruningPolicy + TrendPruningPolicy impls;
-# cross-area consumer (PruningService + scaling PerformancePruningStrategy).
+# ThresholdPruningPolicy + TrendPruningPolicy impls; cross-area consumer
+# (PruningService + scaling PerformancePruningStrategy).
 @runtime_checkable
 class PruningPolicy(Protocol):
     """Strategy for evaluating whether an agent should be pruned."""

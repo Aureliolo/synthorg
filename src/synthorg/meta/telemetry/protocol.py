@@ -17,8 +17,7 @@ if TYPE_CHECKING:
     )
 
 
-# audit-keep 2026-05-10: impl in telemetry/emitter.py + telemetry/factory.py
-# + 2 test refs.
+# Impl in telemetry/emitter.py + telemetry/factory.py + 2 test refs.
 @runtime_checkable
 class AnalyticsEmitter(Protocol):
     """Emits anonymized outcome events to a collector.
@@ -64,8 +63,8 @@ class AnalyticsEmitter(Protocol):
         ...
 
 
-# audit-keep 2026-05-10: impl in telemetry/collector.py + telemetry/factory.py
-# + API controller consumer + 4 test refs.
+# Impl in telemetry/collector.py + telemetry/factory.py + API controller
+# consumer + 4 test refs.
 @runtime_checkable
 class AnalyticsCollector(Protocol):
     """Receives and stores anonymized events from deployments.
@@ -105,7 +104,7 @@ class AnalyticsCollector(Protocol):
         ...
 
 
-# audit-keep 2026-05-10: impl in telemetry/recommender.py + factory wiring.
+# Impl in telemetry/recommender.py + factory wiring.
 @runtime_checkable
 class RecommendationProvider(Protocol):
     """Generates threshold recommendations from aggregated patterns.

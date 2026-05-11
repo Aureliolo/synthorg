@@ -52,8 +52,8 @@ def _resolve_context_value(entry: str, val: Any) -> list[str]:
     return []
 
 
-# audit-keep 2026-05-10: 2 impls (Passthrough/Registry) in this file +
-# MeetingScheduler consumer + 3 test files; plug-in extension surface.
+# 2 impls (Passthrough/Registry) in this file + MeetingScheduler consumer
+# + 3 test files; plug-in extension surface.
 @runtime_checkable
 class ParticipantResolver(Protocol):
     """Protocol for resolving participant references to agent IDs."""

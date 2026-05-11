@@ -6,8 +6,8 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import ConnectionType  # noqa: TC001
 
 
-# audit-keep 2026-05-10: central ConnectionType-to-impl registry in
-# connections/types/__init__.py with per-type auth impls (GitHub, Slack, etc.).
+# Central ConnectionType-to-impl registry in connections/types/__init__.py
+# with per-type auth impls (GitHub, Slack, etc.).
 @runtime_checkable
 class ConnectionAuthenticator(Protocol):
     """Validates and enriches connection auth for a specific type.

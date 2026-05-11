@@ -17,8 +17,8 @@ from synthorg.observability.events.strategy import STRATEGY_TIER_RESOLVED
 logger = get_logger(__name__)
 
 
-# audit-keep 2026-05-10: 2 impls (FixedTierResolver, ProgressiveTierResolver)
-# + get_tier_resolver() factory in this file.
+# 2 impls (FixedTierResolver, ProgressiveTierResolver) + get_tier_resolver()
+# factory in this file.
 @runtime_checkable
 class CostTierResolver(Protocol):
     """Protocol for resolving cost tiers."""

@@ -391,7 +391,7 @@ The script's classification matched reality: zero structural impls, zero consume
 
 ### Audit re-flagged to KEEP (44 protocols)
 
-Each retained protocol carries a one-line `# audit-keep 2026-05-10: <reason>` comment immediately above the `class` line so subsequent regenerations of this document can flag-and-skip rather than re-flag for removal. See the per-area tables above for the original REMOVE rows; the in-code marker captures the cleanup-time rationale.
+Each retained protocol carries a one-line `# <reason>` design-rationale comment immediately above the `class` line describing the implementation(s), factory dispatch, and consumer wiring that justify keeping it. The categories below explain the structural patterns the audit script's regex missed; the in-code comments name the concrete impls/factories/consumers so future readers can verify the wiring without re-running the audit.
 
 Categories of re-flag rationale:
 
