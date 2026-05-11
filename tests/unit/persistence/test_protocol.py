@@ -299,7 +299,8 @@ class _FakeUserRepository:
     async def get_by_username(self, username: str) -> User | None:
         return None
 
-    async def list_users(self) -> tuple[User, ...]:
+    async def list_users(self, *, limit: int = 100) -> tuple[User, ...]:
+        del limit
         return ()
 
     async def list_users_paginated(
@@ -534,7 +535,9 @@ class _FakeWorkflowDefinitionRepository:
         self,
         *,
         workflow_type: WorkflowType | None = None,
+        limit: int = 100,
     ) -> tuple[WorkflowDefinition, ...]:
+        del workflow_type, limit
         return ()
 
     async def delete(self, definition_id: NotBlankStr) -> bool:
@@ -554,13 +557,19 @@ class _FakeWorkflowExecutionRepository:
     async def list_by_definition(
         self,
         definition_id: NotBlankStr,
+        *,
+        limit: int = 100,
     ) -> tuple[WorkflowExecution, ...]:
+        del definition_id, limit
         return ()
 
     async def list_by_status(
         self,
         status: WorkflowExecutionStatus,
+        *,
+        limit: int = 100,
     ) -> tuple[WorkflowExecution, ...]:
+        del status, limit
         return ()
 
     async def find_by_task_id(

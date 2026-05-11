@@ -33,6 +33,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_LISTED,
     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 logger = get_logger(__name__)
 
@@ -458,29 +462,36 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
         self,
         *,
         workflow_type: WorkflowType | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowDefinition, ...]:
         """List workflow definitions with optional filters.
 
         Args:
             workflow_type: Filter by workflow type.
+            limit: Maximum definitions to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching definitions as a tuple.
+            Matching definitions as a tuple, capped at *limit* rows.
 
         Raises:
-            QueryError: If the database query or deserialization fails.
+            QueryError: If the database query, deserialization, or
+                pagination validation fails.
         """
-        query = f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions"  # noqa: S608
+        validate_pagination_args(limit, 0, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED)
         conditions: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
 
         if workflow_type is not None:
             conditions.append("workflow_type = ?")
             params.append(workflow_type.value)
 
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY updated_at DESC LIMIT 10000"
+        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        query = (
+            f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions"  # noqa: S608
+            f"{where_clause} ORDER BY updated_at DESC LIMIT ?"
+        )
+        params.append(limit)
 
         try:
             cursor = await self._db.execute(query, params)

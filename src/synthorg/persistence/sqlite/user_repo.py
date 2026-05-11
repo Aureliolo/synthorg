@@ -38,7 +38,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
 )
-from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -293,22 +296,35 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-    async def list_users(self) -> tuple[User, ...]:
-        """List all human users ordered by creation date.
+    async def list_users(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[User, ...]:
+        """List human users ordered by creation date.
 
         The system user (internal CLI identity) is excluded from the
         result.  Use ``get`` with the system user ID if you need it.
+        For cursor-stable pagination across large user bases use
+        :meth:`list_users_paginated` instead.
+
+        Args:
+            limit: Maximum users to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of human ``User`` records, oldest first.
+            Tuple of human ``User`` records, oldest first, capped at
+            *limit* rows.
 
         Raises:
-            QueryError: If the database query or deserialization fails.
+            QueryError: If the database query or deserialization fails,
+                or *limit* is non-int / non-positive.
         """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM users WHERE role != ? ORDER BY created_at, id",
-                (HumanRole.SYSTEM.value,),
+                "SELECT * FROM users WHERE role != ? ORDER BY created_at, id LIMIT ?",
+                (HumanRole.SYSTEM.value, limit),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

@@ -26,6 +26,10 @@ from synthorg.observability.events.preset import (
     PRESET_CUSTOM_LISTED,
     PRESET_CUSTOM_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.preset_protocol import PresetListRow, PresetRow
 
 if TYPE_CHECKING:
@@ -197,20 +201,26 @@ ON CONFLICT(name) DO UPDATE SET
 
     async def list_all(
         self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[PresetListRow, ...]:
-        """List all custom presets ordered by name.
+        """List custom presets ordered by name, bounded by *limit*.
 
-        Returns:
-            Tuple of ``PresetListRow`` named tuples.
+        Args:
+            limit: Maximum presets to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If the database query or pagination validation
+                fails.
         """
+        validate_pagination_args(limit, 0, event=PRESET_CUSTOM_LIST_FAILED)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     "SELECT name, config_json, description, created_at, "
-                    "updated_at FROM custom_presets ORDER BY name",
+                    "updated_at FROM custom_presets ORDER BY name LIMIT %s",
+                    (limit,),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

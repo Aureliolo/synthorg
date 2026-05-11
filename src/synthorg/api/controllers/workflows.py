@@ -117,7 +117,12 @@ class WorkflowController(Controller):
                 msg = f"Invalid workflow type: {workflow_type!r}. Valid: {valid}"
                 raise WorkflowTypeInvalidError(msg) from exc
 
-        defs = await _service(state).list_definitions(workflow_type=parsed_type)
+        # Over-fetch by one page so the cursor paginator can detect
+        # has_more without a separate COUNT round-trip.
+        defs = await _service(state).list_definitions(
+            workflow_type=parsed_type,
+            limit=limit + 1,
+        )
         page, meta = paginate_cursor(
             defs,
             limit=limit,

@@ -95,10 +95,10 @@ src/synthorg/client/generators/llm.py:57:26
 src/synthorg/client/generators/procedural.py:66:38
 src/synthorg/communication/bus/_nats_history.py:74:22
 src/synthorg/communication/bus/_nats_history.py:75:35
-src/synthorg/communication/bus/_nats_history.py:156:22
-src/synthorg/communication/bus/_nats_history.py:157:35
-src/synthorg/communication/bus/_nats_history.py:202:22
-src/synthorg/communication/bus/_nats_history.py:203:35
+src/synthorg/communication/bus/_nats_history.py:157:22
+src/synthorg/communication/bus/_nats_history.py:158:35
+src/synthorg/communication/bus/_nats_history.py:203:22
+src/synthorg/communication/bus/_nats_history.py:204:35
 src/synthorg/communication/conflict_resolution/escalation/config.py:15:26
 src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:34:17
 src/synthorg/communication/conflict_resolution/escalation/protocol.py:21:17
@@ -194,7 +194,7 @@ src/synthorg/hr/performance/quality_override_store.py:26:25
 src/synthorg/hr/performance/theil_sen_strategy.py:61:31
 src/synthorg/hr/performance/theil_sen_strategy.py:62:37
 src/synthorg/hr/performance/theil_sen_strategy.py:63:37
-src/synthorg/hr/persistence_protocol.py:42:21
+src/synthorg/hr/persistence_protocol.py:43:21
 src/synthorg/hr/scaling/guards/approval_gate.py:49:27
 src/synthorg/hr/scaling/guards/conflict_resolver.py:30:19
 src/synthorg/hr/scaling/guards/cooldown.py:34:32
@@ -437,7 +437,7 @@ src/synthorg/persistence/postgres/decision_repo.py:514:21
 src/synthorg/persistence/postgres/escalation_repo.py:42:17
 src/synthorg/persistence/postgres/fine_tune_repo.py:244:21
 src/synthorg/persistence/postgres/fine_tune_repo.py:456:21
-src/synthorg/persistence/postgres/hr_repositories.py:116:21
+src/synthorg/persistence/postgres/hr_repositories.py:120:21
 src/synthorg/persistence/postgres/mcp_installation_repo.py:134:21
 src/synthorg/persistence/postgres/ontology_drift_repo.py:105:21
 src/synthorg/persistence/postgres/ontology_drift_repo.py:132:21
@@ -453,7 +453,7 @@ src/synthorg/persistence/postgres/session_repo.py:127:21
 src/synthorg/persistence/postgres/session_repo.py:155:21
 src/synthorg/persistence/postgres/settings_repo.py:127:21
 src/synthorg/persistence/postgres/ssrf_violation_repo.py:143:21
-src/synthorg/persistence/postgres/user_repo.py:513:21
+src/synthorg/persistence/postgres/user_repo.py:535:21
 src/synthorg/persistence/postgres/version_repo.py:339:21
 src/synthorg/persistence/postgres/webhook_receipt_repo.py:147:21
 src/synthorg/persistence/provider_audit_protocol.py:62:21
@@ -467,7 +467,7 @@ src/synthorg/persistence/sqlite/decision_repo.py:556:21
 src/synthorg/persistence/sqlite/escalation_repo.py:36:17
 src/synthorg/persistence/sqlite/fine_tune_repo.py:212:21
 src/synthorg/persistence/sqlite/fine_tune_repo.py:419:21
-src/synthorg/persistence/sqlite/hr_repositories.py:113:21
+src/synthorg/persistence/sqlite/hr_repositories.py:117:21
 src/synthorg/persistence/sqlite/mcp_installation_repo.py:109:21
 src/synthorg/persistence/sqlite/ontology_drift_repo.py:112:21
 src/synthorg/persistence/sqlite/ontology_drift_repo.py:129:21
@@ -483,12 +483,12 @@ src/synthorg/persistence/sqlite/session_repo.py:145:21
 src/synthorg/persistence/sqlite/session_repo.py:167:21
 src/synthorg/persistence/sqlite/settings_repo.py:98:21
 src/synthorg/persistence/sqlite/ssrf_violation_repo.py:156:21
-src/synthorg/persistence/sqlite/user_repo.py:679:21
+src/synthorg/persistence/sqlite/user_repo.py:695:21
 src/synthorg/persistence/sqlite/version_repo.py:331:21
 src/synthorg/persistence/sqlite/webhook_receipt_repo.py:126:21
 src/synthorg/persistence/ssrf_violation_protocol.py:49:21
 src/synthorg/persistence/task_protocol.py:45:21
-src/synthorg/persistence/user_protocol.py:189:21
+src/synthorg/persistence/user_protocol.py:202:21
 src/synthorg/persistence/version_protocol.py:107:21
 src/synthorg/providers/drivers/litellm_driver.py:97:24
 src/synthorg/providers/health.py:37:23

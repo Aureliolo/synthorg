@@ -9,10 +9,19 @@ bits stay in the call sites (the ``event`` constant + extra context
 kwargs to log).
 """
 
+from typing import Final
+
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
+
+# Canonical default page size for ``list_*`` / ``query`` repository
+# methods. Lives here so every repo and Protocol shares a single named
+# constant rather than embedding an inline ``100`` literal that trips
+# the magic-numbers gate. Matches the established convention across
+# the codebase (30+ repositories already default ``limit`` to 100).
+DEFAULT_LIST_LIMIT: Final[int] = 100
 
 
 def validate_pagination_args(

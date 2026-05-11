@@ -74,10 +74,14 @@ class FakeRiskOverrideRepository:
     ) -> RiskTierOverride | None:
         return self._overrides.get(override_id)
 
-    async def list_active(self) -> tuple[RiskTierOverride, ...]:
+    async def list_active(
+        self,
+        *,
+        limit: int = 100,
+    ) -> tuple[RiskTierOverride, ...]:
         active = [o for o in self._overrides.values() if o.is_active]
         active.sort(key=lambda o: o.created_at, reverse=True)
-        return tuple(active)
+        return tuple(active[:limit])
 
     async def revoke(
         self,
@@ -423,11 +427,12 @@ class FakeCustomRuleRepository:
         self,
         *,
         enabled_only: bool = False,
+        limit: int = 100,
     ) -> tuple[CustomRuleDefinition, ...]:
         rules = list(self._rules.values())
         if enabled_only:
             rules = [r for r in rules if r.enabled]
-        return tuple(sorted(rules, key=lambda r: r.name))
+        return tuple(sorted(rules, key=lambda r: r.name)[:limit])
 
     async def delete(self, rule_id: NotBlankStr) -> bool:
         key = str(rule_id)

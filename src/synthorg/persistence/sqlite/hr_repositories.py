@@ -33,6 +33,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_METRIC_QUERY_FAILED,
     PERSISTENCE_TASK_METRIC_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -233,10 +237,15 @@ INSERT INTO task_metrics (
         agent_id: str | None = None,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TaskMetricRecord, ...]:
-        """Query task metric records with optional filters."""
+        """Query task metric records with optional filters.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+        """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED)
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if agent_id is not None:
             clauses.append("agent_id = ?")
             params.append(agent_id)
@@ -254,7 +263,8 @@ SELECT id, agent_id, task_id, task_type, completed_at,
 FROM task_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY completed_at DESC"
+        sql += " ORDER BY completed_at DESC LIMIT ?"
+        params.append(limit)
 
         try:
             cursor = await self._db.execute(sql, params)
@@ -346,10 +356,15 @@ INSERT INTO collaboration_metrics (
         *,
         agent_id: str | None = None,
         since: AwareDatetime | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CollaborationMetricRecord, ...]:
-        """Query collaboration metric records with optional filters."""
+        """Query collaboration metric records with optional filters.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+        """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED)
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if agent_id is not None:
             clauses.append("agent_id = ?")
             params.append(agent_id)
@@ -364,7 +379,8 @@ SELECT id, agent_id, recorded_at, delegation_success,
 FROM collaboration_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY recorded_at DESC"
+        sql += " ORDER BY recorded_at DESC LIMIT ?"
+        params.append(limit)
 
         try:
             cursor = await self._db.execute(sql, params)

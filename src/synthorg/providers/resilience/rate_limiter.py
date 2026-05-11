@@ -68,6 +68,7 @@ class RateLimiter:
 
         # Respect pause-until from retry_after.
         # Re-check in a loop in case pause() extends _pause_until while sleeping.
+        # lint-allow: long-running-loop-kill-switch -- per-call retry-wait.
         while True:
             now = self._clock.monotonic()
             remaining = self._pause_until - now
@@ -145,6 +146,7 @@ class RateLimiter:
         rpm = self._config.max_requests_per_minute
         window = 60.0
 
+        # lint-allow: long-running-loop-kill-switch -- per-call RPM-slot wait.
         while True:
             async with self._rpm_lock:
                 now = self._clock.monotonic()

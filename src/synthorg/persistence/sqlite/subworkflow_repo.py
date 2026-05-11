@@ -41,6 +41,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_LISTED,
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 logger = get_logger(__name__)
 
@@ -342,12 +346,24 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
     async def list_versions(
         self,
         subworkflow_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[str, ...]:
-        """List semver strings for a subworkflow, newest first."""
+        """List semver strings for a subworkflow, newest first.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`). The
+        SQL fetches at most *limit* rows; client-side semver sorting
+        then orders them descending.
+
+        Raises:
+            QueryError: If the database query or pagination validation
+                fails.
+        """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED)
         try:
             cursor = await self._db.execute(
-                "SELECT semver FROM subworkflows WHERE subworkflow_id = ?",
-                (subworkflow_id,),
+                "SELECT semver FROM subworkflows WHERE subworkflow_id = ? LIMIT ?",
+                (subworkflow_id, limit),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
@@ -364,12 +380,32 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         versions.sort(key=_semver_sort_key, reverse=True)
         return tuple(versions)
 
-    async def list_summaries(self) -> tuple[SubworkflowSummary, ...]:
-        """Return summaries (latest version per subworkflow)."""
+    async def list_summaries(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[SubworkflowSummary, ...]:
+        """Return summaries (latest version per subworkflow).
+
+        Bounded by *limit* distinct subworkflow ids. The subquery
+        selects the first *limit* unique subworkflow_ids; the outer
+        SELECT then fetches every version row for those ids so the
+        client-side aggregator still sees the full version set per
+        included subworkflow.
+
+        Raises:
+            QueryError: If the database query or pagination validation
+                fails.
+        """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED)
         try:
             cursor = await self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
-                "ORDER BY subworkflow_id, created_at DESC",
+                "WHERE subworkflow_id IN ("
+                "SELECT DISTINCT subworkflow_id FROM subworkflows "
+                "ORDER BY subworkflow_id LIMIT ?"
+                ") ORDER BY subworkflow_id, created_at DESC",
+                (limit,),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:

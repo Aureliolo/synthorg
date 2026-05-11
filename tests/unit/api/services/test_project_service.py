@@ -52,13 +52,14 @@ class _FakeProjectRepo:
         *,
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
+        limit: int = 100,
     ) -> tuple[Project, ...]:
         rows = sorted(self._rows.values(), key=lambda p: p.id)
         if status is not None:
             rows = [p for p in rows if p.status == status]
         if lead is not None:
             rows = [p for p in rows if p.lead == lead]
-        return tuple(rows)
+        return tuple(rows[:limit])
 
     async def delete(self, project_id: NotBlankStr) -> bool:
         return self._rows.pop(project_id, None) is not None

@@ -39,6 +39,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_LISTED,
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 logger = get_logger(__name__)
 
@@ -367,24 +371,32 @@ WHERE id = ? AND version = ?""",
     async def list_by_definition(
         self,
         definition_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowExecution, ...]:
         """List executions for a given workflow definition.
 
         Args:
             definition_id: The source definition identifier.
+            limit: Maximum executions to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching executions ordered by ``updated_at`` descending.
+            Matching executions ordered by ``updated_at`` descending,
+            capped at *limit* rows.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If the database query or pagination validation
+                fails.
         """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED)
+        effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE definition_id = ?"
                 " ORDER BY updated_at DESC, id ASC LIMIT ?",
-                (definition_id, _MAX_LIST_ROWS),
+                (definition_id, effective_limit),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
@@ -410,24 +422,32 @@ WHERE id = ? AND version = ?""",
     async def list_by_status(
         self,
         status: WorkflowExecutionStatus,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowExecution, ...]:
         """List executions with a given status.
 
         Args:
             status: The execution status to filter by.
+            limit: Maximum executions to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching executions ordered by ``updated_at`` descending.
+            Matching executions ordered by ``updated_at`` descending,
+            capped at *limit* rows.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If the database query or pagination validation
+                fails.
         """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED)
+        effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE status = ?"
                 " ORDER BY updated_at DESC, id ASC LIMIT ?",
-                (status.value, _MAX_LIST_ROWS),
+                (status.value, effective_limit),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:

@@ -129,7 +129,10 @@ async def workflow_executions_list(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        executions = await service.list_executions(def_id)
+        # MCP list handlers paginate in-memory; fetch one page-worth
+        # at the repository layer so unbounded scans cannot be
+        # triggered from MCP.
+        executions = await service.list_executions(def_id, limit=limit + offset)
         page, meta = paginate_sequence(executions, offset=offset, limit=limit)
     except MemoryError, RecursionError:
         raise

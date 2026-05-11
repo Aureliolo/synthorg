@@ -72,7 +72,10 @@ class BackupService(BackupServiceArchiveMixin):
         self._handlers: MappingProxyType[BackupComponent, ComponentHandler] = (
             MappingProxyType(deepcopy(handlers))
         )
-        self._backup_lock = asyncio.Lock()
+        # Eager init: backup operations may be triggered before a
+        # background scheduler run; a half-published lock attribute
+        # would race with an early manual ``run_backup`` call.
+        self._backup_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
         self._backup_path = Path(config.path)
         self._retention = RetentionManager(config.retention, self._backup_path)
         self._scheduler = BackupScheduler(self, config.schedule_hours)

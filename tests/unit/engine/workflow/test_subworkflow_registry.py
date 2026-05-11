@@ -101,14 +101,24 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         row = self._rows.get((subworkflow_id, version))
         return copy.deepcopy(row) if row is not None else None
 
-    async def list_versions(self, subworkflow_id: str) -> tuple[str, ...]:
+    async def list_versions(
+        self,
+        subworkflow_id: str,
+        *,
+        limit: int = 100,
+    ) -> tuple[str, ...]:
         from packaging.version import Version
 
         versions = [v for (sid, v) in self._rows if sid == subworkflow_id]
         versions.sort(key=Version, reverse=True)
-        return tuple(versions)
+        return tuple(versions[:limit])
 
-    async def list_summaries(self) -> tuple[SubworkflowSummary, ...]:
+    async def list_summaries(
+        self,
+        *,
+        limit: int = 100,
+    ) -> tuple[SubworkflowSummary, ...]:
+        del limit
         grouped: dict[str, list[WorkflowDefinition]] = {}
         for definition in self._rows.values():
             grouped.setdefault(definition.id, []).append(definition)

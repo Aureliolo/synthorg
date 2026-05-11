@@ -23,6 +23,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -278,15 +282,21 @@ LIMIT 1""",
     async def list_by_agent(
         self,
         agent_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TrainingPlan, ...]:
-        """Return all plans for an agent ordered by created_at desc.
+        """Return plans for an agent ordered by created_at desc.
 
         Args:
             agent_id: Agent identifier.
+            limit: Maximum plans to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of plans ordered by ``created_at`` descending.
+            Tuple of plans ordered by ``created_at`` descending,
+            capped at *limit* rows.
         """
+        validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -296,8 +306,8 @@ LIMIT 1""",
                     """\
 SELECT * FROM training_plans
 WHERE new_agent_id = %s
-ORDER BY created_at DESC""",
-                    (str(agent_id),),
+ORDER BY created_at DESC LIMIT %s""",
+                    (str(agent_id), limit),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

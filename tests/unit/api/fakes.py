@@ -496,13 +496,14 @@ class FakeProjectRepository:
         *,
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
+        limit: int = 100,
     ) -> tuple[Project, ...]:
         result = sorted(self._projects.values(), key=lambda p: p.id)
         if status is not None:
             result = [p for p in result if p.status == status]
         if lead is not None:
             result = [p for p in result if p.lead == lead]
-        return tuple(result)
+        return tuple(result[:limit])
 
     async def delete(self, project_id: NotBlankStr) -> bool:
         return self._projects.pop(project_id, None) is not None
@@ -607,10 +608,11 @@ class FakePersonalityPresetRepository:
     async def get(self, name: NotBlankStr) -> PresetRow | None:
         return self._presets.get(name)
 
-    async def list_all(self) -> tuple[PresetListRow, ...]:
-        return tuple(
+    async def list_all(self, *, limit: int = 100) -> tuple[PresetListRow, ...]:
+        rows = tuple(
             PresetListRow(name, *row) for name, row in sorted(self._presets.items())
         )
+        return rows[:limit]
 
     async def delete(self, name: NotBlankStr) -> bool:
         return self._presets.pop(name, None) is not None

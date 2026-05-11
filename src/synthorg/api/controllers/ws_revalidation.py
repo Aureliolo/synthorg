@@ -109,6 +109,7 @@ async def _periodic_revalidate(
         max_events=max_failures,
         window_seconds=float(window),
     )
+    # lint-allow: long-running-loop-kill-switch -- per-connection revalidate.
     while True:
         try:
             await asyncio.sleep(interval_seconds)

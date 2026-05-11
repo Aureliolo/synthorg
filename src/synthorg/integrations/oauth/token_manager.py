@@ -67,7 +67,8 @@ class OAuthTokenManager:
         self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
         self._flow = AuthorizationCodeFlow()
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager init: stop() must be safe before any start() call.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Inject the ConfigResolver after construction.
@@ -141,6 +142,7 @@ class OAuthTokenManager:
 
     async def _refresh_loop(self) -> None:
         """Periodically check and refresh expiring tokens."""
+        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
                 await self._check_and_refresh()

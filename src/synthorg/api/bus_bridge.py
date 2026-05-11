@@ -99,7 +99,9 @@ class MessageBusBridge:
         # _running is atomic against concurrent lifecycle calls.
         # Does not gate publish / receive (those use the underlying
         # bus lock) so normal traffic is not serialized here.
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager init: stop() must be safe to call before start() has
+        # ever run, so a half-published lock attribute would race.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         # Resolver-failure warnings are logged only on the first
         # failure in a run of failures to avoid flooding logs during
         # a prolonged settings outage. The flag is cleared on the

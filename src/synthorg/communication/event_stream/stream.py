@@ -345,6 +345,7 @@ class EventStreamHub:
         level errors (``CancelledError``, ``MemoryError``,
         ``RecursionError``); log every other exception and continue.
         """
+        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             await self._clock.sleep(janitor_interval_seconds)
             try:

@@ -93,15 +93,20 @@ class TaskEngine(TaskEngineLoopsMixin):
         self._persistence = persistence
         self._message_bus = message_bus
         self._config = config or TaskEngineConfig()
-        self._queue: asyncio.Queue[_MutationEnvelope] = asyncio.Queue(
-            maxsize=self._config.max_queue_size,
-        )
+        # Eager init: ``submit`` may enqueue mutations before the
+        # processing task is spawned; the queue must exist for the
+        # atomic check-and-put in ``submit`` to work safely.
+        # fmt: off
+        self._queue: asyncio.Queue[_MutationEnvelope] = asyncio.Queue(maxsize=self._config.max_queue_size)  # lint-allow: loop-bound-init -- see.  # noqa: E501
+        # fmt: on
         self._versions = VersionTracker()
         self._timings = TaskTimingTracker()
         self._processing_task: asyncio.Task[None] | None = None
         self._in_flight: _MutationEnvelope | None = None
         self._running = False
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager init: stop() must be safe to call before start() has
+        # ever run, and ``submit`` requires both locks present.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         # Hot-path admission lock: held only for the atomic check-
         # and-put in :meth:`submit`. ``stop()`` briefly acquires it
         # just long enough to publish ``_running = False`` so new
@@ -109,11 +114,15 @@ class TaskEngine(TaskEngineLoopsMixin):
         # ``_lifecycle_lock`` only. Keeping this lock separate from
         # ``_lifecycle_lock`` is mandated by CLAUDE.md -- hot-path
         # traffic must not serialize against lifecycle transitions.
-        self._admission_lock = asyncio.Lock()
+        # Eager init: ``submit`` is the hot-path entry and may fire
+        # before any lifecycle method runs.
+        self._admission_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._observers: list[Callable[[TaskStateChanged], Awaitable[None]]] = []
-        self._observer_queue: asyncio.Queue[TaskStateChanged | None] = asyncio.Queue(
-            maxsize=self._config.effective_observer_queue_size,
-        )
+        # Eager init: observer registration may happen before start()
+        # so the queue must exist for ``register_observer`` to bind.
+        # fmt: off
+        self._observer_queue: asyncio.Queue[TaskStateChanged | None] = asyncio.Queue(maxsize=self._config.effective_observer_queue_size)  # lint-allow: loop-bound-init -- see.  # noqa: E501
+        # fmt: on
         self._observer_task: asyncio.Task[None] | None = None
         # Set to True when a stop() drain exceeds the hard deadline.
         # Prevents a subsequent start() from creating a second loop

@@ -22,6 +22,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.security.rules.risk_override import RiskTierOverride
 
 if TYPE_CHECKING:
@@ -135,8 +139,21 @@ class PostgresRiskOverrideRepository:
             )
             raise QueryError(msg) from exc
 
-    async def list_active(self) -> tuple[RiskTierOverride, ...]:
-        """Return all active (non-expired, non-revoked) overrides."""
+    async def list_active(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[RiskTierOverride, ...]:
+        """Return active overrides bounded by *limit*.
+
+        Args:
+            limit: Maximum overrides to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
+
+        Raises:
+            QueryError: If the query or pagination validation fails.
+        """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED)
         now_utc = datetime.now(tz=UTC)
         try:
             async with (
@@ -146,8 +163,8 @@ class PostgresRiskOverrideRepository:
                 await cur.execute(
                     f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
                     "WHERE revoked_at IS NULL AND expires_at > %s "
-                    "ORDER BY created_at DESC",
-                    (now_utc,),
+                    "ORDER BY created_at DESC LIMIT %s",
+                    (now_utc, limit),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

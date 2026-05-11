@@ -101,7 +101,8 @@ class SlackNotificationSink:
         self._webhook_url = webhook_url
         self._webhook_timeout_seconds = webhook_timeout_seconds
         self._client: httpx.AsyncClient | None = None
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager init: stop() must be safe before any start() call.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
     @property
     def sink_name(self) -> str:

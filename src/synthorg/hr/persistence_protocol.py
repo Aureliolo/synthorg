@@ -13,6 +13,7 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,  # noqa: TC001
     TaskMetricRecord,  # noqa: TC001
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -79,6 +80,7 @@ class TaskMetricRepository(Protocol):
         agent_id: NotBlankStr | None = None,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TaskMetricRecord, ...]:
         """Query task metric records with optional filters.
 
@@ -86,9 +88,11 @@ class TaskMetricRepository(Protocol):
             agent_id: Filter by agent identifier.
             since: Include records after this time.
             until: Include records before this time.
+            limit: Maximum records to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching task metric records.
+            Matching task metric records capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -116,15 +120,18 @@ class CollaborationMetricRepository(Protocol):
         *,
         agent_id: NotBlankStr | None = None,
         since: AwareDatetime | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CollaborationMetricRecord, ...]:
         """Query collaboration metric records with optional filters.
 
         Args:
             agent_id: Filter by agent identifier.
             since: Include records after this time.
+            limit: Maximum records to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching collaboration metric records.
+            Matching collaboration metric records capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.

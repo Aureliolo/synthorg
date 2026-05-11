@@ -41,6 +41,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_LISTED,
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -322,18 +326,26 @@ class PostgresWorkflowExecutionRepository:
     async def list_by_definition(
         self,
         definition_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowExecution, ...]:
         """List executions for a given workflow definition.
 
         Args:
             definition_id: The source definition identifier.
+            limit: Maximum executions to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching executions ordered by ``updated_at`` descending.
+            Matching executions ordered by ``updated_at`` descending,
+            capped at *limit* rows.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If the database query or pagination validation
+                fails.
         """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED)
+        effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -343,7 +355,7 @@ class PostgresWorkflowExecutionRepository:
                     f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                     " WHERE definition_id = %s"
                     " ORDER BY updated_at DESC, id ASC LIMIT %s",
-                    (definition_id, _MAX_LIST_ROWS),
+                    (definition_id, effective_limit),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -369,18 +381,26 @@ class PostgresWorkflowExecutionRepository:
     async def list_by_status(
         self,
         status: WorkflowExecutionStatus,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowExecution, ...]:
         """List executions with a given status.
 
         Args:
             status: The execution status to filter by.
+            limit: Maximum executions to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Matching executions ordered by ``updated_at`` descending.
+            Matching executions ordered by ``updated_at`` descending,
+            capped at *limit* rows.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If the database query or pagination validation
+                fails.
         """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED)
+        effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -390,7 +410,7 @@ class PostgresWorkflowExecutionRepository:
                     f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                     " WHERE status = %s"
                     " ORDER BY updated_at DESC, id ASC LIMIT %s",
-                    (status.value, _MAX_LIST_ROWS),
+                    (status.value, effective_limit),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

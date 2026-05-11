@@ -52,11 +52,12 @@ class FakeWorkflowDefinitionRepository:
         self,
         *,
         workflow_type: WorkflowType | None = None,
+        limit: int = 100,
     ) -> tuple[WorkflowDefinition, ...]:
         result = list(self._definitions.values())
         if workflow_type is not None:
             result = [d for d in result if d.workflow_type == workflow_type]
-        return tuple(copy.deepcopy(d) for d in result)
+        return tuple(copy.deepcopy(d) for d in result[:limit])
 
     async def delete(self, definition_id: str) -> bool:
         return self._definitions.pop(definition_id, None) is not None
@@ -96,24 +97,28 @@ class FakeWorkflowExecutionRepository:
     async def list_by_definition(
         self,
         definition_id: str,
+        *,
+        limit: int = 100,
     ) -> tuple[WorkflowExecution, ...]:
         result = sorted(
             [e for e in self._executions.values() if e.definition_id == definition_id],
             key=lambda e: e.updated_at,
             reverse=True,
         )
-        return tuple(copy.deepcopy(e) for e in result)
+        return tuple(copy.deepcopy(e) for e in result[:limit])
 
     async def list_by_status(
         self,
         status: WorkflowExecutionStatus,
+        *,
+        limit: int = 100,
     ) -> tuple[WorkflowExecution, ...]:
         result = sorted(
             [e for e in self._executions.values() if e.status == status],
             key=lambda e: e.updated_at,
             reverse=True,
         )
-        return tuple(copy.deepcopy(e) for e in result)
+        return tuple(copy.deepcopy(e) for e in result[:limit])
 
     async def find_by_task_id(
         self,
@@ -263,12 +268,19 @@ class FakeSubworkflowRepository:
     async def list_versions(
         self,
         subworkflow_id: NotBlankStr,
+        *,
+        limit: int = 100,
     ) -> tuple[str, ...]:
         versions = [v for (sid, v) in self._rows if sid == subworkflow_id]
         versions.sort(key=_semver_key, reverse=True)
-        return tuple(versions)
+        return tuple(versions[:limit])
 
-    async def list_summaries(self) -> tuple[SubworkflowSummary, ...]:
+    async def list_summaries(
+        self,
+        *,
+        limit: int = 100,
+    ) -> tuple[SubworkflowSummary, ...]:
+        del limit  # fake aggregates client-side; limit applied at end below
         grouped: dict[str, list[WorkflowDefinition]] = {}
         for definition in self._rows.values():
             grouped.setdefault(definition.id, []).append(definition)

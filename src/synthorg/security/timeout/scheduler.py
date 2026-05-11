@@ -285,6 +285,7 @@ class ApprovalTimeoutScheduler:
         if wake_event is None:  # defensive; start() guarantees non-None
             msg = "_run_loop invoked without an initialised wake event"
             raise RuntimeError(msg)
+        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             wake_event.clear()
             with contextlib.suppress(TimeoutError):

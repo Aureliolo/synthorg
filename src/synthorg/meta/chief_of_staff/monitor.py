@@ -79,8 +79,8 @@ class OrgInflectionMonitor:
         # Per ``docs/reference/lifecycle-sync.md`` the lifecycle
         # primitives are constructed eagerly so a racing ``stop()``
         # cannot observe a half-published lock attribute.
-        self._stop_event: asyncio.Event = asyncio.Event()
-        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init -- see.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._stop_failed: bool = False
         self._stop_drain_timeout_seconds: float = 30.0
 
@@ -189,6 +189,7 @@ class OrgInflectionMonitor:
         the loop and the canonical drain timeout has a chance to
         complete the shutdown promptly.
         """
+        # lint-allow: long-running-loop-kill-switch -- _stop_event drives shutdown.
         while not self._stop_event.is_set():
             try:
                 await self._tick()

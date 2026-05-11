@@ -12,6 +12,7 @@ from synthorg.hr.training.models import (
     TrainingPlan,  # noqa: TC001
     TrainingResult,  # noqa: TC001
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -76,14 +77,18 @@ class TrainingPlanRepository(Protocol):
     async def list_by_agent(
         self,
         agent_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TrainingPlan, ...]:
-        """Return all plans for an agent ordered by created_at descending.
+        """Return plans for an agent ordered by created_at descending.
 
         Args:
             agent_id: Target agent identifier.
+            limit: Maximum plans to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of plans (may be empty).
+            Tuple of plans (may be empty), capped at *limit* rows.
         """
         ...
 

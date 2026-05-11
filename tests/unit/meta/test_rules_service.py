@@ -42,9 +42,10 @@ class _FakeCustomRuleRepository:
         self,
         *,
         enabled_only: bool = False,
+        limit: int = 100,
     ) -> tuple[CustomRuleDefinition, ...]:
         rows = [r for r in self._rows.values() if not enabled_only or r.enabled]
-        return tuple(sorted(rows, key=lambda r: r.name))
+        return tuple(sorted(rows, key=lambda r: r.name)[:limit])
 
     async def delete(self, rule_id: NotBlankStr) -> bool:
         return self._rows.pop(str(rule_id), None) is not None

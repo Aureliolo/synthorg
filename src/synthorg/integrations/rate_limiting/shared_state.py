@@ -68,7 +68,9 @@ class SharedRateLimitCoordinator:
         self._connection_name = connection_name
         self._max_rpm = max_rpm
         self._window: deque[float] = deque()
-        self._window_lock = asyncio.Lock()
+        # Eager init: ``acquire`` is a hot-path call that runs before
+        # the polling task starts; the window lock must be present.
+        self._window_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
         self._task: asyncio.Task[None] | None = None
         # Subscriber ID includes a per-instance UUID so multiple
         # coordinators (whether in separate worker processes or in
@@ -77,7 +79,8 @@ class SharedRateLimitCoordinator:
         self._subscriber_id = f"{_SUBSCRIBER_PREFIX}{connection_name}_{uuid4().hex[:8]}"
         self._started = False
         self._distributed = True
-        self._lifecycle_lock = asyncio.Lock()
+        # Eager init: stop() must be safe before any start() call.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
     async def start(self) -> None:
         """Subscribe and start the polling task."""
@@ -222,6 +225,7 @@ class SharedRateLimitCoordinator:
 
     async def _poll_loop(self) -> None:
         """Poll the coordination channel for acquire events."""
+        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
                 envelope = await self._bus.receive(

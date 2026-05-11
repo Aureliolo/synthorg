@@ -31,6 +31,10 @@ from synthorg.persistence._shared.custom_rule import (
     row_to_custom_rule,
     serialize_altitudes,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -281,33 +285,32 @@ class PostgresCustomRuleRepository:
         self,
         *,
         enabled_only: bool = False,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CustomRuleDefinition, ...]:
-        """List custom rules ordered by name.
+        """List custom rules ordered by name, bounded by *limit*.
 
         Args:
             enabled_only: If ``True``, return only enabled rules.
-
-        Returns:
-            Tuple of rule definitions.
+            limit: Maximum rules to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Raises:
-            QueryError: If the query fails.
+            QueryError: If the query or pagination validation fails.
         """
-        query = (
+        validate_pagination_args(limit, 0, event=META_CUSTOM_RULE_LIST_FAILED)
+        base = (
             "SELECT id, name, description, metric_path, "
             "comparator, threshold, severity, target_altitudes, "
-            "enabled, created_at, updated_at "
-            "FROM custom_rules"
+            "enabled, created_at, updated_at FROM custom_rules"
         )
-        if enabled_only:
-            query += " WHERE enabled = true"
-        query += " ORDER BY name"
+        where = " WHERE enabled = true" if enabled_only else ""
+        query = f"{base}{where} ORDER BY name LIMIT %s"
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(query)
+                await cur.execute(query, (limit,))
                 rows = await cur.fetchall()
         except MemoryError, RecursionError:
             raise

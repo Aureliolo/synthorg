@@ -37,6 +37,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_LISTED,
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -283,16 +287,23 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
     async def list_versions(
         self,
         subworkflow_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[NotBlankStr, ...]:
-        """List all semver strings for a subworkflow, newest first."""
+        """List semver strings for a subworkflow, newest first.
+
+        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+        """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT semver FROM subworkflows WHERE subworkflow_id = %s",
-                    (subworkflow_id,),
+                    "SELECT semver FROM subworkflows "
+                    "WHERE subworkflow_id = %s LIMIT %s",
+                    (subworkflow_id, limit),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -309,15 +320,32 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         versions.sort(key=_semver_sort_key, reverse=True)
         return tuple(versions)
 
-    async def list_summaries(self) -> tuple[SubworkflowSummary, ...]:
-        """Return a summary for every unique subworkflow."""
+    async def list_summaries(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[SubworkflowSummary, ...]:
+        """Return summaries (latest version per subworkflow).
+
+        Bounded by *limit* distinct subworkflow ids. The subquery
+        selects the first *limit* unique subworkflow_ids; the outer
+        SELECT then fetches every version row for those ids so the
+        client-side aggregator still sees the full version set per
+        included subworkflow.
+        """
+        validate_pagination_args(limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    f"SELECT {_SELECT_COLUMNS} FROM subworkflows",  # noqa: S608
+                    f"SELECT {_SELECT_COLUMNS} FROM subworkflows "  # noqa: S608
+                    "WHERE subworkflow_id IN ("
+                    "SELECT DISTINCT subworkflow_id FROM subworkflows "
+                    "ORDER BY subworkflow_id LIMIT %s"
+                    ")",
+                    (limit,),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

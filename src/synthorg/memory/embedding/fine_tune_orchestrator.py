@@ -96,7 +96,9 @@ class FineTuneOrchestrator:
         self._current_task: asyncio.Task[None] | None = None
         self._cancellation: CancellationToken | None = None
         self._current_run: FineTuneRun | None = None
-        self._op_lock = asyncio.Lock()
+        # Eager init: ``start_pipeline`` and ``cancel_pipeline`` may
+        # interleave; the lock must be present before the first call.
+        self._op_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
 
     # -- Public API ---------------------------------------------------
 

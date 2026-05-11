@@ -20,6 +20,7 @@ from synthorg.observability.events.api import (
     API_PROJECT_LISTED,
     API_PROJECT_UPDATED,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from synthorg.persistence.project_protocol import ProjectRepository
@@ -79,6 +80,7 @@ class ProjectService:
         *,
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[Project, ...]:
         """List projects with optional ``status`` / ``lead`` filters.
 
@@ -88,9 +90,12 @@ class ProjectService:
         Args:
             status: Restrict to projects in this lifecycle status.
             lead: Restrict to projects led by this agent id.
+            limit: Maximum projects to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of matching projects in repository order.
+            Tuple of matching projects in repository order, capped at
+            *limit* rows.
 
         Raises:
             QueryError: Repository read failure (logged at WARNING
@@ -100,6 +105,7 @@ class ProjectService:
             projects = await self._repo.list_projects(
                 status=status,
                 lead=lead,
+                limit=limit,
             )
         except MemoryError, RecursionError:
             raise

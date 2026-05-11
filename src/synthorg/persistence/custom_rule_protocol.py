@@ -4,6 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.rules.custom import CustomRuleDefinition  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -65,14 +66,17 @@ class CustomRuleRepository(Protocol):
         self,
         *,
         enabled_only: bool = False,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CustomRuleDefinition, ...]:
-        """List custom rules ordered by name.
+        """List custom rules ordered by name, bounded by *limit*.
 
         Args:
             enabled_only: If ``True``, return only enabled rules.
+            limit: Maximum rules to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of rule definitions.
+            Tuple of rule definitions capped at *limit* rows.
 
         Raises:
             QueryError: If the query fails.

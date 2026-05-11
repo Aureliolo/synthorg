@@ -274,6 +274,7 @@ class PerAgentStrategy:
             return
 
         async def _idle_expire() -> None:
+            # lint-allow: long-running-loop-kill-switch -- per-owner idle-expiry.
             while True:
                 async with self._lock:
                     last = self._last_used.get(owner_id)

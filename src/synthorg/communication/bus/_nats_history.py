@@ -86,6 +86,7 @@ async def collect_history_batches(
     from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
 
     parsed_messages: list[Message] = []
+    # lint-allow: long-running-loop-kill-switch -- one-shot history replay.
     while True:
         try:
             batch = await psub.fetch(batch=batch_size, timeout=fetch_timeout_seconds)

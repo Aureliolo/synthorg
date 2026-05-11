@@ -103,9 +103,13 @@ class ProjectController(Controller):
                 )
                 raise ValidationError(msg) from exc
 
+        # Over-fetch by one page so the cursor paginator can detect
+        # has_more without a separate COUNT round-trip. ``limit + 1``
+        # caps repository-side scans at the operator-tunable page size.
         projects = await _service(state).list_projects(
             status=parsed_status,
             lead=lead,
+            limit=limit + 1,
         )
         page, meta = paginate_cursor(
             projects,

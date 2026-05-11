@@ -9,6 +9,7 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.auth.models import ApiKey, User  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -54,11 +55,23 @@ class UserRepository(Protocol):
         """
         ...
 
-    async def list_users(self) -> tuple[User, ...]:
-        """List all human users (excludes the system user).
+    async def list_users(
+        self,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[User, ...]:
+        """List human users (excludes the system user).
+
+        Bounded by ``limit`` so an unauth'd caller cannot materialise an
+        unbounded tuple of users. For cursor-stable pagination across
+        large user bases use :meth:`list_users_paginated` instead.
+
+        Args:
+            limit: Maximum users to return (default
+                :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Human users as a tuple.
+            Human users as a tuple, capped at *limit* rows.
 
         Raises:
             PersistenceError: If the operation fails.
