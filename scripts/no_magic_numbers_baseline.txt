@@ -9,4 +9,3 @@
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_no_magic_numbers.py --update
-src/synthorg/memory/fine_tune_plan.py:40:36
