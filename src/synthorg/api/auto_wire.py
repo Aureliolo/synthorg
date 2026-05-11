@@ -13,6 +13,7 @@ connects and migrations complete.
 """
 
 import contextlib
+from collections.abc import Callable
 from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.api.channels import ALL_CHANNELS
@@ -35,7 +36,7 @@ from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Mapping
 
     from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
@@ -59,6 +60,19 @@ if TYPE_CHECKING:
     from synthorg.workers.config import QueueConfig
 
 logger = get_logger(__name__)
+
+type SettingsDispatcherBuilder = Callable[
+    [
+        MessageBus | None,
+        SettingsService | None,
+        RootConfig,
+        AppState,
+        BackupService | None,
+        ApprovalTimeoutScheduler | None,
+    ],
+    SettingsChangeDispatcher | None,
+]
+"""Callable that builds the SettingsChangeDispatcher during on-startup wiring."""
 
 
 class Phase1Result(NamedTuple):
@@ -682,17 +696,7 @@ async def auto_wire_settings(  # noqa: PLR0913
     effective_config: RootConfig,
     app_state: AppState,
     backup_service: BackupService | None,
-    build_dispatcher: Callable[
-        [
-            MessageBus | None,
-            SettingsService | None,
-            RootConfig,
-            AppState,
-            BackupService | None,
-            ApprovalTimeoutScheduler | None,
-        ],
-        SettingsChangeDispatcher | None,
-    ],
+    build_dispatcher: SettingsDispatcherBuilder,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
 ) -> SettingsChangeDispatcher | None:
     """On-startup auto-wire: create SettingsService after persistence connects.
