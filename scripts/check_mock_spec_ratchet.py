@@ -47,7 +47,7 @@ _VERDICT_NAME = "_Verdict"
 _CATCH_ATTR = "CATCH"
 
 
-def _count_catch_returns(source: str) -> int:
+def _count_catch_returns(source: str) -> int | None:
     """Count ``return _Verdict.CATCH`` statements in *source*.
 
     Walks the AST once and counts every ``ast.Return`` whose value is
@@ -55,14 +55,17 @@ def _count_catch_returns(source: str) -> int:
     statement rather than the literal substring keeps docstrings,
     inline comments, and error-message wording out of the ratchet.
 
-    Falls back to the cheaper substring count when the source fails
-    to parse so a transient syntax error during an interactive edit
-    cannot wedge the gate.
+    Returns ``None`` when the source fails to parse so the caller can
+    treat the side as unparseable and fail open. The previous
+    substring-fallback could still flip the inequality when an
+    interactive edit left one side parseable and the other temporarily
+    broken, which is the failure mode CodeRabbit asked the ratchet to
+    avoid.
     """
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return source.count(f"{_VERDICT_NAME}.{_CATCH_ATTR}")
+        return None
     count = 0
     for node in ast.walk(tree):
         if not isinstance(node, ast.Return):
@@ -206,7 +209,14 @@ def _check_test_file(path: Path, before: str, after: str) -> int:
 def _check_gate_file(before: str, after: str) -> int:
     """Block if AFTER has fewer ``_Verdict.CATCH`` branches than BEFORE."""
     before_count = _count_catch_returns(before)
+    if before_count is None:
+        return 0
     after_count = _count_catch_returns(after)
+    if after_count is None:
+        # An interactive edit left the file syntactically incomplete;
+        # the ratchet cannot compute a meaningful delta, so fail open
+        # and let the user finish the edit. The next save catches up.
+        return 0
     if after_count < before_count:
         print(
             f"BLOCKED: edit removes ``_Verdict.CATCH`` branches from "

@@ -430,7 +430,6 @@ def test_gate_edit_docstring_wording_change_allows(
 def test_scan_failure_does_not_block_when_after_count_zero(
     monkeypatch: pytest.MonkeyPatch,
     fake_tests_root: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A transient gate scan failure must fail open, not block the edit.
 
@@ -444,11 +443,22 @@ def test_scan_failure_does_not_block_when_after_count_zero(
     target = fake_tests_root / "test_thing.py"
     target.write_text(_CATCH_BEFORE, encoding="utf-8")
 
-    def _broken_scan(_path: Path) -> list[tuple[int, int]]:
-        msg = "simulated scan failure"
-        raise RuntimeError(msg)
+    # Fail on the first scan (BEFORE) and succeed with a positive
+    # count on the second (AFTER): the original literal-zero
+    # behaviour would have computed ``after(2) > before(0)`` and
+    # blocked. With the ``_SCAN_FAILED`` sentinel the caller fails
+    # open instead.
+    call_count = 0
 
-    fake_gate_module = SimpleNamespace(_scan_file=_broken_scan)
+    def _flaky_scan(_path: Path) -> list[tuple[int, int]]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            msg = "simulated scan failure"
+            raise RuntimeError(msg)
+        return [(1, 0), (2, 0)]
+
+    fake_gate_module = SimpleNamespace(_scan_file=_flaky_scan)
     monkeypatch.setattr(_MODULE, "_load_gate", lambda: fake_gate_module)
     _stub_stdin(
         monkeypatch,
@@ -462,8 +472,7 @@ def test_scan_failure_does_not_block_when_after_count_zero(
         ),
     )
     assert _MODULE.main() == 0
-    captured = capsys.readouterr()
-    assert "gate scan failed" in captured.err
+    assert call_count == 2  # both scans attempted (before failed, after succeeded)
 
 
 def test_edit_with_non_string_fields_returns_zero(
@@ -529,6 +538,41 @@ def test_non_dict_payload_returns_zero(
         sys,
         "stdin",
         io.StringIO('["not", "a", "dict"]'),
+    )
+    assert _MODULE.main() == 0
+
+
+def test_unparseable_gate_after_falls_open(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A syntactically broken AFTER state must fail open, not block.
+
+    Locks the ``_count_catch_returns`` ``None`` sentinel introduced
+    after CodeRabbit flagged the substring-fallback as still able to
+    flip the inequality on a transient syntax error. Both before /
+    after sides going through ``ast.parse`` is the only way to count
+    real CATCH branches; when either side is unparseable the ratchet
+    must skip the comparison and let the user finish the edit.
+    """
+    gate = tmp_path / "fake_gate.py"
+    gate.write_text(
+        "def _a(): return _Verdict.CATCH\ndef _b(): return _Verdict.CATCH\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(_MODULE, "_GATE_PATH", gate)
+    _stub_stdin(
+        monkeypatch,
+        _envelope(
+            "Edit",
+            {
+                "file_path": str(gate),
+                "old_string": "def _b(): return _Verdict.CATCH\n",
+                # An obviously broken AFTER state: missing colon /
+                # body makes ``ast.parse`` raise ``SyntaxError``.
+                "new_string": "def _b\n",
+            },
+        ),
     )
     assert _MODULE.main() == 0
 
