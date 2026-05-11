@@ -56,6 +56,12 @@ The following bare literals are NOT violations:
   generates these.
 - Files under ``src/synthorg/observability/events/`` -- event-name
   registries and version constants.
+- Module-level annotated numeric constants of the form
+  ``NAME: int|float|Final|Final[int]|Final[float] = literal`` -- the
+  annotation declares the literal IS the named constant the rule wants
+  to encourage, so flagging produces only noise. Bare ``NAME = literal``
+  without an annotation still flags; the developer must opt in by
+  typing the assignment.
 
 Per-line opt-out
 ----------------
@@ -122,6 +128,9 @@ _TRIVIAL_VALUES: Final[frozenset[int]] = frozenset({0, 1, -1})
 # setting. The gate matches by *parameter name* in function signatures
 # whose default is a power-of-2; raw call-site arguments are not
 # scanned (the gate only looks at module-level assigns and defaults).
+# Locked by: test_io_default_allowlisted_all_kwargs_all_pow2 /
+#            test_io_kwarg_with_non_pow2_still_flagged /
+#            test_chunk_size_default_flags_at_all_pow2.
 _IO_KEYWORD_NAMES: Final[frozenset[str]] = frozenset(
     {
         "buffering",
@@ -138,14 +147,31 @@ _IO_ALLOWED_POWERS_OF_2: Final[frozenset[int]] = frozenset(
 # HTTP status code allowlist context. The literal is exempt when:
 #   - it's the value of a kwarg named ``status_code`` / ``status``
 #   - it's the default of a parameter named ``status_code`` / ``status``
+# Locked by: test_status_default_allowlisted_all_kwargs.
 _HTTP_STATUS_KEYWORDS: Final[frozenset[str]] = frozenset({"status_code", "status"})
 
 # Path-prefix allowlist for whole-file exemptions. Files under these
 # prefixes are skipped entirely. POSIX-relative.
+# Locked by: test_file_prefix_allowlist /
+#            test_file_prefix_allowlist_does_not_match_substring.
 _FILE_ALLOWLIST_PREFIXES: Final[tuple[str, ...]] = (
     "src/synthorg/settings/definitions/",
     "src/synthorg/persistence/migrations/",
     "src/synthorg/observability/events/",
+)
+
+# Module-level annotation shapes that mark the assignment as a
+# numeric named constant: ``NAME: int|float|Final = literal`` and
+# ``NAME: Final[int|float] = literal``. The annotation IS the
+# developer's declaration that the literal is the named constant
+# the rule wants to encourage, so the RHS is skipped.
+# Locked by: test_annotation_marks_as_named_constant_helper and
+#            the test_annassign_*_named_constant_not_flagged family.
+_NAMED_CONSTANT_TYPE_NAMES: Final[frozenset[str]] = frozenset(
+    {"int", "float", "Final"},
+)
+_NAMED_CONSTANT_FINAL_SLICES: Final[frozenset[str]] = frozenset(
+    {"int", "float"},
 )
 
 # ── Helpers ─────────────────────────────────────────────────────
@@ -290,6 +316,42 @@ def _effective_value(node: ast.expr) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return -value if negated else value
+
+
+def _annotation_marks_as_named_constant(annotation: ast.expr | None) -> bool:
+    """Return True iff *annotation* declares a numeric named constant.
+
+    Matched shapes (PEP 526 / :data:`typing.Final`)::
+
+        NAME: int = ...
+        NAME: float = ...
+        NAME: Final = ...
+        NAME: Final[int] = ...
+        NAME: Final[float] = ...
+
+    Any of these annotations on a module-level
+    ``NAME: <annotation> = <literal>`` is the developer's explicit
+    declaration that the literal IS the named constant the gate wants
+    to encourage; flagging it produces only noise. Bare
+    ``NAME = literal`` (no annotation) is intentionally not matched --
+    without the type signal the gate cannot tell a named constant
+    apart from a one-time module-load computation.
+    """
+    if annotation is None:
+        return False
+    if isinstance(annotation, ast.Name) and annotation.id in _NAMED_CONSTANT_TYPE_NAMES:
+        return True
+    if not isinstance(annotation, ast.Subscript):
+        return False
+    if not isinstance(annotation.value, ast.Name):
+        return False
+    if annotation.value.id != "Final":
+        return False
+    slice_node = annotation.slice
+    return (
+        isinstance(slice_node, ast.Name)
+        and slice_node.id in _NAMED_CONSTANT_FINAL_SLICES
+    )
 
 
 def _is_hex_literal(node: ast.expr, source_lines: list[str]) -> bool:
@@ -460,7 +522,11 @@ def _collect_module_assign_hits(
                 if not isinstance(target, ast.Name):
                     continue
                 hit = _classify_module_assign(
-                    target.id, assign_node.value, rel, source_lines
+                    target.id,
+                    assign_node.value,
+                    None,
+                    rel,
+                    source_lines,
                 )
                 if hit is not None:
                     hits.append(hit)
@@ -472,6 +538,7 @@ def _collect_module_assign_hits(
             hit = _classify_module_assign(
                 assign_node.target.id,
                 assign_node.value,
+                assign_node.annotation,
                 rel,
                 source_lines,
             )
@@ -505,13 +572,23 @@ def _hit_is_suppressed(hit: _Hit, source_lines: list[str]) -> bool:
     return _line_has_trailing_marker(source_lines[line_idx])
 
 
-def _classify_module_assign(
+def _classify_module_assign(  # noqa: PLR0911
     name: str,
     value_node: ast.expr,
+    annotation: ast.expr | None,
     rel: str,
     source_lines: list[str],
 ) -> _Hit | None:
-    """Module-level ``NAME = <number>`` -> hit if not allowlisted."""
+    """Module-level ``NAME = <number>`` -> hit if not allowlisted.
+
+    When *annotation* is a numeric named-constant marker
+    (``int`` / ``float`` / ``Final`` / ``Final[int]`` / ``Final[float]``),
+    the literal RHS is the named constant the rule wants to encourage
+    and is skipped. ``annotation=None`` is passed for bare ``NAME = literal``,
+    which still flags so the gate retains its discriminating power.
+    """
+    if _annotation_marks_as_named_constant(annotation):
+        return None
     inner, negated = _unwrap_unary(value_node)
     if not _is_numeric_constant(inner):
         return None
