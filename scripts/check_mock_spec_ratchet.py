@@ -13,9 +13,13 @@ Two protections, one process:
 
 2. Edits to ``scripts/check_mock_spec.py`` MUST NOT reduce the
    number of distinct ``return _Verdict.CATCH`` branches. Removing
-   a CATCH branch would weaken the gate. The hook counts the
-   literal substring ``_Verdict.CATCH`` before and after; AFTER
-   < BEFORE blocks.
+   a CATCH branch would weaken the gate. The hook walks the parsed
+   AST via ``_count_catch_returns`` and counts ``ast.Return`` nodes
+   whose value is ``_Verdict.CATCH``; substring counting would
+   miscount docstrings, comments, and error-message wording.
+   AFTER < BEFORE blocks; parse / import errors fall open via the
+   helper's substring fallback so a transiently broken gate cannot
+   wedge editing.
 
 Skips:
   * Files outside ``tests/`` and not the gate itself.
@@ -206,16 +210,24 @@ def main() -> int:  # noqa: C901, PLR0911 -- guard cascade is flat by design
     tests_root = _TESTS_ROOT.resolve()
     shared_dir = (tests_root / "_shared").resolve()
 
-    # Resolve the caller-supplied path, then enforce the allowlist via
-    # ``Path.relative_to``. ``relative_to`` raises ``ValueError`` when
-    # the candidate is outside the trusted root, which CodeQL's
-    # ``py/path-injection`` query recognises as a sanitiser (the
-    # ``is_relative_to`` boolean form is not consistently picked up
-    # when combined with adjacent conjuncts). The early ``return 0``
-    # paths below ensure no filesystem read happens on an unvalidated
-    # path.
+    # ``file_path`` comes from a Claude Code PreToolUse envelope: the
+    # path Claude itself is about to write to, already constrained to
+    # the repo by the harness's working-directory contract. We still
+    # enforce a strict allowlist below: the resolved path MUST equal
+    # ``_GATE_PATH`` exactly OR be inside ``_TESTS_ROOT`` AND outside
+    # ``tests/_shared/``. Anything else returns 0 (fail-open, no
+    # filesystem read).
+    #
+    # CodeQL's ``py/path-injection`` query has flagged this block
+    # across two rounds of restructuring (alerts 287 / 288 / 289 /
+    # 290 / 291 over rounds 1-2). The rule's data-flow analysis does
+    # not propagate the ``relative_to`` raise-based sanitiser through
+    # the ``is_gate`` early-return branch to the ``read_text`` sink,
+    # producing a false positive. The alerts are dismissed in the
+    # GitHub UI with ``dismissed_reason: false positive`` and a
+    # one-line justification pointing here.
     try:
-        path = Path(file_path).resolve()
+        path = Path(file_path).resolve()  # codeql[py/path-injection]
     except OSError, ValueError:
         return 0
 
@@ -232,6 +244,7 @@ def main() -> int:  # noqa: C901, PLR0911 -- guard cascade is flat by design
             return 0
 
     try:
+        # codeql[py/path-injection] -- see allowlist comment above
         before = path.read_text(encoding="utf-8") if path.exists() else ""
     except OSError, UnicodeDecodeError:
         return 0
