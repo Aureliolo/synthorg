@@ -140,13 +140,22 @@ def _compute_after(  # noqa: PLR0911 -- shape mirrors the tool envelope
     tool_input: dict[str, Any],
     before: str,
 ) -> str | None:
-    """Return the post-edit content, or None if the edit is a no-op."""
+    """Return the post-edit content, or None if the edit is a no-op.
+
+    Each field is ``isinstance``-checked before use so a malformed
+    envelope (wrong types, missing fields, future schema drift)
+    short-circuits open via ``return None`` rather than raising
+    ``TypeError`` on the downstream string operations.
+    """
     if tool_name == "Edit":
-        old = tool_input.get("old_string", "")
-        new = tool_input.get("new_string", "")
+        old = tool_input.get("old_string")
+        new = tool_input.get("new_string")
+        if not isinstance(old, str) or not isinstance(new, str):
+            return None
         if old == new:
             return None
-        replace_all = bool(tool_input.get("replace_all", False))
+        replace_all_raw = tool_input.get("replace_all", False)
+        replace_all = replace_all_raw is True
         if old not in before:
             return None
         if replace_all:
@@ -235,7 +244,7 @@ def main() -> int:  # noqa: C901, PLR0911, PLR0912 -- guard cascade is flat by d
         return 0
 
     file_path = tool_input.get("file_path")
-    if not file_path:
+    if not isinstance(file_path, str) or not file_path:
         return 0
 
     gate_path = _GATE_PATH.resolve()

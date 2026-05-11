@@ -466,6 +466,54 @@ def test_scan_failure_does_not_block_when_after_count_zero(
     assert "gate scan failed" in captured.err
 
 
+def test_edit_with_non_string_fields_returns_zero(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tests_root: Path,
+) -> None:
+    """Malformed envelope (non-string old/new strings) must fail open.
+
+    Locks the ``isinstance(str)`` guards in ``_compute_after``: a
+    payload that decodes valid JSON but supplies ``old_string`` /
+    ``new_string`` as the wrong type (here: a list and an int) used
+    to raise ``TypeError`` on the ``in``/``replace`` operations.
+    """
+    target = fake_tests_root / "test_thing.py"
+    target.write_text(_CATCH_BEFORE, encoding="utf-8")
+    _stub_stdin(
+        monkeypatch,
+        json.dumps(
+            {
+                "tool_name": "Edit",
+                "tool_input": {
+                    "file_path": str(target),
+                    "old_string": ["not", "a", "string"],
+                    "new_string": 42,
+                },
+            },
+        ),
+    )
+    assert _MODULE.main() == 0
+
+
+def test_edit_with_non_string_file_path_returns_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-string ``file_path`` must short-circuit before ``Path(...)``.
+
+    Pairs with ``test_edit_with_non_string_fields_returns_zero``:
+    ``Path()`` accepts ``os.PathLike`` and ``str``, but a raw int or
+    list would raise ``TypeError`` -- the ``isinstance(file_path, str)``
+    guard in ``main()`` keeps the hook open on malformed envelopes.
+    """
+    _stub_stdin(
+        monkeypatch,
+        json.dumps(
+            {"tool_name": "Edit", "tool_input": {"file_path": 12345}},
+        ),
+    )
+    assert _MODULE.main() == 0
+
+
 def test_non_dict_payload_returns_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
