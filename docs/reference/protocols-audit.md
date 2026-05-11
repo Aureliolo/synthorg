@@ -43,7 +43,7 @@ The 2026-05-10 snapshot counts in the original table were aggregated by hand and
 | KEEP | 193 | 237 (44 audit re-flagged, plus pre-existing 193) | 241 (5 `_PrivatePrefixed` retained with rationale; 1 fold-deletion drops conflict_detection.py's KEEP) |
 | MAKE-RUNTIME-CHECKABLE | 0 (no `isinstance` sites surveyed) | 0 | 0 |
 | REMOVE candidates (flag-only; must be re-verified at cleanup time) | 46 | 0 (2 deleted, 44 reclassified KEEP) | 0 |
-| REVIEW (`_PrivatePrefixed` typing seams; intent inspection needed) | 11 | 11 (unchanged; #1865 owns these) | 0 (5 retained with rationale, 5 deleted, 1 fold-deleted) |
+| REVIEW (`_PrivatePrefixed` typing seams; intent inspection needed) | 11 | 11 (unchanged; #1865 owns these) | 0 (12 protocol names across the 11 snapshot rows: 5 retained with rationale, 5 deleted, 2 fold-deleted) |
 
 `@runtime_checkable` decoration: 209 of 250 (84%). The 41 without the decorator are listed inline below; absence is not a defect on its own; only a few need it.
 
@@ -407,7 +407,7 @@ Categories of re-flag rationale:
 
 ### Issue #1865 outcomes (REVIEW pass + duplicate folds)
 
-Issue [#1865](https://github.com/Aureliolo/synthorg/issues/1865) closed out the 11 REVIEW rows (10 `_PrivatePrefixed` typing seams plus the 2 duplicate-named pair REVIEW rows). The 5 retained protocols each carry a one-line `# <reason>` rationale comment naming the consumer that justifies the seam; the 7 deletions collapsed single-consumer seams or removed pure dead code.
+Issue [#1865](https://github.com/Aureliolo/synthorg/issues/1865) closed out the 11 REVIEW rows, which cover 12 protocol names: 9 `_PrivatePrefixed` typing seams (the `engine/coordination/dispatcher_types.py` row lists 2 names in one snapshot entry), the non-prefixed `IsDuplicate` predicate in `persistence/_shared/audit.py`, and the 2 duplicate-named-pair REVIEW rows. The 5 retained protocols each carry a one-line `# <reason>` rationale comment naming the consumer that justifies the seam; the 7 deletions (5 single-consumer seam collapses plus 2 duplicate-pair folds) collapsed single-consumer seams or removed pure dead code.
 
 #### Retained with rationale (5 protocols)
 
