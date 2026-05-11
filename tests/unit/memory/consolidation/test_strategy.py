@@ -1,6 +1,7 @@
 """Tests for SimpleConsolidationStrategy."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,6 +11,8 @@ from synthorg.memory.consolidation.simple_strategy import (
     SimpleConsolidationStrategy,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
+from tests._shared import mock_of
 
 _NOW = datetime.now(UTC)
 _AGENT_ID = "test-agent"
@@ -37,7 +40,7 @@ class TestSimpleConsolidationStrategy:
     """SimpleConsolidationStrategy behaviour."""
 
     async def test_empty_input(self) -> None:
-        backend = AsyncMock()
+        backend = mock_of[MemoryBackend]()
         strategy = SimpleConsolidationStrategy(backend=backend)
         result = await strategy.consolidate((), agent_id=_AGENT_ID)
         assert result.consolidated_count == 0
@@ -45,7 +48,7 @@ class TestSimpleConsolidationStrategy:
         assert result.summary_id is None
 
     async def test_single_category_below_threshold(self) -> None:
-        backend = AsyncMock()
+        backend = mock_of[MemoryBackend]()
         strategy = SimpleConsolidationStrategy(
             backend=backend,
             group_threshold=5,
@@ -53,10 +56,10 @@ class TestSimpleConsolidationStrategy:
         entries = tuple(_make_entry(f"m{i}") for i in range(2))
         result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
         assert result.consolidated_count == 0
-        backend.delete.assert_not_called()
+        cast(Any, backend.delete).assert_not_called()
 
     async def test_single_category_above_threshold(self) -> None:
-        backend = AsyncMock()
+        backend = mock_of[MemoryBackend]()
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
@@ -71,7 +74,7 @@ class TestSimpleConsolidationStrategy:
         assert len(result.removed_ids) == 4
 
     async def test_multi_category(self) -> None:
-        backend = AsyncMock()
+        backend = mock_of[MemoryBackend]()
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
@@ -93,7 +96,7 @@ class TestSimpleConsolidationStrategy:
         assert "e2" in result.removed_ids
 
     async def test_keeps_highest_relevance(self) -> None:
-        backend = AsyncMock()
+        backend = mock_of[MemoryBackend]()
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
@@ -112,7 +115,7 @@ class TestSimpleConsolidationStrategy:
         assert "mid" in result.removed_ids
 
     async def test_build_summary_truncation(self) -> None:
-        backend = AsyncMock()
+        backend = mock_of[MemoryBackend]()
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
@@ -143,12 +146,12 @@ class TestSimpleConsolidationStrategy:
         )
         await strategy.consolidate(long_entries, agent_id=_AGENT_ID)
 
-        store_call = backend.store.call_args
+        store_call = cast(Any, backend.store).call_args
         summary_content = store_call[0][1].content
         assert "..." in summary_content
 
     async def test_none_relevance_scores(self) -> None:
-        backend = AsyncMock()
+        backend = mock_of[MemoryBackend]()
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
@@ -167,7 +170,7 @@ class TestSimpleConsolidationStrategy:
 
     async def test_equal_relevance_keeps_most_recent(self) -> None:
         """When relevance scores are equal, most recently created wins."""
-        backend = AsyncMock()
+        backend = mock_of[MemoryBackend]()
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
@@ -187,7 +190,7 @@ class TestSimpleConsolidationStrategy:
         assert "mid" in result.removed_ids
 
     def test_group_threshold_validation(self) -> None:
-        backend = AsyncMock()
+        backend = mock_of[MemoryBackend]()
         with pytest.raises(ValueError, match="group_threshold must be >= 2"):
             SimpleConsolidationStrategy(backend=backend, group_threshold=1)
         with pytest.raises(ValueError, match="group_threshold must be >= 2"):

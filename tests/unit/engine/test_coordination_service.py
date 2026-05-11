@@ -19,7 +19,9 @@ from synthorg.engine.coordination.models import (
     CoordinationContext,
 )
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import CoordinationPhaseError
+from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.parallel_models import (
     AgentOutcome,
     ParallelExecutionResult,
@@ -27,6 +29,7 @@ from synthorg.engine.parallel_models import (
 from synthorg.engine.routing.models import (
     RoutingResult,
 )
+from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.engine.workspace.models import (
     MergeResult,
@@ -57,7 +60,7 @@ def _make_coordinator(  # noqa: PLR0913
     route_error: Exception | None = None,
 ) -> MultiAgentCoordinator:
     """Build a MultiAgentCoordinator with mocked dependencies."""
-    decomp_service = AsyncMock()
+    decomp_service = AsyncMock(spec=DecompositionService)
     if decompose_error:
         decomp_service.decompose_task.side_effect = decompose_error
     elif decomp_result:
@@ -68,13 +71,13 @@ def _make_coordinator(  # noqa: PLR0913
 
         decomp_service.rollup_status.side_effect = StatusRollup.compute
 
-    routing_service = MagicMock()
+    routing_service = MagicMock(spec=TaskRoutingService)
     if route_error:
         routing_service.route.side_effect = route_error
     elif routing_result:
         routing_service.route.return_value = routing_result
 
-    executor = AsyncMock()
+    executor = AsyncMock(spec=ParallelExecutor)
     if exec_results:
         executor.execute_group.side_effect = exec_results
 
@@ -637,16 +640,16 @@ class TestMultiAgentCoordinator:
         routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
-        decomp_service = AsyncMock()
+        decomp_service = AsyncMock(spec=DecompositionService)
         decomp_service.decompose_task.return_value = decomp
         decomp_service.rollup_status = MagicMock(
             side_effect=RuntimeError("rollup broken"),
         )
 
-        routing_service = MagicMock()
+        routing_service = MagicMock(spec=TaskRoutingService)
         routing_service.route.return_value = routing
 
-        executor = AsyncMock()
+        executor = AsyncMock(spec=ParallelExecutor)
         executor.execute_group.side_effect = [
             make_exec_result("wave-0", [("sub-a", agent_id)]),
         ]

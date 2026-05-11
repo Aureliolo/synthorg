@@ -16,6 +16,7 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.persistence.task_protocol import TaskRepository
 
 
 def _identity() -> AgentIdentity:
@@ -88,7 +89,7 @@ class TestTaskTreeLoader:
     """TaskTreeLoader queries child tasks and builds context."""
 
     async def test_load_with_no_children(self) -> None:
-        repo = AsyncMock()
+        repo = AsyncMock(spec=TaskRepository)
         repo.list_tasks = AsyncMock(return_value=())
 
         loader = TaskTreeLoader(task_repo=repo)
@@ -107,7 +108,7 @@ class TestTaskTreeLoader:
             delegation_chain=("agent-1",),
             description="Child task description",
         )
-        repo = AsyncMock()
+        repo = AsyncMock(spec=TaskRepository)
         repo.list_tasks = AsyncMock(return_value=(child,))
 
         loader = TaskTreeLoader(task_repo=repo)
@@ -122,7 +123,7 @@ class TestTaskTreeLoader:
 
     async def test_load_survives_repo_failure(self) -> None:
         """Repository failure produces empty delegation requests."""
-        repo = AsyncMock()
+        repo = AsyncMock(spec=TaskRepository)
         repo.list_tasks = AsyncMock(
             side_effect=RuntimeError("connection lost"),
         )
@@ -136,7 +137,7 @@ class TestTaskTreeLoader:
 
     async def test_load_memory_error_propagates(self) -> None:
         """MemoryError from repository propagates."""
-        repo = AsyncMock()
+        repo = AsyncMock(spec=TaskRepository)
         repo.list_tasks = AsyncMock(side_effect=MemoryError)
 
         loader = TaskTreeLoader(task_repo=repo)
@@ -151,7 +152,7 @@ class TestTaskTreeLoader:
             parent_task_id="task-1",
             description="Visit https://secret.example.com/admin",
         )
-        repo = AsyncMock()
+        repo = AsyncMock(spec=TaskRepository)
         repo.list_tasks = AsyncMock(return_value=(child,))
 
         loader = TaskTreeLoader(task_repo=repo)

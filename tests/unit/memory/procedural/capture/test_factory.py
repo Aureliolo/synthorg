@@ -17,6 +17,8 @@ from synthorg.memory.procedural.capture.success_capture import (
     SuccessCaptureStrategy,
 )
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
+from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
+from synthorg.memory.procedural.success_proposer import SuccessMemoryProposer
 
 
 def _build(
@@ -33,8 +35,8 @@ def _build(
     )
     return build_capture_strategy(
         config,
-        failure_proposer=AsyncMock(),
-        success_proposer=AsyncMock(),
+        failure_proposer=AsyncMock(spec=ProceduralMemoryProposer),
+        success_proposer=AsyncMock(spec=SuccessMemoryProposer),
         procedural_config=proc_config,
     )
 

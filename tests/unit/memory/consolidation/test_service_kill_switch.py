@@ -18,7 +18,10 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.config import ConsolidationConfig
 from synthorg.memory.consolidation.models import ConsolidationResult
 from synthorg.memory.consolidation.service import MemoryConsolidationService
+from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.settings.resolver import ConfigResolver
 
 _NOW = datetime.now(UTC)
 _AGENT_ID = "kill-switch-agent"
@@ -42,11 +45,11 @@ def _build_service(
     AsyncMock,
     AsyncMock,
 ]:
-    backend = AsyncMock()
+    backend = AsyncMock(spec=MemoryBackend)
     backend.retrieve = AsyncMock(return_value=(_make_entry("m1"),))
     backend.delete = AsyncMock(return_value=True)
     backend.count = AsyncMock(return_value=0)
-    strategy = AsyncMock()
+    strategy = AsyncMock(spec=ConsolidationStrategy)
     strategy.consolidate = AsyncMock()
     config = ConsolidationConfig(enabled=enabled)
     service = MemoryConsolidationService(
@@ -135,12 +138,12 @@ class TestConsolidationKillSwitch:
         the private ``_enabled`` parameter so the whole cycle observes
         the same snapshot.
         """
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
         backend.delete = AsyncMock(return_value=True)
         backend.count = AsyncMock(return_value=0)
 
-        resolver = AsyncMock()
+        resolver = AsyncMock(spec=ConfigResolver)
         resolver.get_bool = AsyncMock(return_value=True)
 
         service = MemoryConsolidationService(

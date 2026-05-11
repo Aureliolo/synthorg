@@ -16,6 +16,7 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.models import SettingValue
 from synthorg.settings.resolver import ConfigResolver, _parse_bool
+from synthorg.settings.service import SettingsService
 from tests.unit.settings.conftest import (
     FakeAgentConfig,
     FakeDepartment,
@@ -582,7 +583,7 @@ class TestParseBool:
 
 def _make_resolver() -> tuple[ConfigResolver, AsyncMock]:
     """Create a fresh resolver + mock for property-based tests."""
-    mock = AsyncMock()
+    mock = AsyncMock(spec=SettingsService)
     config = _FakeRootConfig()
     resolver = ConfigResolver(
         settings_service=mock,

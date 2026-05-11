@@ -11,6 +11,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from litestar.channels.plugin import ChannelsPlugin
 
 from synthorg.api.app_helpers import make_personality_trim_notifier
 from synthorg.api.channels import CHANNEL_AGENTS
@@ -38,7 +39,7 @@ class TestMakePersonalityTrimNotifier:
 
     async def test_publish_success(self) -> None:
         """Happy path: factory publishes a valid ``WsEvent`` on the agents channel."""
-        channels = MagicMock()
+        channels = MagicMock(spec=ChannelsPlugin)
         channels.publish = MagicMock()
         notifier = make_personality_trim_notifier(channels)
         payload = _make_payload()
@@ -63,7 +64,7 @@ class TestMakePersonalityTrimNotifier:
 
     async def test_publish_error_is_swallowed(self) -> None:
         """Publish failures are logged and swallowed (best-effort contract)."""
-        channels = MagicMock()
+        channels = MagicMock(spec=ChannelsPlugin)
         channels.publish = MagicMock(side_effect=RuntimeError("broker down"))
         notifier = make_personality_trim_notifier(channels)
 
@@ -74,7 +75,7 @@ class TestMakePersonalityTrimNotifier:
 
     async def test_callable_is_reusable_across_invocations(self) -> None:
         """The factory returns a reusable closure -- multiple invocations work."""
-        channels = MagicMock()
+        channels = MagicMock(spec=ChannelsPlugin)
         channels.publish = MagicMock()
         notifier = make_personality_trim_notifier(channels)
 
@@ -86,7 +87,7 @@ class TestMakePersonalityTrimNotifier:
 
     async def test_errors_on_one_invocation_do_not_poison_next(self) -> None:
         """A failing publish must not break subsequent invocations."""
-        channels = MagicMock()
+        channels = MagicMock(spec=ChannelsPlugin)
         channels.publish = MagicMock(
             side_effect=[RuntimeError("transient"), None, None],
         )
@@ -115,7 +116,7 @@ class TestMakePersonalityTrimNotifier:
         ``asyncio.CancelledError`` propagates naturally because it is a
         ``BaseException`` subclass and is not caught by ``except Exception``.
         """
-        channels = MagicMock()
+        channels = MagicMock(spec=ChannelsPlugin)
         channels.publish = MagicMock(side_effect=exc_type())
         notifier = make_personality_trim_notifier(channels)
 

@@ -4,11 +4,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import MemoryCategory
-from synthorg.memory.models import MemoryMetadata
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.procedural.propagation.department_scoped import (
     DepartmentScopedPropagation,
 )
+from synthorg.memory.protocol import MemoryBackend
+from tests._shared import mock_of
 
 
 class TestDepartmentScopedPropagation:
@@ -37,16 +41,18 @@ class TestDepartmentScopedPropagation:
         target_agent2.id = "agent-3"
         target_agent2.department = "engineering"
 
-        registry = AsyncMock()
-        registry.get = AsyncMock(return_value=source_agent)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=source_agent),
+        )
         registry.list_by_department = AsyncMock(
             return_value=(target_agent1, target_agent2),
         )
 
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="mem-copy-1")
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(return_value="mem-copy-1"),
+        )
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -75,16 +81,18 @@ class TestDepartmentScopedPropagation:
         target_agent.id = "agent-2"
         target_agent.department = "engineering"
 
-        registry = AsyncMock()
-        registry.get = AsyncMock(return_value=source_agent)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=source_agent),
+        )
         registry.list_by_department = AsyncMock(
             return_value=(source_agent, target_agent),
         )
 
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="mem-copy-1")
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(return_value="mem-copy-1"),
+        )
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -110,14 +118,16 @@ class TestDepartmentScopedPropagation:
         source_agent.id = "agent-1"
         source_agent.department = "engineering"
 
-        registry = AsyncMock()
-        registry.get = AsyncMock(return_value=source_agent)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=source_agent),
+        )
         registry.list_by_department = AsyncMock(return_value=())
 
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="mem-copy-1")
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(return_value="mem-copy-1"),
+        )
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -145,19 +155,21 @@ class TestDepartmentScopedPropagation:
 
         targets = []
         for i in range(5):
-            agent = MagicMock()
+            agent = MagicMock(spec=AgentIdentity)
             agent.id = f"agent-{i + 2}"
             agent.department = "engineering"
             targets.append(agent)
 
-        registry = AsyncMock()
-        registry.get = AsyncMock(return_value=source_agent)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=source_agent),
+        )
         registry.list_by_department = AsyncMock(return_value=tuple(targets))
 
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="mem-copy-1")
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(return_value="mem-copy-1"),
+        )
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -183,14 +195,16 @@ class TestDepartmentScopedPropagation:
         source_agent.id = "agent-1"
         source_agent.department = "engineering"
 
-        registry = AsyncMock()
-        registry.get = AsyncMock(return_value=source_agent)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=source_agent),
+        )
         registry.list_by_department = AsyncMock(return_value=())
 
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="mem-copy-1")
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(return_value="mem-copy-1"),
+        )
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -229,17 +243,19 @@ class TestDepartmentScopedPropagation:
         sales_agent.id = "agent-3"
         sales_agent.department = "sales"
 
-        registry = AsyncMock()
-        registry.get = AsyncMock(return_value=source_agent)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=source_agent),
+        )
         # list_by_department should return only engineering agents
         registry.list_by_department = AsyncMock(
             return_value=(engineering_agent,),
         )
 
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="mem-copy-1")
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(return_value="mem-copy-1"),
+        )
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"
@@ -269,16 +285,18 @@ class TestDepartmentScopedPropagation:
         target_agent.id = "agent-2"
         target_agent.department = "engineering"
 
-        registry = AsyncMock()
-        registry.get = AsyncMock(return_value=source_agent)
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=source_agent),
+        )
         registry.list_by_department = AsyncMock(
             return_value=(target_agent,),
         )
 
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="mem-copy-1")
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(return_value="mem-copy-1"),
+        )
 
-        memory_entry = MagicMock()
+        memory_entry = MagicMock(spec=MemoryEntry)
         memory_entry.category = MemoryCategory.PROCEDURAL
         memory_entry.namespace = "default"
         memory_entry.content = "learned procedure"

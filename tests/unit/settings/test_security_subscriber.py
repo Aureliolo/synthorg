@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.settings.service import SettingsService
 from synthorg.settings.subscribers.security_subscriber import (
     SecuritySubscriber,
 )
@@ -16,7 +17,7 @@ def _make_subscriber(
     raw_value: str = '["host.docker.internal:11434"]',
 ) -> tuple[SecuritySubscriber, AsyncMock, AsyncMock]:
     """Create a subscriber with mocked dependencies."""
-    settings_service = AsyncMock()
+    settings_service = AsyncMock(spec=SettingsService)
     setting_result = MagicMock()
     setting_result.value = raw_value
     settings_service.get.return_value = setting_result

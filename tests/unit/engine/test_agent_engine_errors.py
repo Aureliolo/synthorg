@@ -28,6 +28,12 @@ if TYPE_CHECKING:
 
     from .conftest import MockCompletionProvider
 
+from synthorg.budget.enforcer import BudgetEnforcer
+from synthorg.budget.tracker import CostTracker
+from synthorg.engine.loop_protocol import ExecutionLoop
+from synthorg.engine.recovery import RecoveryStrategy
+from synthorg.providers.protocol import CompletionProvider
+
 from .conftest import make_completion_response
 
 
@@ -40,7 +46,7 @@ class TestAgentEngineErrorHandling:
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        provider = MagicMock()
+        provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM is down"))
         engine = AgentEngine(provider=provider)
 
@@ -198,7 +204,7 @@ class TestAgentEngineCostRecordingNonRecoverable:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """MemoryError from CostTracker.record() is not swallowed."""
-        tracker = MagicMock()
+        tracker = MagicMock(spec=CostTracker)
         tracker.record = AsyncMock(side_effect=MemoryError("OOM in tracker"))
         # Explicit None triggers DEFAULT_CURRENCY fallback in cost_recording;
         # without it MagicMock.budget_config leaks a MagicMock currency.
@@ -220,7 +226,7 @@ class TestAgentEngineCostRecordingNonRecoverable:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """RecursionError from CostTracker.record() is not swallowed."""
-        tracker = MagicMock()
+        tracker = MagicMock(spec=CostTracker)
         tracker.record = AsyncMock(
             side_effect=RecursionError("infinite in tracker"),
         )
@@ -366,7 +372,7 @@ class TestAgentEngineBudgetErrorSecondaryFailure:
     ) -> None:
         """If _handle_budget_error itself fails, original exception has note."""
         provider = mock_provider_factory([])
-        budget_enforcer = AsyncMock()
+        budget_enforcer = AsyncMock(spec=BudgetEnforcer)
         budget_enforcer.check_can_execute = AsyncMock(
             side_effect=BudgetExhaustedError("budget exceeded"),
         )
@@ -422,7 +428,7 @@ class TestAgentEngineMemoryMessages:
                 ),
             ),
         )
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(return_value=mock_result)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -471,7 +477,7 @@ class TestAgentEngineRecovery:
         sample_task_with_criteria: Task,
     ) -> None:
         """Provider exception -> task status is FAILED."""
-        provider = MagicMock()
+        provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM is down"))
         engine = AgentEngine(provider=provider)
 
@@ -500,7 +506,7 @@ class TestAgentEngineRecovery:
         )
         mock_strategy.get_strategy_type = MagicMock(return_value="fail_reassign")
 
-        provider = MagicMock()
+        provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
         engine = AgentEngine(provider=provider, recovery_strategy=mock_strategy)
 
@@ -517,12 +523,12 @@ class TestAgentEngineRecovery:
         sample_task_with_criteria: Task,
     ) -> None:
         """If recovery itself fails, engine still returns error result."""
-        mock_strategy = MagicMock()
+        mock_strategy = MagicMock(spec=RecoveryStrategy)
         mock_strategy.recover = AsyncMock(
             side_effect=ValueError("recovery broken"),
         )
 
-        provider = MagicMock()
+        provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM down"))
         engine = AgentEngine(provider=provider, recovery_strategy=mock_strategy)
 
@@ -541,7 +547,7 @@ class TestAgentEngineRecovery:
         sample_task_with_criteria: Task,
     ) -> None:
         """Opting out of recovery: task stays IN_PROGRESS (not FAILED)."""
-        provider = MagicMock()
+        provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
         engine = AgentEngine(provider=provider, recovery_strategy=None)
 
@@ -577,7 +583,7 @@ class TestAgentEngineRecovery:
                 termination_reason=TerminationReason.COMPLETED,
             )
 
-        mock_loop = MagicMock()
+        mock_loop = MagicMock(spec=ExecutionLoop)
         mock_loop.execute = AsyncMock(side_effect=slow_execute)
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
@@ -628,7 +634,7 @@ class TestAgentEngineRecovery:
             def get_strategy_type(self) -> str:
                 return "custom"
 
-        provider = MagicMock()
+        provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
         engine = AgentEngine(
             provider=provider,
@@ -648,10 +654,10 @@ class TestAgentEngineRecovery:
         sample_task_with_criteria: Task,
     ) -> None:
         """MemoryError from recovery strategy is not swallowed."""
-        mock_strategy = MagicMock()
+        mock_strategy = MagicMock(spec=RecoveryStrategy)
         mock_strategy.recover = AsyncMock(side_effect=MemoryError("OOM"))
 
-        provider = MagicMock()
+        provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
         engine = AgentEngine(
             provider=provider,
@@ -670,12 +676,12 @@ class TestAgentEngineRecovery:
         sample_task_with_criteria: Task,
     ) -> None:
         """RecursionError from recovery strategy is not swallowed."""
-        mock_strategy = MagicMock()
+        mock_strategy = MagicMock(spec=RecoveryStrategy)
         mock_strategy.recover = AsyncMock(
             side_effect=RecursionError("max depth"),
         )
 
-        provider = MagicMock()
+        provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
         engine = AgentEngine(
             provider=provider,

@@ -3,12 +3,13 @@
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
@@ -25,6 +26,7 @@ from synthorg.settings.errors import (
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -89,11 +91,12 @@ def registry() -> SettingsRegistry:
 
 
 @pytest.fixture
-def mock_repo() -> AsyncMock:
-    repo = AsyncMock(spec=SettingsRepository)
-    repo.get = AsyncMock(return_value=None)
-    repo.set = AsyncMock()
-    repo.delete = AsyncMock(return_value=True)
+def mock_repo() -> Any:
+    repo = mock_of[SettingsRepository](
+        get=AsyncMock(return_value=None),
+        set=AsyncMock(),
+        delete=AsyncMock(return_value=True),
+    )
     repo.get_namespace = AsyncMock(return_value=())
     repo.get_all = AsyncMock(return_value=())
     repo.delete_namespace = AsyncMock(return_value=0)
@@ -403,9 +406,10 @@ class TestNotifications:
     async def test_publishes_on_set(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
     ) -> None:
-        bus = MagicMock()
-        bus.is_running = True
-        bus.publish = AsyncMock()
+        bus = mock_of[MessageBus](
+            is_running=True,
+            publish=AsyncMock(),
+        )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
@@ -421,9 +425,10 @@ class TestNotifications:
     async def test_publishes_on_delete(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
     ) -> None:
-        bus = MagicMock()
-        bus.is_running = True
-        bus.publish = AsyncMock()
+        bus = mock_of[MessageBus](
+            is_running=True,
+            publish=AsyncMock(),
+        )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
@@ -495,9 +500,10 @@ class TestDeleteNamespace:
                 yaml_path="budget.another_key",
             )
         )
-        bus = MagicMock()
-        bus.is_running = True
-        bus.publish = AsyncMock()
+        bus = mock_of[MessageBus](
+            is_running=True,
+            publish=AsyncMock(),
+        )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
@@ -552,9 +558,10 @@ class TestDeleteNamespace:
 
         from synthorg.observability.events.settings import SETTINGS_VALUE_DELETED
 
-        bus = MagicMock()
-        bus.is_running = True
-        bus.publish = AsyncMock()
+        bus = mock_of[MessageBus](
+            is_running=True,
+            publish=AsyncMock(),
+        )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
@@ -686,9 +693,10 @@ class TestNotificationExceptionHandling:
     async def test_set_succeeds_when_bus_publish_raises(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
     ) -> None:
-        bus = MagicMock()
-        bus.is_running = True
-        bus.publish = AsyncMock(side_effect=RuntimeError("bus broken"))
+        bus = mock_of[MessageBus](
+            is_running=True,
+            publish=AsyncMock(side_effect=RuntimeError("bus broken")),
+        )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
@@ -702,9 +710,10 @@ class TestNotificationExceptionHandling:
     async def test_skips_publish_when_bus_not_running(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
     ) -> None:
-        bus = MagicMock()
-        bus.is_running = False
-        bus.publish = AsyncMock()
+        bus = mock_of[MessageBus](
+            is_running=False,
+            publish=AsyncMock(),
+        )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,

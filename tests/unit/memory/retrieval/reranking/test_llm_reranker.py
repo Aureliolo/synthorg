@@ -21,6 +21,7 @@ from synthorg.memory.retrieval.reranking.llm_reranker import (
 from synthorg.memory.retrieval.reranking.protocol import (
     QuerySpecificReranker,
 )
+from synthorg.providers.protocol import CompletionProvider
 
 
 def _make_candidate(
@@ -120,7 +121,7 @@ class TestLLMQuerySpecificReranker:
 
     @pytest.mark.unit
     async def test_rerank_fallback_on_llm_error(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         provider.complete = AsyncMock(
             side_effect=RuntimeError("LLM down"),
         )
@@ -218,7 +219,7 @@ class TestLLMQuerySpecificReranker:
 
     @pytest.mark.unit
     async def test_rerank_null_content_returns_original(self) -> None:
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         response = SimpleNamespace(content=None)
         provider.complete = AsyncMock(return_value=response)
         reranker = LLMQuerySpecificReranker(

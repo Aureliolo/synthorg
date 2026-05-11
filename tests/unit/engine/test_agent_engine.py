@@ -32,9 +32,14 @@ from synthorg.observability.correlation import (
 )
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from synthorg.providers.enums import FinishReason
+from tests._shared import mock_of
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
+
+from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.loop_protocol import ExecutionLoop
+from synthorg.engine.task_engine import TaskEngine
 
 from .conftest import make_completion_response as _make_completion_response
 
@@ -477,9 +482,10 @@ class TestAgentEngineBudgetChecker:
             termination_reason=TerminationReason.BUDGET_EXHAUSTED,
             turns=(),
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(
@@ -688,9 +694,10 @@ class TestAgentEngineCompletionConfig:
                 ),
             ),
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="custom")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="custom"),
+        )
 
         config = MagicMock()
         provider = mock_provider_factory([])
@@ -807,9 +814,10 @@ class TestAgentEngineDefaultLoop:
                 ),
             ),
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="custom")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="custom"),
+        )
 
         provider = mock_provider_factory([])
         engine = AgentEngine(
@@ -1105,7 +1113,7 @@ class TestSyncToTaskEngine:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
-        mock_te = MagicMock()
+        mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(return_value=_make_sync_success())
 
         engine = AgentEngine(provider=provider, task_engine=mock_te)
@@ -1153,11 +1161,12 @@ class TestSyncToTaskEngine:
                 ),
             ),
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
-        mock_te = MagicMock()
+        mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(return_value=_make_sync_success())
 
         provider = mock_provider_factory([])
@@ -1210,11 +1219,12 @@ class TestSyncToTaskEngine:
                 ),
             ),
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
-        mock_te = MagicMock()
+        mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(return_value=_make_sync_success())
 
         provider = mock_provider_factory([])
@@ -1266,11 +1276,12 @@ class TestSyncToTaskEngine:
                 ),
             ),
         )
-        mock_loop = MagicMock()
-        mock_loop.execute = AsyncMock(return_value=mock_result)
-        mock_loop.get_loop_type = MagicMock(return_value="react")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(return_value=mock_result),
+            get_loop_type=MagicMock(return_value="react"),
+        )
 
-        mock_te = MagicMock()
+        mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(return_value=_make_sync_success())
 
         provider = mock_provider_factory([])
@@ -1303,7 +1314,7 @@ class TestSyncToTaskEngine:
         provider = mock_provider_factory([response])
 
         # First call (IN_PROGRESS) fails, rest succeed
-        mock_te = MagicMock()
+        mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(
             side_effect=[
                 _make_sync_failure(),
@@ -1332,7 +1343,7 @@ class TestSyncToTaskEngine:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
-        mock_te = MagicMock()
+        mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(
             side_effect=TaskEngineError("engine unavailable"),
         )
@@ -1356,7 +1367,7 @@ class TestSyncToTaskEngine:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
-        mock_te = MagicMock()
+        mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(
             side_effect=RuntimeError("connection lost"),
         )
@@ -1380,7 +1391,7 @@ class TestSyncToTaskEngine:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
-        mock_te = MagicMock()
+        mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(
             side_effect=MemoryError("out of memory"),
         )
@@ -1403,7 +1414,7 @@ class TestSyncToTaskEngine:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
-        mock_te = MagicMock()
+        mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(
             side_effect=RecursionError("maximum recursion depth exceeded"),
         )
@@ -1445,7 +1456,7 @@ class TestAgentEngineCoordinator:
     ) -> None:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        mock_coordinator = MagicMock()
+        mock_coordinator = MagicMock(spec=MultiAgentCoordinator)
         engine = AgentEngine(provider=provider, coordinator=mock_coordinator)
         assert engine.coordinator is mock_coordinator
 
@@ -1466,7 +1477,7 @@ class TestAgentEngineCoordinator:
     ) -> None:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        mock_coordinator = AsyncMock()
+        mock_coordinator = AsyncMock(spec=MultiAgentCoordinator)
         expected_result = MagicMock()
         mock_coordinator.coordinate.return_value = expected_result
 

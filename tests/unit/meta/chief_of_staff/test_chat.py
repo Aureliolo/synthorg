@@ -32,6 +32,8 @@ from synthorg.meta.models import (
 )
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.providers.protocol import CompletionProvider
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -157,8 +159,9 @@ class TestExplainProposal:
         assert len(result.sources) > 0
 
     async def test_provider_error_propagates(self) -> None:
-        provider = AsyncMock()
-        provider.complete.side_effect = RuntimeError("LLM unavailable")
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(side_effect=RuntimeError("LLM unavailable")),
+        )
         chat = ChiefOfStaffChat(
             provider=provider,
             config=ChiefOfStaffConfig(),

@@ -86,7 +86,7 @@ class TestWorkflowExecutionObserver:
         )
 
         event = _make_event(new_status=status)
-        mock_handle = AsyncMock()
+        mock_handle = AsyncMock(spec=observer._service.handle_task_state_changed)
         with patch.object(
             observer._service,
             "handle_task_state_changed",

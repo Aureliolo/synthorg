@@ -9,6 +9,7 @@ from synthorg.ontology.drift.active import ActiveValidatorStrategy
 from synthorg.ontology.drift.layered import LayeredDetectionStrategy
 from synthorg.ontology.drift.noop import NoDriftDetection
 from synthorg.ontology.drift.passive import PassiveMonitorStrategy
+from synthorg.ontology.drift.protocol import DriftDetectionStrategy
 from synthorg.ontology.models import (
     DriftAction,
     DriftReport,
@@ -16,6 +17,7 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
+from tests._shared import mock_of
 
 _NOW = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
@@ -244,10 +246,12 @@ class TestLayeredDetectionStrategy:
             canonical_version=1,
             recommendation=DriftAction.NO_ACTION,
         )
-        core = AsyncMock()
-        core.detect = AsyncMock(return_value=clean_report)
-        user = AsyncMock()
-        user.detect = AsyncMock()
+        core = mock_of[DriftDetectionStrategy](
+            detect=AsyncMock(return_value=clean_report),
+        )
+        user = mock_of[DriftDetectionStrategy](
+            detect=AsyncMock(),
+        )
 
         strategy = LayeredDetectionStrategy(
             ontology=ontology,
@@ -273,10 +277,12 @@ class TestLayeredDetectionStrategy:
             canonical_version=1,
             recommendation=DriftAction.NO_ACTION,
         )
-        core = AsyncMock()
-        core.detect = AsyncMock()
-        user = AsyncMock()
-        user.detect = AsyncMock(return_value=clean_report)
+        core = mock_of[DriftDetectionStrategy](
+            detect=AsyncMock(),
+        )
+        user = mock_of[DriftDetectionStrategy](
+            detect=AsyncMock(return_value=clean_report),
+        )
 
         strategy = LayeredDetectionStrategy(
             ontology=ontology,
@@ -292,7 +298,7 @@ class TestLayeredDetectionStrategy:
         ontology = _make_ontology()
         strategy = LayeredDetectionStrategy(
             ontology=ontology,
-            core_strategy=AsyncMock(),
-            user_strategy=AsyncMock(),
+            core_strategy=AsyncMock(spec=DriftDetectionStrategy),
+            user_strategy=AsyncMock(spec=DriftDetectionStrategy),
         )
         assert strategy.strategy_name == "layered"

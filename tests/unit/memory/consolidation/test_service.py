@@ -1,12 +1,14 @@
 """Tests for MemoryConsolidationService."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
 import structlog.testing
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.consolidation.config import (
     ArchivalConfig,
     ConsolidationConfig,
@@ -18,7 +20,10 @@ from synthorg.memory.consolidation.models import (
     ConsolidationResult,
 )
 from synthorg.memory.consolidation.service import MemoryConsolidationService
+from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
+from tests._shared import mock_of
 
 _NOW = datetime.now(UTC)
 _AGENT_ID = "test-agent"
@@ -38,12 +43,15 @@ def _make_entry(entry_id: str) -> MemoryEntry:
 def _make_backend_mock(
     entries: tuple[MemoryEntry, ...] = (),
     count: int = 0,
-) -> AsyncMock:
-    backend = AsyncMock()
-    backend.retrieve = AsyncMock(return_value=entries)
-    backend.delete = AsyncMock(return_value=True)
-    backend.count = AsyncMock(return_value=count)
-    return backend
+) -> Any:
+    return cast(
+        Any,
+        mock_of[MemoryBackend](
+            retrieve=AsyncMock(return_value=entries),
+            delete=AsyncMock(return_value=True),
+            count=AsyncMock(return_value=count),
+        ),
+    )
 
 
 @pytest.mark.unit
@@ -80,7 +88,7 @@ class TestRunConsolidation:
         entries = (_make_entry("m1"), _make_entry("m2"))
         backend = _make_backend_mock(entries=entries)
 
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=ConsolidationStrategy)
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
                 removed_ids=("m1",),
@@ -102,7 +110,7 @@ class TestRunConsolidation:
         entries = (_make_entry("m1"),)
         backend = _make_backend_mock(entries=entries)
 
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=ConsolidationStrategy)
         strategy.consolidate = AsyncMock(
             side_effect=RuntimeError("strategy failure"),
         )
@@ -120,14 +128,14 @@ class TestRunConsolidation:
         entries = (_make_entry("m1"), _make_entry("m2"))
         backend = _make_backend_mock(entries=entries)
 
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=ConsolidationStrategy)
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
                 removed_ids=("m1",),
             ),
         )
 
-        archival = AsyncMock()
+        archival = AsyncMock(spec=ArchivalStore)
         archival.archive = AsyncMock(return_value="arch-1")
 
         config = ConsolidationConfig(
@@ -188,7 +196,7 @@ class TestCleanupRetention:
     """cleanup_retention delegates to RetentionEnforcer."""
 
     async def test_delegates_to_retention(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
         config = ConsolidationConfig(
             retention=RetentionConfig(),
@@ -207,7 +215,7 @@ class TestRunMaintenance:
 
     async def test_full_maintenance(self) -> None:
         backend = _make_backend_mock(count=5)
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=ConsolidationStrategy)
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(),
         )
@@ -224,7 +232,7 @@ class TestRunMaintenance:
 
     async def test_maintenance_propagates_enforce_error(self) -> None:
         """Item 13: run_maintenance propagates sub-step errors."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
         backend.count = AsyncMock(side_effect=RuntimeError("backend down"))
         config = ConsolidationConfig(max_memories_per_agent=10)
@@ -238,7 +246,7 @@ class TestEnforceMaxMemoriesErrors:
     """enforce_max_memories error propagation (Item 14)."""
 
     async def test_count_error_propagates(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.count = AsyncMock(side_effect=RuntimeError("count failed"))
         config = ConsolidationConfig(max_memories_per_agent=10)
         service = MemoryConsolidationService(backend=backend, config=config)
@@ -265,14 +273,14 @@ class TestArchivalResilience:
         entries = (_make_entry("m1"), _make_entry("m2"), _make_entry("m3"))
         backend = _make_backend_mock(entries=entries)
 
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=ConsolidationStrategy)
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
                 removed_ids=("m1", "m2", "m3"),
             ),
         )
 
-        archival = AsyncMock()
+        archival = AsyncMock(spec=ArchivalStore)
         archival.archive = AsyncMock(
             side_effect=[
                 "arch-1",  # m1 succeeds
@@ -304,7 +312,7 @@ class TestArchivalModeAware:
         entries = (_make_entry("m1"), _make_entry("m2"))
         backend = _make_backend_mock(entries=entries)
 
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=ConsolidationStrategy)
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
                 removed_ids=("m1",),
@@ -317,7 +325,7 @@ class TestArchivalModeAware:
             ),
         )
 
-        archival = AsyncMock()
+        archival = AsyncMock(spec=ArchivalStore)
         archival.archive = AsyncMock(return_value="arch-1")
 
         config = ConsolidationConfig(
@@ -339,7 +347,7 @@ class TestArchivalModeAware:
         entries = (_make_entry("m1"), _make_entry("m2"))
         backend = _make_backend_mock(entries=entries)
 
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=ConsolidationStrategy)
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
                 removed_ids=("m1", "m2"),
@@ -356,7 +364,7 @@ class TestArchivalModeAware:
             ),
         )
 
-        archival = AsyncMock()
+        archival = AsyncMock(spec=ArchivalStore)
         archival.archive = AsyncMock(
             side_effect=["arch-1", "arch-2"],
         )
@@ -386,7 +394,7 @@ class TestArchivalModeAware:
         backend = _make_backend_mock(entries=entries)
 
         # Mode assignments in REVERSED order from removed_ids
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=ConsolidationStrategy)
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
                 removed_ids=("m1", "m2", "m3"),
@@ -407,7 +415,7 @@ class TestArchivalModeAware:
             ),
         )
 
-        archival = AsyncMock()
+        archival = AsyncMock(spec=ArchivalStore)
         # Second archival fails -- only m1 and m3 succeed
         archival.archive = AsyncMock(
             side_effect=["arch-1", RuntimeError("disk full"), "arch-3"],
@@ -440,14 +448,14 @@ class TestArchivalModeAware:
         entries = (_make_entry("m1"),)
         backend = _make_backend_mock(entries=entries)
 
-        strategy = AsyncMock()
+        strategy = AsyncMock(spec=ConsolidationStrategy)
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
                 removed_ids=("m1",),
             ),
         )
 
-        archival = AsyncMock()
+        archival = AsyncMock(spec=ArchivalStore)
         archival.archive = AsyncMock(return_value="arch-1")
 
         config = ConsolidationConfig(
@@ -473,7 +481,7 @@ class TestCleanupRetentionOverrides:
 
     async def test_overrides_forwarded_to_enforcer(self) -> None:
         """Agent override params reach cleanup_expired."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
         config = ConsolidationConfig(retention=RetentionConfig())
         service = MemoryConsolidationService(
@@ -493,7 +501,7 @@ class TestCleanupRetentionOverrides:
 
     async def test_no_overrides_backward_compatible(self) -> None:
         """Calling without overrides works exactly as before."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
         config = ConsolidationConfig(retention=RetentionConfig())
         service = MemoryConsolidationService(
@@ -512,7 +520,7 @@ class TestRunMaintenanceOverrides:
 
     async def test_maintenance_forwards_overrides(self) -> None:
         """run_maintenance passes agent overrides to cleanup_retention."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve = AsyncMock(return_value=())
         backend.count = AsyncMock(return_value=0)
         config = ConsolidationConfig(retention=RetentionConfig())

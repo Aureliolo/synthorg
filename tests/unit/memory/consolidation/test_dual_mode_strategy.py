@@ -1,18 +1,23 @@
 """Tests for DualModeConsolidationStrategy."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
 from synthorg.memory.consolidation.density import DensityClassifier
 from synthorg.memory.consolidation.dual_mode_strategy import (
     DualModeConsolidationStrategy,
 )
+from synthorg.memory.consolidation.extractive import ExtractivePreserver
 from synthorg.memory.consolidation.models import ArchivalMode
 from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
+from tests._shared import mock_of
 
 _NOW = datetime.now(UTC)
 _AGENT_ID = "test-agent"
@@ -78,18 +83,30 @@ def _make_strategy(
     group_threshold: int = 3,
 ) -> DualModeConsolidationStrategy:
     if backend is None:
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="summary-1")
-        backend.delete = AsyncMock(return_value=True)
+        backend = cast(
+            Any,
+            mock_of[MemoryBackend](
+                store=AsyncMock(return_value="summary-1"),
+                delete=AsyncMock(return_value=True),
+            ),
+        )
     if classifier is None:
         classifier = DensityClassifier()
     if summarizer is None:
-        summarizer = AsyncMock()
-        summarizer.summarize = AsyncMock(return_value="LLM summary text.")
+        summarizer = cast(
+            Any,
+            mock_of[AbstractiveSummarizer](
+                summarize=AsyncMock(return_value="LLM summary text."),
+            ),
+        )
     if extractor is None:
-        extractor = MagicMock()
-        extractor.extract = MagicMock(
-            return_value="[Extractive preservation]\nKey facts: id-1",
+        extractor = cast(
+            Any,
+            mock_of[ExtractivePreserver](
+                extract=MagicMock(
+                    return_value="[Extractive preservation]\nKey facts: id-1",
+                ),
+            ),
         )
     return DualModeConsolidationStrategy(
         backend=backend,

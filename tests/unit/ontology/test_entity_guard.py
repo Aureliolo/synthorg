@@ -12,6 +12,7 @@ from synthorg.communication.delegation.models import DelegationRequest
 from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
 from synthorg.ontology.config import DelegationGuardConfig, GuardMode
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 
 def _make_request() -> DelegationRequest:
@@ -199,7 +200,7 @@ class TestEntityAlignmentGuardEnforce:
 
     async def test_enforce_fails_closed_on_backend_error(self) -> None:
         """ENFORCE mode rejects when manifest retrieval fails."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=OntologyEntityRepository)
         backend.get_version_manifest = AsyncMock(
             side_effect=RuntimeError("connection lost"),
         )

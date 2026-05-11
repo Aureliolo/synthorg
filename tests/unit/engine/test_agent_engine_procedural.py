@@ -15,6 +15,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason, TurnRecord
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     CompletionResponse,
@@ -114,7 +115,7 @@ class TestAgentEngineProcedural:
         """Procedural memory pipeline runs after ERROR recovery."""
         identity = _make_identity()
         provider = _make_provider()
-        memory_backend = AsyncMock()
+        memory_backend = AsyncMock(spec=MemoryBackend)
         memory_backend.store = AsyncMock(return_value="mem-001")
         config = ProceduralMemoryConfig(model="test-small-001")
 
@@ -145,7 +146,7 @@ class TestAgentEngineProcedural:
         """Procedural memory skipped for non-ERROR terminations."""
         identity = _make_identity()
         provider = _make_provider()
-        memory_backend = AsyncMock()
+        memory_backend = AsyncMock(spec=MemoryBackend)
         config = ProceduralMemoryConfig(model="test-small-001")
 
         engine = AgentEngine(
@@ -173,7 +174,7 @@ class TestAgentEngineProcedural:
         provider = _make_provider()
         # Make the proposer call raise an error
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM error"))
-        memory_backend = AsyncMock()
+        memory_backend = AsyncMock(spec=MemoryBackend)
         config = ProceduralMemoryConfig(model="test-small-001")
 
         engine = AgentEngine(
@@ -202,7 +203,7 @@ class TestAgentEngineProcedural:
         """No procedural memory when config is None."""
         identity = _make_identity()
         provider = _make_provider()
-        memory_backend = AsyncMock()
+        memory_backend = AsyncMock(spec=MemoryBackend)
 
         engine = AgentEngine(
             provider=provider,
@@ -258,7 +259,7 @@ class TestAgentEngineProcedural:
         """
         identity = _make_identity()
         provider = _make_provider()
-        memory_backend = AsyncMock()
+        memory_backend = AsyncMock(spec=MemoryBackend)
         config = ProceduralMemoryConfig(
             model="test-small-001",
             enabled=False,

@@ -81,7 +81,7 @@ class TestEngineWithEnforcer:
         with patch.object(
             enforcer,
             "check_can_execute",
-            new=AsyncMock(side_effect=exc_cls(msg)),
+            new=AsyncMock(spec=enforcer.check_can_execute, side_effect=exc_cls(msg)),
         ):
             result = await engine.run(
                 identity=sample_agent_with_personality,
@@ -122,17 +122,21 @@ class TestEngineWithEnforcer:
             patch.object(
                 enforcer,
                 "check_can_execute",
-                new=AsyncMock(return_value=PreFlightResult()),
+                new=AsyncMock(
+                    spec=enforcer.check_can_execute, return_value=PreFlightResult()
+                ),
             ),
             patch.object(
                 enforcer,
                 "resolve_model",
-                new=AsyncMock(return_value=downgraded_identity),
+                new=AsyncMock(
+                    spec=enforcer.resolve_model, return_value=downgraded_identity
+                ),
             ),
             patch.object(
                 enforcer,
                 "make_budget_checker",
-                new=AsyncMock(return_value=None),
+                new=AsyncMock(spec=enforcer.make_budget_checker, return_value=None),
             ),
         ):
             result = await engine.run(
@@ -185,17 +189,22 @@ class TestEngineWithEnforcer:
             patch.object(
                 enforcer,
                 "check_can_execute",
-                new=AsyncMock(return_value=PreFlightResult()),
+                new=AsyncMock(
+                    spec=enforcer.check_can_execute, return_value=PreFlightResult()
+                ),
             ),
             patch.object(
                 enforcer,
                 "resolve_model",
-                new=AsyncMock(return_value=sample_agent_with_personality),
+                new=AsyncMock(
+                    spec=enforcer.resolve_model,
+                    return_value=sample_agent_with_personality,
+                ),
             ),
             patch.object(
                 enforcer,
                 "make_budget_checker",
-                new=AsyncMock(return_value=None),
+                new=AsyncMock(spec=enforcer.make_budget_checker, return_value=None),
             ),
         ):
             result = await engine.run(

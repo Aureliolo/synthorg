@@ -9,6 +9,8 @@ import pytest
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine, PersonalityTrimPayload
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import mock_of
 
 from .conftest import make_completion_response as _make_completion_response
 
@@ -250,9 +252,10 @@ class TestPersonalityTrimNotifier:
         and proceeds with the built-in default ``notify_enabled=True``.
         """
         notifier = AsyncMock()
-        resolver = MagicMock()
-        resolver.get_bool = AsyncMock(side_effect=RuntimeError("db down"))
-        resolver.get_int = AsyncMock(return_value=10)
+        resolver = mock_of[ConfigResolver](
+            get_bool=AsyncMock(side_effect=RuntimeError("db down")),
+            get_int=AsyncMock(return_value=10),
+        )
         provider = mock_provider_factory([_make_completion_response()])
         engine = AgentEngine(
             provider=provider,
@@ -347,9 +350,10 @@ class TestPersonalityTrimNotifier:
         a ``BaseException`` subclass, the method must not swallow it.
         """
         notifier = AsyncMock()
-        resolver = MagicMock()
-        resolver.get_bool = AsyncMock(side_effect=exc_type())
-        resolver.get_int = AsyncMock(return_value=10)
+        resolver = mock_of[ConfigResolver](
+            get_bool=AsyncMock(side_effect=exc_type()),
+            get_int=AsyncMock(return_value=10),
+        )
         provider = mock_provider_factory([_make_completion_response()])
         engine = AgentEngine(
             provider=provider,

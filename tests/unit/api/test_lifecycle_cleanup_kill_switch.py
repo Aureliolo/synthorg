@@ -13,27 +13,77 @@ exactly N ticks; no wall-clock races.
 import asyncio
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import create_autospec
 
 import pytest
 
 from synthorg.api import lifecycle_helpers
 
 
+def _no_arg_sync() -> object:
+    """Spec target for ``create_autospec(...)`` substitutes that stand in
+    for synchronous zero-arg cleanup methods (e.g.
+    ``WsTicketStore.cleanup_expired``)."""
+    return None
+
+
+async def _no_arg_async() -> object:
+    """Spec target for ``create_autospec(...)`` substitutes that stand in
+    for async zero-arg cleanup methods."""
+    return None
+
+
+async def _config_get_async(_namespace: str, _key: str, /) -> object:
+    """Spec target for ``ConfigResolver.get_*`` substitutes.
+
+    Real signature is ``(namespace, key) -> value``. ``create_autospec``
+    enforces the positional-arg count, so the stub must mirror both
+    positional parameters or the loop's two-positional-arg call raises
+    ``TypeError: too many positional arguments`` and the test fails.
+    """
+    return None
+
+
 def _build_app_state(*, enabled: bool) -> SimpleNamespace:
-    """Build a minimal ``AppState`` stand-in with counting stub stores."""
+    """Build a minimal ``AppState`` stand-in with counting stub stores.
+
+    Each cleanup callable is a ``create_autospec(..., spec_set=True)``
+    stub built against a zero-arg signature target so call-time
+    signature mismatches surface as test failures (matches the
+    test-doubles ladder strictness used elsewhere).
+    """
     ticket_store = SimpleNamespace(
-        cleanup_expired=MagicMock(return_value=None),
+        cleanup_expired=create_autospec(
+            _no_arg_sync,
+            spec_set=True,
+            return_value=None,
+        ),
     )
     session_store = SimpleNamespace(
-        cleanup_expired=AsyncMock(return_value=None),
+        cleanup_expired=create_autospec(
+            _no_arg_async,
+            spec_set=True,
+            return_value=None,
+        ),
     )
     lockout_store = SimpleNamespace(
-        cleanup_expired=AsyncMock(return_value=None),
+        cleanup_expired=create_autospec(
+            _no_arg_async,
+            spec_set=True,
+            return_value=None,
+        ),
     )
     config_resolver = SimpleNamespace(
-        get_bool=AsyncMock(return_value=enabled),
-        get_float=AsyncMock(return_value=0.001),
+        get_bool=create_autospec(
+            _config_get_async,
+            spec_set=True,
+            return_value=enabled,
+        ),
+        get_float=create_autospec(
+            _config_get_async,
+            spec_set=True,
+            return_value=0.001,
+        ),
     )
     return SimpleNamespace(
         ticket_store=ticket_store,
@@ -134,7 +184,11 @@ class TestResolveLifecycleCleanupEnabled:
     async def test_resolver_exception_returns_true(self) -> None:
         """Resolver raising ``Exception`` keeps cleanup running (fail-safe)."""
         config_resolver = SimpleNamespace(
-            get_bool=AsyncMock(side_effect=RuntimeError("settings backend down")),
+            get_bool=create_autospec(
+                _config_get_async,
+                spec_set=True,
+                side_effect=RuntimeError("settings backend down"),
+            ),
         )
         app_state = SimpleNamespace(
             has_config_resolver=True,
@@ -158,10 +212,26 @@ class TestRunCleanupTickExceptionIsolation:
     ) -> None:
         """``ticket_store.cleanup_expired`` raising still runs session + lockout."""
         ticket_store = SimpleNamespace(
-            cleanup_expired=MagicMock(side_effect=RuntimeError("ticket exploded")),
+            cleanup_expired=create_autospec(
+                _no_arg_sync,
+                spec_set=True,
+                side_effect=RuntimeError("ticket exploded"),
+            ),
         )
-        session_store = SimpleNamespace(cleanup_expired=AsyncMock(return_value=None))
-        lockout_store = SimpleNamespace(cleanup_expired=AsyncMock(return_value=None))
+        session_store = SimpleNamespace(
+            cleanup_expired=create_autospec(
+                _no_arg_async,
+                spec_set=True,
+                return_value=None,
+            ),
+        )
+        lockout_store = SimpleNamespace(
+            cleanup_expired=create_autospec(
+                _no_arg_async,
+                spec_set=True,
+                return_value=None,
+            ),
+        )
         app_state = SimpleNamespace(
             ticket_store=ticket_store,
             session_store=session_store,
@@ -180,11 +250,27 @@ class TestRunCleanupTickExceptionIsolation:
 
     async def test_session_cleanup_failure_does_not_block_lockout(self) -> None:
         """``session_store.cleanup_expired`` raising still runs lockout cleanup."""
-        ticket_store = SimpleNamespace(cleanup_expired=MagicMock(return_value=None))
-        session_store = SimpleNamespace(
-            cleanup_expired=AsyncMock(side_effect=RuntimeError("sessions gone")),
+        ticket_store = SimpleNamespace(
+            cleanup_expired=create_autospec(
+                _no_arg_sync,
+                spec_set=True,
+                return_value=None,
+            ),
         )
-        lockout_store = SimpleNamespace(cleanup_expired=AsyncMock(return_value=None))
+        session_store = SimpleNamespace(
+            cleanup_expired=create_autospec(
+                _no_arg_async,
+                spec_set=True,
+                side_effect=RuntimeError("sessions gone"),
+            ),
+        )
+        lockout_store = SimpleNamespace(
+            cleanup_expired=create_autospec(
+                _no_arg_async,
+                spec_set=True,
+                return_value=None,
+            ),
+        )
         app_state = SimpleNamespace(
             ticket_store=ticket_store,
             session_store=session_store,
@@ -203,7 +289,11 @@ class TestRunCleanupTickExceptionIsolation:
     async def test_memory_error_propagates_from_cleanup_tick(self) -> None:
         """``MemoryError`` escapes the cleanup tick -- OOM must not be swallowed."""
         ticket_store = SimpleNamespace(
-            cleanup_expired=MagicMock(side_effect=MemoryError),
+            cleanup_expired=create_autospec(
+                _no_arg_sync,
+                spec_set=True,
+                side_effect=MemoryError,
+            ),
         )
         app_state = SimpleNamespace(
             ticket_store=ticket_store,

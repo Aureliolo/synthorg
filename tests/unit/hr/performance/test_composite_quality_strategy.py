@@ -11,6 +11,7 @@ from synthorg.hr.performance.composite_quality_strategy import (
 )
 from synthorg.hr.performance.models import QualityScoreResult
 from synthorg.hr.performance.quality_override_store import QualityOverrideStore
+from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
 from synthorg.providers.errors import ProviderInternalError
 from synthorg.providers.resilience.errors import RetryExhaustedError
 
@@ -204,7 +205,7 @@ class TestWeightedCombination:
     async def test_llm_exception_falls_back_to_ci(self) -> None:
         """LLM strategy raising exception falls back to CI-only."""
         ci = _make_strategy(name="ci_signal", score=7.0, confidence=0.8)
-        llm = AsyncMock()
+        llm = AsyncMock(spec=QualityScoringStrategy)
         llm.name = "llm_judge"
         llm.score.side_effect = RuntimeError("LLM down")
         composite = CompositeQualityStrategy(
@@ -349,7 +350,7 @@ class TestRetryExhaustedPropagation:
     async def test_llm_retry_exhausted_raises(self) -> None:
         """RetryExhaustedError from LLM bubbles up unwrapped."""
         ci = _make_strategy(name="ci_signal", score=7.0, confidence=0.8)
-        llm = AsyncMock()
+        llm = AsyncMock(spec=QualityScoringStrategy)
         llm.name = "llm_judge"
         llm.score.side_effect = RetryExhaustedError(
             ProviderInternalError("upstream 500"),
@@ -380,7 +381,7 @@ class TestRetryExhaustedPropagation:
     ) -> None:
         """MemoryError and RecursionError propagate bare from TaskGroup."""
         ci = _make_strategy(name="ci_signal", score=7.0, confidence=0.8)
-        llm = AsyncMock()
+        llm = AsyncMock(spec=QualityScoringStrategy)
         llm.name = "llm_judge"
         llm.score.side_effect = error_cls("boom")
         composite = CompositeQualityStrategy(

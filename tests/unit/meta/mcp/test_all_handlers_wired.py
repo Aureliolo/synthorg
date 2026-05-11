@@ -93,12 +93,18 @@ def fake_app_state() -> SimpleNamespace:
     defrepo.list_definitions.return_value = ()
     defrepo.get.return_value = None
     defrepo.delete.return_value = False
+    from synthorg.persistence.fine_tune_protocol import (
+        FineTuneCheckpointRepository,
+        FineTuneRunRepository,
+    )
+    from synthorg.persistence.version_protocol import VersionRepository
+
     ns.persistence = SimpleNamespace(
         workflow_definitions=defrepo,
-        workflow_versions=AsyncMock(),
+        workflow_versions=AsyncMock(spec=VersionRepository),
         budget_config_versions=_mkversion_repo(),
-        fine_tune_checkpoints=AsyncMock(),
-        fine_tune_runs=AsyncMock(),
+        fine_tune_checkpoints=AsyncMock(spec=FineTuneCheckpointRepository),
+        fine_tune_runs=AsyncMock(spec=FineTuneRunRepository),
     )
 
     # Engine / registries / trackers.

@@ -9,6 +9,8 @@ from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
 )
+from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.security.config import UncertaintyCheckConfig
 from synthorg.security.uncertainty import (
     UncertaintyChecker,
@@ -54,10 +56,10 @@ def _make_checker(
         model.model_id = f"model-{chr(97 + i)}-001"
         resolved_models.append(model)
 
-    registry = MagicMock()
+    registry = MagicMock(spec=ProviderRegistry)
     registry.get = MagicMock(side_effect=lambda name: drivers[name])
 
-    resolver = MagicMock()
+    resolver = MagicMock(spec=ModelResolver)
     resolver.resolve_all = MagicMock(return_value=tuple(resolved_models))
 
     return UncertaintyChecker(
@@ -218,7 +220,7 @@ class TestCheckerErrors:
             side_effect=RuntimeError("connection lost"),
         )
 
-        resolver = MagicMock()
+        resolver = MagicMock(spec=ModelResolver)
         model_a = MagicMock()
         model_a.provider_name = "provider-a"
         model_a.model_id = "model-a-001"
@@ -227,7 +229,7 @@ class TestCheckerErrors:
         model_b.model_id = "model-b-001"
         resolver.resolve_all = MagicMock(return_value=(model_a, model_b))
 
-        registry = MagicMock()
+        registry = MagicMock(spec=ProviderRegistry)
         registry.get = MagicMock(
             side_effect=lambda name: (
                 good_driver if name == "provider-a" else bad_driver

@@ -13,15 +13,18 @@ from synthorg.communication.meeting.participant import (
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.providers.registry import ProviderRegistry
+from tests._shared import mock_of
 
 
 def _default_config() -> RootConfig:
     return RootConfig(company_name="test-company")
 
 
-def _fake_registries() -> tuple[MagicMock, MagicMock]:
+def _fake_registries() -> tuple[AgentRegistryService, ProviderRegistry]:
     """Return (agent_registry, provider_registry) fakes for wiring tests."""
-    return MagicMock(), MagicMock()
+    return mock_of[AgentRegistryService](), mock_of[ProviderRegistry]()
 
 
 @pytest.mark.unit
@@ -168,12 +171,12 @@ class TestAutoWireMeetings:
         [
             pytest.param(
                 None,
-                MagicMock(),
+                MagicMock(spec=ProviderRegistry),
                 ("agent_registry",),
                 id="only-agent-missing",
             ),
             pytest.param(
-                MagicMock(),
+                MagicMock(spec=AgentRegistryService),
                 None,
                 ("provider_registry",),
                 id="only-provider-missing",

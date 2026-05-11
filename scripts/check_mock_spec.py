@@ -1,49 +1,55 @@
 #!/usr/bin/env python3
-"""Pre-commit gate: forbid bare ``Mock()`` / ``AsyncMock()`` / ``MagicMock()``.
+"""Pre-commit gate: forbid bare Mock at a typed boundary.
 
-Mocks that don't declare the interface they stand for can silently
-absorb any attribute access. Production code can rename or drop a
-method without a single test failing -- the mock just keeps returning
-a child mock for the missing method. This is the "mock drift" finding
-from issue #1604.
+Catches bare ``Mock()`` / ``AsyncMock()`` / ``MagicMock()`` calls used
+at a typed boundary. A typed boundary is a constructor / function
+argument annotated with a
+non-Mock type, an annotated local (``m: Service = Mock()``), or the
+return / yield of a function whose return annotation is a concrete
+type. Bare mocks at these sites silently absorb any attribute access:
+production code can rename or drop a method without a single test
+failing because the mock keeps returning a child mock for the missing
+method. This is the "mock drift" finding from issue #1604.
 
-The gate matches a call when:
+The gate deliberately ignores the lower rungs of the test-double
+ladder (``docs/reference/conventions.md`` section 12.1):
 
-1. The callee is a ``Name`` or ``Attribute`` whose terminal
-   identifier is one of ``Mock`` / ``AsyncMock`` / ``MagicMock``,
-   covering both ``Mock()`` and ``mock.Mock()`` shapes.
-2. The call does NOT declare a spec. A spec is declared via the
-   first positional arg (``Mock(SomeClass)`` is an alias for
-   ``Mock(spec=SomeClass)``) OR an explicit ``spec=`` / ``spec_set=``
-   keyword arg. Other keyword args (``name=``, ``return_value=``,
-   ``side_effect=``, ``wraps=``, ...) configure mock behaviour but
-   do NOT declare the interface, so they don't exempt the call.
-   Non-empty ``*args`` / ``**kwargs`` splats are conservatively
-   skipped because a spec could be passed dynamically.
+* mocks assigned to ``.return_value`` / ``.side_effect`` / ``wraps`` of
+  another mock,
+* mocks assigned via ``parent.attr = Mock()`` (attribute-bag
+  reconfiguration of an already-specced mock),
+* attribute-bag scratch objects (``m = Mock(); m.x = 1; m.y = 2`` used
+  only locally inside a test),
+* values inside ``dict`` / ``list`` / ``tuple`` literals,
+* mocks bound to a name that is never passed across a typed boundary.
 
-Allowlist
----------
-
-``scripts/mock_spec_baseline.txt`` is a frozen list of
-``path:lineno:colno`` entries that the gate ignores. The baseline
-captures all pre-existing bare-mock sites at the time the gate is
-introduced so the gate can ship without forcing a 900-site cleanup
-in the same PR. New sites cannot be added to the baseline silently:
-``--update`` rewrites the baseline file, and the rewritten file
-must be committed (and reviewed) for the new site to be allowed.
+Detection runs in two passes. Pass 1 collects every bare-mock call.
+Pass 2 walks parent pointers (``ast`` does not carry them, so the
+gate builds the map up-front) and decides CATCH or SKIP per the rule
+table in ``_decide_direct``. Only DIRECT typed-boundary substitutions
+catch: ``Service(deps=Mock())`` (Mock is the call argument itself),
+``m: T = Mock()`` (Mock is the RHS of an annotated assignment), and
+``return Mock()`` from a function with a non-Mock return annotation.
+Indirect substitutions (Mock bound to a name then passed to a typed
+callable) are NOT caught -- precise detection there requires resolving
+callee parameter annotations across modules, which is out of scope
+for a pure-stdlib AST gate. The lower rungs of the test-double ladder
+(``docs/reference/conventions.md`` section 12.1) cover that case as
+documented discipline rather than gated enforcement.
 
 Usage
 -----
 
     python scripts/check_mock_spec.py <file>...     # pre-commit
     python scripts/check_mock_spec.py --scan-all    # CI / tests
-    python scripts/check_mock_spec.py --update      # regenerate baseline
 """
 
 import argparse
 import ast
 import re
 import sys
+from dataclasses import dataclass
+from enum import Enum, auto
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -52,79 +58,126 @@ if TYPE_CHECKING:
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _TESTS_ROOT = _REPO_ROOT / "tests"
-_BASELINE_PATH = _REPO_ROOT / "scripts" / "mock_spec_baseline.txt"
 
-_MOCK_NAMES: frozenset[str] = frozenset({"Mock", "AsyncMock", "MagicMock"})
-"""Class names whose bare-call form is forbidden."""
+_MOCK_NAMES: frozenset[str] = frozenset(
+    {
+        "Mock",
+        "AsyncMock",
+        "MagicMock",
+        "NonCallableMock",
+        "NonCallableMagicMock",
+        "PropertyMock",
+    }
+)
+"""Class names whose bare-call form is the candidate set for Pass 1."""
 
-_BASELINE_HEADER = """\
-# Frozen baseline of pre-existing bare Mock()/AsyncMock()/MagicMock()
-# call sites in tests/. Each line is `path:lineno:colno` (POSIX path,
-# 1-indexed line, 0-indexed column) sorted in deterministic order.
-#
-# scripts/check_mock_spec.py reads this file to suppress violations
-# at these exact locations. New bare-mock sites NOT in this list will
-# fail the pre-commit hook.
-#
-# Regenerate (rare; requires explicit user approval) with:
-#   uv run python scripts/check_mock_spec.py --update
-#
-# Issue #1604 / W4 (test-quality audit).
+_MOCK_FACTORY_NAMES: frozenset[str] = frozenset({"create_autospec", "mock_of"})
+"""Factory names treated as Mock-class for SKIP purposes in Pass 2.
+
+A ``create_autospec(T, ...)`` or ``mock_of[T](...)`` call is already
+typed by construction, so a bare ``Mock()`` passed as a kwarg to it
+(``return_value=Mock()``) configures the autospec rather than crossing
+a typed boundary.
 """
 
+_MOCK_TYPE_PATTERN: re.Pattern[str] = re.compile(
+    r"\b(?:Mock|AsyncMock|MagicMock|NonCallableMock|NonCallableMagicMock|"
+    r"PropertyMock|Any|object)\b",
+)
+"""Words in an annotation textual form that signal "not a typed boundary"."""
 
-class _BareMockFinder(ast.NodeVisitor):
-    """Locate bare ``<Mock|AsyncMock|MagicMock>()`` call sites.
 
-    Matches both bare-name (``Mock()``) and attribute-form
-    (``mock.Mock()``, ``unittest.mock.MagicMock()``) callees.
+# ---------------------------------------------------------------------
+# Pass 1: candidate collection
+# ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _BareMockSite:
+    """A bare ``Mock()`` call captured during Pass 1.
 
     Attributes:
-        hits: Tuples of ``(lineno, col_offset)`` for each match.
+        lineno: 1-indexed line of the call.
+        col_offset: 0-indexed column of the call.
+        node: The ``ast.Call`` node for the bare mock.
+        enclosing_fn: The closest enclosing ``FunctionDef`` /
+            ``AsyncFunctionDef``, or the ``Module`` if the site is at
+            module / class scope. Drives both return-annotation lookup
+            and the scope of name-usage tracking in Pass 2.5.
     """
 
-    def __init__(self) -> None:
-        self.hits: list[tuple[int, int]] = []
+    lineno: int
+    col_offset: int
+    node: ast.Call
+    enclosing_fn: ast.FunctionDef | ast.AsyncFunctionDef | ast.Module
+
+
+class _Collector(ast.NodeVisitor):
+    """Walk a parsed module and record bare-mock candidate sites."""
+
+    def __init__(self, tree: ast.Module) -> None:
+        self._tree = tree
+        self.candidates: list[_BareMockSite] = []
+        self._fn_stack: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._fn_stack.append(node)
+        self.generic_visit(node)
+        self._fn_stack.pop()
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._fn_stack.append(node)
+        self.generic_visit(node)
+        self._fn_stack.pop()
 
     def visit_Call(self, node: ast.Call) -> None:
-        """Flag Mock-family calls that don't declare a spec.
-
-        A spec is declared via:
-          * the first positional arg (``Mock(SomeClass)`` is an alias
-            for ``Mock(spec=SomeClass)``), OR
-          * an explicit ``spec=`` / ``spec_set=`` keyword arg.
-
-        Other keyword args (``name=``, ``return_value=``, ``side_effect=``,
-        ``wraps=``, ...) configure mock behaviour but do NOT declare the
-        interface, so they don't exempt the call from the gate. Empty
-        splats (``*[]``, ``**{}``) also don't declare a spec.
-
-        Non-empty ``*args`` / ``**kwargs`` splats are the one ambiguous
-        case: a spec could be passed dynamically. The gate stays
-        conservative and skips those (the bare-call form is what the
-        rule targets; dynamic-splat call sites are vanishingly rare in
-        the test suite and any false negative there is acceptable).
-        """
-        terminal = _terminal_callee_name(node.func)
-        if terminal is None or terminal not in _MOCK_NAMES:
-            self.generic_visit(node)
-            return
-        if _has_spec_positional(node.args) or _has_spec_keyword(node.keywords):
-            self.generic_visit(node)
-            return
-        if _has_dynamic_splat(node.args, node.keywords):
-            self.generic_visit(node)
-            return
-        self.hits.append((node.lineno, node.col_offset))
+        if _is_bare_mock_call(node):
+            enclosing: ast.FunctionDef | ast.AsyncFunctionDef | ast.Module
+            enclosing = self._fn_stack[-1] if self._fn_stack else self._tree
+            self.candidates.append(
+                _BareMockSite(
+                    lineno=node.lineno,
+                    col_offset=node.col_offset,
+                    node=node,
+                    enclosing_fn=enclosing,
+                ),
+            )
         self.generic_visit(node)
 
 
-def _is_empty_splat(value: ast.expr) -> bool:
-    """Return True if ``value`` is an empty tuple/list/dict literal.
+def _is_bare_mock_call(node: ast.Call) -> bool:
+    """Return True if *node* is a bare-mock candidate call.
 
-    Used to recognise ``*()`` / ``*[]`` / ``**{}`` splats that pass
-    no actual arguments at runtime.
+    A call is a candidate when it targets a Mock-family class (by
+    terminal name) and does not declare a spec via the first positional
+    arg or a ``spec=`` / ``spec_set=`` keyword. Non-empty splats are
+    conservatively skipped because a spec could be passed dynamically.
     """
+    terminal = _terminal_callee_name(node.func)
+    if terminal is None or terminal not in _MOCK_NAMES:
+        return False
+    if _has_spec_positional(node.args) or _has_spec_keyword(node.keywords):
+        return False
+    return not _has_dynamic_splat(node.args, node.keywords)
+
+
+def _terminal_callee_name(value: ast.expr) -> str | None:
+    """Terminal identifier of a callee expression, or None.
+
+    Recurses into ``ast.Subscript`` so generic-subscript factory
+    expressions (``mock_of[T]``) resolve to their base name.
+    """
+    if isinstance(value, ast.Name):
+        return value.id
+    if isinstance(value, ast.Attribute):
+        return value.attr
+    if isinstance(value, ast.Subscript):
+        return _terminal_callee_name(value.value)
+    return None
+
+
+def _is_empty_splat(value: ast.expr) -> bool:
+    """True if *value* is `()`, `[]`, or `{}` (an empty splat target)."""
     if isinstance(value, (ast.Tuple, ast.List)):
         return not value.elts
     if isinstance(value, ast.Dict):
@@ -133,23 +186,12 @@ def _is_empty_splat(value: ast.expr) -> bool:
 
 
 def _is_literal_none(value: ast.expr) -> bool:
-    """Return True if *value* is the literal ``None``.
-
-    ``Mock(None)`` and ``Mock(spec=None)`` look like spec declarations
-    syntactically but actually opt OUT of speccing -- ``unittest.mock``
-    treats them as no spec at all. The gate must not let those slip
-    through; recognising the literal here keeps the rule honest.
-    """
+    """True if *value* is the literal `None` constant."""
     return isinstance(value, ast.Constant) and value.value is None
 
 
 def _has_spec_positional(args: list[ast.expr]) -> bool:
-    """Return True if the first positional arg declares a spec.
-
-    ``Mock(SomeClass)`` is an alias for ``Mock(spec=SomeClass)``;
-    the first positional arg counts as a spec declaration as long
-    as it is a real value (not ``None`` and not an empty splat).
-    """
+    """True if the first positional arg is a non-None spec target."""
     if not args:
         return False
     first = args[0]
@@ -159,20 +201,18 @@ def _has_spec_positional(args: list[ast.expr]) -> bool:
 
 
 def _has_spec_keyword(keywords: list[ast.keyword]) -> bool:
-    """Return True if a non-None ``spec=`` / ``spec_set=`` is passed."""
+    """True if `spec=` or `spec_set=` is bound to a non-None value."""
     return any(
         kw.arg in ("spec", "spec_set") and not _is_literal_none(kw.value)
         for kw in keywords
     )
 
 
-def _has_dynamic_splat(args: list[ast.expr], keywords: list[ast.keyword]) -> bool:
-    """Return True if args/kwargs contain a non-empty splat.
-
-    A non-empty splat (``*some_list``, ``**some_dict``) could pass
-    a spec dynamically; the gate stays conservative and treats
-    those as non-violations.
-    """
+def _has_dynamic_splat(
+    args: list[ast.expr],
+    keywords: list[ast.keyword],
+) -> bool:
+    """True if call has a non-empty `*args` or `**kwargs` splat we cannot inspect."""
     if any(
         isinstance(arg, ast.Starred) and not _is_empty_splat(arg.value) for arg in args
     ):
@@ -180,17 +220,144 @@ def _has_dynamic_splat(args: list[ast.expr], keywords: list[ast.keyword]) -> boo
     return any(kw.arg is None and not _is_empty_splat(kw.value) for kw in keywords)
 
 
-def _terminal_callee_name(value: ast.expr) -> str | None:
-    """Return the terminal identifier of a callee expression, or ``None``.
+# ---------------------------------------------------------------------
+# Parent map (ast does not carry parent pointers)
+# ---------------------------------------------------------------------
 
-    Handles bare names (``Mock``), attribute chains (``mock.Mock``,
-    ``unittest.mock.MagicMock``), and rejects anything else.
+
+class _ParentMap:
+    """Maps AST node identity to its immediate parent.
+
+    Built once per module by walking ``ast.iter_child_nodes`` over
+    every node. Pass 2 and Pass 2.5 query it instead of walking the
+    tree repeatedly.
     """
-    if isinstance(value, ast.Name):
-        return value.id
-    if isinstance(value, ast.Attribute):
-        return value.attr
+
+    def __init__(self, tree: ast.AST) -> None:
+        self._parents: dict[int, ast.AST] = {}
+        for parent in ast.walk(tree):
+            for child in ast.iter_child_nodes(parent):
+                self._parents[id(child)] = parent
+
+    def get(self, node: ast.AST) -> ast.AST | None:
+        return self._parents.get(id(node))
+
+
+# ---------------------------------------------------------------------
+# Pass 2: direct-context decision
+# ---------------------------------------------------------------------
+
+
+class _Verdict(Enum):
+    CATCH = auto()
+    SKIP = auto()
+
+
+def _decide_direct(  # noqa: C901, PLR0911, PLR0912 -- rule table reads top-down
+    node: ast.AST,
+    parents: _ParentMap,
+) -> _Verdict:
+    """Return the direct-context verdict for a bare mock call.
+
+    Walks up through ``NamedExpr`` (walrus) so the outer context is
+    used for the direct decision.
+    """
+    parent = parents.get(node)
+    while isinstance(parent, ast.NamedExpr):
+        node = parent
+        parent = parents.get(node)
+
+    if parent is None:
+        return _Verdict.SKIP
+
+    if isinstance(parent, ast.Call):
+        return _verdict_for_call_arg(parent)
+
+    if isinstance(parent, ast.keyword):
+        grand = parents.get(parent)
+        if isinstance(grand, ast.Call):
+            return _verdict_for_call_arg(grand)
+        return _Verdict.SKIP
+
+    if isinstance(parent, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
+        return _Verdict.SKIP
+
+    if isinstance(parent, ast.Assign):
+        return _Verdict.SKIP
+
+    if isinstance(parent, ast.AnnAssign):
+        if not isinstance(parent.target, ast.Name):
+            return _Verdict.SKIP
+        if _is_mock_typed_annotation(parent.annotation):
+            return _Verdict.SKIP
+        return _Verdict.CATCH
+
+    if isinstance(parent, (ast.Return, ast.Yield, ast.YieldFrom)):
+        fn = _enclosing_fn(parent, parents)
+        if fn is None:
+            return _Verdict.SKIP
+        if fn.returns is None:
+            return _Verdict.SKIP
+        if _is_mock_typed_annotation(fn.returns):
+            return _Verdict.SKIP
+        return _Verdict.CATCH
+
+    if isinstance(parent, ast.Expr):
+        return _Verdict.SKIP
+
+    return _Verdict.SKIP
+
+
+def _verdict_for_call_arg(call: ast.Call) -> _Verdict:
+    """Return CATCH if *call*'s callee is non-Mock, else SKIP."""
+    terminal = _terminal_callee_name(call.func)
+    if terminal in _MOCK_NAMES or terminal in _MOCK_FACTORY_NAMES:
+        return _Verdict.SKIP
+    return _Verdict.CATCH
+
+
+def _is_mock_typed_annotation(annotation: ast.expr) -> bool:
+    """True if the annotation textual form contains a Mock / Any / object word."""
+    return bool(_MOCK_TYPE_PATTERN.search(ast.unparse(annotation)))
+
+
+def _enclosing_fn(
+    node: ast.AST,
+    parents: _ParentMap,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    """Walk up parents until a function-def or None."""
+    current = parents.get(node)
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return current
+        current = parents.get(current)
     return None
+
+
+# ---------------------------------------------------------------------
+# Combined decision
+# ---------------------------------------------------------------------
+
+
+def _decide_for_site(site: _BareMockSite, parents: _ParentMap) -> _Verdict:
+    """Final CATCH / SKIP decision for *site*.
+
+    The gate catches only the DIRECT typed-boundary substitutions
+    (``Service(deps=Mock())``, ``m: T = Mock()``, ``return Mock()``
+    from a typed fn). Indirect substitutions where a Mock is bound
+    to a name and later passed to a typed callable are NOT caught
+    here: identifying them precisely requires resolving callee
+    parameter annotations, which is out of scope for a pure-stdlib
+    AST gate. The lower-rung discipline (rungs 3 and below in
+    ``docs/reference/conventions.md`` section 12.1) is documented
+    rather than gated.
+    """
+    return _decide_direct(site.node, parents)
+
+
+# ---------------------------------------------------------------------
+# File scan / CLI
+# ---------------------------------------------------------------------
 
 
 class InspectionError(RuntimeError):
@@ -198,7 +365,7 @@ class InspectionError(RuntimeError):
 
 
 def _scan_file(path: Path) -> list[tuple[int, int]]:
-    """Return the sorted list of ``(lineno, col_offset)`` hits in *path*."""
+    """Return the sorted list of (lineno, col) Pattern A hits in *path*."""
     try:
         source = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError) as exc:
@@ -209,9 +376,17 @@ def _scan_file(path: Path) -> list[tuple[int, int]]:
     except SyntaxError as exc:
         msg = f"failed to parse {path}: SyntaxError at line {exc.lineno}: {exc.msg}"
         raise InspectionError(msg) from exc
-    finder = _BareMockFinder()
-    finder.visit(tree)
-    return sorted(finder.hits)
+
+    parents = _ParentMap(tree)
+    collector = _Collector(tree)
+    collector.visit(tree)
+
+    hits = [
+        (site.lineno, site.col_offset)
+        for site in collector.candidates
+        if _decide_for_site(site, parents) is _Verdict.CATCH
+    ]
+    return sorted(hits)
 
 
 def _rel(path: Path) -> str:
@@ -220,140 +395,38 @@ def _rel(path: Path) -> str:
 
 
 def _iter_test_files() -> Iterable[Path]:
-    """Walk ``tests/`` for ``.py`` files (excluding the ``_shared`` package).
+    """Walk ``tests/`` for ``.py`` files (excluding ``_shared``).
 
-    ``tests/_shared/`` holds shared test utilities (``FakeClock``, etc.)
-    that are imported by tests, not collected as tests themselves; they
-    have no business being subject to the mock-spec gate.
+    Both ``shared_dir`` and each yielded ``path`` are resolved so the
+    parent-set comparison is robust to symlinks / bind-mounts between
+    ``_TESTS_ROOT`` and the actual ``_shared`` directory.
     """
-    shared_dir = _TESTS_ROOT / "_shared"
+    shared_dir = (_TESTS_ROOT / "_shared").resolve()
     for path in sorted(_TESTS_ROOT.rglob("*.py")):
-        if shared_dir in path.parents:
+        if shared_dir in path.resolve().parents:
             continue
         yield path
 
 
-_BASELINE_ENTRY_PATTERN = re.compile(r"^.+:\d+:\d+$")
-
-
-def _load_baseline() -> set[str]:
-    """Return the set of allowlisted ``path:lineno:colno`` entries.
-
-    Validates each non-empty, non-comment line against the
-    ``path:lineno:colno`` shape and rejects duplicates. A corrupted
-    baseline (typo, manual merge artifact, accidentally-edited
-    binary) silently dropping entries would let real bare-mock
-    sites slip past the gate; failing loud at load time is the only
-    safe behaviour.
-    """
-    if not _BASELINE_PATH.exists():
-        return set()
-    entries: set[str] = set()
-    errors: list[str] = []
-    try:
-        rel_path = _rel(_BASELINE_PATH)
-    except ValueError:
-        # Baseline path is outside the repo (test fixture or
-        # custom relocation); fall back to the bare path so error
-        # messages still cite something useful.
-        rel_path = str(_BASELINE_PATH)
-    for lineno, line in enumerate(
-        _BASELINE_PATH.read_text(encoding="utf-8").splitlines(),
-        start=1,
-    ):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if not _BASELINE_ENTRY_PATTERN.match(stripped):
-            errors.append(
-                f"{rel_path}:{lineno}: malformed entry (expected "
-                f"'path:lineno:colno', got {stripped!r})",
-            )
-            continue
-        if stripped in entries:
-            errors.append(
-                f"{rel_path}:{lineno}: duplicate entry {stripped!r}",
-            )
-            continue
-        entries.add(stripped)
-    if errors:
-        for err in errors:
-            print(err, file=sys.stderr)
-        msg = (
-            f"{rel_path}: baseline failed validation "
-            f"({len(errors)} error{'s' if len(errors) != 1 else ''}); "
-            f"regenerate with 'uv run python scripts/check_mock_spec.py "
-            f"--update' or fix by hand."
-        )
-        raise ValueError(msg)
-    return entries
-
-
-def _format_entry(rel_path: str, lineno: int, col: int) -> str:
-    return f"{rel_path}:{lineno}:{col}"
-
-
-def _scan(test_path: Path, baseline: set[str]) -> list[str]:
-    """Return violation lines for *test_path* not present in *baseline*."""
+def _scan(test_path: Path) -> list[str]:
+    """Return violation lines for *test_path*."""
     try:
         hits = _scan_file(test_path)
     except InspectionError as exc:
         return [f"{_rel(test_path)}: inspection failed: {exc}"]
     rel = _rel(test_path)
-    violations: list[str] = []
-    for lineno, col in hits:
-        entry = _format_entry(rel, lineno, col)
-        if entry in baseline:
-            continue
-        violations.append(
-            f"{entry}: bare mock without spec= "
-            f"(see scripts/mock_spec_baseline.txt for the allowlist)",
-        )
-    return violations
-
-
-def _scan_all_for_baseline() -> list[str]:
-    """Return every bare-mock site in ``tests/`` for baseline regeneration.
-
-    Re-raises ``InspectionError`` instead of silently continuing on a
-    parse failure: a baseline that quietly skips an unparseable file
-    would let the gate suppress every bare mock in that file going
-    forward, which is exactly the kind of silent failure the gate
-    exists to prevent.
-
-    Sort key sorts by (path, lineno, col) numerically. Plain string
-    sort would lexicographically order ``"...:1169:..."`` before
-    ``"...:754:..."`` because ``'1' < '7'``, producing a baseline
-    block where the same file's entries jump backwards mid-block.
-    """
-    entries: list[tuple[str, int, int]] = []
-    for test_path in _iter_test_files():
-        hits = _scan_file(test_path)
-        rel = _rel(test_path)
-        for lineno, col in hits:
-            entries.append((rel, lineno, col))
-    entries.sort()
-    return [_format_entry(rel, lineno, col) for rel, lineno, col in entries]
-
-
-def cmd_update() -> int:
-    """Regenerate the baseline file from the current tree state."""
-    entries = _scan_all_for_baseline()
-    body = _BASELINE_HEADER + "\n".join(entries) + "\n"
-    _BASELINE_PATH.write_text(body, encoding="utf-8")
-    print(
-        f"Wrote {len(entries)} entries to {_rel(_BASELINE_PATH)}.",
-        file=sys.stderr,
-    )
-    return 0
+    return [
+        f"{rel}:{lineno}:{col}: bare mock at typed boundary "
+        f"(constructor / fn arg / annotated local / typed fixture return)"
+        for lineno, col in hits
+    ]
 
 
 def cmd_scan_all() -> int:
     """Scan every file in ``tests/`` (CI mode)."""
-    baseline = _load_baseline()
     violations: list[str] = []
     for test_path in _iter_test_files():
-        violations.extend(_scan(test_path, baseline))
+        violations.extend(_scan(test_path))
     return _report(violations)
 
 
@@ -361,23 +434,22 @@ def cmd_scan_paths(paths: Iterable[str]) -> int:
     """Scan the given files (pre-commit entry point).
 
     Skips files under ``tests/_shared/`` for the same reason
-    ``_iter_test_files`` does: the package holds shared test utilities
-    (``FakeClock``, ...) that are imported by tests, not collected as
-    tests themselves. Scanning them via the pre-commit path would let
-    the gate disagree with the ``--scan-all`` / ``--update`` paths.
+    ``_iter_test_files`` does: the package holds shared test
+    utilities that the gate's own helper tests live in, and is
+    excluded by convention from the scan.
     """
-    baseline = _load_baseline()
-    shared_dir = _TESTS_ROOT / "_shared"
+    shared_dir = (_TESTS_ROOT / "_shared").resolve()
+    tests_root = _TESTS_ROOT.resolve()
     violations: list[str] = []
     for p in paths:
         path = Path(p).resolve()
-        if not path.is_relative_to(_TESTS_ROOT):
+        if not path.is_relative_to(tests_root):
             continue
         if shared_dir in path.parents:
             continue
         if not path.exists() or path.suffix != ".py":
             continue
-        violations.extend(_scan(path, baseline))
+        violations.extend(_scan(path))
     return _report(violations)
 
 
@@ -388,21 +460,16 @@ def _report(violations: list[str]) -> int:
     for line in violations:
         print(line)
     print(
-        "\nMock drift: bare Mock()/AsyncMock()/MagicMock() in tests/"
-        " absorbs any attribute access. Production code can rename a method"
-        " and no test fails.\n"
-        "\nReplace with:"
-        "\n    AsyncMock(spec=ConcreteClass)"
-        "\n    MagicMock(spec=ConcreteClass)"
-        "\n    Mock(spec=ConcreteClass)"
+        "\nMock drift: a bare Mock()/AsyncMock()/MagicMock() at a typed"
+        " boundary absorbs any attribute access. Production code can"
+        " rename a method and no test fails."
         "\n"
-        "\nThe spec= argument restricts attribute access to the public"
-        "\ninterface of ConcreteClass, so missing methods raise"
-        "\nAttributeError instead of returning yet another mock."
-        "\n"
-        "\nIf the site MUST stay bare (rare; please justify in PR review),"
-        "\nappend it to scripts/mock_spec_baseline.txt by running:"
-        "\n    uv run python scripts/check_mock_spec.py --update",
+        "\nFix by replacing with one of (see"
+        " docs/reference/conventions.md section 12.1):"
+        "\n    mock_of[ConcreteClass](method=...)"
+        "\n    create_autospec(ConcreteClass, instance=True)"
+        "\n    FakeClock()  # for the Clock seam"
+        "\n    SimpleNamespace(...)  # attribute-bag scratch only",
         file=sys.stderr,
     )
     return 1
@@ -411,7 +478,9 @@ def _report(violations: list[str]) -> int:
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Gate on bare Mock()/AsyncMock()/MagicMock() in tests/.",
+        description=(
+            "Gate on bare Mock()/AsyncMock()/MagicMock() at typed boundaries in tests/."
+        ),
     )
     parser.add_argument(
         "paths",
@@ -423,15 +492,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Scan the full tests/ tree (CI mode).",
     )
-    parser.add_argument(
-        "--update",
-        action="store_true",
-        help="Regenerate scripts/mock_spec_baseline.txt from current state.",
-    )
     args = parser.parse_args(argv)
 
-    if args.update:
-        return cmd_update()
     if args.scan_all:
         return cmd_scan_all()
     return cmd_scan_paths(args.paths)

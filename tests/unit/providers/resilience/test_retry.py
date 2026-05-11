@@ -23,6 +23,15 @@ from synthorg.providers.resilience.errors import RetryExhaustedError
 from synthorg.providers.resilience.retry import RetryHandler
 
 
+async def _async_callable_stub() -> object:
+    """Spec target for ``AsyncMock`` instances substituted for the
+    generic ``func: Callable[[], Coroutine[..., T]]`` param of
+    ``RetryHandler.execute``. Gives the mock a concrete async-callable
+    signature so the typed-boundary gate sees a valid spec.
+    """
+    return None
+
+
 def _fast_config(
     max_retries: int = 3,
     *,
@@ -41,7 +50,7 @@ def _fast_config(
 class TestRetryHandlerSuccess:
     async def test_returns_result_on_first_success(self) -> None:
         handler = RetryHandler(_fast_config())
-        func = AsyncMock(return_value="ok")
+        func = AsyncMock(spec=_async_callable_stub, return_value="ok")
         retry_result = await handler.execute(func)
         assert retry_result.value == "ok"
         func.assert_awaited_once()
@@ -49,6 +58,7 @@ class TestRetryHandlerSuccess:
     async def test_retries_then_succeeds(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=3))
         func = AsyncMock(
+            spec=_async_callable_stub,
             side_effect=[
                 RateLimitError("limited"),
                 ProviderTimeoutError("timeout"),
@@ -62,7 +72,7 @@ class TestRetryHandlerSuccess:
     async def test_internal_error_is_retried(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=2))
         error = ProviderInternalError("server error")
-        func = AsyncMock(side_effect=[error, "ok"])
+        func = AsyncMock(spec=_async_callable_stub, side_effect=[error, "ok"])
         retry_result = await handler.execute(func)
         assert retry_result.value == "ok"
         assert func.await_count == 2
@@ -73,7 +83,7 @@ class TestRetryHandlerExhaustion:
     async def test_raises_retry_exhausted_after_max(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=2))
         error = RateLimitError("limited")
-        func = AsyncMock(side_effect=error)
+        func = AsyncMock(spec=_async_callable_stub, side_effect=error)
         with pytest.raises(RetryExhaustedError) as exc_info:
             await handler.execute(func)
         assert exc_info.value.original_error is error
@@ -81,7 +91,9 @@ class TestRetryHandlerExhaustion:
 
     async def test_exhausted_error_is_not_retryable(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=1))
-        func = AsyncMock(side_effect=RateLimitError("limited"))
+        func = AsyncMock(
+            spec=_async_callable_stub, side_effect=RateLimitError("limited")
+        )
         with pytest.raises(RetryExhaustedError) as exc_info:
             await handler.execute(func)
         assert exc_info.value.is_retryable is False
@@ -93,7 +105,7 @@ class TestRetryHandlerExhaustion:
             ProviderTimeoutError("second"),
             ProviderConnectionError("third"),
         ]
-        func = AsyncMock(side_effect=errors)
+        func = AsyncMock(spec=_async_callable_stub, side_effect=errors)
         with pytest.raises(RetryExhaustedError) as exc_info:
             await handler.execute(func)
         assert exc_info.value.original_error is errors[2]
@@ -104,7 +116,7 @@ class TestRetryHandlerNonRetryable:
     async def test_non_retryable_raises_immediately(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=3))
         error = AuthenticationError("bad key")
-        func = AsyncMock(side_effect=error)
+        func = AsyncMock(spec=_async_callable_stub, side_effect=error)
         with pytest.raises(AuthenticationError):
             await handler.execute(func)
         func.assert_awaited_once()
@@ -112,6 +124,7 @@ class TestRetryHandlerNonRetryable:
     async def test_non_retryable_after_retryable(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=3))
         func = AsyncMock(
+            spec=_async_callable_stub,
             side_effect=[
                 RateLimitError("limited"),
                 AuthenticationError("bad key"),
@@ -127,7 +140,7 @@ class TestRetryHandlerDisabled:
     async def test_zero_retries_raises_immediately(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=0))
         error = RateLimitError("limited")
-        func = AsyncMock(side_effect=error)
+        func = AsyncMock(spec=_async_callable_stub, side_effect=error)
         with pytest.raises(RetryExhaustedError) as exc_info:
             await handler.execute(func)
         assert exc_info.value.original_error is error
@@ -138,7 +151,7 @@ class TestRetryHandlerDisabled:
         from synthorg.providers.errors import AuthenticationError
 
         error = AuthenticationError("bad key")
-        func = AsyncMock(side_effect=error)
+        func = AsyncMock(spec=_async_callable_stub, side_effect=error)
         with pytest.raises(AuthenticationError):
             await handler.execute(func)
         func.assert_awaited_once()
@@ -227,6 +240,7 @@ class TestRetryHandlerLogging:
     async def test_logs_retry_attempt(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=2))
         func = AsyncMock(
+            spec=_async_callable_stub,
             side_effect=[RateLimitError("limited"), "ok"],
         )
         with structlog.testing.capture_logs() as cap:
@@ -237,7 +251,9 @@ class TestRetryHandlerLogging:
 
     async def test_logs_retry_exhausted(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=1))
-        func = AsyncMock(side_effect=RateLimitError("limited"))
+        func = AsyncMock(
+            spec=_async_callable_stub, side_effect=RateLimitError("limited")
+        )
         with (
             structlog.testing.capture_logs() as cap,
             pytest.raises(RetryExhaustedError),
@@ -248,7 +264,9 @@ class TestRetryHandlerLogging:
 
     async def test_logs_non_retryable_skip(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=3))
-        func = AsyncMock(side_effect=AuthenticationError("bad key"))
+        func = AsyncMock(
+            spec=_async_callable_stub, side_effect=AuthenticationError("bad key")
+        )
         with (
             structlog.testing.capture_logs() as cap,
             pytest.raises(AuthenticationError),
@@ -264,21 +282,21 @@ class TestRetryHandlerNonProviderError:
 
     async def test_type_error_raises_immediately(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=3))
-        func = AsyncMock(side_effect=TypeError("unexpected"))
+        func = AsyncMock(spec=_async_callable_stub, side_effect=TypeError("unexpected"))
         with pytest.raises(TypeError, match="unexpected"):
             await handler.execute(func)
         func.assert_awaited_once()
 
     async def test_runtime_error_raises_immediately(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=3))
-        func = AsyncMock(side_effect=RuntimeError("bug"))
+        func = AsyncMock(spec=_async_callable_stub, side_effect=RuntimeError("bug"))
         with pytest.raises(RuntimeError, match="bug"):
             await handler.execute(func)
         func.assert_awaited_once()
 
     async def test_non_provider_error_logs_warning(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=3))
-        func = AsyncMock(side_effect=ValueError("bad value"))
+        func = AsyncMock(spec=_async_callable_stub, side_effect=ValueError("bad value"))
         with (
             structlog.testing.capture_logs() as cap,
             pytest.raises(ValueError, match="bad value"),

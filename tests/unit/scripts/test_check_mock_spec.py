@@ -1,4 +1,13 @@
-"""Tests for the bare-Mock pre-commit gate."""
+"""Tests for the typed-boundary mock-spec gate.
+
+The gate flags bare ``Mock`` / ``AsyncMock`` / ``MagicMock`` only when
+the mock crosses a typed boundary (constructor argument, fixture
+return, annotated local). It deliberately ignores ``.return_value =``
+chains, attribute-bag scratch objects, and dict / list literal
+values; those are the lower rungs of the test-double ladder
+(``docs/reference/conventions.md`` section 12.1) and the gate does
+not enforce them.
+"""
 
 import importlib.util
 from collections.abc import Iterable
@@ -11,28 +20,17 @@ pytestmark = pytest.mark.unit
 
 
 class WriteTestFile(Protocol):
-    """Callable signature for the ``write_test_file`` fixture.
-
-    Precise Protocol typing lets call sites drop their
-    ``# type: ignore[operator]`` markers.
-    """
+    """Callable signature for the ``write_test_file`` fixture."""
 
     def __call__(self, content: str, name: str = ...) -> Path: ...
 
 
 class _CheckMockSpecModule(Protocol):
-    """Subset of ``scripts/check_mock_spec.py`` the tests exercise.
-
-    Captures the dynamically-loaded module's surface so mypy strict
-    mode can type-check the call sites instead of relying on
-    ``# type: ignore[attr-defined]`` everywhere.
-    """
+    """Subset of ``scripts/check_mock_spec.py`` the tests exercise."""
 
     InspectionError: type[Exception]
     _TESTS_ROOT: Path
 
-    @staticmethod
-    def _load_baseline() -> set[str]: ...
     @staticmethod
     def _scan_file(path: Path) -> list[tuple[int, int]]: ...
     @staticmethod
@@ -56,8 +54,6 @@ _MODULE = _load_module()
 
 @pytest.fixture
 def write_test_file(tmp_path: Path) -> WriteTestFile:
-    """Return a small helper that writes a Python source file."""
-
     def _write(content: str, name: str = "sample.py") -> Path:
         path = tmp_path / name
         path.write_text(content, encoding="utf-8")
@@ -66,134 +62,391 @@ def write_test_file(tmp_path: Path) -> WriteTestFile:
     return _write
 
 
-def test_bare_mock_detected(write_test_file: WriteTestFile) -> None:
-    src = "from unittest.mock import AsyncMock\nx = AsyncMock()\n"
-    path = write_test_file(src)
-    hits = _MODULE._scan_file(path)
+# ---------------------------------------------------------------------
+# Pattern A: typed-boundary substitutions (CATCH)
+# ---------------------------------------------------------------------
+
+
+def test_positional_arg_to_non_mock_call_caught(
+    write_test_file: WriteTestFile,
+) -> None:
+    src = "from unittest.mock import Mock\nclass Service: ...\nService(Mock())\n"
+    hits = _MODULE._scan_file(write_test_file(src))
     assert len(hits) == 1
-    assert hits[0][0] == 2  # line 2
+    assert hits[0][0] == 3
+
+
+def test_keyword_arg_to_non_mock_call_caught(
+    write_test_file: WriteTestFile,
+) -> None:
+    src = (
+        "from unittest.mock import Mock\n"
+        "class Service:\n"
+        "    def __init__(self, deps): self.deps = deps\n"
+        "Service(deps=Mock())\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
+    assert len(hits) == 1
+    assert hits[0][0] == 4
+
+
+def test_named_var_passed_to_typed_constructor_skipped(
+    write_test_file: WriteTestFile,
+) -> None:
+    """Indirect substitution (name binding then arg-pass) is NOT caught.
+
+    Tracking name-usage across a function body precisely requires
+    resolving callee parameter annotations (cross-module). Out of
+    scope for the pure-AST gate; covered by the test-double ladder
+    convention rather than gated enforcement.
+    """
+    src = (
+        "from unittest.mock import Mock\n"
+        "class Service:\n"
+        "    def __init__(self, deps): self.deps = deps\n"
+        "def test_x():\n"
+        "    m = Mock()\n"
+        "    Service(deps=m)\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_chained_assignment_skipped(
+    write_test_file: WriteTestFile,
+) -> None:
+    """Same rationale as the named-var case: name tracking is OOS."""
+    src = (
+        "from unittest.mock import Mock\n"
+        "class Service:\n"
+        "    def __init__(self, deps): self.deps = deps\n"
+        "def test_x():\n"
+        "    a = b = Mock()\n"
+        "    Service(deps=a)\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_walrus_in_call_arg_caught(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import Mock\n"
+        "class Service:\n"
+        "    def __init__(self, deps): self.deps = deps\n"
+        "def test_x():\n"
+        "    Service(deps=(m := Mock()))\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
+    assert len(hits) == 1
+    assert hits[0][0] == 5
+
+
+def test_annassign_concrete_type_caught(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import Mock\n"
+        "class Service: ...\n"
+        "def test_x():\n"
+        "    m: Service = Mock()\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
+    assert len(hits) == 1
+    assert hits[0][0] == 4
+
+
+def test_return_typed_fixture_caught(write_test_file: WriteTestFile) -> None:
+    src = (
+        "import pytest\n"
+        "from unittest.mock import Mock\n"
+        "class Service: ...\n"
+        "@pytest.fixture\n"
+        "def svc() -> Service:\n"
+        "    return Mock()\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
+    assert len(hits) == 1
+    assert hits[0][0] == 6
+
+
+def test_yield_typed_fixture_caught(write_test_file: WriteTestFile) -> None:
+    src = (
+        "import pytest\n"
+        "from unittest.mock import Mock\n"
+        "class Service: ...\n"
+        "@pytest.fixture\n"
+        "def svc() -> Service:\n"
+        "    yield Mock()\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
+    assert len(hits) == 1
+    assert hits[0][0] == 6
+
+
+def test_async_function_typed_return_caught(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import Mock\n"
+        "class Service: ...\n"
+        "async def factory() -> Service:\n"
+        "    return Mock()\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
+    assert len(hits) == 1
+    assert hits[0][0] == 4
+
+
+def test_yield_from_typed_return_caught(write_test_file: WriteTestFile) -> None:
+    """`yield from Mock()` in a typed-return generator is caught.
+
+    Locks the `ast.YieldFrom` branch of `_decide_direct`. Without this
+    test, removing `YieldFrom` from the parent-isinstance tuple would
+    silently weaken the gate.
+    """
+    src = (
+        "from collections.abc import Iterator\n"
+        "from unittest.mock import Mock\n"
+        "class Service: ...\n"
+        "def factory() -> Iterator[Service]:\n"
+        "    yield from Mock()\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
+    assert len(hits) == 1
+    assert hits[0][0] == 5
+
+
+def test_propertymock_recognised_as_mock_class(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import PropertyMock\n"
+        "class Foo: ...\n"
+        "def make(p): return p\n"
+        "make(p=PropertyMock())\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
+    assert len(hits) == 1
+    assert hits[0][0] == 4
+
+
+def test_propertymock_with_spec_not_flagged(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import PropertyMock\n"
+        "class Foo: ...\n"
+        "def make(p): return p\n"
+        "make(p=PropertyMock(spec=Foo))\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+# ---------------------------------------------------------------------
+# Pattern B / C / D: noisy-but-not-typed substitution (SKIP)
+# ---------------------------------------------------------------------
+
+
+def test_inner_mock_in_mock_class_call_skipped(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import Mock\n"
+        "class Foo: ...\n"
+        "x = Mock(spec=Foo, return_value=Mock(), wraps=Mock())\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_create_autospec_inner_mock_skipped(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import Mock, create_autospec\n"
+        "class Foo: ...\n"
+        "x = create_autospec(Foo, instance=True, return_value=Mock())\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_mock_of_subscript_factory_skipped(write_test_file: WriteTestFile) -> None:
+    """``mock_of[T](return_value=Mock())`` resolves to a factory call.
+
+    Locks the ``ast.Subscript`` recursion in ``_terminal_callee_name``
+    and the presence of ``"mock_of"`` in ``_MOCK_FACTORY_NAMES`` so
+    the typed-factory subscript form is treated identically to
+    ``create_autospec``.
+    """
+    src = (
+        "from unittest.mock import Mock\n"
+        "class _Factory:\n"
+        "    def __getitem__(self, t): return lambda **kw: t()\n"
+        "mock_of = _Factory()\n"
+        "class Foo: ...\n"
+        "x = mock_of[Foo](return_value=Mock())\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_return_value_chain_skipped(write_test_file: WriteTestFile) -> None:
+    """``x.return_value = Mock()`` is attribute reconfiguration, not a boundary.
+
+    Pairs with ``test_inner_mock_in_mock_class_call_skipped`` so the
+    two ways of wiring a child mock onto a parent (kwarg at
+    construction, attribute write afterwards) are both locked as SKIP.
+    """
+    src = "from unittest.mock import Mock\nx = Mock()\nx.return_value = Mock()\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_attr_assign_to_mock_skipped(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import AsyncMock, Mock\n"
+        "class Foo: ...\n"
+        "def test_x():\n"
+        "    m = Mock(spec=Foo)\n"
+        "    m.method = AsyncMock()\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_attribute_bag_skipped(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import MagicMock\n"
+        "def test_x():\n"
+        "    m = MagicMock()\n"
+        "    m.role = 'eng'\n"
+        "    m.dept = 'r&d'\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_dict_value_skipped(write_test_file: WriteTestFile) -> None:
+    src = "from unittest.mock import MagicMock\nstate = {'app': MagicMock()}\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_list_element_skipped(write_test_file: WriteTestFile) -> None:
+    src = "from unittest.mock import MagicMock\nxs = [MagicMock(), MagicMock()]\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_tuple_element_skipped(write_test_file: WriteTestFile) -> None:
+    src = "from unittest.mock import MagicMock\nxs = (MagicMock(), MagicMock())\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_set_element_skipped(write_test_file: WriteTestFile) -> None:
+    """Set literals are part of the collection-skip branch.
+
+    Locks `ast.Set` in the `(ast.List, ast.Tuple, ast.Set, ast.Dict)`
+    parent-isinstance tuple. Removing `Set` would flip these sites
+    into spurious CATCH verdicts.
+    """
+    src = "from unittest.mock import MagicMock\nxs = {MagicMock(), MagicMock()}\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_named_var_only_used_as_attr_bag_skipped(
+    write_test_file: WriteTestFile,
+) -> None:
+    src = (
+        "from unittest.mock import Mock\n"
+        "def test_x():\n"
+        "    m = Mock()\n"
+        "    m.x = 1\n"
+        "    m.y = 2\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_named_var_passed_to_mock_class_skipped(
+    write_test_file: WriteTestFile,
+) -> None:
+    src = (
+        "from unittest.mock import Mock\n"
+        "class Foo: ...\n"
+        "def test_x():\n"
+        "    m = Mock()\n"
+        "    Mock(spec=Foo, return_value=m)\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_annassign_mock_typed_skipped(write_test_file: WriteTestFile) -> None:
+    src = (
+        "from unittest.mock import AsyncMock, Mock\n"
+        "from typing import Any\n"
+        "def test_x():\n"
+        "    a: Mock = Mock()\n"
+        "    b: AsyncMock = AsyncMock()\n"
+        "    c: Any = Mock()\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_return_unannotated_fn_skipped(write_test_file: WriteTestFile) -> None:
+    src = "from unittest.mock import Mock\ndef factory():\n    return Mock()\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_class_scope_assignment_skipped(write_test_file: WriteTestFile) -> None:
+    src = "from unittest.mock import Mock\nclass TestThing:\n    m = Mock()\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+def test_module_scope_unused_skipped(write_test_file: WriteTestFile) -> None:
+    src = "from unittest.mock import Mock\n_unused = Mock()\n"
+    assert _MODULE._scan_file(write_test_file(src)) == []
+
+
+# ---------------------------------------------------------------------
+# Carry-over from the legacy gate (still relevant)
+# ---------------------------------------------------------------------
 
 
 def test_specced_mock_ignored(write_test_file: WriteTestFile) -> None:
     src = (
-        "from unittest.mock import AsyncMock\nclass Foo: ...\nx = AsyncMock(spec=Foo)\n"
+        "from unittest.mock import AsyncMock\n"
+        "class Foo: ...\n"
+        "def test_x():\n"
+        "    m: Foo = AsyncMock(spec=Foo)\n"
     )
-    path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []
+    assert _MODULE._scan_file(write_test_file(src)) == []
 
 
 def test_positional_first_arg_treated_as_spec(write_test_file: WriteTestFile) -> None:
-    """``Mock(SomeClass)`` is conventionally a spec hint; not a bare mock."""
-    src = "from unittest.mock import Mock\nclass Foo: ...\nx = Mock(Foo)\n"
-    path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []
+    src = (
+        "from unittest.mock import Mock\n"
+        "class Foo: ...\n"
+        "class Service:\n"
+        "    def __init__(self, deps): self.deps = deps\n"
+        "Service(deps=Mock(Foo))\n"
+    )
+    assert _MODULE._scan_file(write_test_file(src)) == []
 
 
 def test_attribute_call_form_detected(write_test_file: WriteTestFile) -> None:
-    """``mock.MagicMock()`` is the same offence as a bare-name call."""
-    src = "import unittest.mock as mock\nx = mock.MagicMock()\n"
-    path = write_test_file(src)
-    hits = _MODULE._scan_file(path)
+    src = (
+        "import unittest.mock as mock\n"
+        "class Service:\n"
+        "    def __init__(self, deps): self.deps = deps\n"
+        "Service(deps=mock.MagicMock())\n"
+    )
+    hits = _MODULE._scan_file(write_test_file(src))
     assert len(hits) == 1
 
 
 def test_non_mock_calls_not_flagged(write_test_file: WriteTestFile) -> None:
-    """A bare ``list()`` / ``dict()`` is not in scope."""
     src = "x = list()\ny = dict()\n"
-    path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []
-
-
-def test_empty_splat_args_treated_as_bare(write_test_file: WriteTestFile) -> None:
-    """``Mock(*())`` and ``Mock(**{})`` are still bare calls."""
-    src = (
-        "from unittest.mock import AsyncMock\n"
-        "x = AsyncMock(*())\n"
-        "y = AsyncMock(**{})\n"
-        "z = AsyncMock(*[], **{})\n"
-    )
-    path = write_test_file(src)
-    hits = _MODULE._scan_file(path)
-    assert len(hits) == 3
-    assert {lineno for lineno, _ in hits} == {2, 3, 4}
-
-
-def test_non_empty_splat_not_flagged(write_test_file: WriteTestFile) -> None:
-    """Real splats with content are not bare calls."""
-    src = (
-        "from unittest.mock import AsyncMock\n"
-        "args = (1, 2)\n"
-        "x = AsyncMock(*args)\n"
-        "y = AsyncMock(*[1])\n"
-        "z = AsyncMock(**{'a': 1})\n"
-    )
-    path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []
+    assert _MODULE._scan_file(write_test_file(src)) == []
 
 
 def test_unparseable_file_raises(write_test_file: WriteTestFile) -> None:
     src = "def broken(:\n"
-    path = write_test_file(src)
     with pytest.raises(_MODULE.InspectionError):
-        _MODULE._scan_file(path)
+        _MODULE._scan_file(write_test_file(src))
 
 
-def test_kwargs_without_spec_flagged(write_test_file: WriteTestFile) -> None:
-    """``Mock(name="x")``, ``Mock(return_value=42)`` etc. don't declare a spec."""
-    src = (
-        "from unittest.mock import AsyncMock, MagicMock, Mock\n"
-        "a = AsyncMock(name='x')\n"
-        "b = MagicMock(return_value=42)\n"
-        "c = Mock(side_effect=ValueError)\n"
-        "d = Mock(wraps=object())\n"
-    )
-    path = write_test_file(src)
-    hits = _MODULE._scan_file(path)
-    assert len(hits) == 4
-    assert {lineno for lineno, _ in hits} == {2, 3, 4, 5}
-
-
-def test_spec_kwarg_ignored(write_test_file: WriteTestFile) -> None:
-    """``spec=`` and ``spec_set=`` keyword args declare the interface."""
-    src = (
-        "from unittest.mock import AsyncMock, Mock\n"
-        "class Foo: ...\n"
-        "a = AsyncMock(spec=Foo, name='x')\n"
-        "b = Mock(spec_set=Foo, return_value=42)\n"
-    )
-    path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []
-
-
-def test_shared_dir_excluded_via_pre_commit_path(
+def test_shared_dir_still_excluded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``cmd_scan_paths`` skips ``tests/_shared/`` like ``--scan-all`` does.
-
-    Pre-commit feeds individual paths to ``cmd_scan_paths``; the
-    exclusion needs to apply at that entry point too, not only at the
-    walk-the-tree entry point.
-    """
+    """``cmd_scan_paths`` skips ``tests/_shared/`` like ``--scan-all`` does."""
     tests_root = tmp_path / "tests"
     shared = tests_root / "_shared"
     shared.mkdir(parents=True)
     bad_file = shared / "fake.py"
     bad_file.write_text(
-        "from unittest.mock import AsyncMock\nx = AsyncMock()\n",
+        "from unittest.mock import Mock\nclass Service: ...\nService(Mock())\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(_MODULE, "_TESTS_ROOT", tests_root)
-
-    # Stub baseline lookup with an explicit callable returning an
-    # empty set; passing the ``set`` type directly works (it's
-    # callable and returns ``set()``) but obscures the intent that
-    # ``_load_baseline()`` must return an empty allowlist for the
-    # test to verify suppression-by-exclusion rather than
-    # suppression-by-baseline.
-    def _empty_baseline() -> set[str]:
-        return set()
-
-    monkeypatch.setattr(_MODULE, "_load_baseline", _empty_baseline)
     rc = _MODULE.cmd_scan_paths([str(bad_file)])
     assert rc == 0

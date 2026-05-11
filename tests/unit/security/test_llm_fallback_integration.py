@@ -334,7 +334,7 @@ async def test_autonomy_augmentation_still_applies_after_llm() -> None:
 @pytest.mark.unit
 async def test_audit_records_llm_evaluation_source() -> None:
     """Audit entry should reflect the LLM-evaluated verdict."""
-    llm_eval = AsyncMock()
+    llm_eval = AsyncMock(spec=LlmSecurityEvaluator)
     llm_eval.evaluate = AsyncMock(
         return_value=_make_llm_verdict(
             verdict=SecurityVerdictType.DENY,

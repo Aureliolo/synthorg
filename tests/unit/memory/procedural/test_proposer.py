@@ -29,6 +29,7 @@ from synthorg.providers.errors import (
     ProviderTimeoutError,
 )
 from synthorg.providers.models import CompletionResponse, TokenUsage, ToolCall
+from synthorg.providers.protocol import CompletionProvider
 
 
 def _make_payload(**overrides: Any) -> FailureAnalysisPayload:
@@ -89,7 +90,7 @@ def _make_proposer(
     side_effect: Exception | None = None,
     min_confidence: float = 0.5,
 ) -> tuple[ProceduralMemoryProposer, AsyncMock]:
-    provider = AsyncMock()
+    provider = AsyncMock(spec=CompletionProvider)
     if side_effect is not None:
         provider.complete = AsyncMock(side_effect=side_effect)
     else:
