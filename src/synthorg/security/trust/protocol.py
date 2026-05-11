@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from synthorg.security.trust.models import TrustEvaluationResult, TrustState
 
 
-# 4 impls (Weighted/Milestone/PerCategory/Disabled) + 9 test files / 117
-# test occurrences; pluggable trust subsystem.
+# Pluggable trust subsystem: 4 impls
+# (Weighted/Milestone/PerCategory/Disabled).
 @runtime_checkable
 class TrustStrategy(Protocol):
     """Protocol for progressive trust evaluation strategies.

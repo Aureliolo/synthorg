@@ -11,8 +11,8 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
 
 
-# pruning/factory.py with 3 impls (TTL/Pareto/Hybrid) + HybridPruningStrategy
-# composition + 6 test files.
+# Pluggable pruning seam: pruning/factory.py dispatches across 3 impls
+# (TTL/Pareto/Hybrid) with HybridPruningStrategy composition.
 @runtime_checkable
 class PruningStrategy(Protocol):
     """Strategy for pruning procedural memory entries.

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 # MemoryOutcomeStore impl in chief_of_staff/outcome_store.py + factory wiring
-# + 3 consumers (service/learning/chat) + 4 test refs.
+# + 3 consumers (service/learning/chat).
 @runtime_checkable
 class OutcomeStore(Protocol):
     """Store and retrieve proposal decision outcomes.
@@ -82,8 +82,7 @@ class OutcomeStore(Protocol):
         ...
 
 
-# Default impl + factory + 3 consumers (service/learning/factory)
-# + 2 test refs.
+# Default impl + factory + 3 consumers (service/learning/factory).
 @runtime_checkable
 class ConfidenceAdjuster(Protocol):
     """Adjust proposal confidence based on historical patterns.

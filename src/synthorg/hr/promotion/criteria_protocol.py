@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from synthorg.hr.promotion.models import PromotionEvaluation
 
 
-# ThresholdEvaluator impl in threshold_evaluator.py; 1 of 3 PromotionService
-# strategy slots.
+# Pluggable criteria seam: ThresholdEvaluator in threshold_evaluator.py
+# plugs into PromotionService.
 @runtime_checkable
 class PromotionCriteriaStrategy(Protocol):
     """Protocol for promotion criteria evaluation.

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     )
 
 
-# Impl in telemetry/emitter.py + telemetry/factory.py + 2 test refs.
+# Impl in telemetry/emitter.py + telemetry/factory.py.
 @runtime_checkable
 class AnalyticsEmitter(Protocol):
     """Emits anonymized outcome events to a collector.
@@ -63,8 +63,8 @@ class AnalyticsEmitter(Protocol):
         ...
 
 
-# Impl in telemetry/collector.py + telemetry/factory.py + API controller
-# consumer + 4 test refs.
+# Impl in telemetry/collector.py + telemetry/factory.py;
+# API controller consumer.
 @runtime_checkable
 class AnalyticsCollector(Protocol):
     """Receives and stores anonymized events from deployments.
