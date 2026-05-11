@@ -92,8 +92,27 @@ def _load_gate() -> Any:
     return module
 
 
+_SCAN_FAILED: int = -1
+"""Sentinel returned by ``_scan_text`` when the gate raises.
+
+Callers (``_check_test_file``) MUST treat this distinctly from a
+real count of zero: a transient scan failure on EITHER the before or
+the after side leaves the ratchet unable to compute a delta, and the
+only safe action is fail-open (allow the edit) without
+double-counting a successful zero against a failed scan.
+"""
+
+
 def _scan_text(gate: Any, text: str, suffix: str = ".py") -> int:
-    """Return CATCH count for *text* by scanning a tmp copy."""
+    """Return CATCH count for *text*, or ``_SCAN_FAILED`` on error.
+
+    Returning a sentinel rather than a literal ``0`` lets the caller
+    distinguish "scan succeeded with zero violations" from "scan
+    failed and we cannot tell"; the previous behaviour conflated the
+    two and could have wrongly blocked an edit when the BEFORE scan
+    failed (silent ``0``) and the AFTER scan succeeded (positive
+    count).
+    """
     with tempfile.NamedTemporaryFile(
         mode="w",
         suffix=suffix,
@@ -110,7 +129,7 @@ def _scan_text(gate: Any, text: str, suffix: str = ".py") -> int:
             f"{type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
-        return 0
+        return _SCAN_FAILED
     finally:
         with contextlib.suppress(OSError):
             tmp_path.unlink()
@@ -154,6 +173,12 @@ def _check_test_file(path: Path, before: str, after: str) -> int:
         return 0
     before_count = _scan_text(gate, before) if before else 0
     after_count = _scan_text(gate, after)
+    if _SCAN_FAILED in (before_count, after_count):
+        # A transient scan failure on either side leaves the
+        # ratchet unable to compute a real delta; fail open so a
+        # broken gate cannot wedge editing. The failure was already
+        # logged inside ``_scan_text``.
+        return 0
     if after_count > before_count:
         print(
             f"BLOCKED: edit would raise the mock-spec violation count in "
@@ -187,7 +212,7 @@ def _check_gate_file(before: str, after: str) -> int:
     return 0
 
 
-def main() -> int:  # noqa: C901, PLR0911 -- guard cascade is flat by design
+def main() -> int:  # noqa: C901, PLR0911, PLR0912 -- guard cascade is flat by design
     """Read the PreToolUse JSON envelope from stdin and return an exit code."""
     raw = sys.stdin.read()
     if not raw.strip():
@@ -196,9 +221,16 @@ def main() -> int:  # noqa: C901, PLR0911 -- guard cascade is flat by design
         payload = json.loads(raw)
     except json.JSONDecodeError:
         return 0
+    # A well-formed PreToolUse envelope is always a JSON object;
+    # any other top-level shape (array / scalar) is a malformed
+    # invocation and the hook short-circuits open so it cannot
+    # crash the surrounding tool call.
+    if not isinstance(payload, dict):
+        return 0
 
     tool_name = payload.get("tool_name", "")
-    tool_input = payload.get("tool_input") or {}
+    raw_input = payload.get("tool_input")
+    tool_input: dict[str, Any] = raw_input if isinstance(raw_input, dict) else {}
     if tool_name not in ("Edit", "Write"):
         return 0
 

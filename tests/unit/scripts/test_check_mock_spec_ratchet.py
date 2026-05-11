@@ -12,8 +12,9 @@ protections:
 import importlib.util
 import io
 import json
+import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any, Protocol, cast
 
 import pytest
@@ -423,6 +424,64 @@ def test_gate_edit_docstring_wording_change_allows(
     )
     # Substring count would drop from 4 to 2 and block; AST count
     # stays at 2 both before and after.
+    assert _MODULE.main() == 0
+
+
+def test_scan_failure_does_not_block_when_after_count_zero(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tests_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A transient gate scan failure must fail open, not block the edit.
+
+    Locks the ``_SCAN_FAILED`` sentinel introduced after CodeRabbit
+    flagged the original code returning a literal ``0`` on scan
+    failure: when the BEFORE scan fails (silent zero) and the AFTER
+    scan succeeds with a positive count, the previous behaviour would
+    have wrongly blocked. With the sentinel the caller fails open
+    explicitly and the hook returns exit 0 with a stderr breadcrumb.
+    """
+    target = fake_tests_root / "test_thing.py"
+    target.write_text(_CATCH_BEFORE, encoding="utf-8")
+
+    def _broken_scan(_path: Path) -> list[tuple[int, int]]:
+        msg = "simulated scan failure"
+        raise RuntimeError(msg)
+
+    fake_gate_module = SimpleNamespace(_scan_file=_broken_scan)
+    monkeypatch.setattr(_MODULE, "_load_gate", lambda: fake_gate_module)
+    _stub_stdin(
+        monkeypatch,
+        _envelope(
+            "Edit",
+            {
+                "file_path": str(target),
+                "old_string": "Service(Mock())",
+                "new_string": "Service(Mock(spec=Service))",
+            },
+        ),
+    )
+    assert _MODULE.main() == 0
+    captured = capsys.readouterr()
+    assert "gate scan failed" in captured.err
+
+
+def test_non_dict_payload_returns_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A JSON envelope that decodes to a non-mapping must short-circuit.
+
+    Hooks see the raw stdin from the harness; a malformed (or future
+    schema-change) envelope that arrives as e.g. an array or scalar
+    must not crash the hook with AttributeError on ``.get``. The
+    ``isinstance(payload, dict)`` guard returns 0 (fail open) so the
+    surrounding tool call is unaffected.
+    """
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO('["not", "a", "dict"]'),
+    )
     assert _MODULE.main() == 0
 
 
