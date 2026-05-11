@@ -1,4 +1,4 @@
-import { createContext, use, useId, useMemo, useState } from 'react'
+import { createContext, use, useCallback, useId, useMemo, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -229,13 +229,13 @@ function InputVariant(props: InputProps) {
   const showPasswordToggle = isPassword && !hidePasswordToggle && !callerProvidedTrailing
 
   const visible = groupContext !== null ? groupContext.visible : localVisible
-  const toggleVisible = () => {
+  const toggleVisible = useCallback(() => {
     if (groupContext !== null) {
       groupContext.setVisible(!groupContext.visible)
     } else {
       setLocalVisible((prev) => !prev)
     }
-  }
+  }, [groupContext])
 
   const effectiveType = isPassword && visible ? 'text' : type
   const renderedTrailing: React.ReactNode = callerProvidedTrailing
