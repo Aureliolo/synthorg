@@ -433,12 +433,12 @@ def test_scan_failure_does_not_block_when_after_count_zero(
 ) -> None:
     """A transient gate scan failure must fail open, not block the edit.
 
-    Locks the ``_SCAN_FAILED`` sentinel introduced after CodeRabbit
-    flagged the original code returning a literal ``0`` on scan
-    failure: when the BEFORE scan fails (silent zero) and the AFTER
-    scan succeeds with a positive count, the previous behaviour would
-    have wrongly blocked. With the sentinel the caller fails open
-    explicitly and the hook returns exit 0 with a stderr breadcrumb.
+    Locks the ``_SCAN_FAILED`` sentinel: when the BEFORE scan fails
+    (returns the sentinel) and the AFTER scan succeeds with a
+    positive count, a literal-zero substitute for the failed scan
+    would compute ``after > before`` and wrongly block. The sentinel
+    forces an explicit fail-open in ``_check_test_file`` so a
+    transient scan crash cannot wedge editing.
     """
     target = fake_tests_root / "test_thing.py"
     target.write_text(_CATCH_BEFORE, encoding="utf-8")
@@ -548,12 +548,13 @@ def test_unparseable_gate_after_falls_open(
 ) -> None:
     """A syntactically broken AFTER state must fail open, not block.
 
-    Locks the ``_count_catch_returns`` ``None`` sentinel introduced
-    after CodeRabbit flagged the substring-fallback as still able to
-    flip the inequality on a transient syntax error. Both before /
-    after sides going through ``ast.parse`` is the only way to count
-    real CATCH branches; when either side is unparseable the ratchet
-    must skip the comparison and let the user finish the edit.
+    Locks the ``_count_catch_returns`` ``None`` sentinel: only the
+    AST walk produces a trustworthy count, so when ``ast.parse``
+    raises on either side the helper signals "unparseable" and
+    ``_check_gate_file`` must skip the comparison. A substring
+    fallback would let an interactive mid-edit save (e.g. docstring
+    text shifted but no CATCH branch actually removed) flip the
+    inequality and wrongly block.
     """
     gate = tmp_path / "fake_gate.py"
     gate.write_text(

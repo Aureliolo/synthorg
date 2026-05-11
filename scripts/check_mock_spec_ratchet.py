@@ -17,9 +17,10 @@ Two protections, one process:
    AST via ``_count_catch_returns`` and counts ``ast.Return`` nodes
    whose value is ``_Verdict.CATCH``; substring counting would
    miscount docstrings, comments, and error-message wording.
-   AFTER < BEFORE blocks; parse / import errors fall open via the
-   helper's substring fallback so a transiently broken gate cannot
-   wedge editing.
+   AFTER < BEFORE blocks; parse / import errors fail open --
+   ``_count_catch_returns`` returns ``None`` when ``ast.parse``
+   raises and ``_check_gate_file`` treats that as a fail-open
+   signal -- so a transiently broken gate cannot wedge editing.
 
 Skips:
   * Files outside ``tests/`` and not the gate itself.
@@ -56,11 +57,11 @@ def _count_catch_returns(source: str) -> int | None:
     inline comments, and error-message wording out of the ratchet.
 
     Returns ``None`` when the source fails to parse so the caller can
-    treat the side as unparseable and fail open. The previous
-    substring-fallback could still flip the inequality when an
-    interactive edit left one side parseable and the other temporarily
-    broken, which is the failure mode CodeRabbit asked the ratchet to
-    avoid.
+    treat the side as unparseable and fail open. A substring fallback
+    would still flip the inequality when one side of an interactive
+    edit is briefly broken (different docstring / comment text on
+    each side, no CATCH branches actually removed), which would
+    wrongly block on a transient mid-edit save.
     """
     try:
         tree = ast.parse(source)
@@ -109,12 +110,11 @@ double-counting a successful zero against a failed scan.
 def _scan_text(gate: Any, text: str, suffix: str = ".py") -> int:
     """Return CATCH count for *text*, or ``_SCAN_FAILED`` on error.
 
-    Returning a sentinel rather than a literal ``0`` lets the caller
-    distinguish "scan succeeded with zero violations" from "scan
-    failed and we cannot tell"; the previous behaviour conflated the
-    two and could have wrongly blocked an edit when the BEFORE scan
-    failed (silent ``0``) and the AFTER scan succeeded (positive
-    count).
+    The sentinel lets the caller distinguish "scan succeeded with
+    zero violations" from "scan failed and we cannot tell". A literal
+    ``0`` on failure would conflate the two and let an asymmetric
+    BEFORE-fails / AFTER-succeeds pair compute ``after > before`` and
+    wrongly block.
     """
     with tempfile.NamedTemporaryFile(
         mode="w",
