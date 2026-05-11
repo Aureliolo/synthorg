@@ -158,7 +158,13 @@ def _compute_after(  # noqa: PLR0911 -- shape mirrors the tool envelope
         if old == new:
             return None
         replace_all_raw = tool_input.get("replace_all", False)
-        replace_all = replace_all_raw is True
+        if not isinstance(replace_all_raw, bool):
+            # Strict fail-open: a non-boolean ``replace_all`` is a
+            # malformed envelope. Computing a synthetic single-replace
+            # edit on top would give a misleading AFTER state for the
+            # ratchet comparison.
+            return None
+        replace_all = replace_all_raw
         if old not in before:
             return None
         if replace_all:

@@ -504,6 +504,39 @@ def test_edit_with_non_string_fields_returns_zero(
     assert _MODULE.main() == 0
 
 
+def test_edit_with_non_bool_replace_all_returns_zero(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tests_root: Path,
+) -> None:
+    """A non-boolean ``replace_all`` must short-circuit, not single-replace.
+
+    Locks the ``isinstance(replace_all_raw, bool)`` guard in
+    ``_compute_after``: a malformed envelope that supplies e.g.
+    ``replace_all="false"`` (string truthy) or ``replace_all=1``
+    (int) must NOT be treated as a single-replace edit. The hook
+    fails open by returning ``None`` from ``_compute_after``, so
+    ``main`` returns 0 and no synthetic AFTER state is fed to the
+    ratchet comparison.
+    """
+    target = fake_tests_root / "test_thing.py"
+    target.write_text(_CATCH_BEFORE, encoding="utf-8")
+    _stub_stdin(
+        monkeypatch,
+        json.dumps(
+            {
+                "tool_name": "Edit",
+                "tool_input": {
+                    "file_path": str(target),
+                    "old_string": "Service(Mock())",
+                    "new_string": "Service(Mock(spec=Service))",
+                    "replace_all": "false",  # string, not bool
+                },
+            },
+        ),
+    )
+    assert _MODULE.main() == 0
+
+
 def test_edit_with_non_string_file_path_returns_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
