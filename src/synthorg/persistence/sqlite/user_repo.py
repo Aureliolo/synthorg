@@ -692,13 +692,13 @@ ON CONFLICT(id) DO UPDATE SET
         self,
         user_id: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
         """List up to ``limit`` API keys for a user, ordered by creation date.
 
-        Defaults to a 100-key page; callers needing more must paginate
-        with ``offset``.
+        Defaults to :data:`DEFAULT_LIST_LIMIT`; callers needing more
+        must paginate with ``offset``.
 
         Args:
             user_id: Owner user identifier.

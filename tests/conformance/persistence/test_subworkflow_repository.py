@@ -116,7 +116,7 @@ class TestSubworkflowRepository:
         versions = await backend.subworkflows.list_versions(
             NotBlankStr("sub-001"), limit=3
         )
-        assert len(versions) == 3
+        assert versions == ("1.4.0", "1.3.0", "1.2.0")
 
     async def test_search_by_name(self, backend: PersistenceBackend) -> None:
         await backend.subworkflows.save(

@@ -352,8 +352,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         """List semver strings for a subworkflow, newest first.
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`). The
-        SQL fetches at most *limit* rows; client-side semver sorting
-        then orders them descending.
+        SQL fetches every matching row; client-side semver sorting
+        then orders them descending and the page size is applied
+        last so the "newest first" contract is honoured against
+        semver order rather than ``created_at`` order.
 
         Raises:
             QueryError: If the database query or pagination validation
@@ -364,9 +366,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         )
         try:
             cursor = await self._db.execute(
-                "SELECT semver FROM subworkflows WHERE subworkflow_id = ? "
-                "ORDER BY created_at DESC LIMIT ?",
-                (subworkflow_id, limit),
+                "SELECT semver FROM subworkflows WHERE subworkflow_id = ?",
+                (subworkflow_id,),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
@@ -381,7 +382,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 
         versions = [str(row["semver"]) for row in rows]
         versions.sort(key=_semver_sort_key, reverse=True)
-        return tuple(versions)
+        return tuple(versions[:limit])
 
     async def list_summaries(
         self,

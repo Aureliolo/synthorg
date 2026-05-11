@@ -199,7 +199,7 @@ class ApiKeyRepository(Protocol):
         self,
         user_id: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
         """List API keys belonging to a user, optionally paginated.

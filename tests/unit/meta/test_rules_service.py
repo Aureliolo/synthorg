@@ -17,6 +17,7 @@ from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.meta.rules.service import CustomRuleNotFoundError, CustomRulesService
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 pytestmark = pytest.mark.unit
 
@@ -45,6 +46,9 @@ class _FakeCustomRuleRepository:
         enabled_only: bool = False,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CustomRuleDefinition, ...]:
+        limit = validate_pagination_args(
+            limit, offset=0, event="fake.custom_rules.list_rules"
+        )
         rows = [r for r in self._rows.values() if not enabled_only or r.enabled]
         return tuple(sorted(rows, key=lambda r: r.name)[:limit])
 

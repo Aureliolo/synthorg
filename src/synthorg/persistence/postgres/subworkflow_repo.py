@@ -303,10 +303,8 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT semver FROM subworkflows "
-                    "WHERE subworkflow_id = %s "
-                    "ORDER BY created_at DESC LIMIT %s",
-                    (subworkflow_id, limit),
+                    "SELECT semver FROM subworkflows WHERE subworkflow_id = %s",
+                    (subworkflow_id,),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -319,9 +317,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             )
             raise QueryError(msg) from exc
 
+        # Sort by semver in Python so the "newest first" contract
+        # holds against semver order (which can diverge from
+        # created_at order), then apply the caller's page size.
         versions = [str(r["semver"]) for r in rows]
         versions.sort(key=_semver_sort_key, reverse=True)
-        return tuple(versions)
+        return tuple(versions[:limit])
 
     async def list_summaries(
         self,
