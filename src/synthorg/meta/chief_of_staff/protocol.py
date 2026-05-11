@@ -67,7 +67,7 @@ class OutcomeStore(Protocol):
         *,
         rule_name: NotBlankStr | None = None,
         altitude: ProposalAltitude | None = None,
-        limit: int = 10,
+        limit: int = 10,  # lint-allow: magic-numbers -- protocol default arg.
     ) -> tuple[ProposalOutcome, ...]:
         """Retrieve recent outcomes with optional filtering.
 

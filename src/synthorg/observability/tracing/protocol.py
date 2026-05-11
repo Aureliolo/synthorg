@@ -36,7 +36,10 @@ class TraceHandler(Protocol):
         """Return a tracer identified by instrumentation library *name*."""
         ...
 
-    async def force_flush(self, timeout_sec: float = 5.0) -> None:
+    async def force_flush(
+        self,
+        timeout_sec: float = 5.0,  # lint-allow: magic-numbers -- default.
+    ) -> None:
         """Block until pending spans are exported or the deadline fires."""
         ...
 
@@ -59,7 +62,10 @@ class NoopTraceHandler:
         """Return OTel's no-op tracer regardless of *name*."""
         return self._TRACER
 
-    async def force_flush(self, timeout_sec: float = 5.0) -> None:  # noqa: ARG002
+    async def force_flush(
+        self,
+        timeout_sec: float = 5.0,  # noqa: ARG002  # lint-allow: magic-numbers
+    ) -> None:
         """No-op: there is no exporter to flush."""
         return
 

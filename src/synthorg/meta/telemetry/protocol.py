@@ -91,7 +91,7 @@ class AnalyticsCollector(Protocol):
     async def query_patterns(
         self,
         *,
-        min_deployments: int = 3,
+        min_deployments: int = 3,  # lint-allow: magic-numbers -- protocol default arg.
     ) -> tuple[AggregatedPattern, ...]:
         """Query cross-deployment patterns.
 

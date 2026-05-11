@@ -55,7 +55,7 @@ class WebSearchProvider(Protocol):
     async def search(
         self,
         query: str,
-        max_results: int = 10,
+        max_results: int = 10,  # lint-allow: magic-numbers -- protocol default arg.
     ) -> list[SearchResult]:
         """Execute a web search query.
 
