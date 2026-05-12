@@ -92,7 +92,9 @@ describe('setup wizard store', () => {
     it('canNavigateTo checks all prior steps', () => {
       useSetupWizardStore.getState().markStepComplete('mode')
       useSetupWizardStore.getState().markStepComplete('template')
-      expect(useSetupWizardStore.getState().canNavigateTo('providers')).toBe(false)
+      // Order is mode -> template -> providers -> company -> agents -> theme.
+      // 'company' has providers as an incomplete prior, so navigation is blocked.
+      expect(useSetupWizardStore.getState().canNavigateTo('company')).toBe(false)
     })
   })
 
@@ -113,7 +115,7 @@ describe('setup wizard store', () => {
     it('sets quick mode step order when setWizardMode("quick") is called', () => {
       useSetupWizardStore.getState().setWizardMode('quick')
       const state = useSetupWizardStore.getState()
-      expect(state.stepOrder).toEqual(['mode', 'company', 'providers', 'complete'])
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
       expect(state.wizardMode).toBe('quick')
     })
 
@@ -124,13 +126,33 @@ describe('setup wizard store', () => {
       expect(state.stepOrder).toEqual([
         'mode',
         'template',
-        'company',
         'providers',
+        'company',
         'agents',
         'theme',
         'complete',
       ])
       expect(state.wizardMode).toBe('guided')
+    })
+
+    it('roundtrips quick -> guided -> quick and restores the expected step memberships at each toggle', () => {
+      const store = useSetupWizardStore.getState()
+      store.setWizardMode('quick')
+      expect(useSetupWizardStore.getState().stepOrder).not.toContain('template')
+      expect(useSetupWizardStore.getState().stepOrder).not.toContain('agents')
+      expect(useSetupWizardStore.getState().stepOrder).not.toContain('theme')
+
+      useSetupWizardStore.getState().setWizardMode('guided')
+      const guidedOrder = useSetupWizardStore.getState().stepOrder
+      expect(guidedOrder).toContain('template')
+      expect(guidedOrder).toContain('agents')
+      expect(guidedOrder).toContain('theme')
+
+      useSetupWizardStore.getState().setWizardMode('quick')
+      const quickOrder = useSetupWizardStore.getState().stepOrder
+      expect(quickOrder).not.toContain('template')
+      expect(quickOrder).not.toContain('agents')
+      expect(quickOrder).not.toContain('theme')
     })
 
     it('clears template state when switching to quick mode', () => {
@@ -154,10 +176,130 @@ describe('setup wizard store', () => {
       expect(state.stepOrder).toEqual([
         'account',
         'mode',
-        'company',
         'providers',
+        'company',
         'complete',
       ])
+    })
+  })
+
+  describe('persistence rehydration', () => {
+    it('recomputes stepOrder from persisted wizardMode on rehydrate', async () => {
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: {
+          wizardMode: 'quick',
+          currentStep: 'mode',
+          stepsCompleted: {
+            account: false,
+            mode: true,
+            template: false,
+            company: false,
+            providers: false,
+            agents: false,
+            theme: false,
+            complete: false,
+          },
+        },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await useSetupWizardStore.persist.rehydrate()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.wizardMode).toBe('quick')
+      // Without the merge function, stepOrder would fall back to GUIDED here.
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
+    })
+
+    it('snaps currentStep to first incomplete when persisted step is outside the recomputed order', async () => {
+      // A v2 payload could have currentStep='agents' (which is not in QUICK_STEP_ORDER).
+      // The merge function must catch this and reset currentStep to the first
+      // incomplete step in the recomputed order rather than landing the user on
+      // a step that does not exist for their mode.
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: {
+          wizardMode: 'quick',
+          currentStep: 'agents',
+          stepsCompleted: {
+            account: false,
+            mode: true,
+            template: false,
+            company: false,
+            providers: false,
+            agents: false,
+            theme: false,
+            complete: false,
+          },
+        },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await useSetupWizardStore.persist.rehydrate()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
+      expect(state.currentStep).toBe('providers')
+    })
+
+    it('clamps currentStep back to firstIncomplete when persisted step is later than the earliest incomplete step', async () => {
+      // Pins the regression where stepOrder.includes(currentStep) passed but
+      // an earlier required step was still incomplete: persisted currentStep
+      // = 'company' (index 2 under quick), providers (index 1) still
+      // incomplete, so the wizard must snap back to providers instead of
+      // resuming on company and letting providers be skipped.
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: {
+          wizardMode: 'quick',
+          currentStep: 'company',
+          stepsCompleted: {
+            account: false,
+            mode: true,
+            template: false,
+            company: false,
+            providers: false,
+            agents: false,
+            theme: false,
+            complete: false,
+          },
+        },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await useSetupWizardStore.persist.rehydrate()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
+      expect(state.currentStep).toBe('providers')
+    })
+
+    it('does not crash when stepsCompleted is null in the persisted payload', async () => {
+      // localStorage is user-writable, so a hand-edited or legacy payload
+      // could persist `stepsCompleted: null`. Without the null guard in
+      // the merge function this would throw at startup and leave the
+      // wizard unbootable.
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: {
+          wizardMode: 'quick',
+          currentStep: 'mode',
+          stepsCompleted: null,
+        },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await expect(useSetupWizardStore.persist.rehydrate()).resolves.not.toThrow()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
+      // No step is completed, so the wizard lands on the first step.
+      expect(state.currentStep).toBe('mode')
     })
   })
 
@@ -194,7 +336,7 @@ describe('setup wizard store', () => {
       expect(useSetupWizardStore.getState().comparedTemplates).toHaveLength(0)
     })
 
-    it('fetches templates from API', async () => {
+    it('fetches templates from API and toggles templatesLoading around the request', async () => {
       server.use(
         http.get('/api/v1/setup/templates', () =>
           HttpResponse.json(
@@ -217,7 +359,13 @@ describe('setup wizard store', () => {
         ),
       )
 
-      await useSetupWizardStore.getState().fetchTemplates()
+      // Pin the loading transition explicitly: a regression that drops
+      // the `templatesLoading = true` write at the start of the action
+      // would still leave the post-await state at `false`, masking a
+      // broken UI spinner that never appears for the user.
+      const pending = useSetupWizardStore.getState().fetchTemplates()
+      expect(useSetupWizardStore.getState().templatesLoading).toBe(true)
+      await pending
 
       const state = useSetupWizardStore.getState()
       expect(state.templates).toHaveLength(1)
@@ -300,8 +448,8 @@ describe('setup wizard store', () => {
     it('captures the structured error_code on tier_coverage_insufficient', async () => {
       // Backend returns a 422 with the discriminated error_code 2004
       // (PROVIDER_TIER_COVERAGE_INSUFFICIENT). The store stores it
-      // verbatim so the page can surface a "Go back to Providers
-      // step" affordance instead of a generic Retry button.
+      // verbatim so the page can surface an "Open Providers step"
+      // affordance instead of a generic Retry button.
       server.use(
         http.post('/api/v1/setup/company', () =>
           HttpResponse.json(
@@ -430,39 +578,31 @@ describe('setup wizard store', () => {
         companyName: 'Acme Corp',
         selectedTemplate: 'startup',
       })
-      const submissions = Promise.all([
+      const submissions = Promise.allSettled([
         useSetupWizardStore.getState().submitCompany(),
         useSetupWizardStore.getState().submitCompany(),
         useSetupWizardStore.getState().submitCompany(),
       ])
-      // Yield so the (single) coalesced fetch reaches the handler.
-      // Tight timeout: if the predicate hasn't held within 100 ms the
-      // store's coalescing logic is broken; the default 1000 ms would
-      // mask a regression as a slow-CI false pass.
-      // Capture the waitFor error and rethrow after awaiting
-      // ``submissions`` in ``finally`` -- otherwise an early waitFor
-      // failure would leave the gated submitCompany() promises
-      // unawaited, tripping the async-leak detector on a real
-      // regression and obscuring the original assertion failure.
-      let waitForError: unknown = null
       try {
-        await vi.waitFor(() => expect(observedConcurrent).toBe(1), { timeout: 100 })
-      } catch (error) {
-        waitForError = error
+        // Yield so the (single) coalesced fetch reaches the handler.
+        // Tight timeout: if the coalesced POST hasn't arrived within
+        // 100 ms the store's coalescing logic is broken; the default
+        // 1000 ms would mask a regression as a slow-CI false pass.
+        await vi.waitFor(() => expect(totalCalls).toBe(1), { timeout: 100 })
+        // ``observedConcurrent`` alone is satisfied if a serial test
+        // runner happens to schedule the three calls one-after-another
+        // (no real concurrency to block). ``totalCalls`` plus this
+        // pins the contract: only one POST must reach the server even
+        // when three calls are issued in the same tick.
+        expect(observedConcurrent).toBe(1)
+        expect(totalCalls).toBe(1)
       } finally {
+        // Always release and await so a thrown assertion never leaves
+        // the gated submitCompany() promises unawaited (which would
+        // trip the async-leak detector and obscure the real failure).
         releaseHandler()
         await submissions
       }
-      if (waitForError) {
-        throw waitForError
-      }
-      // ``observedConcurrent`` alone is satisfied if a serial test
-      // runner happens to schedule the three calls one-after-another
-      // (no real concurrency to block). ``totalCalls`` pins the
-      // contract: only one POST must reach the server even when
-      // three calls are issued in the same tick.
-      expect(observedConcurrent).toBe(1)
-      expect(totalCalls).toBe(1)
     })
   })
 

@@ -1,12 +1,12 @@
 ---
-description: "Full codebase audit: launches 155 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
+description: "Full codebase audit: launches 159 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
 argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only]"
 allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
 # /codebase-audit: Full Codebase Audit
 
-Launch 155 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
+Launch 159 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
 
 ## Key Principles
 
@@ -25,11 +25,11 @@ Launch 155 specialized agents to audit the entire codebase (or a targeted scope)
 
 | Argument | Directories | Agents |
 |----------|-------------|-------------|
-| `full` (default) | All | All 155 agents |
-| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153, 154-155 |
-| `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150, 154-155 |
-| `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142, 154-155 |
-| `docs/` | `docs/`, `site/`, `src/synthorg/` | 17, 20, 42, 48-51, 73-86, 103-104, 107-108, 123 |
+| `full` (default) | All | All 159 agents |
+| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153, 154-155, 157 |
+| `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150, 154-155, 156 |
+| `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142, 154-155, 158 |
+| `docs/` | `docs/`, `site/`, `src/synthorg/` | 17, 20, 42, 48-51, 73-86, 103-104, 107-108, 123, 159 |
 
 Flags:
 - `--report-only`: skip issue creation, findings files only
@@ -274,15 +274,15 @@ Without the distribution, the finding looked like a hard choice.
 
 ### Streaming Pool Execution
 
-Maintain a **rolling pool of 10 active agents** at all times. Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send agents 01-10 in a single message (10 parallel `run_in_background: true` calls). Then for each completion notification, launch the next pending agent. Continue until all 155 agents have completed.
+Maintain a **rolling pool of 10 active agents** at all times. Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send agents 01-10 in a single message (10 parallel `run_in_background: true` calls). Then for each completion notification, launch the next pending agent. Continue until all 159 agents have completed.
 
 This pipelines I/O and end-to-end runtime: a slow Wave 1 agent never blocks Wave 2-31 from starting, and the model spends notification cycles dispatching new work instead of idling. Skill agents are independent (each writes its own file), so order-of-completion does not matter -- only that the pool stays saturated until the queue drains.
 
 **Pool size rationale**: 10 active agents matches what one main-loop cycle can usefully dispatch and track without notification fatigue. Going wider (20+) increases context spent on notification handling; going narrower (5) under-utilizes the agent runtime.
 
-**Order**: agents 01 → 155 in numeric order. Skipping forward when a later agent is "more interesting" wastes the streaming property -- the pool drains itself naturally.
+**Order**: agents 01 → 159 in numeric order. Skipping forward when a later agent is "more interesting" wastes the streaming property -- the pool drains itself naturally.
 
-**Progress reporting**: every 10 completions, report "N/{AGENTS_LAUNCHED} done" to the user where `{AGENTS_LAUNCHED}` is the total for the current scope (155 for `full`, fewer for scoped runs). Do not report per-completion -- that is too chatty.
+**Progress reporting**: every 10 completions, report "N/{AGENTS_LAUNCHED} done" to the user where `{AGENTS_LAUNCHED}` is the total for the current scope (159 for `full`, fewer for scoped runs). Do not report per-completion -- that is too chatty.
 
 The 18-batch grouping (A-R) below is retained ONLY as a reference for which agent IDs map to which wave, not as a scheduling boundary:
 
@@ -306,6 +306,7 @@ The 18-batch grouping (A-R) below is retained ONLY as a reference for which agen
 | P | 141-150 (second half of Wave 28) |
 | Q | 151-153 (Waves 29 + 30) |
 | R | 154-155 (Wave 31) |
+| S | 156-159 (Wave 32) |
 
 ---
 
@@ -3177,6 +3178,372 @@ a deletion or a "describe the current shape" rewrite.
 
 ```
 
+### Wave 32: Workflow / UX Ordering (4 agents)
+
+**Agent 156: web-workflow-ordering** (sonnet)
+File: `_audit/latest/findings/156-web-workflow-ordering.md`
+
+```text
+Audit web/src/pages/ for multi-step workflows (wizards, onboarding,
+setup flows, multi-screen forms) that contain illogical ordering,
+unreachable gates, navigation that bypasses the router, or banner
+copy that lies about direction.
+
+Search for these patterns and flag each occurrence:
+
+1. **Step-ordering inversion**: a step's "Continue" / "Apply" /
+   "Submit" affordance is disabled until some derived state from a
+   LATER step in the order is populated. Indicators:
+   - The step component selects state that lives on a step further
+     down the order (read the step-order constant in the relevant
+     navigation slice to know the canonical sequence).
+   - A boolean like `hasUsableX` / `hasReadyY` is checked inside the
+     step's `disabled=` prop, and the only place that boolean flips
+     to true is a step rendered AFTER this one.
+   - First-load behaviour: simulate "user lands on this step with
+     empty store" and check whether the primary action is reachable
+     without leaving the step.
+
+   Severity: high (the step is structurally a trap on first entry).
+
+2. **Banner / button copy that lies about navigation direction**:
+   - "Go back to X step" / "Return to X" / "Previous: X" where X is
+     LATER in the step order than the current step.
+   - Conversely "Continue to X" / "Next: X" where X is EARLIER.
+   - Find every banner/button label that mentions another wizard
+     step by name and verify the direction against the navigation
+     slice's step order.
+
+   Severity: medium (the user clicks expecting Back behaviour and
+   gets Forward, or vice versa).
+
+3. **In-component navigation via direct store mutation**: any
+   call to a navigation-store action (e.g. `setStep('X')`,
+   `goToScreen('Y')`) inside a component callback when an
+   equivalent React Router `navigate('/path/X')` is available.
+   - Inspect every store action that writes `currentStep` (or
+     equivalent) and grep callers.
+   - Whitelist the URL-sync effect that legitimately mirrors URL
+     into store; flag every other caller.
+   - The bug shape is: store updates the in-memory step pointer,
+     URL stays at the old path, the page reloads to the old
+     location.
+
+   Severity: high if the store/URL divergence persists after
+   reload (production data loss of intermediate state); medium if
+   only the URL drifts but state is preserved.
+
+4. **Dead heuristic branches in component memos**:
+   - `useMemo` / `useCallback` bodies that branch on state which is
+     guaranteed empty / null in the canonical flow (e.g. provider
+     count, query-result length).
+   - Cross-reference the canonical step order to determine when each
+     piece of state is first populated. A branch keyed on
+     `providerCount > 0` inside a component rendered BEFORE the
+     providers step is unreachable.
+
+   Severity: low (cosmetic; the branch is dead code).
+
+5. **Validator coupling between steps**:
+   - A per-step validator function (e.g. `validateXStep`) that reads
+     state owned by a different step's slice (e.g. `validateAStep`
+     reads `agents` from the agents slice).
+   - This makes step A's gate fire / unfire based on a sibling
+     slice's mutation, which is fragile and timing-dependent.
+
+   Severity: medium.
+
+6. **Cross-step rehydration drift**: persistence hooks
+   (`persist`, `onRehydrateStorage`, `merge` callbacks) that
+   restore a primary key (e.g. `wizardMode`, `selectedFlow`) but
+   leave derived state (e.g. `stepOrder`, `availableTabs`) at the
+   slice default. After reload the user sees inconsistent state.
+   - Check every `partialize` against the slice's derived fields:
+     anything computed from a partialized key MUST either be
+     itself partialized, or recomputed in a `merge` /
+     `onRehydrateStorage` callback.
+
+   Severity: high.
+
+Scope:
+- `web/src/pages/**/*.tsx` (wizards, multi-step flows)
+- `web/src/stores/**/*.ts` (step-order constants, navigation slices,
+  persist options)
+- `web/src/components/setup/`, `web/src/components/onboarding/` if
+  present
+
+For each finding emit:
+- The current step order (quote the constant, file:line)
+- The dependency direction (which step's state the gate reads)
+- The specific user-visible symptom (button disabled, banner lies,
+  URL drifts, reload reverts state)
+- Severity per the bullets above
+
+DO NOT flag:
+- Steps whose gate reads state from the SAME step (self-contained
+  validation).
+- Banners that name a generic concept ("settings", "your account")
+  rather than another wizard step.
+- Pages outside `web/src/pages/` (one-off forms, modals).
+```
+
+**Agent 157: api-lifecycle-ordering** (sonnet)
+File: `_audit/latest/findings/157-api-lifecycle-ordering.md`
+
+```text
+Audit src/synthorg/ for lifecycle / startup / shutdown / wiring
+ordering bugs. The target shape is a subsystem that boots in the
+wrong relative order to its dependencies, or a teardown that runs
+in non-reverse order, or an async resource that is started before
+the thing that owns its lock / clock / queue.
+
+Search for these patterns and flag each occurrence:
+
+1. **Boot-order inversion**: in `src/synthorg/api/app.py`,
+   `src/synthorg/api/auto_wire.py`, and `src/synthorg/api/lifecycle/`,
+   a service's `activate_*` / `start` is called before a service it
+   depends on.
+   - Build the dependency edges from constructor signatures
+     (Service A takes B in `__init__`).
+   - Compare against the registration / start order in `app.py` /
+     `auto_wire.py`.
+   - Flag any edge where the consumer starts before the producer.
+
+   Severity: high.
+
+2. **Teardown not reverse of startup**: lifecycle helpers that stop
+   services in a different order than they started them. Resources
+   held by a still-running service should not be released before that
+   service stops.
+   - Search for `deactivate_*` / `stop` / `__aexit__` sequences and
+     compare against the corresponding `activate_*` / `start`
+     order.
+
+   Severity: medium.
+
+3. **Async primitive created before the loop owner**:
+   - `asyncio.Lock()`, `asyncio.Event()`, `asyncio.Queue()`,
+     `asyncio.Semaphore()` constructed inside `__init__` of a
+     lifecycle-managed service. (The repo has a hook for this:
+     `block new asyncio primitives in __init__ of lifecycle-managed
+     classes`. The audit's job is to surface anything the hook may
+     have missed for files that were grandfathered in.)
+   - The right place is the service's first `activate_*` call.
+
+   Severity: medium.
+
+4. **Clock seam violations during boot**: a service that takes
+   `clock: Clock | None = None` but reads `clock.now()` in
+   `__init__` (before the seam has been replaced for tests). The
+   convention is: stash `clock`, defer reads to method calls that
+   run after `activate_*`.
+
+   Severity: medium.
+
+5. **Retry / rate-limit ordering**: provider call paths that wrap a
+   retry around a rate limiter where the limit acquire happens
+   inside the retry. Each retry then re-acquires the limit, which
+   inverts the intended budget.
+
+   Severity: medium.
+
+6. **Migration ordering**: yoyo migrations under
+   `src/synthorg/persistence/*/revisions/` that reference a table
+   created by a later revision. List `*.sql` and `*.py` filenames
+   sorted by revision tag and check forward references.
+
+   Severity: high.
+
+7. **MCP handler ordering**:
+   `src/synthorg/meta/mcp/domains/*.py` handlers that call
+   `require_admin_guardrails()` after side-effects have already
+   started. Guardrails must be the FIRST statement of any admin
+   handler.
+
+   Severity: high.
+
+Scope:
+- `src/synthorg/api/app.py`, `src/synthorg/api/auto_wire.py`,
+  `src/synthorg/api/lifecycle/`
+- `src/synthorg/persistence/*/revisions/`
+- `src/synthorg/meta/mcp/`
+- Service files under `src/synthorg/` with `activate_*` /
+  `deactivate_*` methods
+
+DO NOT flag:
+- Lazy-init patterns inside `__init__` that explicitly comment "no
+  IO; safe pre-loop" and only construct trivial state.
+- Test fixtures (`tests/`) that build services in arbitrary order
+  for unit-level isolation.
+- Sub-services started by a parent service's `activate_*` (the parent
+  is the right shield against ordering bugs).
+```
+
+**Agent 158: cli-command-ordering** (sonnet)
+File: `_audit/latest/findings/158-cli-command-ordering.md`
+
+```text
+Audit cli/ for command-flow ordering bugs in the SynthOrg Docker
+orchestrator binary. The CLI exposes `init`, `start`, `stop`,
+`status`; each command depends on a specific prior-state shape, and
+mis-ordered checks are user-visible traps.
+
+Search for these patterns and flag each occurrence:
+
+1. **Pre-flight check inversion**: a command body that performs a
+   destructive / mutating action before verifying its pre-conditions
+   (e.g. `start` calls `docker compose up` before checking that the
+   image exists, so the user sees a Docker pull error instead of a
+   targeted "run `init` first" message).
+   - Check every Cobra command's `RunE` function and order the
+     statements: validate before mutate.
+
+   Severity: high.
+
+2. **Daemon-state assumption gaps**: a command that assumes a
+   Docker daemon is reachable without probing first.
+   - Check that every command either calls a `requireDaemon()`
+     helper before its first Docker call, or surfaces the
+     `connection refused` error with a clear next-step hint.
+
+   Severity: medium.
+
+3. **Init / start ordering**: `synthorg start` without a prior
+   `synthorg init` should produce a single, clear "run init first"
+   error, not a stack of cascading "container X missing", "volume
+   Y missing", "network Z missing" errors.
+   - Trace what happens when `start` is invoked against an
+     unprovisioned host. Flag every cascade longer than one
+     error.
+
+   Severity: medium.
+
+4. **Status check that mutates**: `synthorg status` should be
+   read-only. Flag any path where status writes to disk, creates
+   containers, or restarts daemons.
+
+   Severity: high.
+
+5. **Self-update flow**: `selfupdate` must check the current
+   binary location is writable BEFORE downloading the new binary.
+   Surface "binary at /usr/local/bin is owned by root" before
+   spending bandwidth on the download.
+
+   Severity: medium.
+
+6. **Stop / start race**: `synthorg stop` followed quickly by
+   `synthorg start` must not race on the same volume. Flag
+   stop/start sequences without an explicit `WaitUntilGone` or
+   equivalent between them.
+
+   Severity: low (the orchestrator is single-user).
+
+7. **Banner / output that contradicts state**: any printf string
+   inside cli/ that names a command in a misleading direction
+   ("now run `synthorg stop`" when `stop` is not the right next
+   step). Cross-reference the command's success path.
+
+   Severity: low.
+
+Scope:
+- `cli/cmd/`
+- `cli/internal/orchestrator/`
+- `cli/internal/selfupdate/`
+- `cli/main.go`
+
+DO NOT flag:
+- Vendored code (`cli/vendor/`).
+- Test files (`*_test.go`) unless the issue is in the production
+  code under test.
+- Banners in `cli/internal/selfupdate/testdata/` (those are
+  upstream release-note fixtures, not CLI output).
+```
+
+**Agent 159: docs-flow-ordering** (sonnet)
+File: `_audit/latest/findings/159-docs-flow-ordering.md`
+
+```text
+Audit docs/ and README.md for user-facing instruction sequences
+("first do X, then Y, then Z") that no longer match what the code
+actually requires. The repo has shipped many ordering fixes
+(setup wizard reorder, CLI init/start sequencing, etc.); the docs
+are the long-tail that goes stale silently.
+
+Search for these patterns and flag each occurrence:
+
+1. **Numbered / bulleted step lists that mismatch code**: any
+   `## Steps`, `### Walkthrough`, `1. Do X / 2. Do Y / 3. Do Z`
+   block in `docs/guides/`, `docs/user_guide.md`, `README.md`,
+   `site/src/pages/get/`.
+   - For each step, identify the underlying code path (a CLI
+     command, an API endpoint, a wizard step name) and verify the
+     order matches the canonical sequence in the code.
+   - Specifically check the setup wizard step order against
+     `web/src/stores/setup-wizard/navigation.ts` (the step-order
+     constants are the source of truth).
+   - Check the CLI command order against `cli/cmd/` Cobra command
+     `Use:` strings and their `RunE` pre-flight checks.
+
+   Severity: high if the documented order fails out of the box;
+   medium if the order works but is suboptimal; low for missing
+   intermediate steps.
+
+2. **References to removed steps / endpoints / flags**:
+   - Grep docs for any wizard step name, CLI command name, env-var
+     name, or settings key, and verify it still exists in code.
+   - The repo has retired several flows; the docs may still cite
+     them.
+
+   Severity: high if the user copy-pastes a command that errors;
+   medium for prose-only references.
+
+3. **Outdated screenshots**: any `.png` / `.svg` under
+   `docs/images/` or `site/public/` showing a UI flow whose step
+   names / button labels have changed.
+   - Read the surrounding markdown / astro for which screen the
+     image depicts.
+   - If the image's caption mentions a step / button label, grep
+     `web/src/` for that label. If not found, flag as stale.
+
+   Severity: low.
+
+4. **Conflicting ordering between docs pages**:
+   - The same flow described in two places (e.g. quickstart vs.
+     deployment guide) with different step orders.
+
+   Severity: medium.
+
+5. **"You should now see X" assertions that no longer hold**:
+   - Prose that tells the user what to expect at each step.
+   - Verify that expected UI text / log line / response still
+     matches current code.
+
+   Severity: low.
+
+Scope:
+- `docs/guides/`
+- `docs/user_guide.md`
+- `README.md`
+- `site/src/pages/`
+- `docs/design/` ONLY if the design doc claims to describe current
+  behaviour (skip "future state" / "proposal" sections)
+
+DO NOT flag:
+- Design documents that explicitly describe future / target state
+  (look for `## Future`, `## Proposal`, `## Vision` headings).
+- Roadmap pages (`docs/roadmap/`, `roadmap.md`).
+- Changelog (`CHANGELOG.md`) entries describing past states.
+- Internal reference docs (`docs/reference/`) that document
+  conventions, not user flows.
+
+For each finding emit:
+- The documented step / order with file:line.
+- The actual code path the doc refers to (file:line or function
+  name).
+- The mismatch in one sentence.
+- Severity per the bullets above.
+```
+
 ### Retired Agents
 
 These concerns are already enforced by hooks, linters, or external tooling today instead of an audit agent. Do NOT launch these agents; check the "Now enforced by" column if a related concern needs attention.
@@ -3215,7 +3582,7 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 **Required on every run. Every single finding gets validated. There is no severity threshold, no scope cap, no opt-out, no "spot-check" shortcut.** Validation runs on all findings (critical, high, medium, low, AND info) uniformly. This skill is for huge audits; the false-positive filter must apply to every finding so INDEX.md is not contaminated by un-validated noise. If an audit agent emits 400 findings of one type, all 400 get validated -- not a sample, not a top-N, not a severity-gated subset.
 
-After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (155 for `full`, fewer for scoped runs).
+After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (159 for `full`, fewer for scoped runs).
 
 ### Process
 
@@ -3510,7 +3877,7 @@ Also write `_audit/latest/findings.json` (machine-readable):
 {
   "run_id": "<run-id-timestamp>",
   "scope": "full",
-  "agents_launched": 155,
+  "agents_launched": 159,
   "validation": {"validated": 412, "false_positives": 67, "intentional": 12},
   "findings": [
     {
@@ -3597,7 +3964,7 @@ Optional, best-effort. Each agent can have a golden-input test:
 
 A new command `/codebase-audit self-test` runs each agent against its golden input and verifies it finds the seeded issue. Catches prompt rot.
 
-Bootstrap: not all 155 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
+Bootstrap: not all 159 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
 
 If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 

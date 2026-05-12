@@ -1,5 +1,5 @@
 ---
-description: "Full codebase audit: launches 155 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
+description: "Full codebase audit: launches 159 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
 ---
 
 # OpenCode Adapter (read this FIRST, before the skill below)
@@ -8,7 +8,7 @@ You are running in **OpenCode**, not Claude Code. Apply these overrides:
 
 ### Subagent spawning
 
-The rewritten skill launches 155 audit agents with custom embedded prompts via the `Agent` tool. These are NOT mapped to `.opencode/agents/`; they use inline prompts defined in the skill itself. Spawn each agent with its prompt from the skill's Agent Roster section.
+The rewritten skill launches 159 audit agents with custom embedded prompts via the `Agent` tool. These are NOT mapped to `.opencode/agents/`; they use inline prompts defined in the skill itself. Spawn each agent with its prompt from the skill's Agent Roster section.
 
 ### Scope changes
 

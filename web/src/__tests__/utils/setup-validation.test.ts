@@ -1,10 +1,10 @@
 import {
-  validateAccountStep,
   validateTemplateStep,
   validateCompanyStep,
   validateAgentsStep,
   validateProvidersStep,
   validateThemeStep,
+  resolveAgentModels,
 } from '@/utils/setup-validation'
 import type { ProviderConfig, ProviderModelConfig } from '@/api/types/providers'
 import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
@@ -66,25 +66,6 @@ const makeProvider = (overrides: Partial<ProviderConfig> = {}): ProviderConfig =
   ...overrides,
 })
 
-describe('validateAccountStep', () => {
-  it('returns valid when accountCreated is true', () => {
-    const result = validateAccountStep({ accountCreated: true, needsAdmin: true })
-    expect(result.valid).toBe(true)
-    expect(result.errors).toHaveLength(0)
-  })
-
-  it('returns valid when needsAdmin is false (skip account step)', () => {
-    const result = validateAccountStep({ accountCreated: false, needsAdmin: false })
-    expect(result.valid).toBe(true)
-  })
-
-  it('returns invalid when needsAdmin and account not created', () => {
-    const result = validateAccountStep({ accountCreated: false, needsAdmin: true })
-    expect(result.valid).toBe(false)
-    expect(result.errors.length).toBeGreaterThan(0)
-  })
-})
-
 describe('validateTemplateStep', () => {
   it('returns valid when template is selected', () => {
     const result = validateTemplateStep({ selectedTemplate: 'startup' })
@@ -140,10 +121,42 @@ describe('validateCompanyStep', () => {
     expect(result.errors.some((e) => e.includes('200'))).toBe(true)
   })
 
+  // Pins the validator against a regression to UTF-16 `.length`: '😀' is one
+  // grapheme but two code units, so a 201-emoji string is 201 graphemes and
+  // 402 code units. The validator must reject on grapheme count, not units.
+  it('returns invalid when company name exceeds 200 multi-byte graphemes', () => {
+    const result = validateCompanyStep({
+      companyName: '😀'.repeat(201),
+      companyDescription: '',
+      companyResponse: null,
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('200'))).toBe(true)
+  })
+
+  it('returns valid (gating only on template) when company name is exactly 200 multi-byte graphemes', () => {
+    const result = validateCompanyStep({
+      companyName: '😀'.repeat(200),
+      companyDescription: '',
+      companyResponse: { company_name: 'Acme', description: null, template_applied: 'startup', department_count: 1, agent_count: 1, agents: [] },
+    })
+    expect(result.valid).toBe(true)
+  })
+
   it('returns invalid when description exceeds 1000 characters', () => {
     const result = validateCompanyStep({
       companyName: 'Acme',
       companyDescription: 'A'.repeat(1001),
+      companyResponse: null,
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('1000'))).toBe(true)
+  })
+
+  it('returns invalid when description exceeds 1000 multi-byte graphemes', () => {
+    const result = validateCompanyStep({
+      companyName: 'Acme',
+      companyDescription: '😀'.repeat(1001),
       companyResponse: null,
     })
     expect(result.valid).toBe(false)
@@ -194,9 +207,8 @@ describe('validateAgentsStep', () => {
 })
 
 describe('validateProvidersStep', () => {
-  it('returns valid when all agent providers are configured', () => {
+  it('returns valid when at least one provider with at least one model is configured', () => {
     const result = validateProvidersStep({
-      agents: [makeAgent({ model_provider: 'test-provider' })],
       providers: { 'test-provider': makeProvider() },
     })
     expect(result.valid).toBe(true)
@@ -204,29 +216,13 @@ describe('validateProvidersStep', () => {
   })
 
   it('returns invalid when no providers configured', () => {
-    const result = validateProvidersStep({
-      agents: [makeAgent()],
-      providers: {},
-    })
+    const result = validateProvidersStep({ providers: {} })
     expect(result.valid).toBe(false)
     expect(result.errors).toContain('At least one provider is required')
   })
 
-  it('returns invalid when an agent references a missing provider', () => {
+  it('returns valid with multiple providers each exposing models', () => {
     const result = validateProvidersStep({
-      agents: [makeAgent({ model_provider: 'missing-provider' })],
-      providers: { 'other-provider': makeProvider() },
-    })
-    expect(result.valid).toBe(false)
-    expect(result.errors.some((e) => e.includes('missing-provider'))).toBe(true)
-  })
-
-  it('returns valid with multiple agents using different providers', () => {
-    const result = validateProvidersStep({
-      agents: [
-        makeAgent({ model_provider: 'provider-a' }),
-        makeAgent({ model_provider: 'provider-b' }),
-      ],
       providers: {
         'provider-a': makeProvider(),
         'provider-b': makeProvider(),
@@ -237,7 +233,6 @@ describe('validateProvidersStep', () => {
 
   it('returns invalid when a configured provider has no models', () => {
     const result = validateProvidersStep({
-      agents: [makeAgent({ model_provider: 'empty-provider' })],
       providers: { 'empty-provider': makeProvider({ models: [] }) },
     })
     expect(result.valid).toBe(false)
@@ -246,7 +241,6 @@ describe('validateProvidersStep', () => {
 
   it('names the specific empty provider when only one of multiple is empty', () => {
     const result = validateProvidersStep({
-      agents: [makeAgent({ model_provider: 'provider-a', model_id: 'test-model-001' })],
       providers: {
         'provider-a': makeProvider(),
         'provider-empty': makeProvider({ models: [] }),
@@ -254,34 +248,70 @@ describe('validateProvidersStep', () => {
     })
     expect(result.valid).toBe(false)
     expect(result.errors.some((e) => e.includes('provider-empty'))).toBe(true)
-    expect(result.errors.every((e) => !e.includes('provider-a"'))).toBe(true)
+    expect(result.errors.every((e) => !e.includes('"provider-a"'))).toBe(true)
+  })
+})
+
+describe('resolveAgentModels', () => {
+  it('returns empty array when every agent resolves cleanly', () => {
+    const result = resolveAgentModels(
+      [makeAgent({ model_provider: 'test-provider', model_id: 'test-model-001' })],
+      { 'test-provider': makeProvider() },
+    )
+    expect(result).toHaveLength(0)
   })
 
-  it('returns invalid when an agent references a non-existent provider (explicit unit coverage)', () => {
-    const result = validateProvidersStep({
-      agents: [makeAgent({ model_provider: 'nonexistent-provider' })],
-      providers: { 'real-provider': makeProvider() },
-    })
-    expect(result.valid).toBe(false)
-    expect(result.errors.some((e) => e.includes('nonexistent-provider'))).toBe(true)
+  it("flags an agent with no model_provider / model_id as 'unassigned'", () => {
+    const result = resolveAgentModels(
+      [makeAgent({ name: 'Alice', model_provider: null, model_id: null })],
+      { 'test-provider': makeProvider() },
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ name: 'Alice', reason: 'unassigned' })
   })
 
-  it('returns invalid when an agent references a model the provider does not expose', () => {
-    const result = validateProvidersStep({
-      agents: [
+  it("flags an agent referencing an unknown provider as 'missing_provider'", () => {
+    const result = resolveAgentModels(
+      [makeAgent({ name: 'Bob', model_provider: 'gone', model_id: 'm-1' })],
+      { 'cloud-x': makeProvider() },
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ name: 'Bob', provider: 'gone', reason: 'missing_provider' })
+  })
+
+  it("flags an agent referencing a missing model on a configured provider as 'missing_model'", () => {
+    const result = resolveAgentModels(
+      [
         makeAgent({
+          name: 'Carol',
           model_provider: 'test-provider',
           model_id: 'model-not-on-provider',
         }),
       ],
-      providers: {
+      {
         'test-provider': makeProvider({ models: [makeModel({ id: 'test-model-001' })] }),
       },
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      name: 'Carol',
+      provider: 'test-provider',
+      modelId: 'model-not-on-provider',
+      reason: 'missing_model',
     })
-    expect(result.valid).toBe(false)
-    expect(
-      result.errors.some((e) => e.includes('model-not-on-provider')),
-    ).toBe(true)
+  })
+
+  it('preserves agent index across the agents array', () => {
+    const result = resolveAgentModels(
+      [
+        makeAgent({ name: 'A', model_provider: 'test-provider', model_id: 'test-model-001' }),
+        makeAgent({ name: 'B', model_provider: null, model_id: null }),
+        makeAgent({ name: 'C', model_provider: 'test-provider', model_id: 'test-model-001' }),
+      ],
+      { 'test-provider': makeProvider() },
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0]?.index).toBe(1)
   })
 })
 

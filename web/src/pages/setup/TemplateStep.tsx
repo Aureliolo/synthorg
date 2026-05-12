@@ -22,8 +22,6 @@ const MAX_COMPARE = 3
 /** Template size tags used for recommendation heuristics. */
 const TAG_SOLO = 'solo'
 const TAG_SMALL_TEAM = 'small-team'
-const TAG_ENTERPRISE = 'enterprise'
-const TAG_FULL_COMPANY = 'full-company'
 
 /** Agent-count filter buckets. */
 type SizeFilter = 'all' | 'small' | 'medium' | 'large'
@@ -128,28 +126,21 @@ export function TemplateStep() {
     }
   }, [templatesLoading, templatesError, fetchTemplates])
 
-  const providers = useSetupWizardStore((s) => s.providers)
-
-  // Determine recommended templates based on configured providers
+  // Recommended templates are derived from tags alone. The recommendation
+  // surfaces approachable starting points (solo / small-team / startup / mvp)
+  // so first-time users see a manageable shape before scrolling the full
+  // grid.
   const recommendedTemplates = useMemo(() => {
     const recommended = new Set<string>()
-    const providerCount = Object.keys(providers).length
     const smallTags = new Set([TAG_SOLO, TAG_SMALL_TEAM, 'startup', 'mvp'])
-    const largeTags = new Set([TAG_ENTERPRISE, TAG_FULL_COMPANY])
 
     for (const template of templates) {
-      if (providerCount === 0) {
-        if (template.tags.some((tag) => smallTags.has(tag))) {
-          recommended.add(template.name)
-        }
-      } else {
-        if (template.tags.some((tag) => largeTags.has(tag))) {
-          recommended.add(template.name)
-        }
+      if (template.tags.some((tag) => smallTags.has(tag))) {
+        recommended.add(template.name)
       }
     }
     return recommended
-  }, [templates, providers])
+  }, [templates])
 
   // Available categories (only those present in templates)
   const availableCategories = useMemo(() => {
@@ -211,12 +202,7 @@ export function TemplateStep() {
     return { recommended: rec, others: oth }
   }, [filteredTemplates, recommendedTemplates])
 
-  const handleSelect = useCallback(
-    (name: string) => {
-      selectTemplate(name)
-    },
-    [selectTemplate],
-  )
+  const handleSelect = useCallback(selectTemplate, [selectTemplate])
 
   const handleToggleCompare = useCallback(
     (name: string) => {
@@ -232,12 +218,7 @@ export function TemplateStep() {
     [toggleCompare],
   )
 
-  const handleRemoveFromCompare = useCallback(
-    (name: string) => {
-      toggleCompare(name)
-    },
-    [toggleCompare],
-  )
+  const handleRemoveFromCompare = useCallback(toggleCompare, [toggleCompare])
 
   const comparedTemplateObjects = useMemo(
     () => templates.filter((t) => comparedTemplates.includes(t.name)),
@@ -364,7 +345,7 @@ export function TemplateStep() {
 
       {/* Recommended section */}
       {recommended.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-section-gap">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-foreground">Recommended</h3>
             <span className="rounded-full bg-accent/10 px-2 py-0.5 text-compact font-medium text-accent">
@@ -384,7 +365,7 @@ export function TemplateStep() {
 
       {/* Others section */}
       {others.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-section-gap">
           {recommended.length > 0 && (
             <h3 className="text-sm font-semibold text-muted-foreground">Other Templates</h3>
           )}

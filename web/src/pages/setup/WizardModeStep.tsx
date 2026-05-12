@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import type { WizardMode } from '@/stores/setup-wizard'
@@ -23,8 +23,10 @@ function ModeOption({ icon: Icon, title, description, recommended, selected, onC
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={selected}
+      aria-label={`Select ${title}`}
       className={cn(
-        'flex flex-col items-center gap-4 rounded-lg border p-8 text-center transition-colors',
+        'flex flex-col items-center gap-grid-gap rounded-lg border p-card text-center transition-colors',
         selected
           ? `border-accent bg-accent/5 ${SELECTED_SHADOW}`
           : 'border-border bg-card hover:bg-card-hover',
@@ -58,29 +60,19 @@ export function WizardModeStep() {
   const setWizardMode = useSetupWizardStore((s) => s.setWizardMode)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
 
-  // Mark mode step complete immediately: the default mode ('guided')
-  // is a valid selection, so Continue is enabled on mount. Switching
-  // mode also calls markStepComplete in handleSelect.
-  useEffect(() => {
+  const handleSelect = useCallback((mode: WizardMode) => {
+    setWizardMode(mode)
     markStepComplete('mode')
-  }, [markStepComplete])
-
-  const handleSelect = useCallback(
-    (mode: WizardMode) => {
-      setWizardMode(mode)
-      markStepComplete('mode')
-      // Auto-advance to the next step after mode selection
-      const order = useSetupWizardStore.getState().stepOrder
-      const modeIdx = order.indexOf('mode')
-      if (modeIdx >= 0 && modeIdx < order.length - 1) {
-        navigate(`/setup/${order[modeIdx + 1]}`)
-      }
-    },
-    [setWizardMode, markStepComplete, navigate],
-  )
+    // Auto-advance to the next step after mode selection
+    const order = useSetupWizardStore.getState().stepOrder
+    const modeIdx = order.indexOf('mode')
+    if (modeIdx >= 0 && modeIdx < order.length - 1) {
+      navigate(`/setup/${order[modeIdx + 1]}`)
+    }
+  }, [setWizardMode, markStepComplete, navigate])
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section-gap">
       <div className="space-y-2 text-center">
         <h2 className="text-lg font-semibold text-foreground">How would you like to set up?</h2>
         <p className="text-sm text-muted-foreground">
@@ -92,7 +84,7 @@ export function WizardModeStep() {
         <ModeOption
           icon={Sparkles}
           title="Guided Setup"
-          description="Walk through each step to configure your organization: pick a template, customize agents, add providers, and set your theme."
+          description="Walk through each step to configure your organisation: pick a template, add providers, customise agents, and set your theme."
           recommended
           selected={wizardMode === 'guided'}
           onClick={() => handleSelect('guided')}
@@ -100,7 +92,7 @@ export function WizardModeStep() {
         <ModeOption
           icon={Zap}
           title="Quick Setup"
-          description="Set a company name, add a provider, and get started. You can configure everything else later in Settings."
+          description="Add a provider, set a company name, and get started. You can configure everything else later in Settings."
           selected={wizardMode === 'quick'}
           onClick={() => handleSelect('quick')}
         />

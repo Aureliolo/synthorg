@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { resolveAgentModels } from '@/utils/setup-validation'
+import { useStepCompletionSync } from './_hooks'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentCard } from './SetupAgentCard'
 import { Users } from 'lucide-react'
@@ -22,9 +25,7 @@ export function AgentsStep() {
   const updateAgentModel = useSetupWizardStore((s) => s.updateAgentModel)
   const randomizeAgentName = useSetupWizardStore((s) => s.randomizeAgentName)
   const updateAgentPersonality = useSetupWizardStore((s) => s.updateAgentPersonality)
-  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
-  const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
-  const setStep = useSetupWizardStore((s) => s.setStep)
+  const navigate = useNavigate()
 
   // Fetch agents if not already loaded (e.g., direct URL navigation)
   useEffect(() => {
@@ -49,85 +50,31 @@ export function AgentsStep() {
     fetchPersonalityPresets,
   ])
 
-  // unresolvedAgents (computed below) is the single source of truth for
-  // step completion AND the user-visible banner; previously a parallel
-  // call to ``validateAgentsStep`` produced a second flat list of
-  // identical errors that surfaced through ``markStepIncomplete``,
-  // duplicating work and risking drift between the two checks. The
-  // useEffect below now reads the same memoised value as the banner.
+  const handleNameChange = useCallback(updateAgentName, [updateAgentName])
+  const handleModelChange = useCallback(updateAgentModel, [updateAgentModel])
+  const handleRandomizeName = useCallback(randomizeAgentName, [randomizeAgentName])
+  const handlePersonalityChange = useCallback(updateAgentPersonality, [updateAgentPersonality])
 
-  const handleNameChange = useCallback(
-    async (index: number, name: string) => {
-      await updateAgentName(index, name)
-    },
-    [updateAgentName],
+  const goToProvidersStep = useCallback(
+    () => navigate('/setup/providers'),
+    [navigate],
   )
 
-  const handleModelChange = useCallback(
-    async (index: number, provider: string, modelId: string) => {
-      await updateAgentModel(index, provider, modelId)
-    },
-    [updateAgentModel],
+  // Detect agents whose model_provider / model_id no longer resolves against
+  // the current providers map (the operator removed the provider, swapped the
+  // model, or the template generated an agent referencing a non-existent
+  // provider). Without this banner the operator can submit a setup whose
+  // agents will fail at runtime with no clear pointer at the upstream cause.
+  const unresolvedAgents = useMemo(
+    () => resolveAgentModels(agents, providers),
+    [agents, providers],
   )
 
-  const handleRandomizeName = useCallback(
-    async (index: number) => {
-      await randomizeAgentName(index)
-    },
-    [randomizeAgentName],
-  )
-
-  const handlePersonalityChange = useCallback(
-    async (index: number, preset: string) => {
-      await updateAgentPersonality(index, preset)
-    },
-    [updateAgentPersonality],
-  )
-
-  const goToProvidersStep = useCallback(() => {
-    setStep('providers')
-  }, [setStep])
-
-  // Detect agents whose model_provider / model_id no longer resolves
-  // against the current providers map (the operator removed the
-  // provider, swapped the model, or the template generated an agent
-  // referencing a non-existent provider). Without this banner the
-  // operator can submit a setup whose agents will fail at runtime
-  // with no clear pointer at the upstream cause.
-  type UnresolvedReason = 'unassigned' | 'missing_provider' | 'missing_model'
-  const unresolvedAgents = useMemo(() => {
-    const out: { index: number; name: string; provider: string | null; modelId: string | null; reason: UnresolvedReason }[] = []
-    agents.forEach((agent, index) => {
-      const providerName = agent.model_provider
-      const modelId = agent.model_id
-      if (!providerName || !modelId) {
-        out.push({ index, name: agent.name, provider: providerName, modelId, reason: 'unassigned' })
-        return
-      }
-      const provider = providers[providerName]
-      if (!provider) {
-        out.push({ index, name: agent.name, provider: providerName, modelId, reason: 'missing_provider' })
-        return
-      }
-      const model = provider.models.find((m: { id: string }) => m.id === modelId)
-      if (!model) {
-        out.push({ index, name: agent.name, provider: providerName, modelId, reason: 'missing_model' })
-      }
-    })
-    return out
-  }, [agents, providers])
-
-  // Single source of truth for step completion -- reads the same
+  // Single source of truth for step completion: reads the same
   // unresolvedAgents value that drives the user-visible banner so the
-  // wizard nav and the page never disagree about whether the step
-  // can advance.
-  useEffect(() => {
-    if (agents.length > 0 && unresolvedAgents.length === 0) {
-      markStepComplete('agents')
-    } else {
-      markStepIncomplete('agents')
-    }
-  }, [agents.length, unresolvedAgents.length, markStepComplete, markStepIncomplete])
+  // wizard nav and the page never disagree about whether the step can
+  // advance.
+  useStepCompletionSync('agents', agents.length > 0 && unresolvedAgents.length === 0)
 
   if (agentsLoading) {
     return (
@@ -209,7 +156,7 @@ export function AgentsStep() {
               ))}
             </ul>
           }
-          action={{ label: 'Go back to Providers step', onClick: goToProvidersStep }}
+          action={{ label: 'Open Providers step', onClick: goToProvidersStep }}
         />
       )}
 
@@ -217,7 +164,7 @@ export function AgentsStep() {
       <MiniOrgChart agents={agents} />
 
       {/* Agent cards */}
-      <StaggerGroup className="space-y-3">
+      <StaggerGroup className="space-y-section-gap">
         {agents.map((agent, index) => (
           // eslint-disable-next-line @eslint-react/no-array-index-key -- names are user-editable and may duplicate; index as tiebreaker
           <StaggerItem key={`${agent.name}-${index}`}>

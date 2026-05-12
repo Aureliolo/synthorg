@@ -32,7 +32,7 @@ const log = createLogger('setup-wizard:completion')
 function getInitialState() {
   return {
     currentStep: 'mode' as const,
-    stepOrder: ['mode', 'template', 'company', 'providers', 'agents', 'theme', 'complete'] as const,
+    stepOrder: ['mode', 'template', 'providers', 'company', 'agents', 'theme', 'complete'] as const,
     stepsCompleted: initialStepsCompleted(),
     direction: 'forward' as const,
     needsAdmin: false,

@@ -37,6 +37,12 @@ export function AccountStep() {
   // ``useCallback``-memoised ``fetchPolicy`` reads the same flag the
   // effect's cleanup mutates without being re-created on every render.
   const cancelledRef = useRef(false)
+  // Active timer IDs (policy-fetch timeout + retry backoff). Tracked so
+  // that an unmount can clear them eagerly instead of letting them
+  // tick to completion as zombies; the cancelledRef guard alone would
+  // prevent stray setState calls but leaves the underlying timeouts
+  // pinned to the event loop until they fire.
+  const pendingTimersRef = useRef<Set<number>>(new Set())
 
   // Read backend-configured min password length. Surfaced as an error so
   // users cannot submit under the default policy if the server has a stricter
@@ -48,20 +54,24 @@ export function AccountStep() {
     setPolicyLoading(true)
     setPolicyError(null)
     const POLICY_TIMEOUT_MS = 5_000
+    const timers = pendingTimersRef.current
     function withTimeout<T>(work: Promise<T>): Promise<T> {
       return new Promise<T>((resolve, reject) => {
         const timer = window.setTimeout(() => {
+          timers.delete(timer)
           reject(new Error('password-policy fetch timed out'))
         }, POLICY_TIMEOUT_MS)
+        timers.add(timer)
         work.then(
-          (value) => { window.clearTimeout(timer); resolve(value) },
-          (err: unknown) => { window.clearTimeout(timer); reject(err instanceof Error ? err : new Error(String(err))) },
+          (value) => { timers.delete(timer); window.clearTimeout(timer); resolve(value) },
+          (err: unknown) => { timers.delete(timer); window.clearTimeout(timer); reject(err instanceof Error ? err : new Error(String(err))) },
         )
       })
     }
     let lastErr: unknown = null
     const attemptErrors: string[] = []
     const MAX_ATTEMPTS = 2
+    const BACKOFF_MS = 500
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       try {
         const status = await withTimeout(getSetupStatus())
@@ -73,14 +83,21 @@ export function AccountStep() {
         if (cancelledRef.current) return
         lastErr = err
         attemptErrors.push(getErrorMessage(err))
+        if (attempt + 1 < MAX_ATTEMPTS) {
+          // Small backoff so a transient back-pressure response is not
+          // hammered into a second failure inside the same event tick.
+          await new Promise<void>((resolve) => {
+            const timer = window.setTimeout(() => {
+              timers.delete(timer)
+              resolve()
+            }, BACKOFF_MS)
+            timers.add(timer)
+          })
+          if (cancelledRef.current) return
+        }
       }
     }
     if (cancelledRef.current) return
-    // Log a single error after the loop with every attempt's message
-    // in a structured ``attempts`` array. The previous form logged
-    // attempt 1 at WARN and the final failure at ERROR, which split
-    // the retry sequence across two log levels and made diagnosis
-    // harder for operators tailing the ERROR stream.
     // SEC-1: dynamic strings (``attemptErrors`` entries, ``lastErr``
     // message) go through sanitizeForLog before reaching the log
     // pipeline.
@@ -94,8 +111,13 @@ export function AccountStep() {
 
   useEffect(() => {
     cancelledRef.current = false
+    const timers = pendingTimersRef.current
     void fetchPolicy()
-    return () => { cancelledRef.current = true }
+    return () => {
+      cancelledRef.current = true
+      for (const timer of timers) window.clearTimeout(timer)
+      timers.clear()
+    }
   }, [fetchPolicy])
 
   const strength = getPasswordStrength(password)

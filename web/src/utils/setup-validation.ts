@@ -29,19 +29,6 @@ function invalid(...errors: string[]): StepValidationResult {
 
 export const COMPANY_TEMPLATE_GATE_ERROR = 'Apply the template to continue'
 
-// ── Step 0: Account ──────────────────────────────────────────
-
-interface AccountStepInput {
-  readonly accountCreated: boolean
-  readonly needsAdmin: boolean
-}
-
-export function validateAccountStep(input: AccountStepInput): StepValidationResult {
-  if (!input.needsAdmin) return VALID
-  if (input.accountCreated) return VALID
-  return invalid('Admin account must be created')
-}
-
 // ── Step 1: Template ─────────────────────────────────────────
 
 interface TemplateStepInput {
@@ -66,17 +53,40 @@ interface CompanyStepInput {
 const MAX_COMPANY_NAME_LENGTH = 200
 const MAX_DESCRIPTION_LENGTH = 1000
 
+// `Intl.Segmenter` with `granularity: 'grapheme'` counts user-visible
+// characters: a ZWJ-joined emoji (e.g. `👨‍💻`) is one grapheme, a base
+// letter plus combining mark (`é` as `é`) is one grapheme, and a
+// regional-indicator flag (`🇺🇸`) is one grapheme. `.length` would count
+// UTF-16 code units (8, 2, 4 respectively) and spread iteration would
+// count code points (3, 2, 2), both of which under-report against the
+// 200-grapheme limit. Falls back to spread iteration on the rare
+// runtimes that don't expose `Intl.Segmenter`.
+const graphemeSegmenter =
+  typeof Intl !== 'undefined' && 'Segmenter' in Intl
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null
+
+export function graphemeLength(s: string): number {
+  if (graphemeSegmenter) {
+    let count = 0
+    const iterator = graphemeSegmenter.segment(s)[Symbol.iterator]()
+    while (!iterator.next().done) count += 1
+    return count
+  }
+  return [...s].length
+}
+
 export function validateCompanyStep(input: CompanyStepInput): CompanyStepValidationResult {
   const errors: string[] = []
   const trimmedName = input.companyName.trim()
 
   if (!trimmedName) {
     errors.push('Company name is required')
-  } else if (trimmedName.length > MAX_COMPANY_NAME_LENGTH) {
+  } else if (graphemeLength(trimmedName) > MAX_COMPANY_NAME_LENGTH) {
     errors.push(`Company name must be ${MAX_COMPANY_NAME_LENGTH} characters or less`)
   }
 
-  if (input.companyDescription.trim().length > MAX_DESCRIPTION_LENGTH) {
+  if (graphemeLength(input.companyDescription.trim()) > MAX_DESCRIPTION_LENGTH) {
     errors.push(`Description must be ${MAX_DESCRIPTION_LENGTH} characters or less`)
   }
 
@@ -121,7 +131,6 @@ export function validateAgentsStep(input: AgentsStepInput): StepValidationResult
 // ── Step 4: Providers ────────────────────────────────────────
 
 interface ProvidersStepInput {
-  readonly agents: readonly SetupAgentSummary[]
   readonly providers: Readonly<Record<string, ProviderConfig>>
 }
 
@@ -134,67 +143,94 @@ export function validateProvidersStep(input: ProvidersStepInput): StepValidation
     return { valid: false, errors }
   }
 
-  // Every configured provider must expose at least one model. A
-  // provider that the user adds without successful model discovery is
-  // dead weight: the wizard's downstream agent step needs at least
-  // one model to wire each agent's ``model`` field to. Surface this
-  // as a step-level validation error so the wizard's ``Next`` button
-  // stays disabled until the user runs discovery / configures models
-  // manually.
-  const emptyProviders: string[] = []
+  // Every configured provider must expose at least one model. A provider that
+  // the user adds without successful model discovery is dead weight: the
+  // wizard's downstream agent step needs at least one model to wire each
+  // agent's ``model`` field to.
   for (const [name, provider] of Object.entries(input.providers)) {
     if (provider.models.length === 0) {
-      emptyProviders.push(name)
+      errors.push(
+        `Provider "${name}" has no models. Run model discovery or add a model manually before continuing.`,
+      )
     }
   }
-  for (const name of emptyProviders) {
-    errors.push(
-      `Provider "${name}" has no models. Run model discovery or add a model manually before continuing.`,
-    )
-  }
-
-  // Agents that reference a model on a configured provider must
-  // actually find that model in the provider's model list. A typo in
-  // the model name (or a provider that lost its model in a refresh)
-  // would otherwise let setup complete with an agent pointing at a
-  // non-existent model and surface as a cryptic "model not found"
-  // error on the first task. Both halves of the check (missing
-  // provider, missing model on existing provider) live here so the
-  // wizard's ``Next`` button gates on either failure mode.
-  const providerSet = new Set(providerNames)
-  // Build provider→ModelIds once so the per-agent model check is
-  // O(1) instead of allocating a fresh Set per agent (the agent loop
-  // is N×M in the worst case, which is the wizard's hottest path).
-  const modelIdsByProvider = new Map<string, Set<string>>(
-    Object.entries(input.providers).map(([name, provider]) => [
-      name,
-      new Set(provider.models.map((m) => m.id)),
-    ]),
-  )
-  const missingProviders = new Set<string>()
-  const missingModels: string[] = []
-
-  for (const agent of input.agents) {
-    if (agent.model_provider && !providerSet.has(agent.model_provider)) {
-      missingProviders.add(agent.model_provider)
-      continue
-    }
-    if (agent.model_provider && agent.model_id) {
-      const modelIds = modelIdsByProvider.get(agent.model_provider)
-      if (!modelIds?.has(agent.model_id)) {
-        missingModels.push(
-          `Agent "${agent.name}" references model "${agent.model_id}" on "${agent.model_provider}", but that provider does not expose it.`,
-        )
-      }
-    }
-  }
-
-  for (const name of missingProviders) {
-    errors.push(`Provider "${name}" is referenced by agents but not configured`)
-  }
-  errors.push(...missingModels)
 
   return errors.length > 0 ? { valid: false, errors } : VALID
+}
+
+// ── Cross-step: agent ↔ provider/model resolution ────────────
+
+export type UnresolvedAgentReason =
+  | 'unassigned'
+  | 'missing_provider'
+  | 'missing_model'
+
+export interface UnresolvedAgent {
+  readonly index: number
+  readonly name: string
+  readonly provider: string | null
+  readonly modelId: string | null
+  readonly reason: UnresolvedAgentReason
+}
+
+/**
+ * Find agents whose ``model_provider`` / ``model_id`` cannot be resolved
+ * against the current providers map. The AgentsStep banner and the
+ * agents-step completion gate share this single source of truth so the
+ * wizard nav and the in-page warning cannot disagree.
+ */
+export function resolveAgentModels(
+  agents: readonly SetupAgentSummary[],
+  providers: Readonly<Record<string, ProviderConfig>>,
+): readonly UnresolvedAgent[] {
+  const unresolved: UnresolvedAgent[] = []
+
+  for (let index = 0; index < agents.length; index += 1) {
+    const agent = agents[index]!
+    const provider = agent.model_provider
+    const modelId = agent.model_id
+
+    if (!provider || !modelId) {
+      unresolved.push({
+        index,
+        name: agent.name,
+        provider,
+        modelId,
+        reason: 'unassigned',
+      })
+      continue
+    }
+
+    // Use `Object.hasOwn` (not bracket lookup) so an agent referencing a
+    // provider whose name collides with an `Object.prototype` member
+    // (e.g. `valueOf`, `toString`) is reported as `missing_provider`
+    // rather than crashing on `.models.some` against the inherited
+    // prototype member.
+    if (!Object.hasOwn(providers, provider)) {
+      unresolved.push({
+        index,
+        name: agent.name,
+        provider,
+        modelId,
+        reason: 'missing_provider',
+      })
+      continue
+    }
+
+    const providerConfig = providers[provider]!
+    const found = providerConfig.models.some((m) => m.id === modelId)
+    if (!found) {
+      unresolved.push({
+        index,
+        name: agent.name,
+        provider,
+        modelId,
+        reason: 'missing_model',
+      })
+    }
+  }
+
+  return unresolved
 }
 
 // ── Step 5: Theme ────────────────────────────────────────────

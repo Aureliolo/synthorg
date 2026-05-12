@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { WizardProgress } from '@/pages/setup/WizardProgress'
 import type { WizardStep } from '@/stores/setup-wizard'
 
-const stepOrder: WizardStep[] = ['template', 'company', 'providers', 'agents', 'theme', 'complete']
+const stepOrder: WizardStep[] = ['template', 'providers', 'company', 'agents', 'theme', 'complete']
 
 const defaultStepsCompleted: Record<WizardStep, boolean> = {
   account: false,
@@ -67,6 +67,7 @@ describe('WizardProgress', () => {
     expect(templateButton).toBeInTheDocument()
     await user.click(templateButton)
     expect(handleClick).toHaveBeenCalledWith('template')
+    expect(handleClick).toHaveBeenCalledTimes(1)
   })
 
   it('disables inaccessible steps', () => {

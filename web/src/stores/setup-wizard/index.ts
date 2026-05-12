@@ -3,12 +3,12 @@ import { persist, type PersistOptions } from 'zustand/middleware'
 import { createAgentsSlice } from './agents'
 import { createCompanySlice } from './company'
 import { createCompletionSlice } from './completion'
-import { createNavigationSlice } from './navigation'
+import { createNavigationSlice, getStepOrder, initialStepsCompleted } from './navigation'
 import { SETUP_WIZARD_PERSIST_NAME } from './persist-key'
 import { createProvidersSlice } from './providers'
 import { createTemplateSlice } from './template'
 import { createThemeSlice } from './theme'
-import type { SetupWizardState } from './types'
+import type { SetupWizardState, WizardStep } from './types'
 
 export type {
   SetupWizardState,
@@ -35,10 +35,11 @@ type PersistedSetupState = Pick<
 
 const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
   name: SETUP_WIZARD_PERSIST_NAME,
-  // Bumping the version invalidates older entries that did not persist
-  // companyResponse so a stale wizard does not assume a company exists
-  // when the localStorage payload was written by an earlier release.
-  version: 2,
+  // Bump this when `stepOrder` semantics change so a persisted `currentStep`
+  // cannot survive into a payload whose step sequence no longer contains it.
+  // Without the bump, rehydrating an incompatible payload could land the user
+  // on a step that does not exist in the current order.
+  version: 3,
   partialize: (state) => ({
     currentStep: state.currentStep,
     stepsCompleted: state.stepsCompleted,
@@ -56,6 +57,59 @@ const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
     templateVariables: state.templateVariables,
     themeSettings: state.themeSettings,
   }),
+  // `stepOrder` is derived from `needsAdmin` + `wizardMode` and intentionally
+  // NOT persisted. The default merge would leave stepOrder at the slice
+  // default (GUIDED) regardless of the persisted wizardMode, so a quick-mode
+  // wizard that reloaded would show guided steps. Recompute it from the
+  // rehydrated wizardMode after merge, then snap currentStep back into the
+  // recomputed order (first-incomplete step) if it lands outside.
+  merge: (persistedState, currentState) => {
+    const merged = { ...currentState, ...(persistedState as Partial<SetupWizardState>) }
+    const stepOrder = getStepOrder(merged.needsAdmin, merged.wizardMode)
+    // localStorage is user-writable, so a hand-edited payload could omit step
+    // keys or set non-boolean values. Start from the all-false default and
+    // overlay only strictly-boolean-true entries so `firstIncomplete` cannot
+    // pick up `undefined`/`null` and treat it as "incomplete" inconsistently.
+    const stepsCompleted = initialStepsCompleted()
+    // localStorage can contain `stepsCompleted: null` (hand-edited payload, or
+    // a former persisted shape that wrote null for the not-yet-initialised
+    // value). Blindly casting and indexing a null reference would throw at
+    // startup, leaving the wizard unbootable until the user clears storage.
+    const persistedCompletedRaw: unknown = merged.stepsCompleted
+    const persistedCompleted: Partial<Record<WizardStep, unknown>> =
+      persistedCompletedRaw !== null && typeof persistedCompletedRaw === 'object'
+        ? (persistedCompletedRaw as Partial<Record<WizardStep, unknown>>)
+        : {}
+    for (const step of stepOrder) {
+      if (persistedCompleted[step] === true) {
+        stepsCompleted[step] = true
+      }
+    }
+    // Clamp the persisted ``currentStep`` to the earliest incomplete step
+    // under the recomputed ``stepOrder``. Checking membership alone is not
+    // enough: if the persisted draft was on ``company`` and the new step
+    // order now places ``providers`` before it, ``includes`` would still
+    // pass and the wizard would resume on ``company`` while the
+    // reordered-required ``providers`` step sits incomplete, letting the
+    // user slip past it. Snapping back to the first incomplete index keeps
+    // the wizard monotonic forward only.
+    const firstIncomplete = stepOrder.find((s: WizardStep) => !stepsCompleted[s])
+    const currentStepIndex = stepOrder.indexOf(merged.currentStep)
+    const firstIncompleteIndex =
+      firstIncomplete === undefined ? -1 : stepOrder.indexOf(firstIncomplete)
+    const currentStepIsSafe =
+      currentStepIndex !== -1
+      && (firstIncompleteIndex === -1 || currentStepIndex <= firstIncompleteIndex)
+    if (currentStepIsSafe) {
+      return { ...merged, stepOrder, stepsCompleted }
+    }
+    return {
+      ...merged,
+      stepOrder,
+      stepsCompleted,
+      currentStep: firstIncomplete ?? stepOrder[0]!,
+    }
+  },
 }
 
 export const useSetupWizardStore = create<SetupWizardState>()(
