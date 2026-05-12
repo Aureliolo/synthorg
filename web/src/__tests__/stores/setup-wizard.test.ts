@@ -163,6 +163,69 @@ describe('setup wizard store', () => {
     })
   })
 
+  describe('persistence rehydration', () => {
+    it('recomputes stepOrder from persisted wizardMode on rehydrate', async () => {
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: {
+          wizardMode: 'quick',
+          currentStep: 'mode',
+          stepsCompleted: {
+            account: false,
+            mode: true,
+            template: false,
+            company: false,
+            providers: false,
+            agents: false,
+            theme: false,
+            complete: false,
+          },
+        },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await useSetupWizardStore.persist.rehydrate()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.wizardMode).toBe('quick')
+      // Without the merge function, stepOrder would fall back to GUIDED here.
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
+    })
+
+    it('snaps currentStep to first incomplete when persisted step is outside the recomputed order', async () => {
+      // A v2 payload could have currentStep='agents' (which is not in QUICK_STEP_ORDER).
+      // The merge function must catch this and reset currentStep to the first
+      // incomplete step in the recomputed order rather than landing the user on
+      // a step that does not exist for their mode.
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: {
+          wizardMode: 'quick',
+          currentStep: 'agents',
+          stepsCompleted: {
+            account: false,
+            mode: true,
+            template: false,
+            company: false,
+            providers: false,
+            agents: false,
+            theme: false,
+            complete: false,
+          },
+        },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await useSetupWizardStore.persist.rehydrate()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
+      expect(state.currentStep).toBe('providers')
+    })
+  })
+
   describe('template actions', () => {
     it('selects a template', () => {
       useSetupWizardStore.getState().selectTemplate('startup')
