@@ -51,18 +51,21 @@ export function CompanyStep() {
 
   useStepCompletionSync('company', validation.valid)
 
-  // Clear a stale companyError on remount unless a submit is currently
-  // in flight (its eventual response should be allowed to write to the
-  // error slot). Mirrors ProvidersStep's mount-time cleanup so the two
-  // steps follow the same pattern; otherwise the previous attempt's
-  // error would resurface as soon as the user revisits the step.
+  // Clear a stale companyError on unmount unless a submit is currently
+  // in flight. The in-flight guard matters because a long-running submit
+  // that completes AFTER the user navigates away must be allowed to land
+  // its error in the store; the next CompanyStep mount then surfaces it.
+  // Clearing on mount instead would wipe such errors before the user
+  // could see them.
   useEffect(() => {
-    const state = useSetupWizardStore.getState()
-    if (!state.companyLoading && (state.companyError || state.companyErrorCode)) {
-      useSetupWizardStore.setState({
-        companyError: null,
-        companyErrorCode: null,
-      })
+    return () => {
+      const state = useSetupWizardStore.getState()
+      if (!state.companyLoading) {
+        useSetupWizardStore.setState({
+          companyError: null,
+          companyErrorCode: null,
+        })
+      }
     }
   }, [])
 
