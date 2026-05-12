@@ -1,8 +1,7 @@
 """Tools namespace setting definitions.
 
-Covers git subprocess kill-grace, Atlas migration subprocess
-kill-grace, Docker sandbox sidecar resource limits, Docker stop
-grace period, and subprocess sandbox kill-grace.
+Covers git subprocess kill-grace, Docker sandbox sidecar resource
+limits, Docker stop grace period, and subprocess sandbox kill-grace.
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
@@ -11,7 +10,7 @@ from synthorg.settings.registry import get_registry
 
 _r = get_registry()
 
-# ── Git / Atlas subprocess kill-grace ────────────────────────────
+# ── Git subprocess kill-grace ────────────────────────────────────
 
 _r.register(
     SettingDefinition(
@@ -28,24 +27,6 @@ _r.register(
         min_value=1.0,
         max_value=60.0,
         yaml_path="tools.git.kill_grace_timeout_seconds",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.TOOLS,
-        key="atlas_kill_grace_timeout_seconds",
-        type=SettingType.FLOAT,
-        default="5.0",
-        description=(
-            "Grace period after SIGTERM for an Atlas migration subprocess"
-            " to flush before it is reaped"
-        ),
-        group="Atlas",
-        level=SettingLevel.ADVANCED,
-        min_value=1.0,
-        max_value=60.0,
-        yaml_path="tools.atlas.kill_grace_timeout_seconds",
     )
 )
 

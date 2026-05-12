@@ -35,7 +35,7 @@ def _make_fact(
     )
 
 
-# Minimal DDL for unit-test fixtures.  Real deployments run Atlas
+# Minimal DDL for unit-test fixtures.  Real deployments run yoyo
 # migrations; these tests only need the two tables the repository
 # touches so fixtures stay self-contained.
 _OP_LOG_DDL = """

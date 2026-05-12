@@ -30,13 +30,19 @@ CREATE TABLE IF NOT EXISTS {{.Domain}}_items (
 );
 ```
 
-Then generate matching Atlas migrations -- never hand-edit existing
-migration files:
+Then author a matching revision file under each backend's
+``revisions/`` directory.  Never hand-edit existing revision files;
+yoyo's content-hash check refuses to re-apply an edited file.
 
-```bash
-atlas migrate diff add_{{.Domain}}_items --env sqlite
-atlas migrate diff add_{{.Domain}}_items --env postgres
+```text
+src/synthorg/persistence/sqlite/revisions/<14-digit-ts>_add_{{.Domain}}_items.sql
+src/synthorg/persistence/postgres/revisions/<14-digit-ts>_add_{{.Domain}}_items.sql
 ```
+
+The revision file's SQL must be a strict superset of the change you
+made to ``schema.sql``; the drift gate verifies parity by applying
+both the revisions and ``schema.sql`` to throwaway databases and
+comparing the dumps.
 
 ## 2. Expose the repository on `PersistenceBackend`
 
@@ -68,7 +74,7 @@ self.{{.Domain}}_items = Postgres{{.ClassName}}Repository(self._pool)
 placeholder. Replace it with the real entity shape; keep the Pydantic
 `ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)` and
 update the SQL columns + `_row_to_item` helpers in both repos to
-match. Re-run `atlas migrate diff` for each schema change.
+match. Author a new revision file for each schema change.
 
 ## 4. Add real audit logging in the consuming service
 

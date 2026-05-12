@@ -6,7 +6,9 @@
  *
  * Committed Claude Code hooks (from .claude/settings.json):
  *   PreToolUse (Bash): scripts/check_push_rebased.sh
- *   PreToolUse (Bash): scripts/check_no_atlas_rehash.sh
+ *   PreToolUse (Bash): scripts/check_push_throttle.sh
+ *   PreToolUse (Bash): scripts/check_ci_before_push.sh
+ *   PreToolUse (Bash): scripts/check_no_throttle_override_creation.sh
  *   PreToolUse (Bash): scripts/check_no_baseline_update.sh
  *   PreToolUse (Bash): scripts/check_bash_no_write.sh
  *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
@@ -16,8 +18,10 @@
  *   PreToolUse (Edit|Write): scripts/check_no_edit_baseline.sh
  *   PreToolUse (Edit|Write): scripts/check_no_em_dashes_hook.sh
  *   PreToolUse (Edit|Write): scripts/check_pre_pr_review_triage_gate.sh
+ *   PreToolUse (Edit|Write): scripts/check_no_throttle_override_creation.sh
  *   PostToolUse (Edit|Write): scripts/check_web_design_system.py
  *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
+ *   PostToolUse (Bash): scripts/record_push_throttle.sh
  *
  * Hookify rules enforced via this plugin (from .claude/hookify.*.md):
  *   block-pr-create: blocks direct `gh pr create`
@@ -282,6 +286,24 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
                 throw new Error(denyReason);
               }
             }
+
+            // check_no_throttle_override_creation.sh for Edit|Write:
+            // blocks creation of files that would override the push-throttle
+            // gate (e.g. allowlist files, fake clock helpers). Mirrors the
+            // corresponding hook in .claude/settings.json so OpenCode does
+            // not become a side door past a Claude-Code-enforced rule.
+            {
+              const outcome = runHookScript(
+                "scripts/check_no_throttle_override_creation.sh",
+                filePathInput,
+                5000,
+                input.tool === "edit" ? "Edit" : "Write",
+              );
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
+              }
+            }
           }
 
           // Only the remaining bash / shell checks apply below
@@ -293,7 +315,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             // perl -pi, gawk -i inplace). Bulk edits require explicit user
             // approval; the Edit tool with replace_all=false is the sanctioned
             // per-occurrence path. This check runs BEFORE other Bash hooks
-            // (push_rebased, atlas_rehash, bash_no_write, git_c_cwd) so a
+            // (push_rebased, baseline_update, bash_no_write, git_c_cwd) so a
             // bulk-edit block fails fast.
             const bulkOutcome = runHookScript(
               "scripts/check_no_bulk_edit.py",
@@ -340,31 +362,47 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               );
             }
 
-            // check_push_rebased.sh: block push if branch is behind main
-            if (command.includes("git push")) {
-              const outcome = runHookScript(
+            // check_push_throttle.sh + check_ci_before_push.sh + check_push_rebased.sh:
+            // run unconditionally on git push so the OpenCode plugin enforces
+            // the same pre-push gates that .claude/settings.json applies under
+            // Claude Code. Throttle gate comes first (cheap fail-fast on the
+            // record), then CI-before-push (waits for the latest run), then
+            // rebase check.
+            //
+            // Match the ``git push`` token pair case-insensitively with word
+            // boundaries so spacing variants and shell aliases ("  git   PUSH
+            // origin -f") still trigger the gates. A plain
+            // ``command.includes("git push")`` was bypassable by any extra
+            // whitespace or upper-case form.
+            if (/(?:^|\s)git\s+push(?:\s|$)/i.test(command)) {
+              for (const script of [
+                "scripts/check_push_throttle.sh",
+                "scripts/check_ci_before_push.sh",
                 "scripts/check_push_rebased.sh",
-                { command },
-                15000,
-              );
-              const denyReason = denyReasonFromOutcome(outcome);
-              if (denyReason) {
-                throw new Error(denyReason);
+              ]) {
+                const outcome = runHookScript(
+                  script,
+                  { command },
+                  15000,
+                );
+                const denyReason = denyReasonFromOutcome(outcome);
+                if (denyReason) {
+                  throw new Error(denyReason);
+                }
               }
             }
 
-            // check_no_atlas_rehash.sh: block `atlas migrate hash` rehash.
-            // We invoke the hook for every bash command: a ``command.includes("atlas")``
-            // prefilter would let wrapper invocations (``migrate_hash``,
-            // ``migrate.hash``, shell aliases, subprocess wrappers) bypass the
-            // gate because those strings never contain the literal token
-            // ``atlas``. The script itself is the authoritative filter and
-            // exits 0 quickly for unrelated commands.
+            // check_no_throttle_override_creation.sh for Bash: blocks shell
+            // invocations that would create a file capable of overriding the
+            // push-throttle record (e.g. ``rm`` against the record, ``echo``
+            // a fake throttle file). Mirrored from the matching Bash entry
+            // in .claude/settings.json.
             {
               const outcome = runHookScript(
-                "scripts/check_no_atlas_rehash.sh",
+                "scripts/check_no_throttle_override_creation.sh",
                 { command },
                 5000,
+                "Bash",
               );
               const denyReason = denyReasonFromOutcome(outcome);
               if (denyReason) {
@@ -373,9 +411,9 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             }
 
             // check_no_baseline_update.sh: block --update-baseline /
-            // --refresh-baseline invocations on gate scripts. Like the atlas
-            // hook above we invoke unconditionally because aliases /
-            // subprocess wrappers could hide the literal flag tokens.
+            // --refresh-baseline invocations on gate scripts.  Invoke
+            // unconditionally because aliases / subprocess wrappers could
+            // hide the literal flag tokens.
             {
               const outcome = runHookScript(
                 "scripts/check_no_baseline_update.sh",
@@ -414,6 +452,26 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
           }
         },
         after: async (input, output) => {
+          // record_push_throttle.sh PostToolUse for Bash: records a successful
+          // git push timestamp so subsequent ``check_push_throttle.sh``
+          // invocations can rate-limit pushes per round. Mirrors the matching
+          // PostToolUse entry in .claude/settings.json. The record script
+          // itself filters non-push commands, so invoking it on every Bash
+          // PostToolUse is correct and matches the Claude Code config.
+          if (input.tool === "bash" || input.tool === "shell") {
+            const command = (output.args?.command as string) ?? "";
+            const outcome = runHookScript(
+              "scripts/record_push_throttle.sh",
+              { command },
+              5000,
+              "Bash",
+            );
+            const denyReason = denyReasonFromOutcome(outcome);
+            if (denyReason) {
+              throw new Error(denyReason);
+            }
+            return;
+          }
           if (input.tool !== "edit" && input.tool !== "write") {
             return;
           }

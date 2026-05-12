@@ -1,6 +1,6 @@
 """Integration: subworkflow registry, execution, and persistence round-trips.
 
-Tests exercise the full stack with real SQLite persistence (via Atlas
+Tests exercise the full stack with real SQLite persistence (via yoyo
 migrations), verifying that subworkflow registration, versioning,
 parent tracking, and execution produce correct results end-to-end.
 """
@@ -25,7 +25,7 @@ from synthorg.engine.workflow.definition import (
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
-from synthorg.persistence import atlas
+from synthorg.persistence import migrations
 from synthorg.persistence.sqlite.subworkflow_repo import (
     SQLiteSubworkflowRepository,
 )
@@ -41,13 +41,12 @@ _TS = datetime(2026, 4, 10, 12, 0, 0, tzinfo=UTC)
 
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
-    """Temp-file SQLite with Atlas migrations applied."""
+    """Temp-file SQLite with yoyo migrations applied."""
     db_path = tmp_path / "test.db"
-    rev_url = atlas.copy_revisions(tmp_path / "revisions")
-    await atlas.migrate_apply(
-        atlas.to_sqlite_url(str(db_path)),
-        revisions_url=rev_url,
-        skip_lock=True,
+    rev_path = migrations.copy_revisions(tmp_path / "revisions")
+    await migrations.migrate_apply(
+        migrations.to_sqlite_url(str(db_path)),
+        revisions_path=rev_path,
     )
     conn = await aiosqlite.connect(str(db_path))
     try:

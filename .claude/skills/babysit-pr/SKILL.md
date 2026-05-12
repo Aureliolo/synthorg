@@ -484,7 +484,7 @@ Render the full triage table only when there's something to fix.
 
 - **Fix EVERYTHING valid.** Out-of-scope, pre-existing, larger work, older non-touched code, all in scope. The user's mandate.
 - **Security alerts: FIX or DISMISS, never leave open.** Phase 6b. Open alerts across rounds = workflow failure.
-- **Never push incomplete work.** Before every push verify: all changes committed, lint passes, tests pass, schema drift zero (`atlas schema diff` if touching persistence), no pending TODO from this round. (`feedback_completeness.md` §1.)
+- **Never push incomplete work.** Before every push verify: all changes committed, lint passes, tests pass, schema drift zero (`scripts/check_schema_drift_revisions.py --backend <backend>` if touching persistence), no pending TODO from this round. (`feedback_completeness.md` §1.)
 - **Never silently narrow scope.** If a fix turns out to be much bigger than the finding suggested (cascading edits across many files, schema change, migration), pause and `AskUserQuestion` with the new info before shipping a partial fix. (`feedback_completeness.md` §3.)
 - **Never skip flaky tests.** If a CI failure is a flaky test, the fix is to make it deterministic (mock `time.monotonic()` / `asyncio.sleep()`, eliminate the race), NOT to mark it skip / xfail / "pre-existing flaky". Flaky-test fixes ride in this round. (`feedback_completeness.md` §5.)
 - **Skipped items must be factually wrong.** Each skip is logged in round-history with the concrete disproof (file:line evidence that the finding doesn't apply).

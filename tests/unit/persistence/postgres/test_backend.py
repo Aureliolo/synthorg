@@ -385,17 +385,19 @@ class TestMigrate:
         with pytest.raises(PersistenceConnectionError):
             await backend.migrate()
 
-    async def test_calls_atlas_with_postgres_backend(
+    async def test_migrate_invokes_yoyo_with_postgres_backend(
         self,
         patched_pool: Any,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         await backend.connect()
 
-        from synthorg.persistence.atlas import migrate_apply as _real_migrate_apply
+        from synthorg.persistence.migrations import (
+            migrate_apply as _real_migrate_apply,
+        )
 
         with patch(
-            "synthorg.persistence.postgres.backend_migration.atlas.migrate_apply",
+            "synthorg.persistence.postgres.backend_migration.migrations.migrate_apply",
             new=AsyncMock(spec=_real_migrate_apply, return_value=None),
         ) as migrate_apply:
             await backend.migrate()
@@ -404,10 +406,9 @@ class TestMigrate:
         await_args = migrate_apply.await_args
         assert await_args is not None
         assert await_args.kwargs["backend"] == "postgres"
-        # Positional arg 0 is the db URL built from the PostgresConfig.
         url = cast("str", await_args.args[0])
-        assert url.startswith("postgres://")
-        assert "synthorg" in url  # database name
+        assert url.startswith("postgresql+psycopg://")
+        assert "synthorg" in url
 
 
 @pytest.mark.unit

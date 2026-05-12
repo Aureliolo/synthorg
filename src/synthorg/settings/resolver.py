@@ -1054,7 +1054,6 @@ class ConfigResolver:
             "tools",
             (
                 ("git_kill_grace_timeout_seconds", "float"),
-                ("atlas_kill_grace_timeout_seconds", "float"),
                 ("docker_sidecar_health_poll_interval_seconds", "float"),
                 ("docker_sidecar_health_timeout_seconds", "float"),
                 ("docker_sidecar_memory_limit", "str"),

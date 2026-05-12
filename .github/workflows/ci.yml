@@ -58,7 +58,6 @@ jobs:
               - 'uv.lock'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
-              - 'atlas.hcl'
             dashboard:
               - 'web/**'
               - 'src/synthorg/api/schemas/**'
@@ -169,63 +168,52 @@ jobs:
       - name: Doc count drift gate (event modules)
         run: uv run python scripts/check_doc_drift_counts.py
 
-  # ── Schema: Migration Validation ──
+  # ── Schema: Drift Validation ──
   schema-validate:
     name: Schema Validation
     needs: changes
     if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: atlas
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
 
-      - uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0.3
-        with:
-          cloud-token: ${{ secrets.ATLAS_TOKEN }}
-
-      - name: Validate migration checksums
-        run: atlas migrate validate --dir "file://src/synthorg/persistence/sqlite/revisions" --dev-url "sqlite://file?mode=memory"
-
-      - name: Enforce at most one new migration per PR
+      - name: Enforce at most one new revision per PR
         if: github.event_name == 'pull_request'
         env:
           GH_BASE_REF: ${{ github.base_ref }}
         run: |
           git fetch origin "$GH_BASE_REF" --depth=1
           base_ref="origin/$GH_BASE_REF"
-          mapfile -t new_migs < <(
+          mapfile -t new_revs < <(
             git diff --name-only --diff-filter=A "$base_ref"...HEAD -- \
-              'src/synthorg/persistence/sqlite/revisions/*.sql'
+              'src/synthorg/persistence/sqlite/revisions/*.sql' \
+              'src/synthorg/persistence/postgres/revisions/*.sql'
           )
-          count=${#new_migs[@]}
-          if [ "$count" -gt 1 ]; then
-            echo "::error::PR adds $count new Atlas migration files; policy allows at most 1."
-            printf '  - %s\n' "${new_migs[@]}" >&2
+          sqlite_count=0
+          postgres_count=0
+          for rev in "${new_revs[@]}"; do
+            case "$rev" in
+              src/synthorg/persistence/sqlite/revisions/*.sql) ((sqlite_count++)) ;;
+              src/synthorg/persistence/postgres/revisions/*.sql) ((postgres_count++)) ;;
+            esac
+          done
+          if [ "$sqlite_count" -gt 1 ] || [ "$postgres_count" -gt 1 ]; then
+            echo "::error::PR adds too many new revision files (sqlite=$sqlite_count, postgres=$postgres_count). Policy allows at most one per backend."
+            printf '  - %s\n' "${new_revs[@]}" >&2
             echo "" >&2
-            echo "Consolidate into a single migration: delete all in-progress migrations" >&2
-            echo "and regenerate with 'atlas migrate diff --env sqlite <name>'." >&2
+            echo "Consolidate by deleting in-progress revisions and authoring a single new revision per backend." >&2
             exit 1
           fi
-          echo "OK: PR adds $count new migration(s) (limit 1)."
+          echo "OK: PR adds sqlite=$sqlite_count, postgres=$postgres_count new revision(s) (limit 1 each)."
 
-      - name: Drift detection
-        run: |
-          diff_output=$(atlas schema diff --env ci \
-            --from "file://src/synthorg/persistence/sqlite/revisions" \
-            --to "file://src/synthorg/persistence/sqlite/schema.sql")
-          if echo "$diff_output" | grep -qv "Schemas are synced"; then
-            echo "::error::Schema drift detected between revisions and schema.sql"
-            echo "$diff_output"
-            exit 1
-          fi
-          echo "$diff_output"
-        # NOTE: atlas migrate lint (policy checks) requires Atlas Pro.
-        # Add --env ci lint step here when Pro auth is available.
+      - name: SQLite drift detection
+        run: uv run python scripts/check_schema_drift_revisions.py --backend sqlite
 
   # ── Python: Type Check ──
   type-check:
@@ -285,7 +273,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0.3
+      - name: Postgres drift detection
+        run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 
       - name: Run tests
         env:

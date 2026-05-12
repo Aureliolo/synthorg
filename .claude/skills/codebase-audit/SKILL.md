@@ -75,7 +75,7 @@ Produce an **Architecture Brief** (~400 words) covering:
 - Error hierarchy: custom exceptions inherit from project base, RFC 9457 responses
 - Providers: all LLM calls through `BaseCompletionProvider` (auto-retry, rate limit)
 - Pluggable subsystems: Protocol + concrete implementations + factory + config discriminator
-- Database: SQLite + Postgres dual-backend, Atlas migrations in `persistence/*/revisions/`
+- Database: SQLite + Postgres dual-backend, yoyo migrations in `persistence/*/revisions/`
 - Async: `asyncio.TaskGroup` preferred, never bare `create_task`
 - Testing: markers, xdist, async auto mode, Hypothesis profiles
 
@@ -1872,7 +1872,7 @@ Check shutdown path:
 - In-flight HTTP requests drained?
 - Background tasks cancelled with timeout?
 - Provider / DB connections closed cleanly?
-- Atlas/Postgres connection pools shutdown?
+- Postgres connection pools shutdown?
 
 Severity: high.
 ```
@@ -3151,7 +3151,7 @@ DO NOT flag:
 - `CLAUDE.md`, `docs/design/`, and `docs/reference/` migration
   guides (e.g. `persistence-migrations.md`) where migration
   framing is the entire subject.
-- Atlas migration files under `src/synthorg/persistence/*/revisions/`
+- Revision files under `src/synthorg/persistence/*/revisions/`
   (their purpose IS to record schema migrations).
 
 Severity scale:

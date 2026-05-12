@@ -205,8 +205,9 @@ def diff_migrations(
     """Compare the two ``revisions/`` directories for filename-suffix parity.
 
     Filenames match the pattern ``<14-digit-timestamp>_<suffix>.sql``;
-    we strip the timestamp (which is independently picked by Atlas on
-    each side) and take the symmetric difference of suffix sets.
+    we strip the timestamp (which is picked at authoring time and may
+    legitimately differ across the two backends) and take the
+    symmetric difference of suffix sets.
 
     The post-squash ``00000000000000_baseline.sql`` is always ignored.
     """

@@ -12,27 +12,25 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.persistence import atlas
+from synthorg.persistence import migrations
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 
 async def _isolated_sqlite_migrate(db_path: str, tmp_path: Path) -> None:
-    """Apply SQLite migrations with per-test isolation.
+    """Apply SQLite migrations against a per-test isolated revisions copy.
 
-    Copies the revisions directory to ``tmp_path`` and runs
-    ``atlas migrate apply --skip-lock`` against the isolated copy
-    so parallel xdist workers never contend on Atlas's shared
-    directory lock.
+    Each xdist worker has its own SQLite file (per ``tmp_path``), so
+    yoyo's DB-level lock cannot contend across workers; the per-test
+    revisions copy keeps the on-disk layout symmetric with production.
     """
-    revisions_url = atlas.copy_revisions(
+    revisions_path = migrations.copy_revisions(
         tmp_path / f"sqlite_revisions_{uuid.uuid4().hex}",
         backend="sqlite",
     )
-    await atlas.migrate_apply(
-        atlas.to_sqlite_url(db_path),
-        revisions_url=revisions_url,
-        skip_lock=True,
+    await migrations.migrate_apply(
+        migrations.to_sqlite_url(db_path),
+        revisions_path=revisions_path,
         backend="sqlite",
     )
 

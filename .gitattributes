@@ -14,13 +14,12 @@ go.sum text eol=lf
 *.tmpl text eol=lf
 cli/testdata/**/*.yml text eol=lf
 
-# Atlas migrations -- checksums are content-sensitive; mixed line endings
-# between Windows and Linux break atlas.sum validation.
+# Schema files + yoyo revisions -- yoyo's content-hash check is
+# whitespace-sensitive, so mixed line endings between Windows and
+# Linux would trip the apply-time hash check on shared revisions.
 src/synthorg/persistence/sqlite/revisions/*.sql text eol=lf
-src/synthorg/persistence/sqlite/revisions/atlas.sum text eol=lf
 src/synthorg/persistence/sqlite/schema.sql text eol=lf
 src/synthorg/persistence/postgres/revisions/*.sql text eol=lf
-src/synthorg/persistence/postgres/revisions/atlas.sum text eol=lf
 src/synthorg/persistence/postgres/schema.sql text eol=lf
 
 # Shell scripts must use LF (bash can't parse CRLF).

@@ -10,12 +10,12 @@ import "fmt"
 //   - src/synthorg/persistence/postgres/<domain>_repo.py           -- Postgres impl
 //   - src/synthorg/observability/events/<domain>_repo.py           -- repo event constants
 //   - tests/conformance/persistence/test_<domain>_repository.py    -- parametrised dual-backend
-//   - src/synthorg/persistence/<domain>_WIRING.md                  -- schema + atlas + backend exposure
+//   - src/synthorg/persistence/<domain>_WIRING.md                  -- schema + revision + backend exposure
 //
 // The Pydantic model carries a single `payload: str` placeholder so the
 // repos compile and tests run end-to-end against a fresh schema; the
 // WIRING.md walks the user through replacing the placeholder with the
-// real entity shape and re-running `atlas migrate diff`.
+// real entity shape and authoring a matching revision file.
 //
 // The repo event constants live at events/<domain>_repo.py while the
 // service scaffold owns events/<domain>.py; the two are deliberately
@@ -59,7 +59,7 @@ func renderPersistence(p Params) ([]RenderedFile, error) {
 	for _, f := range files {
 		body, err := renderTemplate(f.tpl, p)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("rendering template %q: %w", f.tpl, err)
 		}
 		out = append(out, RenderedFile{Path: f.out, Contents: body})
 	}

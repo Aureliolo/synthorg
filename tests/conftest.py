@@ -32,7 +32,7 @@ from hypothesis.database import (
     MultiplexedDatabase,
 )
 
-from synthorg.persistence import atlas
+from synthorg.persistence import migrations
 
 # Diagnostic instrumentation: dump native + Python tracebacks on every
 # fatal signal (SIGSEGV, SIGFPE, SIGABRT etc.) and on every thread.
@@ -548,20 +548,19 @@ _TEMPLATE_DB: Path | None = None
 async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Return path to the session-wide migrated template database.
 
-    Migrates a fresh SQLite file via Atlas on first call, then
-    reuses the same file for all subsequent calls.  Each test
-    copies this file instead of spawning a new Atlas subprocess.
+    Migrates a fresh SQLite file via yoyo on first call, then reuses
+    the same file for all subsequent calls.  Each test copies this
+    file instead of running migrations again.
     """
     global _TEMPLATE_DB  # noqa: PLW0603
     if _TEMPLATE_DB is not None:
         return _TEMPLATE_DB
-    base = tmp_path_factory.mktemp("atlas_template")
+    base = tmp_path_factory.mktemp("yoyo_template")
     db_path = base / "template.db"
-    rev_url = atlas.copy_revisions(base / "revisions")
-    await atlas.migrate_apply(
-        atlas.to_sqlite_url(str(db_path)),
-        revisions_url=rev_url,
-        skip_lock=True,
+    rev_path = migrations.copy_revisions(base / "revisions")
+    await migrations.migrate_apply(
+        migrations.to_sqlite_url(str(db_path)),
+        revisions_path=rev_path,
     )
     _TEMPLATE_DB = db_path
     return _TEMPLATE_DB
@@ -593,11 +592,11 @@ async def migrated_db(
     tmp_path: Path,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> AsyncGenerator[aiosqlite.Connection]:
-    """Temp-file SQLite connection with Atlas migrations applied.
+    """Temp-file SQLite connection with yoyo migrations applied.
 
-    Copies a session-wide template database instead of spawning
-    an Atlas subprocess per test -- eliminates ~hundreds of Go
-    process launches during a full test run.
+    Copies a session-wide template database instead of re-running
+    migrations per test -- amortises the per-revision work across
+    the suite.
     """
     template = await _get_template_db(tmp_path_factory)
     db_path = tmp_path / "test.db"

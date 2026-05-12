@@ -58,7 +58,7 @@ CREATE INDEX `idx_wfe_definition_revision`
     ON `workflow_executions` (`definition_id`, `definition_revision`);
 ```
 
-The same index also lives at `src/synthorg/persistence/sqlite/schema.sql:543`. SQLite's revision history was squashed at some point (per `docs/guides/persistence-migrations.md` §"Squash") and absorbed all prior incremental migrations into the baseline; Postgres was not squashed, so its history retains the original 2026-04-24 file. The two backends are at schema parity. `atlas migrate validate --env sqlite` and `atlas schema diff --env sqlite` both confirm parity. **No new SQL needed.**
+The same index also lives at `src/synthorg/persistence/sqlite/schema.sql:543`.  Both backend revision histories have since been squashed into a single seed file derived from `schema.sql` (per `docs/guides/persistence-migrations.md` §"Squash Procedure"); the two backends are at schema parity.  `scripts/check_schema_drift_revisions.py --backend sqlite` and `--backend postgres` confirm parity.  **No new SQL needed.**
 
 ### #127: Lifecycle lock false positives
 

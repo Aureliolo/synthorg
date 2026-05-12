@@ -43,7 +43,7 @@ In `src/synthorg/api/app.py`: when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB
 
 ### Migration application
 
-`synthorg start` brings up Postgres first (via compose ordering), then the backend applies Atlas migrations on connection. The Atlas CLI binary is sourced at image-build time from the upstream `arigaio/atlas:latest-community-distroless` image, pinned by multi-arch manifest digest in `docker/backend/Dockerfile`. Renovate's built-in `docker` manager tracks the digest automatically; rebuilds that pick up Go stdlib security patches flow through normal Renovate PRs with no manual SHA refresh. The static binary is copied into the distroless runtime at `/usr/local/bin/atlas` so `persistence.migrate()` can shell out without needing a package manager. `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed. `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
+`synthorg start` brings up Postgres first (via compose ordering), then the backend applies yoyo migrations on connection.  Yoyo runs in-process via the project's Python venv (no external binary in the runtime image); the `synthorg.persistence.migrations` module wraps it and routes through psycopg 3 via the `postgresql+psycopg://` URL scheme.  `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed.  `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
 
 ### DHI verification
 

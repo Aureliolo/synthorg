@@ -24,7 +24,7 @@ from synthorg.budget.report_templates import (
     TaskCompletionReport,
 )
 from synthorg.hr.performance.models import TaskMetricRecord  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.reporting import (
     REPORTING_GENERATION_COMPLETED,
     REPORTING_GENERATION_FAILED,
@@ -235,10 +235,12 @@ class AutomatedReportService:
             risk_trends = rt.result()
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 REPORTING_GENERATION_FAILED,
                 period=period.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

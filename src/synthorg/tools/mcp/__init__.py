@@ -5,7 +5,8 @@ imports. Config models and errors are imported eagerly since they have
 no dependency on the tool base classes.
 """
 
-from typing import TYPE_CHECKING
+import threading
+from typing import TYPE_CHECKING, Final
 
 from .config import MCPConfig, MCPServerConfig
 from .errors import (
@@ -55,16 +56,27 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
 }
 
 
+_LAZY_IMPORT_LOCK: Final[threading.Lock] = threading.Lock()
+
+
 def __getattr__(name: str) -> object:
-    """Lazily import heavy modules on first access."""
+    """Lazily import heavy modules on first access.
+
+    The cache assignment into ``globals()`` is protected by a
+    threading lock so concurrent first-access from multiple threads
+    does not double-import the same submodule and overwrite the
+    cached object mid-write.
+    """
     if name in _LAZY_IMPORTS:
-        module_path, attr_name = _LAZY_IMPORTS[name]
         import importlib  # noqa: PLC0415
 
-        module = importlib.import_module(module_path, __package__)
-        value = getattr(module, attr_name)
-        # Cache on the module dict to avoid repeated lookups
-        globals()[name] = value
-        return value
+        with _LAZY_IMPORT_LOCK:
+            if name in globals():
+                return globals()[name]
+            module_path, attr_name = _LAZY_IMPORTS[name]
+            module = importlib.import_module(module_path, __package__)
+            value = getattr(module, attr_name)
+            globals()[name] = value
+            return value
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)

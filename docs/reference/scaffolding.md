@@ -45,10 +45,10 @@ Files:
 ### `synthorg new persistence <domain>`
 
 Dual-backend repository skeleton (Protocol + SQLite + Postgres +
-parametrised conformance test). The Pydantic entity carries a
+parametrised conformance test).  The Pydantic entity carries a
 single `payload: str` placeholder; `WIRING.md` walks the user
-through replacing it with the real entity shape and re-running
-`atlas migrate diff`.
+through replacing it with the real entity shape and authoring a
+matching revision file under `persistence/<backend>/revisions/`.
 
 Files:
 

@@ -52,8 +52,10 @@ The following bare literals are NOT violations:
   the algorithm, not policy.
 - Files under ``src/synthorg/settings/definitions/`` -- declaring
   numerics is the whole job of those modules.
-- Files under ``src/synthorg/persistence/migrations/`` -- Atlas
-  generates these.
+- Files under ``src/synthorg/persistence/migrations/`` -- the yoyo
+  wrapper carries enough timeout / lock constants that allowlisting
+  the module avoids noise; the numerics here are intentional knobs
+  not magic.
 - Files under ``src/synthorg/observability/events/`` -- event-name
   registries and version constants.
 - Module-level annotated numeric constants of the form

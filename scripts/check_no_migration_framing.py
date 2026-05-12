@@ -87,10 +87,10 @@ _PATH_ALLOWLIST_PREFIXES: Final[tuple[str, ...]] = (
     "_audit/",
     ".claude/",
     ".github/",
-    # Atlas-managed migration revisions are auto-generated; their
-    # hash is tracked in atlas.sum, so any hand-edit (including
-    # comment scrubs) corrupts migration state. Skip the directory
-    # entirely.
+    # Revision files are immutable once committed; yoyo's content-hash
+    # check refuses to re-apply an already-applied revision whose
+    # content has changed.  Skip the directory entirely so cosmetic
+    # edits cannot land here.
     "src/synthorg/persistence/postgres/revisions/",
     "src/synthorg/persistence/sqlite/revisions/",
     # Other gates' self-tests legitimately embed phrases like

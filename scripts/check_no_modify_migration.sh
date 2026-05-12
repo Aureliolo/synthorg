@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Pre-commit hook: block commits that modify migration files that
 # already exist on origin/main. Migrations are immutable once merged
-# to main -- hand-editing them breaks Atlas's checksum chain for
-# anyone who already ran them. Regeneration of a migration that was
-# added earlier on the same PR branch (delete + `atlas migrate diff`)
-# is an allowed workflow -- the net diff against main is still a
-# single new file, so this script permits it.
+# to main -- hand-editing them breaks yoyo's content-hash check for
+# anyone who already ran them. Regeneration of a revision added
+# earlier on the same PR branch (delete + author a fresh file) is an
+# allowed workflow -- the net diff against main is still a single new
+# file, so this script permits it.
 #
 # Exit codes:
 #   0 -- allow (no migration touched, or only PR-local migrations changed)
@@ -13,9 +13,9 @@
 
 set -euo pipefail
 
-# Migration squash commits legitimately delete old files and rewrite
-# atlas.sum.  The squash script instructs users to commit with this
-# env var set so the immutability check steps aside.
+# Squash commits legitimately delete the prior revision chain when
+# regenerating a single seed file from schema.sql.  Set this env var
+# to step aside for that workflow.
 if [ "${SYNTHORG_MIGRATION_SQUASH:-0}" = "1" ]; then
     exit 0
 fi
@@ -101,33 +101,29 @@ fi
 
 echo "" >&2
 echo "ERROR: Do not modify migration files that already exist on origin/main." >&2
-echo "Migrations are immutable once merged -- Atlas checksum chains break for" >&2
-echo "anyone who already ran them." >&2
+echo "Migrations are immutable once merged -- yoyo's content-hash check refuses" >&2
+echo "to re-apply a previously-applied revision whose content has changed." >&2
 echo "" >&2
 for f in "${MODIFIED[@]}"; do
     echo "  Modified vs origin/main: $f" >&2
 done
 echo "" >&2
-echo "If you are mid-PR regenerating a migration your own branch added," >&2
+echo "If you are mid-PR regenerating a revision your own branch added," >&2
 echo "this check will already pass (the file is not on origin/main yet)." >&2
 echo "" >&2
-echo "To recover an accidentally-edited already-merged migration:" >&2
+echo "To recover an accidentally-edited already-merged revision:" >&2
 # Restore from the merge-base commit hash directly, not from a
 # moving remote-tracking ref. If origin/main has advanced past the
 # branch point, restoring from origin/main can pull in unrelated
-# atlas.sum changes that were never part of the merge-base this
+# revision changes that were never part of the merge-base this
 # hook evaluated, which would produce a different failure on the
 # very next run.
 for dir in "${REVISIONS_DIRS[@]}"; do
-    echo "  git restore --source='$BASE' -- '$dir/atlas.sum'" >&2
+    echo "  git restore --source='$BASE' -- '$dir/'" >&2
 done
-echo "  Delete any PR-local migration files you added, then regenerate:" >&2
-echo "    atlas migrate diff --env sqlite <name>" >&2
-echo "    atlas migrate diff --env postgres <name>" >&2
+echo "  Delete any PR-local revision files you added, then author a new one." >&2
 echo "" >&2
-echo "If you need to change an already-merged migration's behaviour, create" >&2
-echo "a NEW migration with your delta instead -- leave the existing one alone." >&2
-echo "" >&2
-echo "Do NOT manually edit atlas.sum -- always restore from the base branch." >&2
+echo "If you need to change an already-merged revision's behaviour, author a" >&2
+echo "NEW revision with your delta instead -- leave the existing one alone." >&2
 echo "" >&2
 exit 1

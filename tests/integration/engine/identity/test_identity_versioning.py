@@ -23,7 +23,7 @@ from synthorg.core.task import Task
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.persistence import atlas
+from synthorg.persistence import migrations
 from synthorg.persistence.decision_protocol import DecisionRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
@@ -45,13 +45,12 @@ def _make_identity(name: str = "agent-x") -> AgentIdentity:
 
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
-    """Temp-file SQLite connection with Atlas migrations applied."""
+    """Temp-file SQLite connection with yoyo migrations applied."""
     db_path = tmp_path / "test.db"
-    rev_url = atlas.copy_revisions(tmp_path / "revisions")
-    await atlas.migrate_apply(
-        atlas.to_sqlite_url(str(db_path)),
-        revisions_url=rev_url,
-        skip_lock=True,
+    rev_path = migrations.copy_revisions(tmp_path / "revisions")
+    await migrations.migrate_apply(
+        migrations.to_sqlite_url(str(db_path)),
+        revisions_path=rev_path,
     )
     conn = await aiosqlite.connect(str(db_path))
     try:

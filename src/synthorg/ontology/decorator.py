@@ -9,9 +9,10 @@ Entity definitions are derived lazily (on first access via
 
 import inspect
 import textwrap
+import threading
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, NamedTuple, overload
+from typing import TYPE_CHECKING, Any, Final, NamedTuple, overload
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
@@ -44,6 +45,7 @@ class _RegistryEntry(NamedTuple):
 
 _RAW_REGISTRY: dict[str, _RegistryEntry] = {}
 _CACHE: dict[str, EntityDefinition] | None = None
+_REGISTRY_LOCK: Final[threading.Lock] = threading.Lock()
 
 
 def get_entity_registry() -> MappingProxyType[str, EntityDefinition]:
@@ -52,21 +54,33 @@ def get_entity_registry() -> MappingProxyType[str, EntityDefinition]:
     Builds ``EntityDefinition`` objects lazily on first call and
     caches the result.  The cache is invalidated by
     ``clear_entity_registry()``.
+
+    Holds ``_REGISTRY_LOCK`` across both the cache check and the
+    rebuild so a concurrent ``_do_register()`` cannot mutate
+    ``_RAW_REGISTRY`` mid-iteration (which would raise
+    ``RuntimeError: dictionary changed size during iteration``).
     """
     global _CACHE  # noqa: PLW0603
-    # _CACHE is set to None by _do_register() and clear_entity_registry().
-    if _CACHE is None:
-        _CACHE = {
-            name: _derive_definition(entry) for name, entry in _RAW_REGISTRY.items()
-        }
-    return MappingProxyType(_CACHE)
+    with _REGISTRY_LOCK:
+        # _CACHE is set to None by _do_register() and clear_entity_registry().
+        if _CACHE is None:
+            _CACHE = {
+                name: _derive_definition(entry) for name, entry in _RAW_REGISTRY.items()
+            }
+        return MappingProxyType(_CACHE)
 
 
 def clear_entity_registry() -> None:
-    """Clear the entity registry (for testing only)."""
+    """Clear the entity registry (for testing only).
+
+    Holds ``_REGISTRY_LOCK`` so the clear and the cache invalidation
+    happen atomically with respect to ``_do_register()`` and
+    ``get_entity_registry()``.
+    """
     global _CACHE  # noqa: PLW0603
-    _RAW_REGISTRY.clear()
-    _CACHE = None
+    with _REGISTRY_LOCK:
+        _RAW_REGISTRY.clear()
+        _CACHE = None
 
 
 def _derive_definition(entry: _RegistryEntry) -> EntityDefinition:
@@ -189,16 +203,17 @@ def ontology_entity(
     def _do_register(target_cls: type[BaseModel]) -> type[BaseModel]:
         global _CACHE  # noqa: PLW0603
         name = entity_name or target_cls.__name__
-        if name in _RAW_REGISTRY:
-            msg = f"Entity '{name}' is already registered"
-            raise OntologyDuplicateError(msg)
-        _RAW_REGISTRY[name] = _RegistryEntry(
-            cls=target_cls,
-            entity_name=name,
-            tier=tier_val,
-            source=source_val,
-        )
-        _CACHE = None  # Invalidate cache.
+        with _REGISTRY_LOCK:
+            if name in _RAW_REGISTRY:
+                msg = f"Entity '{name}' is already registered"
+                raise OntologyDuplicateError(msg)
+            _RAW_REGISTRY[name] = _RegistryEntry(
+                cls=target_cls,
+                entity_name=name,
+                tier=tier_val,
+                source=source_val,
+            )
+            _CACHE = None  # Invalidate cache.
         logger.debug(
             ONTOLOGY_ENTITY_DECORATOR_REGISTERED,
             entity_name=name,

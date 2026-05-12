@@ -1,5 +1,5 @@
 ---
-description: "Persistence review: SQL injection, schema, transactions, repository protocol, Atlas migrations, dual-backend parity, currency invariants"
+description: "Persistence review: SQL injection, schema, transactions, repository protocol, yoyo migrations, dual-backend parity, currency invariants"
 mode: subagent
 model: ollama-cloud/qwen3-coder-next:cloud
 permission:
@@ -18,19 +18,17 @@ Patterns adapted from Supabase Agent Skills (credit: Supabase team, MIT license)
 
 1. **Persistence boundary**: enforce that only `src/synthorg/persistence/` imports `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, and that no raw SQL DDL/DML literals appear outside that path. The pre-push gate `scripts/check_persistence_boundary.py` handles enforcement; this reviewer flags violations the gate may miss in subtle string-construction patterns.
 2. **Service-layer discipline**: controllers and API endpoints go through `ArtifactService`, `WorkflowService`, `MemoryService`, `CustomRulesService`, `UserService`. Repositories never log mutations directly; services own audit logging.
-3. **Backend parity**: every repository Protocol in `persistence/<domain>_protocol.py` has matching SQLite and Postgres impls, and the Atlas schemas under `persistence/{sqlite,postgres}/schema.sql` agree on shape.
-4. **Atlas migrations**: never hand-edit SQL or `atlas.sum`. Generate via `atlas migrate diff --env <backend> <name>`. Single new migration per backend per PR (pre-commit gate `check-single-migration-per-pr`). Editing existing migrations is blocked (`check-no-modify-migration`); release-time squashes use `bash scripts/squash_migrations.sh` (sets `SYNTHORG_MIGRATION_SQUASH=1`).
+3. **Backend parity**: every repository Protocol in `persistence/<domain>_protocol.py` has matching SQLite and Postgres impls, and the declared schemas under `persistence/{sqlite,postgres}/schema.sql` agree on shape.
+4. **Migrations**: revisions live as ``*.sql`` files under ``persistence/{sqlite,postgres}/revisions/``.  Never hand-edit a revision that already exists on origin/main; author a new ``<14-digit-ts>_<name>.sql`` file instead.  yoyo's content-hash check (`_yoyo_migration` table) refuses to re-apply an edited file.  Single new revision per backend per PR (pre-commit gate `check-single-migration-per-pr`).  Editing existing revisions is blocked (`check-no-modify-migration`); seed regeneration uses the squash workflow (sets `SYNTHORG_MIGRATION_SQUASH=1`).
 5. **Query performance**: indexes on WHERE/JOIN/ORDER BY columns; composite index column order (equality first, then range); avoid N+1; avoid OFFSET pagination on large tables; SKIP LOCKED for queue tables.
 6. **Concurrency**: short transactions; consistent lock ordering (`ORDER BY id FOR UPDATE`) to prevent deadlocks; no external API calls inside transactions.
 7. **Currency invariants**: every cost-bearing model carries `currency: CurrencyCode` (validated against `synthorg.budget.currency` allowlist). Aggregation sites enforce same-currency invariant; mixing raises `MixedCurrencyAggregationError` (HTTP 409).
 
-## Diagnostic Commands (the user can run; this agent reports findings only)
+## Diagnostic Commands (read-only)
 
 ```bash
-atlas migrate validate --dir "file://src/synthorg/persistence/sqlite/revisions"
-atlas migrate validate --dir "file://src/synthorg/persistence/postgres/revisions"
-atlas schema diff --env sqlite
-atlas schema diff --env postgres
+uv run python scripts/check_schema_drift_revisions.py --backend sqlite
+uv run python scripts/check_schema_drift_revisions.py --backend postgres
 uv run python -m pytest tests/ -m integration -k persistence -n 8
 uv run python scripts/check_persistence_boundary.py
 ```
@@ -39,7 +37,11 @@ uv run python scripts/check_persistence_boundary.py
 
 ### 1. Boundary check (CRITICAL)
 
-Search for driver-library imports outside `src/synthorg/persistence/`. Any hit is a CRITICAL finding. Per-line opt-out is `# lint-allow: persistence-boundary -- <required justification>`. Verify the justification is real (one of the three sanctioned exception categories in `docs/reference/persistence-boundary.md`).
+```bash
+git diff --name-only | grep -v '^src/synthorg/persistence/' | xargs -I{} grep -lE '\b(aiosqlite|sqlite3|psycopg|psycopg_pool)\b' {} 2>/dev/null
+```
+
+Any hit outside `persistence/` is a CRITICAL finding. Per-line opt-out is `# lint-allow: persistence-boundary -- <required justification>`. Verify the justification is real (i.e. one of the three sanctioned exception categories in `docs/reference/persistence-boundary.md`).
 
 ### 2. Service-layer discipline (HIGH)
 
@@ -49,10 +51,9 @@ Repositories: scan for `logger.info`, `logger.warning`, `logger.error` calls ins
 
 ### 3. Migration discipline (CRITICAL)
 
-- Hand-edited SQL in `src/synthorg/persistence/{sqlite,postgres}/revisions/`: CRITICAL. The pre-commit gate blocks but you should also flag.
-- Manual edits to `atlas.sum`: CRITICAL. Always use `atlas migrate diff`.
-- More than one new migration per backend per PR: CRITICAL.
-- Schema drift: run `atlas schema diff --env sqlite` and `--env postgres`. Any diff between `schema.sql` and the latest revision means generation is missing.
+- Hand-edited SQL in revisions that already exist on origin/main: CRITICAL.  The pre-commit gate blocks but you should also flag.
+- More than one new revision per backend per PR: CRITICAL.
+- Schema drift: run `scripts/check_schema_drift_revisions.py --backend sqlite` and `--backend postgres`.  Any diff between `schema.sql` and the accumulated revisions means a revision is missing or schema.sql is stale.
 
 ### 4. Query performance (HIGH)
 
@@ -69,7 +70,7 @@ Repositories: scan for `logger.info`, `logger.warning`, `logger.error` calls ins
   - **SQLite**: `INTEGER PRIMARY KEY` rowid for IDs, `TEXT`, `INTEGER` (Unix epoch ms) or `TEXT` (ISO 8601) for timestamps - pick one and document.
 - Define constraints: PK, FK with explicit `ON DELETE` action, `NOT NULL`, `CHECK` for invariants.
 - Use `lowercase_snake_case` identifiers (no quoted mixed-case).
-- Backend parity: identical column names, identical nullability, equivalent types. The Atlas diff catches structural drift but not semantic drift.
+- Backend parity: identical column names, identical nullability, equivalent types. The cross-backend drift gate catches structural drift but not semantic drift.
 
 ### 6. Concurrency (HIGH)
 
@@ -112,31 +113,27 @@ Renames are atomic. No aliasing the old name, no `_legacy` passthroughs. Flag re
 - `GRANT ALL` to application users (Postgres)
 - Repo methods that log mutations (services do that)
 - Driver-library imports outside `persistence/`
-- Manual `atlas.sum` edits or hand-edited revision SQL
+- Hand-edited revision SQL (revisions are immutable once committed)
 - More than one new migration per backend per PR
 - Money fields suffixed `_usd`
 - Hardcoded ISO 4217 codes outside the allowlist
 
 ## Severity Levels
 
-- **CRITICAL**: Persistence-boundary violations, hand-edited revision SQL, manual `atlas.sum` edits, more than one new migration per backend per PR, destructive migrations without a data step
+- **CRITICAL**: Persistence-boundary violations, hand-edited revision SQL, more than one new revision per backend per PR, destructive migrations without a data step
 - **HIGH**: SQL injection, transaction safety, schema drift between backends, missing currency fields on cost-bearing models, deadlock-prone lock ordering
 - **MEDIUM**: Schema design (types/constraints), query efficiency, repo-side logging, missing indexes
 - **LOW**: Minor optimization, naming conventions
 
-## Report Format
-
-For each finding:
+## Review Output Format
 
 ```text
-[SEVERITY] file:line -- Category
-  Problem: What the code does
-  Risk: What could go wrong
-  Fix: Correct pattern (description; do not edit)
-  Refs: docs/reference/persistence-boundary.md or relevant CLAUDE.md section
+[SEVERITY] Issue title
+File: path/to/file.py:42 (or .sql, or schema.sql)
+Issue: Description
+Fix: What to change (do not write the change; describe it)
+Refs: docs/reference/persistence-boundary.md or relevant CLAUDE.md section
 ```
-
-End with summary count per severity.
 
 ## Approval Criteria
 
@@ -146,7 +143,7 @@ End with summary count per severity.
 
 ## Bash Tool Guidance
 
-Read-only diagnostics only when suggesting commands; this agent reports findings and never edits files. Never `cd` or `git -C` to the current working directory. `psql` queries are fine; `atlas migrate validate` and `atlas schema diff` are fine. Never recommend `atlas migrate apply` or anything destructive.
+Read-only diagnostics only. Never write files via Bash. Never `cd` or `git -C` to the current working directory. `psql` queries are fine; running `scripts/check_schema_drift_revisions.py` is fine. Never invoke a runtime `migrate_apply` or anything destructive.
 
 ## Reference
 

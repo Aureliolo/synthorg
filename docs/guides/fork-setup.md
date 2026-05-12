@@ -25,7 +25,6 @@ Create at **Settings -> Environments -> New environment**:
 
 | Environment | Used by | Required to pass CI Preflight? |
 |-------------|---------|---------------------|
-| `atlas` | `ci.yml` schema-validate | Yes |
 | `release` | `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, `finalize-release.yml` | Yes |
 | `release-tags` | `cli.yml`, `docker.yml` (tag pushes) | Yes |
 | `apko-lock` | `apko-lock.yml` (scheduled lockfile updates) | Yes |
@@ -71,7 +70,6 @@ If you do not need the release pipeline at all (you are running a research fork 
 
 | Environment | Secret | Source |
 |-------------|--------|--------|
-| `atlas` | `ATLAS_TOKEN` | https://atlasgo.cloud/ (free tier covers a single project) |
 | `cloudflare-preview` | `CLOUDFLARE_API_TOKEN` | https://dash.cloudflare.com/profile/api-tokens (Pages-deploy-scoped) |
 | `cloudflare-preview` | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard sidebar |
 

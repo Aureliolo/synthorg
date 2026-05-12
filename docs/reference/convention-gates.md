@@ -59,8 +59,7 @@ Some conventions are also enforced *before* the file lands on disk so the offend
 - `check_no_edit_baseline.sh`: blocks `Edit` / `Write` on `tests/baselines/*.json`, `scripts/*_baseline.{txt,json}`, and `scripts/_*_baseline.py`.
 - `check_no_baseline_update.sh`: blocks `Bash` invocations of `scripts/check_*.py --update-baseline` / `--update` / `--refresh-baseline`.
 - `check_no_em_dashes_hook.sh`: blocks `Edit` / `Write` whose candidate content contains a U+2014 em-dash or one of its HTML entities. Mirrors the diff-time `check_no_em_dashes.py` pre-commit gate.
-- `check_no_edit_migration.sh`: blocks `Edit` / `Write` on `src/synthorg/persistence/{sqlite,postgres}/revisions/*.sql` (use `atlas migrate diff` instead).
-- `check_no_atlas_rehash.sh`: blocks `Bash` invocations of `atlas migrate hash` (rehashing breaks installed databases).
+- `check_no_edit_migration.sh`: blocks `Edit` / `Write` on `src/synthorg/persistence/{sqlite,postgres}/revisions/*.sql` (revisions are immutable once committed; author a new revision file with your delta instead).
 - `check_pre_pr_review_triage_gate.sh`: blocks `Edit` / `Write` outside `_audit/` while a `/pre-pr-review` triage table is pending user approval.
 - `check_mock_spec_ratchet.py`: blocks `Edit` / `Write` to `tests/*.py` that would raise the mock-spec gate's CATCH count for the touched file, and blocks `Edit` / `Write` to `scripts/check_mock_spec.py` that would remove `_Verdict.CATCH` branches. Drives drive-by tightening: every edit reduces or holds the residual.
 

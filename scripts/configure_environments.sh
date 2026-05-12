@@ -67,7 +67,7 @@ echo
 # NOT match a tag ref, and vice versa -- so every pattern must carry
 # its type explicitly. `reconcile_policies()` compares `(type, name)`
 # pairs so mistyped policies self-heal on a subsequent `--apply`.
-# For PR-triggered envs (cloudflare-preview, atlas) the workflow-level
+# For PR-triggered envs (cloudflare-preview) the workflow-level
 # `if:` guard is the actual gate -- see
 # docs/reference/github-environments.md for rationale.
 # `release` is scoped to `branch:main` alone because it holds the

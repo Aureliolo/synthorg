@@ -1,5 +1,8 @@
-"""Atlas-generated Postgres migration revisions.
+"""Postgres migration revisions applied by yoyo-migrations.
 
-Do not edit files in this package manually -- regenerate via
-``atlas migrate diff --env postgres <name>``.
+Each ``*.sql`` file is one revision; yoyo applies them in
+lexicographic filename order.  Author new revisions as
+``<14-digit-timestamp>_<name>.sql``; never edit files already
+applied on ``origin/main`` (yoyo tracks the on-disk content hash and
+refuses to re-apply changed migrations).
 """

@@ -231,7 +231,7 @@ Build two views:
 - **Per-PR**: file count + the file list (collapse long lists if > 20 files)
 - **Per-file conflict map**: which PRs touch each path that's touched by ≥ 2 PRs
 
-**Lockfiles deserve special handling.** `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`, `atlas.sum`, `composer.lock`, `Gemfile.lock`, etc. are almost always touched by every dependency update in their ecosystem. Two PRs touching the same lockfile are GUARANTEED to conflict on the second merge -- even when no source files overlap. Classify lockfile-only overlaps separately from source/config overlaps; they're a "rebase needed" conflict, not a hard blocker.
+**Lockfiles deserve special handling.** `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`, `composer.lock`, `Gemfile.lock`, etc. are almost always touched by every dependency update in their ecosystem. Two PRs touching the same lockfile are GUARANTEED to conflict on the second merge -- even when no source files overlap. Classify lockfile-only overlaps separately from source/config overlaps; they're a "rebase needed" conflict, not a hard blocker.
 
 **Classify each pair of overlapping PRs:**
 

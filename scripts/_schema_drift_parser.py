@@ -172,7 +172,11 @@ def _normalise_column(
     canonical_type = kind_node.this
     raw_type = kind_node.sql(dialect=dialect).upper()
     constraints = coldef.args.get("constraints") or []
-    not_null = any(isinstance(c.kind, exp.NotNullColumnConstraint) for c in constraints)
+    not_null = any(
+        isinstance(c.kind, exp.NotNullColumnConstraint)
+        and not c.kind.args.get("allow_null")
+        for c in constraints
+    )
     is_pk = any(isinstance(c.kind, exp.PrimaryKeyColumnConstraint) for c in constraints)
     nullable = not (not_null or is_pk)
     if canonical_type in INTEGER_TYPES_FOR_BOOLEAN_CHECK and (

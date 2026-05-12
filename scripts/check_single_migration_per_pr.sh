@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enforce: at most one new Atlas migration file per PR.
+# Enforce: at most one new migration file per backend per PR.
 #
 # Rationale: during a feature PR we want a clean schema history -- if the
 # developer iterates on the schema multiple times they should delete the
@@ -105,7 +105,7 @@ done
 
 if [ -n "$FAILED_BACKEND" ]; then
     echo "" >&2
-    echo "ERROR: This PR adds multiple new Atlas migration files in" >&2
+    echo "ERROR: This PR adds multiple new migration files in" >&2
     echo "$FAILED_BACKEND, but the policy allows at most ONE new" >&2
     echo "migration per backend per PR." >&2
     echo "" >&2
@@ -114,18 +114,16 @@ if [ -n "$FAILED_BACKEND" ]; then
         echo "  - $f" >&2
     done
     echo "" >&2
-    echo "To fix: restore atlas.sum from the base branch, delete all PR" >&2
-    echo "migration files, then regenerate a single consolidated migration:" >&2
+    echo "To fix: delete the extra PR-local revision files and consolidate" >&2
+    echo "their effect into a single new revision per backend." >&2
     echo "" >&2
     for REVISIONS_DIR in "${REVISIONS_DIRS[@]}"; do
-        echo "  git restore --source='$BASE' -- '$REVISIONS_DIR/atlas.sum'" >&2
+        echo "  git restore --source='$BASE' -- '$REVISIONS_DIR/'" >&2
     done
     echo "" >&2
-    echo "  # Delete PR-local migration files, then regenerate:" >&2
-    echo "  atlas migrate diff --env sqlite <name>" >&2
-    echo "  atlas migrate diff --env postgres <name>" >&2
-    echo "" >&2
-    echo "Do NOT manually edit atlas.sum -- always restore from the base branch." >&2
+    echo "  # Then author a single new revision per affected backend:" >&2
+    echo "  src/synthorg/persistence/sqlite/revisions/<14-digit-ts>_<name>.sql" >&2
+    echo "  src/synthorg/persistence/postgres/revisions/<14-digit-ts>_<name>.sql" >&2
     exit 2
 fi
 
