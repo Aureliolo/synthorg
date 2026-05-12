@@ -209,7 +209,7 @@ export function AgentsStep() {
               ))}
             </ul>
           }
-          action={{ label: 'Go back to Providers step', onClick: goToProvidersStep }}
+          action={{ label: 'Open Providers step', onClick: goToProvidersStep }}
         />
       )}
 

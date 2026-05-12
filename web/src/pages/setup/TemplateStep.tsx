@@ -22,8 +22,6 @@ const MAX_COMPARE = 3
 /** Template size tags used for recommendation heuristics. */
 const TAG_SOLO = 'solo'
 const TAG_SMALL_TEAM = 'small-team'
-const TAG_ENTERPRISE = 'enterprise'
-const TAG_FULL_COMPANY = 'full-company'
 
 /** Agent-count filter buckets. */
 type SizeFilter = 'all' | 'small' | 'medium' | 'large'
@@ -128,28 +126,21 @@ export function TemplateStep() {
     }
   }, [templatesLoading, templatesError, fetchTemplates])
 
-  const providers = useSetupWizardStore((s) => s.providers)
-
-  // Determine recommended templates based on configured providers
+  // Recommended templates are derived from tags alone. The recommendation
+  // surfaces approachable starting points (solo / small-team / startup / mvp)
+  // so first-time users see a manageable shape before scrolling the full
+  // grid.
   const recommendedTemplates = useMemo(() => {
     const recommended = new Set<string>()
-    const providerCount = Object.keys(providers).length
     const smallTags = new Set([TAG_SOLO, TAG_SMALL_TEAM, 'startup', 'mvp'])
-    const largeTags = new Set([TAG_ENTERPRISE, TAG_FULL_COMPANY])
 
     for (const template of templates) {
-      if (providerCount === 0) {
-        if (template.tags.some((tag) => smallTags.has(tag))) {
-          recommended.add(template.name)
-        }
-      } else {
-        if (template.tags.some((tag) => largeTags.has(tag))) {
-          recommended.add(template.name)
-        }
+      if (template.tags.some((tag) => smallTags.has(tag))) {
+        recommended.add(template.name)
       }
     }
     return recommended
-  }, [templates, providers])
+  }, [templates])
 
   // Available categories (only those present in templates)
   const availableCategories = useMemo(() => {

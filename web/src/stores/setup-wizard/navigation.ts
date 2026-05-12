@@ -1,21 +1,21 @@
 import type { NavigationSlice, SliceCreator, WizardMode, WizardStep } from './types'
 
 const GUIDED_STEP_ORDER: readonly WizardStep[] = [
-  'mode', 'template', 'company',
-  'providers', 'agents', 'theme', 'complete',
+  'mode', 'template', 'providers', 'company',
+  'agents', 'theme', 'complete',
 ]
 
 const QUICK_STEP_ORDER: readonly WizardStep[] = [
-  'mode', 'company', 'providers', 'complete',
+  'mode', 'providers', 'company', 'complete',
 ]
 
 const GUIDED_STEP_ORDER_WITH_ACCOUNT: readonly WizardStep[] = [
-  'account', 'mode', 'template', 'company',
-  'providers', 'agents', 'theme', 'complete',
+  'account', 'mode', 'template', 'providers', 'company',
+  'agents', 'theme', 'complete',
 ]
 
 const QUICK_STEP_ORDER_WITH_ACCOUNT: readonly WizardStep[] = [
-  'account', 'mode', 'company', 'providers', 'complete',
+  'account', 'mode', 'providers', 'company', 'complete',
 ]
 
 export function getStepOrder(needsAdmin: boolean, mode: WizardMode): readonly WizardStep[] {

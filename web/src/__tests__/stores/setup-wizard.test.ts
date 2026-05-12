@@ -92,7 +92,9 @@ describe('setup wizard store', () => {
     it('canNavigateTo checks all prior steps', () => {
       useSetupWizardStore.getState().markStepComplete('mode')
       useSetupWizardStore.getState().markStepComplete('template')
-      expect(useSetupWizardStore.getState().canNavigateTo('providers')).toBe(false)
+      // Order is mode -> template -> providers -> company -> agents -> theme.
+      // 'company' has providers as an incomplete prior, so navigation is blocked.
+      expect(useSetupWizardStore.getState().canNavigateTo('company')).toBe(false)
     })
   })
 
@@ -113,7 +115,7 @@ describe('setup wizard store', () => {
     it('sets quick mode step order when setWizardMode("quick") is called', () => {
       useSetupWizardStore.getState().setWizardMode('quick')
       const state = useSetupWizardStore.getState()
-      expect(state.stepOrder).toEqual(['mode', 'company', 'providers', 'complete'])
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
       expect(state.wizardMode).toBe('quick')
     })
 
@@ -124,8 +126,8 @@ describe('setup wizard store', () => {
       expect(state.stepOrder).toEqual([
         'mode',
         'template',
-        'company',
         'providers',
+        'company',
         'agents',
         'theme',
         'complete',
@@ -154,8 +156,8 @@ describe('setup wizard store', () => {
       expect(state.stepOrder).toEqual([
         'account',
         'mode',
-        'company',
         'providers',
+        'company',
         'complete',
       ])
     })
@@ -300,8 +302,8 @@ describe('setup wizard store', () => {
     it('captures the structured error_code on tier_coverage_insufficient', async () => {
       // Backend returns a 422 with the discriminated error_code 2004
       // (PROVIDER_TIER_COVERAGE_INSUFFICIENT). The store stores it
-      // verbatim so the page can surface a "Go back to Providers
-      // step" affordance instead of a generic Retry button.
+      // verbatim so the page can surface an "Open Providers step"
+      // affordance instead of a generic Retry button.
       server.use(
         http.post('/api/v1/setup/company', () =>
           HttpResponse.json(

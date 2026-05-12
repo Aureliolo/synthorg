@@ -86,7 +86,7 @@ describe('AgentsStep: unresolved-agent detection', () => {
     const banner = findBanner()
     expect(within(banner).getByText(/Alice/)).toBeInTheDocument()
     const action = within(banner).getByRole('button', {
-      name: /Go back to Providers step/i,
+      name: /Open Providers step/i,
     })
     expect(action).toBeInTheDocument()
 
