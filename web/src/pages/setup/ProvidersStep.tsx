@@ -75,7 +75,7 @@ export function ProvidersStep() {
   }, [presets.length, probing, probeLocalProviders])
 
   // Track step completion
-  const validation = useMemo(() => validateProvidersStep({ agents, providers }), [agents, providers])
+  const validation = useMemo(() => validateProvidersStep({ providers }), [providers])
   useEffect(() => {
     if (validation.valid) {
       markStepComplete('providers')

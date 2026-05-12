@@ -121,7 +121,6 @@ export function validateAgentsStep(input: AgentsStepInput): StepValidationResult
 // ── Step 4: Providers ────────────────────────────────────────
 
 interface ProvidersStepInput {
-  readonly agents: readonly SetupAgentSummary[]
   readonly providers: Readonly<Record<string, ProviderConfig>>
 }
 
@@ -134,67 +133,65 @@ export function validateProvidersStep(input: ProvidersStepInput): StepValidation
     return { valid: false, errors }
   }
 
-  // Every configured provider must expose at least one model. A
-  // provider that the user adds without successful model discovery is
-  // dead weight: the wizard's downstream agent step needs at least
-  // one model to wire each agent's ``model`` field to. Surface this
-  // as a step-level validation error so the wizard's ``Next`` button
-  // stays disabled until the user runs discovery / configures models
-  // manually.
-  const emptyProviders: string[] = []
+  // Every configured provider must expose at least one model. A provider that
+  // the user adds without successful model discovery is dead weight: the
+  // wizard's downstream agent step needs at least one model to wire each
+  // agent's ``model`` field to.
   for (const [name, provider] of Object.entries(input.providers)) {
     if (provider.models.length === 0) {
-      emptyProviders.push(name)
+      errors.push(
+        `Provider "${name}" has no models. Run model discovery or add a model manually before continuing.`,
+      )
     }
   }
-  for (const name of emptyProviders) {
-    errors.push(
-      `Provider "${name}" has no models. Run model discovery or add a model manually before continuing.`,
-    )
-  }
-
-  // Agents that reference a model on a configured provider must
-  // actually find that model in the provider's model list. A typo in
-  // the model name (or a provider that lost its model in a refresh)
-  // would otherwise let setup complete with an agent pointing at a
-  // non-existent model and surface as a cryptic "model not found"
-  // error on the first task. Both halves of the check (missing
-  // provider, missing model on existing provider) live here so the
-  // wizard's ``Next`` button gates on either failure mode.
-  const providerSet = new Set(providerNames)
-  // Build provider→ModelIds once so the per-agent model check is
-  // O(1) instead of allocating a fresh Set per agent (the agent loop
-  // is N×M in the worst case, which is the wizard's hottest path).
-  const modelIdsByProvider = new Map<string, Set<string>>(
-    Object.entries(input.providers).map(([name, provider]) => [
-      name,
-      new Set(provider.models.map((m) => m.id)),
-    ]),
-  )
-  const missingProviders = new Set<string>()
-  const missingModels: string[] = []
-
-  for (const agent of input.agents) {
-    if (agent.model_provider && !providerSet.has(agent.model_provider)) {
-      missingProviders.add(agent.model_provider)
-      continue
-    }
-    if (agent.model_provider && agent.model_id) {
-      const modelIds = modelIdsByProvider.get(agent.model_provider)
-      if (!modelIds?.has(agent.model_id)) {
-        missingModels.push(
-          `Agent "${agent.name}" references model "${agent.model_id}" on "${agent.model_provider}", but that provider does not expose it.`,
-        )
-      }
-    }
-  }
-
-  for (const name of missingProviders) {
-    errors.push(`Provider "${name}" is referenced by agents but not configured`)
-  }
-  errors.push(...missingModels)
 
   return errors.length > 0 ? { valid: false, errors } : VALID
+}
+
+// ── Cross-step: agent ↔ provider/model resolution ────────────
+
+export type UnresolvedAgentReason =
+  | 'unassigned'
+  | 'missing_provider'
+  | 'missing_model'
+
+export interface UnresolvedAgent {
+  readonly index: number
+  readonly name: string
+  readonly provider: string | null
+  readonly modelId: string | null
+  readonly reason: UnresolvedAgentReason
+}
+
+/**
+ * Find agents whose ``model_provider`` / ``model_id`` cannot be resolved
+ * against the current providers map. The AgentsStep banner and the
+ * agents-step completion gate share this single source of truth so the
+ * wizard nav and the in-page warning cannot disagree.
+ */
+export function resolveAgentModels(
+  agents: readonly SetupAgentSummary[],
+  providers: Readonly<Record<string, ProviderConfig>>,
+): readonly UnresolvedAgent[] {
+  const out: UnresolvedAgent[] = []
+  agents.forEach((agent, index) => {
+    const provider = agent.model_provider
+    const modelId = agent.model_id
+    if (!provider || !modelId) {
+      out.push({ index, name: agent.name, provider, modelId, reason: 'unassigned' })
+      return
+    }
+    const providerConfig = providers[provider]
+    if (!providerConfig) {
+      out.push({ index, name: agent.name, provider, modelId, reason: 'missing_provider' })
+      return
+    }
+    const found = providerConfig.models.some((m) => m.id === modelId)
+    if (!found) {
+      out.push({ index, name: agent.name, provider, modelId, reason: 'missing_model' })
+    }
+  })
+  return out
 }
 
 // ── Step 5: Theme ────────────────────────────────────────────

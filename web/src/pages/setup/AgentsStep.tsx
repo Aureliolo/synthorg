@@ -5,6 +5,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { resolveAgentModels } from '@/utils/setup-validation'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentCard } from './SetupAgentCard'
 import { Users } from 'lucide-react'
@@ -89,34 +90,15 @@ export function AgentsStep() {
     navigate('/setup/providers')
   }, [navigate])
 
-  // Detect agents whose model_provider / model_id no longer resolves
-  // against the current providers map (the operator removed the
-  // provider, swapped the model, or the template generated an agent
-  // referencing a non-existent provider). Without this banner the
-  // operator can submit a setup whose agents will fail at runtime
-  // with no clear pointer at the upstream cause.
-  type UnresolvedReason = 'unassigned' | 'missing_provider' | 'missing_model'
-  const unresolvedAgents = useMemo(() => {
-    const out: { index: number; name: string; provider: string | null; modelId: string | null; reason: UnresolvedReason }[] = []
-    agents.forEach((agent, index) => {
-      const providerName = agent.model_provider
-      const modelId = agent.model_id
-      if (!providerName || !modelId) {
-        out.push({ index, name: agent.name, provider: providerName, modelId, reason: 'unassigned' })
-        return
-      }
-      const provider = providers[providerName]
-      if (!provider) {
-        out.push({ index, name: agent.name, provider: providerName, modelId, reason: 'missing_provider' })
-        return
-      }
-      const model = provider.models.find((m: { id: string }) => m.id === modelId)
-      if (!model) {
-        out.push({ index, name: agent.name, provider: providerName, modelId, reason: 'missing_model' })
-      }
-    })
-    return out
-  }, [agents, providers])
+  // Detect agents whose model_provider / model_id no longer resolves against
+  // the current providers map (the operator removed the provider, swapped the
+  // model, or the template generated an agent referencing a non-existent
+  // provider). Without this banner the operator can submit a setup whose
+  // agents will fail at runtime with no clear pointer at the upstream cause.
+  const unresolvedAgents = useMemo(
+    () => resolveAgentModels(agents, providers),
+    [agents, providers],
+  )
 
   // Single source of truth for step completion -- reads the same
   // unresolvedAgents value that drives the user-visible banner so the
