@@ -46,7 +46,7 @@ runs:
 
         # ── Expectations (kept in sync with .github/labels.yml + the
         # workflow surface). Update both when new ones land. ──
-        EXPECTED_ENVS=(atlas release release-tags apko-lock cloudflare-preview image-push github-pages)
+        EXPECTED_ENVS=(release release-tags apko-lock cloudflare-preview image-push github-pages)
         EXPECTED_LABELS=(
           "automation:ci-health"
           "automation:ci-preflight"
@@ -205,12 +205,6 @@ runs:
         # is not auto-checked -- runtime workflow failures surface a
         # missing secret loud enough on its own.
         setup_block=""
-
-        if [ "${env_exists[atlas]}" != "true" ]; then
-          setup_block+=$'### `atlas`\n\n'
-          setup_block+=$'After creating the `atlas` environment, add this secret:\n\n'
-          setup_block+=$'- `ATLAS_TOKEN` -- Atlas Cloud API token for schema validation. Get one at https://atlasgo.cloud/. Free tier covers a single project. Used by `ci.yml` schema-validate.\n\n'
-        fi
 
         if [ "${env_exists[release]}" != "true" ] || [ "${env_exists[release-tags]}" != "true" ]; then
           setup_block+=$'### `release` (and `release-tags` shares the same App)\n\n'

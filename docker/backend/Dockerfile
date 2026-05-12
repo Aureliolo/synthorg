@@ -90,21 +90,6 @@ RUN mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data
 USER build
 
 # ---------------------------------------------------------------------------
-# Atlas CLI: required by the Postgres backend's migrate() path at
-# startup. Sourced from the upstream arigaio/atlas community
-# distroless image, pinned by multi-arch manifest index digest.
-# Renovate tracks this pin via the built-in `docker` manager -- no
-# CDN download, no per-arch SHA refresh, no drift window when Atlas
-# rebuilds for Go stdlib security patches. The `latest-community`
-# tag is the GPL-free community build; the `-distroless` variant
-# ships the static binary on a distroless base so the FROM stage
-# pulls the bare minimum (no Alpine, no shell, no package manager).
-# buildx resolves the per-platform manifest from the multi-arch
-# index automatically.
-# ---------------------------------------------------------------------------
-FROM arigaio/atlas:latest-community-distroless@sha256:7be850664b7548c970a406ac36c833c887618b94a895fffae71e760cc32882dd AS atlas
-
-# ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE}
@@ -145,14 +130,7 @@ COPY --chown=65532:65532 pyproject.toml uv.lock /app/
 # COPY from builder stage because the distroless runtime has no shell.
 COPY --from=builder --chown=65532:65532 /data /data
 
-# Atlas CLI for postgres migration apply on startup. The upstream
-# arigaio/atlas distroless image ships the static binary at /atlas;
-# copying it into /usr/local/bin places it on the PATH set below
-# (the Wolfi base image does not include /usr/local/bin by default,
-# so the ENV PATH line prepends it explicitly).
-COPY --from=atlas /atlas /usr/local/bin/atlas
-
-ENV PATH="/app/.venv/bin:/usr/local/bin:$PATH" \
+ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     SYNTHORG_HOST="0.0.0.0" \
