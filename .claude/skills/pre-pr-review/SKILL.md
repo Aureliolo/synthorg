@@ -249,29 +249,29 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 
 | Agent | Condition | subagent_type |
 |---|---|---|
-| **docs-consistency** | **ALWAYS** runs on every PR regardless of change type | `code-reviewer` (custom prompt below) |
-| **comment-quality-rot** | **ALWAYS** runs on every PR regardless of change type | `code-reviewer` (custom prompt below) |
+| **docs-consistency** | **ALWAYS** runs on every PR regardless of change type | `docs-consistency` |
+| **comment-quality-rot** | **ALWAYS** runs on every PR regardless of change type | `comment-quality-rot` |
 | **code-reviewer** | Any `src_py` or `test_py` | `code-reviewer` |
 | **python-reviewer** | Any `src_py` or `test_py` | `python-reviewer` |
 | **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `pr-test-analyzer` |
 | **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `silent-failure-hunter` |
 | **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `comment-analyzer` |
 | **type-design-analyzer** | Diff contains `class` definitions, `BaseModel`, `TypedDict`, type aliases | `type-design-analyzer` |
-| **logging-audit** | Any `src_py` changed | `code-reviewer` (custom prompt below) |
-| **resilience-audit** | Any `src_py` changed | `code-reviewer` (custom prompt below) |
-| **conventions-enforcer** | Any `src_py` or `test_py` | `code-reviewer` (custom prompt below) |
+| **logging-audit** | Any `src_py` changed | `logging-audit` |
+| **resilience-audit** | Any `src_py` changed | `resilience-audit` |
+| **conventions-enforcer** | Any `src_py` or `test_py` | `conventions-enforcer` |
 | **security-reviewer** | Files in `src/synthorg/api/`, `src/synthorg/security/`, `src/synthorg/tools/`, `src/synthorg/config/`, `src/synthorg/persistence/`, `src/synthorg/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `security-reviewer` |
-| **frontend-reviewer** | Any `web_src` or `web_test` | `code-reviewer` (custom prompt below) |
+| **frontend-reviewer** | Any `web_src` or `web_test` | `frontend-reviewer` |
 | **design-token-audit** | Any `web_src` | `.claude/agents/design-token-audit.md` prompt (scans for density, animation, spacing token violations) |
-| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `code-reviewer` (custom prompt below) |
-| **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `code-reviewer` (custom prompt below) |
+| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `api-contract-drift` |
+| **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `infra-reviewer` |
 | **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `persistence-reviewer` |
-| **test-quality-reviewer** | Any `test_py` or `web_test` | `pr-test-analyzer` (custom prompt below) |
-| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `code-reviewer` (custom prompt below) |
+| **test-quality-reviewer** | Any `test_py` or `web_test` | `test-quality-reviewer` |
+| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `async-concurrency-reviewer` |
 | **go-reviewer** | Any `cli_go` | `go-reviewer` |
-| **go-security-reviewer** | Any `cli_go` whose diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `security-reviewer` |
-| **go-conventions-enforcer** | Any `cli_go` | `code-reviewer` (custom prompt below) |
-| **issue-resolution-verifier** | Issue context was found in Phase 0 step 6 | `code-reviewer` (custom prompt below) |
+| **go-security-reviewer** | Any `cli_go` whose diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `go-security-reviewer` |
+| **go-conventions-enforcer** | Any `cli_go` | `go-conventions-enforcer` |
+| **issue-resolution-verifier** | Issue context was found in Phase 0 step 6 | `issue-resolution-verifier` |
 | **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `.claude/agents/tool-parity-checker.md` prompt (verifies Claude Code <-> OpenCode config parity) |
 | **diagram-syntax-validator** | Any `docs` files changed that contain ` ```d2 ` or ` ```mermaid ` blocks | `.claude/agents/diagram-syntax-validator.md` prompt (validates diagram syntax, conventions, fence types) |
 
