@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { SectionCard } from '@/components/ui/section-card'
@@ -32,7 +33,7 @@ export function CompanyStep() {
   const setCurrency = useSetupWizardStore((s) => s.setCurrency)
   const setTemplateVariable = useSetupWizardStore((s) => s.setTemplateVariable)
   const submitCompany = useSetupWizardStore((s) => s.submitCompany)
-  const setStep = useSetupWizardStore((s) => s.setStep)
+  const navigate = useNavigate()
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
 
@@ -82,8 +83,8 @@ export function CompanyStep() {
   }, [submitCompany])
 
   const goToProvidersStep = useCallback(() => {
-    setStep('providers')
-  }, [setStep])
+    navigate('/setup/providers')
+  }, [navigate])
 
   // The Apply button is the affordance that moves `templateApplied` from
   // false -> true, so it must be enabled when `baseDetailsValid` holds (name

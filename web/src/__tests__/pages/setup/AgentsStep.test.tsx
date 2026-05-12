@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { AgentsStep } from '@/pages/setup/AgentsStep'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { server } from '@/test-setup'
 import { apiSuccess } from '@/mocks/handlers'
+import { renderWithRouter } from '@/__tests__/test-utils'
 import type { SetupAgentSummary } from '@/api/types/setup'
 import type { ProviderConfig, ProviderModelConfig } from '@/api/types/providers'
 
@@ -81,7 +82,7 @@ describe('AgentsStep: unresolved-agent detection', () => {
       currentStep: 'agents',
     })
 
-    render(<AgentsStep />)
+    const { router } = renderWithRouter(<AgentsStep />, { initialEntries: ['/setup/agents'] })
 
     const banner = findBanner()
     expect(within(banner).getByText(/Alice/)).toBeInTheDocument()
@@ -90,11 +91,11 @@ describe('AgentsStep: unresolved-agent detection', () => {
     })
     expect(action).toBeInTheDocument()
 
-    // Clicking the action moves the wizard back to the providers step.
-    // Without this assertion, a future refactor could swap the
-    // ``onClick`` to a no-op and the test would still pass.
+    // Clicking the action navigates to /setup/providers. Without this
+    // assertion, a future refactor could swap the onClick to a no-op
+    // and the test would still pass.
     fireEvent.click(action)
-    expect(useSetupWizardStore.getState().currentStep).toBe('providers')
+    expect(router.state.location.pathname).toBe('/setup/providers')
   })
 
   it('shows the banner when an agent references a missing model on a configured provider', () => {
@@ -103,7 +104,7 @@ describe('AgentsStep: unresolved-agent detection', () => {
       providers: { 'cloud-x': provider('cloud-x', [model('cloud-x-large')]) },
     })
 
-    render(<AgentsStep />)
+    renderWithRouter(<AgentsStep />, { initialEntries: ['/setup/agents'] })
 
     const banner = findBanner()
     expect(within(banner).getByText(/Bob/)).toBeInTheDocument()
@@ -116,7 +117,7 @@ describe('AgentsStep: unresolved-agent detection', () => {
       providers: { 'cloud-x': provider('cloud-x', [model('cloud-x-large')]) },
     })
 
-    render(<AgentsStep />)
+    renderWithRouter(<AgentsStep />, { initialEntries: ['/setup/agents'] })
 
     const banner = findBanner()
     expect(within(banner).getByText(/Charlie/)).toBeInTheDocument()
@@ -129,7 +130,7 @@ describe('AgentsStep: unresolved-agent detection', () => {
       providers: { 'cloud-x': provider('cloud-x', [model('cloud-x-large')]) },
     })
 
-    render(<AgentsStep />)
+    renderWithRouter(<AgentsStep />, { initialEntries: ['/setup/agents'] })
 
     expect(
       screen.queryByText(/references a missing provider or model/i),

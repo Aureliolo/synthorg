@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
@@ -24,7 +25,7 @@ export function AgentsStep() {
   const updateAgentPersonality = useSetupWizardStore((s) => s.updateAgentPersonality)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
-  const setStep = useSetupWizardStore((s) => s.setStep)
+  const navigate = useNavigate()
 
   // Fetch agents if not already loaded (e.g., direct URL navigation)
   useEffect(() => {
@@ -85,8 +86,8 @@ export function AgentsStep() {
   )
 
   const goToProvidersStep = useCallback(() => {
-    setStep('providers')
-  }, [setStep])
+    navigate('/setup/providers')
+  }, [navigate])
 
   // Detect agents whose model_provider / model_id no longer resolves
   // against the current providers map (the operator removed the

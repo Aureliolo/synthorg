@@ -47,6 +47,11 @@ export const createNavigationSlice: SliceCreator<NavigationSlice> = (set, get) =
   accountCreated: false,
   wizardMode: 'guided',
 
+  // Called from WizardShell's URL effect to mirror the URL into the store.
+  // It bypasses canNavigateTo on purpose: WizardShell has already validated
+  // reachability against the URL before invoking it. Components MUST NOT call
+  // this directly to change steps; use `navigate('/setup/<step>')` so the URL
+  // stays in sync and a page reload resumes on the right step.
   setStep(step) {
     const { stepOrder, currentStep } = get()
     const targetIdx = stepOrder.indexOf(step)
