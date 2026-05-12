@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { useStepCompletionSync } from './_hooks'
 import { validateCompanyStep } from '@/utils/setup-validation'
 import { CURRENCY_OPTIONS } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
@@ -34,8 +35,6 @@ export function CompanyStep() {
   const setTemplateVariable = useSetupWizardStore((s) => s.setTemplateVariable)
   const submitCompany = useSetupWizardStore((s) => s.submitCompany)
   const navigate = useNavigate()
-  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
-  const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
 
   // Resolve the full template object for the selected template
   const selectedTemplateObj = useMemo(
@@ -50,31 +49,20 @@ export function CompanyStep() {
     companyResponse,
   }), [companyName, companyDescription, companyResponse])
 
-  useEffect(() => {
-    if (validation.valid) {
-      markStepComplete('company')
-    } else {
-      markStepIncomplete('company')
-    }
-  }, [validation.valid, markStepComplete, markStepIncomplete])
+  useStepCompletionSync('company', validation.valid)
 
-  // Clear a stale companyError when the user leaves the step (e.g.
-  // navigates back to Providers to fix tier coverage). Guard against
-  // racing an in-flight submit: if the user navigates away while
-  // companyLoading is true, leave the error slot alone so the
-  // eventual response can write to it. The next CompanyStep mount
-  // will see the error and surface it; without this guard a
-  // long-running submit that fails after unmount silently nulls its
-  // own error.
+  // Clear a stale companyError on remount unless a submit is currently
+  // in flight (its eventual response should be allowed to write to the
+  // error slot). Mirrors ProvidersStep's mount-time cleanup so the two
+  // steps follow the same pattern; otherwise the previous attempt's
+  // error would resurface as soon as the user revisits the step.
   useEffect(() => {
-    return () => {
-      const state = useSetupWizardStore.getState()
-      if (!state.companyLoading) {
-        useSetupWizardStore.setState({
-          companyError: null,
-          companyErrorCode: null,
-        })
-      }
+    const state = useSetupWizardStore.getState()
+    if (!state.companyLoading && (state.companyError || state.companyErrorCode)) {
+      useSetupWizardStore.setState({
+        companyError: null,
+        companyErrorCode: null,
+      })
     }
   }, [])
 

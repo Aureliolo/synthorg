@@ -6,6 +6,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { resolveAgentModels } from '@/utils/setup-validation'
+import { useStepCompletionSync } from './_hooks'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentCard } from './SetupAgentCard'
 import { Users } from 'lucide-react'
@@ -24,8 +25,6 @@ export function AgentsStep() {
   const updateAgentModel = useSetupWizardStore((s) => s.updateAgentModel)
   const randomizeAgentName = useSetupWizardStore((s) => s.randomizeAgentName)
   const updateAgentPersonality = useSetupWizardStore((s) => s.updateAgentPersonality)
-  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
-  const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
   const navigate = useNavigate()
 
   // Fetch agents if not already loaded (e.g., direct URL navigation)
@@ -50,13 +49,6 @@ export function AgentsStep() {
     personalityPresetsError,
     fetchPersonalityPresets,
   ])
-
-  // unresolvedAgents (computed below) is the single source of truth for
-  // step completion AND the user-visible banner; previously a parallel
-  // call to ``validateAgentsStep`` produced a second flat list of
-  // identical errors that surfaced through ``markStepIncomplete``,
-  // duplicating work and risking drift between the two checks. The
-  // useEffect below now reads the same memoised value as the banner.
 
   const handleNameChange = useCallback(
     async (index: number, name: string) => {
@@ -100,17 +92,11 @@ export function AgentsStep() {
     [agents, providers],
   )
 
-  // Single source of truth for step completion -- reads the same
+  // Single source of truth for step completion: reads the same
   // unresolvedAgents value that drives the user-visible banner so the
-  // wizard nav and the page never disagree about whether the step
-  // can advance.
-  useEffect(() => {
-    if (agents.length > 0 && unresolvedAgents.length === 0) {
-      markStepComplete('agents')
-    } else {
-      markStepIncomplete('agents')
-    }
-  }, [agents.length, unresolvedAgents.length, markStepComplete, markStepIncomplete])
+  // wizard nav and the page never disagree about whether the step can
+  // advance.
+  useStepCompletionSync('agents', agents.length > 0 && unresolvedAgents.length === 0)
 
   if (agentsLoading) {
     return (

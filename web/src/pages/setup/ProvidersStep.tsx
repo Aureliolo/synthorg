@@ -6,6 +6,7 @@ import { createLogger } from '@/lib/logger'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
 import { validateProvidersStep } from '@/utils/setup-validation'
+import { useStepCompletionSync } from './_hooks'
 import { ProviderFormModal, type ProviderFormOverrides } from '@/pages/providers/ProviderFormModal'
 
 const log = createLogger('setup:providers-step')
@@ -40,8 +41,6 @@ export function ProvidersStep() {
   const createProviderFromPreset = useSetupWizardStore((s) => s.createProviderFromPreset)
   const createProviderFromPresetFull = useSetupWizardStore((s) => s.createProviderFromPresetFull)
   const createProviderCustom = useSetupWizardStore((s) => s.createProviderCustom)
-  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
-  const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
 
   // Modal state -- one modal, opened with a known preset (or null for
   // custom mode).  ``modalOpen`` toggles visibility; ``modalPreset``
@@ -76,13 +75,7 @@ export function ProvidersStep() {
 
   // Track step completion
   const validation = useMemo(() => validateProvidersStep({ providers }), [providers])
-  useEffect(() => {
-    if (validation.valid) {
-      markStepComplete('providers')
-    } else {
-      markStepIncomplete('providers')
-    }
-  }, [validation.valid, markStepComplete, markStepIncomplete])
+  useStepCompletionSync('providers', validation.valid)
 
   const handleSelectCloud = useCallback((presetName: string) => {
     setModalPreset(presetName)
