@@ -111,7 +111,10 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
           }
         } catch (discoveryErr) {
           const msg = getErrorMessage(discoveryErr)
-          log.warn('Model discovery failed for', sanitizeForLog(name), sanitizeForLog(msg))
+          log.warn('Model discovery failed', {
+            provider: sanitizeForLog(name),
+            error: sanitizeForLog(msg),
+          })
           const warning =
             `Provider '${name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh the providers list.`
           set({ providersWarning: warning })
@@ -147,7 +150,10 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
           return refreshed
         } catch (discoveryErr) {
           const msg = getErrorMessage(discoveryErr)
-          log.warn('Model discovery failed for', sanitizeForLog(data.name), sanitizeForLog(msg))
+          log.warn('Model discovery failed', {
+            provider: sanitizeForLog(data.name),
+            error: sanitizeForLog(msg),
+          })
           set({
             providersWarning:
               `Provider '${data.name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh.`,

@@ -244,6 +244,63 @@ describe('setup wizard store', () => {
       expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
       expect(state.currentStep).toBe('providers')
     })
+
+    it('clamps currentStep back to firstIncomplete when persisted step is later than the earliest incomplete step', async () => {
+      // Pins the regression where stepOrder.includes(currentStep) passed but
+      // an earlier required step was still incomplete: persisted currentStep
+      // = 'company' (index 2 under quick), providers (index 1) still
+      // incomplete, so the wizard must snap back to providers instead of
+      // resuming on company and letting providers be skipped.
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: {
+          wizardMode: 'quick',
+          currentStep: 'company',
+          stepsCompleted: {
+            account: false,
+            mode: true,
+            template: false,
+            company: false,
+            providers: false,
+            agents: false,
+            theme: false,
+            complete: false,
+          },
+        },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await useSetupWizardStore.persist.rehydrate()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
+      expect(state.currentStep).toBe('providers')
+    })
+
+    it('does not crash when stepsCompleted is null in the persisted payload', async () => {
+      // localStorage is user-writable, so a hand-edited or legacy payload
+      // could persist `stepsCompleted: null`. Without the null guard in
+      // the merge function this would throw at startup and leave the
+      // wizard unbootable.
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: {
+          wizardMode: 'quick',
+          currentStep: 'mode',
+          stepsCompleted: null,
+        },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await expect(useSetupWizardStore.persist.rehydrate()).resolves.not.toThrow()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
+      // No step is completed, so the wizard lands on the first step.
+      expect(state.currentStep).toBe('mode')
+    })
   })
 
   describe('template actions', () => {

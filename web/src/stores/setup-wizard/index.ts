@@ -85,11 +85,24 @@ const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
         stepsCompleted[step] = true
       }
     }
-    const currentStepValid = stepOrder.includes(merged.currentStep)
-    if (currentStepValid) {
+    // Clamp the persisted ``currentStep`` to the earliest incomplete step
+    // under the recomputed ``stepOrder``. Checking membership alone is not
+    // enough: if the persisted draft was on ``company`` and the new step
+    // order now places ``providers`` before it, ``includes`` would still
+    // pass and the wizard would resume on ``company`` while the
+    // reordered-required ``providers`` step sits incomplete, letting the
+    // user slip past it. Snapping back to the first incomplete index keeps
+    // the wizard monotonic forward only.
+    const firstIncomplete = stepOrder.find((s: WizardStep) => !stepsCompleted[s])
+    const currentStepIndex = stepOrder.indexOf(merged.currentStep)
+    const firstIncompleteIndex =
+      firstIncomplete === undefined ? -1 : stepOrder.indexOf(firstIncomplete)
+    const currentStepIsSafe =
+      currentStepIndex !== -1
+      && (firstIncompleteIndex === -1 || currentStepIndex <= firstIncompleteIndex)
+    if (currentStepIsSafe) {
       return { ...merged, stepOrder, stepsCompleted }
     }
-    const firstIncomplete = stepOrder.find((s: WizardStep) => !stepsCompleted[s])
     return {
       ...merged,
       stepOrder,
