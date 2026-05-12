@@ -168,25 +168,54 @@ export function resolveAgentModels(
   agents: readonly SetupAgentSummary[],
   providers: Readonly<Record<string, ProviderConfig>>,
 ): readonly UnresolvedAgent[] {
-  const out: UnresolvedAgent[] = []
-  agents.forEach((agent, index) => {
+  const unresolved: UnresolvedAgent[] = []
+
+  for (let index = 0; index < agents.length; index += 1) {
+    const agent = agents[index]!
     const provider = agent.model_provider
     const modelId = agent.model_id
+
     if (!provider || !modelId) {
-      out.push({ index, name: agent.name, provider, modelId, reason: 'unassigned' })
-      return
+      unresolved.push({
+        index,
+        name: agent.name,
+        provider,
+        modelId,
+        reason: 'unassigned',
+      })
+      continue
     }
-    const providerConfig = providers[provider]
-    if (!providerConfig) {
-      out.push({ index, name: agent.name, provider, modelId, reason: 'missing_provider' })
-      return
+
+    // Use `Object.hasOwn` (not bracket lookup) so an agent referencing a
+    // provider whose name collides with an `Object.prototype` member
+    // (e.g. `valueOf`, `toString`) is reported as `missing_provider`
+    // rather than crashing on `.models.some` against the inherited
+    // prototype member.
+    if (!Object.hasOwn(providers, provider)) {
+      unresolved.push({
+        index,
+        name: agent.name,
+        provider,
+        modelId,
+        reason: 'missing_provider',
+      })
+      continue
     }
+
+    const providerConfig = providers[provider]!
     const found = providerConfig.models.some((m) => m.id === modelId)
     if (!found) {
-      out.push({ index, name: agent.name, provider, modelId, reason: 'missing_model' })
+      unresolved.push({
+        index,
+        name: agent.name,
+        provider,
+        modelId,
+        reason: 'missing_model',
+      })
     }
-  })
-  return out
+  }
+
+  return unresolved
 }
 
 // ── Step 5: Theme ────────────────────────────────────────────

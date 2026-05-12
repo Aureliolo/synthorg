@@ -121,10 +121,42 @@ describe('validateCompanyStep', () => {
     expect(result.errors.some((e) => e.includes('200'))).toBe(true)
   })
 
+  // Pins the validator against a regression to UTF-16 `.length`: '😀' is one
+  // grapheme but two code units, so a 201-emoji string is 201 graphemes and
+  // 402 code units. The validator must reject on grapheme count, not units.
+  it('returns invalid when company name exceeds 200 multi-byte graphemes', () => {
+    const result = validateCompanyStep({
+      companyName: '😀'.repeat(201),
+      companyDescription: '',
+      companyResponse: null,
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('200'))).toBe(true)
+  })
+
+  it('returns valid (gating only on template) when company name is exactly 200 multi-byte graphemes', () => {
+    const result = validateCompanyStep({
+      companyName: '😀'.repeat(200),
+      companyDescription: '',
+      companyResponse: { company_name: 'Acme', description: null, template_applied: 'startup', department_count: 1, agent_count: 1, agents: [] },
+    })
+    expect(result.valid).toBe(true)
+  })
+
   it('returns invalid when description exceeds 1000 characters', () => {
     const result = validateCompanyStep({
       companyName: 'Acme',
       companyDescription: 'A'.repeat(1001),
+      companyResponse: null,
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('1000'))).toBe(true)
+  })
+
+  it('returns invalid when description exceeds 1000 multi-byte graphemes', () => {
+    const result = validateCompanyStep({
+      companyName: 'Acme',
+      companyDescription: '😀'.repeat(1001),
       companyResponse: null,
     })
     expect(result.valid).toBe(false)

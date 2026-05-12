@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence, type Transition } from 'motion/react'
 import { cn } from '@/lib/utils'
+import { tweenDefault, tweenFast } from '@/lib/motion'
 import { MetricCard } from '@/components/ui/metric-card'
 import { AgentCard } from '@/components/ui/agent-card'
 import { DeptHealthBar } from '@/components/ui/dept-health-bar'
@@ -24,12 +25,19 @@ const PALETTE_CLASS: Record<ThemeSettings['palette'], string> = {
   neon: 'theme-neon',
 }
 
-const ANIMATION_TRANSITIONS: Record<ThemeSettings['animation'], { type: 'tween' | 'spring'; [k: string]: unknown }> = {
-  minimal: { type: 'tween', duration: 0.15 },
-  'status-driven': { type: 'tween', duration: 0.2 },
+// Animation transitions for the preview. The bouncier spring (lower damping
+// than springGentle) is preview-specific: deliberately more expressive than
+// the dashboard spring so users can see the difference.
+const ANIMATION_TRANSITIONS: Record<ThemeSettings['animation'], Transition> = {
+  minimal: tweenFast,
+  'status-driven': tweenDefault,
   spring: { type: 'spring', stiffness: 200, damping: 15 },
   instant: { type: 'tween', duration: 0 },
 }
+
+// Duration for the "agent active" dot pulse. Long enough to read as
+// breathing, short enough to cycle multiple times per visible interaction.
+const PULSE_DURATION_S = 0.6
 
 const SIDEBAR_NAV = [
   { icon: Home, label: 'Overview' },
@@ -125,7 +133,7 @@ function AnimationDemo({ animation }: { animation: ThemeSettings['animation'] })
                 ...transition,
                 repeat: Infinity,
                 repeatDelay: 1,
-                duration: animation === 'instant' ? 0 : 0.6,
+                duration: animation === 'instant' ? 0 : PULSE_DURATION_S,
               }}
               className="size-2 rounded-full bg-success"
             />

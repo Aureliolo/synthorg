@@ -135,6 +135,26 @@ describe('setup wizard store', () => {
       expect(state.wizardMode).toBe('guided')
     })
 
+    it('roundtrips quick -> guided -> quick and restores the expected step memberships at each toggle', () => {
+      const store = useSetupWizardStore.getState()
+      store.setWizardMode('quick')
+      expect(useSetupWizardStore.getState().stepOrder).not.toContain('template')
+      expect(useSetupWizardStore.getState().stepOrder).not.toContain('agents')
+      expect(useSetupWizardStore.getState().stepOrder).not.toContain('theme')
+
+      useSetupWizardStore.getState().setWizardMode('guided')
+      const guidedOrder = useSetupWizardStore.getState().stepOrder
+      expect(guidedOrder).toContain('template')
+      expect(guidedOrder).toContain('agents')
+      expect(guidedOrder).toContain('theme')
+
+      useSetupWizardStore.getState().setWizardMode('quick')
+      const quickOrder = useSetupWizardStore.getState().stepOrder
+      expect(quickOrder).not.toContain('template')
+      expect(quickOrder).not.toContain('agents')
+      expect(quickOrder).not.toContain('theme')
+    })
+
     it('clears template state when switching to quick mode', () => {
       useSetupWizardStore.setState({ selectedTemplate: 'startup' })
       useSetupWizardStore.getState().setWizardMode('quick')
@@ -259,7 +279,7 @@ describe('setup wizard store', () => {
       expect(useSetupWizardStore.getState().comparedTemplates).toHaveLength(0)
     })
 
-    it('fetches templates from API', async () => {
+    it('fetches templates from API and toggles templatesLoading around the request', async () => {
       server.use(
         http.get('/api/v1/setup/templates', () =>
           HttpResponse.json(
@@ -282,7 +302,13 @@ describe('setup wizard store', () => {
         ),
       )
 
-      await useSetupWizardStore.getState().fetchTemplates()
+      // Pin the loading transition explicitly: a regression that drops
+      // the `templatesLoading = true` write at the start of the action
+      // would still leave the post-await state at `false`, masking a
+      // broken UI spinner that never appears for the user.
+      const pending = useSetupWizardStore.getState().fetchTemplates()
+      expect(useSetupWizardStore.getState().templatesLoading).toBe(true)
+      await pending
 
       const state = useSetupWizardStore.getState()
       expect(state.templates).toHaveLength(1)
@@ -495,39 +521,31 @@ describe('setup wizard store', () => {
         companyName: 'Acme Corp',
         selectedTemplate: 'startup',
       })
-      const submissions = Promise.all([
+      const submissions = Promise.allSettled([
         useSetupWizardStore.getState().submitCompany(),
         useSetupWizardStore.getState().submitCompany(),
         useSetupWizardStore.getState().submitCompany(),
       ])
-      // Yield so the (single) coalesced fetch reaches the handler.
-      // Tight timeout: if the predicate hasn't held within 100 ms the
-      // store's coalescing logic is broken; the default 1000 ms would
-      // mask a regression as a slow-CI false pass.
-      // Capture the waitFor error and rethrow after awaiting
-      // ``submissions`` in ``finally`` -- otherwise an early waitFor
-      // failure would leave the gated submitCompany() promises
-      // unawaited, tripping the async-leak detector on a real
-      // regression and obscuring the original assertion failure.
-      let waitForError: unknown = null
       try {
-        await vi.waitFor(() => expect(observedConcurrent).toBe(1), { timeout: 100 })
-      } catch (error) {
-        waitForError = error
+        // Yield so the (single) coalesced fetch reaches the handler.
+        // Tight timeout: if the coalesced POST hasn't arrived within
+        // 100 ms the store's coalescing logic is broken; the default
+        // 1000 ms would mask a regression as a slow-CI false pass.
+        await vi.waitFor(() => expect(totalCalls).toBe(1), { timeout: 100 })
+        // ``observedConcurrent`` alone is satisfied if a serial test
+        // runner happens to schedule the three calls one-after-another
+        // (no real concurrency to block). ``totalCalls`` plus this
+        // pins the contract: only one POST must reach the server even
+        // when three calls are issued in the same tick.
+        expect(observedConcurrent).toBe(1)
+        expect(totalCalls).toBe(1)
       } finally {
+        // Always release and await so a thrown assertion never leaves
+        // the gated submitCompany() promises unawaited (which would
+        // trip the async-leak detector and obscure the real failure).
         releaseHandler()
         await submissions
       }
-      if (waitForError) {
-        throw waitForError
-      }
-      // ``observedConcurrent`` alone is satisfied if a serial test
-      // runner happens to schedule the three calls one-after-another
-      // (no real concurrency to block). ``totalCalls`` pins the
-      // contract: only one POST must reach the server even when
-      // three calls are issued in the same tick.
-      expect(observedConcurrent).toBe(1)
-      expect(totalCalls).toBe(1)
     })
   })
 

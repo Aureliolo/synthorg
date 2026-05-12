@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { Drawer } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
@@ -13,38 +14,24 @@ export interface TemplateCompareDrawerProps {
   onRemove: (name: string) => void
 }
 
-/** Tags used for estimated agent count heuristics. */
-const TAG_SOLO = 'solo'
-const TAG_SMALL_TEAM = 'small-team'
-const TAG_ENTERPRISE = 'enterprise'
-const TAG_FULL_COMPANY = 'full-company'
-
-/** Estimated agent counts per template size category. */
-const AGENT_COUNT_SOLO = 1
-const AGENT_COUNT_SMALL_TEAM = 3
-const AGENT_COUNT_LARGE = 12
-const AGENT_COUNT_DEFAULT = 5
-
 interface ComparisonRow {
   readonly label: string
   readonly getValue: (t: TemplateInfoResponse) => string | readonly string[]
 }
 
-/** Estimate agent count from template tags. */
 function estimateAgentCount(template: TemplateInfoResponse): number {
-  if (template.tags.includes(TAG_SOLO)) return AGENT_COUNT_SOLO
-  if (template.tags.includes(TAG_SMALL_TEAM)) return AGENT_COUNT_SMALL_TEAM
-  if (template.tags.includes(TAG_ENTERPRISE) || template.tags.includes(TAG_FULL_COMPANY)) return AGENT_COUNT_LARGE
-  return AGENT_COUNT_DEFAULT
-}
-
-/** Derive category display label from template tags. */
-function deriveCategory(template: TemplateInfoResponse): string {
-  return getCategoryLabel(deriveCategoryFromTags(template.tags))
+  const tags = template.tags
+  if (tags.includes('solo')) return 1
+  if (tags.includes('small-team')) return 3
+  if (tags.includes('enterprise') || tags.includes('full-company')) return 12
+  return 5
 }
 
 const COMPARISON_ROWS: readonly ComparisonRow[] = [
-  { label: 'Category', getValue: (t) => deriveCategory(t) },
+  {
+    label: 'Category',
+    getValue: (t) => getCategoryLabel(deriveCategoryFromTags(t.tags)),
+  },
   { label: 'Estimated Agents', getValue: (t) => String(estimateAgentCount(t)) },
   { label: 'Source', getValue: (t) => t.source },
   { label: 'Tags', getValue: (t) => t.tags },
@@ -66,16 +53,17 @@ function valuesAreEqual(templates: readonly TemplateInfoResponse[], getValue: (t
 interface ComparisonRowProps {
   row: ComparisonRow
   templates: readonly TemplateInfoResponse[]
+  gridStyle: React.CSSProperties
 }
 
-function ComparisonRowEntry({ row, templates }: ComparisonRowProps) {
+function ComparisonRowEntry({ row, templates, gridStyle }: ComparisonRowProps) {
   const isDifferent = !valuesAreEqual(templates, row.getValue)
   return (
     <div>
       <h4 className="mb-1 text-compact uppercase tracking-wide text-muted-foreground">
         {row.label}
       </h4>
-      <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${templates.length}, 1fr)` }}>
+      <div className="grid gap-grid-gap" style={gridStyle}>
         {templates.map((t) => {
           const value = row.getValue(t)
           const display = Array.isArray(value) ? value.join(', ') : String(value)
@@ -111,13 +99,18 @@ export function TemplateCompareDrawer({
   onSelect,
   onRemove,
 }: TemplateCompareDrawerProps) {
+  const gridStyle = useMemo<React.CSSProperties>(
+    () => ({ gridTemplateColumns: `repeat(${templates.length}, 1fr)` }),
+    [templates.length],
+  )
+
   if (templates.length < 2) return null
 
   return (
     <Drawer open={open} onClose={onClose} title="Compare Templates">
-      <div className="space-y-4">
+      <div className="space-y-section-gap">
         {/* Column headers */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${templates.length}, 1fr)` }}>
+        <div className="grid gap-grid-gap" style={gridStyle}>
           {templates.map((t) => (
             <div key={t.name} className="space-y-2 rounded-md border border-border p-card">
               <h3 className="text-sm font-semibold text-foreground">{t.display_name}</h3>
@@ -128,11 +121,11 @@ export function TemplateCompareDrawer({
 
         {/* Comparison rows */}
         {COMPARISON_ROWS.map((row) => (
-          <ComparisonRowEntry key={row.label} row={row} templates={templates} />
+          <ComparisonRowEntry key={row.label} row={row} templates={templates} gridStyle={gridStyle} />
         ))}
 
         {/* Action buttons */}
-        <div className="grid gap-4 border-t border-border pt-4" style={{ gridTemplateColumns: `repeat(${templates.length}, 1fr)` }}>
+        <div className="grid gap-grid-gap border-t border-border pt-card" style={gridStyle}>
           {templates.map((t) => (
             <div key={t.name} className="flex flex-col gap-2">
               <Button size="sm" onClick={() => onSelect(t.name)}>Select</Button>

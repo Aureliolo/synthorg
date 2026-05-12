@@ -1,5 +1,7 @@
 import fc from 'fast-check'
 import {
+  graphemeLength,
+  resolveAgentModels,
   validateCompanyStep,
   validateAgentsStep,
   validateProvidersStep,
@@ -58,12 +60,18 @@ const makeProvider = (modelIds: readonly string[] = ['test-model-001']): Provide
 })
 
 describe('setup-validation property tests', () => {
-  it('company name with 1-200 non-whitespace chars + response is always valid', () => {
+  it('company name with 1-200 non-whitespace graphemes + response is always valid', () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: 1, maxLength: 250 }).filter(
-          (s) => s.trim().length > 0 && s.trim().length <= 200,
-        ),
+        fc.string({ minLength: 1, maxLength: 250 }).filter((s) => {
+          const trimmed = s.trim()
+          const len = graphemeLength(trimmed)
+          // Mirror the validator: `graphemeLength` counts code points, so a
+          // generated string with multi-byte sequences may pass a UTF-16
+          // `.length` filter but trip the validator's 200-grapheme cap. Filter
+          // against the same metric the production code uses.
+          return len > 0 && len <= 200
+        }),
         (name) => {
           const result = validateCompanyStep({
             companyName: name,
@@ -122,14 +130,11 @@ describe('setup-validation property tests', () => {
         ),
         (providerNames) => {
           const unique = [...new Set(providerNames)]
-          const agents = unique.map((p) =>
-            makeAgent({ model_provider: p, model_id: 'test-model-001' }),
-          )
           const providers: Record<string, ProviderConfig> = Object.create(null) as Record<string, ProviderConfig>
           for (const name of unique) {
             providers[name] = makeProvider()
           }
-          const result = validateProvidersStep({ agents, providers })
+          const result = validateProvidersStep({ providers })
           expect(result.valid).toBe(true)
         },
       ),
@@ -147,6 +152,72 @@ describe('setup-validation property tests', () => {
             companyResponse: hasResponse ? makeCompanyResponse() : null,
           })
           expect(Array.isArray(result.errors)).toBe(true)
+        },
+      ),
+    )
+  })
+
+  it('resolveAgentModels reports unassigned for agents missing provider or model_id', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            provider: fc.oneof(fc.constant(null), fc.constant('')),
+            modelId: fc.oneof(
+              fc.constant(null),
+              fc.constant(''),
+              fc.string({ minLength: 1, maxLength: 10 }),
+            ),
+          }),
+          { minLength: 1, maxLength: 5 },
+        ),
+        (specs) => {
+          const agents = specs.map((s) =>
+            makeAgent({
+              model_provider: s.provider as string | null,
+              model_id: s.modelId as string | null,
+            }),
+          )
+          const unresolved = resolveAgentModels(agents, {})
+          expect(unresolved.length).toBe(agents.length)
+          for (const entry of unresolved) {
+            expect(entry.reason).toBe('unassigned')
+          }
+        },
+      ),
+    )
+  })
+
+  it('resolveAgentModels reports missing_provider when the agent references an unknown provider', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 20 }),
+        fc.string({ minLength: 1, maxLength: 20 }),
+        (provider, modelId) => {
+          const agents = [makeAgent({ model_provider: provider, model_id: modelId })]
+          const unresolved = resolveAgentModels(agents, {})
+          expect(unresolved).toHaveLength(1)
+          expect(unresolved[0]?.reason).toBe('missing_provider')
+        },
+      ),
+    )
+  })
+
+  it('resolveAgentModels reports missing_model when the agent references an unknown model on a known provider', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 20 }),
+        fc.string({ minLength: 1, maxLength: 20 }),
+        (providerName, badModelId) => {
+          fc.pre(badModelId !== 'test-model-001')
+          const providers: Record<string, ProviderConfig> = Object.create(null) as Record<string, ProviderConfig>
+          providers[providerName] = makeProvider()
+          const agents = [
+            makeAgent({ model_provider: providerName, model_id: badModelId }),
+          ]
+          const unresolved = resolveAgentModels(agents, providers)
+          expect(unresolved).toHaveLength(1)
+          expect(unresolved[0]?.reason).toBe('missing_model')
         },
       ),
     )

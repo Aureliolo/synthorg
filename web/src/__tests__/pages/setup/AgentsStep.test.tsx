@@ -96,6 +96,11 @@ describe('AgentsStep: unresolved-agent detection', () => {
     // and the test would still pass.
     fireEvent.click(action)
     expect(router.state.location.pathname).toBe('/setup/providers')
+    // Pin that navigation is the ONLY affordance: the click must not
+    // also mutate ``currentStep`` via an imperative store call. A
+    // double-update would land users on the providers step both via
+    // URL and via store, making back-button behaviour inconsistent.
+    expect(useSetupWizardStore.getState().currentStep).toBe('agents')
   })
 
   it('shows the banner when an agent references a missing model on a configured provider', () => {

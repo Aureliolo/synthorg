@@ -3,7 +3,7 @@ import { persist, type PersistOptions } from 'zustand/middleware'
 import { createAgentsSlice } from './agents'
 import { createCompanySlice } from './company'
 import { createCompletionSlice } from './completion'
-import { createNavigationSlice, getStepOrder } from './navigation'
+import { createNavigationSlice, getStepOrder, initialStepsCompleted } from './navigation'
 import { SETUP_WIZARD_PERSIST_NAME } from './persist-key'
 import { createProvidersSlice } from './providers'
 import { createTemplateSlice } from './template'
@@ -35,10 +35,10 @@ type PersistedSetupState = Pick<
 
 const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
   name: SETUP_WIZARD_PERSIST_NAME,
-  // Bumping the version invalidates older payloads whose currentStep was
-  // recorded against the pre-reorder step sequence (Company before Providers).
-  // Without the bump, a payload written by an earlier release could land the
-  // user on a step that no longer makes sense for the current order.
+  // Bump this when `stepOrder` semantics change so a persisted `currentStep`
+  // cannot survive into a payload whose step sequence no longer contains it.
+  // Without the bump, rehydrating an incompatible payload could land the user
+  // on a step that does not exist in the current order.
   version: 3,
   partialize: (state) => ({
     currentStep: state.currentStep,
@@ -66,14 +66,26 @@ const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
   merge: (persistedState, currentState) => {
     const merged = { ...currentState, ...(persistedState as Partial<SetupWizardState>) }
     const stepOrder = getStepOrder(merged.needsAdmin, merged.wizardMode)
+    // localStorage is user-writable, so a hand-edited payload could omit step
+    // keys or set non-boolean values. Start from the all-false default and
+    // overlay only strictly-boolean-true entries so `firstIncomplete` cannot
+    // pick up `undefined`/`null` and treat it as "incomplete" inconsistently.
+    const stepsCompleted = initialStepsCompleted()
+    const persistedCompleted = merged.stepsCompleted as Partial<Record<WizardStep, unknown>>
+    for (const step of stepOrder) {
+      if (persistedCompleted[step] === true) {
+        stepsCompleted[step] = true
+      }
+    }
     const currentStepValid = stepOrder.includes(merged.currentStep)
     if (currentStepValid) {
-      return { ...merged, stepOrder }
+      return { ...merged, stepOrder, stepsCompleted }
     }
-    const firstIncomplete = stepOrder.find((s: WizardStep) => !merged.stepsCompleted[s])
+    const firstIncomplete = stepOrder.find((s: WizardStep) => !stepsCompleted[s])
     return {
       ...merged,
       stepOrder,
+      stepsCompleted,
       currentStep: firstIncomplete ?? stepOrder[0]!,
     }
   },

@@ -202,12 +202,7 @@ export function TemplateStep() {
     return { recommended: rec, others: oth }
   }, [filteredTemplates, recommendedTemplates])
 
-  const handleSelect = useCallback(
-    (name: string) => {
-      selectTemplate(name)
-    },
-    [selectTemplate],
-  )
+  const handleSelect = useCallback(selectTemplate, [selectTemplate])
 
   const handleToggleCompare = useCallback(
     (name: string) => {
@@ -223,12 +218,7 @@ export function TemplateStep() {
     [toggleCompare],
   )
 
-  const handleRemoveFromCompare = useCallback(
-    (name: string) => {
-      toggleCompare(name)
-    },
-    [toggleCompare],
-  )
+  const handleRemoveFromCompare = useCallback(toggleCompare, [toggleCompare])
 
   const comparedTemplateObjects = useMemo(
     () => templates.filter((t) => comparedTemplates.includes(t.name)),
@@ -355,7 +345,7 @@ export function TemplateStep() {
 
       {/* Recommended section */}
       {recommended.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-section-gap">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-foreground">Recommended</h3>
             <span className="rounded-full bg-accent/10 px-2 py-0.5 text-compact font-medium text-accent">
@@ -375,7 +365,7 @@ export function TemplateStep() {
 
       {/* Others section */}
       {others.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-section-gap">
           {recommended.length > 0 && (
             <h3 className="text-sm font-semibold text-muted-foreground">Other Templates</h3>
           )}

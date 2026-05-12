@@ -50,37 +50,15 @@ export function AgentsStep() {
     fetchPersonalityPresets,
   ])
 
-  const handleNameChange = useCallback(
-    async (index: number, name: string) => {
-      await updateAgentName(index, name)
-    },
-    [updateAgentName],
-  )
+  const handleNameChange = useCallback(updateAgentName, [updateAgentName])
+  const handleModelChange = useCallback(updateAgentModel, [updateAgentModel])
+  const handleRandomizeName = useCallback(randomizeAgentName, [randomizeAgentName])
+  const handlePersonalityChange = useCallback(updateAgentPersonality, [updateAgentPersonality])
 
-  const handleModelChange = useCallback(
-    async (index: number, provider: string, modelId: string) => {
-      await updateAgentModel(index, provider, modelId)
-    },
-    [updateAgentModel],
+  const goToProvidersStep = useCallback(
+    () => navigate('/setup/providers'),
+    [navigate],
   )
-
-  const handleRandomizeName = useCallback(
-    async (index: number) => {
-      await randomizeAgentName(index)
-    },
-    [randomizeAgentName],
-  )
-
-  const handlePersonalityChange = useCallback(
-    async (index: number, preset: string) => {
-      await updateAgentPersonality(index, preset)
-    },
-    [updateAgentPersonality],
-  )
-
-  const goToProvidersStep = useCallback(() => {
-    navigate('/setup/providers')
-  }, [navigate])
 
   // Detect agents whose model_provider / model_id no longer resolves against
   // the current providers map (the operator removed the provider, swapped the
@@ -186,7 +164,7 @@ export function AgentsStep() {
       <MiniOrgChart agents={agents} />
 
       {/* Agent cards */}
-      <StaggerGroup className="space-y-3">
+      <StaggerGroup className="space-y-section-gap">
         {agents.map((agent, index) => (
           // eslint-disable-next-line @eslint-react/no-array-index-key -- names are user-editable and may duplicate; index as tiebreaker
           <StaggerItem key={`${agent.name}-${index}`}>

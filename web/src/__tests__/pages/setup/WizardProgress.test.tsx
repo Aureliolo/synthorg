@@ -67,6 +67,7 @@ describe('WizardProgress', () => {
     expect(templateButton).toBeInTheDocument()
     await user.click(templateButton)
     expect(handleClick).toHaveBeenCalledWith('template')
+    expect(handleClick).toHaveBeenCalledTimes(1)
   })
 
   it('disables inaccessible steps', () => {

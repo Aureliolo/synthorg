@@ -11,6 +11,7 @@ import {
 import { createLogger } from '@/lib/logger'
 import type { ProbePresetResponse } from '@/api/types/providers'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { useToastStore } from '@/stores/toast'
 import type { ProvidersSlice, SliceCreator } from './types'
 
@@ -21,15 +22,10 @@ interface ProbeOutcome {
   errors: Record<string, string>
 }
 
-/**
- * Hit the batch probe-local endpoint, normalise the envelope into
- * concrete records, and toast on top-level failure.  Per-preset
- * failures land under ``errors`` and are surfaced inline by
- * ``DetectedLocalList``; this helper does not toast for those.
- */
 async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
   try {
     const response = await probeLocal()
+    // Filter out undefined entries from the envelope
     const results = Object.fromEntries(
       Object.entries(response.results).filter(
         (entry): entry is [string, ProbePresetResponse] => entry[1] !== undefined,
@@ -41,7 +37,7 @@ async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
       ),
     )
     if (Object.keys(errors).length > 0) {
-      log.warn(`${label} reported per-preset errors`, errors)
+      log.warn(`${label} reported per-preset errors`, sanitizeForLog(errors))
     }
     return { results, errors }
   } catch (err) {
@@ -112,7 +108,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
           }
         } catch (discoveryErr) {
           const msg = getErrorMessage(discoveryErr)
-          log.warn('Model discovery failed for', name, msg)
+          log.warn('Model discovery failed for', sanitizeForLog(name), sanitizeForLog(msg))
           const warning =
             `Provider '${name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh the providers list.`
           set({ providersWarning: warning })
@@ -148,7 +144,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
           return refreshed
         } catch (discoveryErr) {
           const msg = getErrorMessage(discoveryErr)
-          log.warn('Model discovery failed for', data.name, msg)
+          log.warn('Model discovery failed for', sanitizeForLog(data.name), sanitizeForLog(msg))
           set({
             providersWarning:
               `Provider '${data.name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh.`,
