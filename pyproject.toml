@@ -38,6 +38,7 @@ dependencies = [
     "opentelemetry-api==1.40.0",
     "opentelemetry-sdk==1.40.0",
     "opentelemetry-exporter-otlp-proto-http==1.40.0",
+    "yoyo-migrations==9.0.0",
 ]
 
 [build-system]
@@ -401,6 +402,12 @@ filterwarnings = [
     # underlying resources are cleaned up by the OS on process exit.
     "ignore:unclosed event loop:ResourceWarning",
     "ignore:unclosed.*socket:ResourceWarning",
+    # yoyo-migrations 9.0.0 passes ``datetime`` instances directly to
+    # ``sqlite3.execute`` when inserting into its ``yoyo_lock`` table.
+    # Python 3.12+ deprecated the default datetime adapter (yoyo has no
+    # 3.14-aware release yet). Scoped by message text for the same
+    # cross-platform-attribution reason as the nats-py filter above.
+    "ignore:The default datetime adapter is deprecated:DeprecationWarning",
 ]
 
 # ---------------------------------------------------------------------------
