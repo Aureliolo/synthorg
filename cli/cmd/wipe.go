@@ -375,11 +375,54 @@ func (wc *wipeContext) containersRunning() (bool, error) {
 // the backend to become healthy.
 func (wc *wipeContext) startContainers() error {
 	wc.out.Blank()
-	if err := verifyAndPinImages(wc.ctx, wc.cmd, wc.state, wc.safeDir, wc.out, wc.errOut); err != nil {
+	if err := wc.verifyAndPin(); err != nil {
 		return err
 	}
 	wc.out.Blank()
 	return pullStartAndWait(wc.ctx, wc.info, wc.safeDir, wc.state, wc.out, wc.errOut)
+}
+
+// verifyAndPin runs cache-aware verification of both image groups, writes
+// the digest-pinned compose if SynthOrg was reverified, persists fresh
+// pins + the new VerifiedImageTag sentinel, and reloads wc.state from
+// disk so the subsequent pull sees the freshly-pinned references.
+//
+// On --skip-verify it warns and returns immediately, leaving wc.state
+// untouched (matching the start path's behaviour).
+func (wc *wipeContext) verifyAndPin() error {
+	if GetGlobalOpts(wc.ctx).SkipVerify {
+		wc.errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+		return nil
+	}
+
+	verifyCtx, cancel := context.WithTimeout(wc.ctx, GetGlobalOpts(wc.ctx).Tunables.ImageVerifyTimeout)
+	defer cancel()
+	result, err := verifyImagesWithCache(verifyCtx, wc.info, wc.state, wc.out, wc.errOut)
+	if err != nil {
+		return err
+	}
+
+	if result.SynthOrgReverified {
+		if err := writeDigestPinnedCompose(wc.state, synthOrgPins(result.Pins), wc.safeDir); err != nil {
+			return fmt.Errorf("pinning verified digests: %w", err)
+		}
+	}
+
+	if !result.SynthOrgReverified && !result.DHIReverified {
+		return nil
+	}
+
+	wc.state.VerifiedDigests = result.Pins
+	wc.state.VerifiedImageTag = wc.state.ImageTag
+	if err := config.Save(wc.state); err != nil {
+		wc.errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
+	}
+	reloaded, err := config.Load(GetGlobalOpts(wc.ctx).DataDir)
+	if err != nil {
+		return fmt.Errorf("reloading config after verification: %w", err)
+	}
+	wc.state = reloaded
+	return nil
 }
 
 // waitForBackendHealth waits for the backend to become healthy.

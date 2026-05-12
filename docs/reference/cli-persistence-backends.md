@@ -49,6 +49,10 @@ In `src/synthorg/api/app.py`: when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB
 
 DHI images are verified before pulling via cosign ECDSA signature + SLSA v1 provenance attestation + Rekor transparency log. Verification results are cached in `config.json` (`verified_digests`) and invalidated when Renovate bumps the pinned index digest.
 
+### Image verification cache parity
+
+SynthOrg image verification results sit alongside the DHI pins in the same `verified_digests` map. The companion `verified_image_tag` field records which `image_tag` the SynthOrg pins were verified against; `hasSynthOrgDigests` rejects the cache whenever it differs from the current `image_tag`, mirroring the binary-pin comparison used by `hasDHIDigests`. `synthorg update` and `synthorg start` route through the same `verifyImagesWithCache` helper so the two groups always cache (or invalidate) symmetrically: an `update` writes both groups under one tag and the next `start` shows both as `(cached)`. `synthorg config set image_tag <new>` clears both `verified_digests` and `verified_image_tag` together so the next `start` re-verifies cleanly.
+
 ### Port layout
 
 `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates port collisions: web vs backend always; postgres vs web/backend/NATS when postgres enabled; NATS vs web/backend when distributed bus mode is active.

@@ -142,6 +142,43 @@ func TestConfigSetChannel(t *testing.T) {
 	}
 }
 
+func TestConfigSetImageTag_ClearsVerifiedDigestsAndImageTag(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	state.VerifiedDigests = map[string]string{
+		"backend":                  "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		"web":                      "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+		"dhi:dhi.io/postgres:17.2": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+	}
+	state.VerifiedImageTag = state.ImageTag
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "set", "image_tag", "0.0.0-fake", "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load after set: %v", err)
+	}
+	if loaded.ImageTag != "0.0.0-fake" {
+		t.Errorf("ImageTag = %q, want 0.0.0-fake", loaded.ImageTag)
+	}
+	if len(loaded.VerifiedDigests) != 0 {
+		t.Errorf("VerifiedDigests must be cleared after image_tag change, got %v", loaded.VerifiedDigests)
+	}
+	if loaded.VerifiedImageTag != "" {
+		t.Errorf("VerifiedImageTag must be cleared after image_tag change, got %q", loaded.VerifiedImageTag)
+	}
+}
+
 func TestConfigSetRejectsInvalidChannel(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
