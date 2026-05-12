@@ -34,7 +34,14 @@ set -euo pipefail
 # failures); a bare `tls: ` is intentionally NOT included because it would
 # also match non-transient configuration errors like
 # `tls: failed to verify certificate` or `tls: bad certificate`.
-TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake'
+#
+# `context deadline exceeded` / `Client.Timeout exceeded` / `timeout awaiting
+# response headers` / `request canceled` cover Go ``net/http`` client-side
+# timeout strings emitted by Docker / buildx when GHCR fails to respond to a
+# request within the per-request deadline. These are the canonical transient
+# signatures `i/o timeout` misses on the GHCR HTTP path: the underlying
+# socket may be healthy while the HTTP response just never arrives in time.
+TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake|context deadline exceeded|Client\.Timeout exceeded|timeout awaiting response headers|request canceled'
 
 # Discovery flag: callers that need to share the same regex (for example the
 # inline retag-inspect retry loop, which must drop a couple of patterns the
