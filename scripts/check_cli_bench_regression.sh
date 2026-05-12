@@ -34,7 +34,12 @@ BENCH_PKGS=(
     "./internal/verify/"
 )
 
-BENCH_COUNT="${BENCH_COUNT:-5}"
+# BENCH_COUNT defaults to 10 so benchstat clears its n>=6 floor for
+# 95% confidence intervals; sub-100ns microbenchmarks otherwise produce
+# unbounded ±∞ rows on shared CI runners and a single ~10ns wobble
+# trips the gate even when the function under test is byte-identical
+# across base and HEAD.
+BENCH_COUNT="${BENCH_COUNT:-10}"
 THRESHOLD_PCT="${THRESHOLD_PCT:-15}"
 
 # Resolve merge-base. CI runs on a detached PR HEAD; the merge-base

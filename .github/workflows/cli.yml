@@ -205,7 +205,7 @@ jobs:
 
       - name: Run CLI bench A/B (HEAD vs merge-base)
         env:
-          BENCH_COUNT: 5
+          BENCH_COUNT: 10
           THRESHOLD_PCT: 15
         run: bash scripts/check_cli_bench_regression.sh
 
