@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import os
 import sys
+from typing import Final
 
 from synthorg.communication.config import NatsConfig
 from synthorg.observability import get_logger
@@ -45,7 +46,7 @@ async def _placeholder_executor(claim: TaskClaim) -> TaskClaimStatus:
     return TaskClaimStatus.SUCCESS
 
 
-_DEFAULT_WORKER_COUNT = 4
+_DEFAULT_WORKER_COUNT: Final[int] = 4
 """Fallback worker count when neither --workers nor env var is set."""
 
 

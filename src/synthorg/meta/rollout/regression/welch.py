@@ -13,7 +13,7 @@ where ``I_x(a, b)`` is the regularized incomplete beta function.
 """
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MIN_SAMPLES_PER_ARM = 2
+_MIN_SAMPLES_PER_ARM: Final[int] = 2
 
 
 class InsufficientDataError(
@@ -126,9 +126,9 @@ def welch_t_test(
     return WelchResult(t=t, df=df, p_two_sided=p_two_sided)
 
 
-_BETACF_MAX_ITER = 200
-_BETACF_EPS = 3.0e-15
-_BETACF_FPMIN = 1.0e-300
+_BETACF_MAX_ITER: Final[int] = 200
+_BETACF_EPS: Final[float] = 3.0e-15
+_BETACF_FPMIN: Final[float] = 1.0e-300
 
 
 def _regularized_incomplete_beta(a: float, b: float, x: float) -> float:

@@ -3,6 +3,7 @@
 import json
 import math
 from datetime import timedelta
+from typing import Final
 
 import httpx
 
@@ -22,6 +23,8 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_EXPIRES_IN: Final[int] = 600
+_DEFAULT_MAX_WAIT_SECONDS: Final[int] = 600
 
 
 class DeviceFlowResult:
@@ -53,7 +56,7 @@ class DeviceFlowResult:
         verification_uri: str,
         verification_uri_complete: str = "",
         interval: int,
-        expires_in: int = 600,
+        expires_in: int = _DEFAULT_EXPIRES_IN,
     ) -> None:
         self.device_code = device_code
         self.user_code = user_code
@@ -253,7 +256,7 @@ class DeviceFlow:
             return raw
 
         interval_value = _positive_int("interval", self._default_poll_interval_seconds)
-        expires_in_value = _positive_int("expires_in", 600)
+        expires_in_value = _positive_int("expires_in", _DEFAULT_EXPIRES_IN)
 
         # user_code is an active credential -- do not log it at
         # INFO. Only the verification URI is safe to surface.
@@ -279,7 +282,7 @@ class DeviceFlow:
         client_id: str,
         device_code: str,
         interval: int,
-        max_wait_seconds: int = 600,
+        max_wait_seconds: int = _DEFAULT_MAX_WAIT_SECONDS,
     ) -> OAuthToken:
         """Poll the token endpoint until the user authorizes.
 

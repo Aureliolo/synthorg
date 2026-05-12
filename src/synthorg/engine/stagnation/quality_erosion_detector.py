@@ -9,6 +9,8 @@ but quality erodes (rising verbosity, duplicate blocks, increasing
 complexity).
 """
 
+from typing import Final
+
 from synthorg.engine.loop_protocol import TurnRecord  # noqa: TC001
 from synthorg.engine.trajectory.structural_erosion import (
     compute_structural_erosion_score,
@@ -28,6 +30,8 @@ from .models import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_THRESHOLD: Final[float] = 0.5
+_DEFAULT_WINDOW_SIZE: Final[int] = 10
 
 _MIN_WINDOW_SIZE: int = 2
 _MAX_WINDOW_SIZE: int = 50
@@ -47,8 +51,8 @@ class QualityErosionDetector:
     def __init__(
         self,
         *,
-        threshold: float = 0.5,
-        window_size: int = 10,
+        threshold: float = _DEFAULT_THRESHOLD,
+        window_size: int = _DEFAULT_WINDOW_SIZE,
     ) -> None:
         if not 0.0 <= threshold <= 1.0:
             msg = f"threshold must be in [0.0, 1.0], got {threshold}"

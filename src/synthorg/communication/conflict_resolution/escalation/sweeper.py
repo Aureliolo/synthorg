@@ -12,7 +12,7 @@ that was awaiting a decision has died, but the escalation row remains
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,  # noqa: TC001
@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
+_DEFAULT_INTERVAL_SECONDS: Final[float] = 30.0
 
 
 class EscalationExpirationSweeper:
@@ -40,7 +41,7 @@ class EscalationExpirationSweeper:
         self,
         store: EscalationQueueStore,
         *,
-        interval_seconds: float = 30.0,
+        interval_seconds: float = _DEFAULT_INTERVAL_SECONDS,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
         """Initialise the sweeper.

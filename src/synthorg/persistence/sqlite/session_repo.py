@@ -23,7 +23,11 @@ from synthorg.observability.events.api import (
     API_SESSION_CREATE_FAILED,
     API_SESSION_REVOKE_FAILED,
 )
-from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 
 logger = get_logger(__name__)
 
@@ -142,7 +146,7 @@ class SQLiteSessionRepository:
         self,
         user_id: str,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
@@ -164,7 +168,7 @@ class SQLiteSessionRepository:
     async def list_all(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""

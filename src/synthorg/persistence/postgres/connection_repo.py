@@ -32,7 +32,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CONNECTION_LIST_FAILED,
     PERSISTENCE_CONNECTION_SAVE_FAILED,
 )
-from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    coerce_row_timestamp,
+    normalize_utc,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -209,7 +213,7 @@ class PostgresConnectionRepository:
     async def list_all(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all connections, sorted by name for determinism."""
@@ -253,7 +257,7 @@ class PostgresConnectionRepository:
         self,
         connection_type: ConnectionType,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List connections of *connection_type*, sorted by name."""

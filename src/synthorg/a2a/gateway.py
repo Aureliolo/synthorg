@@ -9,7 +9,7 @@ catalog credentials.
 import asyncio
 import hmac
 import json
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State  # noqa: TC002
@@ -57,6 +57,7 @@ from synthorg.observability.events.a2a import (
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 
 logger = get_logger(__name__)
+_DEFAULT_HTTP_STATUS: Final[int] = 400
 
 _SUPPORTED_METHODS = frozenset(
     {
@@ -72,7 +73,7 @@ _SUPPORTED_METHODS = frozenset(
 # ``a2a.max_message_parts``.  This constant mirrors that registry
 # default so a test harness or a boot path that bypasses
 # :class:`AppState` still enforces the documented ceiling.
-_MAX_MESSAGE_PARTS_FALLBACK = 100
+_MAX_MESSAGE_PARTS_FALLBACK: Final[int] = 100
 
 
 async def _resolve_max_message_parts(app_state: Any) -> int:
@@ -627,7 +628,7 @@ class _A2AMethodError(DomainError):
         code: int,
         message: str,
         *,
-        http_status: int = 400,
+        http_status: int = _DEFAULT_HTTP_STATUS,
     ) -> None:
         super().__init__(message)
         self.code = code

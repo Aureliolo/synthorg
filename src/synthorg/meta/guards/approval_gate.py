@@ -9,7 +9,7 @@ bypassing review.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import NAMESPACE_URL, uuid5
 
 from synthorg.core.approval import ApprovalItem
@@ -40,7 +40,7 @@ _ALTITUDE_RISK: dict[ProposalAltitude, ApprovalRiskLevel] = {
     ProposalAltitude.CODE_MODIFICATION: ApprovalRiskLevel.CRITICAL,
 }
 
-_DEFAULT_EXPIRY_DAYS = 7
+_DEFAULT_EXPIRY_DAYS: Final[int] = 7
 
 
 class ApprovalGateGuard:

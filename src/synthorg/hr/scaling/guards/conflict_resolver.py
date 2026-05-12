@@ -7,7 +7,7 @@ strategies.
 
 import copy
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
@@ -27,7 +27,7 @@ DEFAULT_PRIORITY: dict[str, int] = {
     ScalingStrategyName.WORKLOAD.value: 3,
 }
 
-_LOWEST_PRIORITY = 999
+_LOWEST_PRIORITY: Final[int] = 999
 
 
 def _decision_key(decision: ScalingDecision) -> str:

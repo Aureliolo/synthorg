@@ -4,7 +4,7 @@ Routes to failure proposer on declining quality trends, success proposer
 otherwise. Returns proposals from the selected path without merging.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.engine.evolution.protocols import (
     AdaptationProposer,  # noqa: TC001
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_QUALITY_DECLINE_THRESHOLD = 5.0
+_QUALITY_DECLINE_THRESHOLD: Final[float] = 5.0
 """Quality score threshold below which failure path is triggered."""
 
 

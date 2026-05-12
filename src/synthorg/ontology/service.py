@@ -1,7 +1,7 @@
 """Ontology service -- orchestrates backend, versioning, and bootstrap."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 class OntologyService:
@@ -239,7 +240,7 @@ class OntologyService:
         self,
         entity_name: str,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[VersionSnapshot[EntityDefinition], ...]:
         """List version snapshots for an entity.

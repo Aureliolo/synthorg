@@ -14,7 +14,7 @@ import math
 import time
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from synthorg.budget._tracker_helpers import (
     _aggregate,
@@ -65,8 +65,8 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime use
 
 logger = get_logger(__name__)
 
-_COST_WINDOW_HOURS = 168  # 7 days
-_AUTO_PRUNE_THRESHOLD = 100_000
+_COST_WINDOW_HOURS: Final[int] = 168  # 7 days
+_AUTO_PRUNE_THRESHOLD: Final[int] = 100_000
 
 #: Default capacity of the per-tracker LRU set used to dedupe
 #: ``CostRecord.claim_id``.  Sized as 10% of ``_AUTO_PRUNE_THRESHOLD``
@@ -76,7 +76,7 @@ _AUTO_PRUNE_THRESHOLD = 100_000
 #: default redelivery horizon and any reasonable in-process retry
 #: while keeping the LRU footprint bounded so a misbehaving caller
 #: spamming unique ``claim_id`` values cannot grow it without limit.
-_DEFAULT_CLAIM_LRU_CAPACITY = 10_000
+_DEFAULT_CLAIM_LRU_CAPACITY: Final[int] = 10_000
 
 
 class ProviderUsageSummary(NamedTuple):

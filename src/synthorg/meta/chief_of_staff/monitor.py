@@ -8,7 +8,7 @@ consumers.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from synthorg.core.domain_errors import ConflictError
 from synthorg.observability import get_logger, safe_error_description
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from synthorg.meta.signals.snapshot import SnapshotBuilder
 
 logger = get_logger(__name__)
+_DEFAULT_CHECK_INTERVAL_MINUTES: Final[int] = 15
 
 
 class InflectionMonitorLifecycleError(ConflictError):
@@ -65,7 +66,7 @@ class OrgInflectionMonitor:
         detector: OrgInflectionDetector,
         snapshot_builder: SnapshotBuilder,
         sinks: tuple[OrgInflectionSink, ...],
-        check_interval_minutes: int = 15,
+        check_interval_minutes: int = _DEFAULT_CHECK_INTERVAL_MINUTES,
     ) -> None:
         if check_interval_minutes < 1:
             msg = f"check_interval_minutes must be >= 1, got {check_interval_minutes}"

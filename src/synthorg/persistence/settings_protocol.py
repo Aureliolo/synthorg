@@ -1,9 +1,11 @@
 """Settings repository protocol."""
 
 from collections.abc import Mapping, Sequence  # noqa: TC003
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+_DEFAULT_LIST_LIMIT_200: Final[int] = 200
 
 
 @runtime_checkable
@@ -53,7 +55,7 @@ class SettingsRepository(Protocol):
     async def get_all(
         self,
         *,
-        limit: int = 200,
+        limit: int = _DEFAULT_LIST_LIMIT_200,
         offset: int = 0,
     ) -> tuple[tuple[NotBlankStr, NotBlankStr, str, str], ...]:
         """Retrieve all settings across all namespaces (paginated).

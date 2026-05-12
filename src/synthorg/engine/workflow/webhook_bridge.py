@@ -36,9 +36,7 @@ logger = get_logger(__name__)
 _SUBSCRIBER_ID: Final[str] = "__webhook_bridge__"
 _POLL_TIMEOUT: Final[float] = 1.0
 """Fallback poll timeout used when no resolver is wired in."""
-_MAX_CONSECUTIVE_ERRORS: Final[int] = (
-    30  # lint-allow: magic-numbers -- resolver-unwired fallback
-)
+_MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Fallback error budget used when no resolver is wired in."""
 
 

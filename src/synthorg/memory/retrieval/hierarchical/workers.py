@@ -6,7 +6,7 @@ and scoring.  Workers implement the ``RetrievalWorker`` protocol.
 
 import builtins
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import MemoryCategory
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_EPISODIC_WINDOW_HOURS = 72
+_DEFAULT_EPISODIC_WINDOW_HOURS: Final[int] = 72
 
 
 def _scored_to_candidate(

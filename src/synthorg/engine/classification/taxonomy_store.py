@@ -16,7 +16,7 @@ detection.
 import asyncio
 import copy
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.classification.models import ErrorSeverity
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_MAX_RESULTS = 10_000
+_DEFAULT_MAX_RESULTS: Final[int] = 10_000
 """Default ring-buffer capacity.
 
 At ~50 results per minute under heavy load this covers the last 3.5

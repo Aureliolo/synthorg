@@ -12,7 +12,7 @@ audit rows secret-free.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.observability import get_logger
 from synthorg.providers.management.capability_dtos import (
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 class ProviderAuditService:
@@ -71,7 +72,7 @@ class ProviderAuditService:
         *,
         provider_name: NotBlankStr,
         after_id: int | None = None,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIMIT,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
         """Read one provider's audit log, newest first, with ``has_more``."""
         return await self._repo.list(

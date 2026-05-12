@@ -29,6 +29,8 @@ from synthorg.tools.web._args import HttpRequestArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_RESPONSE_BYTES: Final[int] = 1048576
+_DEFAULT_REQUEST_TIMEOUT: Final[float] = 30.0
 
 _ALLOWED_METHODS: Final[frozenset[str]] = frozenset(
     {
@@ -62,8 +64,8 @@ class HttpRequestTool(BaseWebTool):
         self,
         *,
         network_policy: NetworkPolicy | None = None,
-        max_response_bytes: int = 1_048_576,
-        request_timeout: float = 30.0,
+        max_response_bytes: int = _DEFAULT_MAX_RESPONSE_BYTES,
+        request_timeout: float = _DEFAULT_REQUEST_TIMEOUT,
     ) -> None:
         """Initialize the HTTP request tool.
 

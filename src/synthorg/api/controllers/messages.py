@@ -1,6 +1,6 @@
 """Message controller -- read + operator-driven DELETE via MessageService."""
 
-from typing import Any
+from typing import Any, Final
 
 from litestar import Controller, Request, delete, get
 from litestar.datastructures import State  # noqa: TC002
@@ -21,6 +21,7 @@ from synthorg.observability.events.communication import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 class MessageController(Controller):
@@ -36,7 +37,7 @@ class MessageController(Controller):
         state: State,
         channel: str | None = None,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Message]:
         """List messages, optionally filtered by channel.
 
@@ -130,7 +131,7 @@ class MessageController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Channel]:
         """List available message bus channels (paginated).
 

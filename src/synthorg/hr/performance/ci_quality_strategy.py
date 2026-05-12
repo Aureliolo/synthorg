@@ -5,7 +5,7 @@ task success, and cost efficiency. Pure computation, no I/O.
 """
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import QualityScoreResult, TaskMetricRecord
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from synthorg.core.task import AcceptanceCriterion
 
 logger = get_logger(__name__)
+_DEFAULT_COST_BUDGET: Final[float] = 100.0
 
 # Scoring weights.
 _CRITERIA_WEIGHT: float = 0.70
@@ -46,7 +47,7 @@ class CISignalQualityStrategy:
     def __init__(
         self,
         *,
-        cost_budget: float = 100.0,
+        cost_budget: float = _DEFAULT_COST_BUDGET,
     ) -> None:
         self._cost_budget = max(cost_budget, 0.01)
 

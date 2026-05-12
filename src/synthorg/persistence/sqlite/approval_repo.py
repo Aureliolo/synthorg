@@ -23,7 +23,11 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FETCHED,
     API_APPROVAL_REPO_LISTED,
 )
-from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 
 logger = get_logger(__name__)
 
@@ -450,7 +454,7 @@ class SQLiteApprovalRepository:
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
-        limit: int = 100,  # lint-allow: magic-numbers -- default page size
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters (paginated, newest-first).

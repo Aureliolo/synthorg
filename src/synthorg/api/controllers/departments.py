@@ -53,6 +53,7 @@ from synthorg.observability.events.api import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 # ── Department ceremony policy helpers ────────────────────────
@@ -389,7 +390,7 @@ class DepartmentController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Department]:
         """List all departments.
 

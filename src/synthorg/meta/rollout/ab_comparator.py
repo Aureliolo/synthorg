@@ -7,7 +7,7 @@ for real statistical significance.
 """
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.meta.rollout.ab_models import (
     ABTestComparison,
@@ -31,7 +31,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MIN_SAMPLES_FOR_VARIANCE = 2
+_MIN_SAMPLES_FOR_VARIANCE: Final[int] = 2
+_DEFAULT_MIN_OBSERVATIONS: Final[int] = 10
+_DEFAULT_IMPROVEMENT_THRESHOLD: Final[float] = 0.15
+_DEFAULT_SIGNIFICANCE_LEVEL: Final[float] = 0.05
 
 
 class ABTestComparator:
@@ -59,9 +62,9 @@ class ABTestComparator:
     def __init__(
         self,
         *,
-        min_observations: int = 10,
-        improvement_threshold: float = 0.15,
-        significance_level: float = 0.05,
+        min_observations: int = _DEFAULT_MIN_OBSERVATIONS,
+        improvement_threshold: float = _DEFAULT_IMPROVEMENT_THRESHOLD,
+        significance_level: float = _DEFAULT_SIGNIFICANCE_LEVEL,
     ) -> None:
         if not 0.0 < significance_level < 1.0:
             logger.warning(

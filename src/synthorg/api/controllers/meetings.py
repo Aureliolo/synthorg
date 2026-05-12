@@ -1,7 +1,7 @@
 """Meeting controller -- list, get, and trigger meetings."""
 
 import asyncio
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Final, Self
 
 from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -28,6 +28,7 @@ from synthorg.observability.events.meeting import MEETING_NOT_FOUND
 from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 # Fallback used only when the settings backend is unavailable; the
 # authoritative cap is ``api.max_meeting_context_keys``, resolved
@@ -241,7 +242,7 @@ class MeetingController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
         status: MeetingStatus | None = None,
         meeting_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
         | None = None,

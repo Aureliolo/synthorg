@@ -4,15 +4,19 @@ Provides the ``A2A_PEER`` connection type's webhook signature
 verifier registration for the unified webhook receiver.
 """
 
+from typing import Final
+
 from synthorg.a2a.push_verifier import A2APushVerifier
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.webhooks.verifiers.protocol import (
     SignatureVerifier,  # noqa: TC001
 )
 
+_DEFAULT_CLOCK_SKEW_SECONDS: Final[int] = 300
+
 
 def get_a2a_push_verifier(
-    clock_skew_seconds: int = 300,
+    clock_skew_seconds: int = _DEFAULT_CLOCK_SKEW_SECONDS,
 ) -> SignatureVerifier:
     """Create an A2A push notification verifier.
 

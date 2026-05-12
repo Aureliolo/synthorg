@@ -6,7 +6,7 @@ across multiple distinct agents, enabling org-scope skill proposals.
 
 import json
 from collections import defaultdict
-from typing import Literal, Self
+from typing import Final, Literal, Self
 from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -19,6 +19,7 @@ from synthorg.observability.events.skill_evolver import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_AGENTS_FOR_PATTERN: Final[int] = 3
 
 
 class AggregatedTrajectory(BaseModel):
@@ -121,7 +122,9 @@ class TrajectoryAggregator:
 
     __slots__ = ("_min_agents", "last_skipped_count")
 
-    def __init__(self, *, min_agents_for_pattern: int = 3) -> None:
+    def __init__(
+        self, *, min_agents_for_pattern: int = _DEFAULT_MIN_AGENTS_FOR_PATTERN
+    ) -> None:
         if min_agents_for_pattern <= 0:
             msg = (
                 f"min_agents_for_pattern must be positive, got {min_agents_for_pattern}"

@@ -8,7 +8,7 @@ via ``DetectorVariant.LLM_SEMANTIC`` in the per-category config.
 
 import json
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.coordination_config import (
@@ -45,14 +45,15 @@ if TYPE_CHECKING:
     from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_TOKENS: Final[int] = 1024
 
-_SANITIZE_MAX_LENGTH = 2000
+_SANITIZE_MAX_LENGTH: Final[int] = 2000
 # Cost reserved per LLM semantic detector invocation.  Small enough
 # that the reservation gate admits several concurrent detectors
 # inside a reasonable per-run budget, large enough that a runaway
 # provider cannot silently overshoot.  Actual cost is reconciled via
 # ``ClassificationBudgetTracker.settle`` once the call completes.
-_ESTIMATED_LLM_COST = 0.001
+_ESTIMATED_LLM_COST: Final[float] = 0.001
 _SEVERITY_MAP: MappingProxyType[str, ErrorSeverity] = MappingProxyType(
     {
         "low": ErrorSeverity.LOW,
@@ -218,7 +219,7 @@ class _BaseSemanticDetector:
         model_id: str,
         budget_tracker: ClassificationBudgetTracker | None = None,
         temperature: float = 0.0,
-        max_tokens: int = 1024,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
         cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider

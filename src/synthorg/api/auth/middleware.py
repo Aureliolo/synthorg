@@ -3,7 +3,7 @@
 import hashlib
 import hmac as _hmac
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import jwt
 from litestar.enums import ScopeType
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_BEARER_PARTS = 2
+_BEARER_PARTS: Final[int] = 2
 _DEFAULT_COOKIE_NAME = "session"
 
 

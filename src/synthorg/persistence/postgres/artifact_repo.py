@@ -26,6 +26,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_LISTED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -199,7 +200,7 @@ RETURNING (xmax = 0) AS created""",
         task_id: NotBlankStr | None = None,
         created_by: NotBlankStr | None = None,
         artifact_type: ArtifactType | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
         """List artifacts with optional filters (paginated)."""

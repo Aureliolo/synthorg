@@ -47,9 +47,7 @@ logger = get_logger(__name__)
 _SAFE_IDENTIFIER_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_]*$",
 )
-_MAX_IDENTIFIER_LEN: Final[int] = (
-    63  # lint-allow: magic-numbers -- Postgres NAMEDATALEN-1 protocol constant.
-)
+_MAX_IDENTIFIER_LEN: Final[int] = 63
 
 
 @runtime_checkable

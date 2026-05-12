@@ -14,6 +14,7 @@ from synthorg.integrations.connections.models import (
     OAuthState,  # noqa: TC001
     WebhookReceipt,  # noqa: TC001
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -31,15 +32,16 @@ class ConnectionRepository(Protocol):
     async def list_all(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all connections, optionally bounded by *limit* / *offset*.
 
-        Sorted by ``name`` ascending; pass ``limit=None`` (default) to
-        retain the legacy fetch-all semantics, or set both to consume
-        a paginated window. ``limit <= 0`` returns ``()``; negative
-        ``offset`` is treated as ``0``.
+        Sorted by ``name`` ascending; ``limit`` defaults to
+        ``DEFAULT_LIST_LIMIT`` so callers receive at most that many
+        connections unless they pass a larger positive integer.
+        ``limit <= 0`` returns ``()``; negative ``offset`` is treated
+        as ``0``.
         """
         ...
 
@@ -47,7 +49,7 @@ class ConnectionRepository(Protocol):
         self,
         connection_type: ConnectionType,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List connections of a specific type with optional limit/offset.
@@ -165,7 +167,7 @@ class WebhookReceiptRepository(Protocol):
         self,
         connection_name: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List receipts for a connection, newest first.

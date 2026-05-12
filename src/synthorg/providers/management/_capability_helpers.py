@@ -7,6 +7,7 @@ discriminated-union DTO and the system-actor constant is a sentinel.
 """
 
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
@@ -26,7 +27,7 @@ logger = get_logger(__name__)
 # from the controller derived from ``AuthenticatedUser``.
 SYSTEM_ACTOR = ProviderAuditActor(id="system", label="provider-management")
 
-_SECRET_SHORT_THRESHOLD = 8
+_SECRET_SHORT_THRESHOLD: Final[int] = 8
 
 
 def mask_secret(secret: str) -> str:

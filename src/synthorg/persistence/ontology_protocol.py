@@ -8,7 +8,9 @@ methods (``connect`` / ``disconnect`` / ``health_check`` /
 ``is_connected`` / ``get_db``) belong to :class:`PersistenceBackend`.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -17,6 +19,8 @@ if TYPE_CHECKING:
         EntityDefinition,
         EntityTier,
     )
+
+_DEFAULT_DRIFT_REPORTS_LIMIT: Final[int] = 10
 
 
 @runtime_checkable
@@ -64,7 +68,7 @@ class OntologyEntityRepository(Protocol):
         self,
         *,
         tier: EntityTier | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """List all entity definitions, optionally filtered by tier."""
@@ -74,7 +78,7 @@ class OntologyEntityRepository(Protocol):
         self,
         query: str,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """Substring search against entity name and definition text."""
@@ -104,7 +108,7 @@ class OntologyDriftReportRepository(Protocol):
         self,
         entity_name: NotBlankStr,
         *,
-        limit: int = 10,
+        limit: int = _DEFAULT_DRIFT_REPORTS_LIMIT,
     ) -> tuple[DriftReport, ...]:
         """Return most recent drift reports for an entity."""
         ...
@@ -112,7 +116,7 @@ class OntologyDriftReportRepository(Protocol):
     async def get_all_latest(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[DriftReport, ...]:
         """Return the most recent drift report for each entity."""
         ...

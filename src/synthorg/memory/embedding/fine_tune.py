@@ -19,7 +19,7 @@ import math
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
@@ -73,6 +73,15 @@ _INPROCESS_DEP_HINT = (
     "`pip install 'synthorg[fine-tune-gpu]'` or "
     "`pip install 'synthorg[fine-tune-cpu]'`."
 )
+
+_DEFAULT_CHUNK_SIZE_WORDS: Final[int] = 512
+_DEFAULT_VALIDATION_SPLIT: Final[float] = 0.1
+_DEFAULT_HARD_NEGATIVE_TOP_K: Final[int] = 4
+_DEFAULT_TRAIN_EPOCHS: Final[int] = 3
+_DEFAULT_TRAIN_LEARNING_RATE: Final[float] = 1e-5
+_DEFAULT_TRAIN_TEMPERATURE: Final[float] = 0.02
+_DEFAULT_TRAIN_BATCH_SIZE: Final[int] = 128
+_DEFAULT_METRICS_K: Final[int] = 10
 
 
 def _import_sentence_transformers() -> ModuleType:
@@ -138,7 +147,7 @@ def _ensure_dir(path: str) -> Path:
 
 def _chunk_text(
     text: str,
-    chunk_size: int = 512,  # lint-allow: magic-numbers -- bootstrap
+    chunk_size: int = _DEFAULT_CHUNK_SIZE_WORDS,
 ) -> list[str]:
     """Split text into word-boundary chunks.
 
@@ -179,7 +188,7 @@ async def generate_training_data(  # noqa: PLR0913
     output_dir: str,
     *,
     llm_provider: object | None = None,
-    validation_split: float = 0.1,
+    validation_split: float = _DEFAULT_VALIDATION_SPLIT,
     progress_callback: ProgressCallback | None = None,
     cancellation: CancellationToken | None = None,
 ) -> tuple[Path, Path]:
@@ -282,7 +291,7 @@ async def mine_hard_negatives(  # noqa: PLR0913
     base_model: str,
     output_dir: str,
     *,
-    top_k: int = 4,
+    top_k: int = _DEFAULT_HARD_NEGATIVE_TOP_K,
     progress_callback: ProgressCallback | None = None,
     cancellation: CancellationToken | None = None,
 ) -> Path:
@@ -406,10 +415,10 @@ async def contrastive_fine_tune(  # noqa: PLR0913
     base_model: str,
     output_dir: str,
     *,
-    epochs: int = 3,
-    learning_rate: float = 1e-5,
-    temperature: float = 0.02,
-    batch_size: int = 128,
+    epochs: int = _DEFAULT_TRAIN_EPOCHS,
+    learning_rate: float = _DEFAULT_TRAIN_LEARNING_RATE,
+    temperature: float = _DEFAULT_TRAIN_TEMPERATURE,
+    batch_size: int = _DEFAULT_TRAIN_BATCH_SIZE,
     progress_callback: ProgressCallback | None = None,
     cancellation: CancellationToken | None = None,
 ) -> Path:
@@ -642,7 +651,7 @@ async def evaluate_checkpoint(  # noqa: PLR0913
 def _compute_metrics(
     query_embs: object,
     passage_embs: object,
-    k: int = 10,
+    k: int = _DEFAULT_METRICS_K,
 ) -> tuple[float, float]:
     """Compute NDCG@k and Recall@k.
 

@@ -9,7 +9,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from litestar import Controller, Litestar, Router
 from litestar.config.compression import CompressionConfig
@@ -142,9 +142,7 @@ logger = get_logger(__name__)
 # Update both sites together if the default ever changes; otherwise a
 # bootstrap value will silently disagree with operator-editable
 # overrides resolved through ``ConfigResolver``.
-_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS = (
-    60.0  # lint-allow: magic-numbers -- bootstrap default mirrored by ConfigResolver
-)
+_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS: Final[float] = 60.0
 
 
 def _build_default_approval_timeout_scheduler(

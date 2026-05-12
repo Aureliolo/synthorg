@@ -1,7 +1,7 @@
 """Project controller -- endpoints for project listing, creation and deletion."""
 
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, Response, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -31,6 +31,7 @@ from synthorg.observability.events.api import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 def _service(state: State) -> ProjectService:
@@ -68,7 +69,7 @@ class ProjectController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
         status: ProjectStatusFilter = None,
         lead: LeadFilter = None,
     ) -> PaginatedResponse[Project]:

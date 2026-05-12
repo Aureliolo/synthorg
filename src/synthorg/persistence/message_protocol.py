@@ -4,6 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.communication.message import Message  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -26,7 +27,7 @@ class MessageRepository(Protocol):
         self,
         channel: NotBlankStr,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[Message, ...]:
         """Retrieve message history for a channel.
 

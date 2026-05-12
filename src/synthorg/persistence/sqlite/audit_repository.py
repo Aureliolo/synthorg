@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.security.models import AuditEntry, AuditVerdictStr
 
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 
 logger = get_logger(__name__)
@@ -124,7 +125,7 @@ class SQLiteAuditRepository:
         risk_level: ApprovalRiskLevel | None = None,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters (newest first).
 

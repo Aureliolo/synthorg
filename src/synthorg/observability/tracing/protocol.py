@@ -12,13 +12,16 @@ Startup wiring constructs the handler once and stashes the instance
 on ``AppState``.
 """
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
 
 from opentelemetry import trace
 from opentelemetry.trace import NoOpTracer
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
+
+
+_DEFAULT_FORCE_FLUSH_TIMEOUT_SECONDS: Final[float] = 5.0
 
 
 # NoopTraceHandler impl in this file + OtlpTraceHandler impl in
@@ -38,7 +41,7 @@ class TraceHandler(Protocol):
 
     async def force_flush(
         self,
-        timeout_sec: float = 5.0,  # lint-allow: magic-numbers -- default.
+        timeout_sec: float = _DEFAULT_FORCE_FLUSH_TIMEOUT_SECONDS,
     ) -> None:
         """Block until pending spans are exported or the deadline fires."""
         ...
@@ -64,7 +67,7 @@ class NoopTraceHandler:
 
     async def force_flush(
         self,
-        timeout_sec: float = 5.0,  # lint-allow: magic-numbers -- mirror protocol arg
+        timeout_sec: float = _DEFAULT_FORCE_FLUSH_TIMEOUT_SECONDS,
     ) -> None:
         """No-op: there is no exporter to flush."""
         del timeout_sec

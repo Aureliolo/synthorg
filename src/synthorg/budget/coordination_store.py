@@ -6,6 +6,7 @@ queries for the ``GET /coordination/metrics`` endpoint.
 """
 
 from collections import deque
+from typing import Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -19,6 +20,8 @@ from synthorg.observability.events.coordination_metrics import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_ENTRIES: Final[int] = 10000
+_DEFAULT_LIMIT: Final[int] = 10000
 
 
 class CoordinationMetricsRecord(BaseModel):
@@ -53,7 +56,7 @@ class CoordinationMetricsStore:
         ValueError: If *max_entries* < 1.
     """
 
-    def __init__(self, *, max_entries: int = 10_000) -> None:
+    def __init__(self, *, max_entries: int = _DEFAULT_MAX_ENTRIES) -> None:
         if max_entries < 1:
             msg = f"max_entries must be >= 1, got {max_entries}"
             logger.warning(
@@ -89,7 +92,7 @@ class CoordinationMetricsStore:
         agent_id: str | None = None,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
-        limit: int = 10_000,
+        limit: int = _DEFAULT_LIMIT,
     ) -> tuple[tuple[CoordinationMetricsRecord, ...], int]:
         """Query records with optional AND-combined filters.
 

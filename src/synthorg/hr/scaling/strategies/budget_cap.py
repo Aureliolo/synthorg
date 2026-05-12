@@ -6,6 +6,7 @@ from lower-priority strategies.
 """
 
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
@@ -17,6 +18,8 @@ from synthorg.observability.events.hr import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_SAFETY_MARGIN: Final[float] = 0.9
+_DEFAULT_HEADROOM_FRACTION: Final[float] = 0.6
 
 _NAME = NotBlankStr("budget_cap")
 _ACTION_TYPES = frozenset(
@@ -44,8 +47,8 @@ class BudgetCapStrategy:
     def __init__(
         self,
         *,
-        safety_margin: float = 0.90,
-        headroom_fraction: float = 0.60,
+        safety_margin: float = _DEFAULT_SAFETY_MARGIN,
+        headroom_fraction: float = _DEFAULT_HEADROOM_FRACTION,
     ) -> None:
         if not 0.0 < safety_margin <= 1.0:
             msg = f"safety_margin must be in (0, 1], got {safety_margin}"

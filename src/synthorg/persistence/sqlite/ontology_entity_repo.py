@@ -28,6 +28,7 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 logger = get_logger(__name__)
 
@@ -213,7 +214,7 @@ class SQLiteOntologyEntityRepository:
         self,
         *,
         tier: EntityTier | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """List entities, optionally filtered by tier and paginated.
@@ -250,7 +251,7 @@ class SQLiteOntologyEntityRepository:
         self,
         query: str,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """Search entities by name or definition text."""

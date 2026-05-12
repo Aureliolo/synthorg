@@ -4,6 +4,8 @@ Captures procedural memories from successful task executions based on
 a configurable quality threshold derived from the proposer's confidence.
 """
 
+from typing import Final
+
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import (
@@ -26,6 +28,7 @@ from synthorg.observability.events.procedural_memory import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_QUALITY_SCORE: Final[float] = 8.0
 
 
 class SuccessCaptureStrategy:
@@ -47,7 +50,7 @@ class SuccessCaptureStrategy:
         *,
         proposer: SuccessMemoryProposer,
         config: ProceduralMemoryConfig,
-        min_quality_score: float = 8.0,
+        min_quality_score: float = _DEFAULT_MIN_QUALITY_SCORE,
     ) -> None:
         self._proposer = proposer
         self._config = config

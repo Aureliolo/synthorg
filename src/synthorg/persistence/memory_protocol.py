@@ -5,7 +5,9 @@ with every other repository protocol.  Domain types stay in
 ``synthorg.memory.org.models``.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -18,6 +20,9 @@ if TYPE_CHECKING:
         OrgFact,
         OrgFactAuthor,
     )
+
+
+_DEFAULT_LIST_LIMIT_5: Final[int] = 5
 
 
 @runtime_checkable
@@ -37,7 +42,7 @@ class OrgFactRepository(Protocol):
         *,
         categories: frozenset[OrgFactCategory] | None = None,
         text: str | None = None,
-        limit: int = 5,
+        limit: int = _DEFAULT_LIST_LIMIT_5,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """Query active facts by category and/or text substring."""
@@ -47,7 +52,7 @@ class OrgFactRepository(Protocol):
         self,
         category: OrgFactCategory,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """List all active facts in a category, optionally paginated."""

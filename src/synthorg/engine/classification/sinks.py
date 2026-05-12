@@ -9,7 +9,7 @@ import copy
 import time
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_config import ErrorCategory
 from synthorg.engine.classification.models import ErrorSeverity
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)
+_DEFAULT_WINDOW_SECONDS: Final[float] = 60.0
 
 _SEVERITY_MAP: MappingProxyType[ErrorSeverity, NotificationSeverity] = MappingProxyType(
     copy.deepcopy(
@@ -265,7 +266,7 @@ class NotificationDispatcherSink:
         *,
         min_severity: ErrorSeverity = ErrorSeverity.HIGH,
         max_events_per_window: int = 1,
-        window_seconds: float = 60.0,
+        window_seconds: float = _DEFAULT_WINDOW_SECONDS,
         clock: Callable[[], float] | None = None,
     ) -> None:
         self._dispatcher = dispatcher

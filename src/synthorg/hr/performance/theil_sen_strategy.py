@@ -5,7 +5,7 @@ of all pairwise slopes. Pure function, no I/O, no external deps.
 """
 
 from itertools import combinations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.hr.enums import TrendDirection
 from synthorg.hr.performance.models import TrendResult
@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
+_DEFAULT_MIN_DATA_POINTS: Final[int] = 5
+_DEFAULT_IMPROVING_THRESHOLD: Final[float] = 0.05
+_DEFAULT_DECLINING_THRESHOLD: Final[float] = -0.05
 
 # Seconds per day for timestamp normalization.
 _SECONDS_PER_DAY: float = 86400.0
@@ -58,9 +61,9 @@ class TheilSenTrendStrategy:
     def __init__(
         self,
         *,
-        min_data_points: int = 5,
-        improving_threshold: float = 0.05,
-        declining_threshold: float = -0.05,
+        min_data_points: int = _DEFAULT_MIN_DATA_POINTS,
+        improving_threshold: float = _DEFAULT_IMPROVING_THRESHOLD,
+        declining_threshold: float = _DEFAULT_DECLINING_THRESHOLD,
     ) -> None:
         self._min_data_points = min_data_points
         self._improving_threshold = improving_threshold

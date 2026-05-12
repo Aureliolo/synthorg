@@ -17,7 +17,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from typing import ClassVar, Self
+from typing import ClassVar, Final, Self
 
 from synthorg.api.cursor_config import CursorConfig  # noqa: TC001
 from synthorg.core.domain_errors import ValidationError
@@ -41,14 +41,14 @@ class InvalidCursorError(ValidationError):
 
 # Minimum key length (bytes) enforced on HMAC secrets. 16 bytes = 128
 # bits of entropy; below this the signing strength falls off fast.
-_MIN_KEY_BYTES = 16
+_MIN_KEY_BYTES: Final[int] = 16
 
 # Hard cap on cursor token length (characters).  Litestar's
 # ``CursorParam`` type already enforces this at HTTP-parameter parsing,
 # but internal callers (tests, future RPC layers) can bypass that path.
 # Keeping a defense-in-depth limit here bounds worst-case decode cost
 # for any path that hits ``decode_cursor`` directly.
-_MAX_CURSOR_LEN = 512
+_MAX_CURSOR_LEN: Final[int] = 512
 
 
 class CursorSecret:
@@ -235,7 +235,7 @@ def decode_cursor(token: str, *, secret: CursorSecret) -> int:
 # repos can swap encodings without breaking the frontend.
 
 
-_MAX_KEYSET_KEY_LEN = 256
+_MAX_KEYSET_KEY_LEN: Final[int] = 256
 """Cap on the raw key length before encoding (defense in depth)."""
 
 

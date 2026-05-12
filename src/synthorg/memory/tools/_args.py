@@ -37,6 +37,8 @@ already live in ``synthorg.memory.self_editing_args``.  They aren't
 re-exported from here so we don't double-define the discriminator.
 """
 
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001 -- Pydantic field type
@@ -49,7 +51,7 @@ _ARGS_CONFIG = ConfigDict(
 )
 
 
-_MAX_MEMORY_ID_LEN = 256
+_MAX_MEMORY_ID_LEN: Final[int] = 256
 
 
 # ── Tool-based retrieval (search_memory / recall_memory) ────────────

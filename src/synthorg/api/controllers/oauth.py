@@ -4,7 +4,7 @@ Endpoints for initiating OAuth flows, handling callbacks,
 and checking token status.
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -37,10 +37,10 @@ from synthorg.observability.events.integrations import SECRET_RETRIEVAL_FAILED
 logger = get_logger(__name__)
 
 # Length caps on attacker-controllable strings.
-_MAX_CONNECTION_NAME_LEN = 128
-_MAX_SCOPE_LEN = 256
-_MAX_OAUTH_CODE_LEN = 2048
-_MAX_OAUTH_STATE_LEN = 512
+_MAX_CONNECTION_NAME_LEN: Final[int] = 128
+_MAX_SCOPE_LEN: Final[int] = 256
+_MAX_OAUTH_CODE_LEN: Final[int] = 2048
+_MAX_OAUTH_STATE_LEN: Final[int] = 512
 
 
 class InitiateOAuthFlowRequest(BaseModel):

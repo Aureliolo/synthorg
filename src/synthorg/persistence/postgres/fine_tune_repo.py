@@ -30,6 +30,7 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence.fine_tune_protocol import _DEFAULT_LIST_LIMIT_50
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -241,7 +242,7 @@ ON CONFLICT (id) DO UPDATE SET
     async def list_runs(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
         """List runs ordered by start time descending.
@@ -453,7 +454,7 @@ ON CONFLICT (id) DO UPDATE SET
     async def list_checkpoints(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[CheckpointRecord, ...], int]:
         """List checkpoints ordered by creation time descending.

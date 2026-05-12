@@ -348,8 +348,8 @@ def _category_for_status(
 _RESERVED_LOG_KEYS: Final = frozenset(
     {"method", "path", "status_code", "error_type", "error"},
 )
-_MAX_LOG_STR_LEN: Final = 256  # lint-allow: magic-numbers -- log clamp
-_MAX_LOG_TUPLE_LEN: Final = 16  # lint-allow: magic-numbers -- log clamp
+_MAX_LOG_STR_LEN: Final = 256
+_MAX_LOG_TUPLE_LEN: Final = 16
 
 
 def _safe_log_attrs(exc: Exception) -> dict[str, object]:

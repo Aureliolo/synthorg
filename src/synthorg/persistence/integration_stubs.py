@@ -29,6 +29,7 @@ from synthorg.integrations.connections.models import (
     OAuthState,  # noqa: TC001
     WebhookReceipt,  # noqa: TC001
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 class InMemoryConnectionRepository:
@@ -49,7 +50,7 @@ class InMemoryConnectionRepository:
     async def list_all(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all (deep-copied)."""
@@ -63,7 +64,7 @@ class InMemoryConnectionRepository:
         self,
         connection_type: ConnectionType,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List by type (deep-copied)."""
@@ -142,7 +143,7 @@ class InMemoryWebhookReceiptRepository:
         self,
         connection_name: str,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List by connection (deep-copied), newest-first."""

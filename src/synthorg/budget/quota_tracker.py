@@ -11,7 +11,7 @@ Concurrency-safe via ``asyncio.Lock`` (same pattern as
 import asyncio
 import copy
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -516,7 +516,7 @@ def _build_exhaustion_reason(
     return " ".join(parts)
 
 
-_MONTHS_PER_YEAR = 12
+_MONTHS_PER_YEAR: Final[int] = 12
 
 _WINDOW_DELTAS: dict[QuotaWindow, timedelta] = {
     QuotaWindow.PER_MINUTE: timedelta(minutes=1),

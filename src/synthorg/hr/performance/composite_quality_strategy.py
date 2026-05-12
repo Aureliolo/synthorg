@@ -8,7 +8,7 @@ the other layers.
 
 import asyncio
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import QualityScoreResult
@@ -29,6 +29,11 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
 
 logger = get_logger(__name__)
+
+_DEFAULT_CI_WEIGHT: Final[float] = 0.4
+_DEFAULT_LLM_WEIGHT: Final[float] = 0.6
+_DEFAULT_CONFIDENCE_DISCOUNT: Final[float] = 0.9
+_DEFAULT_CI_ONLY_CONFIDENCE_DISCOUNT: Final[float] = 0.7
 
 
 class CompositeQualityStrategy:
@@ -73,10 +78,10 @@ class CompositeQualityStrategy:
         ci_strategy: QualityScoringStrategy,
         llm_strategy: QualityScoringStrategy | None = None,
         override_store: QualityOverrideStore | None = None,
-        ci_weight: float = 0.4,
-        llm_weight: float = 0.6,
-        confidence_discount: float = 0.9,
-        ci_only_confidence_discount: float = 0.7,
+        ci_weight: float = _DEFAULT_CI_WEIGHT,
+        llm_weight: float = _DEFAULT_LLM_WEIGHT,
+        confidence_discount: float = _DEFAULT_CONFIDENCE_DISCOUNT,
+        ci_only_confidence_discount: float = _DEFAULT_CI_ONLY_CONFIDENCE_DISCOUNT,
     ) -> None:
         if not math.isfinite(ci_weight) or not math.isfinite(llm_weight):
             msg = (

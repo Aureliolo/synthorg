@@ -4,7 +4,7 @@ All endpoints require CEO or the internal SYSTEM role
 (used by the CLI for ``synthorg backup`` / ``synthorg wipe``).
 """
 
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Final
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -54,6 +54,7 @@ from synthorg.observability.events.backup import (
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 async def _do_backup_as_dict(
@@ -184,7 +185,7 @@ class BackupController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[BackupInfo]:
         """List available backups (paginated, newest first).
 

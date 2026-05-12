@@ -5,7 +5,7 @@ following the patterns established in ``delegation/models.py``.
 """
 
 from enum import StrEnum
-from typing import Self
+from typing import Final, Self
 
 from pydantic import (
     AwareDatetime,
@@ -23,7 +23,7 @@ from synthorg.communication.enums import (
 from synthorg.core.enums import SeniorityLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
-_MIN_POSITIONS = 2
+_MIN_POSITIONS: Final[int] = 2
 
 
 class ConflictResolutionOutcome(StrEnum):

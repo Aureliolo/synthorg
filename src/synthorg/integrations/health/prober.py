@@ -34,6 +34,8 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_INTERVAL_SECONDS: Final[int] = 300
+_DEFAULT_UNHEALTHY_THRESHOLD: Final[int] = 3
 
 _CHECK_REGISTRY: Final[MappingProxyType[ConnectionType, ConnectionHealthCheck]] = (
     MappingProxyType(
@@ -85,8 +87,8 @@ class HealthProberService:
         self,
         catalog: ConnectionCatalog,
         *,
-        interval_seconds: int = 300,
-        unhealthy_threshold: int = 3,
+        interval_seconds: int = _DEFAULT_INTERVAL_SECONDS,
+        unhealthy_threshold: int = _DEFAULT_UNHEALTHY_THRESHOLD,
         degraded_threshold: int = 1,
         clock: Clock | None = None,
     ) -> None:

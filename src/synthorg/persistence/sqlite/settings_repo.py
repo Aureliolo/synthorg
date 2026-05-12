@@ -15,6 +15,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SET_FAILED,
     SETTINGS_VALUE_SET,
 )
+from synthorg.persistence.settings_protocol import _DEFAULT_LIST_LIMIT_200
 
 logger = get_logger(__name__)
 
@@ -95,7 +96,7 @@ class SQLiteSettingsRepository:
     async def get_all(
         self,
         *,
-        limit: int = 200,
+        limit: int = _DEFAULT_LIST_LIMIT_200,
         offset: int = 0,
     ) -> tuple[tuple[str, str, str, str], ...]:
         """Return all (namespace, key, value, updated_at) (paginated)."""

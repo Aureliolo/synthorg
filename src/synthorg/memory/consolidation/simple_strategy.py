@@ -7,6 +7,7 @@ the rest.
 
 from itertools import groupby
 from operator import attrgetter
+from typing import Final
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -21,11 +22,11 @@ from synthorg.observability.events.consolidation import (
 
 logger = get_logger(__name__)
 
-_SUMMARY_TRUNCATE_LENGTH = 200
+_SUMMARY_TRUNCATE_LENGTH: Final[int] = 200
 
-_DEFAULT_GROUP_THRESHOLD = 3
+_DEFAULT_GROUP_THRESHOLD: Final[int] = 3
 
-_MIN_GROUP_THRESHOLD = 2
+_MIN_GROUP_THRESHOLD: Final[int] = 2
 
 
 class SimpleConsolidationStrategy:

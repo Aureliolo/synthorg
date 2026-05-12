@@ -30,8 +30,8 @@ from synthorg.observability.events.api import (
 
 logger = get_logger(__name__)
 
-_GC_EVERY_N_ACQUIRES: Final[int] = 1024  # lint-allow: magic-numbers -- bootstrap
-_MIN_RETRY_AFTER_SECONDS: Final[int] = 1  # lint-allow: magic-numbers -- bootstrap
+_GC_EVERY_N_ACQUIRES: Final[int] = 1024
+_MIN_RETRY_AFTER_SECONDS: Final[int] = 1
 
 
 class InMemoryInflightStore(InflightStore):

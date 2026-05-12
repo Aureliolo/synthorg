@@ -8,7 +8,7 @@ import asyncio
 import json as _json
 from collections.abc import AsyncIterator  # noqa: TC003
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -54,7 +54,7 @@ from synthorg.observability.metrics_hub import record_client_disconnect
 
 logger = get_logger(__name__)
 
-_SSE_KEEPALIVE_FALLBACK_SECONDS = 30.0
+_SSE_KEEPALIVE_FALLBACK_SECONDS: Final[float] = 30.0
 """Internal constant by design: fallback keepalive interval used only
 when the resolver is unavailable; the canonical operator-tunable value
 is ``api.sse_keepalive_seconds``.

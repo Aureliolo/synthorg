@@ -20,7 +20,7 @@ without inspecting the exception body.
 """
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Literal, Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 # Minimum length of a path with a Windows drive letter prefix ("C:").
 # Declared before the class that uses it so the path-traversal check
 # reads in source order.
-_MIN_DRIVE_LETTER_LEN: Literal[2] = 2
+_MIN_DRIVE_LETTER_LEN: Final[int] = 2
 
 
 class MemoryBackendUnsupportedError(DomainError):

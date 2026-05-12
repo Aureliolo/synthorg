@@ -4,6 +4,7 @@ import asyncio
 import smtplib
 import time
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.integrations.connections.models import (
     Connection,
@@ -18,7 +19,7 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_TIMEOUT = 10
+_TIMEOUT: Final[int] = 10
 
 
 class SmtpHealthCheck:

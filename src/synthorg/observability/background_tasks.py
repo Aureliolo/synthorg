@@ -18,7 +18,7 @@ import asyncio
 import copy
 import time
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.async_task import (
@@ -30,6 +30,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine, Mapping
 
 logger = get_logger(__name__)
+
+_DEFAULT_DRAIN_TIMEOUT_SECONDS: Final[float] = 5.0
 
 
 class BackgroundTaskRegistry:
@@ -153,7 +155,9 @@ class BackgroundTaskRegistry:
 
         return _on_done
 
-    async def drain(self, *, timeout_sec: float = 5.0) -> None:
+    async def drain(
+        self, *, timeout_sec: float = _DEFAULT_DRAIN_TIMEOUT_SECONDS
+    ) -> None:
         """Wait for all tracked tasks to complete.
 
         On timeout, logs a warning at

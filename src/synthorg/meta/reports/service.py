@@ -14,7 +14,7 @@ touching callers.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.reports.models import Report, ReportStatus
@@ -31,6 +31,8 @@ if TYPE_CHECKING:
     from synthorg.meta.analytics.service import AnalyticsService
 
 logger = get_logger(__name__)
+_DEFAULT_WINDOW_DAYS: Final[int] = 7
+_DEFAULT_LIMIT: Final[int] = 50
 
 _SUPPORTED_TEMPLATES: frozenset[str] = frozenset(
     {
@@ -61,7 +63,7 @@ class ReportsService:
         self,
         *,
         analytics: AnalyticsService,
-        window_days: int = 7,
+        window_days: int = _DEFAULT_WINDOW_DAYS,
     ) -> None:
         if window_days < 1:
             msg = f"window_days must be >= 1, got {window_days}"
@@ -77,7 +79,7 @@ class ReportsService:
         self,
         *,
         offset: int = 0,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIMIT,
     ) -> tuple[tuple[Report, ...], int]:
         """Return a page of reports ordered newest-first.
 

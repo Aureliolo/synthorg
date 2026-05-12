@@ -17,7 +17,9 @@ Design:
   plumbing, so tests can feed events directly into the counter.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+
+_DEFAULT_MAX_TOP: Final[int] = 10
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -58,7 +60,7 @@ class TelemetryEventCounter(Protocol):
         *,
         since: datetime,
         until: datetime,
-        max_top: int = 10,
+        max_top: int = _DEFAULT_MAX_TOP,
     ) -> OrgTelemetrySummary:
         """Produce the org-wide telemetry summary for the window.
 

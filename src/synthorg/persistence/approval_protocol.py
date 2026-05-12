@@ -19,6 +19,7 @@ from synthorg.core.enums import (
     ApprovalStatus,  # noqa: TC001
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -105,7 +106,7 @@ class ApprovalRepository(Protocol):
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters.

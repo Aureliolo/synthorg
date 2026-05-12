@@ -6,12 +6,14 @@ these Protocols instead of the SQLite classes so the persistence
 backend can be swapped without touching service code.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,  # noqa: TC001
     FineTuneRun,  # noqa: TC001
 )
+
+_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 
 @runtime_checkable
@@ -33,7 +35,7 @@ class FineTuneRunRepository(Protocol):
     async def list_runs(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
         """List runs ordered by start time descending.
@@ -77,7 +79,7 @@ class FineTuneCheckpointRepository(Protocol):
     async def list_checkpoints(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[CheckpointRecord, ...], int]:
         """List checkpoints ordered by creation time descending.

@@ -16,7 +16,7 @@ at app startup.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
 from pydantic import TypeAdapter, ValidationError
@@ -58,7 +58,7 @@ _ARG_UNTIL = "until"
 _ARG_METRIC_NAMES = "metric_names"
 _ARG_HORIZON_DAYS = "horizon_days"
 _ARG_SAMPLE_COUNT = "sample_count"
-_MAX_SAMPLE_COUNT = 100
+_MAX_SAMPLE_COUNT: Final[int] = 100
 _TY_POSITIVE_INT_CAP = f"positive int <= {_MAX_SAMPLE_COUNT}"
 
 

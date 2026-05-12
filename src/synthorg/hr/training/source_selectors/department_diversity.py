@@ -5,7 +5,7 @@ from the new hire's department.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
@@ -27,8 +27,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_TOP_PERFORMER_COUNT = 2
-_DEFAULT_COMPLEMENTARY_COUNT = 2
+_DEFAULT_TOP_PERFORMER_COUNT: Final[int] = 2
+_DEFAULT_COMPLEMENTARY_COUNT: Final[int] = 2
 
 
 class DepartmentDiversitySampling:

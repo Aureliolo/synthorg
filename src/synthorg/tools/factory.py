@@ -8,7 +8,7 @@ in a ``ToolRegistry``.
 """
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger
@@ -100,11 +100,14 @@ def _build_git_tools(
     )
 
 
+_DEFAULT_MAX_RESPONSE_BYTES: Final[int] = 1048576
+
+
 def _build_web_tools(
     *,
     network_policy: NetworkPolicy | None = None,
     search_provider: WebSearchProvider | None = None,
-    max_response_bytes: int = 1_048_576,
+    max_response_bytes: int = _DEFAULT_MAX_RESPONSE_BYTES,
     request_timeout: float,
 ) -> tuple[BaseTool, ...]:
     """Instantiate the built-in web tools.

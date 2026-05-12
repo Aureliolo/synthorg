@@ -10,7 +10,7 @@ import json
 import shutil
 import tarfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import ValidationError
 
@@ -35,11 +35,11 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_CHECKSUM_CHUNK_SIZE = 65536
+_CHECKSUM_CHUNK_SIZE: Final[int] = 65536
 # Internal constant by design: defensive cap on serialised backup
 # manifest size; prevents manifest bloat from runaway tags or notes.
 # Not exposed to the settings registry.
-_MANIFEST_MAX_SIZE = 65536
+_MANIFEST_MAX_SIZE: Final[int] = 65536
 
 
 class BackupServiceArchiveMixin:

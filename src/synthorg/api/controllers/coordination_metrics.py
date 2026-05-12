@@ -6,7 +6,7 @@ coordination metrics from completed multi-agent runs.
 
 import asyncio
 from datetime import datetime  # noqa: TC003
-from typing import Annotated
+from typing import Annotated, Final
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
@@ -30,8 +30,9 @@ from synthorg.observability.events.api import (
 from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
-_MAX_METRICS_QUERY = 10_000
+_MAX_METRICS_QUERY: Final[int] = 10_000
 """Fallback cap applied when no settings resolver is wired in."""
 
 # Module-level log-once guard for the settings-resolution fallback:
@@ -93,7 +94,7 @@ class CoordinationMetricsController(Controller):
         since: datetime | None = None,
         until: datetime | None = None,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[CoordinationMetricsRecord]:
         """Query coordination metrics with optional filters.
 

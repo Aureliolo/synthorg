@@ -6,7 +6,7 @@ and wiki export settings.
 """
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -348,7 +348,7 @@ class ConsolidationConfig(BaseModel):
     )
 
 
-_MIN_LLM_GROUP_THRESHOLD = 3
+_MIN_LLM_GROUP_THRESHOLD: Final[int] = 3
 
 
 class LLMConsolidationConfig(BaseModel):

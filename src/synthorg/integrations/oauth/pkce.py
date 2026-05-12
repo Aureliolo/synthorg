@@ -18,6 +18,7 @@ import os
 import re
 import secrets
 from threading import Lock
+from typing import Final
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -27,9 +28,9 @@ from synthorg.observability import get_logger
 logger = get_logger(__name__)
 
 _UNRESERVED_RE = re.compile(r"^[A-Za-z0-9\-._~]+$")
-_VERIFIER_LENGTH = 128
-_MIN_VERIFIER_LENGTH = 43
-_MAX_VERIFIER_LENGTH = 128
+_VERIFIER_LENGTH: Final[int] = 128
+_MIN_VERIFIER_LENGTH: Final[int] = 43
+_MAX_VERIFIER_LENGTH: Final[int] = 128
 
 _MASTER_KEY_ENV = "SYNTHORG_MASTER_KEY"
 _cipher_lock = Lock()

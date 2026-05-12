@@ -7,7 +7,7 @@ guards (sequential) -> execute.
 import asyncio
 from collections import deque
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MAX_HISTORY = 100
+_MAX_HISTORY: Final[int] = 100
 
 _STRATEGY_TO_FIRING_REASON: dict[str, FiringReason] = {
     ScalingStrategyName.BUDGET_CAP.value: FiringReason.BUDGET,

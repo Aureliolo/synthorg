@@ -8,6 +8,7 @@ preservation (dense) accordingly.
 import asyncio
 from itertools import groupby
 from operator import attrgetter
+from typing import Final
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -37,8 +38,8 @@ from synthorg.observability.events.consolidation import (
 
 logger = get_logger(__name__)
 
-_DEFAULT_GROUP_THRESHOLD = 3
-_MIN_GROUP_THRESHOLD = 2
+_DEFAULT_GROUP_THRESHOLD: Final[int] = 3
+_MIN_GROUP_THRESHOLD: Final[int] = 2
 
 
 class DualModeConsolidationStrategy:

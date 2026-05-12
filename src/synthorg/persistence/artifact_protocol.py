@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.artifact import Artifact  # noqa: TC001
 from synthorg.core.enums import ArtifactType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -50,7 +51,7 @@ class ArtifactRepository(Protocol):
         task_id: NotBlankStr | None = None,
         created_by: NotBlankStr | None = None,
         artifact_type: ArtifactType | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
         """List artifacts with optional filters (paginated).

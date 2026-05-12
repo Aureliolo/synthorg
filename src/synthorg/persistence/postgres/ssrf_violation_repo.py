@@ -17,7 +17,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
-from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, normalize_utc
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 if TYPE_CHECKING:
@@ -140,7 +140,7 @@ class PostgresSsrfViolationRepository:
         self,
         *,
         status: SsrfViolationStatus | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[SsrfViolation, ...]:
         """List violations, optionally filtered by status."""
         if limit <= 0:

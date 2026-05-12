@@ -1,6 +1,6 @@
 """Meta improvement controller -- self-improvement proposals and signals."""
 
-from typing import Any
+from typing import Any, Final
 from uuid import UUID  # noqa: TC003
 
 from litestar import Controller, get, post
@@ -38,6 +38,8 @@ class ChatRequest(BaseModel):
 
 
 logger = get_logger(__name__)
+
+_DEFAULT_PAGE_SIZE: Final[int] = 50
 
 
 def _settings_service_from_state(state: State) -> Any:
@@ -89,7 +91,7 @@ class MetaController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- default page size
+        limit: CursorLimit = _DEFAULT_PAGE_SIZE,
     ) -> PaginatedResponse[dict[str, Any]]:
         """List all signal rules (built-in + custom) with status.
 
@@ -142,7 +144,7 @@ class MetaController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- default page size
+        limit: CursorLimit = _DEFAULT_PAGE_SIZE,
     ) -> PaginatedResponse[dict[str, str]]:
         """List available MCP signal tools (paginated).
 
@@ -184,7 +186,7 @@ class MetaController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- default page size
+        limit: CursorLimit = _DEFAULT_PAGE_SIZE,
     ) -> PaginatedResponse[dict[str, Any]]:
         """List active A/B tests with status and current metrics.
 
@@ -234,7 +236,7 @@ class MetaController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- default page size
+        limit: CursorLimit = _DEFAULT_PAGE_SIZE,
     ) -> PaginatedResponse[dict[str, Any]]:
         """List improvement proposals from the approval store.
 

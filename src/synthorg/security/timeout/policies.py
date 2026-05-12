@@ -1,6 +1,6 @@
 """Timeout policy implementations -- wait, deny, tiered, escalation chain."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import ApprovalRiskLevel, TimeoutActionType
 from synthorg.observability import get_logger
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_SECONDS_PER_MINUTE = 60.0
+_SECONDS_PER_MINUTE: Final[float] = 60.0
 
 
 class WaitForeverPolicy:

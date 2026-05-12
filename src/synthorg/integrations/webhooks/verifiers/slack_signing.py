@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
@@ -12,7 +13,7 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_MAX_CLOCK_SKEW = 300  # 5 minutes
+_MAX_CLOCK_SKEW: Final[int] = 300  # 5 minutes
 
 
 class SlackSigningVerifier:

@@ -8,6 +8,7 @@ logic resides in the workspace strategy layer.
 
 import asyncio
 from collections.abc import Mapping  # noqa: TC003
+from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -43,6 +44,7 @@ from synthorg.providers.models import (
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_RETRIES: Final[int] = 2
 
 
 class LlmSemanticAnalyzer:
@@ -178,7 +180,7 @@ class LlmSemanticAnalyzer:
         messages: list[ChatMessage],
         tool_def: ToolDefinition,
         comp_config: CompletionConfig,
-        max_retries: int = 2,
+        max_retries: int = _DEFAULT_MAX_RETRIES,
     ) -> tuple[MergeConflict, ...]:
         """Call LLM with retry on parse failure.
 

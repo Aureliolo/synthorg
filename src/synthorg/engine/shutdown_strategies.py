@@ -8,7 +8,7 @@ factory.  All satisfy the ``ShutdownStrategy`` protocol defined in
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -37,6 +37,9 @@ from synthorg.observability.events.execution import (
 )
 
 logger = get_logger(__name__)
+
+_DEFAULT_CLEANUP_SECONDS: Final[float] = 5.0
+_DEFAULT_GRACE_SECONDS: Final[float] = 30.0
 
 
 # ── Shared helpers ───────────────────────────────────────────────
@@ -85,7 +88,7 @@ class ImmediateCancelStrategy:
     billed-but-lost LLM responses.
     """
 
-    def __init__(self, *, cleanup_seconds: float = 5.0) -> None:
+    def __init__(self, *, cleanup_seconds: float = _DEFAULT_CLEANUP_SECONDS) -> None:
         """Initialize the strategy.
 
         Args:
@@ -187,7 +190,7 @@ class FinishCurrentToolStrategy:
         self,
         *,
         tool_timeout_seconds: float,
-        cleanup_seconds: float = 5.0,
+        cleanup_seconds: float = _DEFAULT_CLEANUP_SECONDS,
     ) -> None:
         """Initialize the strategy.
 
@@ -348,8 +351,8 @@ class CheckpointAndStopStrategy:
     def __init__(
         self,
         *,
-        grace_seconds: float = 30.0,
-        cleanup_seconds: float = 5.0,
+        grace_seconds: float = _DEFAULT_GRACE_SECONDS,
+        cleanup_seconds: float = _DEFAULT_CLEANUP_SECONDS,
         checkpoint_saver: CheckpointSaver | None = None,
     ) -> None:
         """Initialize the strategy.

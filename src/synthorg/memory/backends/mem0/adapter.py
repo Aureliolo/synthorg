@@ -9,7 +9,7 @@ All Mem0 SDK calls run in ``asyncio.to_thread()``.
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -89,6 +89,7 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_MEMORIES_PER_AGENT: Final[int] = 10000
 
 
 class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
@@ -106,7 +107,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         self,
         *,
         mem0_config: Mem0BackendConfig,
-        max_memories_per_agent: int = 10_000,
+        max_memories_per_agent: int = _DEFAULT_MAX_MEMORIES_PER_AGENT,
         cost_tracker: CostTracker | None = None,
     ) -> None:
         if max_memories_per_agent < 1:

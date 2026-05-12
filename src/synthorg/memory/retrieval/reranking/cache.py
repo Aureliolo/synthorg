@@ -10,6 +10,7 @@ hits -- stale tuples never leak back.
 """
 
 import asyncio
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
@@ -23,8 +24,8 @@ _CACHE_NAME = "reranker"
 
 logger = get_logger(__name__)
 
-_DEFAULT_TTL_SECONDS = 3600
-_DEFAULT_MAX_SIZE = 1000
+_DEFAULT_TTL_SECONDS: Final[int] = 3600
+_DEFAULT_MAX_SIZE: Final[int] = 1000
 
 
 class RerankerCache:

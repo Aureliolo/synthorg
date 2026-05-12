@@ -6,7 +6,7 @@ until the approval item is approved.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.core.approval import ApprovalItem
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_APPROVAL_EXPIRY_HOURS = 24
+_APPROVAL_EXPIRY_HOURS: Final[int] = 24
 
 
 class ReviewGateGuard:

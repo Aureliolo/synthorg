@@ -14,7 +14,7 @@ distribution.
 
 import asyncio
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
@@ -31,8 +31,9 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_RECENT: Final[int] = 10
 
-_DEFAULT_MAX_RESULTS = 5_000
+_DEFAULT_MAX_RESULTS: Final[int] = 5_000
 """Default ring-buffer capacity.
 
 The self-improvement cycle runs on a ceremony cadence (hours/days),
@@ -130,7 +131,7 @@ class InMemoryEvolutionOutcomeStore:
         *,
         since: datetime,
         until: datetime,
-        max_recent: int = 10,
+        max_recent: int = _DEFAULT_MAX_RECENT,
     ) -> OrgEvolutionSummary:
         """Roll recorded outcomes into an :class:`OrgEvolutionSummary`."""
         if max_recent < 1:

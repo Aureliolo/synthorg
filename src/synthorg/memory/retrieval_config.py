@@ -5,7 +5,7 @@ thresholds, strategy selection, hierarchical retriever, and
 query-specific re-ranking.
 """
 
-from typing import Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,13 +16,13 @@ from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
 logger = get_logger(__name__)
 
-_WEIGHT_SUM_TOLERANCE = 1e-6
-_DEFAULT_RRF_K = 60
-_DEFAULT_DIVERSITY_LAMBDA = 0.7
-_DEFAULT_CANDIDATE_POOL_MULTIPLIER = 3
-_DEFAULT_MAX_WORKERS_PER_QUERY = 2
-_DEFAULT_RERANK_CACHE_TTL_SECONDS = 3600
-_DEFAULT_MAX_RETRY_COUNT = 2
+_WEIGHT_SUM_TOLERANCE: Final[float] = 1e-6
+_DEFAULT_RRF_K: Final[int] = 60
+_DEFAULT_DIVERSITY_LAMBDA: Final[float] = 0.7
+_DEFAULT_CANDIDATE_POOL_MULTIPLIER: Final[int] = 3
+_DEFAULT_MAX_WORKERS_PER_QUERY: Final[int] = 2
+_DEFAULT_RERANK_CACHE_TTL_SECONDS: Final[int] = 3600
+_DEFAULT_MAX_RETRY_COUNT: Final[int] = 2
 
 
 class MemoryRetrievalConfig(BaseModel):

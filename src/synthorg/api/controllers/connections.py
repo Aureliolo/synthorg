@@ -5,7 +5,7 @@ including on-demand health checks.
 """
 
 import copy
-from typing import Annotated
+from typing import Annotated, Final
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -60,10 +60,11 @@ from synthorg.observability.events.security import (
 _REVEAL_GENERIC_ERROR = "Connection or credential field not found"
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
-_MAX_BASE_URL_LEN = 2048
-_MAX_CRED_VALUE_LEN = 8192
+_MAX_BASE_URL_LEN: Final[int] = 2048
+_MAX_CRED_VALUE_LEN: Final[int] = 8192
 
 
 class CreateConnectionRequest(BaseModel):
@@ -153,7 +154,7 @@ class ConnectionsController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Connection]:
         """List all connections in the catalog (paginated).
 

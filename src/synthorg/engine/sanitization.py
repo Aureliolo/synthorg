@@ -7,6 +7,7 @@ context.
 """
 
 import re
+from typing import Final
 
 _PATH_PATTERN = re.compile(
     # Quoted Windows paths (handles spaces in paths like Program Files)
@@ -59,7 +60,10 @@ _PROMPT_INJECTION_PATTERN = re.compile(
 )
 
 
-def sanitize_message(raw: str, *, max_length: int = 200) -> str:
+_DEFAULT_MAX_LENGTH: Final[int] = 200
+
+
+def sanitize_message(raw: str, *, max_length: int = _DEFAULT_MAX_LENGTH) -> str:
     """Redact paths/URLs/injection markers, strip non-printable chars, cap length.
 
     Args:

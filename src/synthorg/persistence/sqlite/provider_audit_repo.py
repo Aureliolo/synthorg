@@ -28,6 +28,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
     format_iso_utc,
     parse_iso_utc,
 )
+from synthorg.persistence.provider_audit_protocol import _DEFAULT_LIST_LIMIT_50
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -113,7 +114,7 @@ class SQLiteProviderAuditRepo:
         *,
         provider_name: NotBlankStr,
         after_id: int | None = None,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
         """List events for one provider, newest first, with ``has_more`` overflow."""
         if limit < 1:

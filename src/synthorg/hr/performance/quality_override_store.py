@@ -5,7 +5,7 @@ by checking ``expires_at`` at query time.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import (
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-_DEFAULT_MAX_OVERRIDES = 10_000
+_DEFAULT_MAX_OVERRIDES: Final[int] = 10_000
 
 
 class QualityOverrideStore:

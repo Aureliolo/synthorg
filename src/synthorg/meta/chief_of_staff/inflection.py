@@ -5,7 +5,7 @@ significant metric changes that exceed configurable thresholds.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import OrgInflection
@@ -17,8 +17,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = get_logger(__name__)
+_DEFAULT_WARNING_THRESHOLD: Final[float] = 0.15
+_DEFAULT_CRITICAL_THRESHOLD: Final[float] = 0.3
 
-_EPSILON = 1e-9
+_EPSILON: Final[float] = 1e-9
 
 
 def _perf_quality(s: OrgSignalSnapshot) -> float:
@@ -77,8 +79,8 @@ class OrgInflectionDetector:
     def __init__(
         self,
         *,
-        warning_threshold: float = 0.15,
-        critical_threshold: float = 0.30,
+        warning_threshold: float = _DEFAULT_WARNING_THRESHOLD,
+        critical_threshold: float = _DEFAULT_CRITICAL_THRESHOLD,
     ) -> None:
         self._warning = warning_threshold
         self._critical = critical_threshold

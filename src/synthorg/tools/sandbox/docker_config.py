@@ -1,7 +1,7 @@
 """Docker sandbox configuration model."""
 
 import re
-from typing import Any, Literal, Self
+from typing import Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -22,8 +22,8 @@ logger = get_logger(__name__)
 
 _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 _MIN_PORT = 1
-_MAX_PORT = 65535
-_HOST_PORT_PARTS = 2
+_MAX_PORT: Final[int] = 65535
+_HOST_PORT_PARTS: Final[int] = 2
 
 # Docker tmpfs size syntax: positive integer, optional k/m/g suffix
 # (case-insensitive).  Rejects leading zeros, negatives, and unknown

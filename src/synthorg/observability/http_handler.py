@@ -11,7 +11,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
@@ -20,6 +20,12 @@ from synthorg.observability.redaction import safe_error_description
 
 if TYPE_CHECKING:
     from synthorg.observability.config import SinkConfig
+
+
+_DEFAULT_BATCH_SIZE: Final[int] = 100
+_DEFAULT_FLUSH_INTERVAL_SECONDS: Final[float] = 5.0
+_DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
+_DEFAULT_MAX_RETRIES: Final[int] = 3
 
 
 class HttpBatchHandler(logging.Handler):
@@ -43,10 +49,10 @@ class HttpBatchHandler(logging.Handler):
         url: str,
         *,
         headers: tuple[tuple[str, str], ...] = (),
-        batch_size: int = 100,
-        flush_interval: float = 5.0,
-        timeout: float = 10.0,
-        max_retries: int = 3,
+        batch_size: int = _DEFAULT_BATCH_SIZE,
+        flush_interval: float = _DEFAULT_FLUSH_INTERVAL_SECONDS,
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+        max_retries: int = _DEFAULT_MAX_RETRIES,
     ) -> None:
         super().__init__()
         self._url = url

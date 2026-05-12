@@ -2,6 +2,7 @@
 
 import hashlib
 import struct
+from typing import Final
 
 from synthorg.client.models import ClientFeedback, ReviewContext
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -9,6 +10,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.client import CLIENT_REVIEW_COMPLETED
 
 logger = get_logger(__name__)
+_DEFAULT_PASSING_SCORE: Final[float] = 0.7
 
 
 class ScoredFeedback:
@@ -38,7 +40,7 @@ class ScoredFeedback:
         self,
         *,
         client_id: NotBlankStr,
-        passing_score: float = 0.7,
+        passing_score: float = _DEFAULT_PASSING_SCORE,
         strictness_multiplier: float = 1.0,
     ) -> None:
         """Initialize the scored feedback strategy.

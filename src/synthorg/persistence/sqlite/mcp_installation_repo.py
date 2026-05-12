@@ -20,7 +20,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
     PERSISTENCE_MCP_INSTALLATION_SAVE_FAILED,
 )
-from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 
 logger = get_logger(__name__)
@@ -106,7 +110,7 @@ class SQLiteMcpInstallationRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
         """Return up to ``limit`` recorded installations, oldest-first.

@@ -5,7 +5,7 @@ quality score from the performance tracker.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_TOP_N = 3
+_DEFAULT_TOP_N: Final[int] = 3
 
 
 class RoleTopPerformers:

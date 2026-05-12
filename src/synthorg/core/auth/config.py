@@ -1,12 +1,12 @@
 """Authentication configuration."""
 
-from typing import Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
-MIN_SECRET_LENGTH = 32
+MIN_SECRET_LENGTH: Final[int] = 32
 DEFAULT_COOKIE_NAME = "session"
 DEFAULT_CSRF_COOKIE_NAME = "csrf_token"
 DEFAULT_CSRF_HEADER_NAME = "x-csrf-token"

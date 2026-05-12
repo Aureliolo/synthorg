@@ -7,7 +7,7 @@ yields SUCCESS with the observed elapsed time.
 """
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
@@ -34,6 +34,8 @@ if TYPE_CHECKING:
     from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 
 logger = get_logger(__name__)
+_DEFAULT_CANARY_FRACTION: Final[float] = 0.2
+_DEFAULT_CHECK_INTERVAL_HOURS: Final[float] = 4.0
 
 
 class CanarySubsetRollout:
@@ -51,11 +53,11 @@ class CanarySubsetRollout:
     def __init__(  # noqa: PLR0913
         self,
         *,
-        canary_fraction: float = 0.2,
+        canary_fraction: float = _DEFAULT_CANARY_FRACTION,
         clock: Clock | None = None,
         roster: OrgRoster | None = None,
         snapshot_builder: SnapshotBuilder | None = None,
-        check_interval_hours: float = 4.0,
+        check_interval_hours: float = _DEFAULT_CHECK_INTERVAL_HOURS,
         thresholds: RegressionThresholds | None = None,
     ) -> None:
         if canary_fraction <= 0.0 or canary_fraction > 1.0:

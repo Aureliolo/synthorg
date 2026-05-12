@@ -8,6 +8,7 @@ A2A-specific HMAC-SHA256 push notification verification.
 import hashlib
 import hmac
 import math
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
@@ -19,7 +20,7 @@ from synthorg.observability.events.a2a import (
 
 logger = get_logger(__name__)
 
-_DEFAULT_CLOCK_SKEW_SECONDS = 300
+_DEFAULT_CLOCK_SKEW_SECONDS: Final[int] = 300
 
 
 class A2APushVerifier:

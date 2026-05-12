@@ -5,7 +5,7 @@ confidence adjustment, org-level inflection consumption, and
 alert emission. All protocols are runtime-checkable.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -16,6 +16,9 @@ if TYPE_CHECKING:
         ProposalOutcome,
     )
     from synthorg.meta.models import ImprovementProposal, ProposalAltitude
+
+
+_DEFAULT_RECENT_OUTCOMES_LIMIT: Final[int] = 10
 
 
 # MemoryOutcomeStore impl in chief_of_staff/outcome_store.py + factory wiring
@@ -67,7 +70,7 @@ class OutcomeStore(Protocol):
         *,
         rule_name: NotBlankStr | None = None,
         altitude: ProposalAltitude | None = None,
-        limit: int = 10,  # lint-allow: magic-numbers -- protocol default arg.
+        limit: int = _DEFAULT_RECENT_OUTCOMES_LIMIT,
     ) -> tuple[ProposalOutcome, ...]:
         """Retrieve recent outcomes with optional filtering.
 

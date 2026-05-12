@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Callable  # noqa: TC003
+from typing import Final
 
 from synthorg.communication.loop_prevention.models import GuardCheckOutcome
 from synthorg.observability import get_logger
@@ -10,6 +11,7 @@ from synthorg.observability.events.delegation import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_WINDOW_SECONDS: Final[int] = 60
 
 _MECHANISM = "dedup"
 
@@ -35,7 +37,7 @@ class DelegationDeduplicator:
 
     def __init__(
         self,
-        window_seconds: int = 60,
+        window_seconds: int = _DEFAULT_WINDOW_SECONDS,
         *,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:

@@ -17,7 +17,9 @@ Design:
   behind the same protocol without changing any caller.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+
+_DEFAULT_MAX_RECENT: Final[int] = 10
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -82,7 +84,7 @@ class EvolutionOutcomeStore(Protocol):
         *,
         since: datetime,
         until: datetime,
-        max_recent: int = 10,
+        max_recent: int = _DEFAULT_MAX_RECENT,
     ) -> OrgEvolutionSummary:
         """Produce the org-wide evolution summary for the window.
 

@@ -22,6 +22,7 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence.fine_tune_protocol import _DEFAULT_LIST_LIMIT_50
 
 logger = get_logger(__name__)
 
@@ -209,7 +210,7 @@ class SQLiteFineTuneRunRepository:
     async def list_runs(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
         """List runs ordered by start time descending.
@@ -416,7 +417,7 @@ class SQLiteFineTuneCheckpointRepository:
     async def list_checkpoints(
         self,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[tuple[CheckpointRecord, ...], int]:
         """List checkpoints ordered by creation time descending.

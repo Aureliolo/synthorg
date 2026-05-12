@@ -4,7 +4,7 @@ import asyncio
 import ipaddress
 import math
 import re
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 from urllib.parse import urlparse
 
 import httpx
@@ -24,6 +24,7 @@ from synthorg.observability.events.notification import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0
 
 _SEVERITY_TO_PRIORITY: dict[NotificationSeverity, str] = {
     NotificationSeverity.INFO: "default",
@@ -99,7 +100,7 @@ class NtfyNotificationSink:
         server_url: str,
         topic: str,
         token: str | None = None,
-        webhook_timeout_seconds: float = 10.0,
+        webhook_timeout_seconds: float = _DEFAULT_WEBHOOK_TIMEOUT_SECONDS,
     ) -> None:
         _validate_outbound_url(server_url, "server_url")
         if not math.isfinite(webhook_timeout_seconds) or webhook_timeout_seconds <= 0:

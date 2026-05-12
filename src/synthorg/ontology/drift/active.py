@@ -4,7 +4,7 @@ Same logic as passive but intended to run at delegation time
 (triggered by ``EntityAlignmentGuard`` in validate/enforce mode).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.ontology.drift.passive import PassiveMonitorStrategy
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from synthorg.ontology.protocol import OntologyBackend
 
 logger = get_logger(__name__)
+_DEFAULT_THRESHOLD: Final[float] = 0.3
 
 
 class ActiveValidatorStrategy(PassiveMonitorStrategy):
@@ -34,7 +35,7 @@ class ActiveValidatorStrategy(PassiveMonitorStrategy):
         *,
         ontology: OntologyBackend,
         memory: MemoryBackend,
-        threshold: float = 0.3,
+        threshold: float = _DEFAULT_THRESHOLD,
     ) -> None:
         super().__init__(
             ontology=ontology,

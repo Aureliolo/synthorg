@@ -7,7 +7,7 @@ rate-limit middleware both consume these from the config layer so the
 144 layer violation).
 """
 
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -17,7 +17,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 
 logger = get_logger(__name__)
 
-_OVERRIDE_TUPLE_LEN = 2
+_OVERRIDE_TUPLE_LEN: Final[int] = 2
 
 
 def _warn_and_raise(msg: str, **ctx: object) -> None:

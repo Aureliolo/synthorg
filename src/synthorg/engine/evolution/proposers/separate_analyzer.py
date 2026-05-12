@@ -42,6 +42,8 @@ if TYPE_CHECKING:
     from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)
+_DEFAULT_TEMPERATURE: Final[float] = 0.3
+_DEFAULT_MAX_TOKENS: Final[int] = 2000
 
 _UNTRUSTED_TAGS: Final[tuple[str, ...]] = (TAG_TASK_FACT, TAG_UNTRUSTED_ARTIFACT)
 
@@ -253,8 +255,8 @@ class SeparateAnalyzerProposer:
         provider: CompletionProvider,
         *,
         model: str,
-        temperature: float = 0.3,
-        max_tokens: int = 2000,
+        temperature: float = _DEFAULT_TEMPERATURE,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
         summary_cap: int = _DEFAULT_SUMMARY_CAP,
         cost_tracker: CostTracker | None = None,
     ) -> None:

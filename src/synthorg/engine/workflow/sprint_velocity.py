@@ -4,7 +4,7 @@ Provides the ``VelocityRecord`` model and functions for recording
 velocity from completed sprints and computing rolling averages.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -141,9 +141,12 @@ def record_velocity(
     return record
 
 
+_DEFAULT_WINDOW: Final[int] = 3
+
+
 def calculate_average_velocity(
     records: Sequence[VelocityRecord],
-    window: int = 3,
+    window: int = _DEFAULT_WINDOW,
 ) -> float:
     """Compute rolling average of story_points_completed.
 

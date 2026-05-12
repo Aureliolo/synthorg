@@ -4,6 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable
@@ -26,7 +27,7 @@ class CostRecordRepository(Protocol):
         *,
         agent_id: NotBlankStr | None = None,
         task_id: NotBlankStr | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Query cost records with optional filters and pagination.
@@ -34,10 +35,10 @@ class CostRecordRepository(Protocol):
         Args:
             agent_id: Filter by agent identifier.
             task_id: Filter by task identifier.
-            limit: Maximum rows to return; ``None`` (default) preserves
-                fetch-all semantics.
-            offset: Rows to skip before applying *limit*; ignored when
-                *limit* is ``None``.
+            limit: Maximum rows to return.  Defaults to
+                ``DEFAULT_LIST_LIMIT``; pass a larger positive integer
+                for a wider window.
+            offset: Rows to skip before applying *limit*.
 
         Returns:
             Matching cost records as a tuple.

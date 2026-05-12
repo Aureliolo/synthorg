@@ -1,7 +1,7 @@
 """Agent-driven intake strategy using a completion provider."""
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import ValidationError
 
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_TOKENS: Final[int] = 512
 
 
 _DEFAULT_PERSONA = (
@@ -64,7 +65,7 @@ class AgentIntake:
         requested_by: NotBlankStr = "intake-agent",
         persona: str = _DEFAULT_PERSONA,
         temperature: float = 0.0,
-        max_tokens: int = 512,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
         cost_tracker: CostTracker | None = None,
     ) -> None:
         """Initialize the agent intake strategy.

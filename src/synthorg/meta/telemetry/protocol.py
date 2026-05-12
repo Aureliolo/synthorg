@@ -5,7 +5,7 @@ collecting and querying them, and generating threshold
 recommendations. All protocols are runtime-checkable.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.models import ProposalOutcome
@@ -15,6 +15,9 @@ if TYPE_CHECKING:
         AnonymizedOutcomeEvent,
         ThresholdRecommendation,
     )
+
+
+_DEFAULT_MIN_DEPLOYMENTS: Final[int] = 3
 
 
 # Impl in telemetry/emitter.py + telemetry/factory.py.
@@ -90,7 +93,7 @@ class AnalyticsCollector(Protocol):
     async def query_patterns(
         self,
         *,
-        min_deployments: int = 3,  # lint-allow: magic-numbers -- protocol default arg.
+        min_deployments: int = _DEFAULT_MIN_DEPLOYMENTS,
     ) -> tuple[AggregatedPattern, ...]:
         """Query cross-deployment patterns.
 

@@ -49,6 +49,7 @@ from synthorg.providers.models import (
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_PROBES_PER_CRITERION: Final[int] = 5
 
 _DECOMPOSER_TOOL_NAME: Final[str] = "emit_atomic_probes"
 _DECOMPOSER_TOOL_DESCRIPTION: Final[str] = (
@@ -211,7 +212,7 @@ class LLMCriteriaDecomposer:
         *,
         provider: CompletionProvider,
         model_id: NotBlankStr,
-        max_probes_per_criterion: int = 5,
+        max_probes_per_criterion: int = _DEFAULT_MAX_PROBES_PER_CRITERION,
         cost_tracker: CostTracker | None = None,
     ) -> None:
         """Store dependencies and enforce a positive cap."""

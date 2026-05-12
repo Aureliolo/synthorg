@@ -7,6 +7,8 @@ stay in ``synthorg.integrations.mcp_catalog``.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.integrations.mcp_catalog.installations import McpInstallation
@@ -30,7 +32,7 @@ class McpInstallationRepository(Protocol):
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
         """List recorded installations, optionally paginated.

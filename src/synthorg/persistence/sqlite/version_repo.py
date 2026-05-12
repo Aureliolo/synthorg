@@ -38,6 +38,7 @@ from synthorg.observability.events.versioning import (
     VERSION_LISTED,
     VERSION_SAVE_FAILED,
 )
+from synthorg.persistence.version_protocol import _DEFAULT_LIST_LIMIT_50
 from synthorg.versioning.models import VersionSnapshot
 
 if TYPE_CHECKING:
@@ -328,7 +329,7 @@ class SQLiteVersionRepository[T: BaseModel]:
         self,
         entity_id: NotBlankStr,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[VersionSnapshot[T], ...]:
         """List version snapshots ordered by version descending."""

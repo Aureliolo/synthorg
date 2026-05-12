@@ -5,7 +5,7 @@ similar to how ``ContextInjectionStrategy`` injects memory context.
 Respects the configured ``core_token_budget``.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.memory.injection import DefaultTokenEstimator, TokenEstimator
 from synthorg.observability import get_logger
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from synthorg.providers.models import ToolDefinition
 
 logger = get_logger(__name__)
+_DEFAULT_CORE_TOKEN_BUDGET: Final[int] = 2000
 
 
 def format_entity(entity: EntityDefinition) -> str:
@@ -70,7 +71,7 @@ class PromptInjectionStrategy:
         self,
         *,
         backend: OntologyBackend,
-        core_token_budget: int = 2000,
+        core_token_budget: int = _DEFAULT_CORE_TOKEN_BUDGET,
         token_estimator: TokenEstimator | None = None,
     ) -> None:
         self._backend = backend

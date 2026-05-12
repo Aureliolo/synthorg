@@ -10,6 +10,7 @@ accuracy by up to 63% on complex reasoning tasks.
 """
 
 import re
+from typing import Final
 
 from synthorg.core.enums import Complexity
 from synthorg.observability import get_logger
@@ -55,7 +56,7 @@ _HIGH_COMPLEXITY = frozenset({Complexity.COMPLEX, Complexity.EPIC})
 
 # Marker count thresholds per complexity tier.
 _COMPLEX_THRESHOLD = 1
-_SIMPLE_THRESHOLD = 3
+_SIMPLE_THRESHOLD: Final[int] = 3
 
 
 def count_epistemic_markers(text: str) -> int:
@@ -97,10 +98,13 @@ def should_preserve_message(
     return count >= threshold
 
 
+_DEFAULT_MARKER_MAX_CHARS: Final[int] = 200
+
+
 def extract_marker_sentences(
     text: str,
     *,
-    max_chars: int = 200,
+    max_chars: int = _DEFAULT_MARKER_MAX_CHARS,
 ) -> str:
     """Extract sentences containing epistemic markers.
 

@@ -6,7 +6,7 @@ tie-breaker, then returns the top K.
 """
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.hr.training.models import ContentType, TrainingItem  # noqa: TC001
 from synthorg.observability import get_logger
@@ -20,15 +20,15 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_TOP_K = 50
+_DEFAULT_TOP_K: Final[int] = 50
 
 # Scoring weights.
-_CONTENT_RICHNESS_WEIGHT = 0.4
-_DIVERSITY_WEIGHT = 0.3
+_CONTENT_RICHNESS_WEIGHT: Final[float] = 0.4
+_DIVERSITY_WEIGHT: Final[float] = 0.3
 # Deterministic SHA-256 tie-breaker weight (not actual recency).
 # Named for clarity: the score is a hash-derived stable ordering,
 # not a timestamp signal.
-_TIEBREAKER_WEIGHT = 0.3
+_TIEBREAKER_WEIGHT: Final[float] = 0.3
 
 
 class RelevanceScoreCuration:

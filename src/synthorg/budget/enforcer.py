@@ -8,7 +8,7 @@ as described in the Cost Controls section of the Operations design page.
 
 import copy
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget._enforcer_helpers import (
     _apply_downgrade,
@@ -83,6 +83,7 @@ if TYPE_CHECKING:
 from synthorg.budget.risk_enforcer import BudgetEnforcerRiskMixin
 
 logger = get_logger(__name__)
+_DEFAULT_TIMEOUT_SEC: Final[float] = 5.0
 
 
 class BudgetEnforcer(BudgetEnforcerRiskMixin):
@@ -143,7 +144,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 has_scorer=risk_scorer is not None,
             )
 
-    async def stop(self, *, timeout_sec: float = 5.0) -> None:
+    async def stop(self, *, timeout_sec: float = _DEFAULT_TIMEOUT_SEC) -> None:
         """Drain pending budget-notification tasks.
 
         Mirrors :meth:`ApprovalTimeoutScheduler.stop` so the

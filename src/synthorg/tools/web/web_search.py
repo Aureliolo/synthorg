@@ -6,7 +6,7 @@ a provider at construction time (e.g. via MCP bridge or a custom
 implementation).
 """
 
-from typing import Any, ClassVar, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -23,6 +23,8 @@ from synthorg.tools.web._args import WebSearchArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
 
 logger = get_logger(__name__)
+
+_DEFAULT_MAX_RESULTS: Final[int] = 10
 
 
 class SearchResult(BaseModel):
@@ -55,7 +57,7 @@ class WebSearchProvider(Protocol):
     async def search(
         self,
         query: str,
-        max_results: int = 10,  # lint-allow: magic-numbers -- protocol default arg.
+        max_results: int = _DEFAULT_MAX_RESULTS,
     ) -> list[SearchResult]:
         """Execute a web search query.
 

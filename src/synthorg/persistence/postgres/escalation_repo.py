@@ -26,6 +26,8 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationStatus,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
+    _DEFAULT_LIMIT,
+    _DEFAULT_OFFSET,
     EscalationQueueStore,
 )
 from synthorg.communication.conflict_resolution.models import Conflict
@@ -38,9 +40,6 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
-
-_DEFAULT_LIMIT = 50
-_DEFAULT_OFFSET = 0
 
 # Postgres unquoted identifier regex (defence-in-depth for LISTEN /
 # UNLISTEN arg interpolation in ``subscribe_notifications``).

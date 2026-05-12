@@ -2,6 +2,8 @@
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
@@ -46,7 +48,7 @@ class SsrfViolationRepository(Protocol):
         self,
         *,
         status: SsrfViolationStatus | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[SsrfViolation, ...]:
         """List violations, optionally filtered by status.
 

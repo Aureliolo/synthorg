@@ -19,7 +19,7 @@ import sys
 import time
 import types  # noqa: TC003 -- used in runtime-visible annotation
 from collections.abc import Callable, Coroutine, Mapping, Sequence
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,6 +39,8 @@ from synthorg.observability.events.execution import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_GRACE_SECONDS: Final[float] = 30.0
+_DEFAULT_CLEANUP_SECONDS: Final[float] = 5.0
 
 CleanupCallback = Callable[[], Coroutine[Any, Any, None]]
 """Async callback invoked during shutdown cleanup phase."""
@@ -141,8 +143,8 @@ class CooperativeTimeoutStrategy:
     def __init__(
         self,
         *,
-        grace_seconds: float = 30.0,
-        cleanup_seconds: float = 5.0,
+        grace_seconds: float = _DEFAULT_GRACE_SECONDS,
+        cleanup_seconds: float = _DEFAULT_CLEANUP_SECONDS,
     ) -> None:
         if grace_seconds <= 0:
             msg = f"grace_seconds must be positive, got {grace_seconds}"

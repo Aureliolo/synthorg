@@ -1,7 +1,7 @@
 """LLM-backed requirement generator."""
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import ValidationError
 
@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
+_DEFAULT_TEMPERATURE: Final[float] = 0.7
+_DEFAULT_MAX_TOKENS: Final[int] = 2048
 
 
 _DEFAULT_PERSONA = (
@@ -53,8 +55,8 @@ class LLMGenerator:
         provider: CompletionProvider,
         model: NotBlankStr,
         persona: str = _DEFAULT_PERSONA,
-        temperature: float = 0.7,
-        max_tokens: int = 2048,
+        temperature: float = _DEFAULT_TEMPERATURE,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
         cost_tracker: CostTracker | None = None,
     ) -> None:
         """Initialize the LLM generator.

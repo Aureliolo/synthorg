@@ -3,7 +3,7 @@
 Shares memory with agents of the same role.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.memory.models import MemoryStoreRequest
 from synthorg.observability import get_logger, safe_error_description
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
+_DEFAULT_MAX_TARGETS: Final[int] = 10
 
 
 class RoleScopedPropagation:
@@ -28,7 +29,7 @@ class RoleScopedPropagation:
             (default 10).
     """
 
-    def __init__(self, max_targets: int = 10) -> None:
+    def __init__(self, max_targets: int = _DEFAULT_MAX_TARGETS) -> None:
         """Initialize role-scoped propagation strategy.
 
         Args:

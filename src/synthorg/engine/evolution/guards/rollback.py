@@ -1,6 +1,6 @@
 """RollbackGuard -- monitors post-adaptation performance for regression."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
 from synthorg.observability import get_logger
@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
+_DEFAULT_WINDOW_TASKS: Final[int] = 20
+_DEFAULT_REGRESSION_THRESHOLD: Final[float] = 0.1
 
 
 class RollbackGuard:
@@ -25,8 +27,8 @@ class RollbackGuard:
 
     def __init__(
         self,
-        window_tasks: int = 20,
-        regression_threshold: float = 0.1,
+        window_tasks: int = _DEFAULT_WINDOW_TASKS,
+        regression_threshold: float = _DEFAULT_REGRESSION_THRESHOLD,
     ) -> None:
         """Initialize RollbackGuard.
 

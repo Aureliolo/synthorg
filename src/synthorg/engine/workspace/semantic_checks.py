@@ -7,7 +7,7 @@ Files with syntax errors are silently skipped (logged at DEBUG).
 
 import ast
 from collections import Counter
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -71,7 +71,7 @@ def _all_name_references(tree: ast.Module) -> set[str]:
     return refs
 
 
-_VARIADIC_ARG_SENTINEL = 999
+_VARIADIC_ARG_SENTINEL: Final[int] = 999
 
 
 def _function_min_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:

@@ -28,12 +28,14 @@ class TestMemoryConsolidationPromptContract:
         from synthorg.memory.consolidation import abstractive
 
         source = inspect.getsource(abstractive)
-        # Match either a default-value binding ``temperature=0.3`` or a
-        # typed default ``temperature: float = 0.3`` so the regex
-        # survives reflow between keyword-only calls and signature
-        # annotations.
+        # Match either a direct default-value binding (``temperature=0.3``,
+        # ``temperature: float = 0.3``) OR a module-level Final constant
+        # of the form ``_DEFAULT_TEMPERATURE: Final[float] = 0.3`` that
+        # the function default references. Either pattern pins the value
+        # to a single explicit literal so drift is detectable.
         assert re.search(
-            r"temperature\s*(?::\s*[A-Za-z_][\w\[\], ]*)?\s*=\s*[-+]?[\d.]+",
+            r"(temperature\s*(?::\s*[A-Za-z_][\w\[\], ]*)?\s*=\s*[-+]?[\d.]+"
+            r"|_DEFAULT_TEMPERATURE\s*:\s*Final\[float\]\s*=\s*[-+]?[\d.]+)",
             source,
         ), (
             "abstractive consolidation must bind temperature to an "

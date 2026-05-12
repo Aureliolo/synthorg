@@ -5,7 +5,7 @@ Uses ephemeral pull consumers with ``DeliverPolicy.ALL`` and
 durable consumer state.
 """
 
-from typing import Any
+from typing import Any, Final
 
 from synthorg.communication.bus._nats_channels import (
     resolve_channel_or_raise,
@@ -23,6 +23,9 @@ from synthorg.observability.events.communication import (
 )
 
 logger = get_logger(__name__)
+
+_DEFAULT_BATCH_SIZE: Final[int] = 100
+_DEFAULT_FETCH_TIMEOUT_SECONDS: Final[float] = 0.5
 
 
 async def create_history_scan_consumer(
@@ -71,8 +74,8 @@ async def collect_history_batches(
     subject: str,
     stream_name: str,
     *,
-    batch_size: int = 100,
-    fetch_timeout_seconds: float = 0.5,
+    batch_size: int = _DEFAULT_BATCH_SIZE,
+    fetch_timeout_seconds: float = _DEFAULT_FETCH_TIMEOUT_SECONDS,
 ) -> list[Message]:
     """Drain the history consumer into a list, stopping on idle timeout.
 
@@ -154,8 +157,8 @@ async def scan_stream_for_subject(  # noqa: PLR0913
     *,
     subject: str,
     max_to_return: int,
-    batch_size: int = 100,
-    fetch_timeout_seconds: float = 0.5,
+    batch_size: int = _DEFAULT_BATCH_SIZE,
+    fetch_timeout_seconds: float = _DEFAULT_FETCH_TIMEOUT_SECONDS,
 ) -> list[Message]:
     """Collect the most recent messages on a subject, oldest-first.
 
@@ -200,8 +203,8 @@ async def get_channel_history(
     channel_name: str,
     *,
     limit: int | None = None,
-    batch_size: int = 100,
-    fetch_timeout_seconds: float = 0.5,
+    batch_size: int = _DEFAULT_BATCH_SIZE,
+    fetch_timeout_seconds: float = _DEFAULT_FETCH_TIMEOUT_SECONDS,
 ) -> tuple[Message, ...]:
     """Get message history for a channel.
 

@@ -2,7 +2,7 @@
 
 import math
 from collections import defaultdict
-from typing import Annotated, Self
+from typing import Annotated, Final, Self
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
@@ -31,6 +31,7 @@ from synthorg.observability.events.api import (
 )
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 class AgentSpending(BaseModel):
@@ -299,7 +300,7 @@ class BudgetController(Controller):
         agent_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
         task_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> CostRecordListResponse:
         """List cost records with optional filters and summaries.
 

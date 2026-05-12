@@ -13,7 +13,7 @@ hybrid selections are downgraded to plan_execute.  An optional
 ``hybrid_fallback`` can redirect hybrid to another loop type.
 """
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -48,6 +48,9 @@ _BUILDABLE_LOOP_TYPES: frozenset[str] = frozenset(
     {"react", "plan_execute", "hybrid"},
 )
 """Loop types that ``build_execution_loop`` can instantiate."""
+
+_DEFAULT_BUDGET_TIGHT_THRESHOLD: Final[int] = 80
+"""Default budget utilization threshold for tight-budget downgrade."""
 
 
 class AutoLoopRule(BaseModel):
@@ -115,7 +118,7 @@ class AutoLoopConfig(BaseModel):
         description="Complexity-to-loop mapping rules",
     )
     budget_tight_threshold: int = Field(
-        default=80,
+        default=_DEFAULT_BUDGET_TIGHT_THRESHOLD,
         ge=0,
         le=100,
         description="Budget utilization % that triggers tight-budget mode",
@@ -230,7 +233,7 @@ def select_loop_type(  # noqa: PLR0913
     complexity: Complexity,
     rules: tuple[AutoLoopRule, ...],
     budget_utilization_pct: float | None = None,
-    budget_tight_threshold: int = 80,
+    budget_tight_threshold: int = _DEFAULT_BUDGET_TIGHT_THRESHOLD,
     hybrid_fallback: str | None = None,
     default_loop_type: str = "react",
 ) -> str:

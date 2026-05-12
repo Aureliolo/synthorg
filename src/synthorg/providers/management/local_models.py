@@ -32,7 +32,7 @@ _DELETE_TIMEOUT_SECONDS: float = 30.0
 _HTTP_OK: int = 200
 _HTTP_NOT_FOUND: int = 404
 _HTTP_CLIENT_ERROR: int = 400
-_OLLAMA_ERROR_MAX_LEN: Final[int] = 200  # lint-allow: magic-numbers -- internal cap
+_OLLAMA_ERROR_MAX_LEN: Final[int] = 200
 
 # POSIX-style absolute paths (``/var/lib/ollama/models/x.bin``).  The
 # segment class includes a literal space so paths like

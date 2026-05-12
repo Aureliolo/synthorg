@@ -26,7 +26,7 @@ import hashlib
 import hmac
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import httpx
 import rfc3161_client
@@ -52,6 +52,8 @@ from synthorg.observability.events.security import (
 )
 
 logger = get_logger(__name__)
+
+_DEFAULT_TIMEOUT_SECONDS: Final[float] = 5.0
 
 _HASH_ALGORITHMS: dict[str, Any] = {
     "sha256": _rfc_base.HashAlgorithm.SHA256,
@@ -159,7 +161,7 @@ class TsaClient:
         self,
         tsa_url: str,
         *,
-        timeout_sec: float = 5.0,
+        timeout_sec: float = _DEFAULT_TIMEOUT_SECONDS,
         hash_algorithm: str = "sha256",
         trusted_roots: Iterable[bytes] = (),
         http_client: httpx.AsyncClient | None = None,

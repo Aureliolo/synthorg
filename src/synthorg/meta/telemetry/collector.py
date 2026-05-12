@@ -5,6 +5,7 @@ computation to the aggregator module.
 """
 
 import asyncio
+from typing import Final
 
 from synthorg.meta.telemetry.aggregator import aggregate_patterns
 from synthorg.meta.telemetry.models import (  # noqa: TC001
@@ -20,7 +21,8 @@ from synthorg.observability.events.cross_deployment import (
 logger = get_logger(__name__)
 
 
-_DEFAULT_MAX_EVENTS = 100_000
+_DEFAULT_MAX_EVENTS: Final[int] = 100_000
+_DEFAULT_MIN_DEPLOYMENTS: Final[int] = 3
 
 
 class InMemoryAnalyticsCollector:
@@ -82,7 +84,7 @@ class InMemoryAnalyticsCollector:
     async def query_patterns(
         self,
         *,
-        min_deployments: int = 3,
+        min_deployments: int = _DEFAULT_MIN_DEPLOYMENTS,
     ) -> tuple[AggregatedPattern, ...]:
         """Query cross-deployment patterns from collected data.
 

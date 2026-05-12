@@ -1,6 +1,6 @@
 """Generic repository protocol for versioned entity persistence."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -8,6 +8,9 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.versioning.models import VersionSnapshot
+
+
+_DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 
 @runtime_checkable
@@ -104,7 +107,7 @@ class VersionRepository[T: BaseModel](Protocol):
         self,
         entity_id: NotBlankStr,
         *,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[VersionSnapshot[T], ...]:
         """List version snapshots for an entity.

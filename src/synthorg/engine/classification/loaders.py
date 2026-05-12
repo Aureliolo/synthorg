@@ -5,7 +5,7 @@ Provides ``SameTaskLoader`` (wraps a single execution result) and
 to enrich the detection context with delegation chain data).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_config import DetectionScope
 from synthorg.communication.delegation.models import DelegationRequest
@@ -27,8 +27,8 @@ logger = get_logger(__name__)
 # Internal constants by design: defensive caps on classification-tree
 # recursion depth and on the length of cross-agent evidence included
 # in findings; not exposed to the settings registry.
-_MAX_TREE_DEPTH = 5
-_SANITIZE_MAX_LENGTH = 2000
+_MAX_TREE_DEPTH: Final[int] = 5
+_SANITIZE_MAX_LENGTH: Final[int] = 2000
 
 
 class SameTaskLoader:

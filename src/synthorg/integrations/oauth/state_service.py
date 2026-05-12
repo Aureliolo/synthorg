@@ -16,7 +16,7 @@ already routes through ``handle_oauth_callback`` in
 this service's scope by design.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.integrations.connections.models import (
@@ -35,7 +35,7 @@ logger = get_logger(__name__)
 
 # Audit-safe correlation prefix length: long enough to deduplicate state
 # tokens across the audit chain without exposing the full secret.
-_STATE_TOKEN_PREFIX_LENGTH = 8  # lint-allow: magic-numbers -- audit prefix width
+_STATE_TOKEN_PREFIX_LENGTH: Final[int] = 8
 
 
 class OAuthStateService:

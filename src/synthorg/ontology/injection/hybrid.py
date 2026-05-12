@@ -5,7 +5,7 @@ tool-based access (extended entities via ``lookup_entity``).  This
 is the default and recommended strategy.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import ONTOLOGY_INJECTION_PREPARED
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from synthorg.providers.models import ChatMessage, ToolDefinition
 
 logger = get_logger(__name__)
+_DEFAULT_CORE_TOKEN_BUDGET: Final[int] = 2000
 
 
 class HybridInjectionStrategy:
@@ -44,7 +45,7 @@ class HybridInjectionStrategy:
         self,
         *,
         backend: OntologyBackend,
-        core_token_budget: int = 2000,
+        core_token_budget: int = _DEFAULT_CORE_TOKEN_BUDGET,
         tool_name: str = LOOKUP_ENTITY_TOOL_NAME,
         token_estimator: TokenEstimator | None = None,
     ) -> None:

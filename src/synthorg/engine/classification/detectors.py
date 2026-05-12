@@ -10,7 +10,7 @@ implementation -- full semantic analysis is planned for future iterations.
 
 import re
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_config import ErrorCategory
 from synthorg.engine.classification.models import (
@@ -33,10 +33,11 @@ logger = get_logger(__name__)
 
 # ── Constants ───────────────────────────────────────────────────
 
-_MIN_TEXTS_FOR_CONTRADICTION = 2
-_MIN_TEXTS_FOR_OMISSION = 4
-_MIN_MENTIONS_FOR_DRIFT = 2
-_HIGH_DRIFT_THRESHOLD = 50.0
+_MIN_TEXTS_FOR_CONTRADICTION: Final[int] = 2
+_MIN_TEXTS_FOR_OMISSION: Final[int] = 4
+_MIN_MENTIONS_FOR_DRIFT: Final[int] = 2
+_HIGH_DRIFT_THRESHOLD: Final[float] = 50.0
+_DEFAULT_NUMERICAL_DRIFT_THRESHOLD_PERCENT: Final[float] = 5.0
 
 # Words that are commonly capitalised but are not domain entities.
 _COMMON_CAPITALISED_WORDS = frozenset(
@@ -273,7 +274,7 @@ def detect_logical_contradictions(
 def detect_numerical_drift(
     conversation: tuple[ChatMessage, ...],
     *,
-    threshold_percent: float = 5.0,
+    threshold_percent: float = _DEFAULT_NUMERICAL_DRIFT_THRESHOLD_PERCENT,
 ) -> tuple[ErrorFinding, ...]:
     """Detect numerical value drift across assistant messages.
 

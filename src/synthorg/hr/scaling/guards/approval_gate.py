@@ -7,7 +7,7 @@ status later.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import NAMESPACE_URL, uuid5
 
 from synthorg.core.approval import ApprovalItem
@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
+_DEFAULT_EXPIRY_DAYS: Final[int] = 7
 
 # Map scaling actions to approval risk levels.
 _RISK_MAP: dict[ScalingActionType, ApprovalRiskLevel] = {
@@ -46,7 +47,7 @@ class ApprovalGateGuard:
         self,
         *,
         approval_store: ApprovalStoreProtocol,
-        expiry_days: int = 7,
+        expiry_days: int = _DEFAULT_EXPIRY_DAYS,
     ) -> None:
         if expiry_days <= 0:
             msg = f"expiry_days must be > 0, got {expiry_days}"

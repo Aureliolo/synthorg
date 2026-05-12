@@ -24,6 +24,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence.provider_audit_protocol import _DEFAULT_LIST_LIMIT_50
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -105,7 +106,7 @@ class PostgresProviderAuditRepo:
         *,
         provider_name: NotBlankStr,
         after_id: int | None = None,
-        limit: int = 50,
+        limit: int = _DEFAULT_LIST_LIMIT_50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
         """List events for one provider, newest first, with ``has_more``."""
         if limit < 1:

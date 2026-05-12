@@ -34,7 +34,7 @@ Usage::
 from collections.abc import (
     Mapping,  # noqa: TC003 -- runtime-needed via annotation introspection
 )
-from typing import LiteralString, overload
+from typing import Final, LiteralString, overload
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
@@ -43,7 +43,7 @@ from synthorg.observability.events.api import API_BOUNDARY_VALIDATION_FAILED
 
 logger = get_logger(__name__)
 
-_MAX_LOGGED_LOCATIONS = 5
+_MAX_LOGGED_LOCATIONS: Final[int] = 5
 
 
 @overload

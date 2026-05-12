@@ -7,7 +7,7 @@ separate LLM call.
 Never proposes identity axis (too risky for self-report).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
@@ -26,8 +26,10 @@ if TYPE_CHECKING:
     from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)
+_DEFAULT_TEMPERATURE: Final[float] = 0.3
+_DEFAULT_MAX_TOKENS: Final[int] = 1000
 
-_HIGH_QUALITY_THRESHOLD = 9.0
+_HIGH_QUALITY_THRESHOLD: Final[float] = 9.0
 """Quality score threshold for strategy adaptation proposals."""
 
 
@@ -50,8 +52,8 @@ class SelfReportProposer:
         provider: CompletionProvider,
         *,
         model: str,
-        temperature: float = 0.3,
-        max_tokens: int = 1000,
+        temperature: float = _DEFAULT_TEMPERATURE,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
     ) -> None:
         self._provider = provider
         self._model = model

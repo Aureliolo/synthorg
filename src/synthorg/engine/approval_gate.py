@@ -13,7 +13,7 @@ that the caller can inject into the conversation.
 
 import contextlib
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.approval.models import EscalationInfo  # noqa: TC001
@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext
 
 logger = get_logger(__name__)
+_DEFAULT_INTERRUPT_TIMEOUT_SECONDS: Final[float] = 300.0
 
 
 class ApprovalGate:
@@ -70,7 +71,7 @@ class ApprovalGate:
         notification_dispatcher: NotificationDispatcher | None = None,
         event_hub: EventStreamHub | None = None,
         interrupt_store: InterruptStore | None = None,
-        interrupt_timeout_seconds: float = 300.0,
+        interrupt_timeout_seconds: float = _DEFAULT_INTERRUPT_TIMEOUT_SECONDS,
     ) -> None:
         self._park_service = park_service
         self._parked_context_repo = parked_context_repo

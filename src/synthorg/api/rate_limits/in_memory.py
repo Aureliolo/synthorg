@@ -26,8 +26,8 @@ from synthorg.observability.events.api import API_REQUEST_ERROR
 
 logger = get_logger(__name__)
 
-_GC_EVERY_N_ACQUIRES: Final[int] = 1024  # lint-allow: magic-numbers -- bootstrap
-_MIN_GC_HORIZON_SECONDS: Final[int] = 60  # lint-allow: magic-numbers -- bootstrap
+_GC_EVERY_N_ACQUIRES: Final[int] = 1024
+_MIN_GC_HORIZON_SECONDS: Final[int] = 60
 
 
 @dataclass

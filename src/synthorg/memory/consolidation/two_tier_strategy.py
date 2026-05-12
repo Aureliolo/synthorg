@@ -8,7 +8,7 @@ Compresses raw ``DetailedExperience`` entries into
 import asyncio
 import builtins
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.models import ConsolidationResult
@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 
 _DETAILED_TAG = "detailed_experience"
 _COMPRESSED_TAG = "compressed_experience"
-_MAX_CONTEXT_ENTRIES = 5
+_MAX_CONTEXT_ENTRIES: Final[int] = 5
 
 
 class TwoTierCompressionStrategy:
