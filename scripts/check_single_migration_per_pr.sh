@@ -114,18 +114,16 @@ if [ -n "$FAILED_BACKEND" ]; then
         echo "  - $f" >&2
     done
     echo "" >&2
-    echo "To fix: restore atlas.sum from the base branch, delete all PR" >&2
-    echo "migration files, then regenerate a single consolidated migration:" >&2
+    echo "To fix: delete the extra PR-local revision files and consolidate" >&2
+    echo "their effect into a single new revision per backend." >&2
     echo "" >&2
     for REVISIONS_DIR in "${REVISIONS_DIRS[@]}"; do
-        echo "  git restore --source='$BASE' -- '$REVISIONS_DIR/atlas.sum'" >&2
+        echo "  git restore --source='$BASE' -- '$REVISIONS_DIR/'" >&2
     done
     echo "" >&2
-    echo "  # Delete PR-local migration files, then regenerate:" >&2
-    echo "  atlas migrate diff --env sqlite <name>" >&2
-    echo "  atlas migrate diff --env postgres <name>" >&2
-    echo "" >&2
-    echo "Do NOT manually edit atlas.sum -- always restore from the base branch." >&2
+    echo "  # Then author a single new revision per affected backend:" >&2
+    echo "  src/synthorg/persistence/sqlite/revisions/<14-digit-ts>_<name>.sql" >&2
+    echo "  src/synthorg/persistence/postgres/revisions/<14-digit-ts>_<name>.sql" >&2
     exit 2
 fi
 

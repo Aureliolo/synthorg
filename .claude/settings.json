@@ -26,11 +26,6 @@
           },
           {
             "type": "command",
-            "command": "bash scripts/check_no_atlas_rehash.sh",
-            "timeout": 5000
-          },
-          {
-            "type": "command",
             "command": "bash scripts/check_no_baseline_update.sh",
             "timeout": 5000
           },

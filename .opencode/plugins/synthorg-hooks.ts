@@ -6,7 +6,6 @@
  *
  * Committed Claude Code hooks (from .claude/settings.json):
  *   PreToolUse (Bash): scripts/check_push_rebased.sh
- *   PreToolUse (Bash): scripts/check_no_atlas_rehash.sh
  *   PreToolUse (Bash): scripts/check_no_baseline_update.sh
  *   PreToolUse (Bash): scripts/check_bash_no_write.sh
  *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
@@ -293,7 +292,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             // perl -pi, gawk -i inplace). Bulk edits require explicit user
             // approval; the Edit tool with replace_all=false is the sanctioned
             // per-occurrence path. This check runs BEFORE other Bash hooks
-            // (push_rebased, atlas_rehash, bash_no_write, git_c_cwd) so a
+            // (push_rebased, baseline_update, bash_no_write, git_c_cwd) so a
             // bulk-edit block fails fast.
             const bulkOutcome = runHookScript(
               "scripts/check_no_bulk_edit.py",
@@ -353,29 +352,10 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               }
             }
 
-            // check_no_atlas_rehash.sh: block `atlas migrate hash` rehash.
-            // We invoke the hook for every bash command: a ``command.includes("atlas")``
-            // prefilter would let wrapper invocations (``migrate_hash``,
-            // ``migrate.hash``, shell aliases, subprocess wrappers) bypass the
-            // gate because those strings never contain the literal token
-            // ``atlas``. The script itself is the authoritative filter and
-            // exits 0 quickly for unrelated commands.
-            {
-              const outcome = runHookScript(
-                "scripts/check_no_atlas_rehash.sh",
-                { command },
-                5000,
-              );
-              const denyReason = denyReasonFromOutcome(outcome);
-              if (denyReason) {
-                throw new Error(denyReason);
-              }
-            }
-
             // check_no_baseline_update.sh: block --update-baseline /
-            // --refresh-baseline invocations on gate scripts. Like the atlas
-            // hook above we invoke unconditionally because aliases /
-            // subprocess wrappers could hide the literal flag tokens.
+            // --refresh-baseline invocations on gate scripts.  Invoke
+            // unconditionally because aliases / subprocess wrappers could
+            // hide the literal flag tokens.
             {
               const outcome = runHookScript(
                 "scripts/check_no_baseline_update.sh",

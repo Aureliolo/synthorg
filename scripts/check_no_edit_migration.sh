@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# PreToolUse hook: block Edit/Write on Atlas migration files.
-# Migrations must be generated from schema.sql via `atlas migrate diff`,
-# not hand-edited.
+# PreToolUse hook: block Edit/Write on already-applied revision files.
+# Revisions are immutable once committed; if you need different behaviour
+# author a new revision instead of editing an existing one.
 #
 # Exit behavior:
 #   - Non-migration files: exit 0 (allow)
@@ -23,7 +23,7 @@ REVISIONS_DIRS=(
 
 for REVISIONS_DIR in "${REVISIONS_DIRS[@]}"; do
     if [[ "$FILE_PATH" == */"$REVISIONS_DIR/"*.sql || "$FILE_PATH" == "$REVISIONS_DIR/"*.sql ]]; then
-        REASON="Do not manually edit migration files. Edit schema.sql and regenerate: atlas migrate diff --env sqlite <name> / atlas migrate diff --env postgres <name>"
+        REASON="Do not manually edit revision files. Edit schema.sql and author a new revision file (or regenerate the seed via the squash workflow if no users depend on the prior chain)."
         cat <<ENDJSON
 {
   "hookSpecificOutput": {
