@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import type { WizardMode } from '@/stores/setup-wizard'
@@ -57,13 +57,6 @@ export function WizardModeStep() {
   const wizardMode = useSetupWizardStore((s) => s.wizardMode)
   const setWizardMode = useSetupWizardStore((s) => s.setWizardMode)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
-
-  // Mark mode step complete immediately: the default mode ('guided')
-  // is a valid selection, so Continue is enabled on mount. Switching
-  // mode also calls markStepComplete in handleSelect.
-  useEffect(() => {
-    markStepComplete('mode')
-  }, [markStepComplete])
 
   const handleSelect = useCallback(
     (mode: WizardMode) => {
