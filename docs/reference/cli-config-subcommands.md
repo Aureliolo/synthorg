@@ -12,7 +12,7 @@ On-demand reference for `synthorg config` operators. The short summary in `cli/C
 | Subcommand | Description |
 |------------|-------------|
 | `show` | Display all current settings (default when no subcommand) |
-| `get <key>` | Get a single config value (40 gettable keys) |
+| `get <key>` | Get a single config value (42 gettable keys; includes the read-only `memory_backend` and `persistence_backend`) |
 | `set <key> <value>` | Set a config value (40 settable keys; compose-affecting keys trigger regeneration) |
 | `unset <key>` | Reset a key to its default value |
 | `list` | Show all keys with resolved value and source (env / config / default) |

@@ -191,12 +191,13 @@ func verifyAndPullStartImages(_ *cobra.Command, ctx context.Context, info docker
 		state.VerifiedImageTag = state.ImageTag
 		if err := config.Save(state); err != nil {
 			errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
+		} else {
+			reloaded, reloadErr := config.Load(GetGlobalOpts(ctx).DataDir)
+			if reloadErr != nil {
+				return state, fmt.Errorf("reloading config after verification: %w", reloadErr)
+			}
+			state = reloaded
 		}
-		reloaded, reloadErr := config.Load(GetGlobalOpts(ctx).DataDir)
-		if reloadErr != nil {
-			return state, fmt.Errorf("reloading config after verification: %w", reloadErr)
-		}
-		state = reloaded
 	}
 
 	out.Blank()

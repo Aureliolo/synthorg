@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -30,9 +31,6 @@ func fullSandboxedPins(fineTuning bool, variant string) map[string]string {
 func TestHasSynthOrgDigests(t *testing.T) {
 	t.Parallel()
 
-	missingSidecar := fullSandboxedPins(false, "")
-	delete(missingSidecar, "sidecar")
-
 	cases := []struct {
 		name  string
 		state config.State
@@ -60,9 +58,14 @@ func TestHasSynthOrgDigests(t *testing.T) {
 		{
 			name: "rejects missing pin for enabled image",
 			state: config.State{
-				ImageTag:         "0.8.3-dev.15",
-				Sandbox:          true,
-				VerifiedDigests:  missingSidecar,
+				ImageTag: "0.8.3-dev.15",
+				Sandbox:  true,
+				VerifiedDigests: map[string]string{
+					"backend": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+					"web":     "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+					"sandbox": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+					// sidecar intentionally missing
+				},
 				VerifiedImageTag: "0.8.3-dev.15",
 			},
 			want: false,
@@ -167,15 +170,23 @@ func TestMergeVerifiedDigests_NilInputsReturnNil(t *testing.T) {
 
 func TestMergeVerifiedDigests_DoesNotMutateInputs(t *testing.T) {
 	t.Parallel()
-	existing := map[string]string{"backend": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}
-	fresh := map[string]string{"backend": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}
+	existing := map[string]string{
+		"backend":                  "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+		"dhi:dhi.io/postgres:17.2": "sha256:aaaa000000000000000000000000000000000000000000000000000000000000",
+	}
+	fresh := map[string]string{
+		"backend": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		"web":     "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+	}
+	originalExisting := maps.Clone(existing)
+	originalFresh := maps.Clone(fresh)
 
 	_ = mergeVerifiedDigests(existing, fresh)
 
-	if existing["backend"] != "sha256:0000000000000000000000000000000000000000000000000000000000000000" {
-		t.Error("mergeVerifiedDigests must not mutate the existing map")
+	if !maps.Equal(existing, originalExisting) {
+		t.Errorf("mergeVerifiedDigests must not mutate the existing map; got %v, want %v", existing, originalExisting)
 	}
-	if fresh["backend"] != "sha256:1111111111111111111111111111111111111111111111111111111111111111" {
-		t.Error("mergeVerifiedDigests must not mutate the fresh map")
+	if !maps.Equal(fresh, originalFresh) {
+		t.Errorf("mergeVerifiedDigests must not mutate the fresh map; got %v, want %v", fresh, originalFresh)
 	}
 }

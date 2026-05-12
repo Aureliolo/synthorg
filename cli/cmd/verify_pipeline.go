@@ -61,11 +61,9 @@ func verifyImagesWithCache(
 		// A miss replaces every prior SynthOrg pin (the bare-name keys),
 		// because the new tag's images have new digests and the OLD pin
 		// values are no longer trusted for the new refs.
-		for k := range merged {
-			if !strings.HasPrefix(k, "dhi:") {
-				delete(merged, k)
-			}
-		}
+		maps.DeleteFunc(merged, func(k, _ string) bool {
+			return !strings.HasPrefix(k, "dhi:")
+		})
 		maps.Copy(merged, pins)
 		res.SynthOrgReverified = true
 	}
@@ -81,11 +79,9 @@ func verifyImagesWithCache(
 		// moved (Renovate bump) or this is the first verification on
 		// this install. Either way OLD dhi:* values do not describe the
 		// images we just verified.
-		for k := range merged {
-			if strings.HasPrefix(k, "dhi:") {
-				delete(merged, k)
-			}
-		}
+		maps.DeleteFunc(merged, func(k, _ string) bool {
+			return strings.HasPrefix(k, "dhi:")
+		})
 		for _, r := range dhiResults {
 			if indexDigest, ok := verify.DHIPinnedIndexDigest(r.Image); ok {
 				merged["dhi:"+r.Image] = indexDigest

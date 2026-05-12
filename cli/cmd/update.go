@@ -395,8 +395,7 @@ func reexecUpdate(cmd *cobra.Command) error {
 
 	if runErr := c.Run(); runErr != nil {
 		// Preserve the child's exit code so the parent can propagate it.
-		var exitErr *exec.ExitError
-		if errors.As(runErr, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
 			return &ChildExitError{Code: exitErr.ExitCode()}
 		}
 		return fmt.Errorf("re-launching updated CLI: %w", runErr)

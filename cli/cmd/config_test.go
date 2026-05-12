@@ -307,7 +307,7 @@ func TestConfigShowAutoCleanup(t *testing.T) {
 
 	out := buf.String()
 	found := false
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.Contains(line, "Auto cleanup") {
 			found = true
 			if !strings.Contains(line, "false") {
