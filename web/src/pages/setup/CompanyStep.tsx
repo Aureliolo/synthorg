@@ -10,7 +10,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useStepCompletionSync } from './_hooks'
-import { validateCompanyStep } from '@/utils/setup-validation'
+import { graphemeLength, validateCompanyStep } from '@/utils/setup-validation'
 import { CURRENCY_OPTIONS } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
 import { ErrorCode } from '@/api/types/errors'
@@ -125,7 +125,7 @@ export function CompanyStep() {
           error={
             companyName.trim() === ''
               ? null
-              : companyName.trim().length > 200
+              : graphemeLength(companyName.trim()) > 200
                 ? 'Max 200 characters'
                 : null
           }
@@ -139,7 +139,7 @@ export function CompanyStep() {
           onChange={(e) => setCompanyDescription(e.currentTarget.value)}
           placeholder="Describe your organization (optional)"
           hint="Max 1000 characters"
-          error={companyDescription.length > 1000 ? 'Max 1000 characters' : null}
+          error={graphemeLength(companyDescription) > 1000 ? 'Max 1000 characters' : null}
         />
 
         <SelectField

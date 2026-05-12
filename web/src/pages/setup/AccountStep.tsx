@@ -62,6 +62,7 @@ export function AccountStep() {
     let lastErr: unknown = null
     const attemptErrors: string[] = []
     const MAX_ATTEMPTS = 2
+    const BACKOFF_MS = 500
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       try {
         const status = await withTimeout(getSetupStatus())
@@ -73,14 +74,15 @@ export function AccountStep() {
         if (cancelledRef.current) return
         lastErr = err
         attemptErrors.push(getErrorMessage(err))
+        if (attempt + 1 < MAX_ATTEMPTS) {
+          // Small backoff so a transient back-pressure response is not
+          // hammered into a second failure inside the same event tick.
+          await new Promise<void>((resolve) => window.setTimeout(resolve, BACKOFF_MS))
+          if (cancelledRef.current) return
+        }
       }
     }
     if (cancelledRef.current) return
-    // Log a single error after the loop with every attempt's message
-    // in a structured ``attempts`` array. The previous form logged
-    // attempt 1 at WARN and the final failure at ERROR, which split
-    // the retry sequence across two log levels and made diagnosis
-    // harder for operators tailing the ERROR stream.
     // SEC-1: dynamic strings (``attemptErrors`` entries, ``lastErr``
     // message) go through sanitizeForLog before reaching the log
     // pipeline.

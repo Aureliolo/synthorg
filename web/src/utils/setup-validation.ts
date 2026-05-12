@@ -53,17 +53,25 @@ interface CompanyStepInput {
 const MAX_COMPANY_NAME_LENGTH = 200
 const MAX_DESCRIPTION_LENGTH = 1000
 
+// `.length` counts UTF-16 code units, so a single emoji ("👨‍💻") would
+// consume up to 8 units against the 200-char limit. Spread iterates by code
+// point, which is the closest cheap approximation to user-visible characters
+// without pulling in Intl.Segmenter for non-Latin scripts.
+export function graphemeLength(s: string): number {
+  return [...s].length
+}
+
 export function validateCompanyStep(input: CompanyStepInput): CompanyStepValidationResult {
   const errors: string[] = []
   const trimmedName = input.companyName.trim()
 
   if (!trimmedName) {
     errors.push('Company name is required')
-  } else if (trimmedName.length > MAX_COMPANY_NAME_LENGTH) {
+  } else if (graphemeLength(trimmedName) > MAX_COMPANY_NAME_LENGTH) {
     errors.push(`Company name must be ${MAX_COMPANY_NAME_LENGTH} characters or less`)
   }
 
-  if (input.companyDescription.trim().length > MAX_DESCRIPTION_LENGTH) {
+  if (graphemeLength(input.companyDescription.trim()) > MAX_DESCRIPTION_LENGTH) {
     errors.push(`Description must be ${MAX_DESCRIPTION_LENGTH} characters or less`)
   }
 
