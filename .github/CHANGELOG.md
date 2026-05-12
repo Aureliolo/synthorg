@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.8.3](https://github.com/Aureliolo/synthorg/compare/v0.8.2...v0.8.3) (2026-05-12)
+
+
+### Features
+
+* harden gate baseline protection + block em-dashes at write time ([#1860](https://github.com/Aureliolo/synthorg/issues/1860)) ([b41f151](https://github.com/Aureliolo/synthorg/commit/b41f151ca00a27620b38fe69fa1a110587efd0c6))
+* **web:** eye-toggle on every password / secret field ([#1873](https://github.com/Aureliolo/synthorg/issues/1873)) ([9070387](https://github.com/Aureliolo/synthorg/commit/90703872300126a855cc7ee7d7ab3bae9e29ffe7))
+
+
+### Bug Fixes
+
+* **ci:** retry Docker push on Go net/http deadline + cancellation errors ([#1877](https://github.com/Aureliolo/synthorg/issues/1877)) ([23a0bfa](https://github.com/Aureliolo/synthorg/commit/23a0bfa8de23e787ee7b08758d6a3534f96a7f1f))
+* **cli:** render running-no-probe containers as healthy in doctor ([#1870](https://github.com/Aureliolo/synthorg/issues/1870)) ([6263795](https://github.com/Aureliolo/synthorg/commit/62637950f14dd86fc8d4b5124d5632802b5d1aaf))
+* restore unloaded and missing PR-review agents ([#1875](https://github.com/Aureliolo/synthorg/issues/1875)) ([db004fd](https://github.com/Aureliolo/synthorg/commit/db004fdcacf9d9b51a1e4b1ecc6d897c5ad49fbf)), closes [#1871](https://github.com/Aureliolo/synthorg/issues/1871)
+
+
+### Refactoring
+
+* bind authenticated user via ContextVar ([#1858](https://github.com/Aureliolo/synthorg/issues/1858)) ([57ed0b4](https://github.com/Aureliolo/synthorg/commit/57ed0b46798c88d1d27ee5bd5dae98fc5713a28e))
+* code-structure cleanup (sub-tasks D + F + G + H + I) ([#1859](https://github.com/Aureliolo/synthorg/issues/1859)) ([362e5c8](https://github.com/Aureliolo/synthorg/commit/362e5c8cf96d78722753734b7d9441b9d7d87ce5))
+* convert enum dispatch to registry pattern ([#1854](https://github.com/Aureliolo/synthorg/issues/1854)) ([e90550e](https://github.com/Aureliolo/synthorg/commit/e90550e2498dd18c18c56a3d1454e893a7647981))
+* drain no_magic_numbers baseline to zero via Final hoists ([#1856](https://github.com/Aureliolo/synthorg/issues/1856) phase 2) ([#1872](https://github.com/Aureliolo/synthorg/issues/1872)) ([ec8109e](https://github.com/Aureliolo/synthorg/commit/ec8109e326294ce8b164eb8984f64bd23660e929))
+* drain pagination + loop-init + kill-switch baselines ([#1857](https://github.com/Aureliolo/synthorg/issues/1857)) ([#1868](https://github.com/Aureliolo/synthorg/issues/1868)) ([115c3c2](https://github.com/Aureliolo/synthorg/commit/115c3c21f1d147a21cb7311c42507c579bbd86da))
+* **persistence:** replace Atlas with yoyo-migrations ([#1876](https://github.com/Aureliolo/synthorg/issues/1876)) ([1b7e975](https://github.com/Aureliolo/synthorg/commit/1b7e9757c071d2f3a1ca72fef66c0fc5407c6855)), closes [#1874](https://github.com/Aureliolo/synthorg/issues/1874)
+* protocols audit follow-up (REVIEW + fold pass) ([#1869](https://github.com/Aureliolo/synthorg/issues/1869)) ([af33ddb](https://github.com/Aureliolo/synthorg/commit/af33ddbfcd2519611807e8b4c2a73939260ba228))
+* protocols audit follow-up REMOVE pass ([#1867](https://github.com/Aureliolo/synthorg/issues/1867)) ([dd1eebc](https://github.com/Aureliolo/synthorg/commit/dd1eebce64bd1bcba3ca5eed97970bb0b62102f5))
+* tighten check_mock_spec gate, add mock_of[T], drain baseline ([#1862](https://github.com/Aureliolo/synthorg/issues/1862)) ([240a253](https://github.com/Aureliolo/synthorg/commit/240a2532fd942fac5e6a03bbf4bd6717722cfccf))
+* tighten check_no_magic_numbers for named module constants ([#1856](https://github.com/Aureliolo/synthorg/issues/1856)) ([#1866](https://github.com/Aureliolo/synthorg/issues/1866)) ([90c933b](https://github.com/Aureliolo/synthorg/commit/90c933b3b09503d1970ed960e458d7c64dc53ad4))
+
+
+### CI/CD
+
+* update apko lockfiles ([#1863](https://github.com/Aureliolo/synthorg/issues/1863)) ([2bd32e6](https://github.com/Aureliolo/synthorg/commit/2bd32e67714ffce0a4603d932ea9924a4884c62a))
+
 ## [0.8.2](https://github.com/Aureliolo/synthorg/compare/v0.8.1...v0.8.2) (2026-05-10)
 
 
