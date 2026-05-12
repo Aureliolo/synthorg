@@ -27,73 +27,79 @@ func fullSandboxedPins(fineTuning bool, variant string) map[string]string {
 	return pins
 }
 
-func TestHasSynthOrgDigests_RejectsTagMismatch(t *testing.T) {
+func TestHasSynthOrgDigests(t *testing.T) {
 	t.Parallel()
-	state := config.State{
-		ImageTag:         "0.8.3-dev.15",
-		Sandbox:          true,
-		VerifiedDigests:  fullSandboxedPins(false, ""),
-		VerifiedImageTag: "0.8.3-dev.14",
-	}
-	if hasSynthOrgDigests(state) {
-		t.Fatal("hasSynthOrgDigests must return false when VerifiedImageTag != ImageTag")
-	}
-}
 
-func TestHasSynthOrgDigests_RejectsMissingSentinel(t *testing.T) {
-	t.Parallel()
-	state := config.State{
-		ImageTag:        "0.8.3-dev.15",
-		Sandbox:         true,
-		VerifiedDigests: fullSandboxedPins(false, ""),
-	}
-	if hasSynthOrgDigests(state) {
-		t.Fatal("hasSynthOrgDigests must return false when VerifiedImageTag is empty (legacy state)")
-	}
-}
+	missingSidecar := fullSandboxedPins(false, "")
+	delete(missingSidecar, "sidecar")
 
-func TestHasSynthOrgDigests_RejectsMissingPin(t *testing.T) {
-	t.Parallel()
-	pins := fullSandboxedPins(false, "")
-	delete(pins, "sidecar")
-	state := config.State{
-		ImageTag:         "0.8.3-dev.15",
-		Sandbox:          true,
-		VerifiedDigests:  pins,
-		VerifiedImageTag: "0.8.3-dev.15",
-	}
-	if hasSynthOrgDigests(state) {
-		t.Fatal("hasSynthOrgDigests must return false when an enabled-image pin is missing")
-	}
-}
-
-func TestHasSynthOrgDigests_HitsWhenSentinelAndKeysMatch(t *testing.T) {
-	t.Parallel()
-	state := config.State{
-		ImageTag:         "0.8.3-dev.15",
-		Sandbox:          true,
-		FineTuning:       true,
-		VerifiedDigests:  fullSandboxedPins(true, config.FineTuneVariantGPU),
-		VerifiedImageTag: "0.8.3-dev.15",
-	}
-	if !hasSynthOrgDigests(state) {
-		t.Fatal("hasSynthOrgDigests must return true when sentinel and all enabled-image pins match")
-	}
-}
-
-func TestHasSynthOrgDigests_NoSandboxOnlyRequiresCoreImages(t *testing.T) {
-	t.Parallel()
-	state := config.State{
-		ImageTag: "0.8.3-dev.15",
-		Sandbox:  false,
-		VerifiedDigests: map[string]string{
-			"backend": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-			"web":     "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+	cases := []struct {
+		name  string
+		state config.State
+		want  bool
+	}{
+		{
+			name: "rejects tag mismatch",
+			state: config.State{
+				ImageTag:         "0.8.3-dev.15",
+				Sandbox:          true,
+				VerifiedDigests:  fullSandboxedPins(false, ""),
+				VerifiedImageTag: "0.8.3-dev.14",
+			},
+			want: false,
 		},
-		VerifiedImageTag: "0.8.3-dev.15",
+		{
+			name: "rejects missing sentinel (legacy state)",
+			state: config.State{
+				ImageTag:        "0.8.3-dev.15",
+				Sandbox:         true,
+				VerifiedDigests: fullSandboxedPins(false, ""),
+			},
+			want: false,
+		},
+		{
+			name: "rejects missing pin for enabled image",
+			state: config.State{
+				ImageTag:         "0.8.3-dev.15",
+				Sandbox:          true,
+				VerifiedDigests:  missingSidecar,
+				VerifiedImageTag: "0.8.3-dev.15",
+			},
+			want: false,
+		},
+		{
+			name: "hits when sentinel and all enabled-image pins match",
+			state: config.State{
+				ImageTag:         "0.8.3-dev.15",
+				Sandbox:          true,
+				FineTuning:       true,
+				VerifiedDigests:  fullSandboxedPins(true, config.FineTuneVariantGPU),
+				VerifiedImageTag: "0.8.3-dev.15",
+			},
+			want: true,
+		},
+		{
+			name: "hits when sandbox disabled and only core images pinned",
+			state: config.State{
+				ImageTag: "0.8.3-dev.15",
+				Sandbox:  false,
+				VerifiedDigests: map[string]string{
+					"backend": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+					"web":     "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+				},
+				VerifiedImageTag: "0.8.3-dev.15",
+			},
+			want: true,
+		},
 	}
-	if !hasSynthOrgDigests(state) {
-		t.Fatal("hasSynthOrgDigests must hit when sandbox is disabled and core images are pinned")
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := hasSynthOrgDigests(tc.state); got != tc.want {
+				t.Errorf("hasSynthOrgDigests() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

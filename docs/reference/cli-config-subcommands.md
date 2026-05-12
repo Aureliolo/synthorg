@@ -12,8 +12,8 @@ On-demand reference for `synthorg config` operators. The short summary in `cli/C
 | Subcommand | Description |
 |------------|-------------|
 | `show` | Display all current settings (default when no subcommand) |
-| `get <key>` | Get a single config value (37 gettable keys) |
-| `set <key> <value>` | Set a config value (37 settable keys; compose-affecting keys trigger regeneration) |
+| `get <key>` | Get a single config value (40 gettable keys) |
+| `set <key> <value>` | Set a config value (40 settable keys; compose-affecting keys trigger regeneration) |
 | `unset <key>` | Reset a key to its default value |
 | `list` | Show all keys with resolved value and source (env / config / default) |
 | `path` | Print the config file path |
@@ -23,11 +23,11 @@ On-demand reference for `synthorg config` operators. The short summary in `cli/C
 
 `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_start_after_wipe`, `auto_update_cli`, `backend_port`, `changelog_view`, `channel`, `color`, `docker_sock`, `fine_tuning`, `fine_tuning_variant`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`.
 
-Plus the tunables: `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_url`, `default_nats_stream_prefix`, `backup_create_timeout`, `backup_restore_timeout`, `health_check_timeout`, `self_update_http_timeout`, `self_update_api_timeout`, `tuf_fetch_timeout`, `attestation_http_timeout`, `image_verify_timeout`, `image_pull_attempts`, `image_pull_retry_delay`, `max_api_response_bytes`, `max_binary_bytes`, `max_archive_entry_bytes`.
+Plus the tunables: `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_stream_prefix`, `backup_create_timeout`, `backup_restore_timeout`, `health_check_timeout`, `self_update_http_timeout`, `self_update_api_timeout`, `tuf_fetch_timeout`, `attestation_http_timeout`, `image_verify_timeout`, `image_pull_attempts`, `image_pull_retry_delay`, `max_api_response_bytes`, `max_binary_bytes`, `max_archive_entry_bytes`.
 
 ### Compose-affecting keys (trigger automatic `compose.yml` regeneration)
 
-`backend_port`, `web_port`, `sandbox`, `docker_sock`, `image_tag`, `log_level`, `telemetry_opt_in`, `fine_tuning`, `fine_tuning_variant`, `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_url`, `default_nats_stream_prefix`.
+`backend_port`, `web_port`, `sandbox`, `docker_sock`, `image_tag`, `log_level`, `telemetry_opt_in`, `fine_tuning`, `fine_tuning_variant`, `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_stream_prefix`.
 
 Toggling `fine_tuning` on requires `sandbox=true` and amd64; validation runs at `config set` time so inconsistent combinations fail before the next `start`.
 

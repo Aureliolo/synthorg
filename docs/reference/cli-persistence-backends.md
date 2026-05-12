@@ -45,13 +45,13 @@ In `src/synthorg/api/app.py`: when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB
 
 `synthorg start` brings up Postgres first (via compose ordering), then the backend applies yoyo migrations on connection.  Yoyo runs in-process via the project's Python venv (no external binary in the runtime image); the `synthorg.persistence.migrations` module wraps it and routes through psycopg 3 via the `postgresql+psycopg://` URL scheme.  `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed.  `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
 
-### DHI verification
+### Image verification
 
-DHI images are verified before pulling via cosign ECDSA signature + SLSA v1 provenance attestation + Rekor transparency log. Verification results are cached in `config.json` (`verified_digests`) and invalidated when Renovate bumps the pinned index digest.
+Container images are verified before pulling. SynthOrg images (backend / web / sandbox / sidecar / fine-tune) are verified via cosign signature + SLSA provenance against the project's pinned Sigstore identity. DHI images (postgres, nats) are verified via cosign ECDSA signature + SLSA v1 provenance attestation + Rekor transparency log against Docker's pinned public key.
 
-### Image verification cache parity
+Both groups share one cache map in `config.json` (`verified_digests`): SynthOrg pins are keyed by bare service name (`backend`, `web`, ...), DHI pins are namespaced under `dhi:<image>` (plus `:platform` / `:attestation` / `:signature` siblings). The companion `verified_image_tag` field records which `image_tag` the SynthOrg pins were verified against; `hasSynthOrgDigests` rejects the cache whenever it differs from the current `image_tag`, mirroring the binary-pin comparison `hasDHIDigests` performs against `verify.DHIPinnedIndexDigest` (which invalidates DHI pins when Renovate bumps the pinned index digest).
 
-SynthOrg image verification results sit alongside the DHI pins in the same `verified_digests` map. The companion `verified_image_tag` field records which `image_tag` the SynthOrg pins were verified against; `hasSynthOrgDigests` rejects the cache whenever it differs from the current `image_tag`, mirroring the binary-pin comparison used by `hasDHIDigests`. `synthorg update` and `synthorg start` route through the same `verifyImagesWithCache` helper so the two groups always cache (or invalidate) symmetrically: an `update` writes both groups under one tag and the next `start` shows both as `(cached)`. `synthorg config set image_tag <new>` clears both `verified_digests` and `verified_image_tag` together so the next `start` re-verifies cleanly.
+`synthorg update` and `synthorg start` route through the same `verifyImagesWithCache` helper so the two groups always cache (or invalidate) symmetrically: an `update` writes both groups under one tag and the next `start` shows both as `(cached)`. `synthorg config set image_tag <new>` clears both `verified_digests` and `verified_image_tag` together so the next `start` re-verifies cleanly.
 
 ### Port layout
 
