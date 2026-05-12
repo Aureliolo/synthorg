@@ -1,5 +1,4 @@
 import {
-  validateAccountStep,
   validateTemplateStep,
   validateCompanyStep,
   validateAgentsStep,
@@ -65,25 +64,6 @@ const makeProvider = (overrides: Partial<ProviderConfig> = {}): ProviderConfig =
   supports_model_delete: false,
   supports_model_config: false,
   ...overrides,
-})
-
-describe('validateAccountStep', () => {
-  it('returns valid when accountCreated is true', () => {
-    const result = validateAccountStep({ accountCreated: true, needsAdmin: true })
-    expect(result.valid).toBe(true)
-    expect(result.errors).toHaveLength(0)
-  })
-
-  it('returns valid when needsAdmin is false (skip account step)', () => {
-    const result = validateAccountStep({ accountCreated: false, needsAdmin: false })
-    expect(result.valid).toBe(true)
-  })
-
-  it('returns invalid when needsAdmin and account not created', () => {
-    const result = validateAccountStep({ accountCreated: false, needsAdmin: true })
-    expect(result.valid).toBe(false)
-    expect(result.errors.length).toBeGreaterThan(0)
-  })
 })
 
 describe('validateTemplateStep', () => {

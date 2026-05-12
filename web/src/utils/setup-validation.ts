@@ -29,19 +29,6 @@ function invalid(...errors: string[]): StepValidationResult {
 
 export const COMPANY_TEMPLATE_GATE_ERROR = 'Apply the template to continue'
 
-// ── Step 0: Account ──────────────────────────────────────────
-
-interface AccountStepInput {
-  readonly accountCreated: boolean
-  readonly needsAdmin: boolean
-}
-
-export function validateAccountStep(input: AccountStepInput): StepValidationResult {
-  if (!input.needsAdmin) return VALID
-  if (input.accountCreated) return VALID
-  return invalid('Admin account must be created')
-}
-
 // ── Step 1: Template ─────────────────────────────────────────
 
 interface TemplateStepInput {
