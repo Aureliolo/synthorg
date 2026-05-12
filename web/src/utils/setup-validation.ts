@@ -53,11 +53,26 @@ interface CompanyStepInput {
 const MAX_COMPANY_NAME_LENGTH = 200
 const MAX_DESCRIPTION_LENGTH = 1000
 
-// `.length` counts UTF-16 code units, so a single emoji ("👨‍💻") would
-// consume up to 8 units against the 200-char limit. Spread iterates by code
-// point, which is the closest cheap approximation to user-visible characters
-// without pulling in Intl.Segmenter for non-Latin scripts.
+// `Intl.Segmenter` with `granularity: 'grapheme'` counts user-visible
+// characters: a ZWJ-joined emoji (e.g. `👨‍💻`) is one grapheme, a base
+// letter plus combining mark (`é` as `é`) is one grapheme, and a
+// regional-indicator flag (`🇺🇸`) is one grapheme. `.length` would count
+// UTF-16 code units (8, 2, 4 respectively) and spread iteration would
+// count code points (3, 2, 2), both of which under-report against the
+// 200-grapheme limit. Falls back to spread iteration on the rare
+// runtimes that don't expose `Intl.Segmenter`.
+const graphemeSegmenter =
+  typeof Intl !== 'undefined' && 'Segmenter' in Intl
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null
+
 export function graphemeLength(s: string): number {
+  if (graphemeSegmenter) {
+    let count = 0
+    const iterator = graphemeSegmenter.segment(s)[Symbol.iterator]()
+    while (!iterator.next().done) count += 1
+    return count
+  }
   return [...s].length
 }
 

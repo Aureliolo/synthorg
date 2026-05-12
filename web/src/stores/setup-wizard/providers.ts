@@ -37,11 +37,14 @@ async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
       ),
     )
     if (Object.keys(errors).length > 0) {
-      log.warn(`${label} reported per-preset errors`, sanitizeForLog(errors))
+      log.warn('runProbeLocal reported per-preset errors', {
+        label,
+        errors: sanitizeForLog(errors),
+      })
     }
     return { results, errors }
   } catch (err) {
-    log.error(`${label} failed`, getErrorMessage(err))
+    log.error('runProbeLocal failed', { label, error: getErrorMessage(err) })
     return null
   }
 }

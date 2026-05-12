@@ -71,7 +71,15 @@ const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
     // overlay only strictly-boolean-true entries so `firstIncomplete` cannot
     // pick up `undefined`/`null` and treat it as "incomplete" inconsistently.
     const stepsCompleted = initialStepsCompleted()
-    const persistedCompleted = merged.stepsCompleted as Partial<Record<WizardStep, unknown>>
+    // localStorage can contain `stepsCompleted: null` (hand-edited payload, or
+    // a former persisted shape that wrote null for the not-yet-initialised
+    // value). Blindly casting and indexing a null reference would throw at
+    // startup, leaving the wizard unbootable until the user clears storage.
+    const persistedCompletedRaw: unknown = merged.stepsCompleted
+    const persistedCompleted: Partial<Record<WizardStep, unknown>> =
+      persistedCompletedRaw !== null && typeof persistedCompletedRaw === 'object'
+        ? (persistedCompletedRaw as Partial<Record<WizardStep, unknown>>)
+        : {}
     for (const step of stepOrder) {
       if (persistedCompleted[step] === true) {
         stepsCompleted[step] = true

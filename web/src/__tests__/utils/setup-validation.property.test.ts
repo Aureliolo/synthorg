@@ -66,10 +66,11 @@ describe('setup-validation property tests', () => {
         fc.string({ minLength: 1, maxLength: 250 }).filter((s) => {
           const trimmed = s.trim()
           const len = graphemeLength(trimmed)
-          // Mirror the validator: `graphemeLength` counts code points, so a
-          // generated string with multi-byte sequences may pass a UTF-16
-          // `.length` filter but trip the validator's 200-grapheme cap. Filter
-          // against the same metric the production code uses.
+          // Mirror the validator: `graphemeLength` counts user-visible
+          // grapheme clusters, so a generated string with ZWJ-joined emoji
+          // or combining marks may pass a UTF-16 `.length` filter but trip
+          // the validator's 200-grapheme cap. Filter against the same
+          // metric the production code uses.
           return len > 0 && len <= 200
         }),
         (name) => {
