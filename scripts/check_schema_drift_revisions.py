@@ -30,6 +30,7 @@ behind Atlas Pro because of trigger DDL in ``schema.sql``.
 import argparse
 import asyncio
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -82,7 +83,9 @@ _POSTGRES_DUMP_PRELUDE_LINES: Final[tuple[str, ...]] = (
     "SET ",
     "SELECT pg_catalog.set_config",
     "--",
-    "",
+    "\\restrict",
+    "\\unrestrict",
+    "\\connect",
 )
 """``pg_dump`` output lines we strip before feeding to sqlglot.
 
@@ -92,11 +95,21 @@ the parser focused on actual schema.
 """
 
 _TRIGGER_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+(\w+)\b",
+    r"CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+(?:\w+\.)?(\w+)\b",
     re.IGNORECASE,
 )
 _FUNCTION_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(\w+)\s*\(",
+    r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:\w+\.)?(\w+)\s*\(",
+    re.IGNORECASE,
+)
+_ALTER_TABLE_ADD_PK_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"ALTER\s+TABLE\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)\s+"
+    r"ADD\s+CONSTRAINT\s+\w+\s+PRIMARY\s+KEY\s*\(([^)]+)\)",
+    re.IGNORECASE,
+)
+_ALTER_TABLE_ADD_UNIQUE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"ALTER\s+TABLE\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)\s+"
+    r"ADD\s+CONSTRAINT\s+\w+\s+UNIQUE\s*\(([^)]+)\)",
     re.IGNORECASE,
 )
 _WHITESPACE_RUN: Final[re.Pattern[str]] = re.compile(r"\s+")
@@ -187,15 +200,89 @@ def _run_pg_dump(container_id: str, user: str, dbname: str) -> str:
     ).stdout
 
 
-def _strip_postgres_dump_prelude(dump: str) -> str:
-    """Drop ``SET`` / ``set_config`` / comment / blank lines from a pg_dump."""
-    kept_lines = [
-        line
-        for line in dump.splitlines()
-        if not any(
-            line.lstrip().startswith(prefix) for prefix in _POSTGRES_DUMP_PRELUDE_LINES
+_YOYO_TABLE_PREFIXES: Final[tuple[str, ...]] = ("_yoyo", "yoyo_")
+
+
+def _drop_yoyo_internals(
+    tables: dict[str, NormalizedTable],
+) -> dict[str, NormalizedTable]:
+    """Filter out yoyo's own bookkeeping tables from a parsed schema."""
+    return {
+        name: table
+        for name, table in tables.items()
+        if not name.startswith(_YOYO_TABLE_PREFIXES)
+    }
+
+
+def _drop_yoyo_index_internals(
+    indexes: dict[str, NormalizedIndex],
+) -> dict[str, NormalizedIndex]:
+    """Filter out yoyo's own bookkeeping indexes from a parsed schema."""
+    return {
+        name: idx
+        for name, idx in indexes.items()
+        if not idx.table.startswith(_YOYO_TABLE_PREFIXES)
+        and not name.startswith(_YOYO_TABLE_PREFIXES)
+    }
+
+
+def _patch_constraints_from_alter(
+    tables: dict[str, NormalizedTable],
+    sql_text: str,
+) -> dict[str, NormalizedTable]:
+    """Update parsed *tables* with PK / UNIQUE info from ALTER TABLE statements.
+
+    pg_dump emits ``PRIMARY KEY`` and ``UNIQUE`` constraints as
+    ``ALTER TABLE x ADD CONSTRAINT ... PRIMARY KEY (cols)`` separate
+    from the original ``CREATE TABLE``.  The shared parser only reads
+    inline constraints, so we post-process the raw SQL here to find
+    the ALTER additions and overlay them onto the existing
+    NormalizedTable entries.
+
+    Returns a fresh dict; the input is not mutated.
+    """
+    patched = dict(tables)
+    for match in _ALTER_TABLE_ADD_PK_PATTERN.finditer(sql_text):
+        table_name = match.group(1)
+        cols = tuple(c.strip().strip('"') for c in match.group(2).split(","))
+        existing = patched.get(table_name)
+        if existing is None:
+            continue
+        if existing.primary_key:
+            continue
+        patched[table_name] = NormalizedTable(
+            name=existing.name,
+            columns=existing.columns,
+            primary_key=cols,
+            uniques=existing.uniques,
         )
-    ]
+    for match in _ALTER_TABLE_ADD_UNIQUE_PATTERN.finditer(sql_text):
+        table_name = match.group(1)
+        cols = tuple(c.strip().strip('"') for c in match.group(2).split(","))
+        existing = patched.get(table_name)
+        if existing is None:
+            continue
+        if cols in existing.uniques:
+            continue
+        patched[table_name] = NormalizedTable(
+            name=existing.name,
+            columns=existing.columns,
+            primary_key=existing.primary_key,
+            uniques=frozenset(existing.uniques | {cols}),
+        )
+    return patched
+
+
+def _strip_postgres_dump_prelude(dump: str) -> str:
+    """Drop ``SET`` / ``set_config`` / comment / psql-meta / blank lines from a pg_dump."""
+    kept_lines = []
+    for raw in dump.splitlines():
+        stripped = raw.lstrip()
+        if not stripped:
+            continue
+        if any(stripped.startswith(prefix) for prefix in _POSTGRES_DUMP_PRELUDE_LINES):
+            continue
+        kept_lines.append(raw)
     return "\n".join(kept_lines) + "\n"
 
 
@@ -219,35 +306,47 @@ def _extract_triggers_and_functions(sql_text: str) -> dict[str, _TriggerOrFuncti
     findings: dict[str, _TriggerOrFunction] = {}
     statements = _split_top_level_statements(sql_text)
     for stmt in statements:
-        upper = stmt.lstrip().upper()
+        body = _strip_leading_comments(stmt).lstrip()
+        upper = body.upper()
         if upper.startswith(("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")):
-            match = _FUNCTION_NAME_PATTERN.search(stmt)
+            match = _FUNCTION_NAME_PATTERN.search(body)
             if match is None:
                 continue
             name = match.group(1)
             findings[f"function:{name}"] = _TriggerOrFunction(
                 kind="function",
                 name=name,
-                body_normalised=_normalise_whitespace(stmt),
+                body_normalised=_normalise_whitespace(body),
             )
         elif upper.startswith(("CREATE TRIGGER", "CREATE CONSTRAINT TRIGGER")):
-            match = _TRIGGER_NAME_PATTERN.search(stmt)
+            match = _TRIGGER_NAME_PATTERN.search(body)
             if match is None:
                 continue
             name = match.group(1)
             findings[f"trigger:{name}"] = _TriggerOrFunction(
                 kind="trigger",
                 name=name,
-                body_normalised=_normalise_whitespace(stmt),
+                body_normalised=_normalise_whitespace(body),
             )
     return findings
 
 
 def _split_top_level_statements(sql_text: str) -> list[str]:
-    """Split *sql_text* on top-level ``;`` boundaries, respecting ``$$`` quoting."""
+    """Split *sql_text* on top-level ``;`` boundaries.
+
+    Respects two grouping constructs that legitimately contain
+    semicolons in their bodies:
+
+    * Postgres dollar quoting (``$$ ... $$``).
+    * SQLite trigger bodies (``BEGIN ... END;``).
+
+    A semicolon inside either grouping does not terminate the
+    enclosing statement; only a top-level semicolon does.
+    """
     statements: list[str] = []
     buf: list[str] = []
     in_dollar = False
+    begin_depth = 0
     i = 0
     text = sql_text
     while i < len(text):
@@ -262,7 +361,17 @@ def _split_top_level_statements(sql_text: str) -> list[str]:
             buf.append("$$")
             i += 2
             continue
-        if ch == ";" and not in_dollar:
+        if not in_dollar and _is_keyword_at(text, i, "BEGIN"):
+            begin_depth += 1
+            buf.append("BEGIN")
+            i += len("BEGIN")
+            continue
+        if not in_dollar and begin_depth > 0 and _is_keyword_at(text, i, "END"):
+            begin_depth -= 1
+            buf.append("END")
+            i += len("END")
+            continue
+        if ch == ";" and not in_dollar and begin_depth == 0:
             stmt = "".join(buf).strip()
             if stmt:
                 statements.append(stmt)
@@ -275,6 +384,42 @@ def _split_top_level_statements(sql_text: str) -> list[str]:
     if tail:
         statements.append(tail)
     return statements
+
+
+def _is_keyword_at(text: str, idx: int, keyword: str) -> bool:
+    """True iff *keyword* (case-insensitive) starts at *idx* on word boundaries."""
+    end = idx + len(keyword)
+    if end > len(text):
+        return False
+    if text[idx:end].upper() != keyword:
+        return False
+    if idx > 0 and (text[idx - 1].isalnum() or text[idx - 1] == "_"):
+        return False
+    return not (end < len(text) and (text[end].isalnum() or text[end] == "_"))
+
+
+def _strip_leading_comments(text: str) -> str:
+    """Drop leading whitespace, ``--`` line comments, and ``/* */`` blocks."""
+    pos = 0
+    n = len(text)
+    while pos < n:
+        if text[pos].isspace():
+            pos += 1
+            continue
+        if text.startswith("--", pos):
+            newline = text.find("\n", pos)
+            if newline == -1:
+                return ""
+            pos = newline + 1
+            continue
+        if text.startswith("/*", pos):
+            close = text.find("*/", pos + 2)
+            if close == -1:
+                return ""
+            pos = close + 2
+            continue
+        break
+    return text[pos:]
 
 
 def _normalise_whitespace(text: str) -> str:
@@ -387,6 +532,29 @@ def _diff_triggers(
 # ── Entry point ────────────────────────────────────────────────
 
 
+def _wrap_schema_as_revisions(schema_text: str) -> Path:
+    """Write *schema_text* into a fresh tmp dir as a single yoyo revision.
+
+    Returns the temp directory path.  The caller is responsible for
+    deleting it (use :func:`shutil.rmtree`).
+    """
+    import tempfile as _t
+
+    tmp_dir = Path(_t.mkdtemp(prefix="drift-declared-"))
+    (tmp_dir / "00000000000000_declared.sql").write_text(schema_text, encoding="utf-8")
+    return tmp_dir
+
+
+async def _dump_via_yoyo(
+    backend: BackendName,
+    revisions_path: Path,
+) -> str:
+    """Apply *revisions_path* to a fresh DB of the right backend, return dump."""
+    if backend == "sqlite":
+        return await _dump_sqlite_schema(revisions_path)
+    return await _dump_postgres_schema(revisions_path)
+
+
 async def _main(backend: BackendName) -> int:
     schema_path = _SCHEMA_PATHS[backend]
     revisions_path = _REVISION_PATHS[backend]
@@ -397,14 +565,23 @@ async def _main(backend: BackendName) -> int:
         print(f"revisions dir not found: {revisions_path}", file=sys.stderr)
         return 2
 
-    declared_sql = schema_path.read_text(encoding="utf-8")
-    if backend == "sqlite":
-        actual_sql = await _dump_sqlite_schema(revisions_path)
-    else:
-        actual_sql = await _dump_postgres_schema(revisions_path)
+    schema_text = schema_path.read_text(encoding="utf-8")
+
+    declared_tmp = _wrap_schema_as_revisions(schema_text)
+    try:
+        declared_sql = await _dump_via_yoyo(backend, declared_tmp)
+    finally:
+        shutil.rmtree(declared_tmp, ignore_errors=True)
+    actual_sql = await _dump_via_yoyo(backend, revisions_path)
 
     declared_tables, declared_indexes = parse_schema(declared_sql, backend)
     actual_tables, actual_indexes = parse_schema(actual_sql, backend)
+    declared_tables = _drop_yoyo_internals(declared_tables)
+    declared_indexes = _drop_yoyo_index_internals(declared_indexes)
+    actual_tables = _drop_yoyo_internals(actual_tables)
+    actual_indexes = _drop_yoyo_index_internals(actual_indexes)
+    declared_tables = _patch_constraints_from_alter(declared_tables, declared_sql)
+    actual_tables = _patch_constraints_from_alter(actual_tables, actual_sql)
     declared_triggers = _extract_triggers_and_functions(declared_sql)
     actual_triggers = _extract_triggers_and_functions(actual_sql)
 
