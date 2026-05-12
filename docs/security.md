@@ -161,7 +161,11 @@ retain the narrowly-scoped `'unsafe-inline'` permission they need for layout pos
    from Go's `crypto/rand`. It is cryptographically random.
 2. **Injection.** The `templates` directive in the Caddyfile processes `web/index.html` at
    response time, substituting `{{placeholder "http.request.uuid"}}` with the per-request
-   UUID. Every HTML response ships with a unique nonce in `<meta name="csp-nonce" content="...">`.
+   UUID. The meta tag uses single-quoted attribute syntax (`content='{{placeholder "http.request.uuid"}}'`)
+   so the embedded double-quoted Go template placeholder parses cleanly under HTML parsers
+   (parse5, browsers, Vite); the Caddy `templates` engine substitutes the `{{...}}` token
+   regardless of outer-quote style. Every HTML response ships with a unique nonce in
+   `<meta name="csp-nonce" content='...'>`.
 3. **Header.** The `(spa_csp)` snippet in `web/Caddyfile` emits the CSP with the matching
    nonce: `style-src-elem 'self' 'nonce-{http.request.uuid}'; style-src-attr 'unsafe-inline'`.
 4. **Runtime read.** On page load, `web/src/lib/csp.ts` (`getCspNonce()`) reads the meta tag,

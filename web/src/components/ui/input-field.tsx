@@ -1,4 +1,5 @@
-import { useId } from 'react'
+import { createContext, use, useCallback, useId, useMemo, useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface BaseFieldProps {
@@ -20,10 +21,19 @@ interface InputProps extends BaseFieldProps, Omit<React.ComponentProps<'input'>,
   leadingIcon?: React.ReactNode
   /**
    * Trailing element rendered inside the input (e.g. a clear button).
-   * Unlike `leadingIcon`, pointer events pass through -- consumers are
-   * responsible for interactivity.
+   * Unlike `leadingIcon`, pointer events pass through; consumers are
+   * responsible for interactivity. Supplying a `trailingElement` on a
+   * `type="password"` field replaces the built-in eye toggle.
    */
   trailingElement?: React.ReactNode
+  /**
+   * Suppress the built-in eye / eye-off visibility toggle on
+   * `type="password"` fields. Default: false (toggle is shown). The
+   * UX rule across the whole dashboard is that every password / secret
+   * input MUST have a toggle; flip this only for the rare case where a
+   * caller already supplies its own visibility affordance.
+   */
+  hidePasswordToggle?: boolean
 }
 
 interface TextareaProps extends BaseFieldProps, Omit<React.ComponentProps<'textarea'>, 'id'> {
@@ -32,6 +42,35 @@ interface TextareaProps extends BaseFieldProps, Omit<React.ComponentProps<'texta
 }
 
 export type InputFieldProps = InputProps | TextareaProps
+
+interface PasswordVisibilityContextValue {
+  visible: boolean
+  setVisible: (next: boolean) => void
+}
+
+const PasswordVisibilityContext = createContext<PasswordVisibilityContextValue | null>(null)
+
+/**
+ * Wraps a group of password / secret `<InputField>`s so a single eye
+ * toggle reveals or hides every field in the group at once. Use it
+ * for semantically-paired fields (e.g. Password + Confirm Password on
+ * the Create Account screen) where independent toggles would be
+ * surprising. Unrelated secrets (e.g. an OAuth client secret next to
+ * a header value) should stay outside the provider so each toggles
+ * on its own.
+ */
+export function PasswordVisibilityGroup({ children }: { children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false)
+  const value = useMemo<PasswordVisibilityContextValue>(
+    () => ({ visible, setVisible }),
+    [visible],
+  )
+  return (
+    <PasswordVisibilityContext value={value}>
+      {children}
+    </PasswordVisibilityContext>
+  )
+}
 
 /**
  * Merge a caller-supplied ARIA id token list with a component-managed
@@ -131,6 +170,36 @@ function FieldHelp({
   )
 }
 
+function PasswordToggleButton({
+  visible,
+  onToggle,
+  disabled,
+}: {
+  visible: boolean
+  onToggle: () => void
+  disabled: boolean
+}) {
+  const Icon = visible ? EyeOff : Eye
+  const label = visible ? 'Hide password' : 'Show password'
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={label}
+      aria-pressed={visible}
+      disabled={disabled}
+      className={cn(
+        'pointer-events-auto inline-flex items-center justify-center',
+        'text-muted-foreground hover:text-foreground',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded',
+        'disabled:cursor-not-allowed disabled:opacity-60',
+      )}
+    >
+      <Icon className="h-4 w-4" aria-hidden="true" />
+    </button>
+  )
+}
+
 function InputVariant(props: InputProps) {
   const {
     label,
@@ -142,6 +211,8 @@ function InputVariant(props: InputProps) {
     onChange,
     leadingIcon,
     trailingElement,
+    hidePasswordToggle,
+    type,
     multiline: _multiline,
     ...domProps
   } = props
@@ -151,6 +222,34 @@ function InputVariant(props: InputProps) {
   const hintId = `${id}-hint`
   const hasError = !!error
 
+  const groupContext = use(PasswordVisibilityContext)
+  const [localVisible, setLocalVisible] = useState(false)
+  const isPassword = type === 'password'
+  const callerProvidedTrailing = trailingElement != null && trailingElement !== false
+  const showPasswordToggle = isPassword && !hidePasswordToggle && !callerProvidedTrailing
+
+  const visible = groupContext !== null ? groupContext.visible : localVisible
+  const toggleVisible = useCallback(() => {
+    if (groupContext !== null) {
+      groupContext.setVisible(!groupContext.visible)
+    } else {
+      setLocalVisible((prev) => !prev)
+    }
+  }, [groupContext])
+
+  const effectiveType = isPassword && visible ? 'text' : type
+  const renderedTrailing: React.ReactNode = callerProvidedTrailing
+    ? trailingElement
+    : showPasswordToggle
+      ? (
+          <PasswordToggleButton
+            visible={visible}
+            onToggle={toggleVisible}
+            disabled={Boolean(domProps.disabled)}
+          />
+        )
+      : null
+
   const inputClasses = buildInputClasses({
     hasError,
     // Match the ``leadingIcon != null && leadingIcon !== false`` render
@@ -158,7 +257,7 @@ function InputVariant(props: InputProps) {
     // actual JSX presence agree on every legal ReactNode value (incl.
     // ``0`` / ``''`` / ``false``).
     hasLeadingIcon: leadingIcon != null && leadingIcon !== false,
-    hasTrailingElement: trailingElement != null && trailingElement !== false,
+    hasTrailingElement: renderedTrailing !== null,
     className,
   })
 
@@ -187,6 +286,7 @@ function InputVariant(props: InputProps) {
           id={id}
           ref={ref}
           {...domProps}
+          type={effectiveType}
           aria-invalid={hasError ? true : (domProps['aria-invalid'] ?? false)}
           aria-errormessage={mergeAriaToken(
             domProps['aria-errormessage'],
@@ -199,9 +299,9 @@ function InputVariant(props: InputProps) {
           className={inputClasses}
           onChange={handleChange}
         />
-        {trailingElement != null && trailingElement !== false && (
+        {renderedTrailing !== null && (
           <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
-            {trailingElement}
+            {renderedTrailing}
           </span>
         )}
       </div>
