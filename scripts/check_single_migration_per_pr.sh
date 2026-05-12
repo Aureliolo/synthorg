@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enforce: at most one new Atlas migration file per PR.
+# Enforce: at most one new migration file per backend per PR.
 #
 # Rationale: during a feature PR we want a clean schema history -- if the
 # developer iterates on the schema multiple times they should delete the
@@ -105,7 +105,7 @@ done
 
 if [ -n "$FAILED_BACKEND" ]; then
     echo "" >&2
-    echo "ERROR: This PR adds multiple new Atlas migration files in" >&2
+    echo "ERROR: This PR adds multiple new migration files in" >&2
     echo "$FAILED_BACKEND, but the policy allows at most ONE new" >&2
     echo "migration per backend per PR." >&2
     echo "" >&2

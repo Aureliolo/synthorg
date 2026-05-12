@@ -131,7 +131,7 @@ async def postgres_backend(
     """Yield a connected, migrated PostgresPersistenceBackend.
 
     Creates a unique database on the shared container so tests stay
-    isolated, migrates it via Atlas, hands the backend to the test,
+    isolated, migrates it via yoyo, hands the backend to the test,
     then drops the database on teardown.
     """
     db_name = f"test_{uuid.uuid4().hex}"
@@ -193,7 +193,7 @@ def timescaledb_container() -> Iterator[PostgresContainer]:
     that depend on the TimescaleDB extension use this fixture
     instead of ``postgres_container``; the image includes both
     vanilla Postgres and the ``timescaledb`` extension binary so the
-    base schema still migrates cleanly via Atlas.
+    base schema still migrates cleanly via yoyo.
     """
     if not _docker_available():
         pytest.skip("Docker is required for TimescaleDB integration tests")

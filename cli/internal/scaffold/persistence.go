@@ -59,7 +59,7 @@ func renderPersistence(p Params) ([]RenderedFile, error) {
 	for _, f := range files {
 		body, err := renderTemplate(f.tpl, p)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("rendering template %q: %w", f.tpl, err)
 		}
 		out = append(out, RenderedFile{Path: f.out, Contents: body})
 	}

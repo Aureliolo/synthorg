@@ -153,7 +153,7 @@ class NotificationsBridgeConfig(BaseModel):
 class ToolsBridgeConfig(BaseModel):
     """Operator-tunable timeouts and resource limits for tool execution.
 
-    Covers git/Atlas subprocess kill-grace, Docker sandbox sidecar
+    Covers git subprocess kill-grace, Docker sandbox sidecar
     (poll/timeout/memory/CPU/PIDs/stop-grace), and subprocess sandbox
     kill-grace.
     """

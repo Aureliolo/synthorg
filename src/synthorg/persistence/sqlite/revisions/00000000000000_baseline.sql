@@ -12,9 +12,11 @@
 --
 -- SynthOrg SQLite schema -- single source of truth for the sqlite backend.
 --
--- This file defines the desired database state for SQLite. Atlas diffs it
--- against the current DB to generate versioned migrations.
--- Do NOT execute this file directly -- use `atlas migrate diff --env sqlite`.
+-- This file defines the desired database state for SQLite.  The drift
+-- gate (`scripts/check_schema_drift_revisions.py --backend sqlite`)
+-- diffs this against the accumulated revisions in `revisions/` and
+-- fails CI on mismatch.  Do NOT execute this file directly -- runtime
+-- schema is applied by yoyo from the `revisions/` directory.
 --
 -- This is the SQLite-native sibling of src/synthorg/persistence/postgres/schema.sql.
 -- Both schemas describe the same logical data model but use each engine's

@@ -35,8 +35,8 @@ async def backend(
 ) -> AsyncGenerator[SQLitePersistenceBackend]:
     """Create a connected and migrated on-disk SQLite backend.
 
-    Uses an isolated revisions copy + ``--skip-lock`` so parallel
-    xdist workers never contend on Atlas's directory lock.
+    Each xdist worker gets its own private revisions copy so they
+    never share a yoyo lock target across processes.
 
     Yields:
         A ``SQLitePersistenceBackend`` ready for settings operations.

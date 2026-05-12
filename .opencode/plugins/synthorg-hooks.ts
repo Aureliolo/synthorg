@@ -6,6 +6,9 @@
  *
  * Committed Claude Code hooks (from .claude/settings.json):
  *   PreToolUse (Bash): scripts/check_push_rebased.sh
+ *   PreToolUse (Bash): scripts/check_push_throttle.sh
+ *   PreToolUse (Bash): scripts/check_ci_before_push.sh
+ *   PreToolUse (Bash): scripts/check_no_throttle_override_creation.sh
  *   PreToolUse (Bash): scripts/check_no_baseline_update.sh
  *   PreToolUse (Bash): scripts/check_bash_no_write.sh
  *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
@@ -15,8 +18,10 @@
  *   PreToolUse (Edit|Write): scripts/check_no_edit_baseline.sh
  *   PreToolUse (Edit|Write): scripts/check_no_em_dashes_hook.sh
  *   PreToolUse (Edit|Write): scripts/check_pre_pr_review_triage_gate.sh
+ *   PreToolUse (Edit|Write): scripts/check_no_throttle_override_creation.sh
  *   PostToolUse (Edit|Write): scripts/check_web_design_system.py
  *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
+ *   PostToolUse (Bash): scripts/record_push_throttle.sh
  *
  * Hookify rules enforced via this plugin (from .claude/hookify.*.md):
  *   block-pr-create: blocks direct `gh pr create`

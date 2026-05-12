@@ -259,3 +259,132 @@ async def test_migrate_baseline_marks_without_executing(
     assert user_tables == [], "baseline must not create user tables; got " + repr(
         user_tables
     )
+
+
+# ── Rollback path ────────────────────────────────────────────────
+
+
+@pytest.fixture
+def rollback_capable_revisions(tmp_path: Path) -> Path:
+    """Write two yoyo Python revisions with explicit forward+rollback steps."""
+    rev_dir = tmp_path / "rev_capable"
+    rev_dir.mkdir()
+    (rev_dir / "00000000000001_init.py").write_text(
+        "from yoyo import step\n"
+        "steps = [\n"
+        "    step(\n"
+        "        'CREATE TABLE widgets (id INTEGER PRIMARY KEY, name TEXT)',\n"
+        "        'DROP TABLE widgets',\n"
+        "    ),\n"
+        "]\n"
+    )
+    (rev_dir / "00000000000002_add_idx.py").write_text(
+        "from yoyo import step\n"
+        "steps = [\n"
+        "    step(\n"
+        "        'CREATE INDEX idx_widgets_name ON widgets(name)',\n"
+        "        'DROP INDEX idx_widgets_name',\n"
+        "    ),\n"
+        "]\n"
+    )
+    return rev_dir
+
+
+async def test_migrate_rollback_reverts_newer_than_target(
+    tmp_path: Path,
+    rollback_capable_revisions: Path,
+) -> None:
+    """Rolling back to the older revision reverts just the newer one."""
+    db = tmp_path / "scratch.db"
+    url = migrations.to_sqlite_url(str(db))
+    await migrations.migrate_apply(url, revisions_path=rollback_capable_revisions)
+
+    result = await migrations.migrate_rollback(
+        url,
+        target_version="00000000000001_init",
+        revisions_path=rollback_capable_revisions,
+    )
+
+    assert result.applied_count == 1
+    assert result.applied_versions == ("00000000000002_add_idx",)
+    assert result.current_version == "00000000000001_init"
+
+
+async def test_migrate_rollback_target_equal_to_current_is_noop(
+    tmp_path: Path,
+    rollback_capable_revisions: Path,
+) -> None:
+    """Asking to roll back to the current version does nothing."""
+    db = tmp_path / "scratch.db"
+    url = migrations.to_sqlite_url(str(db))
+    await migrations.migrate_apply(url, revisions_path=rollback_capable_revisions)
+
+    result = await migrations.migrate_rollback(
+        url,
+        target_version="00000000000002_add_idx",
+        revisions_path=rollback_capable_revisions,
+    )
+
+    assert result.applied_count == 0
+    assert result.applied_versions == ()
+
+
+async def test_migrate_rollback_unknown_target_reverts_everything(
+    tmp_path: Path,
+    rollback_capable_revisions: Path,
+) -> None:
+    """An empty target version means "roll back every applied revision"."""
+    db = tmp_path / "scratch.db"
+    url = migrations.to_sqlite_url(str(db))
+    await migrations.migrate_apply(url, revisions_path=rollback_capable_revisions)
+
+    result = await migrations.migrate_rollback(
+        url,
+        target_version="",
+        revisions_path=rollback_capable_revisions,
+    )
+
+    assert result.applied_count == 2
+    assert set(result.applied_versions) == {
+        "00000000000001_init",
+        "00000000000002_add_idx",
+    }
+
+
+# ── Lock recovery ────────────────────────────────────────────────
+
+
+async def test_break_lock_on_unlocked_db_is_safe(tmp_path: Path) -> None:
+    """``break_lock`` against a fresh DB completes without error.
+
+    Yoyo's break-lock issues an UPDATE against the lock table; on a
+    fresh DB the table does not yet exist, but yoyo creates and
+    truncates it on the first call.
+    """
+    db = tmp_path / "scratch.db"
+    url = migrations.to_sqlite_url(str(db))
+    await migrations.break_lock(url)
+
+
+# ── Result invariants ────────────────────────────────────────────
+
+
+def test_migrate_result_rejects_mismatched_count_and_versions() -> None:
+    """``MigrateResult`` post-init must guard count-to-list parity."""
+    with pytest.raises(ValueError, match="invariant violated"):
+        migrations.MigrateResult(
+            applied_count=2,
+            applied_versions=("only_one",),
+            current_version="only_one",
+        )
+
+
+def test_migrate_status_rejects_mismatched_pending_count() -> None:
+    """``MigrateStatus`` post-init must guard count-to-list parity."""
+    with pytest.raises(ValueError, match="invariant violated"):
+        migrations.MigrateStatus(
+            current_version="",
+            pending_count=3,
+            pending_versions=("a", "b"),
+            applied_versions=(),
+        )

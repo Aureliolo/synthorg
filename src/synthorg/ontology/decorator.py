@@ -9,9 +9,10 @@ Entity definitions are derived lazily (on first access via
 
 import inspect
 import textwrap
+import threading
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, NamedTuple, overload
+from typing import TYPE_CHECKING, Any, Final, NamedTuple, overload
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
@@ -44,6 +45,7 @@ class _RegistryEntry(NamedTuple):
 
 _RAW_REGISTRY: dict[str, _RegistryEntry] = {}
 _CACHE: dict[str, EntityDefinition] | None = None
+_REGISTRY_LOCK: Final[threading.Lock] = threading.Lock()
 
 
 def get_entity_registry() -> MappingProxyType[str, EntityDefinition]:
@@ -189,16 +191,17 @@ def ontology_entity(
     def _do_register(target_cls: type[BaseModel]) -> type[BaseModel]:
         global _CACHE  # noqa: PLW0603
         name = entity_name or target_cls.__name__
-        if name in _RAW_REGISTRY:
-            msg = f"Entity '{name}' is already registered"
-            raise OntologyDuplicateError(msg)
-        _RAW_REGISTRY[name] = _RegistryEntry(
-            cls=target_cls,
-            entity_name=name,
-            tier=tier_val,
-            source=source_val,
-        )
-        _CACHE = None  # Invalidate cache.
+        with _REGISTRY_LOCK:
+            if name in _RAW_REGISTRY:
+                msg = f"Entity '{name}' is already registered"
+                raise OntologyDuplicateError(msg)
+            _RAW_REGISTRY[name] = _RegistryEntry(
+                cls=target_cls,
+                entity_name=name,
+                tier=tier_val,
+                source=source_val,
+            )
+            _CACHE = None  # Invalidate cache.
         logger.debug(
             ONTOLOGY_ENTITY_DECORATOR_REGISTERED,
             entity_name=name,

@@ -1,8 +1,7 @@
 """Tools namespace setting definitions.
 
-Covers git subprocess kill-grace, Atlas migration subprocess
-kill-grace, Docker sandbox sidecar resource limits, Docker stop
-grace period, and subprocess sandbox kill-grace.
+Covers git subprocess kill-grace, Docker sandbox sidecar resource
+limits, Docker stop grace period, and subprocess sandbox kill-grace.
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
@@ -11,7 +10,7 @@ from synthorg.settings.registry import get_registry
 
 _r = get_registry()
 
-# ── Git / Atlas subprocess kill-grace ────────────────────────────
+# ── Git subprocess kill-grace ────────────────────────────────────
 
 _r.register(
     SettingDefinition(

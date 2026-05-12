@@ -66,11 +66,10 @@ DEFAULT_POSTGRES_REVISIONS: Final[Path] = (
 )
 DEFAULT_BASELINE: Final[Path] = _REPO_ROOT / "scripts" / "schema_drift_baseline.txt"
 
-# Migration filenames carry a 14-digit timestamp Atlas picks at
-# generation time, independently per backend. The gate strips the
-# timestamp and compares by suffix because the timestamps will never
-# agree across the two backends (Atlas runs them in different
-# Docker containers / sqlite-CLI invocations on different machines).
+# Migration filenames carry a 14-digit timestamp chosen at authoring
+# time, independently per backend.  The gate strips the timestamp and
+# compares by suffix because the timestamps will never agree across
+# the two backends (authoring runs against each backend separately).
 MIGRATION_FILENAME_RE: Final[re.Pattern[str]] = re.compile(
     r"^(?P<ts>\d{14})_(?P<suffix>.+)\.sql$"
 )

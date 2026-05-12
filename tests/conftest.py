@@ -592,11 +592,11 @@ async def migrated_db(
     tmp_path: Path,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> AsyncGenerator[aiosqlite.Connection]:
-    """Temp-file SQLite connection with Atlas migrations applied.
+    """Temp-file SQLite connection with yoyo migrations applied.
 
-    Copies a session-wide template database instead of spawning
-    an Atlas subprocess per test -- eliminates ~hundreds of Go
-    process launches during a full test run.
+    Copies a session-wide template database instead of re-running
+    migrations per test -- amortises the per-revision work across
+    the suite.
     """
     template = await _get_template_db(tmp_path_factory)
     db_path = tmp_path / "test.db"

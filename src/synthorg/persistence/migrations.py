@@ -41,11 +41,13 @@ import asyncio
 import importlib.resources
 import math
 import shutil
+import sqlite3
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
+import psycopg
 from yoyo import get_backend, read_migrations  # type: ignore[import-untyped]
 from yoyo.exceptions import (  # type: ignore[import-untyped]
     BadMigration,
@@ -93,6 +95,16 @@ class MigrateResult:
     applied_versions: tuple[str, ...]
     current_version: str
 
+    def __post_init__(self) -> None:
+        """Enforce ``applied_count == len(applied_versions)`` at construction."""
+        if len(self.applied_versions) != self.applied_count:
+            msg = (
+                f"MigrateResult invariant violated: applied_count="
+                f"{self.applied_count} but len(applied_versions)="
+                f"{len(self.applied_versions)}"
+            )
+            raise ValueError(msg)
+
 
 @dataclass(frozen=True)
 class MigrateStatus:
@@ -110,6 +122,16 @@ class MigrateStatus:
     pending_count: int
     pending_versions: tuple[str, ...]
     applied_versions: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Enforce ``pending_count == len(pending_versions)`` at construction."""
+        if len(self.pending_versions) != self.pending_count:
+            msg = (
+                f"MigrateStatus invariant violated: pending_count="
+                f"{self.pending_count} but len(pending_versions)="
+                f"{len(self.pending_versions)}"
+            )
+            raise ValueError(msg)
 
 
 _REVISIONS_PACKAGE: dict[BackendName, str] = {
@@ -133,6 +155,27 @@ def _redact_url(url: str) -> str:
     if scheme_end == -1:
         return "REDACTED"
     return f"{url[:scheme_end]}://..."
+
+
+def _safe_close(b: Any, *, context: str) -> None:
+    """Close the yoyo backend connection without masking the caller's error.
+
+    Yoyo's ``backend.connection.close()`` can raise driver-specific
+    errors (network drop, file-system error, already-closed handle).
+    When the surrounding ``finally`` runs during exception propagation,
+    a fresh exception from close would overwrite the original migration
+    failure; this helper logs and swallows the cleanup error so the
+    caller's exception stays first.
+    """
+    try:
+        b.connection.close()
+    except (sqlite3.Error, psycopg.Error, OSError) as cleanup_exc:
+        logger.warning(
+            PERSISTENCE_MIGRATION_FAILED,
+            context=context,
+            error_type=type(cleanup_exc).__name__,
+            error=safe_error_description(cleanup_exc),
+        )
 
 
 def to_sqlite_url(path: str) -> str:
@@ -172,10 +215,10 @@ def to_postgres_url(config: PostgresConfig) -> str:
     ``postgresql://`` scheme would route to psycopg2, which is not a
     project dependency.
 
-    Yoyo runs in-process, so embedding the password in the URL does
-    not leak it through the OS process listing the way Atlas's
-    subprocess invocation could.  We still redact the URL in logs via
-    :func:`_redact_url`.
+    Yoyo runs in-process, so the password embedded in the URL is
+    never exposed through the OS process listing.  We still redact
+    the URL in logs via :func:`_redact_url` so accidental log lines
+    do not leak it.
 
     libpq's ``connect_timeout`` accepts integer seconds with a minimum
     of 2; sub-second configured values are rounded up so a configured
@@ -352,10 +395,10 @@ async def migrate_apply(
                 pending = b.to_apply(migrations)
                 pending_ids = tuple(m.id for m in pending)
                 b.apply_migrations(pending)
-                applied_after = b.to_rollback(_discover(rev_path))
+                applied_after = b.to_rollback(migrations)
                 applied_ids = tuple(reversed([m.id for m in applied_after]))
         finally:
-            b.connection.close()
+            _safe_close(b, context="close_after_apply")
         current = applied_ids[-1] if applied_ids else ""
         return len(pending_ids), pending_ids, current
 
@@ -419,7 +462,7 @@ async def migrate_status(
             applied_reversed = [m.id for m in b.to_rollback(migrations)]
             applied = tuple(reversed(applied_reversed))
         finally:
-            b.connection.close()
+            _safe_close(b, context="close_after_status")
         current = applied[-1] if applied else ""
         return MigrateStatus(
             current_version=current,
@@ -489,7 +532,7 @@ async def migrate_baseline(
                 marked_ids = tuple(m.id for m in unapplied)
                 b.mark_migrations(unapplied)
         finally:
-            b.connection.close()
+            _safe_close(b, context="close_after_baseline")
         current = marked_ids[-1] if marked_ids else ""
         return len(marked_ids), marked_ids, current
 
@@ -581,7 +624,7 @@ async def migrate_rollback(
                     bundle = migrations.__class__(to_revert, [])
                     b.rollback_migrations(bundle)
         finally:
-            b.connection.close()
+            _safe_close(b, context="close_after_rollback")
         return len(rolled_ids), rolled_ids
 
     try:
@@ -633,7 +676,7 @@ async def break_lock(db_url: str) -> None:
         try:
             b.break_lock()
         finally:
-            b.connection.close()
+            _safe_close(b, context="close_after_break_lock")
 
     try:
         await asyncio.to_thread(_break)

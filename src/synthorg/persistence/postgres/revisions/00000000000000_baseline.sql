@@ -12,9 +12,11 @@
 --
 -- SynthOrg Postgres schema -- single source of truth for the postgres backend.
 --
--- This file defines the desired database state for Postgres. Atlas diffs it
--- against the current DB to generate versioned migrations.
--- Do NOT execute this file directly -- use `atlas migrate diff --env postgres`.
+-- This file defines the desired database state for Postgres.  The drift
+-- gate (`scripts/check_schema_drift_revisions.py --backend postgres`)
+-- diffs this against the accumulated revisions in `revisions/` and
+-- fails CI on mismatch.  Do NOT execute this file directly -- runtime
+-- schema is applied by yoyo from the `revisions/` directory.
 --
 -- This is the Postgres-native sibling of src/synthorg/persistence/sqlite/schema.sql.
 -- Both schemas describe the same logical data model but use each engine's
@@ -81,7 +83,7 @@ CREATE INDEX idx_tasks_project ON tasks(project);
 -- require the partitioning column to appear in every unique index.
 -- On deployments where TimescaleDB is available, the Postgres backend
 -- converts this table to a hypertable at runtime during its
--- post-Atlas setup step; on vanilla Postgres the composite PK is
+-- post-migration setup step; on vanilla Postgres the composite PK is
 -- functionally equivalent to the old ``PRIMARY KEY (rowid)`` because
 -- ``rowid`` is still globally unique via the IDENTITY sequence.
 CREATE TABLE cost_records (

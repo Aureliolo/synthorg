@@ -24,7 +24,7 @@ Patterns adapted from Supabase Agent Skills (credit: Supabase team, MIT license)
 6. **Concurrency**: short transactions; consistent lock ordering (`ORDER BY id FOR UPDATE`) to prevent deadlocks; no external API calls inside transactions.
 7. **Currency invariants**: every cost-bearing model carries `currency: CurrencyCode` (validated against `synthorg.budget.currency` allowlist). Aggregation sites enforce same-currency invariant; mixing raises `MixedCurrencyAggregationError` (HTTP 409).
 
-## Diagnostic Commands (the user can run; this agent reports findings only)
+## Diagnostic Commands (read-only)
 
 ```bash
 uv run python scripts/check_schema_drift_revisions.py --backend sqlite
@@ -37,7 +37,11 @@ uv run python scripts/check_persistence_boundary.py
 
 ### 1. Boundary check (CRITICAL)
 
-Search for driver-library imports outside `src/synthorg/persistence/`. Any hit is a CRITICAL finding. Per-line opt-out is `# lint-allow: persistence-boundary -- <required justification>`. Verify the justification is real (one of the three sanctioned exception categories in `docs/reference/persistence-boundary.md`).
+```bash
+git diff --name-only | grep -v '^src/synthorg/persistence/' | xargs -I{} grep -lE '\b(aiosqlite|sqlite3|psycopg|psycopg_pool)\b' {} 2>/dev/null
+```
+
+Any hit outside `persistence/` is a CRITICAL finding. Per-line opt-out is `# lint-allow: persistence-boundary -- <required justification>`. Verify the justification is real (i.e. one of the three sanctioned exception categories in `docs/reference/persistence-boundary.md`).
 
 ### 2. Service-layer discipline (HIGH)
 
@@ -110,7 +114,7 @@ Renames are atomic. No aliasing the old name, no `_legacy` passthroughs. Flag re
 - Repo methods that log mutations (services do that)
 - Driver-library imports outside `persistence/`
 - Hand-edited revision SQL (revisions are immutable once committed)
-- More than one new revision per backend per PR
+- More than one new migration per backend per PR
 - Money fields suffixed `_usd`
 - Hardcoded ISO 4217 codes outside the allowlist
 
@@ -121,19 +125,15 @@ Renames are atomic. No aliasing the old name, no `_legacy` passthroughs. Flag re
 - **MEDIUM**: Schema design (types/constraints), query efficiency, repo-side logging, missing indexes
 - **LOW**: Minor optimization, naming conventions
 
-## Report Format
-
-For each finding:
+## Review Output Format
 
 ```text
-[SEVERITY] file:line -- Category
-  Problem: What the code does
-  Risk: What could go wrong
-  Fix: Correct pattern (description; do not edit)
-  Refs: docs/reference/persistence-boundary.md or relevant CLAUDE.md section
+[SEVERITY] Issue title
+File: path/to/file.py:42 (or .sql, or schema.sql)
+Issue: Description
+Fix: What to change (do not write the change; describe it)
+Refs: docs/reference/persistence-boundary.md or relevant CLAUDE.md section
 ```
-
-End with summary count per severity.
 
 ## Approval Criteria
 
@@ -143,7 +143,7 @@ End with summary count per severity.
 
 ## Bash Tool Guidance
 
-Read-only diagnostics only when suggesting commands; this agent reports findings and never edits files. Never `cd` or `git -C` to the current working directory. `psql` queries are fine; running `scripts/check_schema_drift_revisions.py` is fine. Never recommend a runtime `migrate_apply` or anything destructive.
+Read-only diagnostics only. Never write files via Bash. Never `cd` or `git -C` to the current working directory. `psql` queries are fine; running `scripts/check_schema_drift_revisions.py` is fine. Never invoke a runtime `migrate_apply` or anything destructive.
 
 ## Reference
 

@@ -51,7 +51,7 @@ repos:
         stages: [pre-push]
         types: []
       - id: check-single-migration-per-pr
-        name: enforce at most one new Atlas migration per PR
+        name: enforce at most one new migration per backend per PR
         entry: bash
         args: ["scripts/check_single_migration_per_pr.sh"]
         language: system
@@ -570,10 +570,9 @@ repos:
         # Trigger on any in-scope source / test file, the gate script
         # itself, or this config so a PR that introduces a forbidden
         # pattern (or weakens the gate by editing the script) cannot
-        # bypass the check. Atlas-managed migration revisions are
-        # auto-generated and excluded so the hook does not start a
-        # subprocess for files the script's internal allowlist would
-        # immediately skip.
+        # bypass the check. Yoyo-managed migration revisions are
+        # excluded so the hook does not start a subprocess for files
+        # the script's internal allowlist would immediately skip.
         files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_review_origin_in_code\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         # pre-commit covers pre-commit.ci (catches GitHub-UI edits and
@@ -588,10 +587,9 @@ repos:
         # Trigger on any in-scope source / test file, the gate script
         # itself, or this config so a PR that introduces migration /
         # origin framing (or weakens the gate by editing the script)
-        # cannot bypass the check. Atlas-managed migration revisions
-        # are auto-generated and excluded so the hook does not start a
-        # subprocess for files the script's internal allowlist would
-        # immediately skip.
+        # cannot bypass the check. Yoyo-managed migration revisions
+        # are excluded so the hook does not start a subprocess for
+        # files the script's internal allowlist would immediately skip.
         files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_migration_framing\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]

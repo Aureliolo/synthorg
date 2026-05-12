@@ -10,8 +10,9 @@ For one backend at a time:
 3. Parse both the dumped schema and the declared ``schema.sql`` via the
    existing :func:`scripts._schema_drift_parser.parse_schema`.
 4. Diff tables / columns / indexes via a strict same-backend comparator.
-5. Diff triggers / functions via regex extraction (the sqlglot-based
-   parser deliberately drops trigger DDL via the ``Command`` fallback).
+5. Diff triggers / functions via regex extraction.  The sqlglot-based
+   parser drops trigger DDL through its ``Command`` fallback, so this
+   script pulls trigger and function bodies out of the SQL directly.
 
 Exits 0 on parity, non-zero on drift, prints a structured finding list.
 
@@ -22,9 +23,6 @@ Usage::
 
 The Postgres arm requires Docker (uses ``testcontainers``); the SQLite
 arm runs against a temp file with no external dependency.
-
-Replaces the Atlas ``schema diff --env ci`` step that was paywalled
-behind Atlas Pro because of trigger DDL in ``schema.sql``.
 """
 
 import argparse

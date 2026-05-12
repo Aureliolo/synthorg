@@ -831,7 +831,7 @@ async def auto_wire_ontology(
 
     # Ontology runs on the shared persistence backend: the
     # entity repository and versioning service both take the backend's
-    # active DB handle, so schema migrations (Atlas) and connection
+    # active DB handle, so schema migrations and connection
     # lifecycle are owned by PersistenceBackend.  The backend's
     # ``build_ontology_versioning`` factory selects the correct
     # versioning service (SQLite aiosqlite vs Postgres pool) without

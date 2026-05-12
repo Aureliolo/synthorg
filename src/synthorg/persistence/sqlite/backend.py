@@ -712,7 +712,11 @@ class SQLitePersistenceBackend:
         return healthy
 
     async def migrate(self) -> None:
-        """Apply pending schema migrations via Atlas CLI.
+        """Apply pending schema migrations via yoyo-migrations.
+
+        On failure the backend's repositories are reset so callers
+        cannot reuse a half-initialised state machine (mirrors the
+        postgres backend's pool-close-on-failure behaviour).
 
         Raises:
             PersistenceConnectionError: If not connected.
@@ -724,7 +728,23 @@ class SQLitePersistenceBackend:
                 logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
                 raise PersistenceConnectionError(msg)
             db_url = migrations.to_sqlite_url(self._config.path)
-            await migrations.migrate_apply(db_url)
+            try:
+                await migrations.migrate_apply(db_url)
+            except BaseException:
+                db = self._db
+                if db is not None:
+                    try:
+                        await db.close()
+                    except (sqlite3.Error, aiosqlite.Error, OSError) as cleanup_exc:
+                        logger.warning(
+                            PERSISTENCE_BACKEND_DISCONNECT_ERROR,
+                            path=self._config.path,
+                            error_type=type(cleanup_exc).__name__,
+                            error=safe_error_description(cleanup_exc),
+                            context="cleanup_after_migration_failure",
+                        )
+                self._clear_state()
+                raise
 
     @property
     def is_connected(self) -> bool:

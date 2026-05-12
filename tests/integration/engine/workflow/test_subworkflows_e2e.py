@@ -1,6 +1,6 @@
 """Integration: subworkflow registry, execution, and persistence round-trips.
 
-Tests exercise the full stack with real SQLite persistence (via Atlas
+Tests exercise the full stack with real SQLite persistence (via yoyo
 migrations), verifying that subworkflow registration, versioning,
 parent tracking, and execution produce correct results end-to-end.
 """

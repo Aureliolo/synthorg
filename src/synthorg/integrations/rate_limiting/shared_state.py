@@ -11,6 +11,7 @@ no distributed benefit, minimal overhead.
 
 import asyncio
 import contextlib
+import threading
 from collections import deque
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
@@ -328,10 +329,20 @@ def set_coordinator_factory_sync(
     _coordinator_factory = factory
 
 
+_COORDINATOR_LOCK: Final[threading.Lock] = threading.Lock()
+
+
 def get_coordinator(connection_name: str) -> SharedRateLimitCoordinator | None:
-    """Get or create a coordinator for the given connection."""
+    """Get or create a coordinator for the given connection.
+
+    The check-then-set on ``_coordinators`` is protected by a
+    threading lock so concurrent callers (multi-thread, or asyncio
+    bridges that hop across event loops) cannot both build a
+    coordinator and overwrite each other's instance.
+    """
     if _coordinator_factory is None:
         return None
-    if connection_name not in _coordinators:
-        _coordinators[connection_name] = _coordinator_factory(connection_name)
-    return _coordinators[connection_name]
+    with _COORDINATOR_LOCK:
+        if connection_name not in _coordinators:
+            _coordinators[connection_name] = _coordinator_factory(connection_name)
+        return _coordinators[connection_name]
