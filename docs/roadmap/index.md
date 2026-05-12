@@ -15,7 +15,7 @@ What works today:
 - **Communication** with message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), meeting protocols, and an A2A gateway for external agent systems
 - **Workflow engine** with Kanban, Agile sprints, ceremony scheduling (8 strategies), visual workflow editor, and workflow execution from graph definitions
 - **Tool ecosystem** with 8+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication) and sandbox security (auth proxy, gVisor, Chainguard packages)
-- **Persistence** with SQLite (single-node default) and PostgreSQL (multi-instance, dual-backend conformance-tested) backends, Atlas-managed schema migrations, and ISO 4217 currency stamping on every cost-bearing row
+- **Persistence** with SQLite (single-node default) and PostgreSQL (multi-instance, dual-backend conformance-tested) backends, yoyo-managed schema migrations, and ISO 4217 currency stamping on every cost-bearing row
 - **Distributed runtime** with NATS JetStream message bus and distributed task queue for multi-instance deployments
 - **Web dashboard** (React 19 + shadcn/ui) with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, setup wizard, and WebSocket / SSE resilience
 - **CLI** (Go) with init, start, stop, doctor, config, wipe, cleanup, worker, backup, completion, and cosign / SLSA verification

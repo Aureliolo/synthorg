@@ -685,12 +685,12 @@ persistence:
 
 ### Schema Strategy
 
-- **Declarative migrations via [Atlas](https://atlasgo.io/)**: `schema.sql` defines the desired state; `atlas migrate diff` generates versioned SQL in `revisions/`
-- At startup, `PersistenceBackend.migrate()` invokes `atlas migrate apply` to apply pending revisions
-- Atlas tracks applied versions in its `atlas_schema_revisions` table (no hand-rolled version tracking)
-- Both persistence and ontology tables are consolidated into a single `schema.sql` (same database file)
-- CI runs `atlas migrate validate` (migration integrity) and `atlas schema diff` (drift detection) on every PR
-- Squashing: run `atlas migrate squash` during the release process when migration count exceeds 50
+- **Declared schema in `schema.sql`**, applied via [yoyo-migrations](https://ollycope.com/software/yoyo/latest/) revision files under `persistence/<backend>/revisions/`.
+- At startup, `PersistenceBackend.migrate()` calls `synthorg.persistence.migrations.migrate_apply()` which wraps yoyo in-process.
+- Yoyo tracks applied versions plus content hashes in its `_yoyo_migration` table (and a per-action audit log in `_yoyo_log`); no hand-rolled version tracking.
+- Both persistence and ontology tables are consolidated into a single `schema.sql` (same database file).
+- CI runs `scripts/check_schema_drift_revisions.py` on every PR (declared `schema.sql` vs accumulated revisions, per backend).
+- Squashing: a single-baseline squash collapses every revision into one seed file derived from `schema.sql` (run rarely; documented in `docs/guides/persistence-migrations.md`).
 
 ### Key Principles
 

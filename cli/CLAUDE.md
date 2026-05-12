@@ -146,7 +146,7 @@ See [docs/reference/cli-config-subcommands.md](../docs/reference/cli-config-subc
 
 Every generated `compose.yml` includes a one-shot `data-init` helper that chowns each named volume to its non-root owner (`65532:65532` for backend / NATS, `70:70` with mode `0700` for Postgres) before stateful services start. The Postgres / NATS services declare `depends_on: data-init: condition: service_completed_successfully`.
 
-Backend auto-wire precedence: when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB_PATH` are present, `SYNTHORG_DATABASE_URL` wins (Postgres is initialised; the SQLite path is ignored). A malformed URL raises loudly at startup rather than silently falling back to a no-persistence install. Atlas migrations run on every backend connection; the Atlas binary is baked into the backend image at `/usr/local/bin/atlas` from `arigaio/atlas:latest-community-distroless`, pinned by multi-arch manifest digest.
+Backend auto-wire precedence: when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB_PATH` are present, `SYNTHORG_DATABASE_URL` wins (Postgres is initialised; the SQLite path is ignored). A malformed URL raises loudly at startup rather than silently falling back to a no-persistence install. yoyo-migrations applies pending revisions on every backend connection in-process; no external binary is shipped in the runtime image.
 
 Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates port collisions across all enabled services.
 

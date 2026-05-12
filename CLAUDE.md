@@ -34,7 +34,7 @@ uv run python -m pytest tests/benchmarks/ --codspeed -n0
 HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -k properties
 HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit --timeout=0
 uv run pre-commit run --all-files
-atlas migrate diff --env sqlite <name>              # or --env postgres
+uv run python scripts/check_schema_drift_revisions.py --backend sqlite  # or --backend postgres
 PYTHONPATH=. uv run zensical build                  # docs
 ```
 

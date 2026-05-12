@@ -38,9 +38,9 @@ by a caller that reached past the abstraction.
   `persistence/{sqlite,postgres}/`, and expose them on `PersistenceBackend`.
 - Adding a migration: **read
   [`docs/guides/persistence-migrations.md`](../guides/persistence-migrations.md)
-  first.**  Never hand-edit SQL in `persistence/{sqlite,postgres}/revisions/`.
-  Never edit `atlas.sum`.  Never run `atlas migrate hash` post-release (a
-  PreToolUse hook blocks it).
+  first.**  Never hand-edit a revision file that already exists on
+  ``origin/main``; yoyo's content-hash check refuses to re-apply an
+  edited file.  Author a new revision with your delta instead.
 - Per-line opt-out: append `# lint-allow: persistence-boundary -- <required justification>` as a trailing comment. The justification after the `--` separator must be non-empty.
 - Enforced by `scripts/check_persistence_boundary.py`, wired into the pre-push
   hook and the CI Lint job; both fail loudly on violations.
@@ -62,8 +62,8 @@ no matter which surface they hit first.
 
 | Backend  | Primary use case                                    | Concurrency model                    | Migration tool |
 |----------|-----------------------------------------------------|--------------------------------------|----------------|
-| SQLite   | Single-user dev, small self-hosted, demos           | Single-writer with WAL journaling    | Atlas          |
-| Postgres | Multi-user production, high-concurrency write paths | Row-level MVCC, server-side triggers | Atlas          |
+| SQLite   | Single-user dev, small self-hosted, demos           | Single-writer with WAL journaling    | yoyo-migrations |
+| Postgres | Multi-user production, high-concurrency write paths | Row-level MVCC, server-side triggers | yoyo-migrations |
 
 Repositories live under `src/synthorg/persistence/sqlite/` and
 `src/synthorg/persistence/postgres/`, behind domain-scoped protocols declared
@@ -321,7 +321,7 @@ The feature is **off by default** and gated behind
 `PostgresConfig.enable_timescaledb`.  Operators running vanilla Postgres or a
 managed service without TimescaleDB leave it off and the tables stay regular
 relational tables with a composite primary key.  Note: the composite-primary-key
-schema change and its Atlas migration run unconditionally (they are valid on
+schema change and its yoyo revision run unconditionally (they are valid on
 vanilla Postgres); only the `create_hypertable` step is gated behind the flag.
 
 ```python
@@ -333,8 +333,8 @@ PostgresConfig(
 )
 ```
 
-When enabled, the backend's `migrate` method runs two phases: first Atlas
-applies the declarative schema migrations, then a dedicated step calls
+When enabled, the backend's `migrate` method runs two phases: first yoyo
+applies the schema revisions, then a dedicated step calls
 `create_hypertable` on each target table.  The conversion is idempotent
 (`if_not_exists => TRUE`) so reruns and restores are safe.  If the
 `timescaledb` extension is not installed on the server, the flag is treated as
@@ -380,102 +380,94 @@ deployment moves to self-hosted.
 
 ## Extension strategy
 
-Postgres extensions need two things to work through Atlas's declarative
-pipeline: the extension DDL has to be acceptable to Atlas's dev database during
-`atlas migrate diff`, and any catalog objects the extension creates after
-migrations run must not be flagged as drift on subsequent diffs.  SynthOrg
-handles this with a two-step pattern:
+Postgres extensions need two things to work through the migration
+pipeline: the extension DDL has to apply cleanly through yoyo against
+the production database, and any catalog objects the extension
+creates after migrations run must not be flagged as drift by the
+declared-vs-revisions gate.  SynthOrg handles this with a two-step
+pattern:
 
-1. **Declarative schema** (`schema.sql` + Atlas migrations) only contains DDL
-   that is valid on vanilla Postgres.  Function-call SQL like
-   `SELECT create_hypertable(...)` cannot live here because Atlas's declarative
-   diff engine does not parse function calls.
-2. **Runtime setup hooks** in the backend's `migrate` method run post-Atlas SQL
-   against the real target database.  These hooks detect extension
-   availability via `pg_available_extensions` and skip gracefully when the
-   extension is not installed, so the same config works on vanilla Postgres
-   and on self-hosted TimescaleDB without branching at deployment time.
+1. **Declared schema** (`schema.sql` + revision files) only contains
+   DDL that is valid on vanilla Postgres.  Function-call SQL like
+   `SELECT create_hypertable(...)` cannot live here because the
+   drift gate compares structural shape and side-effects of those
+   function calls would never appear in `pg_dump` output.
+2. **Runtime setup hooks** in the backend's `migrate` method run
+   post-revision SQL against the real target database.  These hooks
+   detect extension availability via `pg_available_extensions` and
+   skip gracefully when the extension is not installed, so the same
+   config works on vanilla Postgres and on self-hosted TimescaleDB
+   without branching at deployment time.
 
-This pattern scales to other extensions (`pgvector`, `pg_trgm`, `pgcrypto`) if
-SynthOrg adopts them later.  The rule is: if the extension adds objects that
-Atlas cannot express or recognize, add a runtime setup hook; if the extension
-is purely about `CREATE EXTENSION` and then standard DDL, let Atlas own it.
+This pattern scales to other extensions (`pgvector`, `pg_trgm`,
+`pgcrypto`) if SynthOrg adopts them later.  The rule is: if the
+extension adds objects that the drift gate cannot recognise, add a
+runtime setup hook; if the extension is purely about
+`CREATE EXTENSION` and then standard DDL, let the revisions own it.
 
 ## Migration workflow
 
-Migrations are generated by [Atlas](https://atlasgo.io/) from the single source
-of truth in `src/synthorg/persistence/<backend>/schema.sql`.  The full
+Schema migrations are applied via [yoyo-migrations](https://ollycope.com/software/yoyo/latest/)
+against the revisions under `src/synthorg/persistence/<backend>/revisions/`.
+The single source of truth for the declared schema lives in
+`src/synthorg/persistence/<backend>/schema.sql`.  The full
 developer-facing workflow, happy path, and AI-agent rules live in
 [`docs/guides/persistence-migrations.md`](../guides/persistence-migrations.md);
-read it before adding or regenerating a migration.  The short form:
+read it before adding a new revision.  The short form:
 
-```bash
-atlas migrate diff --env sqlite <name>     # SQLite
-atlas migrate diff --env postgres <name>   # Postgres (requires Docker dev DB)
+```text
+src/synthorg/persistence/sqlite/revisions/<14-digit-ts>_<name>.sql
+src/synthorg/persistence/postgres/revisions/<14-digit-ts>_<name>.sql
 ```
 
-Never hand-edit generated migration files, and never run `atlas migrate hash`
-post-release (a PreToolUse hook blocks it in the default environment).  If a
-migration needs to change before it has landed, delete the file and regenerate
-it via `atlas migrate diff`; this preserves `atlas.sum` integrity end-to-end.
+Never hand-edit a revision file that already exists on `origin/main`;
+yoyo's content-hash check refuses to re-apply an edited file (the
+hash mismatch trips at apply time).  If a revision needs to change
+before it has landed (still PR-local), delete the file and author a
+new one with the corrected SQL.
 
-Hand-written migrations (procedural SQL that Atlas cannot derive from
-`schema.sql`) are NOT added to the `revisions/` directory because they would
-invalidate `atlas.sum`.  Instead, procedural setup runs through the backend's
-runtime migration hooks (see the TimescaleDB pattern above).
+Procedural setup that cannot be expressed as a static `CREATE` /
+`ALTER` statement (function-call DDL like `SELECT
+create_hypertable(...)`) does NOT belong in the `revisions/`
+directory; it runs through the backend's runtime migration hooks
+(see the TimescaleDB pattern above).  The drift gate is structural
+and would not understand the side-effect anyway.
 
 ## Migration squashing
 
-As the migration count grows, the revisions directory becomes harder to review
-and Atlas's diff engine slows perceptibly.  SynthOrg uses a periodic partial
-squash to keep the history manageable while preserving upgrade paths.
+As the revision count grows the directory becomes harder to review.
+SynthOrg supports a single-baseline squash that collapses the entire
+revision chain into one seed file derived from `schema.sql`.  Run it
+rarely; the revision history is the audit trail between squashes.
 
-### When squashing triggers
+### Procedure
 
-The squash script (`scripts/squash_migrations.sh`) checks both SQLite and
-Postgres backends.  When a backend exceeds **100 migration files** (configurable
-via `SQUASH_THRESHOLD`), the oldest files beyond the **newest 50**
-(`SQUASH_KEEP`) are replaced by a single Atlas checkpoint.
+1. Verify clean state: `scripts/check_schema_drift_revisions.py
+   --backend <backend>` exits 0.
+2. Delete every revision file except `__init__.py`.
+3. Copy `schema.sql` verbatim to
+   `revisions/00000000000000_baseline.sql` (the leading 14 zeros
+   ensure it sorts before any future revision).
+4. Re-run the drift gate to confirm the new seed reproduces
+   `schema.sql` exactly.
 
-### How it works
-
-1. The script copies the oldest files to a temporary directory and runs
-   `atlas migrate checkpoint` to produce a DDL-only snapshot of the schema at
-   that point.
-2. The checkpoint file is timestamped between the last squashed migration and
-   the first kept migration so Atlas orders it correctly.
-3. The original revisions directory is rebuilt with the checkpoint plus the
-   remaining individual files, and `atlas migrate hash` regenerates
-   `atlas.sum`.
+Repeat for the other backend.
 
 ### Upgrade paths after squash
 
-| Database state | Behavior |
-|---|---|
-| Fresh install | Applies checkpoint (full schema to squash point) then remaining files |
-| At or past squash point | Skips checkpoint, applies only unapplied files |
-| Before squash point | **Error**: the individual files it needs are gone; upgrade through the unsquashed release first |
-
-The "before squash point" case is safe because the threshold (100) and keep
-count (50) guarantee that by the time a squash runs, all production databases
-have had at least 50 migration versions to catch up past the squash boundary.
-
-### Dual-backend squashing
-
-Both SQLite and Postgres backends are processed independently in a single
-invocation.  Each backend may have a different migration count; only backends
-that exceed the threshold are squashed.
-
-```bash
-bash scripts/squash_migrations.sh
-```
+Pre-alpha: there are no production databases that preserve the prior
+revision chain, so the squash does not need to support upgrade paths
+from a pre-squash state.  Operators run a fresh install or restore
+from a backup.  Once SynthOrg has external users, the squash
+procedure will need an explicit "fresh-install marker" workflow via
+`migrations.migrate_baseline()`.
 
 ### Committing a squash
 
-Squash commits delete old migration files and rewrite `atlas.sum`, which the
-pre-commit hook `check_no_modify_migration.sh` would normally block.  Set the
+Squash commits delete old revision files, which the pre-commit hook
+`check_no_modify_migration.sh` would normally block.  Set the
 `SYNTHORG_MIGRATION_SQUASH` environment variable to bypass:
 
 ```bash
-SYNTHORG_MIGRATION_SQUASH=1 git commit -m "chore: squash oldest migrations"
+SYNTHORG_MIGRATION_SQUASH=1 git commit -m "refactor(persistence): squash revisions"
 ```
