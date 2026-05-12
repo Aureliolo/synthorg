@@ -156,34 +156,34 @@ git diff main --name-only
 
 Based on changed files, launch applicable review agents **in parallel** using the Task tool. **Do NOT use `run_in_background`**; launch them as regular parallel Task calls so results arrive together and the user sees all agents complete before triage begins. Background agents cause confusing late-arriving `task-notification` messages that make it look like you presented triage before agents finished.
 
-> **IMPORTANT - OpenCode Agent Mapping**: When running in OpenCode (not Claude Code), you MUST use these working subagent types. NEVER use the Claude Code plugin names directly; they will fail with "Unknown agent type".
+> **Dispatch**: in Claude Code, the `subagent_type` value below must match a loaded agent in `.claude/agents/`. In OpenCode, it must match an agent in `.opencode/agents/`. The dual-tool parity invariant means every name listed below exists in both directories.
 
 | Agent | When to launch | subagent_type |
 |---|---|---|
-| **docs-consistency** | **ALWAYS** runs on every PR regardless of change type | `explore` (use custom prompt below) |
-| **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `explore` (use custom prompt below) |
-| **code-reviewer** | Any `src_py` or `test_py` | `explore` |
-| **python-reviewer** | Any `src_py` or `test_py` | `explore` |
-| **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `explore` |
-| **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `explore` |
-| **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `explore` |
-| **type-design-analyzer** | Diff contains `class` definitions, `BaseModel`, `TypedDict`, type aliases | `explore (type-design-analyzer)` |
-| **logging-audit** | Any `src_py` changed | `explore` (use custom prompt below) |
-| **resilience-audit** | Any `src_py` changed | `explore` (use custom prompt below) |
-| **conventions-enforcer** | Any `src_py` or `test_py` | `explore` (use custom prompt below) |
-| **security-reviewer** | Files in sensitive paths OR any `web_src` changed OR diff contains dangerous patterns | `explore` |
-| **frontend-reviewer** | Any `web_src` or `web_test` | `explore` (use custom prompt below) |
-| **design-token-audit** | Any `web_src` | `explore` |
-| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `explore` (use custom prompt below) |
-| **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `explore` (use custom prompt below) |
-| **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `explore` |
-| **test-quality-reviewer** | Any `test_py` or `web_test` | `explore` (use custom prompt below) |
-| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `explore` (use custom prompt below) |
-| **go-reviewer** | Any `cli_go` | `explore` |
-| **go-security-reviewer** | Any `cli_go` with dangerous patterns | `explore` |
-| **go-conventions-enforcer** | Any `cli_go` | `explore` |
-| **diagram-syntax-validator** | Any `docs` files changed that contain ` ```d2 ` or ` ```mermaid ` blocks | `explore` (use `.claude/agents/diagram-syntax-validator.md` prompt) |
-| **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked in Phase 2) | `explore` (issue-resolution-verifier) |
+| **docs-consistency** | **ALWAYS** runs on every PR regardless of change type | `docs-consistency` |
+| **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `tool-parity-checker` |
+| **code-reviewer** | Any `src_py` or `test_py` | `code-reviewer` |
+| **python-reviewer** | Any `src_py` or `test_py` | `python-reviewer` |
+| **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `pr-test-analyzer` |
+| **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `silent-failure-hunter` |
+| **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `comment-analyzer` |
+| **type-design-analyzer** | Diff contains `class` definitions, `BaseModel`, `TypedDict`, type aliases | `type-design-analyzer` |
+| **logging-audit** | Any `src_py` changed | `logging-audit` |
+| **resilience-audit** | Any `src_py` changed | `resilience-audit` |
+| **conventions-enforcer** | Any `src_py` or `test_py` | `conventions-enforcer` |
+| **security-reviewer** | Files in sensitive paths OR any `web_src` changed OR diff contains dangerous patterns | `security-reviewer` |
+| **frontend-reviewer** | Any `web_src` or `web_test` | `frontend-reviewer` |
+| **design-token-audit** | Any `web_src` | `design-token-audit` |
+| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `api-contract-drift` |
+| **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `infra-reviewer` |
+| **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `persistence-reviewer` |
+| **test-quality-reviewer** | Any `test_py` or `web_test` | `test-quality-reviewer` |
+| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `async-concurrency-reviewer` |
+| **go-reviewer** | Any `cli_go` | `go-reviewer` |
+| **go-security-reviewer** | Any `cli_go` with dangerous patterns | `go-security-reviewer` |
+| **go-conventions-enforcer** | Any `cli_go` | `go-conventions-enforcer` |
+| **diagram-syntax-validator** | Any `docs` files changed that contain ` ```d2 ` or ` ```mermaid ` blocks | `diagram-syntax-validator` |
+| **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked in Phase 2) | `issue-resolution-verifier` |
 
 **If the Task tool fails** (e.g., "Unknown agent type"), fall back to running the check manually using Read/Grep tools on the changed files AND the additional required sources (CLAUDE.md, README.md, docs/design/*.md for the relevant pages). Ensure the issue-resolution-verifier also fetches the full linked issue content via `gh issue view N --json title,body,labels,comments`.
 
