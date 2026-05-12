@@ -77,6 +77,14 @@ _REVISION_PATHS: Final[dict[str, Path]] = {
 }
 
 _POSTGRES_TESTCONTAINER_IMAGE: Final[str] = "postgres:18-alpine"
+_POSTGRES_DEFAULT_PORT: Final[int] = 5432
+"""Default Postgres listener port inside the testcontainer.
+
+Hoisted out of the call site so the magic-number gate
+(``scripts/check_no_magic_numbers.py``) does not need a literal-5432
+allowlist for this script and so the container contract is visible
+at the top of the file.
+"""
 
 _PG_DUMP_TIMEOUT_SECONDS: Final[int] = 60
 """Wall-clock cap on a single ``pg_dump`` invocation.
@@ -185,7 +193,7 @@ async def _dump_postgres_schema(revisions_path: Path) -> str:
 
     with PostgresContainer(_POSTGRES_TESTCONTAINER_IMAGE) as pg:
         host = pg.get_container_host_ip()
-        port = pg.get_exposed_port(5432)
+        port = pg.get_exposed_port(_POSTGRES_DEFAULT_PORT)
         user = pg.username
         password = pg.password
         dbname = pg.dbname
@@ -514,6 +522,17 @@ def _diff_tables(
         if d.primary_key != a.primary_key:
             findings.append(
                 f"pk:{name}:declared({','.join(d.primary_key) or '_'}):revisions({','.join(a.primary_key) or '_'})"
+            )
+        # UNIQUE constraints populated by ``_patch_constraints_from_alter``
+        # were not being compared. SQLite's ``sql IS NOT NULL`` dump filter
+        # hides implicit unique indexes, so without an explicit diff a
+        # revision that drops a UNIQUE constraint passes the gate silently.
+        d_uniques = sorted(",".join(cols) for cols in d.uniques)
+        a_uniques = sorted(",".join(cols) for cols in a.uniques)
+        if d_uniques != a_uniques:
+            findings.append(
+                f"unique:{name}:declared({'|'.join(d_uniques) or '_'}):"
+                f"revisions({'|'.join(a_uniques) or '_'})"
             )
     return findings
 

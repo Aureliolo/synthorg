@@ -669,6 +669,22 @@ async def migrate_rollback(
 
     try:
         rolled_count, rolled_versions = await asyncio.to_thread(_rollback)
+    except MigrationError as exc:
+        # The unknown-target guard inside ``_rollback`` raises
+        # ``MigrationError`` directly; that pre-validated failure must still
+        # surface through ``PERSISTENCE_MIGRATION_FAILED`` so observability
+        # treats it identically to a yoyo / driver failure. Re-raise as-is;
+        # no need to wrap an already-typed ``MigrationError`` into another.
+        logger.warning(
+            PERSISTENCE_MIGRATION_FAILED,
+            db_url=_redact_url(db_url),
+            backend=backend,
+            operation="rollback",
+            target_version=target_version,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
     except _MIGRATION_FAILURE_EXCEPTIONS as exc:
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,

@@ -368,7 +368,13 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             // Claude Code. Throttle gate comes first (cheap fail-fast on the
             // record), then CI-before-push (waits for the latest run), then
             // rebase check.
-            if (command.includes("git push")) {
+            //
+            // Match the ``git push`` token pair case-insensitively with word
+            // boundaries so spacing variants and shell aliases ("  git   PUSH
+            // origin -f") still trigger the gates. A plain
+            // ``command.includes("git push")`` was bypassable by any extra
+            // whitespace or upper-case form.
+            if (/(?:^|\s)git\s+push(?:\s|$)/i.test(command)) {
               for (const script of [
                 "scripts/check_push_throttle.sh",
                 "scripts/check_ci_before_push.sh",
