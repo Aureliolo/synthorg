@@ -31,24 +31,6 @@ _r.register(
     )
 )
 
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.TOOLS,
-        key="atlas_kill_grace_timeout_seconds",
-        type=SettingType.FLOAT,
-        default="5.0",
-        description=(
-            "Grace period after SIGTERM for an Atlas migration subprocess"
-            " to flush before it is reaped"
-        ),
-        group="Atlas",
-        level=SettingLevel.ADVANCED,
-        min_value=1.0,
-        max_value=60.0,
-        yaml_path="tools.atlas.kill_grace_timeout_seconds",
-    )
-)
-
 # ── Docker sandbox sidecar ───────────────────────────────────────
 
 _r.register(

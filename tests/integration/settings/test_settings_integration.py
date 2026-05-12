@@ -10,7 +10,7 @@ import pytest
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.config.schema import RootConfig
-from synthorg.persistence import atlas
+from synthorg.persistence import migrations
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.settings.registry import get_registry
@@ -43,14 +43,13 @@ async def backend(
     """
     be = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
     await be.connect()
-    revisions_url = atlas.copy_revisions(
+    revisions_path = migrations.copy_revisions(
         tmp_path / "sqlite_revisions",
         backend="sqlite",
     )
-    await atlas.migrate_apply(
-        atlas.to_sqlite_url(db_path),
-        revisions_url=revisions_url,
-        skip_lock=True,
+    await migrations.migrate_apply(
+        migrations.to_sqlite_url(db_path),
+        revisions_path=revisions_path,
         backend="sqlite",
     )
     yield be

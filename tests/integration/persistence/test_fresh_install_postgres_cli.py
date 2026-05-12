@@ -10,7 +10,7 @@ than crashing operators with an ``AttributeError`` at
 
 The test uses the programmatic lifecycle entry point rather than spawning
 a subprocess -- all the failure modes (import errors, handle-type
-mismatches, Atlas migration failures) surface synchronously and are easy
+mismatches, yoyo migration failures) surface synchronously and are easy
 to diagnose.
 """
 

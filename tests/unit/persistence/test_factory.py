@@ -117,29 +117,26 @@ class TestCreateBackend:
     ) -> None:
         """Each company config creates an isolated backend instance.
 
-        Migrations are applied via ``atlas.migrate_apply`` against a
-        per-test copy of the revisions directory with ``skip_lock=True``
-        (the same pattern used by the session-scoped template fixture)
-        so concurrent xdist workers do not contend on the shared
-        ``src/synthorg/persistence/sqlite/revisions`` directory lock.
+        Migrations are applied via ``migrations.migrate_apply`` against
+        a per-test copy of the revisions directory.  Each xdist worker
+        already has its own SQLite file (per ``tmp_path``), so yoyo's
+        DB-level lock cannot contend across workers; the per-test
+        revisions copy keeps the on-disk layout symmetric with
+        production.
         """
-        from synthorg.persistence import atlas
+        from synthorg.persistence import migrations
 
         path_a = str(tmp_path / "company-a.db")
         path_b = str(tmp_path / "company-b.db")
 
-        # Apply migrations against an isolated per-test revisions copy
-        # to avoid cross-worker Atlas lock contention.
-        rev_url = atlas.copy_revisions(tmp_path / "revisions")
-        await atlas.migrate_apply(
-            atlas.to_sqlite_url(path_a),
-            revisions_url=rev_url,
-            skip_lock=True,
+        rev_path = migrations.copy_revisions(tmp_path / "revisions")
+        await migrations.migrate_apply(
+            migrations.to_sqlite_url(path_a),
+            revisions_path=rev_path,
         )
-        await atlas.migrate_apply(
-            atlas.to_sqlite_url(path_b),
-            revisions_url=rev_url,
-            skip_lock=True,
+        await migrations.migrate_apply(
+            migrations.to_sqlite_url(path_b),
+            revisions_path=rev_path,
         )
 
         config_a = PersistenceConfig(sqlite=SQLiteConfig(path=path_a))

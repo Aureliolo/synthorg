@@ -30,7 +30,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
-from synthorg.persistence import atlas
+from synthorg.persistence import migrations
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,
 )
@@ -723,8 +723,8 @@ class SQLitePersistenceBackend:
                 msg = "Cannot migrate: not connected"
                 logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
                 raise PersistenceConnectionError(msg)
-            db_url = atlas.to_sqlite_url(self._config.path)
-            await atlas.migrate_apply(db_url)
+            db_url = migrations.to_sqlite_url(self._config.path)
+            await migrations.migrate_apply(db_url)
 
     @property
     def is_connected(self) -> bool:

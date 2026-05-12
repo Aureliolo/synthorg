@@ -1,76 +1,26 @@
-"""Tests for Atlas-based schema migrations."""
+"""Schema constraint tests against the migrated SQLite template database.
+
+The ``migrated_db`` fixture (defined in ``tests/conftest.py``) gives us
+a fresh aiosqlite connection backed by a snapshot of the canonical
+schema applied via ``synthorg.persistence.migrations`` (yoyo).  Tests
+here lock in invariants that must hold whenever the schema is
+applied: nullability, composite keys, FK actions, CHECK constraints,
+and presence of every expected table.
+
+Migration-engine behaviour (apply / status / baseline / rollback /
+URL building / discovery) lives in
+``tests/unit/persistence/test_migrations.py``.
+"""
 
 import sqlite3
-from pathlib import Path
-from unittest.mock import patch
 
 import aiosqlite
 import pytest
 
-from synthorg.core.persistence_errors import MigrationError
-from synthorg.persistence import atlas
-
-
-@pytest.mark.unit
-class TestMigrateApply:
-    """Tests for atlas.migrate_apply()."""
-
-    async def test_applies_to_fresh_db(self, tmp_path: Path) -> None:
-        """Baseline migration creates all expected tables."""
-        db_path = tmp_path / "fresh.db"
-        rev_url = atlas.copy_revisions(tmp_path / "revisions")
-        result = await atlas.migrate_apply(
-            atlas.to_sqlite_url(str(db_path)),
-            revisions_url=rev_url,
-            skip_lock=True,
-        )
-
-        assert result.applied_count >= 1
-
-        async with aiosqlite.connect(str(db_path)) as db:
-            cursor = await db.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' "
-                "AND name NOT LIKE 'sqlite_%' "
-                "AND name NOT LIKE 'atlas_%' "
-                "ORDER BY name"
-            )
-            tables = {row[0] for row in await cursor.fetchall()}
-
-        assert "tasks" in tables
-        assert "users" in tables
-        assert "entity_definitions" in tables
-        assert "entity_definition_versions" in tables
-
-    async def test_idempotent(self, tmp_path: Path) -> None:
-        """Applying migrations twice does not raise."""
-        db_path = tmp_path / "idem.db"
-        db_url = atlas.to_sqlite_url(str(db_path))
-        rev_url = atlas.copy_revisions(tmp_path / "revisions")
-        await atlas.migrate_apply(
-            db_url,
-            revisions_url=rev_url,
-            skip_lock=True,
-        )
-        result = await atlas.migrate_apply(
-            db_url,
-            revisions_url=rev_url,
-            skip_lock=True,
-        )
-
-        assert result.applied_count == 0
-
-    async def test_atlas_not_found_raises(self) -> None:
-        """MigrationError raised when Atlas binary is missing."""
-        with (
-            patch("synthorg.persistence.atlas.shutil.which", return_value=None),
-            pytest.raises(MigrationError, match="Atlas CLI not found"),
-        ):
-            await atlas.migrate_apply("sqlite:///tmp/test.db")
-
 
 @pytest.mark.unit
 class TestSchemaConstraints:
-    """Constraint enforcement tests using Atlas-migrated database."""
+    """Constraint enforcement tests against the migrated template DB."""
 
     async def test_parked_contexts_task_id_is_nullable(
         self, migrated_db: aiosqlite.Connection

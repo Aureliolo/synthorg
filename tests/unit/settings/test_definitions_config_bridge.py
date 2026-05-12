@@ -406,15 +406,6 @@ _EXPECTED: tuple[
     ),
     _spec(
         SettingNamespace.TOOLS,
-        "atlas_kill_grace_timeout_seconds",
-        SettingType.FLOAT,
-        "5.0",
-        1.0,
-        60.0,
-        False,
-    ),
-    _spec(
-        SettingNamespace.TOOLS,
         "docker_sidecar_health_poll_interval_seconds",
         SettingType.FLOAT,
         "0.2",
@@ -618,12 +609,6 @@ _METADATA_EXPECTED: tuple[tuple[SettingNamespace, str, str, str], ...] = (
         "git_kill_grace_timeout_seconds",
         "Git",
         "tools.git.kill_grace_timeout_seconds",
-    ),
-    (
-        SettingNamespace.TOOLS,
-        "atlas_kill_grace_timeout_seconds",
-        "Atlas",
-        "tools.atlas.kill_grace_timeout_seconds",
     ),
     (
         SettingNamespace.TOOLS,

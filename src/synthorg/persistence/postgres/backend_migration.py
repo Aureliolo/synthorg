@@ -19,7 +19,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TIMESCALEDB_SETUP_FAILED,
     PERSISTENCE_TIMESCALEDB_UNAVAILABLE,
 )
-from synthorg.persistence import atlas
+from synthorg.persistence import migrations
 
 if TYPE_CHECKING:
     import asyncio
@@ -42,14 +42,14 @@ class PostgresMigrationMixin:
         raise NotImplementedError
 
     async def migrate(self) -> None:
-        """Apply pending schema migrations via Atlas CLI.
+        """Apply pending schema migrations via yoyo-migrations.
 
         If migration fails, the pool is closed and backend state is
         cleared so callers cannot continue against a backend whose
         schema is in an indeterminate state (partially applied, or
-        rolled back by Atlas).  They must reconnect explicitly.
+        rolled back by yoyo).  They must reconnect explicitly.
 
-        When ``config.enable_timescaledb`` is true, the Atlas
+        When ``config.enable_timescaledb`` is true, the yoyo
         migrations run first, then the hypertable conversion runs as
         a separate post-migration step against the same pool.  The
         hypertable conversion is idempotent (``if_not_exists => TRUE``)
@@ -64,9 +64,9 @@ class PostgresMigrationMixin:
                 msg = "Cannot migrate: postgres backend not connected"
                 logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
                 raise PersistenceConnectionError(msg)
-            db_url = atlas.to_postgres_url(self._config)
+            db_url = migrations.to_postgres_url(self._config)
             try:
-                await atlas.migrate_apply(db_url, backend="postgres")
+                await migrations.migrate_apply(db_url, backend="postgres")
                 if self._config.enable_timescaledb:
                     await self._apply_timescaledb_setup()
             except BaseException:
@@ -93,7 +93,7 @@ class PostgresMigrationMixin:
         it is update-heavy (one row per execution_id, bumped per
         pulse) and hypertables optimise for immutable append-only
         data.  Gated on ``config.enable_timescaledb``.  Called at
-        the end of ``migrate`` so Atlas has already created the base
+        the end of ``migrate`` so yoyo has already created the base
         tables with composite primary keys that include the
         partitioning column.  Uses only Apache-2.0 licensed
         TimescaleDB features: ``create_hypertable`` is Apache;

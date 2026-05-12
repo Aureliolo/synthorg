@@ -14,7 +14,7 @@ import pytest
 from psycopg import sql
 from pydantic import SecretStr
 
-from synthorg.persistence import atlas
+from synthorg.persistence import migrations
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
@@ -44,22 +44,21 @@ def db_path(tmp_path: Path) -> str:
 
 
 async def _isolated_sqlite_migrate(db_path: str, tmp_path: Path) -> None:
-    """Apply SQLite migrations with per-test isolation.
+    """Apply SQLite migrations against a per-test isolated revisions copy.
 
-    Copies the revisions directory to ``tmp_path`` and runs
-    ``atlas migrate apply --skip-lock`` against the isolated copy
-    so parallel xdist workers never contend on Atlas's shared
-    directory lock.  Callers are responsible for opening the
+    Each xdist worker already has its own SQLite file (per ``tmp_path``),
+    so yoyo's DB-level lock cannot contend across workers; the per-test
+    revisions copy is kept so the on-disk layout matches the
+    production install.  Callers are responsible for opening the
     backend connection themselves.
     """
-    revisions_url = atlas.copy_revisions(
+    revisions_path = migrations.copy_revisions(
         tmp_path / f"sqlite_revisions_{uuid.uuid4().hex}",
         backend="sqlite",
     )
-    await atlas.migrate_apply(
-        atlas.to_sqlite_url(db_path),
-        revisions_url=revisions_url,
-        skip_lock=True,
+    await migrations.migrate_apply(
+        migrations.to_sqlite_url(db_path),
+        revisions_path=revisions_path,
         backend="sqlite",
     )
 
@@ -90,11 +89,10 @@ async def on_disk_backend(
     """Connected + migrated on-disk SQLite backend.
 
     Each test gets an isolated copy of the sqlite revisions
-    directory via ``atlas.copy_revisions`` and applies migrations
-    with ``--skip-lock``, so parallel xdist workers never contend
-    on Atlas's shared directory lock.  The production ``migrate()``
-    path still uses the shared directory with locking -- only test
-    fixtures opt out.
+    directory via ``migrations.copy_revisions``.  Yoyo's lock is
+    DB-level, not filesystem, so per-worker SQLite files never
+    contend; the copy keeps the on-disk layout symmetric with
+    production.
     """
     backend = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
     await backend.connect()

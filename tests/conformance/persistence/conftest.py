@@ -6,7 +6,7 @@ against SQLite and once against Postgres, both freshly connected and
 migrated.
 
 SQLite arm:
-    Uses ``atlas.copy_revisions`` + ``skip_lock=True`` to migrate an
+    Uses ``migrations.copy_revisions`` to seed a per-test SQLite file
     on-disk tempfile database, so concurrent xdist workers do not
     contend on the shared revisions directory lock.
 
@@ -34,7 +34,7 @@ import pytest
 from psycopg import sql
 from pydantic import SecretStr
 
-from synthorg.persistence import atlas
+from synthorg.persistence import migrations
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.protocol import PersistenceBackend
@@ -108,7 +108,7 @@ def _container_host_ipv4(container: PostgresContainer) -> str:
     on Docker Desktop (Windows / macOS).  Go's default resolver then
     prefers IPv6 ``::1``, and Docker Desktop's vpnkit/gvisor port
     proxy has flaky IPv6 handling right after container start, causing
-    intermittent i/o timeouts on the first ``atlas migrate apply``.
+    intermittent i/o timeouts on the first ``migrations.migrate_apply``.
     Forcing IPv4 sidesteps the race entirely.
     """
     host: str = container.get_container_host_ip()
@@ -210,11 +210,10 @@ async def backend(
     backend_name = request.param
     if backend_name == "sqlite":
         db_path = tmp_path / "conformance.db"
-        rev_url = atlas.copy_revisions(tmp_path / "revisions", backend="sqlite")
-        await atlas.migrate_apply(
-            atlas.to_sqlite_url(str(db_path)),
-            revisions_url=rev_url,
-            skip_lock=True,
+        rev_path = migrations.copy_revisions(tmp_path / "revisions", backend="sqlite")
+        await migrations.migrate_apply(
+            migrations.to_sqlite_url(str(db_path)),
+            revisions_path=rev_path,
         )
         sqlite_backend = SQLitePersistenceBackend(SQLiteConfig(path=str(db_path)))
         await sqlite_backend.connect()
