@@ -44,7 +44,10 @@ async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
     }
     return { results, errors }
   } catch (err) {
-    log.error('runProbeLocal failed', { label, error: getErrorMessage(err) })
+    log.error('runProbeLocal failed', {
+      label,
+      error: sanitizeForLog(getErrorMessage(err)),
+    })
     return null
   }
 }
