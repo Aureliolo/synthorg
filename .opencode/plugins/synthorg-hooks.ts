@@ -286,6 +286,24 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
                 throw new Error(denyReason);
               }
             }
+
+            // check_no_throttle_override_creation.sh for Edit|Write:
+            // blocks creation of files that would override the push-throttle
+            // gate (e.g. allowlist files, fake clock helpers). Mirrors the
+            // corresponding hook in .claude/settings.json so OpenCode does
+            // not become a side door past a Claude-Code-enforced rule.
+            {
+              const outcome = runHookScript(
+                "scripts/check_no_throttle_override_creation.sh",
+                filePathInput,
+                5000,
+                input.tool === "edit" ? "Edit" : "Write",
+              );
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
+              }
+            }
           }
 
           // Only the remaining bash / shell checks apply below
@@ -344,12 +362,41 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               );
             }
 
-            // check_push_rebased.sh: block push if branch is behind main
+            // check_push_throttle.sh + check_ci_before_push.sh + check_push_rebased.sh:
+            // run unconditionally on git push so the OpenCode plugin enforces
+            // the same pre-push gates that .claude/settings.json applies under
+            // Claude Code. Throttle gate comes first (cheap fail-fast on the
+            // record), then CI-before-push (waits for the latest run), then
+            // rebase check.
             if (command.includes("git push")) {
-              const outcome = runHookScript(
+              for (const script of [
+                "scripts/check_push_throttle.sh",
+                "scripts/check_ci_before_push.sh",
                 "scripts/check_push_rebased.sh",
+              ]) {
+                const outcome = runHookScript(
+                  script,
+                  { command },
+                  15000,
+                );
+                const denyReason = denyReasonFromOutcome(outcome);
+                if (denyReason) {
+                  throw new Error(denyReason);
+                }
+              }
+            }
+
+            // check_no_throttle_override_creation.sh for Bash: blocks shell
+            // invocations that would create a file capable of overriding the
+            // push-throttle record (e.g. ``rm`` against the record, ``echo``
+            // a fake throttle file). Mirrored from the matching Bash entry
+            // in .claude/settings.json.
+            {
+              const outcome = runHookScript(
+                "scripts/check_no_throttle_override_creation.sh",
                 { command },
-                15000,
+                5000,
+                "Bash",
               );
               const denyReason = denyReasonFromOutcome(outcome);
               if (denyReason) {
@@ -399,6 +446,26 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
           }
         },
         after: async (input, output) => {
+          // record_push_throttle.sh PostToolUse for Bash: records a successful
+          // git push timestamp so subsequent ``check_push_throttle.sh``
+          // invocations can rate-limit pushes per round. Mirrors the matching
+          // PostToolUse entry in .claude/settings.json. The record script
+          // itself filters non-push commands, so invoking it on every Bash
+          // PostToolUse is correct and matches the Claude Code config.
+          if (input.tool === "bash" || input.tool === "shell") {
+            const command = (output.args?.command as string) ?? "";
+            const outcome = runHookScript(
+              "scripts/record_push_throttle.sh",
+              { command },
+              5000,
+              "Bash",
+            );
+            const denyReason = denyReasonFromOutcome(outcome);
+            if (denyReason) {
+              throw new Error(denyReason);
+            }
+            return;
+          }
           if (input.tool !== "edit" && input.tool !== "write") {
             return;
           }

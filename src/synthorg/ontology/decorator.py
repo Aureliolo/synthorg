@@ -54,21 +54,33 @@ def get_entity_registry() -> MappingProxyType[str, EntityDefinition]:
     Builds ``EntityDefinition`` objects lazily on first call and
     caches the result.  The cache is invalidated by
     ``clear_entity_registry()``.
+
+    Holds ``_REGISTRY_LOCK`` across both the cache check and the
+    rebuild so a concurrent ``_do_register()`` cannot mutate
+    ``_RAW_REGISTRY`` mid-iteration (which would raise
+    ``RuntimeError: dictionary changed size during iteration``).
     """
     global _CACHE  # noqa: PLW0603
-    # _CACHE is set to None by _do_register() and clear_entity_registry().
-    if _CACHE is None:
-        _CACHE = {
-            name: _derive_definition(entry) for name, entry in _RAW_REGISTRY.items()
-        }
-    return MappingProxyType(_CACHE)
+    with _REGISTRY_LOCK:
+        # _CACHE is set to None by _do_register() and clear_entity_registry().
+        if _CACHE is None:
+            _CACHE = {
+                name: _derive_definition(entry) for name, entry in _RAW_REGISTRY.items()
+            }
+        return MappingProxyType(_CACHE)
 
 
 def clear_entity_registry() -> None:
-    """Clear the entity registry (for testing only)."""
+    """Clear the entity registry (for testing only).
+
+    Holds ``_REGISTRY_LOCK`` so the clear and the cache invalidation
+    happen atomically with respect to ``_do_register()`` and
+    ``get_entity_registry()``.
+    """
     global _CACHE  # noqa: PLW0603
-    _RAW_REGISTRY.clear()
-    _CACHE = None
+    with _REGISTRY_LOCK:
+        _RAW_REGISTRY.clear()
+        _CACHE = None
 
 
 def _derive_definition(entry: _RegistryEntry) -> EntityDefinition:

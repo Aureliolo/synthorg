@@ -77,6 +77,28 @@ _REVISION_PATHS: Final[dict[str, Path]] = {
 }
 
 _POSTGRES_TESTCONTAINER_IMAGE: Final[str] = "postgres:18-alpine"
+
+_PG_DUMP_TIMEOUT_SECONDS: Final[int] = 60
+"""Wall-clock cap on a single ``pg_dump`` invocation.
+
+A hung ``docker exec ... pg_dump`` (container deadlock, lost network)
+would otherwise wait for the job-level CI timeout, which can be tens
+of minutes. Bounding it here makes the drift gate fail fast with a
+clear ``TimeoutExpired`` cause instead of an opaque CI cancellation.
+"""
+
+_DOLLAR_QUOTE_OPEN: Final[re.Pattern[str]] = re.compile(
+    r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$"
+)
+"""Match a Postgres dollar-quote delimiter at the current position.
+
+PostgreSQL dollar quoting accepts both the bare ``$$`` form and a
+named ``$tag$`` form where the tag follows identifier rules
+(letters / digits / underscores, leading non-digit). The splitter
+needs the full delimiter string so the matching close delimiter can
+be located verbatim.
+"""
+
 _POSTGRES_DUMP_PRELUDE_LINES: Final[tuple[str, ...]] = (
     "SET ",
     "SELECT pg_catalog.set_config",
@@ -176,26 +198,39 @@ async def _dump_postgres_schema(revisions_path: Path) -> str:
 
 
 def _run_pg_dump(container_id: str, user: str, dbname: str) -> str:
-    """Invoke ``pg_dump`` inside the running Postgres testcontainer."""
-    return subprocess.run(
-        [
-            "docker",
-            "exec",
-            container_id,
-            "pg_dump",
-            "--schema-only",
-            "--no-owner",
-            "--no-acl",
-            "--no-comments",
-            "-U",
-            user,
-            "-d",
-            dbname,
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
+    """Invoke ``pg_dump`` inside the running Postgres testcontainer.
+
+    Wraps ``subprocess.TimeoutExpired`` in a :class:`SystemExit` so the
+    drift gate surfaces a clear failure when ``docker exec`` stalls,
+    rather than waiting out the job-level CI timeout.
+    """
+    try:
+        return subprocess.run(
+            [
+                "docker",
+                "exec",
+                container_id,
+                "pg_dump",
+                "--schema-only",
+                "--no-owner",
+                "--no-acl",
+                "--no-comments",
+                "-U",
+                user,
+                "-d",
+                dbname,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=_PG_DUMP_TIMEOUT_SECONDS,
+        ).stdout
+    except subprocess.TimeoutExpired as exc:
+        msg = (
+            f"pg_dump timed out after {_PG_DUMP_TIMEOUT_SECONDS}s "
+            f"against container {container_id}"
+        )
+        raise SystemExit(msg) from exc
 
 
 _YOYO_TABLE_PREFIXES: Final[tuple[str, ...]] = ("_yoyo", "yoyo_")
@@ -335,7 +370,9 @@ def _split_top_level_statements(sql_text: str) -> list[str]:
     Respects two grouping constructs that legitimately contain
     semicolons in their bodies:
 
-    * Postgres dollar quoting (``$$ ... $$``).
+    * Postgres dollar quoting (both ``$$ ... $$`` and tagged
+      ``$tag$ ... $tag$`` variants -- a matching close delimiter
+      must repeat the exact opening tag).
     * SQLite trigger bodies (``BEGIN ... END;``).
 
     A semicolon inside either grouping does not terminate the
@@ -343,33 +380,39 @@ def _split_top_level_statements(sql_text: str) -> list[str]:
     """
     statements: list[str] = []
     buf: list[str] = []
-    in_dollar = False
+    current_dollar_tag: str | None = None
     begin_depth = 0
     i = 0
     text = sql_text
     while i < len(text):
         ch = text[i]
-        if not in_dollar and text.startswith("$$", i):
-            in_dollar = True
-            buf.append("$$")
-            i += 2
+        if current_dollar_tag is None:
+            open_match = _DOLLAR_QUOTE_OPEN.match(text, i)
+            if open_match is not None:
+                current_dollar_tag = open_match.group(0)
+                buf.append(current_dollar_tag)
+                i += len(current_dollar_tag)
+                continue
+        elif text.startswith(current_dollar_tag, i):
+            buf.append(current_dollar_tag)
+            i += len(current_dollar_tag)
+            current_dollar_tag = None
             continue
-        if in_dollar and text.startswith("$$", i):
-            in_dollar = False
-            buf.append("$$")
-            i += 2
-            continue
-        if not in_dollar and _is_keyword_at(text, i, "BEGIN"):
+        if current_dollar_tag is None and _is_keyword_at(text, i, "BEGIN"):
             begin_depth += 1
             buf.append("BEGIN")
             i += len("BEGIN")
             continue
-        if not in_dollar and begin_depth > 0 and _is_keyword_at(text, i, "END"):
+        if (
+            current_dollar_tag is None
+            and begin_depth > 0
+            and _is_keyword_at(text, i, "END")
+        ):
             begin_depth -= 1
             buf.append("END")
             i += len("END")
             continue
-        if ch == ";" and not in_dollar and begin_depth == 0:
+        if ch == ";" and current_dollar_tag is None and begin_depth == 0:
             stmt = "".join(buf).strip()
             if stmt:
                 statements.append(stmt)

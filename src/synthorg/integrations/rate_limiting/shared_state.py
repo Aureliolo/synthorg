@@ -287,6 +287,8 @@ class SharedRateLimitCoordinator:
 _coordinator_factory: Callable[[str], SharedRateLimitCoordinator] | None = None
 _coordinators: dict[str, SharedRateLimitCoordinator] = {}
 
+_COORDINATOR_LOCK: Final[threading.Lock] = threading.Lock()
+
 
 async def set_coordinator_factory(
     factory: Callable[[str], SharedRateLimitCoordinator] | None,
@@ -301,9 +303,19 @@ async def set_coordinator_factory(
         factory: New factory callable, or ``None`` to disable.
     """
     global _coordinator_factory  # noqa: PLW0603
-    # Stop and drop every previously-cached coordinator.
-    old = tuple(_coordinators.values())
-    _coordinators.clear()
+    # Snapshot, clear, and swap the factory atomically so a concurrent
+    # ``get_coordinator()`` cannot insert into the dict between the
+    # snapshot and the clear, nor build a fresh coordinator against
+    # the outgoing factory after the swap should have taken effect.
+    # The ``await coordinator.stop()`` calls happen outside the lock
+    # because ``stop()`` itself takes the coordinator's own asyncio
+    # locks and the threading.Lock here must not be held across an
+    # ``await`` (it would block every other in-process consumer of
+    # the same lock while the event loop yields).
+    with _COORDINATOR_LOCK:
+        old = tuple(_coordinators.values())
+        _coordinators.clear()
+        _coordinator_factory = factory
     for coordinator in old:
         try:
             await coordinator.stop()
@@ -313,7 +325,6 @@ async def set_coordinator_factory(
                 connection_name=coordinator._connection_name,  # noqa: SLF001
                 error="stop failed during factory swap",
             )
-    _coordinator_factory = factory
 
 
 def set_coordinator_factory_sync(
@@ -326,23 +337,23 @@ def set_coordinator_factory_sync(
     preferred when re-wiring after the first acquire.
     """
     global _coordinator_factory  # noqa: PLW0603
-    _coordinator_factory = factory
-
-
-_COORDINATOR_LOCK: Final[threading.Lock] = threading.Lock()
+    with _COORDINATOR_LOCK:
+        _coordinator_factory = factory
 
 
 def get_coordinator(connection_name: str) -> SharedRateLimitCoordinator | None:
     """Get or create a coordinator for the given connection.
 
-    The check-then-set on ``_coordinators`` is protected by a
-    threading lock so concurrent callers (multi-thread, or asyncio
-    bridges that hop across event loops) cannot both build a
-    coordinator and overwrite each other's instance.
+    The check-then-set on ``_coordinators`` and the read of
+    ``_coordinator_factory`` are both protected by the lock so a
+    concurrent factory swap (via :func:`set_coordinator_factory` or
+    :func:`set_coordinator_factory_sync`) cannot leave us calling a
+    stale or ``None`` factory between the existence check and the
+    invocation.
     """
-    if _coordinator_factory is None:
-        return None
     with _COORDINATOR_LOCK:
+        if _coordinator_factory is None:
+            return None
         if connection_name not in _coordinators:
             _coordinators[connection_name] = _coordinator_factory(connection_name)
         return _coordinators[connection_name]

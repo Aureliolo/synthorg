@@ -75,6 +75,25 @@ _DEFAULT_LOCK_TIMEOUT_SECONDS: Final[int] = 30
 _LIBPQ_MIN_CONNECT_TIMEOUT_SECONDS: Final[int] = 2
 """libpq's ``connect_timeout`` honours integer seconds with a minimum of 2."""
 
+_MIGRATION_FAILURE_EXCEPTIONS: Final[tuple[type[BaseException], ...]] = (
+    BadMigration,
+    LockTimeout,
+    MigrationConflict,
+    sqlite3.Error,
+    psycopg.Error,
+    OSError,
+)
+"""Exception classes wrapped into ``MigrationError`` by the public coroutines.
+
+Yoyo raises its own :mod:`yoyo.exceptions` subset for orchestration
+errors, but raw driver errors (``sqlite3.Error`` from the SQLite C
+bindings, ``psycopg.Error`` from psycopg 3) propagate through yoyo
+when the underlying connection drops mid-apply or the database
+refuses an operation (deadlock, permission denied, malformed schema).
+Including them here keeps the public API contract honest: every
+caller sees ``MigrationError`` regardless of the underlying driver.
+"""
+
 
 @dataclass(frozen=True)
 class MigrateResult:
@@ -166,9 +185,18 @@ def _safe_close(b: Any, *, context: str) -> None:
     a fresh exception from close would overwrite the original migration
     failure; this helper logs and swallows the cleanup error so the
     caller's exception stays first.
+
+    Also tolerates a missing ``connection`` attribute: yoyo normally
+    sets it in ``Backend.__init__``, but a partial construction path
+    that raises after we hold ``b`` would leave the attribute unset
+    and the resulting ``AttributeError`` would mask the original
+    migration failure.
     """
+    connection = getattr(b, "connection", None)
+    if connection is None:
+        return
     try:
-        b.connection.close()
+        connection.close()
     except (sqlite3.Error, psycopg.Error, OSError) as cleanup_exc:
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
@@ -406,7 +434,7 @@ async def migrate_apply(
         applied_count, applied_versions, current_version = await asyncio.to_thread(
             _apply,
         )
-    except (BadMigration, LockTimeout, MigrationConflict, OSError) as exc:
+    except _MIGRATION_FAILURE_EXCEPTIONS as exc:
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
             db_url=_redact_url(db_url),
@@ -473,7 +501,7 @@ async def migrate_status(
 
     try:
         return await asyncio.to_thread(_status)
-    except (BadMigration, LockTimeout, MigrationConflict, OSError) as exc:
+    except _MIGRATION_FAILURE_EXCEPTIONS as exc:
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
             db_url=_redact_url(db_url),
@@ -540,7 +568,7 @@ async def migrate_baseline(
         marked_count, marked_versions, current_version = await asyncio.to_thread(
             _mark,
         )
-    except (BadMigration, LockTimeout, MigrationConflict, OSError) as exc:
+    except _MIGRATION_FAILURE_EXCEPTIONS as exc:
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
             db_url=_redact_url(db_url),
@@ -615,10 +643,22 @@ async def migrate_rollback(
             with b.lock(timeout=lock_timeout_seconds):
                 applied_in_rollback_order = list(b.to_rollback(migrations))
                 to_revert = []
+                # An empty target_version means "roll back everything", so it
+                # is implicitly valid. A non-empty target_version must appear
+                # in the applied set, otherwise we would silently revert every
+                # applied migration and report the unknown version as current.
+                target_found = target_version == ""
                 for m in applied_in_rollback_order:
                     if m.id == target_version:
+                        target_found = True
                         break
                     to_revert.append(m)
+                if not target_found:
+                    msg = (
+                        f"Unknown rollback target version: {target_version!r}"
+                        f" (not in applied migrations)"
+                    )
+                    raise MigrationError(msg)
                 rolled_ids = tuple(m.id for m in to_revert)
                 if to_revert:
                     bundle = migrations.__class__(to_revert, [])
@@ -629,7 +669,7 @@ async def migrate_rollback(
 
     try:
         rolled_count, rolled_versions = await asyncio.to_thread(_rollback)
-    except (BadMigration, LockTimeout, MigrationConflict, OSError) as exc:
+    except _MIGRATION_FAILURE_EXCEPTIONS as exc:
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
             db_url=_redact_url(db_url),
@@ -680,7 +720,7 @@ async def break_lock(db_url: str) -> None:
 
     try:
         await asyncio.to_thread(_break)
-    except (BadMigration, LockTimeout, MigrationConflict, OSError) as exc:
+    except _MIGRATION_FAILURE_EXCEPTIONS as exc:
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
             db_url=_redact_url(db_url),

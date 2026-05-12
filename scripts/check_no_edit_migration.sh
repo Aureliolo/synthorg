@@ -23,6 +23,13 @@ REVISIONS_DIRS=(
 
 for REVISIONS_DIR in "${REVISIONS_DIRS[@]}"; do
     if [[ "$FILE_PATH" == */"$REVISIONS_DIR/"*.sql || "$FILE_PATH" == "$REVISIONS_DIR/"*.sql ]]; then
+        # Allow brand-new revision file creation (a Write call against a
+        # path that does not yet exist); block any edit to an existing
+        # revision file. The remediation message tells authors to create
+        # a new revision, so the hook must let that path through.
+        if [[ ! -e "$FILE_PATH" ]]; then
+            exit 0
+        fi
         REASON="Do not manually edit revision files. Edit schema.sql and author a new revision file (or regenerate the seed via the squash workflow if no users depend on the prior chain)."
         cat <<ENDJSON
 {
