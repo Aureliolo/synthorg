@@ -778,17 +778,26 @@ jobs:
         with:
           version: ${{ env.APKO_VERSION }}
 
+      # Compute the short-SHA tag in a bash step so the substring expansion
+      # `${GITHUB_SHA::7}` runs under bash. nick-fields/retry's `command:`
+      # runs under `sh` by default, where that expansion is a syntax error.
+      - name: Compute image tag
+        id: web-image-ref
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       # `apko build` pulls every package from the Wolfi mirror. Retry so a
       # mirror 5xx doesn't tank the whole web build.
       - name: Build web image
         uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+        env:
+          TAG: ${{ steps.web-image-ref.outputs.tag }}
         with:
           timeout_minutes: 20
           max_attempts: 3
           retry_wait_seconds: 30
           command: |
             apko build docker/web/apko.yaml \
-              ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7} \
+              "ghcr.io/aureliolo/synthorg-web:${TAG}" \
               web.tar
 
       - name: Load image for scanning

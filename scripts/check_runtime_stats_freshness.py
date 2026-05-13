@@ -58,7 +58,7 @@ _STALE_AFTER_DAYS: Final[int] = 14
 # ``pytest --collect-only``. Skipped under ``--skip-network`` so
 # developers can pre-push without a configured ``gh`` token; CI runs
 # without the flag and covers every fetcher.
-_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests", "version", "mem0_stars"})
+_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests", "mem0_stars"})
 
 _GENERATOR_PATH: Final[Path] = REPO_ROOT / "scripts" / "generate_runtime_stats.py"
 

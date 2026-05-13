@@ -62,7 +62,6 @@ def _fake_fetchers(
             "rounded": 17000,
             "display": "17,000+",
         },
-        "version": lambda: {"raw": "v9.9.9", "display": "v9.9.9"},
         "mem0_stars": lambda: {
             "raw": 54312,
             "rounded": 54000,
@@ -125,7 +124,6 @@ class TestMainHappyPath:
         assert "generator_revision" in loaded
         stats = loaded["stats"]
         assert stats["tests"]["display"] == "17,000+"
-        assert stats["version"]["display"] == "v9.9.9"
         assert stats["mem0_stars"]["display"] == "54k+"
         assert stats["providers_curated"]["display"] == "19"
         assert stats["providers_via_litellm"]["display"] == "100+"
@@ -158,7 +156,6 @@ class TestMainSingleFetcherFails:
                     "rounded": 9000,
                     "display": "9,000+",
                 },
-                "version": {"raw": "v0.1.0", "display": "v0.1.0"},
                 "mem0_stars": {
                     "raw": 1000,
                     "rounded": 1000,
@@ -286,41 +283,6 @@ class TestFetchConventionGates:
             pytest.raises(gen._StatFetchError),
         ):
             gen._fetch_convention_gates()
-
-
-@pytest.mark.unit
-class TestFetchVersion:
-    """`_fetch_version` calls `gh release list` and parses the tag."""
-
-    def test_extracts_tag(self) -> None:
-        completed = MagicMock(spec=subprocess.CompletedProcess)
-        completed.stdout = '[{"tagName":"v0.7.1"}]\n'
-        completed.returncode = 0
-        with patch("subprocess.run", return_value=completed) as run:
-            result = gen._fetch_version()
-        assert result["raw"] == "v0.7.1"
-        assert result["display"] == "v0.7.1"
-        run.assert_called_once()
-
-    def test_subprocess_failure_raises_stat_fetch_error(self) -> None:
-        with (
-            patch(
-                "subprocess.run",
-                side_effect=subprocess.CalledProcessError(1, ["gh"], stderr="boom"),
-            ),
-            pytest.raises(gen._StatFetchError),
-        ):
-            gen._fetch_version()
-
-    def test_empty_release_list_raises(self) -> None:
-        completed = MagicMock(spec=subprocess.CompletedProcess)
-        completed.stdout = "[]\n"
-        completed.returncode = 0
-        with (
-            patch("subprocess.run", return_value=completed),
-            pytest.raises(gen._StatFetchError),
-        ):
-            gen._fetch_version()
 
 
 @pytest.mark.unit

@@ -47,17 +47,20 @@ runs:
     # `apko build` pulls every package + signing key from the Wolfi mirror;
     # a single 5xx on packages.wolfi.dev fails the build. Retry the whole
     # invocation so a transient mirror blip doesn't kill base-image CI.
+    # Reuses the tag computed by the preceding `Compute image tag` step so
+    # the substring expansion happens in bash (composite-action default),
+    # not the retry action's sh-default `command:` runtime.
     - name: Build base image
       uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
       env:
         APKO_YAML: ${{ inputs.apko-yaml }}
         IMAGE_NAME: ${{ inputs.image-name }}
+        TAG: ${{ steps.image-ref.outputs.tag }}
       with:
         timeout_minutes: 20
         max_attempts: 3
         retry_wait_seconds: 30
         command: |
-          TAG="sha-${GITHUB_SHA::7}"
           apko build "${APKO_YAML}" \
             "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" \
             "${IMAGE_NAME}-base.tar"
