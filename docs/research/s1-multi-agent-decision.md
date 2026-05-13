@@ -13,7 +13,7 @@ last_reviewed: 2026-05-05
 # S1: Multi-Agent Architecture Decision
 
 **Issue**: #1254 (CRITICAL, blocks #1250 / #1251 / #1253)
-**Sources**: [arXiv:2603.27771](https://huggingface.co/papers/2603.27771) (Multi-Agent Risks), [arXiv:2603.26993](https://arxiv.org/abs/2603.26993) (Reliability Limits), [arXiv:2604.02460](https://arxiv.org/abs/2604.02460) (Single-Agent Outperforms). Prior baseline: [Kim et al. 2025 (arXiv:2512.08296)](https://arxiv.org/abs/2512.08296), [Multi-Agent Failure Audit](multi-agent-failure-audit.md) (#690), [Task & Workflow Engine §Task Decomposability](../design/engine.md#task-decomposability-coordination-topology), [Communication §Multi-Agent Failure Pattern Guardrails](../design/communication.md#multi-agent-failure-pattern-guardrails).
+**Sources**: [arXiv:2603.27771](https://huggingface.co/papers/2603.27771) (Multi-Agent Risks), [arXiv:2603.26993](https://arxiv.org/abs/2603.26993) (Reliability Limits), [arXiv:2604.02460](https://arxiv.org/abs/2604.02460) (Single-Agent Outperforms). Prior baseline: [Kim et al. 2025 (arXiv:2512.08296)](https://arxiv.org/abs/2512.08296), [Multi-Agent Failure Audit](multi-agent-failure-audit.md) (#690), [Task & Workflow Engine §Task Decomposability](../design/engine.md#task-decomposability-coordination-topology), [Communication Coordination §Multi-Agent Failure Pattern Guardrails](../design/communication-coordination.md#multi-agent-failure-pattern-guardrails).
 
 ## Bottom line
 
@@ -138,8 +138,8 @@ The following edits have been applied:
 
 - [`docs/design/index.md`](../design/index.md): disclaimer under "What This Is NOT" clarifying SynthOrg is not a reasoning parallelizer.
 - [`docs/design/engine.md`](../design/engine.md) §Task Decomposability: updated research-basis callout citing papers 2 + 3 alongside Kim 2025; new "Coordination Group Size Bounds" subsection documenting the 3-4 per-wave default. New "Harness Middleware Layer" section documenting the middleware protocols, default chains, and configuration.
-- [`docs/design/communication.md`](../design/communication.md) §Conflict Resolution Protocol: warning box under Strategy 1: Authority + Dissent Log citing risk 2.2 (100% deterministic error mode) and referencing `AuthorityDeferenceGuard` (now **implemented** as middleware).
-- [`docs/design/communication.md`](../design/communication.md) §Meeting Protocol: risk notes under each protocol and pointer to the planned `EvidenceWeightedSynthesizer`.
+- [`docs/design/communication-coordination.md`](../design/communication-coordination.md) §Conflict Resolution Protocol: warning box under Strategy 1: Authority + Dissent Log citing risk 2.2 (100% deterministic error mode) and referencing `AuthorityDeferenceGuard` (now **implemented** as middleware).
+- [`docs/design/communication-coordination.md`](../design/communication-coordination.md) §Meeting Protocol: risk notes under each protocol and pointer to the planned `EvidenceWeightedSynthesizer`.
 - [`docs/design/communication.md`](../design/communication.md) §Multi-Agent Failure Pattern Guardrails: cross-reference to this decision document and the 15-risk register.
 - [`docs/design/organization.md`](../design/organization.md) Company Types table: footnote distinguishing company size from per-task coordination-group size.
 - [`docs/research/multi-agent-failure-audit.md`](multi-agent-failure-audit.md): appendix enumerating the 15-risk taxonomy with coverage table.

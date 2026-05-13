@@ -88,7 +88,7 @@ External agents are treated as delegation sources. The same five `DelegationGuar
 4. **Structural circuit breaker**: detect rapid oscillation
 5. **Budget guard**: reject when the delegation chain has consumed too much
 
-See [Communication -> Loop Prevention](communication.md#loop-prevention) for implementation.
+See [Communication Coordination -> Loop Prevention](communication-coordination.md#loop-prevention) for implementation.
 
 ## Quadratic Communication Detection
 
@@ -129,6 +129,6 @@ a2a:
 ## See Also
 
 - [Security & Approval](security.md#a2a-security): authentication, trust, webhook, SSRF details
-- [Communication](communication.md#a2a-external-gateway): gateway architecture, loop prevention
+- [Communication A2A Gateway](communication-a2a.md): gateway architecture, agent card projection, SSE streaming
 - [Agents](agents.md#skill-model): internal skill shape that gets projected to A2A Agent Card
 - [Reference: Standards](../reference/standards.md): protocol compliance table

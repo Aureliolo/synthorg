@@ -297,7 +297,7 @@ shutdown-time mechanism.
 
     The park/resume mechanism relies on `AgentContext` snapshots (frozen Pydantic models). When
     a task is parked, the full context is persisted to the
-    [`PersistenceBackend`](memory.md#operational-data-persistence). When approval arrives, the
+    [`PersistenceBackend`](memory-operational.md). When approval arrives, the
     framework loads the snapshot, restores the agent's conversation and state, and resumes
     execution from the exact point of suspension. This works naturally with the
     `model_copy(update=...)` immutability pattern.
@@ -317,7 +317,7 @@ shutdown-time mechanism.
 !!! info "EvidencePackage (HITL Approval Payload)"
     `ApprovalItem.evidence_package` (optional `EvidencePackage | None`) carries a structured
     approval payload for human review. See
-    [Communication: EvidencePackage Schema](communication.md#evidencepackage-schema) for the
+    [Event Stream: EvidencePackage Schema](communication-events.md#evidencepackage-schema) for the
     full model specification. Existing approval paths (hiring, promotion, pruning) can adopt
     the package incrementally; the field defaults to `None`.
 
@@ -407,7 +407,7 @@ above with specific module references.
 
 ## A2A Security
 
-*Applies when the [A2A External Gateway](communication.md#a2a-external-gateway) is
+*Applies when the [A2A External Gateway](communication-a2a.md) is
 enabled (`a2a.enabled: true`). All A2A security controls are inactive when the gateway
 is disabled (the default).*
 
@@ -436,7 +436,7 @@ Every inbound A2A request passes through two validation layers before reaching i
 agents:
 
 1. **DelegationGuard**: the same
-   [five loop prevention mechanisms](communication.md#loop-prevention) that protect
+   [five loop prevention mechanisms](communication-coordination.md#loop-prevention) that protect
    internal delegation also apply to external requests. External agents are treated as
    delegation sources with the gateway as the entry point into the delegation chain.
 
@@ -514,7 +514,7 @@ before connection.
 ### Quadratic Communication Enforcement
 
 The existing `MessageOverhead.is_quadratic` detection (see
-[Microservices Anti-Patterns](communication.md#microservices-anti-patterns-assessment))
+[Microservices Anti-Patterns](communication-coordination.md#microservices-anti-patterns-assessment))
 will be extended with a pluggable `QuadraticEnforcementStrategy` protocol. This is
 particularly relevant for A2A federation where external agent connections can amplify
 quadratic scaling. Currently, only detection exists. Enforcement strategies are
@@ -576,7 +576,7 @@ The gateway is configured under the `a2a` key in the company YAML:
       max_request_body_bytes: 1048576    # 1 MB payload limit
     ```
 
-See [A2A External Gateway](communication.md#a2a-external-gateway) for the architecture
+See [A2A External Gateway](communication-a2a.md) for the architecture
 overview, Agent Card projection, and concept mapping tables.
 
 ---

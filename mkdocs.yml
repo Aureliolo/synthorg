@@ -131,12 +131,18 @@ nav:
       - HR & Agent Lifecycle: design/hr-lifecycle.md
       - Organization: design/organization.md
       - Communication: design/communication.md
+      - Communication A2A Gateway: design/communication-a2a.md
+      - Communication Coordination: design/communication-coordination.md
+      - Communication Event Stream: design/communication-events.md
       - Engine: design/engine.md
       - Agent Execution: design/agent-execution.md
       - Coordination & Resilience: design/coordination.md
       - Verification & Quality: design/verification-quality.md
       - Distributed Runtime: design/distributed-runtime.md
       - Memory: design/memory.md
+      - Memory Organizational: design/memory-organizational.md
+      - Memory Operational: design/memory-operational.md
+      - Memory Learning: design/memory-learning.md
       - Providers: design/providers.md
       - Budget & Cost: design/budget.md
       - Tools & Capabilities: design/tools.md
