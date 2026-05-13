@@ -4,6 +4,7 @@ Application code depends on this protocol for storage lifecycle
 management.  Repository protocols provide entity-level access.
 """
 
+from contextlib import AbstractAsyncContextManager  # noqa: TC003
 from typing import Any, Protocol, runtime_checkable
 
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
@@ -233,6 +234,43 @@ class PersistenceBackend(Protocol):
 
         Raises:
             PersistenceConnectionError: If not yet connected.
+        """
+        ...
+
+    def write_context(self) -> AbstractAsyncContextManager[None]:
+        """Async context manager around mutating SQL on this backend.
+
+        The mutual-exclusion guarantee is backend-specific:
+
+        - **SQLite** acquires a shared in-process write lock so that
+          multi-statement transactions on the single
+          ``aiosqlite.Connection`` cannot interleave at the statement
+          level. Concurrent writers on the same backend instance
+          serialize.
+        - **Postgres** yields immediately: each repository operation
+          checks out an independent connection from the async pool, so
+          writers are already isolated at the database level. The
+          method exists on this backend only to keep the cross-backend
+          interface uniform; it does not provide mutual exclusion
+          beyond what the pool already gives.
+
+        Use it in repository write paths so the same code path works
+        on both backends::
+
+            async with backend.write_context():
+                await db.execute(...)
+                await db.commit()
+
+        Each call returns a fresh context manager. On SQLite, the
+        underlying lock primitive is shared across calls so concurrent
+        callers serialize. On Postgres, there is no shared primitive.
+        Repositories are wired with this method (as a callable) at
+        backend construction; callers that already hold a
+        ``PersistenceBackend`` reference can use it directly for
+        cross-repo transactional boundaries.
+
+        Callers must not rely on ``write_context`` for distributed
+        mutual exclusion or cross-backend serializability.
         """
         ...
 

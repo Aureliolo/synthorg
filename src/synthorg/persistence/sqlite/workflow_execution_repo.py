@@ -1,6 +1,5 @@
 """SQLite repository implementation for WorkflowExecution."""
 
-import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -43,6 +42,7 @@ from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -140,20 +140,22 @@ class SQLiteWorkflowExecutionRepository:
     Args:
         db: An open aiosqlite connection with ``row_factory``
             set to ``aiosqlite.Row``.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, execution: WorkflowExecution) -> None:
         """Persist a workflow execution (insert or update).
@@ -208,7 +210,7 @@ class SQLiteWorkflowExecutionRepository:
     async def _insert(self, execution: WorkflowExecution) -> None:
         """Insert a new workflow execution row."""
         params = self._serialize_execution(execution)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     """\
@@ -264,7 +266,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
     async def _update(self, execution: WorkflowExecution) -> None:
         """Update an existing workflow execution with version check."""
         params = self._serialize_execution(execution)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     """\
@@ -550,7 +552,7 @@ WHERE id = ? AND version = ?""",
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM workflow_executions WHERE id = ?",

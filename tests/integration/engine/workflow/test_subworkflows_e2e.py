@@ -26,12 +26,14 @@ from synthorg.engine.workflow.definition import (
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
 from synthorg.persistence import migrations
+from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.sqlite.subworkflow_repo import (
     SQLiteSubworkflowRepository,
 )
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 _TS = datetime(2026, 4, 10, 12, 0, 0, tzinfo=UTC)
 
@@ -57,13 +59,24 @@ async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
 
 
 @pytest.fixture
-def sub_repo(db: aiosqlite.Connection) -> SQLiteSubworkflowRepository:
-    return SQLiteSubworkflowRepository(db)
+def write_context() -> WriteContext:
+    return make_private_write_context()
 
 
 @pytest.fixture
-def def_repo(db: aiosqlite.Connection) -> SQLiteWorkflowDefinitionRepository:
-    return SQLiteWorkflowDefinitionRepository(db)
+def sub_repo(
+    db: aiosqlite.Connection,
+    write_context: WriteContext,
+) -> SQLiteSubworkflowRepository:
+    return SQLiteSubworkflowRepository(db, write_context=write_context)
+
+
+@pytest.fixture
+def def_repo(
+    db: aiosqlite.Connection,
+    write_context: WriteContext,
+) -> SQLiteWorkflowDefinitionRepository:
+    return SQLiteWorkflowDefinitionRepository(db, write_context=write_context)
 
 
 @pytest.fixture

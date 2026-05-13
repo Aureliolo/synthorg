@@ -10,7 +10,6 @@ per the persistence-boundary rule documented in
 ``docs/reference/persistence-boundary.md``.
 """
 
-import asyncio
 import contextlib
 import json
 import sqlite3
@@ -41,6 +40,7 @@ from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -112,11 +112,11 @@ class SQLiteConnectionRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
-        """Bind to *db* and serialize writes via *write_lock*."""
+        """Bind to *db* and serialize writes via *write_context*."""
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, connection: Connection) -> None:
         """Upsert a connection row keyed by ``name``."""
@@ -141,7 +141,7 @@ class SQLiteConnectionRepository:
             if connection.last_health_check_at is not None
             else None
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """
@@ -312,7 +312,7 @@ class SQLiteConnectionRepository:
 
     async def delete(self, name: NotBlankStr) -> bool:
         """Delete a connection by name; return ``True`` if a row was removed."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM connections WHERE name = ?",

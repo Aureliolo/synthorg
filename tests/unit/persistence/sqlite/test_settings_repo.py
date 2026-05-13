@@ -4,12 +4,15 @@ import aiosqlite
 import pytest
 
 from synthorg.persistence.sqlite.settings_repo import SQLiteSettingsRepository
+from tests._shared.persistence import make_private_write_context
 
 
 @pytest.fixture
 def repo(migrated_db: aiosqlite.Connection) -> SQLiteSettingsRepository:
     """Settings repo backed by the shared migrated_db fixture."""
-    return SQLiteSettingsRepository(migrated_db)
+    return SQLiteSettingsRepository(
+        migrated_db, write_context=make_private_write_context()
+    )
 
 
 @pytest.mark.unit

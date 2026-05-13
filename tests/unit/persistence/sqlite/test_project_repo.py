@@ -6,6 +6,7 @@ import pytest
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.persistence.sqlite.project_repo import SQLiteProjectRepository
+from tests._shared.persistence import make_private_write_context
 
 
 def _make_project(  # noqa: PLR0913
@@ -35,7 +36,9 @@ def _make_project(  # noqa: PLR0913
 
 @pytest.fixture
 def repo(migrated_db: aiosqlite.Connection) -> SQLiteProjectRepository:
-    return SQLiteProjectRepository(migrated_db)
+    return SQLiteProjectRepository(
+        migrated_db, write_context=make_private_write_context()
+    )
 
 
 @pytest.mark.unit

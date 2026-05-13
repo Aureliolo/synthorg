@@ -18,6 +18,7 @@ from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 
 @pytest.fixture
@@ -106,7 +107,9 @@ def _make_collab_metric(  # noqa: PLR0913
 @pytest.mark.unit
 class TestSQLiteLifecycleEventRepository:
     async def test_save_and_list_all(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteLifecycleEventRepository(db)
+        repo = SQLiteLifecycleEventRepository(
+            db, write_context=make_private_write_context()
+        )
         event = _make_lifecycle_event()
         await repo.save(event)
 
@@ -116,7 +119,9 @@ class TestSQLiteLifecycleEventRepository:
         assert events[0].event_type == LifecycleEventType.HIRED
 
     async def test_list_filter_by_agent_id(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteLifecycleEventRepository(db)
+        repo = SQLiteLifecycleEventRepository(
+            db, write_context=make_private_write_context()
+        )
         await repo.save(_make_lifecycle_event(agent_id="agent-001"))
         await repo.save(_make_lifecycle_event(agent_id="agent-002"))
 
@@ -125,7 +130,9 @@ class TestSQLiteLifecycleEventRepository:
         assert events[0].agent_id == "agent-001"
 
     async def test_list_filter_by_event_type(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteLifecycleEventRepository(db)
+        repo = SQLiteLifecycleEventRepository(
+            db, write_context=make_private_write_context()
+        )
         await repo.save(_make_lifecycle_event(event_type=LifecycleEventType.HIRED))
         await repo.save(_make_lifecycle_event(event_type=LifecycleEventType.FIRED))
 
@@ -135,7 +142,9 @@ class TestSQLiteLifecycleEventRepository:
 
     async def test_list_combined_filters(self, db: aiosqlite.Connection) -> None:
         """agent_id + event_type filters combine with AND logic."""
-        repo = SQLiteLifecycleEventRepository(db)
+        repo = SQLiteLifecycleEventRepository(
+            db, write_context=make_private_write_context()
+        )
         await repo.save(
             _make_lifecycle_event(
                 agent_id="agent-001",
@@ -165,7 +174,9 @@ class TestSQLiteLifecycleEventRepository:
 
     async def test_round_trip_metadata(self, db: aiosqlite.Connection) -> None:
         """Metadata dict survives JSON serialization round-trip."""
-        repo = SQLiteLifecycleEventRepository(db)
+        repo = SQLiteLifecycleEventRepository(
+            db, write_context=make_private_write_context()
+        )
         event = _make_lifecycle_event(
             metadata={"reason": "budget", "department": "engineering"}
         )
@@ -178,13 +189,17 @@ class TestSQLiteLifecycleEventRepository:
         }
 
     async def test_list_empty(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteLifecycleEventRepository(db)
+        repo = SQLiteLifecycleEventRepository(
+            db, write_context=make_private_write_context()
+        )
         events = await repo.list_events()
         assert events == ()
 
     async def test_list_filter_by_since(self, db: aiosqlite.Connection) -> None:
         """Events before 'since' are excluded."""
-        repo = SQLiteLifecycleEventRepository(db)
+        repo = SQLiteLifecycleEventRepository(
+            db, write_context=make_private_write_context()
+        )
         old_event = _make_lifecycle_event(
             agent_id="agent-001",
             timestamp=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
@@ -208,7 +223,9 @@ class TestSQLiteLifecycleEventRepository:
 @pytest.mark.unit
 class TestSQLiteTaskMetricRepository:
     async def test_save_and_query_all(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteTaskMetricRepository(db)
+        repo = SQLiteTaskMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         record = _make_task_metric()
         await repo.save(record)
 
@@ -220,7 +237,9 @@ class TestSQLiteTaskMetricRepository:
         assert records[0].complexity == Complexity.MEDIUM
 
     async def test_query_filter_by_agent_id(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteTaskMetricRepository(db)
+        repo = SQLiteTaskMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         await repo.save(_make_task_metric(agent_id="agent-001"))
         await repo.save(_make_task_metric(agent_id="agent-002"))
 
@@ -229,14 +248,18 @@ class TestSQLiteTaskMetricRepository:
         assert records[0].agent_id == "agent-001"
 
     async def test_query_empty(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteTaskMetricRepository(db)
+        repo = SQLiteTaskMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         records = await repo.query()
         assert records == ()
 
     async def test_round_trip_null_quality_score(
         self, db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteTaskMetricRepository(db)
+        repo = SQLiteTaskMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         record = _make_task_metric(quality_score=None)
         await repo.save(record)
 
@@ -246,7 +269,9 @@ class TestSQLiteTaskMetricRepository:
     async def test_round_trip_task_type_and_complexity(
         self, db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteTaskMetricRepository(db)
+        repo = SQLiteTaskMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         record = _make_task_metric(
             task_type=TaskType.RESEARCH,
             complexity=Complexity.COMPLEX,
@@ -261,7 +286,9 @@ class TestSQLiteTaskMetricRepository:
         self, db: aiosqlite.Connection
     ) -> None:
         """Records outside the since/until range are excluded."""
-        repo = SQLiteTaskMetricRepository(db)
+        repo = SQLiteTaskMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         early = _make_task_metric(
             task_id="task-early",
             completed_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
@@ -291,7 +318,9 @@ class TestSQLiteTaskMetricRepository:
 @pytest.mark.unit
 class TestSQLiteCollaborationMetricRepository:
     async def test_save_and_query_all(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteCollaborationMetricRepository(db)
+        repo = SQLiteCollaborationMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         record = _make_collab_metric()
         await repo.save(record)
 
@@ -302,7 +331,9 @@ class TestSQLiteCollaborationMetricRepository:
         assert records[0].loop_triggered is False
 
     async def test_query_filter_by_agent_id(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteCollaborationMetricRepository(db)
+        repo = SQLiteCollaborationMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         await repo.save(_make_collab_metric(agent_id="agent-001"))
         await repo.save(_make_collab_metric(agent_id="agent-002"))
 
@@ -311,13 +342,17 @@ class TestSQLiteCollaborationMetricRepository:
         assert records[0].agent_id == "agent-001"
 
     async def test_query_empty(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteCollaborationMetricRepository(db)
+        repo = SQLiteCollaborationMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         records = await repo.query()
         assert records == ()
 
     async def test_round_trip_nullable_fields(self, db: aiosqlite.Connection) -> None:
         """Nullable float/bool fields survive round-trip as None."""
-        repo = SQLiteCollaborationMetricRepository(db)
+        repo = SQLiteCollaborationMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         record = _make_collab_metric(
             delegation_success=None,
             delegation_response_seconds=None,
@@ -338,7 +373,9 @@ class TestSQLiteCollaborationMetricRepository:
         self, db: aiosqlite.Connection
     ) -> None:
         """Boolean loop_triggered=True survives SQLite integer round-trip."""
-        repo = SQLiteCollaborationMetricRepository(db)
+        repo = SQLiteCollaborationMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         record = _make_collab_metric(loop_triggered=True)
         await repo.save(record)
 
@@ -347,7 +384,9 @@ class TestSQLiteCollaborationMetricRepository:
 
     async def test_query_filter_by_since(self, db: aiosqlite.Connection) -> None:
         """Records before 'since' are excluded."""
-        repo = SQLiteCollaborationMetricRepository(db)
+        repo = SQLiteCollaborationMetricRepository(
+            db, write_context=make_private_write_context()
+        )
         old_record = _make_collab_metric(
             recorded_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
         )

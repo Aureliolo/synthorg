@@ -8,6 +8,7 @@ import pytest
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
 from synthorg.persistence.sqlite.artifact_repo import SQLiteArtifactRepository
+from tests._shared.persistence import make_private_write_context
 
 
 def _make_artifact(  # noqa: PLR0913
@@ -37,7 +38,9 @@ def _make_artifact(  # noqa: PLR0913
 
 @pytest.fixture
 def repo(migrated_db: aiosqlite.Connection) -> SQLiteArtifactRepository:
-    return SQLiteArtifactRepository(migrated_db)
+    return SQLiteArtifactRepository(
+        migrated_db, write_context=make_private_write_context()
+    )
 
 
 @pytest.mark.unit

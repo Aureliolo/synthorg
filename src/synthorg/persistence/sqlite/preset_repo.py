@@ -1,6 +1,5 @@
 """SQLite repository implementation for custom personality presets."""
 
-import asyncio
 import contextlib
 import sqlite3
 
@@ -23,6 +22,7 @@ from synthorg.persistence._shared.pagination import (
     validate_pagination_args,
 )
 from synthorg.persistence.preset_protocol import PresetListRow, PresetRow
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -35,20 +35,22 @@ class SQLitePersonalityPresetRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(
         self,
@@ -70,7 +72,7 @@ class SQLitePersonalityPresetRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -84,7 +86,7 @@ ON CONFLICT(name) DO UPDATE SET
                     (name, config_json, description, created_at, updated_at),
                 )
                 await self._db.commit()
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
                 msg = f"Failed to save custom preset {name!r}"
@@ -118,7 +120,7 @@ ON CONFLICT(name) DO UPDATE SET
                 (name,),
             ) as cursor:
                 row = await cursor.fetchone()
-        except sqlite3.Error as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch custom preset {name!r}"
             logger.warning(
                 PRESET_CUSTOM_FETCH_FAILED,
@@ -160,7 +162,7 @@ ON CONFLICT(name) DO UPDATE SET
                 (limit,),
             ) as cursor:
                 rows = await cursor.fetchall()
-        except sqlite3.Error as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list custom presets"
             logger.warning(
                 PRESET_CUSTOM_LIST_FAILED,
@@ -186,7 +188,7 @@ ON CONFLICT(name) DO UPDATE SET
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 async with self._db.execute(
                     "DELETE FROM custom_presets WHERE name = ?",
@@ -194,7 +196,7 @@ ON CONFLICT(name) DO UPDATE SET
                 ) as cursor:
                     deleted = cursor.rowcount > 0
                 await self._db.commit()
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
                 msg = f"Failed to delete custom preset {name!r}"
@@ -218,7 +220,7 @@ ON CONFLICT(name) DO UPDATE SET
                 "SELECT COUNT(*) FROM custom_presets",
             ) as cursor:
                 row = await cursor.fetchone()
-        except sqlite3.Error as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count custom presets"
             logger.warning(
                 PRESET_CUSTOM_COUNT_FAILED,

@@ -5,7 +5,6 @@ table.  States are short-lived (minutes) and consumed once on
 callback; ``cleanup_expired`` reclaims stale rows.
 """
 
-import asyncio
 import contextlib
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -25,6 +24,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_OAUTH_STATE_SAVE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -73,11 +73,11 @@ class SQLiteOAuthStateRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
-        """Bind to *db* and serialize writes via *write_lock*."""
+        """Bind to *db* and serialize writes via *write_context*."""
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, state: OAuthState) -> None:
         """Upsert an OAuth state row keyed by ``state_token``.
@@ -87,7 +87,7 @@ class SQLiteOAuthStateRepository:
         ``connection_name_returned``). Flow-start callers set both
         to ``None``; post-callback snapshots carry them populated.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """
@@ -175,7 +175,7 @@ class SQLiteOAuthStateRepository:
 
     async def delete(self, state_token: NotBlankStr) -> bool:
         """Delete an OAuth state; return ``True`` if a row was removed."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM oauth_states WHERE state_token = ?",
@@ -210,7 +210,7 @@ class SQLiteOAuthStateRepository:
         ``consumed_at`` and returns ``False`` so the handler can route
         it through the replay branch.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "UPDATE oauth_states "
@@ -255,7 +255,7 @@ class SQLiteOAuthStateRepository:
         consumed_cutoff_iso = format_iso_utc(
             now - timedelta(seconds=retention_seconds),
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM oauth_states "

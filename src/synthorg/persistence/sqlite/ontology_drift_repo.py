@@ -1,6 +1,5 @@
 """SQLite-backed drift report repository."""
 
-import asyncio
 import contextlib
 import json
 import sqlite3
@@ -15,6 +14,7 @@ from synthorg.observability.events.ontology import (
 )
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -56,20 +56,16 @@ def _row_to_report(row: Any) -> DriftReport:
 class SQLiteOntologyDriftReportRepository:
     """SQLite implementation of ``OntologyDriftReportRepository``."""
 
-    __slots__ = ("_db", "_write_lock")
+    __slots__ = ("_db", "_write_context")
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def store_report(self, report: DriftReport) -> None:
         """Persist a drift report."""
@@ -83,7 +79,7 @@ class SQLiteOntologyDriftReportRepository:
                 for a in report.divergent_agents
             ],
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     "INSERT INTO drift_reports "

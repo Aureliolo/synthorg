@@ -40,13 +40,29 @@ from typing import Final
 
 _PROTOCOL_PATH: Final[str] = "src/synthorg/persistence/protocol.py"
 _PROTOCOL_CLASS_NAME: Final[str] = "PersistenceBackend"
-# (path, expected concrete-class-name): the gate scans ONLY the named
-# class in each backend module so a future helper class with a
-# colliding ``@property`` name cannot silently overwrite the real
-# backend's annotation in the merged-properties view.
-_BACKEND_PATHS: Final[tuple[tuple[str, str], ...]] = (
-    ("src/synthorg/persistence/sqlite/backend.py", "SQLitePersistenceBackend"),
-    ("src/synthorg/persistence/postgres/backend.py", "PostgresPersistenceBackend"),
+# (path, expected concrete-class-name, accessor sidecars): the gate
+# scans the named backend class plus any explicitly-listed accessor
+# sidecars (mixin classes that contribute ``@property`` accessors to
+# the backend's public surface). A future helper class with a
+# colliding ``@property`` name still cannot silently overwrite the
+# real backend's annotation because the sidecar list is declared
+# here, not discovered.
+_BACKEND_PATHS: Final[tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...]] = (
+    (
+        "src/synthorg/persistence/sqlite/backend.py",
+        "SQLitePersistenceBackend",
+        (
+            (
+                "src/synthorg/persistence/sqlite/_backend_accessors.py",
+                "_BackendRepositoryAccessors",
+            ),
+        ),
+    ),
+    (
+        "src/synthorg/persistence/postgres/backend.py",
+        "PostgresPersistenceBackend",
+        (),
+    ),
 )
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: persistence-protocol-uniformity"
 
@@ -160,51 +176,137 @@ def _collect_backend_properties(
     return properties
 
 
+def _load_class_properties(
+    project_root: Path,
+    rel: str,
+    class_name: str,
+) -> tuple[dict[str, tuple[str, int]], str | None]:
+    """Return ``({property_name: (return, line)}, error)`` for one file+class.
+
+    A missing file returns an empty mapping with no error so sidecar
+    callers can treat a missing accessor module as "no contribution"
+    (callers that actually require the file present check it
+    separately before invoking this helper). Parse and read errors
+    return an error message for the caller to surface.
+    """
+    path = project_root / rel
+    if not path.is_file():
+        return {}, None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return {}, f"{rel}:0: unable to scan file: {exc}"
+    try:
+        tree = ast.parse(text, filename=str(path))
+    except SyntaxError as exc:
+        return {}, f"{rel}:{exc.lineno or 0}: unable to parse file: {exc.msg}"
+    return _collect_backend_properties(tree, class_name), None
+
+
+def _merge_accessor_surface(
+    project_root: Path,
+    backend_rel: str,
+    backend_props: dict[str, tuple[str, int]],
+    accessor_sidecars: tuple[tuple[str, str], ...],
+) -> tuple[dict[str, tuple[str, str, int]], list[str]]:
+    """Merge sidecar accessor properties on top of backend properties.
+
+    Returns ``(surface, sidecar_load_errors)`` where surface maps each
+    property name to ``(source_rel, annotation, line_number)``. Backend
+    properties win over any same-name sidecar entry.
+    """
+    surface: dict[str, tuple[str, str, int]] = {
+        name: (backend_rel, ann, lineno)
+        for name, (ann, lineno) in backend_props.items()
+    }
+    errors: list[str] = []
+    for sidecar_rel, sidecar_class in accessor_sidecars:
+        sidecar_props, sidecar_err = _load_class_properties(
+            project_root, sidecar_rel, sidecar_class
+        )
+        if sidecar_err is not None:
+            errors.append(sidecar_err)
+            continue
+        for name, (ann, lineno) in sidecar_props.items():
+            if name in surface:
+                continue
+            surface[name] = (sidecar_rel, ann, lineno)
+    return surface, errors
+
+
+def _format_mismatch(
+    source_rel: str,
+    prop_name: str,
+    actual: str,
+    expected: str,
+    lineno: int,
+) -> str:
+    """Format the property-return-type mismatch violation message."""
+    return (
+        f"{source_rel}:{lineno}: property {prop_name!r} returns {actual!r}; "
+        f"PersistenceBackend protocol declares {expected!r}. The public "
+        f"surface MUST hide the dialect choice from callers (see "
+        f"docs/reference/persistence-boundary.md). Either flip the return "
+        f"annotation to {expected!r} or add "
+        f"'# lint-allow: persistence-protocol-uniformity -- <reason>' on "
+        f"the property line."
+    )
+
+
+def _is_property_suppressed(project_root: Path, source_rel: str, lineno: int) -> bool:
+    """Return True if the property declaration line carries the marker."""
+    try:
+        text = (project_root / source_rel).read_text(encoding="utf-8")
+    except OSError, UnicodeDecodeError:
+        return False
+    lines = text.splitlines()
+    line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
+    return _line_has_trailing_marker(line)
+
+
 def _scan_backend(
-    backend_path: Path,
+    project_root: Path,
     rel: str,
     backend_class_name: str,
+    accessor_sidecars: tuple[tuple[str, str], ...],
     protocol_props: dict[str, str],
 ) -> list[str]:
-    """Return violation messages for one backend file."""
-    try:
-        text = backend_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        return [f"{rel}:0: unable to scan file: {exc}"]
-    try:
-        tree = ast.parse(text, filename=str(backend_path))
-    except SyntaxError as exc:
-        return [f"{rel}:{exc.lineno or 0}: unable to parse file: {exc.msg}"]
-    backend_props = _collect_backend_properties(tree, backend_class_name)
+    """Return violation messages for one backend file + its accessor sidecars.
+
+    Accessor sidecars are mixin classes that contribute ``@property``
+    accessors to the backend's public surface. Their property
+    declarations are merged into the backend's view before comparison
+    against the protocol. Each property's source file is tracked so
+    violation messages point at the file that actually declares the
+    property.
+    """
+    backend_props, backend_err = _load_class_properties(
+        project_root, rel, backend_class_name
+    )
+    if backend_err is not None:
+        return [backend_err]
     if not backend_props:
         return [
             f"{rel}:0: concrete backend class {backend_class_name!r} not found "
             "in module; the gate has nothing to compare against."
         ]
-    lines = text.splitlines()
-    issues: list[str] = []
+
+    surface, issues = _merge_accessor_surface(
+        project_root, rel, backend_props, accessor_sidecars
+    )
     for prop_name, expected in protocol_props.items():
-        if prop_name not in backend_props:
+        if prop_name not in surface:
             issues.append(
                 f"{rel}:0: property {prop_name!r} declared on PersistenceBackend "
                 f"protocol is missing from this backend."
             )
             continue
-        actual, lineno = backend_props[prop_name]
+        source_rel, actual, lineno = surface[prop_name]
         if actual == expected:
             continue
-        line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
-        if _line_has_trailing_marker(line):
+        if _is_property_suppressed(project_root, source_rel, lineno):
             continue
-        issues.append(
-            f"{rel}:{lineno}: property {prop_name!r} returns {actual!r}; "
-            f"PersistenceBackend protocol declares {expected!r}. The public "
-            f"surface MUST hide the dialect choice from callers (see "
-            f"docs/reference/persistence-boundary.md). Either flip the return "
-            f"annotation to {expected!r} or add "
-            f"'# lint-allow: persistence-protocol-uniformity -- <reason>' on "
-            f"the property line."
-        )
+        issues.append(_format_mismatch(source_rel, prop_name, actual, expected, lineno))
     return issues
 
 
@@ -256,7 +358,7 @@ def _scan_all(project_root: Path) -> int:
         return 1
 
     total = 0
-    for rel, backend_class_name in _BACKEND_PATHS:
+    for rel, backend_class_name, accessor_sidecars in _BACKEND_PATHS:
         backend_path = project_root / rel
         if not backend_path.is_file():
             print(
@@ -267,9 +369,10 @@ def _scan_all(project_root: Path) -> int:
             total += 1
             continue
         violations = _scan_backend(
-            backend_path,
+            project_root,
             rel,
             backend_class_name,
+            accessor_sidecars,
             protocol_props,
         )
         for msg in violations:

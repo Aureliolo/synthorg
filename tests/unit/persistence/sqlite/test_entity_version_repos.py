@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.hashing import compute_content_hash
 from synthorg.versioning.models import VersionSnapshot
+from tests._shared.persistence import make_private_write_context
 
 _NOW = datetime(2026, 4, 8, 12, 0, tzinfo=UTC)
 
@@ -64,6 +65,7 @@ async def _make_repo[T: BaseModel](
         deserialize_snapshot=lambda s: model_cls.model_validate(
             json.loads(s),
         ),
+        write_context=make_private_write_context(),
     )
 
 

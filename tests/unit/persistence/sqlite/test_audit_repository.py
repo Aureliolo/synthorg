@@ -14,6 +14,7 @@ from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
 from synthorg.security.models import AuditEntry, AuditVerdictStr
+from tests._shared.persistence import make_private_write_context
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -60,7 +61,9 @@ def _make_entry(  # noqa: PLR0913
 class TestSQLiteAuditRepository:
     async def test_save_and_query_all(self, migrated_db: aiosqlite.Connection) -> None:
         """Save 2 entries, query without filters, verify both returned."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         e1 = _make_entry(entry_id="ae-001")
         e2 = _make_entry(entry_id="ae-002")
         await repo.save(e1)
@@ -76,7 +79,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Entries with different timestamps are returned DESC order."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         earlier = now - timedelta(hours=1)
 
@@ -95,7 +100,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Filter matches only entries with matching agent_id."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         e1 = _make_entry(entry_id="ae-a1", agent_id="agent-a")
         e2 = _make_entry(entry_id="ae-b1", agent_id="agent-b")
         await repo.save(e1)
@@ -109,7 +116,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Filter by action_type string."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         e1 = _make_entry(entry_id="ae-cw", action_type="code:write")
         e2 = _make_entry(entry_id="ae-cr", action_type="code:read")
         await repo.save(e1)
@@ -123,7 +132,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Filter by verdict (allow/deny/escalate/output_scan)."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         e1 = _make_entry(entry_id="ae-allow", verdict="allow")
         e2 = _make_entry(entry_id="ae-deny", verdict="deny")
         await repo.save(e1)
@@ -137,7 +148,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Filter by ApprovalRiskLevel enum."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         e1 = _make_entry(entry_id="ae-low", risk_level=ApprovalRiskLevel.LOW)
         e2 = _make_entry(entry_id="ae-high", risk_level=ApprovalRiskLevel.HIGH)
         await repo.save(e1)
@@ -151,7 +164,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Entries before cutoff are excluded."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         old = now - timedelta(hours=2)
         cutoff = now - timedelta(hours=1)
@@ -169,7 +184,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Multiple filters are AND-combined."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         e1 = _make_entry(
             entry_id="ae-match",
             agent_id="agent-x",
@@ -195,7 +212,9 @@ class TestSQLiteAuditRepository:
 
     async def test_query_limit(self, migrated_db: aiosqlite.Connection) -> None:
         """Limit returns the N newest entries."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         base = datetime(2026, 3, 1, tzinfo=UTC)
         for i in range(5):
             await repo.save(
@@ -210,7 +229,9 @@ class TestSQLiteAuditRepository:
 
     async def test_query_empty(self, migrated_db: aiosqlite.Connection) -> None:
         """Returns empty tuple when no entries."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         results = await repo.query()
         assert results == ()
 
@@ -218,7 +239,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """limit < 1 raises QueryError."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="limit"):
             await repo.query(limit=0)
         with pytest.raises(QueryError, match="limit"):
@@ -228,7 +251,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Full model round-trip including optional fields."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         entry = _make_entry(
             entry_id="ae-rt",
             agent_id="agent-rt",
@@ -267,7 +292,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """None for agent_id, task_id, approval_id survives round-trip."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         entry = _make_entry(
             entry_id="ae-null",
             agent_id=None,
@@ -287,7 +314,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Tuple of rules survives JSON serialization round-trip."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         rules = ("rule-alpha", "rule-beta", "rule-gamma")
         entry = _make_entry(entry_id="ae-rules", matched_rules=rules)
         await repo.save(entry)
@@ -325,7 +354,9 @@ class TestSQLiteAuditRepository:
         )
         await migrated_db.commit()
 
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="deserialize"):
             await repo.query()
 
@@ -333,7 +364,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """agent_id=None means 'no filter', not 'filter for NULL'."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         e1 = _make_entry(entry_id="ae-with", agent_id="agent-x")
         e2 = _make_entry(entry_id="ae-without", agent_id=None)
         await repo.save(e1)
@@ -344,7 +377,9 @@ class TestSQLiteAuditRepository:
 
     async def test_save_append_only(self, migrated_db: aiosqlite.Connection) -> None:
         """Saving same ID twice raises DuplicateRecordError (no upsert)."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         entry = _make_entry(entry_id="ae-dup")
         await repo.save(entry)
 
@@ -355,7 +390,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Entries after until are excluded."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         future = now + timedelta(hours=2)
         cutoff = now + timedelta(hours=1)
@@ -373,7 +410,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """since + until creates a bounded time range."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         base = datetime(2026, 3, 1, tzinfo=UTC)
         for i in range(5):
             await repo.save(
@@ -393,7 +432,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """until < since raises QueryError."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         with pytest.raises(QueryError, match="until"):
             await repo.query(since=now, until=now - timedelta(hours=1))
@@ -402,7 +443,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Entry with timestamp == since is included (>= semantics)."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         cutoff = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
         entry = _make_entry(entry_id="ae-boundary", timestamp=cutoff)
         await repo.save(entry)
@@ -415,7 +458,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Non-UTC timestamps are stored as UTC for correct ordering."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         # Use timezone offset +05:30
         offset = timezone(timedelta(hours=5, minutes=30))
         ts = datetime(2026, 3, 10, 12, 0, 0, tzinfo=offset)
@@ -434,7 +479,9 @@ class TestSQLiteAuditRepository:
         """Generic sqlite3.Error during save raises QueryError."""
         import sqlite3
 
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         entry = _make_entry(entry_id="ae-err")
 
         with (
@@ -454,7 +501,9 @@ class TestSQLiteAuditRepository:
         """Generic sqlite3.Error during query raises QueryError."""
         import sqlite3
 
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
 
         with (
             patch.object(
@@ -471,14 +520,18 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """SQLiteAuditRepository is an AuditRepository."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert isinstance(repo, AuditRepository)
 
     async def test_purge_before_deletes_older_entries(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Rows strictly older than the cutoff are removed (CFG-1)."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         cutoff = now - timedelta(hours=1)
         e_old = _make_entry(
@@ -500,7 +553,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Rows with timestamp == cutoff are preserved (strict <)."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         ts = datetime.now(UTC)
         entry = _make_entry(entry_id="ae-at-cutoff", timestamp=ts)
         await repo.save(entry)
@@ -515,7 +570,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Cutoff in the past with only newer rows returns 0."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         entry = _make_entry(entry_id="ae-recent", timestamp=now)
         await repo.save(entry)
@@ -528,7 +585,9 @@ class TestSQLiteAuditRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Non-UTC cutoff is converted to UTC before comparison."""
-        repo = SQLiteAuditRepository(migrated_db)
+        repo = SQLiteAuditRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         utc_now = datetime.now(UTC)
         # Save one row an hour before "now" in UTC
         entry = _make_entry(

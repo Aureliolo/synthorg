@@ -11,6 +11,7 @@ from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
 from synthorg.security.timeout.parked_context import ParkedContext
+from tests._shared.persistence import make_private_write_context
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -42,7 +43,9 @@ def _make_context(  # noqa: PLR0913
 @pytest.mark.unit
 class TestSQLiteParkedContextRepository:
     async def test_save_and_get(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         ctx = _make_context(parked_id="parked-001")
         await repo.save(ctx)
 
@@ -60,11 +63,15 @@ class TestSQLiteParkedContextRepository:
     async def test_get_returns_none_for_missing(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert await repo.get("nonexistent") is None
 
     async def test_get_by_approval(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         ctx = _make_context(approval_id="approval-xyz")
         await repo.save(ctx)
 
@@ -76,11 +83,15 @@ class TestSQLiteParkedContextRepository:
     async def test_get_by_approval_returns_none(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert await repo.get_by_approval("nonexistent") is None
 
     async def test_get_by_agent(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         ctx1 = _make_context(agent_id="agent-a", approval_id="ap-1")
         ctx2 = _make_context(agent_id="agent-a", approval_id="ap-2")
         await repo.save(ctx1)
@@ -95,14 +106,18 @@ class TestSQLiteParkedContextRepository:
     async def test_get_by_agent_returns_empty(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         results = await repo.get_by_agent("nonexistent")
         assert results == ()
 
     async def test_get_by_agent_ordered_by_parked_at_desc(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         earlier = now - timedelta(hours=1)
 
@@ -127,7 +142,9 @@ class TestSQLiteParkedContextRepository:
         assert results[1].id == ctx_old.id
 
     async def test_delete(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         ctx = _make_context(parked_id="del-me")
         await repo.save(ctx)
 
@@ -137,11 +154,15 @@ class TestSQLiteParkedContextRepository:
     async def test_delete_returns_false_for_missing(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert await repo.delete("nonexistent") is False
 
     async def test_save_upsert(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         ctx = _make_context(
             parked_id="upsert-id",
             context_json='{"step": 1}',
@@ -170,7 +191,9 @@ class TestSQLiteParkedContextRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Metadata dict survives JSON serialization round-trip."""
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         ctx = _make_context(
             parked_id="meta-rt",
             metadata={"tool": "shell", "action": "execute"},
@@ -197,6 +220,8 @@ INSERT INTO parked_contexts (
         )
         await migrated_db.commit()
 
-        repo = SQLiteParkedContextRepository(migrated_db)
+        repo = SQLiteParkedContextRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="deserialize parked context"):
             await repo.get("corrupt-1")

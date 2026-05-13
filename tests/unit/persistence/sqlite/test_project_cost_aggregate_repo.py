@@ -10,6 +10,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
     SQLiteProjectCostAggregateRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -23,7 +24,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         result = await repo.get("proj-nonexistent")
         assert result is None
 
@@ -31,7 +34,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         agg = await repo.increment("proj-1", 1.5, 100, 50, currency="USD")
 
         assert agg.project_id == "proj-1"
@@ -45,7 +50,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.increment("proj-1", 1.0, 100, 50, currency="USD")
         agg = await repo.increment("proj-1", 2.0, 200, 100, currency="USD")
 
@@ -59,7 +66,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         for _ in range(5):
             await repo.increment("proj-1", 0.1, 10, 5, currency="USD")
 
@@ -74,7 +83,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.increment("proj-1", 3.0, 500, 200, currency="USD")
 
         agg = await repo.get("proj-1")
@@ -89,7 +100,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.increment("proj-a", 10.0, 1000, 500, currency="USD")
         await repo.increment("proj-b", 5.0, 200, 100, currency="USD")
 
@@ -105,7 +118,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         agg1 = await repo.increment("proj-1", 1.0, 10, 5, currency="USD")
         agg2 = await repo.increment("proj-1", 1.0, 10, 5, currency="USD")
 
@@ -115,7 +130,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         agg = await repo.increment("proj-1", 0.0, 0, 0, currency="USD")
 
         assert agg.total_cost == 0.0
@@ -132,7 +149,9 @@ class TestSQLiteProjectCostAggregateRepository:
             MixedCurrencyAggregationError,
         )
 
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.increment("proj-1", 1.0, 10, 5, currency="USD")
         with pytest.raises(MixedCurrencyAggregationError) as exc_info:
             await repo.increment("proj-1", 1.0, 10, 5, currency="EUR")
@@ -156,7 +175,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with (
             patch.object(
                 migrated_db,
@@ -172,7 +193,9 @@ class TestSQLiteProjectCostAggregateRepository:
         self,
         migrated_db: aiosqlite.Connection,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with (
             patch.object(
                 migrated_db,
@@ -208,7 +231,9 @@ class TestSQLiteProjectCostAggregateRepository:
         input_tokens: int,
         output_tokens: int,
     ) -> None:
-        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with pytest.raises(ValueError, match="non-negative"):
             await repo.increment(
                 "proj-1", cost, input_tokens, output_tokens, currency="USD"

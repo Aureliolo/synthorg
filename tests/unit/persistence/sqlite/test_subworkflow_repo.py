@@ -21,6 +21,7 @@ from synthorg.engine.workflow.definition import (
 from synthorg.persistence.sqlite.subworkflow_repo import (
     SQLiteSubworkflowRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
@@ -29,7 +30,9 @@ _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 def repo(
     migrated_db: aiosqlite.Connection,
 ) -> SQLiteSubworkflowRepository:
-    return SQLiteSubworkflowRepository(migrated_db)
+    return SQLiteSubworkflowRepository(
+        migrated_db, write_context=make_private_write_context()
+    )
 
 
 def _make_nodes() -> tuple[WorkflowNode, ...]:

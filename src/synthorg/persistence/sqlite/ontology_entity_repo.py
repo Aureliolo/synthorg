@@ -1,6 +1,5 @@
 """SQLite-backed ontology entity repository."""
 
-import asyncio
 import contextlib
 import json
 import sqlite3
@@ -29,6 +28,7 @@ from synthorg.ontology.models import (
     EntityTier,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -38,20 +38,22 @@ class SQLiteOntologyEntityRepository:
 
     Args:
         db: Open aiosqlite connection with ``row_factory`` set.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     @property
     def backend_name(self) -> NotBlankStr:
@@ -110,7 +112,7 @@ class SQLiteOntologyEntityRepository:
     async def register(self, entity: EntityDefinition) -> None:
         """Register a new entity definition."""
         params = self._entity_to_params(entity)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """INSERT INTO entity_definitions
@@ -169,46 +171,77 @@ class SQLiteOntologyEntityRepository:
     async def update(self, entity: EntityDefinition) -> None:
         """Update an existing entity definition."""
         params = self._entity_to_params(entity)
-        async with self._write_lock:
-            cursor = await self._db.execute(
-                """UPDATE entity_definitions
-                   SET tier = :tier, source = :source,
-                       definition = :definition, fields = :fields,
-                       constraints = :constraints,
-                       disambiguation = :disambiguation,
-                       relationships = :relationships,
-                       updated_at = :updated_at
-                   WHERE name = :name""",
-                params,
-            )
-            if cursor.rowcount == 0:
-                # Roll back so the empty UPDATE does not leave the
-                # shared connection inside an open implicit transaction.
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    """UPDATE entity_definitions
+                       SET tier = :tier, source = :source,
+                           definition = :definition, fields = :fields,
+                           constraints = :constraints,
+                           disambiguation = :disambiguation,
+                           relationships = :relationships,
+                           updated_at = :updated_at
+                       WHERE name = :name""",
+                    params,
+                )
+                if cursor.rowcount == 0:
+                    # Roll back so the empty UPDATE does not leave the
+                    # shared connection inside an open implicit
+                    # transaction.
+                    with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                        await self._db.rollback()
+                    msg = f"Entity '{entity.name}' not found"
+                    logger.warning(
+                        ONTOLOGY_ENTITY_NOT_FOUND,
+                        entity_name=entity.name,
+                        op="update",
+                    )
+                    raise OntologyNotFoundError(msg)
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
-                msg = f"Entity '{entity.name}' not found"
+                msg = f"Failed to update entity '{entity.name}'"
                 logger.warning(
-                    ONTOLOGY_ENTITY_NOT_FOUND,
+                    ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
                     entity_name=entity.name,
                     op="update",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                raise OntologyNotFoundError(msg)
-            await self._db.commit()
+                raise OntologyError(msg) from exc
 
     async def delete(self, name: str) -> None:
         """Delete an entity definition by name."""
-        async with self._write_lock:
-            cursor = await self._db.execute(
-                "DELETE FROM entity_definitions WHERE name = :name",
-                {"name": name},
-            )
-            if cursor.rowcount == 0:
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM entity_definitions WHERE name = :name",
+                    {"name": name},
+                )
+                if cursor.rowcount == 0:
+                    with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                        await self._db.rollback()
+                    msg = f"Entity '{name}' not found"
+                    logger.warning(
+                        ONTOLOGY_ENTITY_NOT_FOUND,
+                        entity_name=name,
+                        op="delete",
+                    )
+                    raise OntologyNotFoundError(msg)
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
-                msg = f"Entity '{name}' not found"
-                logger.warning(ONTOLOGY_ENTITY_NOT_FOUND, entity_name=name, op="delete")
-                raise OntologyNotFoundError(msg)
-            await self._db.commit()
+                msg = f"Failed to delete entity '{name}'"
+                logger.warning(
+                    ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
+                    entity_name=name,
+                    op="delete",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise OntologyError(msg) from exc
 
     async def list_entities(
         self,

@@ -18,6 +18,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.sqlite.preset_override_repo import (
     SQLitePresetOverrideRepo,
 )
+from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
 
@@ -49,7 +50,7 @@ def _make_row(  # noqa: PLR0913 -- test factory with explicit knobs
 def _build_repo() -> SQLitePresetOverrideRepo:
     """Build a repo with a no-op connection (we only call _row_to_override)."""
     db = AsyncMock(spec=Connection)
-    return SQLitePresetOverrideRepo(db=db)
+    return SQLitePresetOverrideRepo(db=db, write_context=make_private_write_context())
 
 
 class TestRowToOverrideHappy:
@@ -178,6 +179,8 @@ class TestGetWrapsCorruptionAsQueryError:
         db = MagicMock(spec=Connection)
         db.execute = AsyncMock(return_value=cursor)
 
-        repo = SQLitePresetOverrideRepo(db=db)
+        repo = SQLitePresetOverrideRepo(
+            db=db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError):
             await repo.get("test-provider")

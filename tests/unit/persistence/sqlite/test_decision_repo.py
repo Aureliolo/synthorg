@@ -11,6 +11,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.persistence.decision_protocol import DecisionRepository
 from synthorg.persistence.sqlite.decision_repo import SQLiteDecisionRepository
+from tests._shared.persistence import make_private_write_context
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -49,7 +50,9 @@ async def _append(  # noqa: PLR0913
 class TestSQLiteDecisionRepositoryAppendAndGet:
     async def test_append_and_get(self, migrated_db: aiosqlite.Connection) -> None:
         """Append a record, retrieve by ID, fields match."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         record = await _append(
             repo,
             record_id="dr-001",
@@ -75,14 +78,18 @@ class TestSQLiteDecisionRepositoryAppendAndGet:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """get returns None for unknown ID."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert await repo.get("nonexistent") is None
 
     async def test_append_duplicate_id_raises(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Appending with an existing ID raises DuplicateRecordError."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await _append(repo, record_id="dr-dup")
         with pytest.raises(DuplicateRecordError):
             await _append(repo, record_id="dr-dup", task_id="task-2")
@@ -91,7 +98,9 @@ class TestSQLiteDecisionRepositoryAppendAndGet:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Multiple appends on the same task yield versions 1, 2, 3."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         r1 = await _append(repo, record_id="dr-a", task_id="task-1")
         r2 = await _append(
             repo,
@@ -113,7 +122,9 @@ class TestSQLiteDecisionRepositoryAppendAndGet:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Version counters are independent per task_id."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         a1 = await _append(repo, record_id="dr-a1", task_id="task-A")
         b1 = await _append(repo, record_id="dr-b1", task_id="task-B")
         a2 = await _append(
@@ -143,7 +154,9 @@ class TestSQLiteDecisionRepositoryListByTask:
         fails the old query and passes the new one, which is the
         regression the test exists to catch.
         """
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         anchor = datetime(2026, 1, 1, tzinfo=UTC)
         # Two regular decisions, recorded_at increasing in line with
         # version assignment (the normal happy path).
@@ -182,7 +195,9 @@ class TestSQLiteDecisionRepositoryListByTask:
 
     async def test_list_by_task_empty(self, migrated_db: aiosqlite.Connection) -> None:
         """list_by_task returns empty tuple for unknown task."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert await repo.list_by_task("task-nope") == ()
 
 
@@ -195,7 +210,9 @@ class TestSQLiteDecisionRepositoryListByAgent:
 
         Uses two matching records to also verify DESC recorded_at ordering.
         """
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         await _append(
             repo,
@@ -230,7 +247,9 @@ class TestSQLiteDecisionRepositoryListByAgent:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """list_by_agent with role='reviewer' filters by reviewer_agent_id."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         await _append(
             repo,
@@ -259,7 +278,9 @@ class TestSQLiteDecisionRepositoryListByAgent:
         """Invalid role raises QueryError (matches pagination-arg behaviour)."""
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="role must be"):
             await repo.list_by_agent("alice", role="observer")  # type: ignore[arg-type]
 
@@ -268,7 +289,9 @@ class TestSQLiteDecisionRepositoryListByAgent:
 class TestSQLiteDecisionRepositoryProtocol:
     def test_satisfies_protocol(self, migrated_db: aiosqlite.Connection) -> None:
         """SQLiteDecisionRepository is a DecisionRepository."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert isinstance(repo, DecisionRepository)
 
 
@@ -284,7 +307,9 @@ class TestSQLiteDecisionRepositorySerialization:
         append-only contract; this test compares via ``dict(...)``
         to avoid depending on the exact container type.
         """
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await _append(
             repo,
             record_id="dr-1",
@@ -301,7 +326,9 @@ class TestSQLiteDecisionRepositorySerialization:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Corrupted criteria_snapshot JSON raises QueryError on read."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await _append(repo, record_id="dr-1")
         await migrated_db.execute(
             "UPDATE decision_records SET criteria_snapshot = ? WHERE id = ?",
@@ -315,7 +342,9 @@ class TestSQLiteDecisionRepositorySerialization:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Corrupted metadata JSON raises QueryError on read."""
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await _append(repo, record_id="dr-1")
         await migrated_db.execute(
             "UPDATE decision_records SET metadata = ? WHERE id = ?",
@@ -337,7 +366,9 @@ class TestSQLiteDecisionRepositorySerialization:
         """
         import sqlite3
 
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await _append(repo, record_id="dr-1")
 
         async def _attempt_bogus_update() -> None:
@@ -362,7 +393,9 @@ class TestSQLiteDecisionRepositorySerialization:
         verifies the read-time guard wraps the resulting
         ValidationError as QueryError.
         """
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await _append(repo, record_id="dr-1")
         # Disable CHECK constraints only for this direct UPDATE so we
         # can inject an invalid enum value and exercise the read-time
@@ -394,7 +427,9 @@ class TestSQLiteDecisionRepositorySerialization:
         """
         import asyncio
 
-        repo = SQLiteDecisionRepository(migrated_db)
+        repo = SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         writer_count = 20
 
         async def _one(i: int) -> int:

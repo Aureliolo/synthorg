@@ -1,6 +1,5 @@
 """SQLite repositories for fine-tuning pipeline runs and checkpoints."""
 
-import asyncio
 import contextlib
 import json
 import sqlite3
@@ -23,6 +22,7 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.fine_tune_protocol import _DEFAULT_LIST_LIMIT_50
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -103,24 +103,26 @@ class SQLiteFineTuneRunRepository:
 
     Args:
         db: An open aiosqlite connection with row_factory set.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save_run(self, run: FineTuneRun) -> None:
         """Persist a run (upsert semantics)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     "INSERT INTO fine_tune_runs "
@@ -245,7 +247,7 @@ class SQLiteFineTuneRunRepository:
 
     async def update_run(self, run: FineTuneRun) -> None:
         """Update all mutable fields for a run."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     "UPDATE fine_tune_runs SET "
@@ -293,7 +295,7 @@ class SQLiteFineTuneRunRepository:
             f"stage = ?, error = ?, updated_at = ?, completed_at = ? "
             f"WHERE stage IN ({placeholders})"
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     query,
@@ -328,27 +330,29 @@ class SQLiteFineTuneCheckpointRepository:
 
     Args:
         db: An open aiosqlite connection with row_factory set.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save_checkpoint(
         self,
         checkpoint: CheckpointRecord,
     ) -> None:
         """Persist a checkpoint (upsert semantics)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     "INSERT INTO fine_tune_checkpoints "
@@ -458,7 +462,7 @@ class SQLiteFineTuneCheckpointRepository:
         Raises:
             QueryError: If the checkpoint does not exist or DB fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     "UPDATE fine_tune_checkpoints SET is_active = 0",
@@ -492,7 +496,7 @@ class SQLiteFineTuneCheckpointRepository:
 
     async def deactivate_all(self) -> None:
         """Deactivate all checkpoints (for rollback)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     "UPDATE fine_tune_checkpoints SET is_active = 0",
@@ -516,7 +520,7 @@ class SQLiteFineTuneCheckpointRepository:
         Checks existence and active status before deleting to provide
         clear error messages without TOCTOU races.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 check = await self._db.execute(
                     "SELECT is_active FROM fine_tune_checkpoints WHERE id = ?",

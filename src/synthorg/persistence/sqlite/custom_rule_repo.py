@@ -1,6 +1,5 @@
 """SQLite repository implementation for custom signal rules."""
 
-import asyncio
 import json
 import sqlite3
 from typing import TYPE_CHECKING
@@ -31,6 +30,7 @@ from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 if TYPE_CHECKING:
     from aiosqlite import Row
@@ -95,27 +95,22 @@ class SQLiteCustomRuleRepository:
 
     Args:
         db: An open aiosqlite connection.
-        write_lock: Optional shared lock used to serialize writes on
-            the shared connection.  Inject the
-            :class:`SQLitePersistenceBackend._shared_write_lock` so
-            writes from this repo coordinate with sibling repos that
-            share the same connection.  Defaults to ``None``, in
-            which case the repo creates a private :class:`asyncio.Lock`
-            (suitable for standalone test construction).
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, rule: CustomRuleDefinition) -> None:
         """Persist a custom rule via upsert.
@@ -129,7 +124,7 @@ class SQLiteCustomRuleRepository:
             QueryError: If the database operation fails.
         """
         altitudes_json = json.dumps(serialize_altitudes(rule))
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -333,7 +328,7 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 async with self._db.execute(
                     "DELETE FROM custom_rules WHERE id = ?",

@@ -10,6 +10,7 @@ from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -65,7 +66,9 @@ class TestSQLiteAgentStateRepository:
     async def test_save_and_get_roundtrip(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         state = _make_state()
         await repo.save(state)
 
@@ -82,7 +85,9 @@ class TestSQLiteAgentStateRepository:
         assert result.started_at == state.started_at
 
     async def test_save_idle_roundtrip(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         state = _make_state(
             agent_id="agent-idle",
             status=ExecutionStatus.IDLE,
@@ -100,7 +105,9 @@ class TestSQLiteAgentStateRepository:
         assert result.currency == "USD"
 
     async def test_upsert_overwrites(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         v1 = _make_state(turn_count=1)
         await repo.save(v1)
 
@@ -115,14 +122,18 @@ class TestSQLiteAgentStateRepository:
     async def test_get_returns_none_when_not_found(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         result = await repo.get("nonexistent")
         assert result is None
 
     async def test_get_active_filters_idle(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         executing = _make_state(agent_id="active-1", last_activity_at=_T1)
         paused = _make_state(
             agent_id="paused-1",
@@ -147,7 +158,9 @@ class TestSQLiteAgentStateRepository:
     async def test_get_active_ordered_by_last_activity_desc(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         older = _make_state(agent_id="older", last_activity_at=_T0)
         newer = _make_state(agent_id="newer", last_activity_at=_T2)
         middle = _make_state(agent_id="middle", last_activity_at=_T1)
@@ -161,7 +174,9 @@ class TestSQLiteAgentStateRepository:
     async def test_get_active_returns_empty_when_all_idle(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         idle = _make_state(agent_id="idle-only", status=ExecutionStatus.IDLE)
         await repo.save(idle)
 
@@ -169,7 +184,9 @@ class TestSQLiteAgentStateRepository:
         assert active == ()
 
     async def test_delete_existing(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         state = _make_state()
         await repo.save(state)
 
@@ -178,14 +195,18 @@ class TestSQLiteAgentStateRepository:
         assert await repo.get("agent-001") is None
 
     async def test_delete_nonexistent(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         deleted = await repo.delete("nonexistent")
         assert deleted is False
 
     async def test_delete_does_not_affect_other_agents(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         keep = _make_state(agent_id="keep")
         remove = _make_state(agent_id="remove")
         await repo.save(keep)
@@ -198,7 +219,9 @@ class TestSQLiteAgentStateRepository:
     async def test_get_active_returns_empty_on_empty_table(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         active = await repo.get_active()
         assert active == ()
 
@@ -206,7 +229,9 @@ class TestSQLiteAgentStateRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Full lifecycle: idle → executing → idle roundtrip."""
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         idle = _make_state(agent_id="lifecycle", status=ExecutionStatus.IDLE)
         await repo.save(idle)
 
@@ -266,7 +291,9 @@ class TestSQLiteAgentStateRepositoryErrors:
     ) -> None:
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteAgentStateRepository(memory_db)
+        repo = SQLiteAgentStateRepository(
+            memory_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match=match) as exc_info:
             await getattr(repo, method)(*args)
         assert exc_info.value.__cause__ is not None
@@ -276,7 +303,9 @@ class TestSQLiteAgentStateRepositoryErrors:
     ) -> None:
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         # Insert a row with a malformed datetime to trigger deserialization
         # failure (passes CHECK constraints but fails Pydantic AwareDatetime)
         await migrated_db.execute(
@@ -306,7 +335,9 @@ class TestSQLiteAgentStateRepositoryErrors:
         """get_active() fails when any row has corrupt data."""
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteAgentStateRepository(migrated_db)
+        repo = SQLiteAgentStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         # Insert a valid executing row
         valid = _make_state(agent_id="agent-ok")
         await repo.save(valid)

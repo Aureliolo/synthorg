@@ -1,6 +1,5 @@
 """SQLite repository implementation for approval items."""
 
-import asyncio
 import json
 import sqlite3
 from typing import TYPE_CHECKING
@@ -28,6 +27,7 @@ from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -172,21 +172,23 @@ class SQLiteApprovalRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
         self._db.row_factory = aiosqlite.Row
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, item: ApprovalItem) -> None:
         """Upsert an approval item.
@@ -220,7 +222,7 @@ class SQLiteApprovalRepository:
             evidence_json,
             json.dumps(item.metadata),
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(_APPROVALS_UPSERT_SQL, params)
                 await self._db.commit()
@@ -286,7 +288,7 @@ class SQLiteApprovalRepository:
                     json.dumps(item.metadata),
                 ),
             )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.executemany(_APPROVALS_UPSERT_SQL, param_rows)
                 await self._db.commit()
@@ -337,7 +339,7 @@ class SQLiteApprovalRepository:
             "RETURNING id"
         )
         params = (ApprovalStatus.EXPIRED.value, *ids, ApprovalStatus.PENDING.value)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 async with self._db.execute(sql, params) as cursor:
                     rows = await cursor.fetchall()
@@ -537,7 +539,7 @@ class SQLiteApprovalRepository:
             QueryError: If the database operation fails.
         """
         sql = "DELETE FROM approvals WHERE id = ?"
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(sql, (approval_id,))
                 await self._db.commit()

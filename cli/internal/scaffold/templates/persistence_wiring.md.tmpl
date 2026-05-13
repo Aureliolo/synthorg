@@ -63,7 +63,7 @@ Then construct the repo in each backend's
 `PostgresPersistenceBackend`):
 
 ```python
-self.{{.Domain}}_items = SQLite{{.ClassName}}Repository(self._db, write_lock=self._write_lock)
+self.{{.Domain}}_items = SQLite{{.ClassName}}Repository(self._db, write_context=self.write_context)
 # or
 self.{{.Domain}}_items = Postgres{{.ClassName}}Repository(self._pool)
 ```

@@ -1,6 +1,5 @@
 """SQLite repository implementation for agent runtime state persistence."""
 
-import asyncio
 import contextlib
 import sqlite3
 
@@ -22,6 +21,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AGENT_STATE_NOT_FOUND,
     PERSISTENCE_AGENT_STATE_SAVE_FAILED,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -31,24 +31,26 @@ class SQLiteAgentStateRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, state: AgentRuntimeState) -> None:
         """Persist an agent runtime state (upsert by agent_id)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 data = state.model_dump(mode="json")
                 await self._db.execute(
@@ -141,7 +143,7 @@ INSERT OR REPLACE INTO agent_states (
 
     async def delete(self, agent_id: NotBlankStr) -> bool:
         """Delete an agent runtime state by agent ID."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM agent_states WHERE agent_id = ?",

@@ -5,7 +5,6 @@ set provides O(1) sync lookups for the auth middleware hot path; the
 SQLite connection provides survival across restarts.
 """
 
-import asyncio
 import contextlib
 import sqlite3
 from datetime import UTC, datetime
@@ -28,6 +27,7 @@ from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -64,20 +64,22 @@ class SQLiteSessionRepository:
 
     Args:
         db: Open aiosqlite connection with ``row_factory`` set.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
         self._revoked: set[str] = set()
 
     async def load_revoked(self) -> None:
@@ -97,7 +99,7 @@ class SQLiteSessionRepository:
 
     async def create(self, session: Session) -> None:
         """Persist a new session."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     "INSERT INTO sessions "
@@ -118,6 +120,8 @@ class SQLiteSessionRepository:
                     ),
                 )
                 await self._db.commit()
+                if session.revoked:
+                    self._revoked.add(session.session_id)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -130,8 +134,6 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        if session.revoked:
-            self._revoked.add(session.session_id)
 
     async def get(self, session_id: str) -> Session | None:
         """Look up a session by ID."""
@@ -188,7 +190,7 @@ class SQLiteSessionRepository:
 
     async def revoke(self, session_id: str) -> bool:
         """Revoke a session by ID."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "UPDATE sessions SET revoked = 1 "
@@ -197,6 +199,8 @@ class SQLiteSessionRepository:
                 )
                 await self._db.commit()
                 rowcount = cursor.rowcount
+                if rowcount > 0:
+                    self._revoked.add(session_id)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -208,14 +212,11 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        if rowcount > 0:
-            self._revoked.add(session_id)
-            # Audit emission moved to service/controller layer per the
-            # persistence-boundary rule -- controllers that call
-            # ``revoke`` are responsible for logging
-            # SECURITY_SESSION_REVOKED.
-            return True
-        return False
+        # Audit logging lives above persistence so the SECURITY_SESSION_REVOKED
+        # event reflects the authorization decision rather than a
+        # storage-only update; the caller (service/controller) owns the
+        # emit.
+        return rowcount > 0
 
     async def revoke_all_for_user(self, user_id: str) -> int:
         """Revoke all active sessions for a user.
@@ -227,7 +228,7 @@ class SQLiteSessionRepository:
         through the auth fast path until the next ``load_revoked``.
         """
         now = format_iso_utc(datetime.now(UTC))
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 # SELECT first: capture the ids that WILL be revoked
                 # while they are still pending.  If this read fails we
@@ -250,6 +251,7 @@ class SQLiteSessionRepository:
                 # UPDATE succeeded; in-memory mutation only happens
                 # after a successful commit.
                 await self._db.commit()
+                self._revoked.update(row["session_id"] for row in rows)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -261,9 +263,9 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        self._revoked.update(row["session_id"] for row in rows)
-        # Audit emission moved to service/controller layer per the
-        # persistence-boundary rule.
+        # Audit logging stays above persistence: the caller correlates the
+        # bulk-revoke event with the authorization context (which user
+        # initiated, why) that this layer does not see.
         return count
 
     async def enforce_session_limit(
@@ -283,11 +285,10 @@ class SQLiteSessionRepository:
         for session in to_revoke:
             if await self.revoke(session.session_id):
                 revoked += 1
-        # Audit emission moved to service/controller layer per the
-        # persistence-boundary rule -- callers that invoke
-        # ``enforce_session_limit`` log SECURITY_SESSION_LIMIT_ENFORCED
-        # when ``revoked > 0`` so the auth chain entry sits with the
-        # decision rather than the storage commit.
+        # SECURITY_SESSION_LIMIT_ENFORCED belongs in the caller so the
+        # audit entry sits with the policy decision (which limit fired,
+        # against which actor) rather than against a storage commit
+        # that has no visibility into authorization context.
         return revoked
 
     def is_revoked(self, session_id: str) -> bool:
@@ -297,7 +298,7 @@ class SQLiteSessionRepository:
     async def cleanup_expired(self) -> int:
         """Remove expired sessions from the database."""
         now = format_iso_utc(datetime.now(UTC))
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "SELECT session_id FROM sessions WHERE expires_at <= ?",
@@ -312,6 +313,7 @@ class SQLiteSessionRepository:
                     (now,),
                 )
                 await self._db.commit()
+                self._revoked -= ids
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -323,6 +325,5 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        self._revoked -= ids
         logger.debug(API_SESSION_CLEANUP, removed=len(ids))
         return len(ids)

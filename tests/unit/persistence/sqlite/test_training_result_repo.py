@@ -18,6 +18,7 @@ from synthorg.persistence.sqlite.training_plan_repo import (
 from synthorg.persistence.sqlite.training_result_repo import (
     SQLiteTrainingResultRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 
 def _make_plan(
@@ -79,8 +80,11 @@ def _make_result(  # noqa: PLR0913
 async def repos(
     migrated_db: aiosqlite.Connection,
 ) -> tuple[SQLiteTrainingPlanRepository, SQLiteTrainingResultRepository]:
-    plan_repo = SQLiteTrainingPlanRepository(migrated_db)
-    result_repo = SQLiteTrainingResultRepository(migrated_db)
+    write_context = make_private_write_context()
+    plan_repo = SQLiteTrainingPlanRepository(migrated_db, write_context=write_context)
+    result_repo = SQLiteTrainingResultRepository(
+        migrated_db, write_context=write_context
+    )
     return plan_repo, result_repo
 
 

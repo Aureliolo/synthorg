@@ -1,6 +1,5 @@
 """SQLite repository implementation for security audit entries."""
 
-import asyncio
 import json
 import sqlite3
 from datetime import UTC
@@ -29,7 +28,10 @@ if TYPE_CHECKING:
     from synthorg.security.models import AuditEntry, AuditVerdictStr
 
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-from synthorg.persistence.sqlite._shared import is_unique_constraint_error
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    is_unique_constraint_error,
+)
 
 logger = get_logger(__name__)
 
@@ -47,20 +49,22 @@ class SQLiteAuditRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_context: Async context manager that serializes writes on
+            the shared ``aiosqlite.Connection``. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, entry: AuditEntry) -> None:
         """Persist an audit entry (append-only, no upsert).
@@ -79,7 +83,7 @@ class SQLiteAuditRepository:
         )
         placeholders = ", ".join(f":{c}" for c in AUDIT_COLUMNS)
         sql = f"INSERT INTO audit_entries ({_COL_LIST}) VALUES ({placeholders})"  # noqa: S608
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(sql, payload)
                 await self._db.commit()
@@ -277,7 +281,7 @@ class SQLiteAuditRepository:
             QueryError: If the DELETE fails.
         """
         utc_cutoff = cutoff.astimezone(UTC).isoformat()
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM audit_entries WHERE timestamp < ?",

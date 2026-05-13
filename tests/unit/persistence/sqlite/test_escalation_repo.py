@@ -1,5 +1,6 @@
 """SQLite escalation queue repository tests."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
@@ -21,6 +22,7 @@ from synthorg.core.enums import SeniorityLevel
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.persistence.sqlite.escalation_repo import SQLiteEscalationRepository
+from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
 
@@ -103,7 +105,9 @@ async def backend() -> AsyncIterator[SQLitePersistenceBackend]:
 
 async def test_create_and_get(backend: SQLitePersistenceBackend) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     row = _make_escalation(escalation_id="escalation-sql-01")
     await repo.create(row)
     fetched = await repo.get("escalation-sql-01")
@@ -115,7 +119,9 @@ async def test_create_and_get(backend: SQLitePersistenceBackend) -> None:
 
 async def test_list_items_filters_by_status(backend: SQLitePersistenceBackend) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     await repo.create(_make_escalation(escalation_id="escalation-sql-a"))
     await repo.create(_make_escalation(escalation_id="escalation-sql-b"))
     pending, total_pending = await repo.list_items(
@@ -134,7 +140,9 @@ async def test_apply_winner_decision_transitions_to_decided(
     backend: SQLitePersistenceBackend,
 ) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     await repo.create(_make_escalation(escalation_id="escalation-sql-win"))
     decision = WinnerDecision(
         winning_agent_id="agent-a",
@@ -159,7 +167,9 @@ async def test_apply_reject_decision_round_trips(
     backend: SQLitePersistenceBackend,
 ) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     await repo.create(_make_escalation(escalation_id="escalation-sql-rej"))
     decision = RejectDecision(reasoning="Both positions off-strategy")
     updated = await repo.apply_decision(
@@ -175,7 +185,9 @@ async def test_apply_decision_on_missing_row_raises_keyerror(
     backend: SQLitePersistenceBackend,
 ) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     with pytest.raises(KeyError):
         await repo.apply_decision(
             "missing",
@@ -188,7 +200,9 @@ async def test_apply_decision_on_decided_row_raises_valueerror(
     backend: SQLitePersistenceBackend,
 ) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     await repo.create(_make_escalation(escalation_id="escalation-sql-dbl"))
     decision = WinnerDecision(winning_agent_id="agent-a", reasoning="ok")
     await repo.apply_decision(
@@ -208,7 +222,9 @@ async def test_cancel_transitions_to_cancelled(
     backend: SQLitePersistenceBackend,
 ) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     await repo.create(_make_escalation(escalation_id="escalation-sql-canc"))
     updated = await repo.cancel("escalation-sql-canc", cancelled_by="human:op-3")
     assert updated.status == EscalationStatus.CANCELLED
@@ -219,7 +235,9 @@ async def test_mark_expired_transitions_stale_rows(
     backend: SQLitePersistenceBackend,
 ) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     past = datetime.now(UTC) - timedelta(seconds=30)
     future = datetime.now(UTC) + timedelta(seconds=3600)
     await repo.create(
@@ -242,7 +260,9 @@ async def test_list_items_respects_limit_and_offset(
     backend: SQLitePersistenceBackend,
 ) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     for i in range(5):
         await repo.create(_make_escalation(escalation_id=f"escalation-sql-p-{i}"))
     page_a, total = await repo.list_items(limit=2, offset=0)
@@ -257,8 +277,61 @@ async def test_list_items_respects_limit_and_offset(
 
 async def test_invalid_limit_raises(backend: SQLitePersistenceBackend) -> None:
     assert backend._db is not None
-    repo = SQLiteEscalationRepository(backend._db)
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
     with pytest.raises(ValueError, match="limit"):
         await repo.list_items(limit=0)
     with pytest.raises(ValueError, match="offset"):
         await repo.list_items(offset=-1)
+
+
+async def test_build_escalations_serializes_with_backend_write_context(
+    backend: SQLitePersistenceBackend,
+) -> None:
+    """``build_escalations`` must wire the backend's shared write lock.
+
+    The factory previously constructed ``SQLiteEscalationRepository``
+    without a shared lock, so escalation writes could interleave with
+    sibling repos' writes on the single ``aiosqlite.Connection``. This
+    regression test asserts that an escalation operation started while
+    another task already holds ``backend.write_context()`` blocks until
+    the holder releases, proving both sides contend on the same lock.
+    """
+    escalation_repo = backend.build_escalations()
+    assert isinstance(escalation_repo, SQLiteEscalationRepository)
+
+    events: list[str] = []
+    backend_holding = asyncio.Event()
+    release_backend = asyncio.Event()
+    escalation_contender_started = asyncio.Event()
+
+    async def hold_backend_lock() -> None:
+        async with backend.write_context():
+            events.append("backend-acquired")
+            backend_holding.set()
+            await release_backend.wait()
+            events.append("backend-released")
+
+    async def try_escalation_lock() -> None:
+        await backend_holding.wait()
+        escalation_contender_started.set()
+        async with escalation_repo._write_context():
+            events.append("escalation-acquired")
+
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(hold_backend_lock())
+        tg.create_task(try_escalation_lock())
+        await escalation_contender_started.wait()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert "escalation-acquired" not in events, (
+            f"escalation_repo acquired the lock while backend held it; events={events}"
+        )
+        release_backend.set()
+
+    assert events == [
+        "backend-acquired",
+        "backend-released",
+        "escalation-acquired",
+    ], events

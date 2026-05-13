@@ -5,7 +5,6 @@ table for after-the-fact debugging and replay.  Reads are
 newest-first and bounded by an explicit ``limit``.
 """
 
-import asyncio
 import contextlib
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -28,6 +27,7 @@ from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -69,15 +69,15 @@ class SQLiteWebhookReceiptRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
-        """Bind to *db* and serialize writes via *write_lock*."""
+        """Bind to *db* and serialize writes via *write_context*."""
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def log(self, receipt: WebhookReceipt) -> None:
         """Append a webhook receipt row (idempotent on receipt id)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """
@@ -172,7 +172,7 @@ class SQLiteWebhookReceiptRepository:
         ``retention_days <= 0`` is treated as a no-op so callers cannot
         accidentally truncate the log via misconfiguration.
 
-        Note: holds ``self._write_lock`` for the duration of the DELETE
+        Note: holds ``self._write_context()`` for the duration of the DELETE
         + COMMIT.  On a large ``webhook_receipts`` table this can
         briefly block other writers (the daily sweep is serialised
         against the rest of the SQLite write traffic by design).
@@ -184,7 +184,7 @@ class SQLiteWebhookReceiptRepository:
             return 0
         cutoff = datetime.now(UTC) - timedelta(days=retention_days)
         cutoff_iso = format_iso_utc(cutoff)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM webhook_receipts "

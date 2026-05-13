@@ -8,6 +8,8 @@ backend; the caller picks the right factory for the active backend.
 """
 
 import json
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 from pydantic import ValidationError
@@ -26,6 +28,8 @@ from synthorg.persistence.version_protocol import (
 from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
+
+type WriteContextFn = Callable[[], AbstractAsyncContextManager[None]]
 
 
 def _safe_deserialize_snapshot_json(raw: str) -> EntityDefinition:
@@ -58,6 +62,8 @@ def _safe_deserialize_snapshot_dict(data: object) -> EntityDefinition:
 
 def create_ontology_version_repo(
     db: Any,
+    *,
+    write_context: WriteContextFn,
 ) -> VersionRepository[EntityDefinition]:
     """Create a SQLite-backed VersionRepository for EntityDefinition.
 
@@ -67,6 +73,9 @@ def create_ontology_version_repo(
             ``aiosqlite`` outside ``persistence/`` would violate the
             boundary linter; the actual handle is passed straight
             through to the repository.
+        write_context: The backend's ``write_context`` callable,
+            forwarded to the repository so writes serialize with
+            sibling repos on the shared aiosqlite connection.
 
     Returns:
         A repository targeting the ``entity_definition_versions`` table.
@@ -78,21 +87,26 @@ def create_ontology_version_repo(
             m.model_dump(mode="json"),
         ),
         deserialize_snapshot=_safe_deserialize_snapshot_json,
+        write_context=write_context,
     )
 
 
 def create_ontology_versioning(
     db: Any,
+    *,
+    write_context: WriteContextFn,
 ) -> VersioningService[EntityDefinition]:
     """Create a SQLite-backed VersioningService for EntityDefinition.
 
     Args:
         db: An open aiosqlite connection (see above note on the type).
+        write_context: The backend's ``write_context`` callable,
+            forwarded to the underlying version repository.
 
     Returns:
         A versioning service for entity definitions.
     """
-    repo = create_ontology_version_repo(db)
+    repo = create_ontology_version_repo(db, write_context=write_context)
     return VersioningService(repo)
 
 

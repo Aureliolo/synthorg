@@ -1,6 +1,5 @@
 """SQLite repository implementation for Project."""
 
-import asyncio
 import json
 import sqlite3
 
@@ -29,7 +28,10 @@ from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
-from synthorg.persistence.sqlite._shared import is_unique_constraint_error
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    is_unique_constraint_error,
+)
 
 logger = get_logger(__name__)
 
@@ -61,33 +63,22 @@ class SQLiteProjectRepository:
     Args:
         db: An open aiosqlite connection with ``row_factory``
             set to ``aiosqlite.Row``.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # ``aiosqlite.Connection`` runs every command on a dedicated
-        # worker thread, but transactions are connection-scoped: two
-        # coroutines that share a Connection share the SAME transaction
-        # context.  Without a connection-wide lock, coroutine A's
-        # ``execute`` + ``commit`` can interleave with coroutine B's
-        # statements -- B's writes get committed by A's
-        # ``commit`` (or rolled back by A's ``rollback``), breaking
-        # transaction atomicity.  Inject the shared
-        # ``SQLitePersistenceBackend._shared_write_lock`` so that every
-        # repo using the same connection serializes through one lock;
-        # writes from a sibling repository (e.g. artifact + project
-        # under the same connection) cannot interleave their
-        # ``execute`` -> ``commit``/``rollback`` sequence.  Reads stay
-        # un-gated -- they don't open transactions in autocommit mode.
-        # Fall back to a private lock when constructed standalone (e.g.
-        # in unit tests that build a single repo against an in-memory
-        # connection).
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     @staticmethod
     def _row_params(project: Project) -> tuple[object, ...]:
@@ -113,7 +104,7 @@ class SQLiteProjectRepository:
             DuplicateRecordError: A project with the same id exists.
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -188,7 +179,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             RecordNotFoundError: No project with this id exists.
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     """\
@@ -244,7 +235,7 @@ WHERE id=?""",
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -399,7 +390,7 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM projects WHERE id = ?", (project_id,)

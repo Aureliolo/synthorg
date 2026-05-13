@@ -9,6 +9,7 @@ from synthorg.engine.checkpoint.models import Heartbeat
 from synthorg.persistence.sqlite.heartbeat_repo import (
     SQLiteHeartbeatRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -43,7 +44,9 @@ class TestSQLiteHeartbeatRepository:
     async def test_save_and_get_roundtrip(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         hb = _make_heartbeat(execution_id="exec-hb-001")
         await repo.save(hb)
 
@@ -57,14 +60,18 @@ class TestSQLiteHeartbeatRepository:
     async def test_get_returns_none_for_missing(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         result = await repo.get("nonexistent")
         assert result is None
 
     async def test_upsert_updates_existing(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         later = now + timedelta(minutes=5)
 
@@ -87,7 +94,9 @@ class TestSQLiteHeartbeatRepository:
     async def test_get_stale_returns_old_heartbeats(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         old = now - timedelta(hours=1)
         very_old = now - timedelta(hours=2)
@@ -119,7 +128,9 @@ class TestSQLiteHeartbeatRepository:
     async def test_get_stale_returns_empty_when_none_stale(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         hb = _make_heartbeat(
             execution_id="exec-fresh",
@@ -136,7 +147,9 @@ class TestSQLiteHeartbeatRepository:
     async def test_get_stale_ordered_by_timestamp(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         now = datetime.now(UTC)
         t1 = now - timedelta(hours=3)
         t2 = now - timedelta(hours=2)
@@ -163,7 +176,9 @@ class TestSQLiteHeartbeatRepository:
     async def test_delete_returns_true_when_found(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         hb = _make_heartbeat(execution_id="exec-del")
         await repo.save(hb)
 
@@ -173,13 +188,17 @@ class TestSQLiteHeartbeatRepository:
     async def test_delete_returns_false_when_not_found(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert await repo.delete("nonexistent") is False
 
     async def test_delete_does_not_affect_other_heartbeats(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         hb_keep = _make_heartbeat(execution_id="exec-keep")
         hb_delete = _make_heartbeat(execution_id="exec-delete")
         await repo.save(hb_keep)
@@ -200,7 +219,9 @@ class TestSQLiteHeartbeatRepositoryErrors:
     ) -> None:
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteHeartbeatRepository(memory_db)
+        repo = SQLiteHeartbeatRepository(
+            memory_db, write_context=make_private_write_context()
+        )
         hb = _make_heartbeat()
         with pytest.raises(QueryError, match="Failed to save"):
             await repo.save(hb)
@@ -210,7 +231,9 @@ class TestSQLiteHeartbeatRepositoryErrors:
     ) -> None:
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteHeartbeatRepository(memory_db)
+        repo = SQLiteHeartbeatRepository(
+            memory_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="Failed to query"):
             await repo.get("exec-001")
 
@@ -219,7 +242,9 @@ class TestSQLiteHeartbeatRepositoryErrors:
     ) -> None:
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteHeartbeatRepository(memory_db)
+        repo = SQLiteHeartbeatRepository(
+            memory_db, write_context=make_private_write_context()
+        )
         threshold = datetime.now(UTC) - timedelta(minutes=5)
         with pytest.raises(QueryError, match="Failed to query"):
             await repo.get_stale(threshold)
@@ -229,7 +254,9 @@ class TestSQLiteHeartbeatRepositoryErrors:
     ) -> None:
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteHeartbeatRepository(memory_db)
+        repo = SQLiteHeartbeatRepository(
+            memory_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="Failed to delete"):
             await repo.delete("exec-001")
 
@@ -238,7 +265,9 @@ class TestSQLiteHeartbeatRepositoryErrors:
     ) -> None:
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteHeartbeatRepository(migrated_db)
+        repo = SQLiteHeartbeatRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         # Insert row with invalid timestamp
         await migrated_db.execute(
             "INSERT INTO heartbeats "

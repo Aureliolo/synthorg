@@ -12,6 +12,7 @@ from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.persistence.sqlite.custom_rule_repo import (
     SQLiteCustomRuleRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
 
@@ -20,7 +21,9 @@ pytestmark = pytest.mark.unit
 def repo(
     migrated_db: aiosqlite.Connection,
 ) -> SQLiteCustomRuleRepository:
-    return SQLiteCustomRuleRepository(migrated_db)
+    return SQLiteCustomRuleRepository(
+        migrated_db, write_context=make_private_write_context()
+    )
 
 
 def _now() -> datetime:

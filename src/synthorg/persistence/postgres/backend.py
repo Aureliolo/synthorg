@@ -3,9 +3,9 @@
 Implements the ``PersistenceBackend`` protocol on top of psycopg 3 and
 ``psycopg_pool.AsyncConnectionPool``.  Repositories are instantiated
 per-backend on ``connect()`` and receive the shared pool; each pool
-checkout is an independent transaction, so the Postgres backend does
-not need the ``shared_write_lock`` workaround that the SQLite backend
-uses to serialize writes across a single in-process connection.
+checkout is an independent transaction, so this backend's
+``write_context`` is a no-op rather than the in-process lock SQLite
+acquires to serialize writes across its single connection.
 
 The schema uses native Postgres types (JSONB, TIMESTAMPTZ, BIGINT,
 BOOLEAN) -- see ``src/synthorg/persistence/postgres/schema.sql``.  At
@@ -14,6 +14,8 @@ backend: callers get Pydantic models back either way.
 """
 
 import asyncio
+from collections.abc import AsyncIterator  # noqa: TC003
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -417,8 +419,9 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._role_versions = _ver_repo("role_versions", Role)
 
         # Append-only / security repositories.  Postgres per-connection
-        # transactions handle isolation without the SQLite shared
-        # write_lock workaround.
+        # transactions handle isolation at the database level, so this
+        # backend's ``write_context`` is a no-op and repositories do not
+        # take a ``write_context`` constructor argument.
         self._decision_records = PostgresDecisionRepository(pool)
         self._risk_overrides = PostgresRiskOverrideRepository(pool)
         self._ssrf_violations = PostgresSsrfViolationRepository(pool)
@@ -452,6 +455,19 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
             logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
         return self._pool
+
+    @asynccontextmanager
+    async def write_context(self) -> AsyncIterator[None]:
+        """No-op for Postgres.
+
+        Each repository checks out its own connection from the async
+        pool; transactions on different connections cannot interleave
+        at the statement level. Implementing the protocol method as a
+        no-op keeps the cross-backend interface honest and lets
+        callers write ``async with backend.write_context()`` without
+        backend-specific branching.
+        """
+        yield
 
     @property
     def is_connected(self) -> bool:
