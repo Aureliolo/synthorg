@@ -163,6 +163,30 @@ class WebhookReceiptRepository(Protocol):
         """Persist a webhook receipt."""
         ...
 
+    async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
+        """Fetch a single receipt by ID, or ``None`` when absent.
+
+        Used by the retry endpoint to look up a failed receipt before
+        re-publishing its captured payload to the bus.
+        """
+        ...
+
+    async def update_status(
+        self,
+        receipt_id: NotBlankStr,
+        *,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
+    ) -> bool:
+        """Update the receipt's lifecycle fields.
+
+        Returns ``True`` when the row existed and was updated, ``False``
+        when no row matched the ID. Callers can use the boolean to
+        distinguish "not found" from a successful no-op without raising.
+        """
+        ...
+
     async def get_by_connection(
         self,
         connection_name: NotBlankStr,

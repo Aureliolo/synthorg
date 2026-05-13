@@ -8,7 +8,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
+import { RefreshCw } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
@@ -18,7 +21,9 @@ import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SelectField } from '@/components/ui/select-field'
 import { StatusBadge } from '@/components/ui/status-badge'
 import type { AgentRuntimeStatus } from '@/lib/utils'
+import { useBulkSelection } from '@/hooks/useBulkSelection'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
+import { useToastStore } from '@/stores/toast'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { ROUTES } from '@/router/routes'
@@ -26,10 +31,21 @@ import { formatDateTime } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
 import {
   listWebhookActivity,
+  retryWebhookReceipt,
   type WebhookReceipt,
 } from '@/api/endpoints/webhooks'
 
 const log = createLogger('WebhookReceiptsPage')
+
+/**
+ * Cap on how many retry POSTs run concurrently. Webhook retries
+ * re-publish to the bus and can trip per-connection rate limits on
+ * the way back through the consumer pipeline; an unbounded
+ * `Promise.all` over 100+ receipts could amplify a single
+ * operator click into a thundering herd. The cap is generous
+ * enough that small selections still feel instant.
+ */
+const RETRY_CONCURRENCY = 4
 
 // Backend ``WebhookReceipt.status`` is a free-form string; map known
 // values onto the four-tone AgentRuntimeStatus the StatusBadge
@@ -45,29 +61,21 @@ function mapWebhookStatus(status: string): AgentRuntimeStatus {
   return 'idle'
 }
 
+/** Statuses eligible for retry. */
+const RETRYABLE_STATUSES: ReadonlySet<string> = new Set(['failed', 'error', 'rejected'])
+
+function isRetryable(receipt: WebhookReceipt): boolean {
+  return RETRYABLE_STATUSES.has(receipt.status.toLowerCase())
+}
+
 export default function WebhookReceiptsPage() {
   const { connections } = useConnectionsData()
   const [searchParams] = useSearchParams()
-  // Pre-select via URL ?connection=... so the cross-link from
-  // ConnectionsPage's row action lands directly on that connection's
-  // receipts. Seeded from '' and applied by the effect below once the
-  // connections list confirms the URL value is valid -- otherwise the
-  // initial render would fire reload() against an unvalidated name.
   const urlConnection = searchParams.get('connection') ?? ''
   const [selected, setSelected] = useState<string>('')
-  // Keep the selection in sync with the URL: a deep-link change
-  // mid-session (e.g. user clicks another View receipts cross-link
-  // while this page is mounted) should re-target the receipts
-  // fetch, not stay on the originally-seeded value. Two extra
-  // guards beyond the simple "URL changed" trigger:
-  //  - Re-run when ``connections`` arrives so the deep-link can fire
-  //    even on a cold mount where the initial state had an empty
-  //    list (otherwise the reconciliation effect below races and
-  //    overwrites the seeded selection).
-  //  - Only apply the URL value if the target connection actually
-  //    exists in the loaded list -- a stale URL should not stomp a
-  //    valid current selection.
-  // setState deferred to a microtask per ESLint set-state-in-effect.
+  const toast = useToastStore((s) => s.add)
+  const selection = useBulkSelection()
+
   useEffect(() => {
     if (!urlConnection) return
     if (connections.length === 0) return
@@ -84,22 +92,8 @@ export default function WebhookReceiptsPage() {
   const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
 
-  // Default the selector to the first connection that supports webhooks
-  // (we don't have that flag locally; just pick the first connection),
-  // AND reconcile when the connections list changes so a previously-
-  // selected connection that has since been removed (renamed,
-  // deleted, retracted by the backend) doesn't leave the dropdown
-  // showing a stale name. The setState is deferred to a microtask so
-  // the effect body itself stays free of synchronous setState calls
-  // per the ESLint set-state-in-effect rule.
-  // Guard against clobbering a URL-seeded value: when a valid
-  // ``urlConnection`` is present in the loaded list, the seed effect
-  // above is in charge of applying it, so this fallback effect must
-  // not race ahead and set ``selected`` to ``connections[0]`` while
-  // the seed effect's microtask is still pending. ``urlConnection``
-  // is in the dep array so the guard re-evaluates if the URL changes
-  // mid-session.
   useEffect(() => {
     const exists = selected !== '' && connections.some((c) => c.name === selected)
     if (exists) return
@@ -112,29 +106,10 @@ export default function WebhookReceiptsPage() {
     return () => { cancelled = true }
   }, [connections, selected, urlConnection])
 
-  // Per-request sequence number, bumped on every reload. The earlier
-  // ``requestedFor !== selected`` check compared two values from the
-  // same closure snapshot, so it never filtered an older response
-  // after the user switched connections. The ref-backed counter
-  // gives the in-flight request a stable identity that the latest
-  // issued id can be compared against; a mismatch unambiguously
-  // marks the response as stale.
   const requestSeqRef = useRef(0)
-  // Latest connection name, mirrored into a ref so the in-flight
-  // reload can compare against the most recent dropdown value at
-  // settle time. The sequence guard alone leaves a window between
-  // selection change and the next ``reload`` call where a still-
-  // pending request could pass the sequence check; the selection-
-  // ref check closes that window.
   const latestSelectedRef = useRef<string>(selected)
   latestSelectedRef.current = selected
 
-  // If the operator changes the selection mid-flight, the older
-  // request's response is dropped: the captured ``requestId`` no
-  // longer matches ``requestSeqRef.current`` AND/OR the captured
-  // ``requestedFor`` no longer matches the latest selection.
-  // Without this guard, switching from connection A to B during a
-  // slow A response would render A's receipts under B's label.
   const reload = useCallback(async () => {
     if (!selected) return
     const requestedFor = selected
@@ -155,8 +130,6 @@ export default function WebhookReceiptsPage() {
     } catch (err) {
       if (isStale()) return
       const message = getErrorMessage(err)
-      // SEC-1: connectionName is operator-controlled (URL / dropdown
-      // value); sanitize before structured logging.
       log.error('listWebhookActivity failed', {
         connectionName: sanitizeForLog(requestedFor),
         error: sanitizeForLog(message),
@@ -167,34 +140,78 @@ export default function WebhookReceiptsPage() {
     }
   }, [selected])
 
-  // Clear the previous connection's rows immediately on selection
-  // change so the operator sees the loading state for the new
-  // connection, not the stale rows from the previous one. The
-  // setState is deferred to a microtask so the effect body itself
-  // stays free of synchronous setState calls per the ESLint
-  // set-state-in-effect rule. The request-sequence guard prevents
-  // the late response from overwriting; this keeps the UI honest
-  // in the meantime.
   useEffect(() => {
     let cancelled = false
     void Promise.resolve().then(() => {
       if (cancelled) return
       setEntries([])
+      selection.clear()
     })
     return () => { cancelled = true }
-  }, [selected])
+  }, [selected, selection])
 
   useEffect(() => {
     void reload()
   }, [reload])
 
-  // Memoise so a parent re-render that produces a new ``connections``
-  // identity (without value-level changes) does not force the
-  // SelectField underneath to re-render against a fresh array.
   const options = useMemo(
     () => connections.map((c) => ({ value: c.name, label: c.name })),
     [connections],
   )
+
+  // Only retryable rows are selectable; passing the same set to the
+  // header checkbox + bulk action handler keeps "select all" honest
+  // about what will actually be retried.
+  const retryableIds = useMemo(
+    () => entries.filter(isRetryable).map((row) => row.id),
+    [entries],
+  )
+
+  const handleBulkRetry = useCallback(async () => {
+    const ids = [...selection.selectedIds].filter((id) =>
+      entries.some((row) => row.id === id && isRetryable(row)),
+    )
+    if (ids.length === 0) return
+    setRetrying(true)
+    let succeeded = 0
+    let failed = 0
+    // Run retries in bounded-concurrency batches so a large
+    // selection cannot saturate the API.
+    for (let i = 0; i < ids.length; i += RETRY_CONCURRENCY) {
+      const batch = ids.slice(i, i + RETRY_CONCURRENCY)
+      const results = await Promise.allSettled(
+        batch.map((id) => retryWebhookReceipt(id)),
+      )
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          succeeded += 1
+        } else {
+          failed += 1
+          log.warn('Retry failed', sanitizeForLog(result.reason))
+        }
+      }
+    }
+    setRetrying(false)
+    selection.clear()
+    if (succeeded > 0 && failed === 0) {
+      toast({
+        variant: 'success',
+        title: `Retried ${succeeded} receipt${succeeded === 1 ? '' : 's'}`,
+      })
+    } else if (succeeded > 0 && failed > 0) {
+      toast({
+        variant: 'warning',
+        title: `Retried ${succeeded} of ${succeeded + failed}`,
+        description: `${failed} retry attempt${failed === 1 ? '' : 's'} failed; check logs.`,
+      })
+    } else {
+      toast({
+        variant: 'error',
+        title: `Failed to retry ${failed} receipt${failed === 1 ? '' : 's'}`,
+      })
+    }
+    await reload()
+  }, [entries, reload, selection, toast])
 
   return (
     <div className="space-y-section-gap">
@@ -249,6 +266,20 @@ export default function WebhookReceiptsPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-text-secondary">
+                  <th className="py-2 pr-4">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all retryable receipts"
+                      checked={selection.isAllSelected(retryableIds)}
+                      ref={(el) => {
+                        if (el) {
+                          el.indeterminate = selection.isPartiallySelected(retryableIds)
+                        }
+                      }}
+                      onChange={() => selection.toggleAll(retryableIds)}
+                      disabled={retryableIds.length === 0}
+                    />
+                  </th>
                   <th className="py-2 pr-4">Received</th>
                   <th className="py-2 pr-4">Event</th>
                   <th className="py-2 pr-4">Status</th>
@@ -257,33 +288,64 @@ export default function WebhookReceiptsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {entries.map((row) => (
-                  <tr key={row.id}>
-                    <td className="py-2 pr-4 font-mono text-xs">{formatDateTime(row.received_at)}</td>
-                    <td className="py-2 pr-4 text-foreground">{row.event_type || '-'}</td>
-                    <td className="py-2 pr-4">
-                      <span className="inline-flex items-center gap-1.5">
-                        <StatusBadge
-                          status={mapWebhookStatus(row.status)}
-                          decorative
+                {entries.map((row) => {
+                  const retryable = isRetryable(row)
+                  return (
+                    <tr key={row.id}>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select receipt ${row.id}`}
+                          checked={selection.selectedIds.has(row.id)}
+                          onChange={() => selection.toggle(row.id)}
+                          disabled={!retryable}
                         />
-                        <span className="text-xs uppercase text-text-secondary">
-                          {row.status}
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-xs">{formatDateTime(row.received_at)}</td>
+                      <td className="py-2 pr-4 text-foreground">{row.event_type || '-'}</td>
+                      <td className="py-2 pr-4">
+                        <span className="inline-flex items-center gap-1.5">
+                          <StatusBadge
+                            status={mapWebhookStatus(row.status)}
+                            decorative
+                          />
+                          <span className="text-xs uppercase text-text-secondary">
+                            {row.status}
+                          </span>
                         </span>
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4 font-mono text-xs text-text-secondary">
-                      {row.processed_at ? formatDateTime(row.processed_at) : '-'}
-                    </td>
-                    <td className="py-2 pr-4 truncate max-w-xs text-xs text-danger" title={row.error ?? undefined}>
-                      {row.error}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-xs text-text-secondary">
+                        {row.processed_at ? formatDateTime(row.processed_at) : '-'}
+                      </td>
+                      <td className="py-2 pr-4 truncate max-w-xs text-xs text-danger" title={row.error ?? undefined}>
+                        {row.error}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         </SectionCard>
+      )}
+
+      {selection.count > 0 && (
+        <BulkActionBar
+          selectedCount={selection.count}
+          onClear={selection.clear}
+          loading={retrying}
+        >
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => void handleBulkRetry()}
+            disabled={retrying}
+            className="gap-1"
+          >
+            <RefreshCw className={`size-3.5 ${retrying ? 'animate-spin' : ''}`} aria-hidden="true" />
+            {retrying ? 'Retrying…' : 'Retry selected'}
+          </Button>
+        </BulkActionBar>
       )}
     </div>
   )

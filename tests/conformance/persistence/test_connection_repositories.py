@@ -627,6 +627,55 @@ class TestWebhookReceiptRepository:
 
         assert rows == ()
 
+    async def test_get_returns_stored_receipt(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.connections.save(_connection("github-bot"))
+        receipt = _receipt(receipt_id="rcpt-target")
+        await backend.webhook_receipts.log(receipt)
+
+        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-target"))
+
+        assert fetched is not None
+        assert fetched.id == "rcpt-target"
+        assert fetched.payload_json == '{"event":"push"}'
+
+    async def test_get_returns_none_when_missing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        result = await backend.webhook_receipts.get(NotBlankStr("does-not-exist"))
+        assert result is None
+
+    async def test_update_status_round_trip(self, backend: PersistenceBackend) -> None:
+        await backend.connections.save(_connection("github-bot"))
+        await backend.webhook_receipts.log(_receipt(receipt_id="rcpt-update"))
+
+        updated_at = datetime.now(UTC)
+        updated = await backend.webhook_receipts.update_status(
+            NotBlankStr("rcpt-update"),
+            status="failed",
+            processed_at=updated_at,
+            error="downstream timeout",
+        )
+
+        assert updated is True
+        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-update"))
+        assert fetched is not None
+        assert fetched.status == "failed"
+        assert fetched.error == "downstream timeout"
+        assert fetched.processed_at is not None
+
+    async def test_update_status_returns_false_when_missing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        updated = await backend.webhook_receipts.update_status(
+            NotBlankStr("nonexistent"),
+            status="failed",
+            processed_at=None,
+            error=None,
+        )
+        assert updated is False
+
     async def test_cleanup_old_zero_or_negative_is_noop(
         self, backend: PersistenceBackend
     ) -> None:

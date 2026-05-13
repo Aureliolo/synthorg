@@ -584,3 +584,73 @@ class WebhooksController(Controller):
             limit=limit,
         )
         return ApiResponse(data=receipts)
+
+    @post(
+        "/receipts/{receipt_id:str}/retry",
+        guards=[require_read_access],
+        summary="Retry a failed webhook receipt",
+        status_code=202,
+    )
+    async def retry_receipt(
+        self,
+        state: State,
+        receipt_id: str,
+    ) -> ApiResponse[dict[str, object]]:
+        """Re-publish a stored webhook payload to the message bus.
+
+        Looks up the persisted :class:`WebhookReceipt` by ID, decodes
+        its stored payload, and re-publishes the bus event so a
+        downstream consumer can re-process it. The receipt's status
+        is updated to ``"retrying"`` while in flight and to
+        ``"received"`` on success, with ``error`` cleared. The bus
+        publish bypasses the durable idempotency service because the
+        operator-initiated retry is intentional: a fresh execution
+        chain must run even if the original delivery already
+        succeeded once.
+        """
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+
+        persistence = state["app_state"].persistence
+        receipt = await persistence.webhook_receipts.get(
+            NotBlankStr(receipt_id),
+        )
+        if receipt is None:
+            msg = f"Webhook receipt {receipt_id!r} not found"
+            raise NotFoundError(msg)
+
+        try:
+            raw_payload = (
+                json.loads(receipt.payload_json) if receipt.payload_json else {}
+            )
+        except json.JSONDecodeError, UnicodeDecodeError:
+            raw_payload = {"raw": receipt.payload_json}
+        if isinstance(raw_payload, dict):
+            payload: dict[str, object] = dict(raw_payload)
+        else:
+            payload = {"data": raw_payload}
+
+        await persistence.webhook_receipts.update_status(
+            NotBlankStr(receipt.id),
+            status="retrying",
+            processed_at=None,
+            error=None,
+        )
+
+        bus = state["app_state"].message_bus
+        result = await _publish_webhook_event_and_log(
+            bus=bus,
+            connection_name=str(receipt.connection_name),
+            event_type=receipt.event_type or "",
+            payload=payload,
+            dedup_source="manual_retry",
+        )
+
+        await persistence.webhook_receipts.update_status(
+            NotBlankStr(receipt.id),
+            status="received",
+            processed_at=datetime.now(UTC),
+            error=None,
+        )
+        return ApiResponse(data={**result, "receipt_id": str(receipt.id)})

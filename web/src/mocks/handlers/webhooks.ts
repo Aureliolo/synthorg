@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type {
   listWebhookActivity,
+  retryWebhookReceipt,
   WebhookReceipt,
 } from '@/api/endpoints/webhooks'
 import { successFor } from './helpers'
@@ -41,5 +42,14 @@ const defaultReceipts: WebhookReceipt[] = [
 export const webhooksHandlers = [
   http.get('/api/v1/webhooks/:connectionName/activity', () =>
     HttpResponse.json(successFor<typeof listWebhookActivity>(defaultReceipts)),
+  ),
+  http.post('/api/v1/webhooks/receipts/:receiptId/retry', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof retryWebhookReceipt>({
+        status: 'accepted',
+        event_type: 'workflow.executed',
+        receipt_id: String(params.receiptId),
+      }),
+    ),
   ),
 ]

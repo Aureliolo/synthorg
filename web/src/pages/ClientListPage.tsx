@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Users } from 'lucide-react'
 import { Link } from 'react-router'
 
@@ -6,11 +6,22 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useClientsData } from '@/hooks/useClientsData'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { ROUTES } from '@/router/routes'
+import { getLocale } from '@/utils/locale'
+
+type ClientSortKey = 'name-asc' | 'name-desc' | 'strictness-asc' | 'strictness-desc'
+
+const SORT_OPTIONS: ReadonlyArray<{ value: ClientSortKey; label: string }> = [
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+  { value: 'strictness-asc', label: 'Strictness (low to high)' },
+  { value: 'strictness-desc', label: 'Strictness (high to low)' },
+]
 
 /**
  * Client pool list page.
@@ -22,16 +33,38 @@ import { ROUTES } from '@/router/routes'
 export default function ClientListPage() {
   const { clients, loading, error, wsConnected } = useClientsData()
   const [searchQuery, setSearchQuery] = useState('')
+  const [sortKey, setSortKey] = useState<ClientSortKey>('name-asc')
 
   const filteredClients = useMemo(() => {
     const trimmed = searchQuery.trim().toLowerCase()
-    if (!trimmed) return clients
-    return clients.filter(
-      (c) =>
-        c.name.toLowerCase().includes(trimmed) ||
-        c.persona.toLowerCase().includes(trimmed),
-    )
-  }, [clients, searchQuery])
+    const matches = trimmed
+      ? clients.filter(
+          (c) =>
+            c.name.toLowerCase().includes(trimmed) ||
+            c.persona.toLowerCase().includes(trimmed),
+        )
+      : clients
+    const locale = getLocale()
+    return [...matches].sort((a, b) => {
+      switch (sortKey) {
+        case 'name-asc':
+          return a.name.localeCompare(b.name, locale)
+        case 'name-desc':
+          return b.name.localeCompare(a.name, locale)
+        case 'strictness-asc':
+          return a.strictness_level - b.strictness_level
+        case 'strictness-desc':
+          return b.strictness_level - a.strictness_level
+      }
+    })
+  }, [clients, searchQuery, sortKey])
+
+  const handleSortChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      setSortKey(event.target.value as ClientSortKey)
+    },
+    [],
+  )
 
   // Hook before any early-return (rules-of-hooks): the loading
   // branch below short-circuits before the empty state matters.
@@ -82,11 +115,32 @@ export default function ClientListPage() {
       )}
 
       {clients.length > 0 && (
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search clients by name or persona"
-          ariaLabel="Search clients"
+        <SearchFilterSort
+          search={
+            <SearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search clients by name or persona"
+              ariaLabel="Search clients"
+            />
+          }
+          sort={
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Sort by</span>
+              <select
+                value={sortKey}
+                onChange={handleSortChange}
+                aria-label="Sort clients"
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          }
         />
       )}
 

@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FileText, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Collapsible } from '@/components/ui/collapsible'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
 import { MetadataGrid } from '@/components/ui/metadata-grid'
 import { ProgressIndicator } from '@/components/ui/progress-indicator'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToastStore } from '@/stores/toast'
+import { getLocale } from '@/utils/locale'
 import {
   generateReport,
   listReportPeriods,
@@ -112,12 +116,21 @@ function ChecklistItem({ label, present }: ChecklistItemProps) {
   )
 }
 
+type PeriodSortKey = 'name-asc' | 'name-desc'
+
+const PERIOD_SORT_OPTIONS: ReadonlyArray<{ value: PeriodSortKey; label: string }> = [
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+]
+
 export default function ReportsPage() {
   const [periods, setPeriods] = useState<readonly ReportPeriod[] | null>(null)
   const [loadingPeriods, setLoadingPeriods] = useState(true)
   const [periodsError, setPeriodsError] = useState<string | null>(null)
   const [generating, setGenerating] = useState<ReportPeriod | null>(null)
   const [report, setReport] = useState<GeneratedReportState | null>(null)
+  const [periodFilter, setPeriodFilter] = useState('')
+  const [periodSort, setPeriodSort] = useState<PeriodSortKey>('name-asc')
   const toast = useToastStore((state) => state.add)
 
   // Shared fetch helper so the initial load and the retry handler
@@ -185,13 +198,63 @@ export default function ReportsPage() {
     [toast],
   )
 
+  const visiblePeriods = useMemo(() => {
+    if (!periods) return null
+    const trimmed = periodFilter.trim().toLowerCase()
+    const matched = trimmed
+      ? periods.filter((p) => formatReportPeriod(p).toLowerCase().includes(trimmed))
+      : periods
+    const locale = getLocale()
+    return [...matched].sort((a, b) => {
+      const cmp = formatReportPeriod(a).localeCompare(formatReportPeriod(b), locale)
+      return periodSort === 'name-asc' ? cmp : -cmp
+    })
+  }, [periods, periodFilter, periodSort])
+
+  const handleSortChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      setPeriodSort(event.target.value as PeriodSortKey)
+    },
+    [],
+  )
+
   return (
     <div className="space-y-section-gap p-card">
       <ListHeader
         title="Reports"
-        count={periods?.length}
+        count={visiblePeriods?.length ?? periods?.length}
         description="Generate on-demand spending, performance, and task completion summaries for a chosen reporting period."
       />
+
+      {periods && periods.length > 0 && (
+        <SearchFilterSort
+          search={
+            <SearchInput
+              value={periodFilter}
+              onChange={setPeriodFilter}
+              placeholder="Filter report periods"
+              ariaLabel="Filter report periods"
+            />
+          }
+          sort={
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Sort by</span>
+              <select
+                value={periodSort}
+                onChange={handleSortChange}
+                aria-label="Sort report periods"
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+              >
+                {PERIOD_SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          }
+        />
+      )}
 
       {periodsError ? (
         <ErrorBanner
@@ -206,29 +269,38 @@ export default function ReportsPage() {
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
         </div>
-      ) : periods && periods.length > 0 ? (
-        <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
-          {periods.map((period) => (
-            <ReportPeriodCard
-              key={period}
-              period={period}
-              generating={generating}
-              onGenerate={(p) => void handleGenerate(p)}
-            />
-          ))}
-        </div>
+      ) : visiblePeriods && visiblePeriods.length > 0 ? (
+        <Collapsible
+          title="Available reporting periods"
+          summary={`${visiblePeriods.length} period${visiblePeriods.length === 1 ? '' : 's'}`}
+        >
+          <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
+            {visiblePeriods.map((period) => (
+              <ReportPeriodCard
+                key={period}
+                period={period}
+                generating={generating}
+                onGenerate={(p) => void handleGenerate(p)}
+              />
+            ))}
+          </div>
+        </Collapsible>
       ) : (
         <EmptyState
           icon={FileText}
-          title="No report periods available"
-          description="The report service has not published any periods yet."
+          title={periodFilter ? 'No matching report periods' : 'No report periods available'}
+          description={
+            periodFilter
+              ? 'Try a different search term or clear the filter above.'
+              : 'The report service has not published any periods yet.'
+          }
         />
       )}
 
       {report ? (
-        <SectionCard
+        <Collapsible
           title={`Latest ${formatReportPeriod(report.period)} report`}
-          icon={FileText}
+          summary={`Generated ${formatDateTime(report.response.generated_at)}`}
         >
           <MetadataGrid
             columns={2}
@@ -264,7 +336,7 @@ export default function ReportsPage() {
               },
             ]}
           />
-        </SectionCard>
+        </Collapsible>
       ) : null}
     </div>
   )

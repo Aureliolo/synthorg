@@ -135,6 +135,7 @@ export default function FineTuningPage() {
               <PipelineProgressBar
                 stage={status.stage}
                 progress={status.progress}
+                startedAt={runs.find((r) => r.id === status.run_id)?.started_at ?? null}
               />
             </SectionCard>
           )}

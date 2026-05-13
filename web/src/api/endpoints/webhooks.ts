@@ -49,3 +49,25 @@ export async function listWebhookActivity(
   )
   return unwrap(response)
 }
+
+export interface RetryWebhookReceiptResponse {
+  status: string
+  event_type: string
+  receipt_id: string
+}
+
+/**
+ * POST /webhooks/receipts/{id}/retry
+ *
+ * Asks the backend to re-publish the stored payload of a failed
+ * receipt. The 202 response carries the updated receipt id so the
+ * dashboard can correlate bulk-retry success / failure per row.
+ */
+export async function retryWebhookReceipt(
+  receiptId: string,
+): Promise<RetryWebhookReceiptResponse> {
+  const response = await apiClient.post<ApiResponse<RetryWebhookReceiptResponse>>(
+    `/webhooks/receipts/${encodeURIComponent(receiptId)}/retry`,
+  )
+  return unwrap(response)
+}
