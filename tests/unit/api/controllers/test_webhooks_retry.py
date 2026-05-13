@@ -10,7 +10,7 @@ re-raises, and an unknown receipt id raises ``NotFoundError``.
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 import structlog.testing
@@ -159,8 +159,24 @@ class TestRetryReceiptHappyPath:
         # ``update_status`` would still satisfy a combined
         # ``await_count == 2`` assertion but would leave
         # ``cas_mock.await_count == 0``, which this catches.
-        cas_mock.assert_awaited_once()
-        plain_mock.assert_awaited_once()
+        #
+        # ``_with`` further pins the kwargs so a regression that flips
+        # ``expected_status`` away from ``"failed"`` or the target
+        # ``status`` away from ``"retrying"`` / ``"received"`` would
+        # surface here rather than silently shipping the wrong contract.
+        cas_mock.assert_awaited_once_with(
+            NotBlankStr("rcpt-retry"),
+            expected_status="failed",
+            status="retrying",
+            processed_at=None,
+            error=None,
+        )
+        plain_mock.assert_awaited_once_with(
+            NotBlankStr("rcpt-retry"),
+            status="received",
+            processed_at=ANY,
+            error=None,
+        )
 
     async def test_invalid_payload_json_wraps_raw_bytes(
         self,
@@ -213,6 +229,40 @@ class TestRetryReceiptHappyPath:
             receipt_id="rcpt-retry",
         )
         assert captured["payload"] == {"data": [1, 2, 3]}
+
+    async def test_empty_payload_wraps_as_raw_empty_string(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An empty ``payload_json`` preserves the ``{"raw": ""}`` envelope.
+
+        Pins the contract that a zero-byte webhook body persisted to
+        ``payload_json=""`` retries with the same envelope shape
+        (``{"raw": ""}``) that ``receive_webhook`` would have published
+        on the original delivery. A regression that short-circuits the
+        empty string to ``{}`` would silently change the retry payload
+        shape relative to the first attempt.
+        """
+        receipt = _make_receipt(payload_json="")
+        state, _, _, _ = _build_state(receipt=receipt)
+        captured: dict[str, Any] = {}
+
+        async def fake_publish(**kwargs: Any) -> dict[str, object]:
+            captured.update(kwargs)
+            return {"status": "accepted", "event_type": "issues.opened"}
+
+        monkeypatch.setattr(
+            webhooks_module,
+            "_publish_webhook_event_and_log",
+            fake_publish,
+        )
+
+        await _retry_receipt_fn(
+            _self_stub(),
+            state=state,
+            receipt_id="rcpt-retry",
+        )
+        assert captured["payload"] == {"raw": ""}
 
 
 @pytest.mark.unit
@@ -316,8 +366,24 @@ class TestRetryReceiptErrorPaths:
         assert transitions[0]["status"] == "retrying"
         assert transitions[1]["status"] == "failed"
         assert transitions[1]["previous_status"] == "retrying"
-        cas_mock.assert_awaited_once()
-        plain_mock.assert_awaited_once()
+        cas_mock.assert_awaited_once_with(
+            NotBlankStr("rcpt-retry"),
+            expected_status="failed",
+            status="retrying",
+            processed_at=None,
+            error=None,
+        )
+        # Failure-path follow-up: plain update_status flips to ``failed``
+        # with the publish error's safe description and a processed_at
+        # timestamp. Pinning ``status="failed"`` here prevents a
+        # regression that accidentally leaves the row in ``retrying``
+        # after a publish failure (which would block future retries).
+        plain_mock.assert_awaited_once_with(
+            NotBlankStr("rcpt-retry"),
+            status="failed",
+            processed_at=ANY,
+            error=ANY,
+        )
 
     async def test_cas_lost_race_raises_not_found_without_publishing(
         self,

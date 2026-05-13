@@ -435,9 +435,15 @@ def _load_payload_from_receipt(receipt: WebhookReceipt) -> dict[str, object]:
     non-mapping (lists / scalars). The publish bridge always receives
     a ``dict[str, object]`` so downstream consumers can rely on the
     envelope shape.
+
+    An empty ``payload_json`` (``""`` -- a webhook captured with a
+    zero-byte body) flows through the ``json.loads`` failure path to
+    ``{"raw": ""}`` rather than being short-circuited to ``{}``, so
+    retries preserve the same envelope shape ``receive_webhook``
+    produced on the original delivery.
     """
     try:
-        raw_payload = json.loads(receipt.payload_json) if receipt.payload_json else {}
+        raw_payload = json.loads(receipt.payload_json)
     except json.JSONDecodeError, UnicodeDecodeError:
         raw_payload = {"raw": receipt.payload_json}
     if isinstance(raw_payload, dict):

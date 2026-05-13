@@ -28,8 +28,23 @@ const log = createLogger('sse-client')
 
 const SSE_STREAM_PATH = '/api/v1/events/stream'
 
-/** AG-UI event type → internal {event_type, channel} mapping. */
-const AGUI_EVENT_MAP: Readonly<Record<string, { event_type: string; channel: WsChannel }>> = {
+/**
+ * AG-UI event type → internal {event_type, channel} mapping.
+ *
+ * ``event_type`` is typed as ``WsEvent['event_type']`` (the
+ * ``WsEventType`` union) so a typo in a mapped value fails to compile
+ * instead of slipping into the dispatch loop as an invalid wire-event
+ * string. Pair with the unconditional ``WsChannel`` constraint on
+ * ``channel`` and the bracket-access path returns a typed
+ * ``AgUiMappedEvent`` -- the terminal envelope no longer needs an
+ * ``as WsEvent`` cast.
+ */
+type AgUiMappedEvent = Readonly<{
+  event_type: WsEvent['event_type']
+  channel: WsChannel
+}>
+
+const AGUI_EVENT_MAP: Readonly<Record<string, AgUiMappedEvent>> = {
   run_started: { event_type: 'task.status_changed', channel: 'tasks' },
   run_finished: { event_type: 'task.status_changed', channel: 'tasks' },
   run_error: { event_type: 'task.status_changed', channel: 'tasks' },
@@ -180,5 +195,5 @@ function mapAgUiToWsEvent(sse: SseRawEvent): WsEvent | null {
     channel: mapping.channel,
     timestamp: sse.timestamp,
     payload,
-  } as WsEvent
+  }
 }
