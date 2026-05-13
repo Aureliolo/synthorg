@@ -204,7 +204,23 @@ class AgentVersionService:
 
         Centralises the cross-snapshot loading for diff endpoints so
         the controller no longer reaches past the service boundary.
+
+        Version arguments are validated **before** the TaskGroup so a
+        ``ValueError`` from ``get_version`` cannot be rewrapped in
+        ``BaseExceptionGroup``; the controller's exception handler
+        would otherwise see a group and route the request through the
+        500 fallback instead of the 400 validation path.
         """
+        for version in (from_version, to_version):
+            if version < 1:
+                logger.warning(
+                    AGENT_IDENTITY_INVALID_REQUEST,
+                    param="version",
+                    value=version,
+                    agent_id=agent_id,
+                )
+                msg = f"version must be >= 1, got {version}"
+                raise ValueError(msg)
         async with asyncio.TaskGroup() as tg:
             old_task = tg.create_task(self.get_version(agent_id, from_version))
             new_task = tg.create_task(self.get_version(agent_id, to_version))

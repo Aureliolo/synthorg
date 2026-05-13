@@ -278,7 +278,7 @@ class TestReadinessProviders:
     provider health summary.
     """
 
-    async def test_empty_tracker_reports_providers_reachable(self) -> None:
+    def test_empty_tracker_reports_providers_reachable(self) -> None:
         tracker = ProviderHealthTracker()
         with TestClient(
             create_app(provider_health_tracker=tracker),
@@ -286,6 +286,7 @@ class TestReadinessProviders:
             response = client.get("/api/v1/readyz")
             assert response.status_code == 200
             body = response.json()
+            assert body["data"]["status"] == "ok"
             assert body["data"]["providers"] is True
 
     async def test_down_provider_flips_readiness_to_503(self) -> None:
@@ -341,4 +342,5 @@ class TestReadinessProviders:
             response = client.get("/api/v1/readyz")
             assert response.status_code == 200
             body = response.json()
+            assert body["data"]["status"] == "ok"
             assert body["data"]["providers"] is True

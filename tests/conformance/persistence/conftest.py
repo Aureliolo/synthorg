@@ -33,7 +33,7 @@ import uuid
 import warnings
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import psycopg
 import pytest
@@ -200,7 +200,14 @@ def _release_shared_postgres(state_file: Path) -> None:
     """
     try:
         current = json.loads(state_file.read_text())
-    except FileNotFoundError:
+    except FileNotFoundError, json.JSONDecodeError:
+        # Missing file is the normal "another worker already tore down"
+        # case. A partial write that left invalid JSON falls into the
+        # same bucket: drop the stale file rather than cascade the
+        # decode error across every other worker still holding the
+        # FileLock. The container will be cleaned up by testcontainers'
+        # Ryuk reaper once the parent pytest process exits.
+        state_file.unlink(missing_ok=True)
         return
     if current.get("skip_reason"):
         return
@@ -246,8 +253,12 @@ def postgres_container(
         shared_dir = tmp_path_factory.getbasetemp().parent
     state_file = shared_dir / "postgres_container_state.json"
     lock_path = str(shared_dir / "postgres_container.lock")
+    # 60s lock timeout guards against the pathological case where a
+    # worker dies holding the lock; peers fall through to a fresh
+    # acquire instead of wedging the whole suite.
+    lock_timeout: Final[int] = 60
 
-    with FileLock(lock_path):
+    with FileLock(lock_path, timeout=lock_timeout):
         data = _acquire_shared_postgres(state_file)
 
     proxy = _PostgresContainerProxy(
@@ -260,7 +271,7 @@ def postgres_container(
     try:
         yield proxy
     finally:
-        with FileLock(lock_path):
+        with FileLock(lock_path, timeout=lock_timeout):
             _release_shared_postgres(state_file)
 
 

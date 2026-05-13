@@ -82,6 +82,10 @@ class TestTaskEngineErrorMetadata:
         assert exc.status_code == 500
         assert exc.error_code is ErrorCode.ENGINE_ERROR
         assert exc.error_category is ErrorCategory.INTERNAL
+        # ``handle_domain_error`` picks ``default_message`` for 5xx responses
+        # to avoid leaking the raise-site message; assert the contract here.
+        assert exc.default_message == "Internal server error"
+        assert "internal fault" not in exc.default_message
 
     def test_version_conflict_metadata(self) -> None:
         exc = TaskVersionConflictError("version mismatch")

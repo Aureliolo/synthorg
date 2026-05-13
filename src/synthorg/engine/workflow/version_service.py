@@ -121,7 +121,23 @@ class WorkflowVersionService:
         helper centralises the missing-version logging + 404 raise that
         every diff endpoint would otherwise reimplement at the
         controller layer.
+
+        Revision arguments are validated **before** the TaskGroup so a
+        ``ValueError`` from ``get_version`` cannot be rewrapped in
+        ``BaseExceptionGroup``; the controller's exception handler
+        would otherwise see a group and route the request through the
+        500 fallback instead of the 400 validation path.
         """
+        for revision in (from_revision, to_revision):
+            if revision < 1:
+                logger.warning(
+                    WORKFLOW_VERSION_INVALID_REQUEST,
+                    definition_id=str(definition_id),
+                    param="revision",
+                    value=revision,
+                )
+                msg = f"revision must be >= 1, got {revision}"
+                raise ValueError(msg)
         async with asyncio.TaskGroup() as tg:
             old_task = tg.create_task(self.get_version(definition_id, from_revision))
             new_task = tg.create_task(self.get_version(definition_id, to_revision))
