@@ -254,6 +254,44 @@ export function applyDagreLayout(
     }
   }
 
+  // ── Step 2.5: center each dept lead over its reports ──────
+  //
+  // Dagre lays out lead + reports as siblings in a row; without a
+  // post-pass the lead lands wherever dagre's barycentric ordering
+  // places it (often the leftmost slot of the row), so the
+  // head -> report connector L-jogs sideways instead of forming a
+  // clean T-junction above the children's bounding-box midpoint.
+  // Re-anchoring the lead to the horizontal midpoint of its reports
+  // fixes the visual hierarchy and the connector routing in a single
+  // pass (HierarchyEdge drops from sourceX = lead.x + lead.w / 2 to
+  // the midpoint between source and target).
+  for (const groupResult of populatedResults) {
+    const groupChildren = groupResult.children
+      .map((c) => positionedLeafMap.get(c.id))
+      .filter((c): c is Node => c !== undefined)
+    const lead = groupChildren.find(
+      (c) => (c.data as { isDeptLead?: boolean }).isDeptLead === true,
+    )
+    if (!lead) continue
+    const reports = groupChildren.filter((c) => c.id !== lead.id)
+    if (reports.length === 0) continue
+    let xMin = Infinity
+    let xMax = -Infinity
+    for (const report of reports) {
+      const { w } = getNodeDim(report)
+      xMin = Math.min(xMin, report.position.x)
+      xMax = Math.max(xMax, report.position.x + w)
+    }
+    const { w: leadW } = getNodeDim(lead)
+    positionedLeafMap.set(lead.id, {
+      ...lead,
+      position: {
+        x: (xMin + xMax) / 2 - leadW / 2,
+        y: lead.position.y,
+      },
+    })
+  }
+
   const rootPopulated = populatedResults.find((r) => rootGroupIds.has(r.node.id))
 
   // ── Step 3: place EMPTY dept groups into the non-root row ────
