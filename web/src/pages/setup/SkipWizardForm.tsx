@@ -75,7 +75,7 @@ export function SkipWizardForm() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-border bg-card p-6">
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-border bg-card p-card">
         <InputField
           label="Company Name"
           required

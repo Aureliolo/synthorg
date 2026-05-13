@@ -6,7 +6,7 @@ signatures, and publishes to the message bus.
 
 import hashlib
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -38,6 +38,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import (
     WEBHOOK_ACCEPTED,
+    WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
     WEBHOOK_RECEIVED,
     WEBHOOK_REJECTED,
 )
@@ -55,6 +56,11 @@ logger = get_logger(__name__)
 # SHA-256 digest when oversized so the DB insert never fails on
 # length while operator-visible logs still carry the route prefix.
 _IDEMPOTENCY_KEY_MAX_LEN: int = 255
+
+# Receipt-status strings shared between the persistence-write and the
+# status-transition log so the wire value stays in one place.
+_RECEIPT_STATUS_RETRYING: Final[str] = "retrying"
+_RECEIPT_STATUS_RECEIVED: Final[str] = "received"
 
 
 async def _get_connection_or_404(state: State, connection_name: str) -> Any:
@@ -631,11 +637,19 @@ class WebhooksController(Controller):
         else:
             payload = {"data": raw_payload}
 
+        previous_status = receipt.status
         await persistence.webhook_receipts.update_status(
             NotBlankStr(receipt.id),
-            status="retrying",
+            status=_RECEIPT_STATUS_RETRYING,
             processed_at=None,
             error=None,
+        )
+        logger.info(
+            WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
+            receipt_id=str(receipt.id),
+            connection_name=str(receipt.connection_name),
+            previous_status=previous_status,
+            status=_RECEIPT_STATUS_RETRYING,
         )
 
         bus = state["app_state"].message_bus
@@ -649,8 +663,15 @@ class WebhooksController(Controller):
 
         await persistence.webhook_receipts.update_status(
             NotBlankStr(receipt.id),
-            status="received",
+            status=_RECEIPT_STATUS_RECEIVED,
             processed_at=datetime.now(UTC),
             error=None,
+        )
+        logger.info(
+            WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
+            receipt_id=str(receipt.id),
+            connection_name=str(receipt.connection_name),
+            previous_status=_RECEIPT_STATUS_RETRYING,
+            status=_RECEIPT_STATUS_RECEIVED,
         )
         return ApiResponse(data={**result, "receipt_id": str(receipt.id)})

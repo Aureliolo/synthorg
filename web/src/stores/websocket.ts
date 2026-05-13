@@ -286,6 +286,13 @@ async function notifyConnectionLimited(): Promise<void> {
     })
   } catch (err) {
     log.warn('Could not surface connection-limited toast', sanitizeForLog(err))
+    // Fallback signal: even when the toast store is unavailable
+    // (cold-boot or test harness without the notifications surface),
+    // operators inspecting the console still see the limited-
+    // connection state so chat/settings failures aren't a mystery.
+    console.warn(
+      '[ws] SSE fallback active; chat and settings features unavailable until reload',
+    )
   }
 }
 

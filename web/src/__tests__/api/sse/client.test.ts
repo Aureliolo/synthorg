@@ -119,4 +119,33 @@ describe('openSseFallback', () => {
     handle.close()
     expect(closeSpy).toHaveBeenCalled()
   })
+
+  it('invokes onOpen when the transport connects', () => {
+    let opened = false
+    openSseFallback({
+      onEvent: () => {},
+      onError: () => {},
+      onOpen: () => {
+        opened = true
+      },
+    })
+    lastEventSource!.onopen?.(new Event('open'))
+    expect(opened).toBe(true)
+  })
+
+  it('nulls the EventSource handlers on close() to release closures', () => {
+    const handle = openSseFallback({
+      onEvent: () => {},
+      onError: () => {},
+      onOpen: () => {},
+    })
+    // Sanity check: handlers were wired up.
+    expect(lastEventSource!.onopen).not.toBeNull()
+    expect(lastEventSource!.onmessage).not.toBeNull()
+    expect(lastEventSource!.onerror).not.toBeNull()
+    handle.close()
+    expect(lastEventSource!.onopen).toBeNull()
+    expect(lastEventSource!.onmessage).toBeNull()
+    expect(lastEventSource!.onerror).toBeNull()
+  })
 })

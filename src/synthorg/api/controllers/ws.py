@@ -290,6 +290,14 @@ class _BackpressureTracker:
     dropping yet another event. Reset on a successful enqueue so a
     client that recovers does not carry a stale tripping count
     indefinitely.
+
+    State is mutated in place because each instance is scoped to a
+    single WebSocket connection; there is no cross-connection sharing
+    and asyncio's single-threaded scheduler means no concurrent
+    callers. Backpressure is per-connection, not per-channel: a slow
+    consumer that backs up on any one subscribed channel trips the
+    breaker for the whole connection (intentional, to avoid letting a
+    misbehaving client hog bus capacity).
     """
 
     consecutive_drops: int = 0
@@ -308,9 +316,16 @@ class _BackpressureTracker:
         return self.consecutive_drops >= _WS_BACKPRESSURE_DROP_THRESHOLD
 
     def note_success(self) -> None:
-        """Reset the counter after a successful enqueue."""
+        """Reset the counter after a successful enqueue.
+
+        Clears ``window_started_at`` along with the count so the next
+        drop starts a fresh window. Without this the next drop could
+        land inside a stale window and delay the breaker trip by up
+        to one window cycle.
+        """
         if self.consecutive_drops:
             self.consecutive_drops = 0
+            self.window_started_at = 0.0
 
 
 async def _on_event(  # noqa: PLR0911, PLR0913

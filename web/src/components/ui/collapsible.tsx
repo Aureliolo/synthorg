@@ -1,6 +1,6 @@
 import { useCallback, useId, useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 
 export interface CollapsibleProps {
   /** Title rendered in the trigger row. */
@@ -62,7 +62,10 @@ export function Collapsible({
         onClick={toggle}
         aria-expanded={open}
         aria-controls={bodyId}
-        className="flex w-full items-center justify-between gap-3 p-card text-left transition-colors hover:bg-card-hover"
+        className={cn(
+          'flex w-full items-center justify-between gap-3 p-card text-left transition-colors hover:bg-card-hover rounded-lg',
+          FOCUS_RING,
+        )}
       >
         <span className="flex flex-1 items-center gap-2 text-sm font-medium text-foreground">
           <ChevronDown

@@ -279,6 +279,11 @@ function CorrelationIdChip({ correlationId }: CorrelationIdChipProps) {
   const handleCopy = async () => {
     if (typeof navigator === 'undefined' || !navigator.clipboard) {
       log.warn('Clipboard API not available; correlation ID copy skipped')
+      toast({
+        variant: 'error',
+        title: 'Could not copy correlation ID',
+        description: 'Clipboard access is unavailable in this context.',
+      })
       return
     }
     try {
@@ -290,6 +295,11 @@ function CorrelationIdChip({ correlationId }: CorrelationIdChipProps) {
       })
     } catch (err) {
       log.warn('Correlation ID copy failed', err)
+      toast({
+        variant: 'error',
+        title: 'Could not copy correlation ID',
+        description: 'Check your clipboard permissions and try again.',
+      })
     }
   }
 

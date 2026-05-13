@@ -99,6 +99,15 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
 
   return {
     close() {
+      // Null the handler references before closing so any closure
+      // captures (parsed payloads, internal state) can be garbage-
+      // collected promptly. Browsers don't guarantee the EventSource
+      // releases handlers on .close() under all engines, and repeated
+      // open/close cycles during proxy-detection retries can accumulate
+      // closure retention.
+      source.onopen = null
+      source.onmessage = null
+      source.onerror = null
       source.close()
     },
   }

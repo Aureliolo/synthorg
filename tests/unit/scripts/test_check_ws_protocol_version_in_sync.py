@@ -87,8 +87,13 @@ def test_fails_when_declaration_missing(tmp_path: Path) -> None:
     assert result.returncode == 1
 
 
+@pytest.mark.integration
 def test_repo_state_is_in_sync() -> None:
-    """The committed Python and TypeScript versions must agree."""
+    """The committed Python and TypeScript versions must agree.
+
+    Runs the gate script against the real repo source files, so this
+    is an integration check rather than the file-level unit mark.
+    """
     result = subprocess.run(  # noqa: S603
         [sys.executable, str(_SCRIPT)],
         capture_output=True,
