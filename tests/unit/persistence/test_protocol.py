@@ -849,6 +849,10 @@ class _FakeBackend:
         return _FakeIdempotencyRepository()
 
     @property
+    def seen_claims(self) -> Any:
+        return None
+
+    @property
     def mcp_installations(self) -> Any:
         return None
 
