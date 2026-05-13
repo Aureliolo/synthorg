@@ -188,8 +188,10 @@ class PostgresSessionRepository:
             count = cur.rowcount
         if count > 0:
             self._revoked.add(session_id)
-            # Audit emission moved to service/controller layer per the
-            # persistence-boundary rule.
+            # Audit logging lives above persistence so the
+            # SECURITY_SESSION_REVOKED event reflects the authorization
+            # decision rather than a storage-only update; the caller
+            # (service/controller) owns the emit.
             return True
         return False
 
@@ -218,8 +220,9 @@ class PostgresSessionRepository:
                 )
                 rows = await cur.fetchall()
         self._revoked.update(row["session_id"] for row in rows)
-        # Audit emission moved to service/controller layer per the
-        # persistence-boundary rule.
+        # Audit logging stays above persistence: the caller correlates the
+        # bulk-revoke event with the authorization context (which user
+        # initiated, why) that this layer does not see.
         return count
 
     async def enforce_session_limit(
@@ -239,9 +242,10 @@ class PostgresSessionRepository:
         for session in to_revoke:
             if await self.revoke(session.session_id):
                 revoked += 1
-        # Audit emission moved to service/controller layer per the
-        # persistence-boundary rule -- callers log
-        # SECURITY_SESSION_LIMIT_ENFORCED on ``revoked > 0``.
+        # SECURITY_SESSION_LIMIT_ENFORCED belongs in the caller so the
+        # audit entry sits with the policy decision (which limit fired,
+        # against which actor) rather than against a storage commit
+        # that has no visibility into authorization context.
         return revoked
 
     def is_revoked(self, session_id: str) -> bool:

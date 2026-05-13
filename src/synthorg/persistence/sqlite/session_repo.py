@@ -212,9 +212,10 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        # Audit emission moved to service/controller layer per the
-        # persistence-boundary rule -- controllers that call ``revoke``
-        # are responsible for logging SECURITY_SESSION_REVOKED.
+        # Audit logging lives above persistence so the SECURITY_SESSION_REVOKED
+        # event reflects the authorization decision rather than a
+        # storage-only update; the caller (service/controller) owns the
+        # emit.
         return rowcount > 0
 
     async def revoke_all_for_user(self, user_id: str) -> int:
@@ -262,8 +263,9 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        # Audit emission moved to service/controller layer per the
-        # persistence-boundary rule.
+        # Audit logging stays above persistence: the caller correlates the
+        # bulk-revoke event with the authorization context (which user
+        # initiated, why) that this layer does not see.
         return count
 
     async def enforce_session_limit(
@@ -283,11 +285,10 @@ class SQLiteSessionRepository:
         for session in to_revoke:
             if await self.revoke(session.session_id):
                 revoked += 1
-        # Audit emission moved to service/controller layer per the
-        # persistence-boundary rule -- callers that invoke
-        # ``enforce_session_limit`` log SECURITY_SESSION_LIMIT_ENFORCED
-        # when ``revoked > 0`` so the auth chain entry sits with the
-        # decision rather than the storage commit.
+        # SECURITY_SESSION_LIMIT_ENFORCED belongs in the caller so the
+        # audit entry sits with the policy decision (which limit fired,
+        # against which actor) rather than against a storage commit
+        # that has no visibility into authorization context.
         return revoked
 
     def is_revoked(self, session_id: str) -> bool:
