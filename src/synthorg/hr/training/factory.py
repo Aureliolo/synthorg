@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.core.validation import coerce_positive_int
 from synthorg.hr.training.models import ContentType
 from synthorg.observability import get_logger
@@ -102,6 +103,54 @@ def build_training_service(  # noqa: PLR0913
     )
 
 
+def _build_role_top_performers(
+    config: TrainingConfig,
+    *,
+    tracker: PerformanceTracker,
+    registry: AgentRegistryService,
+) -> SourceSelector:
+    from synthorg.hr.training.source_selectors.role_top_performers import (  # noqa: PLC0415
+        RoleTopPerformers,
+    )
+
+    top_n = _coerce_positive_int(
+        config.source_selector_config.get("top_n"),
+        field_name="source_selector_config.top_n",
+        default=3,
+    )
+    return RoleTopPerformers(
+        registry=registry,
+        tracker=tracker,
+        top_n=top_n,
+    )
+
+
+def _build_department_diversity(
+    config: TrainingConfig,
+    *,
+    tracker: PerformanceTracker,
+    registry: AgentRegistryService,
+) -> SourceSelector:
+    del config  # discriminator-only branch, no config fields needed
+    from synthorg.hr.training.source_selectors.department_diversity import (  # noqa: PLC0415
+        DepartmentDiversitySampling,
+    )
+
+    return DepartmentDiversitySampling(
+        registry=registry,
+        tracker=tracker,
+    )
+
+
+_SELECTOR_REGISTRY: StrategyRegistry[SourceSelector] = StrategyRegistry(
+    {
+        "role_top_performers": _build_role_top_performers,
+        "department_diversity": _build_department_diversity,
+    },
+    kind="training_selector",
+)
+
+
 def _build_selector(
     config: TrainingConfig,
     *,
@@ -116,40 +165,11 @@ def _build_selector(
         ``TrainingPlan.override_sources`` which the service uses
         directly without routing through a selector.
     """
-    selector_type = str(config.source_selector_type)
-    _allowed_selectors = {"role_top_performers", "department_diversity"}
-
-    if selector_type not in _allowed_selectors:
-        msg = (
-            f"Unknown source_selector_type {selector_type!r}; "
-            f"supported: {sorted(_allowed_selectors)}"
-        )
-        logger.warning(msg, selector_type=selector_type)
-        raise ValueError(msg)
-
-    if selector_type == "department_diversity":
-        from synthorg.hr.training.source_selectors.department_diversity import (  # noqa: PLC0415
-            DepartmentDiversitySampling,
-        )
-
-        return DepartmentDiversitySampling(
-            registry=registry,
-            tracker=tracker,
-        )
-
-    from synthorg.hr.training.source_selectors.role_top_performers import (  # noqa: PLC0415
-        RoleTopPerformers,
-    )
-
-    top_n = _coerce_positive_int(
-        config.source_selector_config.get("top_n"),
-        field_name="source_selector_config.top_n",
-        default=3,
-    )
-    return RoleTopPerformers(
-        registry=registry,
+    return _SELECTOR_REGISTRY.build(
+        str(config.source_selector_type),
+        config,
         tracker=tracker,
-        top_n=top_n,
+        registry=registry,
     )
 
 
@@ -183,41 +203,61 @@ def _build_extractors(
     }
 
 
-def _build_curation(
+def _build_relevance_curation(
     config: TrainingConfig,
     *,
     provider: CompletionProvider | None,
 ) -> CurationStrategy:
-    """Build curation strategy from config."""
-    strategy_type = str(config.curation_strategy_type)
-    _allowed_strategies = {"relevance", "llm_curated"}
-
-    if strategy_type not in _allowed_strategies:
-        msg = (
-            f"Unknown curation_strategy_type {strategy_type!r}; "
-            f"supported: {sorted(_allowed_strategies)}"
-        )
-        logger.warning(msg, strategy_type=strategy_type)
-        raise ValueError(msg)
+    del provider  # heuristic curation does not need an LLM
+    from synthorg.hr.training.curation.relevance import (  # noqa: PLC0415
+        RelevanceScoreCuration,
+    )
 
     top_k = _coerce_positive_int(
         config.curation_strategy_config.get("top_k"),
         field_name="curation_strategy_config.top_k",
         default=50,
     )
+    return RelevanceScoreCuration(top_k=top_k)
 
-    if strategy_type == "llm_curated":
-        from synthorg.hr.training.curation.llm_curated import (  # noqa: PLC0415
-            LLMCurated,
-        )
 
-        return LLMCurated(provider=provider, top_k=top_k)
-
-    from synthorg.hr.training.curation.relevance import (  # noqa: PLC0415
-        RelevanceScoreCuration,
+def _build_llm_curation(
+    config: TrainingConfig,
+    *,
+    provider: CompletionProvider | None,
+) -> CurationStrategy:
+    from synthorg.hr.training.curation.llm_curated import (  # noqa: PLC0415
+        LLMCurated,
     )
 
-    return RelevanceScoreCuration(top_k=top_k)
+    top_k = _coerce_positive_int(
+        config.curation_strategy_config.get("top_k"),
+        field_name="curation_strategy_config.top_k",
+        default=50,
+    )
+    return LLMCurated(provider=provider, top_k=top_k)
+
+
+_CURATION_REGISTRY: StrategyRegistry[CurationStrategy] = StrategyRegistry(
+    {
+        "relevance": _build_relevance_curation,
+        "llm_curated": _build_llm_curation,
+    },
+    kind="training_curation",
+)
+
+
+def _build_curation(
+    config: TrainingConfig,
+    *,
+    provider: CompletionProvider | None,
+) -> CurationStrategy:
+    """Build curation strategy from config."""
+    return _CURATION_REGISTRY.build(
+        str(config.curation_strategy_type),
+        config,
+        provider=provider,
+    )
 
 
 def _build_guards(
