@@ -93,7 +93,7 @@ approach.
 
     1. Add post-consolidation entity extraction as a new `EntityExtractionStrategy` in the
        consolidation pipeline (entities stored in a separate `EntityStore` protocol).
-    2. Create `GraphRAGMemoryBackend` implementing the existing `MemoryBackend` protocol with
+    2. Create `GraphRAGMemoryBackend` implementing the existing `OrgMemoryBackend` protocol with
        graph-traversal queries alongside standard vector retrieval.
     3. Enable via config; existing application code is unchanged.
 
