@@ -53,6 +53,21 @@ describe('ApiRequestError', () => {
     const err = new ApiRequestError('test')
     expect(err).toBeInstanceOf(Error)
   })
+
+  it('correlationId returns null when detail is null', () => {
+    const err = new ApiRequestError('test')
+    expect(err.correlationId).toBeNull()
+  })
+
+  it('correlationId returns instance from error detail', () => {
+    const err = new ApiRequestError('test', testErrorDetail)
+    expect(err.correlationId).toBe('req-abc')
+  })
+
+  it('correlationId returns null for empty instance string', () => {
+    const err = new ApiRequestError('test', { ...testErrorDetail, instance: '' })
+    expect(err.correlationId).toBeNull()
+  })
 })
 
 describe('unwrap', () => {

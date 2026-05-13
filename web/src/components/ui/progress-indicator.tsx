@@ -1,5 +1,7 @@
 import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useElapsedSeconds } from '@/hooks/useElapsedSeconds'
+import { formatElapsed } from '@/utils/format'
 
 export type ProgressStageStatus = 'pending' | 'running' | 'done' | 'failed'
 
@@ -22,6 +24,19 @@ export interface ProgressIndicatorProps {
   description?: string
   /** List of stages for `stages` variant. */
   stages?: readonly ProgressStage[]
+  /**
+   * When provided on the `indeterminate` variant, renders a live
+   * elapsed-time chip ("2m 34s") next to the description and updates
+   * once per second. Ignored on the determinate and stages variants.
+   */
+  startedAt?: Date | string | null
+  /**
+   * When `startedAt` is set and elapsed exceeds this threshold, the
+   * indeterminate bar + elapsed chip switch to a warning colour to
+   * signal a long-running operation. Operators interpret this as
+   * "this is taking longer than expected"; the run is not interrupted.
+   */
+  warningAfterSeconds?: number
   className?: string
 }
 
@@ -39,6 +54,8 @@ export function ProgressIndicator({
   label,
   description,
   stages,
+  startedAt,
+  warningAfterSeconds,
   className,
 }: ProgressIndicatorProps) {
   if (variant === 'stages') {
@@ -61,25 +78,13 @@ export function ProgressIndicator({
 
   if (variant === 'indeterminate') {
     return (
-      <div className={cn('space-y-1.5', className)}>
-        {label && (
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="font-medium text-foreground">{label}</span>
-            {description && <span className="text-xs text-muted-foreground">{description}</span>}
-          </div>
-        )}
-        <div
-          role="progressbar"
-          aria-label={label ?? 'Loading'}
-          aria-busy="true"
-          className="relative h-1.5 w-full overflow-hidden rounded-full bg-card"
-        >
-          <div className="absolute inset-y-0 left-0 w-1/3 animate-[so-indeterminate_var(--so-transition-indeterminate)_ease-in-out_infinite] bg-accent" />
-        </div>
-        {!label && description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
+      <IndeterminateBar
+        label={label}
+        description={description}
+        startedAt={startedAt}
+        warningAfterSeconds={warningAfterSeconds}
+        className={className}
+      />
     )
   }
 
@@ -104,6 +109,75 @@ export function ProgressIndicator({
         <div className="h-full bg-accent transition-[width] duration-[var(--so-transition-medium)] ease-out" style={{ width: `${pct}%` }} />
       </div>
       {description && (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      )}
+    </div>
+  )
+}
+
+interface IndeterminateBarProps {
+  label?: string
+  description?: string
+  startedAt?: Date | string | null
+  warningAfterSeconds?: number
+  className?: string
+}
+
+function IndeterminateBar({
+  label,
+  description,
+  startedAt,
+  warningAfterSeconds,
+  className,
+}: IndeterminateBarProps) {
+  const elapsed = useElapsedSeconds(startedAt ?? null)
+  const isWarning =
+    elapsed !== null &&
+    typeof warningAfterSeconds === 'number' &&
+    Number.isFinite(warningAfterSeconds) &&
+    elapsed >= warningAfterSeconds
+
+  const elapsedChip =
+    elapsed !== null ? (
+      <span
+        className={cn(
+          'font-mono text-xs tabular-nums',
+          isWarning ? 'text-warning' : 'text-muted-foreground',
+        )}
+        aria-label={`Elapsed: ${formatElapsed(elapsed)}`}
+      >
+        {formatElapsed(elapsed)}
+      </span>
+    ) : null
+
+  return (
+    <div className={cn('space-y-1.5', className)}>
+      {(label || elapsedChip) && (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          {label && <span className="font-medium text-foreground">{label}</span>}
+          <div className="flex items-center gap-2">
+            {description && <span className="text-xs text-muted-foreground">{description}</span>}
+            {elapsedChip}
+          </div>
+        </div>
+      )}
+      <div
+        role="progressbar"
+        aria-label={label ?? 'Loading'}
+        aria-busy="true"
+        className={cn(
+          'relative h-1.5 w-full overflow-hidden rounded-full bg-card',
+          isWarning && 'ring-1 ring-warning/40',
+        )}
+      >
+        <div
+          className={cn(
+            'absolute inset-y-0 left-0 w-1/3 animate-[so-indeterminate_var(--so-transition-indeterminate)_ease-in-out_infinite]',
+            isWarning ? 'bg-warning' : 'bg-accent',
+          )}
+        />
+      </div>
+      {!label && description && (
         <p className="text-xs text-muted-foreground">{description}</p>
       )}
     </div>

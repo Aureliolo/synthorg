@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, vi } from 'vitest'
 import fc from 'fast-check'
 import { ProgressIndicator } from '@/components/ui/progress-indicator'
 
@@ -80,6 +81,90 @@ describe('ProgressIndicator', () => {
   it('indeterminate: renders description even when label is absent', () => {
     render(<ProgressIndicator variant="indeterminate" description="Warming up..." />)
     expect(screen.getByText('Warming up...')).toBeInTheDocument()
+  })
+
+  describe('indeterminate: startedAt + warningAfterSeconds', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-05-13T12:00:30Z'))
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('renders elapsed chip when startedAt provided', () => {
+      const startedAt = new Date('2026-05-13T12:00:00Z')
+      render(
+        <ProgressIndicator
+          variant="indeterminate"
+          label="Training"
+          startedAt={startedAt}
+        />,
+      )
+      expect(screen.getByText('30s')).toBeInTheDocument()
+    })
+
+    it('updates elapsed chip once per second', () => {
+      const startedAt = new Date('2026-05-13T12:00:00Z')
+      render(
+        <ProgressIndicator
+          variant="indeterminate"
+          label="Training"
+          startedAt={startedAt}
+        />,
+      )
+      expect(screen.getByText('30s')).toBeInTheDocument()
+      act(() => {
+        vi.advanceTimersByTime(2000)
+      })
+      expect(screen.getByText('32s')).toBeInTheDocument()
+    })
+
+    it('applies warning colour after threshold', () => {
+      const startedAt = new Date('2026-05-13T12:00:00Z')
+      render(
+        <ProgressIndicator
+          variant="indeterminate"
+          label="Training"
+          startedAt={startedAt}
+          warningAfterSeconds={10}
+        />,
+      )
+      const chip = screen.getByText('30s')
+      expect(chip.className).toMatch(/text-warning/)
+    })
+
+    it('omits elapsed chip when startedAt is null', () => {
+      render(<ProgressIndicator variant="indeterminate" label="Loading" startedAt={null} />)
+      expect(screen.queryByText(/^\d+s/)).not.toBeInTheDocument()
+    })
+
+    it('clamps negative elapsed (future startedAt) to zero', () => {
+      const startedAt = new Date('2026-05-13T12:01:00Z')
+      render(
+        <ProgressIndicator
+          variant="indeterminate"
+          label="Training"
+          startedAt={startedAt}
+        />,
+      )
+      expect(screen.getByText('0s')).toBeInTheDocument()
+    })
+
+    it('cleans up the interval on unmount', () => {
+      const clearSpy = vi.spyOn(global, 'clearInterval')
+      const startedAt = new Date('2026-05-13T12:00:00Z')
+      const { unmount } = render(
+        <ProgressIndicator
+          variant="indeterminate"
+          label="Training"
+          startedAt={startedAt}
+        />,
+      )
+      unmount()
+      expect(clearSpy).toHaveBeenCalled()
+      clearSpy.mockRestore()
+    })
   })
 
   it('property: determinate clamp invariant holds for any finite value', () => {

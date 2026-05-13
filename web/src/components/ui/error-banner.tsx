@@ -1,8 +1,12 @@
 import type { LucideIcon } from 'lucide-react'
-import { AlertTriangle, Info, WifiOff, X, AlertCircle } from 'lucide-react'
+import { AlertTriangle, Copy, Info, WifiOff, X, AlertCircle } from 'lucide-react'
 import { isValidElement, useEffect, useRef, useState } from 'react'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
+import { useToastStore } from '@/stores/toast'
 import { Button } from './button'
+
+const log = createLogger('error-banner')
 
 export type ErrorBannerSeverity = 'error' | 'warning' | 'info'
 export type ErrorBannerVariant = 'inline' | 'section' | 'offline'
@@ -52,6 +56,13 @@ export interface ErrorBannerProps {
   icon?: LucideIcon
   /** Optional action label shown next to Retry (e.g. "Learn more" link). */
   action?: ErrorBannerAction | React.ReactNode
+  /**
+   * RFC 9457 ``instance`` correlation ID from the server's error
+   * response. When present, the banner renders a compact copy chip
+   * next to the action row so operators can paste the ID into a
+   * support ticket. Use `ApiRequestError.correlationId` to source it.
+   */
+  correlationId?: string | null
   className?: string
 }
 
@@ -86,6 +97,7 @@ export function ErrorBanner({
   onDismiss,
   icon,
   action,
+  correlationId,
   className,
 }: ErrorBannerProps) {
   const severity: ErrorBannerSeverity = variant === 'offline' ? 'warning' : severityProp
@@ -192,8 +204,8 @@ export function ErrorBanner({
             </div>
           )
         )}
-        {Boolean(onRetry ?? action) && (
-          <div className="mt-2 flex flex-wrap gap-2">
+        {Boolean(onRetry ?? action ?? correlationId) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {onRetry && (
               <div className="inline-flex items-center gap-2">
                 <Button
@@ -229,6 +241,9 @@ export function ErrorBanner({
                 {action.label}
               </Button>
             ) : action)}
+            {correlationId && (
+              <CorrelationIdChip correlationId={correlationId} />
+            )}
           </div>
         )}
       </div>
@@ -245,5 +260,50 @@ export function ErrorBanner({
         </Button>
       )}
     </div>
+  )
+}
+
+interface CorrelationIdChipProps {
+  correlationId: string
+}
+
+const CORRELATION_ID_DISPLAY_LENGTH = 8
+
+function CorrelationIdChip({ correlationId }: CorrelationIdChipProps) {
+  const toast = useToastStore((s) => s.add)
+  const displayId =
+    correlationId.length > CORRELATION_ID_DISPLAY_LENGTH
+      ? `${correlationId.slice(0, CORRELATION_ID_DISPLAY_LENGTH)}…`
+      : correlationId
+
+  const handleCopy = async () => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) {
+      log.warn('Clipboard API not available; correlation ID copy skipped')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(correlationId)
+      toast({
+        variant: 'success',
+        title: 'Correlation ID copied',
+        description: correlationId,
+      })
+    } catch (err) {
+      log.warn('Correlation ID copy failed', err)
+    }
+  }
+
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      onClick={() => void handleCopy()}
+      title={`Copy correlation ID: ${correlationId}`}
+      aria-label={`Copy correlation ID ${correlationId}`}
+      className="gap-1 font-mono text-compact text-muted-foreground"
+    >
+      <Copy className="size-3" aria-hidden="true" />
+      {displayId}
+    </Button>
   )
 }

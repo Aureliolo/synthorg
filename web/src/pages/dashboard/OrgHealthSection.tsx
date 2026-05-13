@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Building2 } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { DeptHealthBar } from '@/components/ui/dept-health-bar'
@@ -12,7 +13,11 @@ interface OrgHealthSectionProps {
   overallHealth: number | null
 }
 
-function DepartmentRow({ dept }: { dept: DepartmentHealth }) {
+interface DepartmentRowProps {
+  dept: DepartmentHealth
+}
+
+const DepartmentRow = memo(function DepartmentRow({ dept }: DepartmentRowProps) {
   return (
     <div>
       <DeptHealthBar
@@ -27,7 +32,7 @@ function DepartmentRow({ dept }: { dept: DepartmentHealth }) {
       )}
     </div>
   )
-}
+})
 
 export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectionProps) {
   return (

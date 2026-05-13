@@ -478,6 +478,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
+      - id: ws-protocol-version-in-sync
+        name: ws-protocol-version-in-sync gate (WS_PROTOCOL_VERSION in Python and TypeScript agree)
+        entry: uv run python scripts/check_ws_protocol_version_in_sync.py
+        language: system
+        # The server's WS_PROTOCOL_VERSION lives in ws_models.py and
+        # is mirrored client-side in constants.ts; the client
+        # discards frames whose version does not match. If a PR
+        # bumps one side without the other every event silently
+        # drops; this gate fails before that lands.
+        files: ^(src/synthorg/api/ws_models\.py|web/src/utils/constants\.ts|scripts/check_ws_protocol_version_in_sync\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
       - id: mcp-admin-guardrail
         name: MCP admin_tool guardrails gate (require_admin_guardrails on every admin handler)
         entry: uv run python scripts/check_mcp_admin_tool_guardrails.py

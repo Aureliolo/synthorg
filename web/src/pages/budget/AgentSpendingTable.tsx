@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { SectionCard } from '@/components/ui/section-card'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
@@ -84,10 +84,12 @@ function ColumnHeader({ col, sortKey, sortDir, onSort }: {
   )
 }
 
-function SpendingRow({ row, currency }: {
+interface SpendingRowProps {
   row: AgentSpendingRow
   currency?: string
-}) {
+}
+
+const SpendingRow = memo(function SpendingRow({ row, currency }: SpendingRowProps) {
   return (
     <div className="flex items-center gap-4 px-4 py-3">
       <span className={cn(COLUMN_WIDTHS.agentName, 'truncate text-[13px] font-medium text-foreground')}>
@@ -111,7 +113,7 @@ function SpendingRow({ row, currency }: {
       </span>
     </div>
   )
-}
+})
 
 export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('totalCost')

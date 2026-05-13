@@ -204,6 +204,19 @@ export class ApiRequestError extends Error {
       ? value
       : null
   }
+
+  /**
+   * RFC 9457 ``instance`` field projected as a correlation ID. Threads
+   * through every 5xx response and the server's logs so an operator
+   * pasting it into a support ticket can find the originating request
+   * end-to-end. Returns ``null`` when the server didn't include one
+   * (e.g. a 4xx validation response that the server treats as the
+   * client's fault).
+   */
+  get correlationId(): string | null {
+    const value = this.errorDetail?.instance
+    return typeof value === 'string' && value.length > 0 ? value : null
+  }
 }
 
 /**

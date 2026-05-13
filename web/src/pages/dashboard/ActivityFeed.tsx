@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Activity } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -14,7 +14,7 @@ interface ActivityFeedProps {
 }
 
 export function ActivityFeed({ activities }: ActivityFeedProps) {
-  const visible = activities.slice(0, MAX_VISIBLE)
+  const visible = useMemo(() => activities.slice(0, MAX_VISIBLE), [activities])
   const feedRef = useRef<HTMLDivElement>(null)
   const { isAutoScrolling, scrollToBottom } = useAutoScroll(feedRef)
   const prevCountRef = useRef(activities.length)
