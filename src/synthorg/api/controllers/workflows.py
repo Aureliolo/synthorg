@@ -410,7 +410,17 @@ class WorkflowController(Controller):
             actor=actor,
         )
 
-    @post("/validate-draft", guards=[require_read_access], status_code=200)
+    @post(
+        "/validate-draft",
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy(
+                "workflows.validate_draft",
+                key="user_or_ip",
+            ),
+        ],
+        status_code=200,
+    )
     async def validate_draft(
         self,
         state: State,
@@ -458,7 +468,14 @@ class WorkflowController(Controller):
             ),
         )
 
-    @post("/{workflow_id:str}/validate", guards=[require_read_access], status_code=200)
+    @post(
+        "/{workflow_id:str}/validate",
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("workflows.validate", key="user"),
+        ],
+        status_code=200,
+    )
     async def validate_workflow(
         self,
         state: State,
@@ -485,7 +502,14 @@ class WorkflowController(Controller):
             ),
         )
 
-    @post("/{workflow_id:str}/export", guards=[require_read_access], status_code=200)
+    @post(
+        "/{workflow_id:str}/export",
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("workflows.export", key="user"),
+        ],
+        status_code=200,
+    )
     async def export_workflow(
         self,
         state: State,

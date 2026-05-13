@@ -76,7 +76,13 @@ class CompanyController(Controller):
         }
         return ApiResponse(data=data)
 
-    @patch("/", guards=[require_org_mutation()])
+    @patch(
+        "/",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("company.update", key="user"),
+        ],
+    )
     async def update_company(
         self,
         request: Request[Any, Any, Any],
