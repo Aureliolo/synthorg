@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from synthorg.engine.context import AgentContext
-from synthorg.engine.hybrid_helpers import _parse_replan_decision
+from synthorg.engine.hybrid.replan_helpers import _parse_replan_decision
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_protocol import TerminationReason, TurnRecord

@@ -15,7 +15,9 @@ from unittest.mock import create_autospec
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.lifecycle_helpers import _apply_api_bridge_config_snapshot
+from synthorg.api.lifecycle_helpers.config_apply import (
+    _apply_api_bridge_config_snapshot,
+)
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.settings.bridge_configs import ApiBridgeConfig
@@ -72,7 +74,7 @@ class TestApplyApiBridgeConfigSnapshot:
 
         warnings: list[tuple[str, dict[str, Any]]] = []
 
-        from synthorg.api import lifecycle_helpers as mod
+        from synthorg.api.lifecycle_helpers import config_apply as mod
 
         original = mod.logger.warning
 

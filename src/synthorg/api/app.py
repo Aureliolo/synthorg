@@ -50,7 +50,9 @@ from synthorg.api.cursor_config import CursorConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle_builder import _build_lifecycle
-from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
+from synthorg.api.lifecycle_helpers.settings_dispatcher import (
+    _build_settings_dispatcher,
+)
 from synthorg.api.middleware import security_headers_hook, set_docs_csp_origins
 from synthorg.api.middleware_factory import _build_middleware
 from synthorg.api.rate_limits import (
