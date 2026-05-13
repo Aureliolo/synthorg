@@ -9,12 +9,22 @@ these collaborators via ``build_rollback_executor`` in
 ``synthorg.meta.factory``.
 """
 
+from synthorg.meta.rollout.mutators.architecture_mutator import (
+    ArchitectureAdapter,
+    RoutedArchitectureMutator,
+)
 from synthorg.meta.rollout.mutators.code_mutator import WorkspaceCodeMutator
 from synthorg.meta.rollout.mutators.config_mutator import (
     SettingsServiceConfigMutator,
 )
+from synthorg.meta.rollout.mutators.prompt_mutator import (
+    PrincipleOverridePromptMutator,
+)
 
 __all__ = [
+    "ArchitectureAdapter",
+    "PrincipleOverridePromptMutator",
+    "RoutedArchitectureMutator",
     "SettingsServiceConfigMutator",
     "WorkspaceCodeMutator",
 ]
