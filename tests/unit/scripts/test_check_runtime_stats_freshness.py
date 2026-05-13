@@ -46,7 +46,6 @@ def _good_yaml_payload(timestamp_iso: str) -> dict[str, Any]:
         "generator_revision": "test",
         "stats": {
             "tests": {"raw": 17995, "rounded": 17000, "display": "17,000+"},
-            "version": {"raw": "v9.9.9", "display": "v9.9.9"},
             "mem0_stars": {"raw": 54312, "rounded": 54000, "display": "54k+"},
             "providers_curated": {"raw": 19, "display": "19"},
             "providers_via_litellm": {"raw": 100, "display": "100+"},
@@ -61,7 +60,6 @@ def _deterministic_fetchers() -> dict[str, Callable[[], dict[str, Any]]]:
     """Fetchers that return the values from :func:`_good_yaml_payload`."""
     return {
         "tests": lambda: {"raw": 17995, "rounded": 17000, "display": "17,000+"},
-        "version": lambda: {"raw": "v9.9.9", "display": "v9.9.9"},
         "mem0_stars": lambda: {"raw": 54312, "rounded": 54000, "display": "54k+"},
         "providers_curated": lambda: {"raw": 19, "display": "19"},
         "providers_via_litellm": lambda: {"raw": 100, "display": "100+"},
@@ -271,7 +269,6 @@ class TestSkipNetworkFlag:
             return _trap
 
         fetchers["tests"] = _make_trap("tests", "subprocess pytest")
-        fetchers["version"] = _make_trap("version", "gh release")
         fetchers["mem0_stars"] = _make_trap("mem0_stars", "gh api")
         with patch.object(gen, "_FETCHERS", fetchers):
             assert check.main(["--skip-network"]) == 0
@@ -290,7 +287,7 @@ class TestNetworkStatsInventory:
         # Hard-pin the known network-backed stats; if the generator
         # adds another subprocess fetcher, this test enforces a
         # deliberate decision on whether to add it to the network set.
-        expected = frozenset({"tests", "version", "mem0_stars"})
+        expected = frozenset({"tests", "mem0_stars"})
         assert expected == check._NETWORK_STATS
 
 

@@ -28,9 +28,9 @@ Exit codes
 Flags
 -----
 * ``--skip-network`` -- bypass fetchers that shell out to ``gh`` or
-  ``pytest --collect-only`` (``tests``, ``version``, ``mem0_stars``).
-  Pre-push uses this so developers without a ``gh`` token are not
-  gated; CI runs without the flag to perform the full check.
+  ``pytest --collect-only`` (``tests``, ``mem0_stars``). Pre-push uses
+  this so developers without a ``gh`` token are not gated; CI runs
+  without the flag to perform the full check.
 """
 
 import argparse
@@ -58,7 +58,7 @@ _STALE_AFTER_DAYS: Final[int] = 14
 # ``pytest --collect-only``. Skipped under ``--skip-network`` so
 # developers can pre-push without a configured ``gh`` token; CI runs
 # without the flag and covers every fetcher.
-_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests", "version", "mem0_stars"})
+_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests", "mem0_stars"})
 
 _GENERATOR_PATH: Final[Path] = REPO_ROOT / "scripts" / "generate_runtime_stats.py"
 
@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-network",
         action="store_true",
         help=(
-            "Skip network-backed fetchers (tests, version, mem0_stars). "
+            "Skip network-backed fetchers (tests, mem0_stars). "
             "Used by pre-push so developers without a configured gh token "
             "are not blocked."
         ),

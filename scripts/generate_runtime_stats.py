@@ -4,7 +4,6 @@
 Sources (best-effort; failures keep the previously-stored value):
 
 * ``tests``                 -- ``uv run python -m pytest --collect-only -q``
-* ``version``               -- ``gh release list --limit 1 --exclude-drafts --json tagName``
 * ``mem0_stars``            -- ``gh api repos/mem0ai/mem0 --jq .stargazers_count``
 * ``providers_curated``     -- ``len(synthorg.providers.presets.list_presets())``
 * ``providers_via_litellm`` -- ``len(litellm.model_cost)``
@@ -29,7 +28,6 @@ Numeric thresholds are named module constants -- never magic literals.
 """
 
 import datetime as dt
-import json
 import re
 import subprocess
 import sys
@@ -66,7 +64,6 @@ _PYTEST_SUMMARY_RE: Final[re.Pattern[str]] = re.compile(
 
 _SOURCES: Final[dict[str, str]] = {
     "tests": "uv run python -m pytest --collect-only -q",
-    "version": "gh release list --limit 1 --exclude-drafts --json tagName",
     "mem0_stars": "gh api repos/mem0ai/mem0 --jq .stargazers_count",
     "providers_curated": "synthorg.providers.presets.list_presets",
     "providers_via_litellm": "len(litellm.model_cost)",
@@ -80,8 +77,7 @@ class StatEntry(TypedDict, total=False):
 
     ``display`` is required (the injector substitutes it into docs).
     ``raw`` and ``rounded`` are informational and may be omitted on
-    stats that have no rounding step (e.g. ``version`` carries only a
-    string tag).
+    stats that have no rounding step.
     """
 
     raw: int | str
@@ -176,44 +172,6 @@ def _fetch_tests() -> StatEntry:
     }
 
 
-def _fetch_version() -> StatEntry:
-    """Read the latest published release tag via ``gh release list``.
-
-    Drafts are excluded because they are not yet released, so quoting them in
-    user-facing docs is misleading; this also keeps the value stable between
-    local runs (which see drafts) and CI (which often does not).
-    """
-    name = "version"
-    source = _SOURCES[name]
-    result = _run(
-        [
-            "gh",
-            "release",
-            "list",
-            "--limit",
-            "1",
-            "--exclude-drafts",
-            "--json",
-            "tagName",
-        ],
-        timeout=_GH_TIMEOUT_SECONDS,
-        stat_name=name,
-        source=source,
-    )
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise _StatFetchError(
-            name, source, f"gh release list returned invalid JSON: {exc}"
-        ) from exc
-    if not isinstance(payload, list) or not payload:
-        raise _StatFetchError(name, source, "gh release list returned no entries")
-    tag = payload[0].get("tagName")
-    if not isinstance(tag, str) or not tag:
-        raise _StatFetchError(name, source, "gh release list entry missing 'tagName'")
-    return {"raw": tag, "display": tag}
-
-
 def _fetch_mem0_stars() -> StatEntry:
     """Read Mem0's star count via ``gh api`` and round down to nearest 1000."""
     name = "mem0_stars"
@@ -298,7 +256,6 @@ def _fetch_convention_gates() -> StatEntry:
 
 _FETCHERS: dict[str, Callable[[], StatEntry]] = {
     "tests": _fetch_tests,
-    "version": _fetch_version,
     "mem0_stars": _fetch_mem0_stars,
     "providers_curated": _fetch_providers_curated,
     "providers_via_litellm": _fetch_providers_via_litellm,
@@ -439,7 +396,17 @@ def main() -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    new_stats: dict[str, Any] = dict(existing.get("stats", {}))
+    # Prune stats whose fetcher has been removed from _FETCHERS so a
+    # decommissioned stat does not linger in the YAML forever. Prior
+    # values for retained stats are still preserved on transient fetch
+    # failures (the `keeping_prior_value` branch below).
+    # Normalise to {} when `stats:` is missing or YAML-null; _load_existing
+    # already raises on a non-mapping value.
+    existing_stats_raw = existing.get("stats")
+    existing_stats = existing_stats_raw if isinstance(existing_stats_raw, dict) else {}
+    new_stats: dict[str, Any] = {
+        name: value for name, value in existing_stats.items() if name in _FETCHERS
+    }
     for name, fetcher in _FETCHERS.items():
         try:
             entry = fetcher()
