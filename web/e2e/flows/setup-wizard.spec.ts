@@ -27,11 +27,6 @@ test.describe('Setup wizard critical flow', () => {
     await expect(page.locator('main')).toBeVisible()
     const heading = page.getByRole('heading').first()
     await expect(heading).toBeVisible()
-    // Scope the input lookup to the wizard root so a stray dialog or
-    // command-palette input mounted outside the wizard never wins
-    // this match. Every wizard step renders at least one named text
-    // input; the assertion (not a soft conditional) makes the test
-    // fail loudly if the wizard regresses to a no-input shell.
     const wizardRoot = page.locator('main')
     const firstInput = wizardRoot
       .locator('input[type="text"], input:not([type])')
@@ -39,5 +34,18 @@ test.describe('Setup wizard critical flow', () => {
     await expect(firstInput).toBeVisible()
     await firstInput.fill('SynthOrg E2E Co')
     await expect(firstInput).toHaveValue('SynthOrg E2E Co')
+  })
+
+  test('deep-links to a setup step and renders the step heading', async ({ page }) => {
+    // Direct-URL navigation to `/setup/<step>` exercises the
+    // WizardShell's URL-to-store sync path. A regression in
+    // `canNavigateTo` or the redirect-to-first-incomplete logic
+    // would either crash the page or punt us back to the first
+    // step; either case fails the heading assertion below.
+    await page.goto('/setup/mode')
+    await expect(page).toHaveURL(/\/setup\/mode/)
+    await expect(page.locator('main')).toBeVisible()
+    const heading = page.getByRole('heading').first()
+    await expect(heading).toBeVisible()
   })
 })
