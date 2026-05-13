@@ -13,7 +13,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_read_access
+from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
     PathEventType,
     PathName,
@@ -38,6 +38,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import (
     WEBHOOK_ACCEPTED,
+    WEBHOOK_RECEIPT_NOT_FOUND,
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
     WEBHOOK_RECEIVED,
     WEBHOOK_REJECTED,
@@ -594,7 +595,11 @@ class WebhooksController(Controller):
 
     @post(
         "/receipts/{receipt_id:str}/retry",
-        guards=[require_read_access],
+        # Mutating endpoint: re-publishes onto the bus and transitions
+        # the persisted receipt's status. ``require_write_access`` keeps
+        # read-only principals out of the retry path (matches the
+        # mutation-vs-listing split on adjacent handlers).
+        guards=[require_write_access],
         summary="Retry a failed webhook receipt",
         status_code=202,
     )
@@ -624,6 +629,12 @@ class WebhooksController(Controller):
             NotBlankStr(receipt_id),
         )
         if receipt is None:
+            logger.warning(
+                WEBHOOK_RECEIPT_NOT_FOUND,
+                receipt_id=receipt_id,
+                reason="receipt_lookup_returned_none",
+                stage="retry_lookup",
+            )
             msg = f"Webhook receipt {receipt_id!r} not found"
             raise NotFoundError(msg)
 
@@ -644,18 +655,47 @@ class WebhooksController(Controller):
             previous: str | None,
             processed_at: datetime | None,
             error: str | None,
+            cas_from: str | None = None,
         ) -> None:
             # Persist first; only log the transition if the row was
             # actually updated. The bool result is checked so a log
             # claim of ``status=retrying`` never appears against a
             # receipt the DB never wrote.
-            updated = await persistence.webhook_receipts.update_status(
-                NotBlankStr(receipt.id),
-                status=new_status,
-                processed_at=processed_at,
-                error=error,
-            )
+            #
+            # ``cas_from`` enables compare-and-set: when supplied, the
+            # UPDATE only fires when the row's current ``status`` column
+            # equals ``cas_from``. The first claim of a contested retry
+            # wins; every loser sees ``False`` and the caller raises
+            # NotFoundError so the duplicate publish never happens.
+            if cas_from is not None:
+                updated = await persistence.webhook_receipts.update_status_if_current(
+                    NotBlankStr(receipt.id),
+                    expected_status=cas_from,
+                    status=new_status,
+                    processed_at=processed_at,
+                    error=error,
+                )
+            else:
+                updated = await persistence.webhook_receipts.update_status(
+                    NotBlankStr(receipt.id),
+                    status=new_status,
+                    processed_at=processed_at,
+                    error=error,
+                )
             if not updated:
+                logger.warning(
+                    WEBHOOK_RECEIPT_NOT_FOUND,
+                    receipt_id=str(receipt.id),
+                    connection_name=str(receipt.connection_name),
+                    reason=(
+                        "cas_lost_or_row_missing"
+                        if cas_from is not None
+                        else "status_transition_row_missing"
+                    ),
+                    target_status=new_status,
+                    previous_status=previous,
+                    expected_status=cas_from,
+                )
                 msg = f"Webhook receipt {receipt.id!r} not found"
                 raise NotFoundError(msg)
             logger.info(
@@ -667,11 +707,16 @@ class WebhooksController(Controller):
             )
 
         previous_status = receipt.status
+        # Compare-and-set on the retrying transition: two concurrent
+        # operator-triggered retries against the same receipt cannot
+        # both pass ``status == previous_status`` -- the second loses
+        # the race and surfaces 404 instead of double-publishing.
         await _transition_status(
             new_status=_RECEIPT_STATUS_RETRYING,
             previous=previous_status,
             processed_at=None,
             error=None,
+            cas_from=previous_status,
         )
 
         bus = state["app_state"].message_bus

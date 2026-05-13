@@ -62,21 +62,38 @@ def _build_state(
 ) -> tuple[dict[str, Any], AsyncMock, AsyncMock]:
     """Build a minimal Litestar State dict with the persistence stubs.
 
-    Returns ``(state, get_mock, update_status_mock)`` so individual
-    tests can assert on the calls. ``update_results`` controls the
-    boolean returned by sequential ``update_status`` calls; the
-    default ``[True, True]`` covers the happy retrying -> received
-    flow.
+    Returns ``(state, get_mock, update_combined_mock)``. The combined
+    mock counts every status-transition call regardless of whether the
+    handler routed it through ``update_status`` (plain) or
+    ``update_status_if_current`` (CAS for the ``retrying`` transition).
+    ``update_results`` controls the boolean returned by sequential
+    transition calls in order; the default ``[True, True]`` covers the
+    happy retrying -> received flow.
     """
     if update_results is None:
         update_results = [True, True]
 
     get_mock = AsyncMock(return_value=receipt)
-    update_status_mock = AsyncMock(side_effect=update_results)
+    # Single underlying counter so tests can keep asserting
+    # ``await_count`` against the conceptual "number of status
+    # transitions" without caring which method the controller called.
+    combined_mock = AsyncMock(side_effect=update_results)
+
+    async def _cas(*_args: Any, **_kwargs: Any) -> bool:
+        result = await combined_mock()
+        return bool(result)
+
+    async def _plain(*_args: Any, **_kwargs: Any) -> bool:
+        result = await combined_mock()
+        return bool(result)
+
+    update_cas_mock = AsyncMock(side_effect=_cas)
+    update_plain_mock = AsyncMock(side_effect=_plain)
 
     class _WebhookReceipts:
         get = get_mock
-        update_status = update_status_mock
+        update_status = update_plain_mock
+        update_status_if_current = update_cas_mock
 
     class _Persistence:
         webhook_receipts = _WebhookReceipts()
@@ -86,7 +103,7 @@ def _build_state(
         message_bus = object()
 
     state: dict[str, Any] = {"app_state": _AppState()}
-    return state, get_mock, update_status_mock
+    return state, get_mock, combined_mock
 
 
 def _self_stub() -> Any:
@@ -293,3 +310,46 @@ class TestRetryReceiptErrorPaths:
         assert transitions[1]["status"] == "failed"
         assert transitions[1]["previous_status"] == "retrying"
         assert update_mock.await_count == 2
+
+    async def test_cas_lost_race_raises_not_found_without_publishing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A concurrent retry that already flipped the row loses the CAS.
+
+        Simulates two operator-triggered retries hitting the same
+        receipt: the first wins the compare-and-set transition to
+        ``retrying`` and proceeds to publish; the second sees its CAS
+        return ``False`` (the row's status no longer matches the
+        ``expected_status`` the late caller passed) and surfaces
+        ``NotFoundError`` instead of double-publishing the payload.
+        Without the CAS this loser would have flipped the row a
+        second time and re-published.
+        """
+        receipt = _make_receipt()
+        # First (and only) transition call returns False -- the CAS
+        # lost the race. publish must NEVER run after that.
+        state, _, update_mock = _build_state(
+            receipt=receipt,
+            update_results=[False],
+        )
+
+        async def fake_publish(**_kwargs: Any) -> dict[str, object]:  # pragma: no cover
+            msg = "publish must not run after a lost CAS"
+            raise AssertionError(msg)
+
+        monkeypatch.setattr(
+            webhooks_module,
+            "_publish_webhook_event_and_log",
+            fake_publish,
+        )
+
+        with pytest.raises(NotFoundError):
+            await _retry_receipt_fn(
+                _self_stub(),
+                state=state,
+                receipt_id="rcpt-retry",
+            )
+        # Exactly one transition was attempted (the CAS); no
+        # subsequent ``received`` or ``failed`` write fired.
+        assert update_mock.await_count == 1

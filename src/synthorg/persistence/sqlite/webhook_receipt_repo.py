@@ -197,6 +197,52 @@ class SQLiteWebhookReceiptRepository:
             else:
                 return cursor.rowcount > 0
 
+    async def update_status_if_current(
+        self,
+        receipt_id: NotBlankStr,
+        *,
+        expected_status: str,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
+    ) -> bool:
+        """Compare-and-set ``status`` only when the current row matches.
+
+        Adds a ``status = ?`` clause to the WHERE so two concurrent
+        retries can never both succeed -- one wins, one returns
+        ``False`` (rowcount 0) and the caller handles the lost-race
+        path. SQLite's per-write_context serialization gives the
+        ordering guarantee; the WHERE clause supplies the predicate.
+        """
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "UPDATE webhook_receipts SET "
+                    "status = ?, processed_at = ?, error = ? "
+                    "WHERE id = ? AND status = ?",
+                    (
+                        status,
+                        format_iso_utc(processed_at) if processed_at else None,
+                        error,
+                        str(receipt_id),
+                        expected_status,
+                    ),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to CAS webhook receipt {receipt_id!r}"
+                logger.warning(
+                    PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
+                    receipt_id=str(receipt_id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            else:
+                return cursor.rowcount > 0
+
     async def get_by_connection(
         self,
         connection_name: NotBlankStr,

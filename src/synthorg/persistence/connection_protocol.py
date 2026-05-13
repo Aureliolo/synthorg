@@ -187,6 +187,28 @@ class WebhookReceiptRepository(Protocol):
         """
         ...
 
+    async def update_status_if_current(
+        self,
+        receipt_id: NotBlankStr,
+        *,
+        expected_status: str,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
+    ) -> bool:
+        """Compare-and-set variant of ``update_status``.
+
+        Atomically updates the row only when its current ``status`` column
+        equals ``expected_status``. Returns ``True`` on a successful
+        transition, ``False`` when the row is missing OR the row's
+        current status differs from ``expected_status`` (lost the race).
+        The retry endpoint uses this to close the TOCTOU window where
+        two concurrent operator-triggered retries could both load the
+        same receipt, both transition it to ``retrying``, and both
+        republish the captured payload.
+        """
+        ...
+
     async def get_by_connection(
         self,
         connection_name: NotBlankStr,

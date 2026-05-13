@@ -346,6 +346,17 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     shouldBeConnected = true
     intentionalClose = false
 
+    // Close any active SSE fallback before attempting a fresh WS.
+    // If the WS handshake later succeeds, the SSE client would otherwise
+    // remain open and ``dispatchEvent`` would fire on every channel
+    // event twice -- once from the WS frame, once from the SSE stream.
+    // Tearing it down here keeps the "only one transport at a time"
+    // invariant the dispatch chain assumes.
+    if (sseClient !== null) {
+      sseClient.close()
+      sseClient = null
+    }
+
     let ticket: string
     try {
       const resp = await getWsTicket()
