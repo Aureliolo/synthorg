@@ -11,37 +11,44 @@ SQLite arm:
     contend on the shared revisions directory lock.
 
 Postgres arm:
-    Uses a session-scoped ``testcontainers.postgres.PostgresContainer``
-    running ``postgres:18-alpine`` as the shared server, then creates
-    a unique per-test database on top.  The container starts once per
-    xdist worker and is reused across all tests that need Postgres so
-    container startup (~5s) amortizes across the suite.  Tests are
-    automatically skipped when Docker is unavailable on the host.
+    Uses ONE ``testcontainers.postgres.PostgresContainer`` running
+    ``postgres:18-alpine`` shared across every xdist worker via a
+    ``filelock``-coordinated state file in
+    ``tmp_path_factory.getbasetemp().parent`` (the directory pytest-xdist
+    treats as common ground for all workers in a single invocation).
+    The first worker to acquire the lock starts the container and
+    records its connection info; later workers read the same record.
+    Workers reference-count their use; the worker that drops the count
+    to zero stops + removes the container by id via ``docker-py`` so
+    the cleanup runs exactly once regardless of which worker exits
+    last. Tests are automatically skipped when Docker is unavailable.
 """
 
 import asyncio
 import contextlib
+import json
 import shutil
 import sys
 import uuid
 import warnings
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import psycopg
 import pytest
+from filelock import FileLock
 from psycopg import sql
 from pydantic import SecretStr
 
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.persistence import migrations
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
-if TYPE_CHECKING:
-    from testcontainers.postgres import PostgresContainer
+logger = get_logger(__name__)
 
 
 @pytest.fixture(scope="session")
@@ -74,34 +81,190 @@ def _docker_available() -> bool:
     return shutil.which("docker") is not None
 
 
-@pytest.fixture(scope="session")
-def postgres_container() -> Iterator[PostgresContainer]:
-    """Start one shared Postgres 18 container per pytest session.
+class _PostgresContainerProxy:
+    """Connection-info handle for a Postgres container shared across xdist workers.
 
-    Skips tests that depend on it when Docker is unavailable OR when
-    container startup fails for any reason (daemon not running,
-    permission denied, image pull failure, port collision, etc.).
-    A bare ``container.start()`` would otherwise raise an error that
-    pytest reports as a test failure rather than a skip, which is
-    confusing when the real problem is a missing dev dependency.
+    Exposes the subset of the ``testcontainers.postgres.PostgresContainer``
+    surface this conftest actually consumes (``get_container_host_ip``,
+    ``get_exposed_port``, ``username``, ``password``, ``dbname``). Holding
+    a proxy rather than the real ``PostgresContainer`` object lets every
+    xdist worker treat the container as an opaque dependency without
+    each worker carrying its own per-process Docker SDK handle.
+    """
+
+    __slots__ = ("_host", "_port", "dbname", "password", "username")
+
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        dbname: str,
+    ) -> None:
+        self._host = host
+        self._port = port
+        self.username = username
+        self.password = password
+        self.dbname = dbname
+
+    def get_container_host_ip(self) -> str:
+        return self._host
+
+    def get_exposed_port(self, _internal_port: int) -> str:
+        return str(self._port)
+
+
+def _stop_container_by_id(container_id: str) -> None:
+    """Stop and remove a Docker container by id using docker-py.
+
+    The "last worker out" decrements the shared refcount in the state
+    file and calls this helper. The starter worker no longer owns the
+    teardown directly because xdist may schedule it to finish before
+    other workers; routing cleanup through the Docker SDK lets any
+    worker perform it given just the container id.
+
+    Swallows Docker SDK errors so a missing image or already-removed
+    container does not break a test session that otherwise passed --
+    the worst case is a stray container that ``testcontainers``' Ryuk
+    reaper cleans up once the parent pytest process exits.
+    """
+    try:
+        import docker
+    except ImportError:  # pragma: no cover - docker-py ships with testcontainers
+        return
+    docker_any: Any = docker
+    try:
+        client = docker_any.from_env()
+        container = client.containers.get(container_id)
+        container.stop(timeout=5)
+        container.remove(force=True, v=True)
+    except docker_any.errors.NotFound:  # pragma: no cover - already cleaned up
+        return
+    except Exception as exc:
+        logger.warning(
+            "postgres_container.teardown_failed",
+            container_id=container_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+def _acquire_shared_postgres(state_file: Path) -> dict[str, Any]:
+    """Read the shared state file or start the container as the first worker.
+
+    Caller holds the ``FileLock`` so this body is serialised across
+    workers. The first worker into the lock starts the container and
+    writes the connection info; later workers bump ``refcount`` on the
+    existing record. If a previous worker already recorded a
+    ``skip_reason``, peers reraise it via ``pytest.skip`` so every
+    worker surfaces the same cause.
+    """
+    from testcontainers.postgres import PostgresContainer
+
+    if state_file.exists():
+        data: dict[str, Any] = json.loads(state_file.read_text())
+        if data.get("skip_reason"):
+            pytest.skip(data["skip_reason"])
+        data["refcount"] = int(data.get("refcount", 0)) + 1
+        state_file.write_text(json.dumps(data))
+        return data
+    try:
+        container = PostgresContainer("postgres:18-alpine")
+        container.start()
+    except Exception as exc:
+        reason = f"Could not start Postgres test container: {type(exc).__name__}: {exc}"
+        state_file.write_text(json.dumps({"skip_reason": reason}))
+        pytest.skip(reason)
+    data = {
+        "container_id": container.get_wrapped_container().id,
+        "host": container.get_container_host_ip(),
+        "port": int(container.get_exposed_port(5432)),
+        "username": container.username,
+        "password": container.password,
+        "dbname": container.dbname,
+        "refcount": 1,
+    }
+    state_file.write_text(json.dumps(data))
+    return data
+
+
+def _release_shared_postgres(state_file: Path) -> None:
+    """Decrement the refcount and tear down when this worker is the last.
+
+    Caller holds the ``FileLock``. Reads the latest state, decrements
+    ``refcount``, and if the count hits zero stops + removes the
+    container by id and deletes the state file. Missing files and
+    skip-reason placeholders short-circuit so the cleanup never raises.
+    """
+    try:
+        current = json.loads(state_file.read_text())
+    except FileNotFoundError:
+        return
+    if current.get("skip_reason"):
+        return
+    current["refcount"] = max(0, int(current.get("refcount", 1)) - 1)
+    if current["refcount"] == 0:
+        container_id = current.get("container_id")
+        if container_id is not None:
+            _stop_container_by_id(container_id)
+        state_file.unlink(missing_ok=True)
+    else:
+        state_file.write_text(json.dumps(current))
+
+
+@pytest.fixture(scope="session")
+def postgres_container(
+    tmp_path_factory: pytest.TempPathFactory,
+    worker_id: str,
+) -> Iterator[_PostgresContainerProxy]:
+    """Yield ONE Postgres 18 container shared across every xdist worker.
+
+    The first worker to acquire the inter-process ``FileLock`` starts
+    the container (~5s, image pulls excluded), records its connection
+    info under ``tmp_path_factory.getbasetemp().parent``, and bumps a
+    ``refcount`` field. Later workers acquire the same lock, see the
+    state file, and just increment ``refcount``. On teardown each
+    worker decrements; the worker that drops the count to zero stops
+    and removes the container by id. The starter's local container
+    handle is intentionally not the cleanup hook because xdist can
+    schedule the starter to exit first.
+
+    Skips when Docker is unavailable or when container startup fails
+    for any reason. When the first worker into the lock can't start
+    the container, it records the failure in the state file so peers
+    skip cleanly too (rather than each peer trying the same start in
+    sequence and emitting 8 different skip reasons).
     """
     if not _docker_available():
         pytest.skip("Docker is required for the postgres conformance arm")
 
-    from testcontainers.postgres import PostgresContainer
+    if worker_id == "master":
+        shared_dir = tmp_path_factory.getbasetemp()
+    else:
+        shared_dir = tmp_path_factory.getbasetemp().parent
+    state_file = shared_dir / "postgres_container_state.json"
+    lock_path = str(shared_dir / "postgres_container.lock")
 
-    container = PostgresContainer("postgres:18-alpine")
+    with FileLock(lock_path):
+        data = _acquire_shared_postgres(state_file)
+
+    proxy = _PostgresContainerProxy(
+        host=data["host"],
+        port=data["port"],
+        username=data["username"],
+        password=data["password"],
+        dbname=data["dbname"],
+    )
     try:
-        container.start()
-    except Exception as exc:
-        pytest.skip(f"Could not start Postgres test container: {exc}")
-    try:
-        yield container
+        yield proxy
     finally:
-        container.stop()
+        with FileLock(lock_path):
+            _release_shared_postgres(state_file)
 
 
-def _container_host_ipv4(container: PostgresContainer) -> str:
+def _container_host_ipv4(container: _PostgresContainerProxy) -> str:
     """Return the container's host as an IPv4 literal.
 
     ``PostgresContainer.get_container_host_ip()`` returns ``"localhost"``
@@ -118,7 +281,7 @@ def _container_host_ipv4(container: PostgresContainer) -> str:
 
 
 async def _create_postgres_backend(
-    container: PostgresContainer,
+    container: _PostgresContainerProxy,
     db_name: str,
 ) -> PostgresPersistenceBackend:
     """Create a test database on *container* and return a migrated backend.
@@ -172,7 +335,7 @@ async def _create_postgres_backend(
 
 
 async def _drop_postgres_database(
-    container: PostgresContainer,
+    container: _PostgresContainerProxy,
     db_name: str,
 ) -> None:
     """Terminate remaining sessions on *db_name* and drop it."""
