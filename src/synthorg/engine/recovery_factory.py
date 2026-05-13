@@ -54,25 +54,24 @@ def build_recovery_strategy(
             one of ``checkpoint_repo`` / ``checkpoint_config`` was not
             supplied.
     """
-    if config.strategy is RecoveryStrategyType.FAIL_REASSIGN:
-        return FailAndReassignStrategy()
-    if config.strategy is RecoveryStrategyType.CHECKPOINT:
-        if checkpoint_repo is None or checkpoint_config is None:
-            msg = (
-                "RecoveryStrategyType.CHECKPOINT requires both "
-                "checkpoint_repo and checkpoint_config to be wired "
-                "through build_recovery_strategy (typically via the "
-                "lifecycle helpers from the active PersistenceBackend)."
+    match config.strategy:
+        case RecoveryStrategyType.FAIL_REASSIGN:
+            return FailAndReassignStrategy()
+        case RecoveryStrategyType.CHECKPOINT:
+            if checkpoint_repo is None or checkpoint_config is None:
+                msg = (
+                    "RecoveryStrategyType.CHECKPOINT requires both "
+                    "checkpoint_repo and checkpoint_config to be wired "
+                    "through build_recovery_strategy (typically via the "
+                    "lifecycle helpers from the active PersistenceBackend)."
+                )
+                raise RecoveryConfigError(msg)
+            from synthorg.engine.checkpoint.strategy import (  # noqa: PLC0415
+                CheckpointRecoveryStrategy,
             )
-            raise RecoveryConfigError(msg)
-        from synthorg.engine.checkpoint.strategy import (  # noqa: PLC0415
-            CheckpointRecoveryStrategy,
-        )
 
-        return CheckpointRecoveryStrategy(
-            checkpoint_repo=checkpoint_repo,
-            heartbeat_repo=heartbeat_repo,
-            config=checkpoint_config,
-        )
-    msg = f"Unknown recovery strategy: {config.strategy!r}"  # pragma: no cover
-    raise RecoveryConfigError(msg)  # pragma: no cover
+            return CheckpointRecoveryStrategy(
+                checkpoint_repo=checkpoint_repo,
+                heartbeat_repo=heartbeat_repo,
+                config=checkpoint_config,
+            )

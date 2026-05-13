@@ -43,7 +43,14 @@ def _build_postgres_handler(
     resolved_db_path: object,  # noqa: ARG001 -- unused, parity with sqlite signature
 ) -> ComponentHandler:
     """Construct a Postgres persistence backup handler from RootConfig."""
-    return PostgresPersistenceComponentHandler(config=config.persistence.postgres)
+    pg_config = config.persistence.postgres
+    if pg_config is None:
+        msg = (
+            "persistence.backend is 'postgres' but persistence.postgres is "
+            "None; supply Postgres connection details to enable backup."
+        )
+        raise ValueError(msg)
+    return PostgresPersistenceComponentHandler(config=pg_config)
 
 
 type _PersistenceHandlerFactory = Callable[..., "ComponentHandler"]

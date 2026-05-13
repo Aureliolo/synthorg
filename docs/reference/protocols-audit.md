@@ -452,6 +452,21 @@ The `REMOVE` and `REVIEW` candidates above are filed as separate cleanup issues 
 
 Each issue body links back to the specific row(s) in this document and requires the owner to (a) re-grep, (b) confirm no future-second-implementation plan, (c) collapse the consumer onto a concrete type or fold the duplicate.
 
+## Post-#1891 status (RFC: pluggable subsystem cleanup)
+
+Issue #1891 ran a per-candidate keep / inline / refactor decision against the eight subsystems flagged as adding indirection without polymorphism, or sitting on the wrong dimension. Each decision is reflected in code; the eight commits live on `refactor/pluggable-subsystem-cleanup`.
+
+| Candidate | Decision | Outcome |
+|---|---|---|
+| 1. `InjectionStrategy.SELF_EDITING` enum | Refactor: wire the factory | `memory/injection_factory.py` dispatches all three strategies; conformance test asserts the runtime-checkable Protocol contract. |
+| 2. `RecoveryStrategy` + `CheckpointRecoveryStrategy` | Keep + wire CheckpointRecovery | `engine/recovery_factory.py` dispatches `FAIL_REASSIGN` and `CHECKPOINT` via `EngineRecoveryConfig`; `RecoveryConfigError(EngineError)` surfaces misconfiguration at boot. |
+| 3. `ConflictDetector` + 6 impls | Keep + add factory dispatch | `communication/meeting/factory.py::build_conflict_detector` dispatches all six structural impls keyed on `ConflictDetectorType`. |
+| 4. `OrgMemoryBackend` factory | Inline | `memory/org/factory.py` deleted; `OrgMemoryConfig.backend` discriminator removed; HR / knowledge-architect callers continue to depend on the protocol type. |
+| 5. `HumanDecisionProcessor.mode` | Split | `WinnerOnlyDecisionProcessor` + `HybridDecisionProcessor` replace the `mode` discriminator; new `EscalationDecisionShapeError(ConflictResolutionError)` satisfies the DomainError contract. |
+| 6. `TrustService` disabled strategy | Conditional instantiation | `_build_default_trust_service` and `DisabledTrustStrategy` deleted; `security/trust/factory.py::build_trust_strategy` returns `None` for `TrustStrategyType.DISABLED` so the caller skips `TrustService` construction entirely. |
+| 7. `ontology/versioning.py` factories | Invert dependency | Backend-specific factories moved to `persistence/sqlite/ontology_versioning.py` and `persistence/postgres/ontology_versioning.py`; `ontology/versioning.py` keeps only the pure `EntityDefinition` deserializer helpers. Dual-backend conformance test in `tests/conformance/persistence/test_ontology_versioning.py`. |
+| 8. `backup/factory.py` | Backend-pluggable | `backup/registry.py::PERSISTENCE_BACKUP_HANDLER_REGISTRY` dispatches by persistence backend; SQLite handler renamed to `SQLitePersistenceComponentHandler`; new `PostgresPersistenceComponentHandler` shells out to `pg_dump` / `pg_restore` with `PGPASSWORD` env-injection; dual-backend conformance test in `tests/conformance/persistence/test_backup_round_trip.py`. |
+
 ## Out of scope
 
 - Actually deleting any `Protocol` class (cleanup PRs).

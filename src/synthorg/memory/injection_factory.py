@@ -97,6 +97,3 @@ def build_memory_injection_strategy(  # noqa: PLR0913 -- per-strategy deps surfa
                 config=self_editing_config,
                 token_estimator=token_estimator,
             )
-        case _:  # pragma: no cover - InjectionStrategy is a closed StrEnum
-            msg = f"Unknown injection strategy: {config.strategy!r}"
-            raise ValueError(msg)
