@@ -51,7 +51,7 @@ export function PostSetupGuidanceCard({ onDismiss }: PostSetupGuidanceCardProps)
       <div className="mb-grid-gap flex items-start justify-between gap-grid-gap">
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-semibold text-foreground">
-            Welcome -- here are a few next steps
+            Welcome. Here are a few next steps
           </h2>
           <p className="text-sm text-text-secondary">
             Setup is complete.  These short paths cover the most common

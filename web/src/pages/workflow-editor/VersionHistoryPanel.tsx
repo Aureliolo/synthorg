@@ -157,7 +157,7 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
         onOpenChange={(open) => { if (!open) setRestoreTarget(null) }}
         onConfirm={confirmRestore}
         title="Restore Version"
-        description={`Restore to version ${restoreTarget}? This creates a new version with the old content -- no history is lost.`}
+        description={`Restore to version ${restoreTarget}? This creates a new version with the old content. No history is lost.`}
         confirmLabel="Restore"
         loading={saving}
       />

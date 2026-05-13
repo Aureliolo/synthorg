@@ -28,7 +28,7 @@ export function ConnectionGridView({
       <EmptyState
         icon={Plug}
         title="No connections configured"
-        description="Connect SynthOrg to an external service -- GitHub, Slack, SMTP, databases, and more."
+        description="Connect SynthOrg to an external service: GitHub, Slack, SMTP, databases, and more."
         action={onCreate ? { label: 'New Connection', onClick: onCreate } : undefined}
       />
     )

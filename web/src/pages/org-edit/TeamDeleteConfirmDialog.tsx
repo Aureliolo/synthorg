@@ -58,7 +58,7 @@ export function TeamDeleteConfirmDialog({
             label="Reassign members to"
             value={reassignTo}
             onChange={setReassignTo}
-            hint="Optional -- leave empty to unassign members"
+            hint="Optional. Leave empty to unassign members."
             options={[
               { value: '', label: 'None (unassign)' },
               ...siblingTeams.map((t) => ({

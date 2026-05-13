@@ -62,7 +62,7 @@ export function useOptimisticUpdate(): {
         log.error('Rollback failed:', getErrorMessage(rollbackErr))
       }
       const base = getErrorMessage(err)
-      const msg = rollbackFailed ? `${base} (UI may be out of sync -- please refresh)` : base
+      const msg = rollbackFailed ? `${base} (UI may be out of sync; please refresh)` : base
       setError(msg)
       log.error('Optimistic update failed:', msg)
       return null

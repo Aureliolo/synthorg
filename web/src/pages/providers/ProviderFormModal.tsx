@@ -220,7 +220,7 @@ export function ProviderFormModal({
   const baseUrlHint =
     isCustom || mode === 'edit' ? undefined
     : preset?.requires_base_url ? 'Required for this provider'
-    : preset ? 'Optional -- override the default endpoint'
+    : preset ? 'Optional. Override the default endpoint.'
     : undefined
 
   // Available auth types based on selected preset.  Only cloud presets

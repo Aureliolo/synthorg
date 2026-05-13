@@ -151,7 +151,7 @@ export function generateYamlPreview(
 
   let output = yaml.dump(document, { sortKeys: false, noRefs: true })
   if (hasCycle) {
-    output = '# WARNING: Cycle detected -- some nodes omitted from preview\n' + output
+    output = '# WARNING: Cycle detected. Some nodes omitted from preview.\n' + output
   }
   return output
 }

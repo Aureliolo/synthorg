@@ -129,7 +129,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       } catch (err) {
         // Only clear auth on 401 (invalid/expired session)
         if (isAxiosError(err) && err.response?.status === 401) {
-          log.warn('Session expired or invalid -- clearing auth')
+          log.warn('Session expired or invalid, clearing auth')
           get().handleUnauthorized()
           throw new Error('Session expired. Please log in again.', { cause: err })
         } else {

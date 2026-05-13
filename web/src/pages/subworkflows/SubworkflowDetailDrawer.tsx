@@ -181,7 +181,7 @@ export function SubworkflowDetailDrawer({
               disabled={loading || parents.length > 0 || loadedKey !== detailsKey}
               title={
                 loadedKey !== detailsKey
-                  ? 'Details out of date -- refresh to enable delete'
+                  ? 'Details out of date. Refresh to enable delete.'
                   : loading
                     ? 'Checking parent references...'
                     : parents.length > 0

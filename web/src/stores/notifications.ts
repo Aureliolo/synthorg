@@ -228,7 +228,7 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
 
     enqueue(params) {
       if (!VALID_CATEGORIES.has(params.category)) {
-        log.warn('enqueue called with unknown category -- ignored', {
+        log.warn('enqueue called with unknown category, ignored', {
           category: sanitizeForLog(params.category),
         })
         return ''

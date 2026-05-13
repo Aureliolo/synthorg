@@ -22,7 +22,7 @@ const STRATEGY_LABELS: Record<string, string> = {
 
 const STRATEGY_DESCRIPTIONS: Record<string, string> = {
   workload: 'Hire when utilization exceeds threshold, prune when below floor',
-  budget_cap: 'Hard ceiling on spend -- blocks hires and triggers prunes',
+  budget_cap: 'Hard ceiling on spend: blocks hires and triggers prunes',
   skill_gap: 'Identify missing skills from task requirements',
   performance_pruning: 'Prune agents with sustained performance regression',
 }

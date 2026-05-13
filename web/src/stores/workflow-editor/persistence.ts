@@ -166,7 +166,7 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       const status = isAxiosError(err) ? err.response?.status : undefined
       if (status === 409 && definition) {
         log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
-        set({ saving: false, error: 'Version conflict -- another save occurred. Reloading...' })
+        set({ saving: false, error: 'Version conflict. Another save occurred. Reloading...' })
         await get().loadDefinition(definition.id)
       } else {
         log.warn('Failed to save workflow definition', sanitizeForLog(err))

@@ -235,7 +235,7 @@ export function generateInsights(
   if (perf.trend_direction === 'improving') {
     insights.push('Performance trending upward over the recent window.')
   } else if (perf.trend_direction === 'declining') {
-    insights.push('Performance has been declining -- may need attention.')
+    insights.push('Performance has been declining; may need attention.')
   }
 
   // Quality insight

@@ -49,7 +49,7 @@ export function useGlobalNotifications(): void {
           try {
             useNotificationsStore.getState().handleWsEvent(event)
           } catch (err) {
-            log.warn('handleWsEvent threw -- event dropped', { event_type: sanitizeForLog(event?.event_type) }, err)
+            log.warn('handleWsEvent threw, event dropped', { event_type: sanitizeForLog(event?.event_type) }, err)
           }
 
           // Agents channel: also update agent-specific store state
