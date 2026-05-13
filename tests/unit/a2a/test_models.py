@@ -1,5 +1,7 @@
 """Tests for A2A protocol models."""
 
+from typing import Any, cast
+
 import pytest
 
 from synthorg.a2a.models import (
@@ -19,6 +21,7 @@ from synthorg.a2a.models import (
     A2AFilePart,
     A2AMessage,
     A2AMessageRole,
+    A2AMetadataKey,
     A2ATask,
     A2ATaskState,
     A2ATextPart,
@@ -215,10 +218,10 @@ class TestA2AMessageParts:
     @pytest.mark.unit
     def test_data_part_deep_copy(self) -> None:
         """DataPart deep-copies data at construction."""
-        original = {"nested": {"k": "v"}}
+        original: dict[str, Any] = {"nested": {"k": "v"}}
         part = A2ADataPart(data=original)
         original["nested"]["k"] = "changed"
-        assert part.data["nested"]["k"] == "v"
+        assert cast("dict[str, str]", part.data["nested"])["k"] == "v"
 
     @pytest.mark.unit
     def test_file_part(self) -> None:
@@ -281,14 +284,14 @@ class TestA2AMessage:
     @pytest.mark.unit
     def test_metadata_deep_copy(self) -> None:
         """Metadata dict is deep-copied at construction."""
-        original = {"key": "value"}
+        original = {A2AMetadataKey.ORIG_MESSAGE_TYPE: "value"}
         msg = A2AMessage(
             role=A2AMessageRole.USER,
             parts=(A2ATextPart(text="test"),),
             metadata=original,
         )
-        original["key"] = "changed"
-        assert msg.metadata["key"] == "value"
+        original[A2AMetadataKey.ORIG_MESSAGE_TYPE] = "changed"
+        assert msg.metadata[A2AMetadataKey.ORIG_MESSAGE_TYPE] == "value"
 
 
 class TestA2ATask:
@@ -331,7 +334,7 @@ class TestA2ATask:
                     parts=(A2ATextPart(text="test"),),
                 ),
             ),
-            metadata={"source": "external"},
+            metadata={A2AMetadataKey.A2A_PEER: "external"},
         )
         data = task.model_dump()
         restored = A2ATask.model_validate(data)

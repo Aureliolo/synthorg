@@ -127,11 +127,18 @@ class BaseTool(ABC):
                 msg = f"No default action_type mapping for ToolCategory.{category.name}"
                 raise ValueError(msg)
             self._action_type = str(DEFAULT_CATEGORY_ACTION_MAP[category])
-        self._parameters_schema: MappingProxyType[str, Any] | None = (
-            MappingProxyType(copy.deepcopy(parameters_schema))
-            if parameters_schema is not None
-            else None
-        )
+        if parameters_schema is None:
+            self._parameters_schema: MappingProxyType[str, Any] | None = None
+        else:
+            # Build the typed model FIRST so a non-JSON value (set,
+            # custom class, ...) fails fast at construction instead
+            # of corrupting downstream JSON emission.
+            from synthorg.tools.parameters_schema import (  # noqa: PLC0415
+                ToolParametersSchema,
+            )
+
+            validated = ToolParametersSchema.model_validate(parameters_schema)
+            self._parameters_schema = MappingProxyType(validated.as_dict())
 
     @property
     def name(self) -> str:

@@ -46,6 +46,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_guardrail_violated,
     log_handler_invoke_failed,
 )
+from synthorg.meta.rules.custom import CustomRuleResponse
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
@@ -87,22 +88,6 @@ def _custom_rules_service(app_state: Any) -> CustomRulesService:
     from synthorg.meta.rules.service import CustomRulesService  # noqa: PLC0415
 
     return CustomRulesService(repo=app_state.persistence.custom_rules)
-
-
-def _rule_to_dict(rule: Any) -> dict[str, Any]:
-    return {
-        "id": str(rule.id),
-        "name": rule.name,
-        "description": rule.description,
-        "metric_path": rule.metric_path,
-        "comparator": rule.comparator.value,
-        "threshold": rule.threshold,
-        "severity": rule.severity.value,
-        "target_altitudes": [a.value for a in rule.target_altitudes],
-        "enabled": rule.enabled,
-        "created_at": rule.created_at.isoformat(),
-        "updated_at": rule.updated_at.isoformat(),
-    }
 
 
 async def _meta_get_config(
@@ -147,7 +132,12 @@ async def _meta_list_rules(
         return err(exc)
     pagination = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=[_rule_to_dict(r) for r in page], pagination=pagination)
+    return ok(
+        data=[
+            CustomRuleResponse.from_definition(r).model_dump(mode="json") for r in page
+        ],
+        pagination=pagination,
+    )
 
 
 async def _meta_list_mcp_tools(

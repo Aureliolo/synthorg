@@ -10,6 +10,7 @@ from synthorg.a2a.models import (
     A2AFilePart,
     A2AMessage,
     A2AMessageRole,
+    A2AMetadataKey,
     A2ATextPart,
 )
 from synthorg.communication.enums import MessageType
@@ -286,7 +287,7 @@ class TestMappingBoundary:
         """Message type survives A2A round-trip via metadata."""
         msg = _make_message(msg_type=msg_type)
         a2a = to_a2a(msg)
-        assert a2a.metadata.get("orig_message_type") == expected_metadata
+        assert a2a.metadata.get(A2AMetadataKey.ORIG_MESSAGE_TYPE) == expected_metadata
 
         restored = from_a2a(
             a2a,
@@ -304,12 +305,12 @@ class TestMappingBoundary:
             (A2AMessageRole.USER, {}, MessageType.DELEGATION),
             (
                 A2AMessageRole.AGENT,
-                {"orig_message_type": "invalid_value"},
+                {A2AMetadataKey.ORIG_MESSAGE_TYPE: "invalid_value"},
                 MessageType.TASK_UPDATE,
             ),
             (
                 A2AMessageRole.USER,
-                {"orig_message_type": "bogus"},
+                {A2AMetadataKey.ORIG_MESSAGE_TYPE: "bogus"},
                 MessageType.DELEGATION,
             ),
         ],
@@ -317,7 +318,7 @@ class TestMappingBoundary:
     def test_from_a2a_heuristic_fallback(
         self,
         role: A2AMessageRole,
-        metadata: dict[str, str],
+        metadata: dict[A2AMetadataKey, str],
         expected_type: MessageType,
     ) -> None:
         """from_a2a falls back to role heuristic for missing/invalid metadata."""
