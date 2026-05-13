@@ -240,6 +240,7 @@ class SharedRateLimitCoordinator:
                 if envelope is None:
                     continue
                 await self._ingest(envelope.message)
+                await envelope.ack()
             except asyncio.CancelledError:
                 break
             except Exception:

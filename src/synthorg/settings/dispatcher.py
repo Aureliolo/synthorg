@@ -631,6 +631,7 @@ class SettingsChangeDispatcher:
                     continue
                 consecutive_errors = 0
                 await self._dispatch(envelope.message)
+                await envelope.ack()
             except asyncio.CancelledError:
                 raise
             except MemoryError, RecursionError:

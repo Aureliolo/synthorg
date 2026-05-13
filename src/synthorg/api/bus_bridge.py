@@ -620,6 +620,12 @@ class MessageBusBridge:
                     ws_event.model_dump_json(),
                     channels=[channel_name],
                 )
+                # Ack the NATS JetStream message only AFTER the
+                # websocket publish accepted the payload. Acking before
+                # this point would lose the message on a transient
+                # plugin.publish failure (in-memory backend ships a
+                # no-op ack so this is free for non-NATS deployments).
+                await envelope.ack()
                 consecutive_errors = 0
             except asyncio.CancelledError:
                 break

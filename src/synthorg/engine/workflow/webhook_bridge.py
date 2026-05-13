@@ -287,6 +287,11 @@ class WebhookEventBridge:
                     continue
                 consecutive_errors = 0
                 await self._forward(envelope.message)
+                # Ack only after forwarding succeeds; a ``_forward``
+                # exception falls through to the catch-all below and
+                # leaves the JetStream message un-acked so redelivery
+                # picks it back up.
+                await envelope.ack()
             except asyncio.CancelledError:
                 raise
             except MemoryError, RecursionError:
