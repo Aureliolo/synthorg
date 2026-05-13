@@ -10,6 +10,7 @@ import re
 import subprocess
 import time
 from collections.abc import Generator
+from typing import Final
 
 import httpx
 import pytest
@@ -21,6 +22,14 @@ logger = get_logger(__name__)
 _IMAGE_REF_PATTERN = re.compile(r"^[a-zA-Z0-9][\w.:/@-]*$")
 _SAFE_NAME_PATTERN = re.compile(r"^[\w-]+$")
 WEB_IMAGE = os.environ.get("SYNTHORG_WEB_IMAGE", "ghcr.io/aureliolo/synthorg-web:test")
+
+_HEALTH_POLL_INTERVAL_SECONDS: Final[float] = 0.25
+"""Interval between ``httpx.get`` probes against the spinning web container.
+
+Bounded sleep between Docker-level probes; deliberately short so the
+wall-clock deadline (``_wait_for_web_container_ready.deadline_secs``)
+remains the load-bearing primitive. Promoted from a literal so the
+magic-number gate can verify the intent rather than the value."""
 if not _IMAGE_REF_PATTERN.match(WEB_IMAGE):
     msg = f"Invalid image reference: {WEB_IMAGE}"
     raise ValueError(msg)
@@ -54,7 +63,7 @@ def _wait_for_web_container_ready(
         else:
             if resp.status_code == 200:
                 return
-        time.sleep(0.25)
+        time.sleep(_HEALTH_POLL_INTERVAL_SECONDS)
     pytest.fail(f"Web container did not become healthy within {deadline_secs:.0f}s")
 
 

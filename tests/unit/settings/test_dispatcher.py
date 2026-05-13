@@ -830,18 +830,40 @@ class TestKillSwitch:
                 await asyncio.Event().wait()
                 return None
 
+        # Deterministic synchronisation: the loop calls
+        # ``_resolve_enabled`` on every iteration. Hook the resolver to
+        # tick an iteration counter and signal an Event after N ticks
+        # so the test waits for *exact* loop progress rather than a
+        # wall-clock budget.
+        iterations_seen = 0
+        third_iteration = asyncio.Event()
+        required_iterations = 3
+        resolver = _FakeConfigResolver(enabled=False)
+        original_get_bool = resolver.get_bool
+
+        async def _counting_get_bool(namespace: str, key: str) -> bool:
+            nonlocal iterations_seen
+            iterations_seen += 1
+            if iterations_seen >= required_iterations:
+                third_iteration.set()
+            return await original_get_bool(namespace, key)
+
+        resolver.get_bool = _counting_get_bool  # type: ignore[method-assign]
         bus = _CountingBus()
         sub = _FakeSubscriber("sub", frozenset())
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
-            config_resolver=cast(ConfigResolver, _FakeConfigResolver(enabled=False)),
+            config_resolver=cast(ConfigResolver, resolver),
         )
         await d.start()
         try:
-            # Allow several loop iterations; with kill switch False the
-            # body sleeps+continues without ever calling bus.receive.
-            await asyncio.sleep(0.05)
+            # Wait for the loop to confirm it iterated at least three
+            # times. The kill-switch path must yield via the resolver
+            # on every iteration so this only blocks until the loop is
+            # actually running; the 2.0s ceiling is a generous safety
+            # net for slow CI hosts, not the load-bearing primitive.
+            await asyncio.wait_for(third_iteration.wait(), timeout=2.0)
             assert receive_calls == 0
         finally:
             await d.stop()

@@ -27,9 +27,15 @@ def test_setter_disables_enforcement() -> None:
 
 async def test_engine_timeout_enforces_when_enabled() -> None:
     timeout_enforcement.set_timeout_enforcement_enabled(value=True)
+    # Awaiting an Event that never fires is the deterministic
+    # equivalent of "sleep forever": engine_timeout cancels it after
+    # 0.01s.  Replaces a literal asyncio.sleep(1) so the test no
+    # longer eats a full wall-clock second when something accidentally
+    # disables the timeout.
+    never_fires = asyncio.Event()
     with pytest.raises(TimeoutError):
         async with timeout_enforcement.engine_timeout(0.01):
-            await asyncio.sleep(1)
+            await never_fires.wait()
 
 
 async def test_engine_timeout_no_op_when_disabled() -> None:
