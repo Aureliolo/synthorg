@@ -891,6 +891,15 @@ class AppStateServicesMixin(_FacadesMixin):
         """Return the ontology sync service, or None if not configured."""
         return self._ontology_sync_service
 
+    def set_ontology_service(self, service: OntologyService) -> None:
+        """Attach the ontology service (once-only).
+
+        Ontology wiring depends on a connected persistence backend and
+        therefore runs in the on-startup phase via
+        ``auto_wire_ontology`` rather than at app construction time.
+        """
+        self._set_once("_ontology_service", service, "Ontology service")
+
     def set_drift_report_store(self, store: DriftReportStore) -> None:
         """Attach the drift report store (once-only)."""
         self._set_once("_drift_report_store", store, "Drift report store")
