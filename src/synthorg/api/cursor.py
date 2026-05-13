@@ -22,6 +22,11 @@ from typing import ClassVar, Final, Self
 from synthorg.api.cursor_config import CursorConfig  # noqa: TC001
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_CURSOR_DECODE_FAILED
+from synthorg.observability.events.security import SECURITY_CURSOR_SIGNATURE_INVALID
+
+logger = get_logger(__name__)
 
 
 class InvalidCursorError(ValidationError):
@@ -157,23 +162,47 @@ def _decode_token_payload(token: str) -> dict[str, object]:
             JSON object.
     """
     if not token:
+        logger.warning(API_CURSOR_DECODE_FAILED, reason="empty_token")
         msg = "cursor token is empty"
         raise InvalidCursorError(msg)
     if len(token) > _MAX_CURSOR_LEN:
+        logger.warning(
+            API_CURSOR_DECODE_FAILED,
+            reason="length_exceeded",
+            token_len=len(token),
+            max_len=_MAX_CURSOR_LEN,
+        )
         msg = f"cursor token exceeds {_MAX_CURSOR_LEN} characters"
         raise InvalidCursorError(msg)
     try:
         padded = token + "=" * (-len(token) % 4)
         decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
     except (ValueError, TypeError, UnicodeEncodeError) as exc:
+        logger.warning(
+            API_CURSOR_DECODE_FAILED,
+            reason="base64_decode_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         msg = "cursor token is not valid base64"
         raise InvalidCursorError(msg) from exc
     try:
         payload = json.loads(decoded)
     except (ValueError, UnicodeDecodeError) as exc:
+        logger.warning(
+            API_CURSOR_DECODE_FAILED,
+            reason="json_parse_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         msg = "cursor token payload is not valid JSON"
         raise InvalidCursorError(msg) from exc
     if not isinstance(payload, dict):
+        logger.warning(
+            API_CURSOR_DECODE_FAILED,
+            reason="payload_not_object",
+            payload_type=type(payload).__name__,
+        )
         msg = "cursor token payload must be a JSON object"
         raise InvalidCursorError(msg)
     return payload
@@ -188,15 +217,27 @@ def _validate_cursor_payload(
     offset = payload.get("o")
     signature = payload.get("s")
     if not isinstance(offset, int) or isinstance(offset, bool):
+        logger.warning(API_CURSOR_DECODE_FAILED, reason="missing_offset_field")
         msg = "cursor token is missing a valid 'o' integer field"
         raise InvalidCursorError(msg)
     if not isinstance(signature, str):
+        logger.warning(API_CURSOR_DECODE_FAILED, reason="missing_signature_field")
         msg = "cursor token is missing a valid 's' signature field"
         raise InvalidCursorError(msg)
     if offset < 0:
+        logger.warning(
+            API_CURSOR_DECODE_FAILED,
+            reason="negative_offset",
+            offset=offset,
+        )
         msg = "cursor token offset must be >= 0"
         raise InvalidCursorError(msg)
     if not secret.verify(str(offset).encode("utf-8"), signature):
+        logger.warning(
+            SECURITY_CURSOR_SIGNATURE_INVALID,
+            cursor_type="offset",
+            offset=offset,
+        )
         msg = "cursor signature is invalid"
         raise InvalidCursorError(msg)
     return offset
@@ -281,15 +322,36 @@ def _validate_keyset_payload(
     after_key = payload.get("k")
     signature = payload.get("s")
     if not isinstance(after_key, str) or not after_key:
+        logger.warning(
+            API_CURSOR_DECODE_FAILED,
+            cursor_type="keyset",
+            reason="missing_after_key_field",
+        )
         msg = "keyset cursor token is missing a valid 'k' string field"
         raise InvalidCursorError(msg)
     if len(after_key) > _MAX_KEYSET_KEY_LEN:
+        logger.warning(
+            API_CURSOR_DECODE_FAILED,
+            cursor_type="keyset",
+            reason="after_key_length_exceeded",
+            key_len=len(after_key),
+            max_len=_MAX_KEYSET_KEY_LEN,
+        )
         msg = f"keyset cursor 'k' field exceeds {_MAX_KEYSET_KEY_LEN} characters"
         raise InvalidCursorError(msg)
     if not isinstance(signature, str):
+        logger.warning(
+            API_CURSOR_DECODE_FAILED,
+            cursor_type="keyset",
+            reason="missing_signature_field",
+        )
         msg = "keyset cursor token is missing a valid 's' signature field"
         raise InvalidCursorError(msg)
     if not secret.verify(after_key.encode("utf-8"), signature):
+        logger.warning(
+            SECURITY_CURSOR_SIGNATURE_INVALID,
+            cursor_type="keyset",
+        )
         msg = "keyset cursor signature is invalid"
         raise InvalidCursorError(msg)
     return after_key
