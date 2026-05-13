@@ -1,6 +1,11 @@
+import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import type { WorkflowDiff } from '@/api/types/workflows'
+import { apiError } from '@/mocks/handlers'
+import { buildWorkflow } from '@/mocks/handlers/workflows'
+import { useToastStore } from '@/stores/toast'
+import { server } from '@/test-setup'
 
 function resetStore() {
   useWorkflowEditorStore.getState().reset()
@@ -238,6 +243,88 @@ describe('workflow-editor composed store', () => {
       expect(state.versions).toEqual([])
       expect(state.versionsLoading).toBe(false)
       expect(state.versionsHasMore).toBe(false)
+    })
+  })
+
+  describe('error toasts (store mutation contract)', () => {
+    beforeEach(() => {
+      useToastStore.getState().dismissAll()
+    })
+
+    it('createDefinition emits an error toast when the API rejects', async () => {
+      server.use(
+        http.post('/api/v1/workflows', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+
+      await useWorkflowEditorStore
+        .getState()
+        .createDefinition('broken', 'default')
+
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toContain('create')
+    })
+
+    it('saveDefinition emits an error toast on a non-409 failure', async () => {
+      // Seed a definition so saveDefinition reaches the network call.
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+        nodes: [],
+        edges: [],
+      })
+      server.use(
+        http.patch('/api/v1/workflows/:id', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+
+      await useWorkflowEditorStore.getState().saveDefinition()
+
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toContain('save')
+    })
+
+    it('saveDefinition emits a warning toast on 409 conflict', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+        nodes: [],
+        edges: [],
+      })
+      server.use(
+        http.patch('/api/v1/workflows/:id', () =>
+          HttpResponse.json(apiError('conflict'), { status: 409 }),
+        ),
+      )
+
+      await useWorkflowEditorStore.getState().saveDefinition()
+
+      const toasts = useToastStore.getState().toasts
+      const warning = toasts.find((t) => t.variant === 'warning')
+      expect(warning).toBeDefined()
+      expect(warning!.title).toBe('Version conflict')
+    })
+
+    it('rollback emits an error toast on failure', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+      })
+      server.use(
+        http.post('/api/v1/workflows/:id/rollback', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+
+      await useWorkflowEditorStore.getState().rollback(1)
+
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title.toLowerCase()).toContain('roll back')
     })
   })
 })

@@ -4,7 +4,8 @@ import {
   rollbackWorkflow,
 } from '@/api/endpoints/workflows'
 import { createLogger } from '@/lib/logger'
-import { getErrorMessage } from '@/utils/errors'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import type { SliceCreator, VersionsSlice } from './types'
 import { parseDefinition } from './yaml'
@@ -146,6 +147,11 @@ export const createVersionsSlice: SliceCreator<VersionsSlice> = (set, get) => ({
       await get().loadVersions()
     } catch (err) {
       log.warn('Rollback failed', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to roll back workflow'),
+        description: getErrorMessage(err),
+      })
       set({ saving: false, error: getErrorMessage(err) })
     }
   },

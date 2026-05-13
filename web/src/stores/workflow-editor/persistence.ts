@@ -5,7 +5,8 @@ import {
   updateWorkflow,
 } from '@/api/endpoints/workflows'
 import { createLogger } from '@/lib/logger'
-import { getErrorMessage, isAxiosError } from '@/utils/errors'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage, isAxiosError } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject, isString } from '@/utils/type-guards'
 import type { PersistenceSlice, SliceCreator } from './types'
@@ -119,6 +120,11 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       })
     } catch (err) {
       log.warn('Failed to create workflow definition', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to create workflow'),
+        description: getErrorMessage(err),
+      })
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -166,10 +172,20 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       const status = isAxiosError(err) ? err.response?.status : undefined
       if (status === 409 && definition) {
         log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
-        set({ saving: false, error: 'Version conflict -- another save occurred. Reloading...' })
+        useToastStore.getState().add({
+          variant: 'warning',
+          title: 'Version conflict',
+          description: 'Another save occurred. Reloading the latest version.',
+        })
+        set({ saving: false, error: 'Version conflict, another save occurred. Reloading...' })
         await get().loadDefinition(definition.id)
       } else {
         log.warn('Failed to save workflow definition', sanitizeForLog(err))
+        useToastStore.getState().add({
+          variant: 'error',
+          ...getCrudErrorTitle(err, 'Failed to save workflow'),
+          description: getErrorMessage(err),
+        })
         set({ saving: false, error: getErrorMessage(err) })
       }
     }
