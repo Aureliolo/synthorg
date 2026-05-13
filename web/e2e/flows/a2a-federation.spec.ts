@@ -32,7 +32,7 @@ test.describe('A2A federation critical flow', () => {
   })
 
   test('loads the connections list and surfaces the A2A peer row', async ({ page }) => {
-    await page.goto('/integrations')
+    await page.goto('/connections')
     await expect(page.locator('main')).toBeVisible()
     await expect(page.getByText('a2a-peer-eu').first()).toBeVisible()
   })
