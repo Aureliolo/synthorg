@@ -28,9 +28,9 @@ Exit codes
 Flags
 -----
 * ``--skip-network`` -- bypass fetchers that shell out to ``gh`` or
-  ``pytest --collect-only`` (``tests``, ``version``, ``mem0_stars``).
-  Pre-push uses this so developers without a ``gh`` token are not
-  gated; CI runs without the flag to perform the full check.
+  ``pytest --collect-only`` (``tests``, ``mem0_stars``). Pre-push uses
+  this so developers without a ``gh`` token are not gated; CI runs
+  without the flag to perform the full check.
 """
 
 import argparse
@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-network",
         action="store_true",
         help=(
-            "Skip network-backed fetchers (tests, version, mem0_stars). "
+            "Skip network-backed fetchers (tests, mem0_stars). "
             "Used by pre-push so developers without a configured gh token "
             "are not blocked."
         ),

@@ -400,7 +400,10 @@ def main() -> int:
     # decommissioned stat does not linger in the YAML forever. Prior
     # values for retained stats are still preserved on transient fetch
     # failures (the `keeping_prior_value` branch below).
-    existing_stats = existing.get("stats", {})
+    # Normalise to {} when `stats:` is missing or YAML-null; _load_existing
+    # already raises on a non-mapping value.
+    existing_stats_raw = existing.get("stats")
+    existing_stats = existing_stats_raw if isinstance(existing_stats_raw, dict) else {}
     new_stats: dict[str, Any] = {
         name: value for name, value in existing_stats.items() if name in _FETCHERS
     }
