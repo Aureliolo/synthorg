@@ -744,10 +744,11 @@ _r.register(
             "Sliding-window length (seconds) for WebSocket session"
             " revalidation failures. Persistence backend errors are"
             " admitted into a per-connection sliding window of this"
-            " length; once the window saturates the connection is"
-            " closed. Replaces the legacy reset-on-success counter"
-            " so a flaky persistence layer cannot indefinitely keep"
-            " a connection alive by interleaving successes."
+            " length; once the window saturates the connection closes"
+            " (4011). Failures age out of the window without being"
+            " reset on success, so a flaky persistence layer cannot"
+            " indefinitely keep a connection alive by interleaving"
+            " successes."
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,

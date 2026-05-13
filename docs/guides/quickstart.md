@@ -96,11 +96,15 @@ You should see both containers (`backend` and `web`) reporting healthy.
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-On a fresh install, the **setup wizard** appears and walks you through company configuration:
+On a fresh install, the **setup wizard** appears. Pick **Guided Setup** and step through:
 
-1. **Name your company**: pick any name (e.g. "My First Org").
+1. **Select a template**: choose **Solo Builder** (the minimal 2-agent template).
 2. **Add an LLM provider**: enter your provider's API key. Local providers like Ollama are auto-detected.
-3. **Select a template**: choose **Solo Builder** (the minimal 2-agent template).
+3. **Name your company**: pick any name (e.g. "My First Org").
+4. **Review agents**: the template populates the roster; tweak personalities and models if you want, or accept defaults.
+5. **Pick a theme**: light or dark.
+
+**Quick Setup** is the abbreviated path (provider, company name, done). Use it when you want to land in the dashboard fastest and configure the rest later.
 
 Once the wizard completes, the dashboard loads and you will see:
 

@@ -251,11 +251,11 @@ class TeamsDeleteArgs(_ArgsBase):
     """Args for ``teams.delete``.
 
     Mirrors :class:`DepartmentsDeleteArgs`: this endpoint is registered
-    via ``write_tool`` (not ``admin_tool``) in ``organization.py`` to
-    preserve the legacy wire contract that did not require destructive
-    guardrails on team deletion.  Promoting it to ``admin_tool`` with
-    ``AdminGuardrailFields`` would be a wire-breaking change and
-    is tracked separately.
+    via ``write_tool`` (not ``admin_tool``) in ``organization.py`` so
+    team deletion follows the same destructive-non-admin contract as
+    department deletion (no ``AdminGuardrailFields``). See
+    ``docs/reference/mcp-handler-contract.md`` for the capability tier
+    semantics.
     """
 
     team_id: NotBlankStr = Field(description="Team UUID")

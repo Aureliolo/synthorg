@@ -50,7 +50,7 @@ fall into three categories:
 | `SYNTHORG_SANDBOX_IMAGE` | `ghcr.io/aureliolo/synthorg-sandbox:latest` | Sandbox container image; CLI sets the digest-pinned variant after cosign verification. |
 | `SYNTHORG_SIDECAR_IMAGE` | `ghcr.io/aureliolo/synthorg-sidecar:latest` | Sidecar (network-proxy) container image. |
 | `SYNTHORG_FINE_TUNE_IMAGE` | unset | Override for the embedding fine-tune image (CLI publishes `-gpu` and `-cpu` variants). |
-| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `8080` | Port the fine-tune container's health probe listens on. |
+| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `15002` | Port the fine-tune container's health probe listens on. |
 
 ## Telemetry (runtime override)
 

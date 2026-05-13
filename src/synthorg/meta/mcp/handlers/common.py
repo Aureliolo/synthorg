@@ -359,13 +359,12 @@ def capability_gap(tool_name: str, reason: str) -> str:
 def make_placeholder_handler(tool_name: str) -> ToolHandler:
     """Build a placeholder that returns the standard ``not_supported`` envelope.
 
-    Used for tools registered after PR1 that haven't been given a real
-    handler yet.  The returned callable delegates to
-    :func:`not_supported` so unwired tools ship the single agreed
-    envelope format (``status="error"``, ``domain_code="not_supported"``)
-    instead of the legacy ``not_implemented`` string.  ``not_supported``
-    also emits the ``MCP_HANDLER_NOT_IMPLEMENTED`` WARNING event, so ops
-    alerting continues to see unwired tools exactly as before.
+    Used for tools registered in the catalog without a wired handler.
+    The returned callable delegates to :func:`not_supported` so the
+    call returns ``status="error"`` / ``domain_code="not_supported"``
+    instead of failing the dispatcher. ``not_supported`` also emits the
+    ``MCP_HANDLER_NOT_IMPLEMENTED`` WARNING event so operations alerting
+    surfaces unwired tools.
 
     Args:
         tool_name: Tool name for the envelope + log payload.
