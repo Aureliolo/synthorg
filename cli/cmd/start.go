@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -167,64 +166,42 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 	return startDetached(ctx, info, safeDir, state, out, errOut, healthTimeout)
 }
 
-func verifyAndPullStartImages(cmd *cobra.Command, ctx context.Context, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI) (config.State, error) {
-	skipVerify := GetGlobalOpts(ctx).SkipVerify
+func verifyAndPullStartImages(_ *cobra.Command, ctx context.Context, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI) (config.State, error) {
+	if GetGlobalOpts(ctx).SkipVerify {
+		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+		out.Blank()
+		return pullAllImages(ctx, info, safeDir, state, out)
+	}
 
-	if !skipVerify {
-		// SynthOrg images: check cache independently.
-		if hasSynthOrgDigests(state) {
-			renderCachedSynthOrgBox(out, state)
+	verifyCtx, cancel := context.WithTimeout(ctx, GetGlobalOpts(ctx).Tunables.ImageVerifyTimeout)
+	defer cancel()
+	result, err := verifyImagesWithCache(verifyCtx, info, state, out, errOut)
+	if err != nil {
+		return state, err
+	}
+
+	if result.SynthOrgReverified {
+		if err := writeDigestPinnedCompose(state, synthOrgPins(result.Pins), safeDir); err != nil {
+			return state, fmt.Errorf("pinning verified digests: %w", err)
+		}
+	}
+
+	if result.SynthOrgReverified || result.DHIReverified {
+		state.VerifiedDigests = result.Pins
+		state.VerifiedImageTag = state.ImageTag
+		if err := config.Save(state); err != nil {
+			errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
 		} else {
-			if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
-				return state, err
-			}
-			// Reload state since verifyAndPinImages saved it.
 			reloaded, reloadErr := config.Load(GetGlobalOpts(ctx).DataDir)
 			if reloadErr != nil {
 				return state, fmt.Errorf("reloading config after verification: %w", reloadErr)
 			}
 			state = reloaded
 		}
-
-		// DHI images: check cache independently.
-		if hasDHIDigests(state) {
-			renderCachedDHIBox(out, state)
-		} else {
-			results, err := verifyDHIImages(ctx, info, state, out, errOut)
-			if err != nil {
-				return state, fmt.Errorf("DHI image verification failed: %w", err)
-			}
-			if state.VerifiedDigests == nil {
-				state.VerifiedDigests = make(map[string]string)
-			}
-			for _, r := range results {
-				if indexDigest, ok := verify.DHIPinnedIndexDigest(r.Image); ok {
-					state.VerifiedDigests["dhi:"+r.Image] = indexDigest
-				}
-				if r.Digest != "" {
-					state.VerifiedDigests["dhi:"+r.Image+":platform"] = r.Digest
-				}
-				if r.AttDigest != "" {
-					state.VerifiedDigests["dhi:"+r.Image+":attestation"] = r.AttDigest
-				}
-				if r.SigDigest != "" {
-					state.VerifiedDigests["dhi:"+r.Image+":signature"] = r.SigDigest
-				}
-			}
-			if err := config.Save(state); err != nil {
-				errOut.Warn(fmt.Sprintf("Could not cache DHI verification results: %v", err))
-			}
-		}
-	} else {
-		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 	}
 
 	out.Blank()
-	refreshed, err := pullAllImages(ctx, info, safeDir, state, out)
-	if err != nil {
-		return state, err
-	}
-	return refreshed, nil
+	return pullAllImages(ctx, info, safeDir, state, out)
 }
 
 func startDetached(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI, healthTimeout time.Duration) error {
@@ -528,61 +505,19 @@ func dockerRunQuiet(ctx context.Context, info docker.Info, args ...string) error
 	return nil
 }
 
-// verifyAndPinImages verifies image signatures (unless --skip-verify) and
-// pins the verified digests in the compose file and config.
-func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI) error {
-	if GetGlobalOpts(ctx).SkipVerify {
-		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
-		return nil
-	}
-
-	imageRefs := verify.BuildImageRefs(state.ImageTag, state.Sandbox, state.FineTuning, state.FineTuneVariantOrDefault())
-	labels := make([]string, len(imageRefs))
-	for i, ref := range imageRefs {
-		labels[i] = ref.Name()
-	}
-	lb := out.NewLiveBox("Verify SynthOrg Images", labels)
-
-	verifyCtx, cancel := context.WithTimeout(ctx, GetGlobalOpts(ctx).Tunables.ImageVerifyTimeout)
-	defer cancel()
-	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
-		Images: imageRefs,
-		Output: io.Discard,
-		OnResult: func(i int, r verify.VerifyResult) {
-			slsaIcon := ui.IconSuccess
-			if !r.ProvenanceVerified {
-				slsaIcon = ui.IconWarning
-			}
-			lb.UpdateLine(i, fmt.Sprintf("sig %s  slsa %s", ui.IconSuccess, slsaIcon))
-		},
-	})
-	lb.Finish()
-
-	if err != nil {
-		if isTransportError(err) {
-			errOut.HintError("Use --skip-verify for air-gapped environments")
-		}
-		return fmt.Errorf("image verification failed: %w", err)
-	}
-
-	pins, err := digestPinMap(results)
-	if err != nil {
-		return fmt.Errorf("digest pin map: %w", err)
-	}
-
-	if err := writeDigestPinnedCompose(state, pins, safeDir); err != nil {
-		return fmt.Errorf("pinning verified digests: %w", err)
-	}
-
-	state.VerifiedDigests = pins
-	if err := config.Save(state); err != nil {
-		errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
-	}
-	return nil
-}
-
-// hasSynthOrgDigests returns true if all SynthOrg image digests are cached.
+// hasSynthOrgDigests reports whether the SynthOrg pin cache is current.
+//
+// Two conditions must hold: state.VerifiedImageTag must equal the current
+// state.ImageTag (the pin values would otherwise describe images of the
+// wrong tag), and a pin must be present for every SynthOrg image enabled
+// by the current configuration. The first check mirrors the pin-comparison
+// strictness of hasDHIDigests so SynthOrg and DHI cache validity move
+// together: either both groups hit, both miss, or each invalidates for an
+// independent reason; never one stale and one fresh.
 func hasSynthOrgDigests(state config.State) bool {
+	if state.VerifiedImageTag != state.ImageTag {
+		return false
+	}
 	if len(state.VerifiedDigests) == 0 {
 		return false
 	}
@@ -729,24 +664,6 @@ func digestPinMap(results []verify.VerifyResult) (map[string]string, error) {
 		pins[r.Ref.Name()] = r.Ref.Digest
 	}
 	return pins, nil
-}
-
-// renderVerifyBox displays image verification results in a bordered box.
-// Shared by start.go and update.go verification flows.
-// Uses plain glyph constants (not ANSI-styled icons) because Box()
-// sanitizes content with stripControlStrict which removes ESC bytes.
-func renderVerifyBox(out *ui.UI, results []verify.VerifyResult) {
-	boxLines := make([]string, 0, len(results))
-	for _, r := range results {
-		sigIcon := ui.IconSuccess
-		slsaIcon := ui.IconSuccess
-		if !r.ProvenanceVerified {
-			slsaIcon = ui.IconWarning
-		}
-		boxLines = append(boxLines, fmt.Sprintf("  %-12s sig %s  slsa %s",
-			r.Ref.Name(), sigIcon, slsaIcon))
-	}
-	out.Box("Verify SynthOrg Images", boxLines)
 }
 
 // composeRun runs a docker compose command with output forwarded to the

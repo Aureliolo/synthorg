@@ -94,7 +94,7 @@ See [docs/reference/cli-env-vars.md](../docs/reference/cli-env-vars.md) for the 
 
 ## Config Subcommands
 
-`synthorg config <subcommand>` exposes `show` / `get <key>` / `set <key> <value>` / `unset <key>` / `list` / `path` / `edit`. There are 37 settable keys (e.g. `backend_port`, `web_port`, `sandbox`, `image_tag`, `log_level`, `fine_tuning`, `telemetry_opt_in`, `channel`, plus all the tunables listed above). Compose-affecting keys trigger automatic `compose.yml` regeneration; toggling `fine_tuning` on requires `sandbox=true` and amd64.
+`synthorg config <subcommand>` exposes `show` / `get <key>` / `set <key> <value>` / `unset <key>` / `list` / `path` / `edit`. There are 40 settable keys (e.g. `backend_port`, `web_port`, `sandbox`, `image_tag`, `log_level`, `fine_tuning`, `telemetry_opt_in`, `channel`, plus all the tunables listed above). Compose-affecting keys trigger automatic `compose.yml` regeneration; toggling `fine_tuning` on requires `sandbox=true` and amd64.
 
 Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, or `nats_image_tag` disables image signature + SLSA verification **for that invocation only** and writes a stderr warning on every invocation (not suppressed by `--quiet` or `--json`).
 
@@ -152,4 +152,4 @@ Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client.
 
 `synthorg status` renders a verdict banner (`OK` / `DEGRADED` / `CRITICAL`) computed by `computeVerdict()` in `cli/cmd/status.go`. `CRITICAL` wins over `DEGRADED`; signals are gated on install expectations so an internal-bus install is not flagged `DEGRADED` merely because the health response omits `message_bus`.
 
-See [docs/reference/cli-persistence-backends.md](../docs/reference/cli-persistence-backends.md) for the per-step Postgres orchestration (random-password generation, `SYNTHORG_POSTGRES_SSL_MODE` defaults, depends_on health gate), DHI cosign + SLSA verification cache (`verified_digests`), the NATS config file shape (`max_payload: 16MB`), and the verdict-banner escalation rules.
+See [docs/reference/cli-persistence-backends.md](../docs/reference/cli-persistence-backends.md) for the per-step Postgres orchestration (random-password generation, `SYNTHORG_POSTGRES_SSL_MODE` defaults, depends_on health gate), the image verification cache (`verified_digests` map shared by SynthOrg + DHI pins, with `verified_image_tag` as the SynthOrg-side cache sentinel), the NATS config file shape (`max_payload: 16MB`), and the verdict-banner escalation rules.

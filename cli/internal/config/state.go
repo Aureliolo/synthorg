@@ -61,6 +61,14 @@ type State struct {
 	PostgresPassword   string            `json:"postgres_password,omitempty"`
 	AutoCleanup        bool              `json:"auto_cleanup"`
 	VerifiedDigests    map[string]string `json:"verified_digests,omitempty"`
+	// VerifiedImageTag records the ImageTag value the SynthOrg pins in
+	// VerifiedDigests were verified against. hasSynthOrgDigests treats the
+	// SynthOrg cache as stale whenever this does not match the current
+	// ImageTag, mirroring the strictness of the DHI pin-comparison check
+	// (see hasDHIDigests in cli/cmd/start.go). DHI pins are validated
+	// independently against the binary-baked Renovate map and do not use
+	// this field.
+	VerifiedImageTag string `json:"verified_image_tag,omitempty"`
 
 	// Display preferences (empty = use default).
 	Color         string `json:"color,omitempty"`          // always/auto/never

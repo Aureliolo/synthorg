@@ -408,7 +408,10 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	}
 
 	if invalidatesVerifiedDigests(key) {
-		state.VerifiedDigests = nil // old pins are bound to the previous registry/prefix/tags
+		// Old pins are bound to the previous registry/prefix/tags; the
+		// sentinel that proves they are current must drop with them.
+		state.VerifiedDigests = nil
+		state.VerifiedImageTag = ""
 	}
 	if composeAffectingKeys[key] {
 		if err := regenerateCompose(state); err != nil {
@@ -682,6 +685,7 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 	}
 	if invalidatesVerifiedDigests(key) {
 		state.VerifiedDigests = nil
+		state.VerifiedImageTag = ""
 	}
 
 	if composeAffectingKeys[key] {

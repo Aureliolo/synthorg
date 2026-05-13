@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +18,6 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/health"
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
-	"github.com/Aureliolo/synthorg/cli/internal/verify"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -396,8 +395,7 @@ func reexecUpdate(cmd *cobra.Command) error {
 
 	if runErr := c.Run(); runErr != nil {
 		// Preserve the child's exit code so the parent can propagate it.
-		var exitErr *exec.ExitError
-		if errors.As(runErr, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
 			return &ChildExitError{Code: exitErr.ExitCode()}
 		}
 		return fmt.Errorf("re-launching updated CLI: %w", runErr)
@@ -579,17 +577,21 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 
 	// Verify + write compose atomically: compose.yml is only updated after
 	// verification succeeds (or when --skip-verify explicitly skips it).
-	digestPins, err := verifyAndPinForUpdate(ctx, state, tag, safeDir, preserveCompose, out, errOut)
+	digestPins, err := verifyAndPinForUpdate(ctx, info, state, tag, safeDir, preserveCompose, out, errOut)
 	if err != nil {
 		rollback()
 		return state, err
 	}
 
 	// Use newly verified digest pins for the pull so standalone images
-	// (sandbox, sidecar, fine-tune) resolve to pinned references.
+	// (sandbox, sidecar, fine-tune) resolve to pinned references. Merge
+	// fresh pins on top of any existing ones (e.g. cached DHI keys when
+	// the verify step hit the DHI cache) so the pull sees the union, not
+	// just the freshly-verified subset.
+	mergedPins := mergeVerifiedDigests(state.VerifiedDigests, digestPins)
 	pullState := state
 	pullState.ImageTag = tag
-	pullState.VerifiedDigests = digestPins
+	pullState.VerifiedDigests = mergedPins
 	if _, err := pullAllImages(ctx, info, safeDir, pullState, out); err != nil {
 		rollback()
 		return state, err
@@ -597,9 +599,12 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 
 	// Persist config only after successful pull so a failed pull
 	// doesn't leave state claiming images are at the new version.
+	// VerifiedImageTag tracks which tag the SynthOrg pins were verified
+	// against; hasSynthOrgDigests rejects the cache when this drifts.
 	updatedState := state
 	updatedState.ImageTag = tag
-	updatedState.VerifiedDigests = digestPins
+	updatedState.VerifiedDigests = mergedPins
+	updatedState.VerifiedImageTag = tag
 	if err := config.Save(updatedState); err != nil {
 		rollback()
 		return state, fmt.Errorf("saving config: %w", err)
@@ -607,10 +612,33 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 	return updatedState, nil
 }
 
-// verifyAndPinForUpdate runs image verification and updates the compose
-// file with new image references. When preserveCompose is true, only
-// image lines are patched; otherwise the full compose is regenerated.
-func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir string, preserveCompose bool, out *ui.UI, errOut *ui.UI) (map[string]string, error) {
+// mergeVerifiedDigests overlays fresh pins on top of existing ones, returning
+// a new map so the caller can assign without aliasing the original. Returns
+// nil only when both inputs are nil/empty (lets compose.ParamsFromState's
+// nil-pin fallback path fire when there is nothing to write).
+func mergeVerifiedDigests(existing, fresh map[string]string) map[string]string {
+	if len(existing) == 0 && len(fresh) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(existing)+len(fresh))
+	maps.Copy(out, existing)
+	maps.Copy(out, fresh)
+	return out
+}
+
+// verifyAndPinForUpdate runs cache-aware verification of both SynthOrg and
+// DHI images using the new tag, writes the compose file with the verified
+// SynthOrg pins, and returns the merged pin map (SynthOrg bare-name keys
+// plus "dhi:*" keys) ready for pullAndPersist to merge into state.
+//
+// The compose file is always (re)written -- update's job is to point the
+// running stack at the new tag, even when verification was a cache hit.
+//
+// Precedence on the verification deadline: --timeout flag wins when set
+// (operator-level intent for this invocation), otherwise the resolved
+// Tunables.ImageVerifyTimeout applies. The tunable is validated at
+// PersistentPreRunE so an unparseable override fails fast upstream.
+func verifyAndPinForUpdate(ctx context.Context, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool, out *ui.UI, errOut *ui.UI) (map[string]string, error) {
 	updatedState := state
 	updatedState.ImageTag = tag
 
@@ -622,43 +650,22 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 		return nil, nil
 	}
 
-	sp := out.StartSpinner("Verifying container image signatures...")
-	// Precedence: --timeout flag wins if supplied (operator-level
-	// intent for this invocation); otherwise fall back to the
-	// resolved config.Tunables.ImageVerifyTimeout.  The tunable is
-	// validated at PersistentPreRunE so an unparseable override
-	// fails fast before we reach this code.
 	verifyTimeout, _ := time.ParseDuration(updateTimeout)
 	if verifyTimeout <= 0 {
 		verifyTimeout = GetGlobalOpts(ctx).Tunables.ImageVerifyTimeout
 	}
 	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
-	var buf bytes.Buffer
-	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
-		Images: verify.BuildImageRefs(tag, state.Sandbox, state.FineTuning, state.FineTuneVariantOrDefault()),
-		Output: &buf,
-	})
-	if err != nil {
-		sp.Error("Image verification failed")
-		if isTransportError(err) {
-			errOut.HintError("Use --skip-verify for air-gapped environments")
-		}
-		return nil, fmt.Errorf("image verification failed: %w", err)
-	}
-	sp.Stop()
-	renderVerifyBox(out, results)
-	out.Blank()
 
-	pins, err := digestPinMap(results)
+	result, err := verifyImagesWithCache(verifyCtx, info, updatedState, out, errOut)
 	if err != nil {
-		return nil, fmt.Errorf("digest pin map: %w", err)
-	}
-
-	if err := writeOrPatchCompose(updatedState, pins, safeDir, preserveCompose); err != nil {
 		return nil, err
 	}
-	return pins, nil
+
+	if err := writeOrPatchCompose(updatedState, synthOrgPins(result.Pins), safeDir, preserveCompose); err != nil {
+		return nil, err
+	}
+	return result.Pins, nil
 }
 
 // restartIfRunning checks if containers are running and offers a restart.
