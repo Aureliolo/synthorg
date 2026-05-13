@@ -386,6 +386,20 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     provider_health_tracker = phase1.provider_health_tracker
     distributed_task_queue = phase1.distributed_task_queue
 
+    # Construct the agent registry without versioning here.  The versioning
+    # service requires a *connected* persistence backend, but
+    # ``persistence.identity_versions`` is only available after
+    # ``persistence.connect()`` runs inside ``_safe_startup()``.  The
+    # registry is auto-wired with ``VersioningService[AgentIdentity]`` from
+    # the startup hook (see ``on_startup`` in ``_build_lifecycle``)
+    # so every register/update/evolve call produces an audited
+    # ``VersionSnapshot`` in production. Must run BEFORE auto_wire_meetings
+    # so the orchestrator has a real registry to call instead of a
+    # guaranteed-to-fail caller.
+    if agent_registry is None:
+        agent_registry = AgentRegistryService()
+        logger.info(API_SERVICE_AUTO_WIRED, service="agent_registry")
+
     # ── Meeting auto-wire: orchestrator + scheduler (construction-time) ──
     meeting_wire = auto_wire_meetings(
         effective_config=effective_config,
@@ -420,18 +434,6 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             provider_registry=provider_registry,
             perf_config=effective_config.performance,
         )
-
-    # Construct the agent registry without versioning here.  The versioning
-    # service requires a *connected* persistence backend, but
-    # ``persistence.identity_versions`` is only available after
-    # ``persistence.connect()`` runs inside ``_safe_startup()``.  The
-    # registry is auto-wired with ``VersioningService[AgentIdentity]`` from
-    # the startup hook (see ``on_startup`` in ``_build_lifecycle``)
-    # so every register/update/evolve call produces an audited
-    # ``VersionSnapshot`` in production.
-    if agent_registry is None:
-        agent_registry = AgentRegistryService()
-        logger.info(API_SERVICE_AUTO_WIRED, service="agent_registry")
 
     notification_dispatcher = build_notification_dispatcher(
         effective_config.notifications,
