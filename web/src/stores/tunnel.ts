@@ -22,6 +22,12 @@ export interface TunnelState {
   publicUrl: string | null
   error: string | null
   autoStop: boolean
+  /**
+   * Whether the backend has an ngrok auth token configured. ``null``
+   * until ``fetchStatus`` resolves; the UI uses that to skip the
+   * "free tier" hint during the loading window.
+   */
+  hasAuthToken: boolean | null
 
   fetchStatus: () => Promise<void>
   start: () => Promise<void>
@@ -35,6 +41,7 @@ const INITIAL_STATE = {
   publicUrl: null,
   error: null,
   autoStop: true,
+  hasAuthToken: null,
 }
 
 let _operationGeneration = 0
@@ -51,6 +58,7 @@ export const useTunnelStore = create<TunnelState>()((set) => ({
         publicUrl: status.public_url,
         phase: status.public_url ? 'on' : 'stopped',
         error: null,
+        hasAuthToken: status.has_auth_token,
       })
     } catch (err) {
       if (gen !== _operationGeneration) return

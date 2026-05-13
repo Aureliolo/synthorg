@@ -884,10 +884,14 @@ class TestTunnelController:
 
         tunnel = MagicMock()
         tunnel.get_url = AsyncMock(return_value="https://tunnel.example.com")
+        tunnel.has_auth_token = True
         state = {"app_state": MagicMock(tunnel_provider=tunnel)}
         ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
         response = await ctrl.get_status.fn(ctrl, state=state)
-        assert response.data == {"public_url": "https://tunnel.example.com"}
+        assert response.data == {
+            "public_url": "https://tunnel.example.com",
+            "has_auth_token": True,
+        }
 
 
 @pytest.mark.integration

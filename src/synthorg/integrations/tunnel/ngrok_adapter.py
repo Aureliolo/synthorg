@@ -76,6 +76,16 @@ class NgrokAdapter:
         # invariant. Eager init: stop() must be safe before start().
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
+    @property
+    def has_auth_token(self) -> bool:
+        """Whether NGROK_AUTHTOKEN (or the configured env var) is set.
+
+        Surfaced through the tunnel status endpoint so the dashboard
+        can tell the operator whether they are on the free tier
+        (random URLs, low rate cap) or paid tier.
+        """
+        return bool(self._auth_token)
+
     async def start(self) -> str:
         """Start the ngrok tunnel.
 

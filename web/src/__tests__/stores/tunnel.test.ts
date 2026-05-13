@@ -11,22 +11,31 @@ describe('useTunnelStore', () => {
   it('maps status.public_url to the running phase', async () => {
     server.use(
       http.get('/api/v1/integrations/tunnel/status', () =>
-        HttpResponse.json(apiSuccess({ public_url: 'https://abc.ngrok.io' })),
+        HttpResponse.json(
+          apiSuccess({
+            public_url: 'https://abc.ngrok.io',
+            has_auth_token: true,
+          }),
+        ),
       ),
     )
     await useTunnelStore.getState().fetchStatus()
     expect(useTunnelStore.getState().phase).toBe('on')
     expect(useTunnelStore.getState().publicUrl).toBe('https://abc.ngrok.io')
+    expect(useTunnelStore.getState().hasAuthToken).toBe(true)
   })
 
   it('transitions to the stopped phase when no URL is returned', async () => {
     server.use(
       http.get('/api/v1/integrations/tunnel/status', () =>
-        HttpResponse.json(apiSuccess({ public_url: null })),
+        HttpResponse.json(
+          apiSuccess({ public_url: null, has_auth_token: false }),
+        ),
       ),
     )
     await useTunnelStore.getState().fetchStatus()
     expect(useTunnelStore.getState().phase).toBe('stopped')
+    expect(useTunnelStore.getState().hasAuthToken).toBe(false)
   })
 
   it('transitions to error phase when the status fetch fails', async () => {

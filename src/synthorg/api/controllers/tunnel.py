@@ -92,8 +92,18 @@ class TunnelController(Controller):
     async def get_status(
         self,
         state: State,
-    ) -> ApiResponse[dict[str, str | None]]:
-        """Get the current tunnel URL or None if stopped."""
+    ) -> ApiResponse[dict[str, str | bool | None]]:
+        """Get the current tunnel URL plus credential presence.
+
+        ``has_auth_token`` lets the dashboard surface a free-tier
+        notice and a link to configure NGROK_AUTHTOKEN before the
+        operator hits the limits.
+        """
         tunnel = state["app_state"].tunnel_provider
         url = await tunnel.get_url()
-        return ApiResponse(data={"public_url": url})
+        return ApiResponse(
+            data={
+                "public_url": url,
+                "has_auth_token": tunnel.has_auth_token,
+            },
+        )

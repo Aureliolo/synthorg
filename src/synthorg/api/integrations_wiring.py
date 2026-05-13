@@ -205,6 +205,21 @@ def auto_wire_integrations(  # noqa: PLR0913
         mcp_installations_repo=_wire_mcp_installations_repo(persistence),
     )
 
+    # Tunnel adapter has no dependency on persistence, connections,
+    # OAuth, or the webhook bridge: it is a standalone wrapper around
+    # pyngrok that reads only its auth-token env var. Wire it
+    # unconditionally so the dashboard's tunnel toggle works on stock
+    # config (where ``integrations.enabled`` defaults to False) instead
+    # of 503-ing with the generic ``ServiceUnavailableError``.
+    from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
+        NgrokAdapter,
+    )
+
+    bundle.tunnel_provider = NgrokAdapter(
+        auth_token_env=effective_config.integrations.tunnel.auth_token_env,
+    )
+    logger.info(API_SERVICE_AUTO_WIRED, service="tunnel_provider")
+
     if not (effective_config.integrations.enabled and persistence is not None):
         return bundle
 
@@ -218,9 +233,6 @@ def auto_wire_integrations(  # noqa: PLR0913
         )
         from synthorg.integrations.oauth.token_manager import (  # noqa: PLC0415
             OAuthTokenManager,
-        )
-        from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
-            NgrokAdapter,
         )
         from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
             create_secret_backend,
@@ -295,11 +307,6 @@ def auto_wire_integrations(  # noqa: PLR0913
             refresh_threshold_seconds=effective_config.integrations.oauth.auto_refresh_threshold_seconds,
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="oauth_token_manager")
-
-        bundle.tunnel_provider = NgrokAdapter(
-            auth_token_env=effective_config.integrations.tunnel.auth_token_env,
-        )
-        logger.info(API_SERVICE_AUTO_WIRED, service="tunnel_provider")
 
         if message_bus is not None and ceremony_scheduler is not None:
             from synthorg.engine.workflow.webhook_bridge import (  # noqa: PLC0415
