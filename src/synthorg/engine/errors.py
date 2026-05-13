@@ -90,6 +90,14 @@ class NoEligibleAgentError(TaskAssignmentError):
     """Raised when no eligible agent is found for assignment."""
 
 
+class RecoveryConfigError(EngineError):
+    """Configuration cannot satisfy the selected recovery strategy.
+
+    Typical cause: ``EngineRecoveryConfig.strategy == CHECKPOINT`` but
+    no :class:`CheckpointRepository` was wired through to the factory.
+    """
+
+
 class ProjectNotFoundError(EngineError):
     """Referenced project does not exist.
 
