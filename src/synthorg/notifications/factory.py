@@ -7,6 +7,7 @@ for each configured sink.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.notifications.adapters.console import ConsoleNotificationSink
 from synthorg.notifications.config import (
     NotificationConfig,
@@ -355,7 +356,10 @@ def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation 
     # silently coerced typos ("yse", "on", "1") to ``False``, which flipped
     # the intended transport without warning. Accept only the literal
     # ``true``/``false`` strings (case-insensitive, trimmed).
-    use_tls_raw = (params.get("use_tls") or "true").strip().lower()
+    use_tls_raw = normalize_ascii_lowercase_or_default(
+        params.get("use_tls"),
+        default="true",
+    )
     if use_tls_raw not in {"true", "false"}:
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,

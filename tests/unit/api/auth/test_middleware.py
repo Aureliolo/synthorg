@@ -459,9 +459,9 @@ class TestExtractBearerToken:
         header: str,
         expected: str | None,
     ) -> None:
-        from synthorg.api.auth.middleware import _extract_bearer_token
+        from synthorg.core.normalization import extract_bearer_token
 
-        assert _extract_bearer_token(header) == expected
+        assert extract_bearer_token(header) == expected
 
 
 @pytest.mark.unit

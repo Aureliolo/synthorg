@@ -86,6 +86,7 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig
 from synthorg.core.error_taxonomy import set_error_docs_base_url
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
@@ -624,8 +625,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # override the YAML or default value -- log a warning and keep
     # the YAML value.
     rate_limiter_enabled = api_config.rate_limiter_enabled
-    _rate_limit_env = (
-        os.environ.get("SYNTHORG_API_RATE_LIMITER_ENABLED", "").strip().lower()
+    _rate_limit_env = normalize_ascii_lowercase(
+        os.environ.get("SYNTHORG_API_RATE_LIMITER_ENABLED", ""),
     )
     if _rate_limit_env == "":
         pass  # YAML / registry default already applied above.

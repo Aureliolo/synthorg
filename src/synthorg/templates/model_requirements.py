@@ -11,6 +11,10 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from synthorg.core.normalization import (
+    normalize_ascii_lowercase,
+    normalize_ascii_lowercase_or_default,
+)
 from synthorg.core.types import ModelTier
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
@@ -79,7 +83,7 @@ def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
         ValidationError: If *raw* is a dict with invalid fields.
     """
     if isinstance(raw, str):
-        key = raw.strip().lower()
+        key = normalize_ascii_lowercase(raw)
         if key not in _VALID_TIERS:
             msg = f"Invalid model tier {raw!r}. Valid tiers: {sorted(_VALID_TIERS)}"
             logger.warning(
@@ -174,10 +178,10 @@ def resolve_model_requirement(
         Resolved ``ModelRequirement``.
     """
     affinity: dict[str, Any] = dict(
-        MODEL_AFFINITY.get((preset_name or "").strip().lower(), {}),
+        MODEL_AFFINITY.get(normalize_ascii_lowercase_or_default(preset_name), {}),
     )
 
-    merged: dict[str, Any] = {"tier": tier_str.strip().lower()}
+    merged: dict[str, Any] = {"tier": normalize_ascii_lowercase(tier_str)}
     # Affinity values fill in priority and min_context when available.
     if "priority" in affinity:
         merged["priority"] = affinity["priority"]

@@ -16,6 +16,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.engine.strategy.models import (
     ConstitutionalPrinciple,
     ConstitutionalPrincipleConfig,
@@ -72,7 +73,7 @@ def _validate_pack_name(name: str) -> str:
         StrategyPackNotFoundError: If the name does not match the
             allowlist pattern ``[a-z0-9][a-z0-9_-]*``.
     """
-    name_clean = name.strip().lower()
+    name_clean = normalize_ascii_lowercase(name)
     if not _PACK_NAME_RE.match(name_clean):
         msg = f"Invalid pack name {name!r}: must match [a-z0-9][a-z0-9_-]*"
         logger.warning(STRATEGY_PACK_NOT_FOUND, pack_name=name)

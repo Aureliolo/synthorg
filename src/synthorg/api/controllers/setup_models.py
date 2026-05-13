@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel, SkillPattern
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
 
@@ -35,7 +36,7 @@ def _normalize_and_validate_preset(
             raise ValueError(msg)
         key = fallback
     else:
-        key = str(raw).strip().lower()
+        key = normalize_ascii_lowercase(str(raw))
 
     if key not in PERSONALITY_PRESETS:
         available = sorted(PERSONALITY_PRESETS)

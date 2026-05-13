@@ -98,6 +98,7 @@ from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import ValidationError
+from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
@@ -139,7 +140,7 @@ async def _read_has_gpu_setting(settings_svc: SettingsService) -> bool | None:
             error=safe_error_description(exc),
         )
         return None
-    raw = (entry.value or "").strip().lower()
+    raw = normalize_ascii_lowercase_or_default(entry.value)
     match raw:
         case "true" | "1" | "yes":
             return True
