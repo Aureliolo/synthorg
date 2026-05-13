@@ -61,11 +61,12 @@ def _reject_destructive_empty_discovery(
 ) -> None:
     """Refuse a replace-mode sync that would wipe every persisted model.
 
-    An empty discovery paired with ``replace_existing=True`` used to
-    silently delete every model when discovery hit a 404 / timeout /
-    wrong URL. The safe fallback is ``replace_existing=False`` (append-
-    only); it adds nothing when discovery is empty, so the operator
-    can run it freely while debugging the discovery endpoint.
+    Invariant: when ``replace_existing=True`` and discovery returns
+    no models while persisted models exist, refuse the sync so a
+    transient 404 / timeout / wrong-URL outcome cannot delete every
+    persisted model. ``replace_existing=False`` (append-only) is the
+    safe path for operators to retry while debugging the discovery
+    endpoint, since it adds nothing when discovery is empty.
     """
     if not request.replace_existing or discovered:
         return

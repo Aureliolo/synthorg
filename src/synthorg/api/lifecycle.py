@@ -320,26 +320,30 @@ async def _init_persistence(
     # Re-bind the ConnectionCatalog onto the persistence-backed
     # repository.  ``auto_wire_integrations`` runs before
     # ``persistence.connect()``, so the catalog is initially seeded
-    # with an in-memory stub repo.  Without this re-bind, every
+    # with an in-memory stub repo; without this re-bind, every
     # ``POST /connections`` would write to a stub that the
     # ``mcp_installations.connection_name`` foreign key cannot
     # observe, surfacing as cross-store FK violations on install.
-    # Wrapping in ``hasattr`` keeps the helper backend-agnostic for
-    # tests / backends that have not implemented a ``connections``
-    # accessor; missing accessors fall through quietly because the
-    # in-memory stub is still functional for read-only flows.
-    if app_state.has_connection_catalog and hasattr(persistence, "connections"):
+    # ``AttributeError`` keeps the helper backend-agnostic for
+    # tests / backends without a ``connections`` accessor (the
+    # in-memory stub stays bound for read-only flows); any other
+    # property-getter failure surfaces via the warning path so the
+    # operator sees the cause instead of an opaque startup crash.
+    if app_state.has_connection_catalog:
         try:
             persistent_connections = persistence.connections
+        except AttributeError:
+            persistent_connections = None
         except Exception as exc:
+            persistent_connections = None
             logger.warning(
                 API_APP_STARTUP,
-                note="Persistence backend exposes no connections repo; "
+                note="Persistence backend connections accessor failed; "
                 "catalog stays bound to the startup-window stub",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-        else:
+        if persistent_connections is not None:
             await app_state.connection_catalog.rebind_repository(
                 persistent_connections,
             )

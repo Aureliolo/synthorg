@@ -247,7 +247,7 @@ export function buildOrgTree(
     if (!configuredDeptNames.has(deptName)) {
       syntheticDepts.push({
         name: deptName,
-        display_name: deptName,
+        display_name: humanizeDepartmentName(deptName),
         teams: [],
       })
     }
