@@ -53,7 +53,7 @@ class TestRejectDestructiveEmptyDiscovery:
     def test_raises_when_replace_and_empty_and_models_exist(self) -> None:
         with pytest.raises(ProviderValidationError, match="refusing destructive"):
             _reject_destructive_empty_discovery(
-                name="ollama-cloud",
+                name="test-provider",
                 request=SyncModelsRequest(replace_existing=True),
                 discovered=(),
                 pre_discover=_config_with_models(29),
@@ -64,7 +64,7 @@ class TestRejectDestructiveEmptyDiscovery:
         # it adds zero models and removes zero, so the persisted list
         # is preserved verbatim.
         _reject_destructive_empty_discovery(
-            name="ollama-cloud",
+            name="test-provider",
             request=SyncModelsRequest(replace_existing=False),
             discovered=(),
             pre_discover=_config_with_models(29),
@@ -74,7 +74,7 @@ class TestRejectDestructiveEmptyDiscovery:
         # Replace-mode with empty discovery against a provider that
         # never had models is a no-op, not a wipe; let it through.
         _reject_destructive_empty_discovery(
-            name="ollama-cloud",
+            name="test-provider",
             request=SyncModelsRequest(replace_existing=True),
             discovered=(),
             pre_discover=_config_with_models(0),
@@ -85,7 +85,7 @@ class TestRejectDestructiveEmptyDiscovery:
         # A non-empty discovery in replace-mode is the happy path.
         discovered = (ProviderModelConfig(id="test-model-001", alias="medium"),)
         _reject_destructive_empty_discovery(
-            name="ollama-cloud",
+            name="test-provider",
             request=SyncModelsRequest(replace_existing=True),
             discovered=discovered,
             pre_discover=_config_with_models(29),

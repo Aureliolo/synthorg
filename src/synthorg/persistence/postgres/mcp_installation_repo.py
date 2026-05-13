@@ -68,6 +68,10 @@ class PostgresMcpInstallationRepository:
                 not been persisted. Surfaces the constraint identity
                 so the central exception handler can return a
                 structured 4xx envelope.
+            QueryError: For all other ``psycopg`` failures (pool
+                checkout errors, transient connectivity, etc.). Parity
+                with the SQLite backend so callers receive a uniform
+                envelope across backends.
         """
         installed_at = normalize_utc(installation.installed_at)
         try:
@@ -119,7 +123,8 @@ class PostgresMcpInstallationRepository:
                 error=safe_error_description(exc),
                 backend="postgres",
             )
-            raise
+            msg = f"Failed to save mcp installation {installation.catalog_entry_id!r}"
+            raise QueryError(msg) from exc
         logger.info(
             MCP_SERVER_INSTALLED,
             catalog_entry_id=installation.catalog_entry_id,
