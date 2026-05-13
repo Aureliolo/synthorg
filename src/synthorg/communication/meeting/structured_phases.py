@@ -22,9 +22,6 @@ from synthorg.communication.meeting._token_tracker import TokenTracker
 from synthorg.communication.meeting.config import (
     StructuredPhasesConfig,  # noqa: TC001
 )
-from synthorg.communication.meeting.conflict_detection import (
-    KeywordConflictDetector,
-)
 from synthorg.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
@@ -32,6 +29,7 @@ from synthorg.communication.meeting.enums import (
 from synthorg.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
 )
+from synthorg.communication.meeting.factory import build_conflict_detector
 from synthorg.communication.meeting.models import (
     MeetingAgenda,
     MeetingContribution,
@@ -168,7 +166,9 @@ class StructuredPhasesProtocol:
     Args:
         config: Structured phases protocol configuration.
         conflict_detector: Strategy for detecting conflicts in agent
-            responses.  Defaults to ``KeywordConflictDetector``.
+            responses. When ``None``, ``build_conflict_detector(config)``
+            dispatches by ``config.conflict_detector`` so the runtime
+            choice tracks the configured enum.
     """
 
     __slots__ = ("_config", "_conflict_detector")
@@ -181,7 +181,9 @@ class StructuredPhasesProtocol:
     ) -> None:
         self._config = config
         self._conflict_detector: ConflictDetector = (
-            conflict_detector or KeywordConflictDetector()
+            conflict_detector
+            if conflict_detector is not None
+            else build_conflict_detector(config)
         )
 
     def get_protocol_type(self) -> MeetingProtocolType:

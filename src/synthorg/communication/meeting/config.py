@@ -2,7 +2,10 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting.enums import (
+    ConflictDetectorType,
+    MeetingProtocolType,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -82,6 +85,9 @@ class StructuredPhasesConfig(BaseModel):
             round.
         synthesis_reserve_fraction: Fraction of the remaining token
             budget reserved for the synthesis phase (0.0--1.0).
+        conflict_detector: Which conflict-detection strategy the
+            structured-phases protocol uses to decide whether
+            discussion is needed.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -100,6 +106,10 @@ class StructuredPhasesConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description="Fraction of remaining token budget reserved for synthesis",
+    )
+    conflict_detector: ConflictDetectorType = Field(
+        default=ConflictDetectorType.KEYWORD,
+        description="Conflict-detection strategy discriminator",
     )
 
 
