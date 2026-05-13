@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { http, HttpResponse } from 'msw'
 import type { getHealth } from '@/api/endpoints/health'
-import { successFor } from '@/mocks/handlers/helpers'
+import { ErrorCategory, ErrorCode } from '@/api/types/errors'
+import { apiError, successFor } from '@/mocks/handlers/helpers'
 import { Button } from './button'
 import { HealthPopover } from './health-popover'
 
@@ -93,7 +94,18 @@ export const LoadError: Story = {
     msw: {
       handlers: [
         http.get('/api/v1/readyz', () =>
-          HttpResponse.json({ error: 'temporary unavailability' }, { status: 503 }),
+          HttpResponse.json(
+            apiError('Service unavailable: dependency probe failed.', {
+              error_code: ErrorCode.SERVICE_UNAVAILABLE,
+              error_category: ErrorCategory.INTERNAL,
+              retryable: true,
+              retry_after: 30,
+              instance: '/storybook',
+              title: 'Service unavailable',
+              type: 'about:blank',
+            }),
+            { status: 503 },
+          ),
         ),
       ],
     },
