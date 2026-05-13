@@ -150,7 +150,7 @@ function mapAgUiToWsEvent(sse: SseRawEvent): WsEvent | null {
   // not actually emit.
   const mapping = AGUI_EVENT_MAP[sse.type]
   if (mapping === undefined) {
-    log.debug('Unmapped AG-UI event type discarded', sanitizeForLog(sse.type))
+    log.debug('Unmapped AG-UI event type discarded', sanitizeForLog({ type: sse.type }))
     return null
   }
   // ``typeof null === 'object'`` is excluded above; the extra

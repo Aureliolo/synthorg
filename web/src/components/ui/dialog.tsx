@@ -31,11 +31,14 @@ export function DialogContent({ className, children }: DialogContentProps) {
       <BaseDialog.Popup
         className={cn(
           'fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
-          // Responsive width: shrink to viewport - 2rem gutter on narrow
-          // screens; cap at the original max-w-2xl on >= sm so a dialog
-          // never edge-bleeds on tablet (768-1023px) without losing the
-          // tidy desktop width.
-          'w-[calc(100%-2rem)] sm:w-full sm:max-w-2xl',
+          // Responsive width: shrink to viewport minus the design-
+          // system ``--so-space-8`` gutter (32px / 2rem) on narrow
+          // screens; cap at the original max-w-2xl on >= sm so a
+          // dialog never edge-bleeds on tablet (768-1023px) without
+          // losing the tidy desktop width. Routing the gutter through
+          // the token keeps overlay spacing centrally governed (no
+          // hard-coded pixel literal in a shared UI primitive).
+          'w-[calc(100%-var(--so-space-8))] sm:w-full sm:max-w-2xl',
           'rounded-xl border border-border bg-background shadow-[var(--so-shadow-card-hover)]',
           // Responsive max-height: tighter on narrow viewports so the
           // body never pushes the dialog past the viewport bottom on

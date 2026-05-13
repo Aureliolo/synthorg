@@ -204,7 +204,7 @@ export function ErrorBanner({
             </div>
           )
         )}
-        {(onRetry != null || action != null || correlationId != null) && (
+        {(onRetry != null || (action != null && action !== false) || correlationId != null) && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {onRetry && (
               <div className="inline-flex items-center gap-2">
@@ -236,7 +236,7 @@ export function ErrorBanner({
                 )}
               </div>
             )}
-            {action !== undefined && (isActionObject(action) ? (
+            {action != null && action !== false && (isActionObject(action) ? (
               <Button size="xs" variant="ghost" onClick={action.onClick}>
                 {action.label}
               </Button>

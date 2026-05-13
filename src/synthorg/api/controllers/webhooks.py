@@ -707,16 +707,42 @@ class WebhooksController(Controller):
             )
 
         previous_status = receipt.status
+        # Retry endpoint contract: only ``failed`` receipts are
+        # retryable. Reject ``received`` / ``retrying`` / anything else
+        # up front -- a stale dashboard link must not let an operator
+        # republish a delivery that already succeeded, and an in-flight
+        # retry must not be double-claimed even if its CAS would win
+        # against a non-failed predecessor (e.g. a self-loop replay).
+        if previous_status != _RECEIPT_STATUS_FAILED:
+            logger.warning(
+                WEBHOOK_REJECTED,
+                receipt_id=str(receipt.id),
+                connection_name=str(receipt.connection_name),
+                reason="retry_requires_failed_status",
+                current_status=previous_status,
+            )
+            msg = (
+                f"Webhook receipt {receipt.id!r} is not retryable "
+                f"(current status: {previous_status!r}); only "
+                f"{_RECEIPT_STATUS_FAILED!r} receipts can be retried"
+            )
+            raise ConflictError(msg)
+
         # Compare-and-set on the retrying transition: two concurrent
         # operator-triggered retries against the same receipt cannot
-        # both pass ``status == previous_status`` -- the second loses
-        # the race and surfaces 404 instead of double-publishing.
+        # both pass ``status == "failed"`` -- the second loses the
+        # race and surfaces 404 instead of double-publishing. The
+        # ``cas_from`` is ``"failed"`` (not ``previous_status``)
+        # because the guard above already proved the row started in
+        # the failed state; pinning the literal also closes a
+        # theoretical TOCTOU where ``receipt.status`` and the row's
+        # actual status disagree across the look-up + check window.
         await _transition_status(
             new_status=_RECEIPT_STATUS_RETRYING,
             previous=previous_status,
             processed_at=None,
             error=None,
-            cas_from=previous_status,
+            cas_from=_RECEIPT_STATUS_FAILED,
         )
 
         bus = state["app_state"].message_bus

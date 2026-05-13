@@ -328,7 +328,66 @@ class _BackpressureTracker:
             self.window_started_at = 0.0
 
 
-async def _on_event(  # noqa: PLR0911, PLR0913, C901
+async def _trip_breaker_and_close(
+    *,
+    backpressure: _BackpressureTracker,
+    socket: WebSocket[Any, Any, Any],
+    clock: Clock | None,
+    log_context: dict[str, Any],
+) -> None:
+    """Record a backpressure drop and, if the breaker trips, close the socket.
+
+    Shared trip-and-close path so every enqueue site (broadcast events
+    in ``_on_event`` and control replies in ``_receive_loop``) feeds
+    the same consecutive-drop counter and applies the same
+    "close on threshold" policy. Without this single helper, the
+    receive loop's ``QueueFull`` branch would only log a drop without
+    advancing the breaker, and a chronically slow consumer could be
+    closed only by a broadcast-side drop -- a client that pongs in
+    time but stalls on control replies (or vice versa) would never
+    trip the breaker even though it is wasting bus capacity.
+
+    ``log_context`` is merged into the breaker-tripped warning so the
+    caller's per-frame metadata (event type / channel / response
+    shape) lands alongside the queue stats.
+    """
+    # Clock seam (CLAUDE.md): tests inject ``FakeClock`` so the
+    # rolling-window rollover in ``_BackpressureTracker.note_drop``
+    # can be exercised deterministically. Production callers omit
+    # ``clock`` and fall through to the system ``time.monotonic``.
+    now = clock.monotonic() if clock is not None else time.monotonic()
+    tripped = backpressure.note_drop(now=now)
+    if not tripped:
+        return
+    logger.warning(
+        API_WS_BACKPRESSURE_DROPPED,
+        reason="circuit_breaker_tripped",
+        drop_threshold=_WS_BACKPRESSURE_DROP_THRESHOLD,
+        window_seconds=_WS_BACKPRESSURE_WINDOW_SECONDS,
+        **log_context,
+    )
+    # PEP 758: ``MemoryError`` / ``RecursionError`` must propagate
+    # (CLAUDE.md async-helper rule); ``contextlib.suppress(Exception)``
+    # would have swallowed them. Ordinary close failures (the socket
+    # is already gone, the peer beat us to the disconnect) are still
+    # ignored because the breaker has already taken the slow consumer
+    # off the broadcast path.
+    try:
+        await socket.close(
+            code=_WS_CLOSE_BACKPRESSURE,
+            reason="Slow consumer; reconnect after catching up.",
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:  # noqa: S110
+        # Intentional suppression: see comment above. Logging the
+        # close-time failure here would just add noise -- the
+        # breaker-tripped warning above already told the operator
+        # the consumer was slow.
+        pass
+
+
+async def _on_event(  # noqa: PLR0913
     event_data: bytes,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
@@ -402,43 +461,17 @@ async def _on_event(  # noqa: PLR0911, PLR0913, C901
         )
         if backpressure is None or socket is None:
             return
-        # Clock seam (CLAUDE.md): tests inject ``FakeClock`` so the
-        # rolling-window rollover in ``_BackpressureTracker.note_drop``
-        # can be exercised deterministically. Production callers omit
-        # ``clock`` and fall through to the system ``time.monotonic``.
-        now = clock.monotonic() if clock is not None else time.monotonic()
-        tripped = backpressure.note_drop(now=now)
-        if not tripped:
-            return
-        logger.warning(
-            API_WS_BACKPRESSURE_DROPPED,
-            channel=channel,
-            event_type=str(event_type),
-            queue_depth=queue.qsize(),
-            max_depth=_OUTBOUND_QUEUE_DEPTH,
-            reason="circuit_breaker_tripped",
-            drop_threshold=_WS_BACKPRESSURE_DROP_THRESHOLD,
-            window_seconds=_WS_BACKPRESSURE_WINDOW_SECONDS,
+        await _trip_breaker_and_close(
+            backpressure=backpressure,
+            socket=socket,
+            clock=clock,
+            log_context={
+                "channel": channel,
+                "event_type": str(event_type),
+                "queue_depth": queue.qsize(),
+                "max_depth": _OUTBOUND_QUEUE_DEPTH,
+            },
         )
-        # PEP 758: ``MemoryError`` / ``RecursionError`` must propagate
-        # (CLAUDE.md async-helper rule); ``contextlib.suppress(Exception)``
-        # would have swallowed them. Ordinary close failures (the socket
-        # is already gone, the peer beat us to the disconnect) are still
-        # ignored because the breaker has already taken the slow consumer
-        # off the broadcast path.
-        try:
-            await socket.close(
-                code=_WS_CLOSE_BACKPRESSURE,
-                reason="Slow consumer; reconnect after catching up.",
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:  # noqa: S110
-            # Intentional suppression: see comment above. Logging the
-            # close-time failure here would just add noise -- the
-            # breaker-tripped warning two log lines up already told the
-            # operator the consumer was slow.
-            pass
 
 
 async def _outbound_consumer(
@@ -781,12 +814,20 @@ async def ws_handler(
             )
             try:
                 async with subscriber.run_in_background(_event_callback):
+                    # Share the per-connection breaker between the
+                    # broadcast path (``_event_callback`` -> ``_on_event``)
+                    # and the control-frame path (``_receive_loop``). A
+                    # client that pongs in time but stalls on broadcasts
+                    # (or vice versa) advances the same consecutive-drop
+                    # counter, so the breaker policy fires regardless of
+                    # which enqueue site noticed the saturation.
                     await _receive_loop(
                         socket,
                         subscribed,
                         filters,
                         user,
                         outbound_queue,
+                        backpressure=backpressure_tracker,
                     )
             finally:
                 # Long-running workers won't exit on their own; cancel
@@ -817,7 +858,7 @@ async def ws_handler(
             )
 
 
-async def _receive_loop(  # noqa: PLR0913 -- one extra optional kw arg for the timeout
+async def _receive_loop(  # noqa: PLR0913 -- optional backpressure + clock + timeout kwargs
     socket: WebSocket[Any, Any, Any],
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
@@ -825,6 +866,8 @@ async def _receive_loop(  # noqa: PLR0913 -- one extra optional kw arg for the t
     outbound_queue: asyncio.Queue[bytes],
     *,
     frame_timeout_seconds: int | None = None,
+    backpressure: _BackpressureTracker | None = None,
+    clock: Clock | None = None,
 ) -> None:
     """Process client subscribe/unsubscribe commands.
 
@@ -886,6 +929,16 @@ async def _receive_loop(  # noqa: PLR0913 -- one extra optional kw arg for the t
             )
             try:
                 outbound_queue.put_nowait(response.encode("utf-8"))
+                if backpressure is not None:
+                    # Control replies count toward the breaker's
+                    # "healthy enqueue" signal: a client that
+                    # successfully receives an ack has proved it can
+                    # absorb at least one outbound frame, which is
+                    # the same liveness signal a successful broadcast
+                    # enqueue carries. Resetting the counter here
+                    # prevents a stale broadcast-side drop count from
+                    # closing a client that has since recovered.
+                    backpressure.note_success()
             except asyncio.QueueFull:
                 # Restore pre-handler state so client and server stay
                 # in sync; the drop is logged for backpressure metrics.
@@ -899,6 +952,25 @@ async def _receive_loop(  # noqa: PLR0913 -- one extra optional kw arg for the t
                     user_id=conn_user.user_id,
                     client=str(socket.client),
                 )
+                # Feed the same breaker the broadcast path feeds so
+                # a chronically slow consumer is closed regardless of
+                # which enqueue site filled the queue. Without this
+                # call the consecutive-drop counter could only ever
+                # advance from ``_on_event``, letting control-reply
+                # drops accumulate indefinitely.
+                if backpressure is not None:
+                    await _trip_breaker_and_close(
+                        backpressure=backpressure,
+                        socket=socket,
+                        clock=clock,
+                        log_context={
+                            "user_id": conn_user.user_id,
+                            "client": str(socket.client),
+                            "reason_origin": "control_reply_queue_full",
+                            "queue_depth": outbound_queue.qsize(),
+                            "max_depth": _OUTBOUND_QUEUE_DEPTH,
+                        },
+                    )
     except WebSocketDisconnect:
         logger.debug(API_WS_DISCONNECTED, reason="client_disconnect")
     except Exception:

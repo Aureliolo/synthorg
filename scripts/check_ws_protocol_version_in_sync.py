@@ -23,7 +23,13 @@ PY_PATTERN = re.compile(
     re.MULTILINE,
 )
 TS_PATTERN = re.compile(
-    r"^export\s+const\s+WS_PROTOCOL_VERSION\s*=\s*(\d+)\s*$",
+    # Accept optional ``: <type>`` annotation and an optional trailing
+    # semicolon so all valid TypeScript declarations of the constant
+    # parse cleanly:
+    #   export const WS_PROTOCOL_VERSION = 7
+    #   export const WS_PROTOCOL_VERSION = 7;
+    #   export const WS_PROTOCOL_VERSION: number = 7;
+    r"^export\s+const\s+WS_PROTOCOL_VERSION(?:\s*:\s*[^=]+)?\s*=\s*(\d+)\s*;?\s*$",
     re.MULTILINE,
 )
 

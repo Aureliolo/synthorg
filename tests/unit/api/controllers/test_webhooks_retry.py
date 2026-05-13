@@ -18,7 +18,7 @@ from litestar import Router
 
 from synthorg.api.controllers import webhooks as webhooks_module
 from synthorg.api.controllers.webhooks import WebhooksController
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability.events.integrations import (
@@ -353,3 +353,43 @@ class TestRetryReceiptErrorPaths:
         # Exactly one transition was attempted (the CAS); no
         # subsequent ``received`` or ``failed`` write fired.
         assert update_mock.await_count == 1
+
+    @pytest.mark.parametrize(
+        "non_failed_status",
+        ["received", "retrying", "rejected", "delivered"],
+    )
+    async def test_retry_rejects_non_failed_receipts_with_conflict(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        non_failed_status: str,
+    ) -> None:
+        """Only ``failed`` receipts are retryable; everything else raises 409.
+
+        The retry endpoint exists to re-publish deliveries that the
+        downstream consumer failed. Letting a stale dashboard link
+        replay a ``received`` receipt would double-publish a delivery
+        that already succeeded; letting one replay a ``retrying`` row
+        would race against the in-flight attempt. The guard short-
+        circuits both before any persistence write or bus publish.
+        """
+        receipt = _make_receipt(status=non_failed_status)
+        state, _, update_mock = _build_state(receipt=receipt)
+
+        async def fake_publish(**_kwargs: Any) -> dict[str, object]:  # pragma: no cover
+            msg = "publish must not run when the receipt is not failed"
+            raise AssertionError(msg)
+
+        monkeypatch.setattr(
+            webhooks_module,
+            "_publish_webhook_event_and_log",
+            fake_publish,
+        )
+
+        with pytest.raises(ConflictError):
+            await _retry_receipt_fn(
+                _self_stub(),
+                state=state,
+                receipt_id="rcpt-retry",
+            )
+        # No transition write fires on the rejection path.
+        update_mock.assert_not_awaited()
