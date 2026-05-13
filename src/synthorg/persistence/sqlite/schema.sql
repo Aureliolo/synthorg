@@ -1345,6 +1345,11 @@ CREATE TABLE seen_claims (
         CHECK(length(trim(idempotency_key)) > 0),
     claim_id TEXT NOT NULL CHECK(length(trim(claim_id)) > 0),
     seen_at TEXT NOT NULL CHECK(length(trim(seen_at)) > 0),
-    expires_at TEXT NOT NULL CHECK(length(trim(expires_at)) > 0)
+    expires_at TEXT NOT NULL CHECK(length(trim(expires_at)) > 0),
+    -- Mirrors the Postgres CHECK so the SQLite backend enforces the
+    -- TTL invariant at the DB layer too.  String comparison is safe
+    -- because timestamps are written in ISO-8601 UTC via
+    -- ``format_iso_utc`` (lexicographic order matches chronological).
+    CHECK(expires_at > seen_at)
 );
 CREATE INDEX idx_seen_claims_expires_at ON seen_claims(expires_at);

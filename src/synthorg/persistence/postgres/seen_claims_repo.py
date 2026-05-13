@@ -7,6 +7,7 @@ TEXT; the first-write discrimination is the same
 ``cursor.rowcount`` distinguishes first-write from duplicate.
 """
 
+import contextlib
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -81,12 +82,23 @@ class PostgresSeenClaimsRepository:
         cutoff = normalize_utc(now)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(
-                    "DELETE FROM seen_claims WHERE expires_at < %s",
-                    (cutoff,),
-                )
-                removed = cur.rowcount
-                await conn.commit()
+                try:
+                    await cur.execute(
+                        "DELETE FROM seen_claims WHERE expires_at < %s",
+                        (cutoff,),
+                    )
+                    removed = cur.rowcount
+                    await conn.commit()
+                except psycopg.Error:
+                    # ``async with`` will roll back implicitly on
+                    # exception, but the explicit ``rollback`` mirrors
+                    # the SQLite sibling and avoids leaving the
+                    # transaction in an ambiguous state if a future
+                    # refactor moves the cursor work outside the
+                    # context manager.
+                    with contextlib.suppress(psycopg.Error):
+                        await conn.rollback()
+                    raise
         except psycopg.Error as exc:
             msg = "Failed to prune expired seen_claims rows"
             logger.warning(
