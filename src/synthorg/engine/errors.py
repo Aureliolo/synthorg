@@ -165,13 +165,30 @@ class TaskEngineError(EngineError):
 class TaskEngineNotRunningError(TaskEngineError):
     """Raised when a mutation is submitted to a stopped task engine."""
 
+    status_code: ClassVar[int] = 503
+    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Service temporarily unavailable"
+
 
 class TaskEngineQueueFullError(TaskEngineError):
     """Raised when the task engine queue is at capacity."""
 
+    status_code: ClassVar[int] = 503
+    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Service temporarily unavailable"
+
 
 class TaskMutationError(TaskEngineError):
     """Raised when a task mutation fails (not found, validation, etc.)."""
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Task mutation invalid"
 
 
 class TaskNotFoundError(TaskMutationError):
@@ -195,14 +212,10 @@ class TaskVersionConflictError(TaskMutationError):
 class TaskInternalError(TaskEngineError):
     """Raised when a task mutation fails due to an internal engine error.
 
-    Unlike :class:`TaskMutationError` (which covers business-rule failures
-    such as validation or not-found), this signals an unexpected engine fault
-    that the caller cannot fix by changing the request. Maps to 5xx at the API
-    layer.
-
-    This is deliberately a sibling of ``TaskMutationError``, not a subtype,
-    so that broad ``except TaskMutationError`` handlers do not accidentally
-    catch internal engine faults.
+    Sibling of :class:`TaskMutationError`, not a subtype, so a broad
+    ``except TaskMutationError`` handler does not accidentally catch
+    internal engine faults. Inherits the default 500 / ENGINE_ERROR /
+    INTERNAL metadata from :class:`TaskEngineError`.
     """
 
 

@@ -2,13 +2,8 @@
 
 import pytest
 
-from synthorg.api.controllers.tasks import _extract_requester, _map_task_engine_errors
-from synthorg.core.domain_errors import (
-    ConflictError,
-    NotFoundError,
-    ServiceUnavailableError,
-    ValidationError,
-)
+from synthorg.api.controllers.tasks import _extract_requester
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
@@ -52,60 +47,50 @@ class TestExtractRequester:
         assert _extract_requester(FakeState()) == "api"  # type: ignore[arg-type]
 
 
-# ── _map_task_engine_errors ──────────────────────────────────
+# ── TaskEngine error HTTP metadata (replaces the deleted mapper) ─────
 
 
 @pytest.mark.unit
-class TestMapTaskEngineErrors:
-    """Tests for mapping engine errors to API errors."""
+class TestTaskEngineErrorMetadata:
+    """TaskEngine errors must carry the HTTP metadata that ``handle_domain_error``
+    reads when building the RFC 9457 envelope. The previous ``_map_task_engine_errors``
+    helper translated each class into a generic domain error at the controller
+    boundary; now the engine classes own their metadata directly."""
 
-    def test_not_found_maps_to_not_found_error(self) -> None:
+    def test_not_found_metadata(self) -> None:
         exc = TaskNotFoundError("Task 'x' not found")
-        result = _map_task_engine_errors(exc, task_id="x")
-        assert isinstance(result, NotFoundError)
+        assert exc.status_code == 404
+        assert exc.error_code is ErrorCode.TASK_NOT_FOUND
+        assert exc.error_category is ErrorCategory.NOT_FOUND
 
-    def test_not_found_without_task_id(self) -> None:
-        exc = TaskNotFoundError("not found")
-        result = _map_task_engine_errors(exc)
-        assert isinstance(result, NotFoundError)
-
-    def test_not_running_maps_to_service_unavailable(self) -> None:
+    def test_not_running_metadata(self) -> None:
         exc = TaskEngineNotRunningError("not running")
-        result = _map_task_engine_errors(exc)
-        assert isinstance(result, ServiceUnavailableError)
-        assert str(result) == "Service temporarily unavailable"
+        assert exc.status_code == 503
+        assert exc.error_code is ErrorCode.SERVICE_UNAVAILABLE
+        assert exc.error_category is ErrorCategory.INTERNAL
+        assert exc.retryable is True
 
-    def test_queue_full_maps_to_service_unavailable(self) -> None:
+    def test_queue_full_metadata(self) -> None:
         exc = TaskEngineQueueFullError("queue full")
-        result = _map_task_engine_errors(exc)
-        assert isinstance(result, ServiceUnavailableError)
-        assert str(result) == "Service temporarily unavailable"
+        assert exc.status_code == 503
+        assert exc.error_code is ErrorCode.SERVICE_UNAVAILABLE
+        assert exc.error_category is ErrorCategory.INTERNAL
+        assert exc.retryable is True
 
-    def test_internal_error_maps_to_service_unavailable(self) -> None:
+    def test_internal_error_metadata(self) -> None:
         exc = TaskInternalError("internal fault")
-        result = _map_task_engine_errors(exc)
-        assert isinstance(result, ServiceUnavailableError)
-        assert str(result) == "Internal server error"
+        assert exc.status_code == 500
+        assert exc.error_code is ErrorCode.ENGINE_ERROR
+        assert exc.error_category is ErrorCategory.INTERNAL
 
-    def test_version_conflict_maps_to_conflict_error(self) -> None:
+    def test_version_conflict_metadata(self) -> None:
         exc = TaskVersionConflictError("version mismatch")
-        result = _map_task_engine_errors(exc, task_id="task-1")
-        assert isinstance(result, ConflictError)
-        assert result.status_code == 409
+        assert exc.status_code == 409
+        assert exc.error_code is ErrorCode.TASK_VERSION_CONFLICT
+        assert exc.error_category is ErrorCategory.CONFLICT
 
-    def test_version_conflict_preserves_message(self) -> None:
-        exc = TaskVersionConflictError("expected 2, current 3")
-        result = _map_task_engine_errors(exc)
-        assert isinstance(result, ConflictError)
-        assert "expected 2, current 3" in str(result)
-
-    def test_mutation_error_maps_to_validation_error(self) -> None:
+    def test_mutation_error_metadata(self) -> None:
         exc = TaskMutationError("bad input")
-        result = _map_task_engine_errors(exc)
-        assert isinstance(result, ValidationError)
-
-    def test_unknown_error_wraps_as_service_unavailable(self) -> None:
-        exc = RuntimeError("unexpected")
-        result = _map_task_engine_errors(exc)
-        assert isinstance(result, ServiceUnavailableError)
-        assert "Unexpected engine error" in str(result)
+        assert exc.status_code == 422
+        assert exc.error_code is ErrorCode.VALIDATION_ERROR
+        assert exc.error_category is ErrorCategory.VALIDATION
