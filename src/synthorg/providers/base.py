@@ -9,7 +9,7 @@ import asyncio
 import math
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
-from typing import Any, TypeVar
+from typing import Any, Final, TypeVar
 
 from opentelemetry.trace import Status, StatusCode
 
@@ -45,6 +45,8 @@ logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
 
 _T = TypeVar("_T")
+
+_MILLISECONDS_PER_SECOND: Final[float] = 1000.0
 
 
 class BaseCompletionProvider(ABC):
@@ -177,7 +179,9 @@ class BaseCompletionProvider(ABC):
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                latency_ms = (self._clock.monotonic() - t_start) * 1000.0
+                latency_ms = (
+                    self._clock.monotonic() - t_start
+                ) * _MILLISECONDS_PER_SECOND
                 # ``logger.exception`` (what TRY400 suggests) would
                 # attach a traceback whose serialized frame-locals can
                 # leak provider credentials (API keys in headers,
@@ -212,7 +216,7 @@ class BaseCompletionProvider(ABC):
                     error_class=classify_provider_error(exc),
                 )
                 raise
-            latency_ms = (self._clock.monotonic() - t_start) * 1000.0
+            latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
             span.set_attribute("provider.latency_ms", latency_ms)
             if retry_info is not None:
                 span.set_attribute(

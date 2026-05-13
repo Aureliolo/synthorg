@@ -285,13 +285,17 @@ class WebhookEventBridge:
                 )
                 if envelope is None:
                     continue
-                consecutive_errors = 0
                 await self._forward(envelope.message)
                 # Ack only after forwarding succeeds; a ``_forward``
                 # exception falls through to the catch-all below and
                 # leaves the JetStream message un-acked so redelivery
                 # picks it back up.
                 await envelope.ack()
+                # Reset the error streak only AFTER both forward and
+                # ack succeed; resetting pre-ack lets a repeating ack
+                # failure quietly bypass ``max_errors`` and keep the
+                # loop running forever against a dead channel.
+                consecutive_errors = 0
             except asyncio.CancelledError:
                 raise
             except MemoryError, RecursionError:
