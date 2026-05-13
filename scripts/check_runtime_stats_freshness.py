@@ -3,9 +3,10 @@
 
 Fails when EITHER:
 
-* any ``stats.<name>.raw`` differs from a freshly-fetched value
-  (drift detection: a stat changed in the source but the committed
-  YAML still carries the prior number), OR
+* any ``stats.<name>.display`` differs from a freshly-fetched value
+  (drift detection: the user-facing string that appears in docs via
+  ``<!--RS:NAME-->`` markers has changed at the source but the
+  committed YAML still carries the prior value), OR
 * committed ``last_generated_utc`` is older than
   :data:`_STALE_AFTER_DAYS` (safety net: nobody has run the generator
   and committed the result in too long, even if no individual stat
@@ -200,12 +201,12 @@ def _check_drift(
         if not isinstance(committed_entry, dict):
             lines.append(f"stats.{name} missing from committed YAML.")
             continue
-        committed_raw = committed_entry.get("raw")
-        actual_raw = entry.get("raw")
-        if committed_raw != actual_raw:
+        committed_display = committed_entry.get("display")
+        actual_display = entry.get("display")
+        if committed_display != actual_display:
             lines.append(
-                f"stats.{name}.raw drift: "
-                f"committed={committed_raw!r} actual={actual_raw!r}"
+                f"stats.{name}.display drift: "
+                f"committed={committed_display!r} actual={actual_display!r}"
             )
     if lines:
         lines.append(_REMEDIATION)

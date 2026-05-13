@@ -3,7 +3,7 @@
 Pins the gate's contract:
 
 * clean YAML (values match recomputed, age <= 14 days) -> exit 0
-* any ``stats.<name>.raw`` drift -> exit 1 with structured diff line
+* any ``stats.<name>.display`` drift -> exit 1 with structured diff line
 * committed ``last_generated_utc`` older than 14 days -> exit 1 with age line
 * a fetcher raising ``_StatFetchError`` is treated as "unable to check",
   not as drift
@@ -126,7 +126,7 @@ class TestCleanCase:
 @pytest.mark.unit
 @pytest.mark.usefixtures("wired_generator")
 class TestValueDrift:
-    """A fetcher returning a different ``raw`` is reported as drift."""
+    """A fetcher returning a different ``display`` is reported as drift."""
 
     def test_fails_when_value_drift(
         self,
@@ -143,10 +143,33 @@ class TestValueDrift:
         with patch.object(gen, "_FETCHERS", fetchers):
             assert check.main([]) == 1
         err = capsys.readouterr().err
-        assert "stats.tests.raw drift" in err
-        assert "29963" in err
-        assert "17995" in err
+        assert "stats.tests.display drift" in err
+        assert "29,000+" in err
+        assert "17,000+" in err
         assert "scripts/generate_runtime_stats.py" in err
+
+    def test_raw_only_drift_does_not_trip_gate(
+        self,
+        yaml_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Raw drift with stable display does not trip the gate.
+
+        External counters (mem0 stars, etc.) flap on ``raw`` between push
+        and CI run; only the rounded ``display`` value appears in docs, so
+        only ``display`` drift is actionable.
+        """
+        _seed_fresh_yaml(yaml_path)
+        fetchers = _deterministic_fetchers()
+        fetchers["mem0_stars"] = lambda: {
+            "raw": 54399,
+            "rounded": 54000,
+            "display": "54k+",
+        }
+        with patch.object(gen, "_FETCHERS", fetchers):
+            assert check.main([]) == 0
+        err = capsys.readouterr().err
+        assert "drift" not in err
 
 
 @pytest.mark.unit
@@ -195,7 +218,7 @@ class TestOfflineToleranceForFailingFetcher:
             assert check.main([]) == 0
         captured = capsys.readouterr()
         # Informational note on stderr; no actual drift violation reported.
-        assert "stats.mem0_stars.raw drift" not in captured.err
+        assert "stats.mem0_stars.display drift" not in captured.err
         assert "note: skipping drift check for mem0_stars" in captured.err
 
 
@@ -373,6 +396,6 @@ class TestFetcherUnexpectedException:
         with patch.object(gen, "_FETCHERS", fetchers):
             assert check.main([]) == 0
         captured = capsys.readouterr()
-        assert "stats.mem0_stars.raw drift" not in captured.err
+        assert "stats.mem0_stars.display drift" not in captured.err
         assert "mem0_stars" in captured.err
         assert "RuntimeError" in captured.err
