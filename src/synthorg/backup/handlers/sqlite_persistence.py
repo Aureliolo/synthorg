@@ -1,4 +1,10 @@
-"""Persistence component handler -- SQLite VACUUM INTO backup."""
+"""SQLite persistence backup handler.
+
+Uses ``VACUUM INTO`` for consistent, point-in-time copies without
+WAL/SHM complications. Registered in
+:mod:`synthorg.backup.registry.PERSISTENCE_BACKUP_HANDLER_REGISTRY`
+under the ``"sqlite"`` discriminator.
+"""
 
 import asyncio
 import shutil
@@ -23,7 +29,7 @@ logger = get_logger(__name__)
 _DB_FILENAME = "synthorg.db"
 
 
-class PersistenceComponentHandler:
+class SQLitePersistenceComponentHandler:
     """Back up and restore the SQLite persistence database.
 
     Uses ``VACUUM INTO`` for consistent, point-in-time copies
@@ -211,7 +217,7 @@ class PersistenceComponentHandler:
         if db_path.exists():
             shutil.move(db_path, bak_path)
         # Remove stale sidecars from the original location
-        PersistenceComponentHandler._remove_sidecars(db_path)
+        SQLitePersistenceComponentHandler._remove_sidecars(db_path)
 
         try:
             shutil.copy2(source_file, db_path)
@@ -225,15 +231,15 @@ class PersistenceComponentHandler:
             if bak_path.exists():
                 if db_path.exists():
                     db_path.unlink()
-                PersistenceComponentHandler._remove_sidecars(db_path)
+                SQLitePersistenceComponentHandler._remove_sidecars(db_path)
                 shutil.move(bak_path, db_path)
             elif db_path.exists():
                 db_path.unlink()
-                PersistenceComponentHandler._remove_sidecars(db_path)
+                SQLitePersistenceComponentHandler._remove_sidecars(db_path)
             raise
 
         # Cleanup .bak on success
         if bak_path.exists():
             bak_path.unlink()
         # Remove any sidecars created during integrity check
-        PersistenceComponentHandler._remove_sidecars(db_path)
+        SQLitePersistenceComponentHandler._remove_sidecars(db_path)

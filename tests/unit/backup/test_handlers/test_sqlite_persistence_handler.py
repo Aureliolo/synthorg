@@ -1,4 +1,4 @@
-"""Tests for PersistenceComponentHandler."""
+"""Tests for SQLitePersistenceComponentHandler."""
 
 import sqlite3
 from pathlib import Path
@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 from synthorg.backup.errors import ComponentBackupError
-from synthorg.backup.handlers.persistence import PersistenceComponentHandler
+from synthorg.backup.handlers.sqlite_persistence import (
+    SQLitePersistenceComponentHandler,
+)
 from synthorg.backup.models import BackupComponent
 from synthorg.persistence.sqlite.backup_utils import IntegrityCheckError
 
@@ -32,10 +34,10 @@ def _corrupt_file(path: Path) -> None:
 
 @pytest.mark.unit
 class TestComponentProperty:
-    """PersistenceComponentHandler.component returns PERSISTENCE."""
+    """SQLitePersistenceComponentHandler.component returns PERSISTENCE."""
 
     def test_returns_persistence(self, tmp_path: Path) -> None:
-        handler = PersistenceComponentHandler(tmp_path / "db.sqlite")
+        handler = SQLitePersistenceComponentHandler(tmp_path / "db.sqlite")
         assert handler.component is BackupComponent.PERSISTENCE
 
 
@@ -44,7 +46,7 @@ class TestComponentProperty:
 
 @pytest.mark.unit
 class TestBackup:
-    """PersistenceComponentHandler.backup creates a valid SQLite copy."""
+    """SQLitePersistenceComponentHandler.backup creates a valid SQLite copy."""
 
     async def test_backup_creates_valid_copy(self, tmp_path: Path) -> None:
         db_path = tmp_path / "source" / "synthorg.db"
@@ -54,7 +56,7 @@ class TestBackup:
         target_dir = tmp_path / "backup"
         target_dir.mkdir()
 
-        handler = PersistenceComponentHandler(db_path)
+        handler = SQLitePersistenceComponentHandler(db_path)
         size = await handler.backup(target_dir)
 
         backup_file = target_dir / "synthorg.db"
@@ -71,7 +73,9 @@ class TestBackup:
             conn.close()
 
     async def test_backup_raises_on_invalid_source(self, tmp_path: Path) -> None:
-        handler = PersistenceComponentHandler(tmp_path / "nonexistent" / "nope.db")
+        handler = SQLitePersistenceComponentHandler(
+            tmp_path / "nonexistent" / "nope.db",
+        )
         target_dir = tmp_path / "backup"
         target_dir.mkdir()
 
@@ -85,7 +89,7 @@ class TestBackup:
         target_dir = tmp_path / "backup"
         target_dir.mkdir()
 
-        handler = PersistenceComponentHandler(db_path)
+        handler = SQLitePersistenceComponentHandler(db_path)
         with pytest.raises(ComponentBackupError):
             await handler.backup(target_dir)
 
@@ -95,7 +99,7 @@ class TestBackup:
 
 @pytest.mark.unit
 class TestRestore:
-    """PersistenceComponentHandler.restore performs atomic swap."""
+    """SQLitePersistenceComponentHandler.restore performs atomic swap."""
 
     async def test_restore_replaces_live_db(self, tmp_path: Path) -> None:
         # Set up the "live" DB with original data
@@ -115,7 +119,7 @@ class TestRestore:
         finally:
             conn.close()
 
-        handler = PersistenceComponentHandler(live_db)
+        handler = SQLitePersistenceComponentHandler(live_db)
         await handler.restore(backup_dir)
 
         # Live DB now has the restored data
@@ -131,7 +135,7 @@ class TestRestore:
         assert not bak_path.exists()
 
     async def test_restore_raises_if_backup_missing(self, tmp_path: Path) -> None:
-        handler = PersistenceComponentHandler(tmp_path / "live.db")
+        handler = SQLitePersistenceComponentHandler(tmp_path / "live.db")
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
 
@@ -150,7 +154,7 @@ class TestRestore:
         corrupt_backup = backup_dir / "synthorg.db"
         _corrupt_file(corrupt_backup)
 
-        handler = PersistenceComponentHandler(live_db)
+        handler = SQLitePersistenceComponentHandler(live_db)
 
         with pytest.raises(ComponentBackupError):
             await handler.restore(backup_dir)
@@ -167,14 +171,14 @@ class TestRestore:
     async def test_restore_works_when_no_live_db(self, tmp_path: Path) -> None:
         live_db = tmp_path / "live" / "synthorg.db"
         live_db.parent.mkdir()
-        # No live DB -- restore should still succeed
+        # No live DB; restore should still succeed.
 
         backup_dir = tmp_path / "backup"
         backup_dir.mkdir()
         backup_db = backup_dir / "synthorg.db"
         _create_test_db(backup_db)
 
-        handler = PersistenceComponentHandler(live_db)
+        handler = SQLitePersistenceComponentHandler(live_db)
         await handler.restore(backup_dir)
 
         assert live_db.exists()
@@ -191,17 +195,17 @@ class TestRestore:
 
 @pytest.mark.unit
 class TestValidateSource:
-    """PersistenceComponentHandler.validate_source checks integrity."""
+    """SQLitePersistenceComponentHandler.validate_source checks integrity."""
 
     async def test_returns_true_for_valid_db(self, tmp_path: Path) -> None:
         db_file = tmp_path / "synthorg.db"
         _create_test_db(db_file)
 
-        handler = PersistenceComponentHandler(tmp_path / "unused.db")
+        handler = SQLitePersistenceComponentHandler(tmp_path / "unused.db")
         assert await handler.validate_source(tmp_path) is True
 
     async def test_returns_false_for_missing_file(self, tmp_path: Path) -> None:
-        handler = PersistenceComponentHandler(tmp_path / "unused.db")
+        handler = SQLitePersistenceComponentHandler(tmp_path / "unused.db")
         assert await handler.validate_source(tmp_path) is False
 
     async def test_corrupt_file_raises_component_backup_error(
@@ -215,7 +219,7 @@ class TestValidateSource:
         corrupt = tmp_path / "synthorg.db"
         _corrupt_file(corrupt)
 
-        handler = PersistenceComponentHandler(tmp_path / "unused.db")
+        handler = SQLitePersistenceComponentHandler(tmp_path / "unused.db")
         with pytest.raises(ComponentBackupError):
             await handler.validate_source(tmp_path)
 
@@ -230,7 +234,7 @@ class TestCheckIntegrity:
     def test_valid_db_passes(self, tmp_path: Path) -> None:
         db_file = tmp_path / "good.db"
         _create_test_db(db_file)
-        assert PersistenceComponentHandler._check_integrity(str(db_file)) is True
+        assert SQLitePersistenceComponentHandler._check_integrity(str(db_file)) is True
 
     def test_corrupt_db_raises(self, tmp_path: Path) -> None:
         db_file = tmp_path / "bad.db"
@@ -239,11 +243,11 @@ class TestCheckIntegrity:
         # IntegrityCheckError so callers can distinguish "could not
         # check" from "check reported corruption".
         with pytest.raises(IntegrityCheckError):
-            PersistenceComponentHandler._check_integrity(str(db_file))
+            SQLitePersistenceComponentHandler._check_integrity(str(db_file))
 
     def test_empty_file_is_treated_as_new_db(self, tmp_path: Path) -> None:
         db_file = tmp_path / "empty.db"
         db_file.write_bytes(b"")
         # SQLite treats a zero-byte file as a new, valid database;
         # PRAGMA integrity_check returns "ok".
-        assert PersistenceComponentHandler._check_integrity(str(db_file)) is True
+        assert SQLitePersistenceComponentHandler._check_integrity(str(db_file)) is True

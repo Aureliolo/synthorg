@@ -10,11 +10,20 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from pydantic import SecretStr
 
 from synthorg.backup.config import BackupConfig
-from synthorg.backup.factory import build_backup_service
+from synthorg.backup.factory import build_backup_handlers, build_backup_service
+from synthorg.backup.handlers.postgres_persistence import (
+    PostgresPersistenceComponentHandler,
+)
+from synthorg.backup.handlers.sqlite_persistence import (
+    SQLitePersistenceComponentHandler,
+)
+from synthorg.backup.models import BackupComponent
 from synthorg.backup.service import BackupService
 from synthorg.config.schema import RootConfig
+from synthorg.persistence.config import PersistenceConfig, PostgresConfig
 
 
 @pytest.mark.unit
@@ -71,3 +80,44 @@ class TestBuildBackupService:
             )
 
         assert service is None
+
+
+@pytest.mark.unit
+class TestBackendPluggableHandlers:
+    """build_backup_handlers dispatches the persistence handler by backend."""
+
+    def test_sqlite_backend_picks_sqlite_handler(self, tmp_path: Path) -> None:
+        config = RootConfig(company_name="test-co")
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        handlers = build_backup_handlers(
+            config,
+            backup_config,
+            resolved_db_path=tmp_path / "synthorg.db",
+        )
+
+        assert isinstance(
+            handlers[BackupComponent.PERSISTENCE],
+            SQLitePersistenceComponentHandler,
+        )
+
+    def test_postgres_backend_picks_postgres_handler(self) -> None:
+        config = RootConfig(
+            company_name="test-co",
+            persistence=PersistenceConfig(
+                backend="postgres",
+                postgres=PostgresConfig(
+                    database="synthorg",
+                    username="synthorg",
+                    password=SecretStr("hunter2"),
+                ),
+            ),
+        )
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        handlers = build_backup_handlers(config, backup_config)
+
+        assert isinstance(
+            handlers[BackupComponent.PERSISTENCE],
+            PostgresPersistenceComponentHandler,
+        )
