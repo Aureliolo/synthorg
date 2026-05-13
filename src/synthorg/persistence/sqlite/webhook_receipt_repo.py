@@ -169,7 +169,7 @@ class SQLiteWebhookReceiptRepository:
         when no row matched the ID. Callers can use the boolean to
         distinguish "not found" from a successful no-op.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "UPDATE webhook_receipts SET "
