@@ -7,7 +7,7 @@ from synthorg.providers.routing.errors import (
     ModelResolutionError,
     NoAvailableModelError,
     RoutingError,
-    UnknownStrategyError,
+    UnknownRoutingStrategyError,
 )
 
 pytestmark = pytest.mark.unit
@@ -24,7 +24,7 @@ class TestRoutingErrorHierarchy:
         [
             ModelResolutionError,
             NoAvailableModelError,
-            UnknownStrategyError,
+            UnknownRoutingStrategyError,
         ],
     )
     def test_subclasses_extend_routing_error(
@@ -40,7 +40,7 @@ class TestRoutingErrorHierarchy:
             RoutingError,
             ModelResolutionError,
             NoAvailableModelError,
-            UnknownStrategyError,
+            UnknownRoutingStrategyError,
         ],
     )
     def test_all_not_retryable(

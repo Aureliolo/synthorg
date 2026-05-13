@@ -7,7 +7,7 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
-from synthorg.providers.routing.errors import UnknownStrategyError
+from synthorg.providers.routing.errors import UnknownRoutingStrategyError
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.models import SettingValue
@@ -91,7 +91,7 @@ class TestProviderSubscriberRebuild:
         )
         old_router = state.model_router
         # Error propagates (dispatcher catches it for logging)
-        with pytest.raises(UnknownStrategyError):
+        with pytest.raises(UnknownRoutingStrategyError):
             await sub.on_settings_changed("providers", "routing_strategy")
         # Old router is still in place (swap never called)
         assert state.model_router is old_router

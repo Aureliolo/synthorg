@@ -12,7 +12,7 @@ from synthorg.observability.events.routing import (
 from synthorg.providers.routing.errors import (
     ModelResolutionError,
     NoAvailableModelError,
-    UnknownStrategyError,
+    UnknownRoutingStrategyError,
 )
 from synthorg.providers.routing.models import RoutingRequest
 from synthorg.providers.routing.router import ModelRouter
@@ -42,7 +42,7 @@ class TestModelRouterConstruction:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         config = RoutingConfig(strategy="nonexistent")
-        with pytest.raises(UnknownStrategyError, match="nonexistent"):
+        with pytest.raises(UnknownRoutingStrategyError, match="nonexistent"):
             ModelRouter(config, three_model_provider)
 
     def test_resolver_accessible(
