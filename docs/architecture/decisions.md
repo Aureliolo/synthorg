@@ -15,7 +15,7 @@ All significant design and architecture decisions in force today, organized by d
 
 | Candidate | Score | Why chosen / rejected |
 |-----------|-------|----------------------|
-| **Mem0** (chosen) | 70/100 | Production-ready (v1.0+, <!--RS:mem0_stars-->54k+<!--/RS--> stars). In-process deployment (Qdrant embedded + SQLite). Python 3.14 compatible (`>=3.9,<4.0`). Async client available. Low adapter overhead (~500-1k lines). Known gap: flat fact model doesn't natively map to 5-type memory taxonomy (acceptable for initial backend) |
+| **Mem0** (chosen) | 70/100 | Production-ready (v1.0+, <!--RS:mem0_stars-->55k+<!--/RS--> stars). In-process deployment (Qdrant embedded + SQLite). Python 3.14 compatible (`>=3.9,<4.0`). Async client available. Low adapter overhead (~500-1k lines). Known gap: flat fact model doesn't natively map to 5-type memory taxonomy (acceptable for initial backend) |
 | Custom Stack | 80/100 | Best architectural fit but ~6-8k lines of custom code before any memory works. Deferred to future phase; build after Mem0 proves the protocol shape |
 | Graphiti | 66/100 | Best temporal knowledge graph, but pre-1.0 stability (v0.28), extreme LLM ingestion costs (1000+ API calls per 10k chars), only covers 2-3 of 5 memory types |
 

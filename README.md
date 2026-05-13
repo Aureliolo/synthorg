@@ -17,9 +17,9 @@
 
 SynthOrg is a Python framework for building **synthetic organizations**, autonomous AI agents orchestrated as a virtual company. Unlike task-queue or DAG-based agent frameworks, SynthOrg models agents as members of an actual organization with roles, departments, hierarchies, persistent memory, budgets, and structured communication.
 
-Define your company in YAML. Agents collaborate through a message bus, follow workflows (Kanban, Agile sprints, or custom), track costs against budgets, and produce real artifacts. The framework is provider-agnostic (<!--RS:providers_via_litellm-->100+<!--/RS--> LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and designed for the full autonomy spectrum, from human approval on every action to fully autonomous operation.
+Define your company in YAML. Agents collaborate through a message bus, follow workflows (Kanban, Agile sprints, or custom), track costs against budgets, and produce real artifacts. The framework is provider-agnostic (<!--RS:providers_via_litellm-->2700+<!--/RS--> LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and designed for the full autonomy spectrum, from human approval on every action to fully autonomous operation.
 
-> **Early access.** Core subsystems are built and tested (<!--RS:tests-->27,000+<!--/RS--> tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
+> **Early access.** Core subsystems are built and tested (<!--RS:tests-->29,000+<!--/RS--> tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
 
 ## Why SynthOrg?
 
@@ -30,7 +30,7 @@ Most agent frameworks give you **functions that call LLMs**. SynthOrg gives you 
 - **Cost-aware by design.** Per-agent token budgets, automatic model downgrade at task boundaries, spending reports, trend analysis, and CFO-level optimization with anomaly detection.
 - **Trust spectrum.** From locked-down (human approves every tool call) to fully autonomous, with a fail-closed security rule engine, output scanning, progressive trust, and audit logging in between.
 - **Real workflows.** Kanban boards, Agile sprints with velocity tracking, ceremony scheduling (8 strategies), visual workflow editor with starter blueprints and version history with diff/rollback, and workflow execution from graph definitions.
-- **Provider-agnostic.** Any LLM via LiteLLM: Ollama, LM Studio, vLLM, and <!--RS:providers_via_litellm-->100+<!--/RS--> cloud providers. Local model management with pull/delete/configure for Ollama and LM Studio.
+- **Provider-agnostic.** Any LLM via LiteLLM: Ollama, LM Studio, vLLM, and <!--RS:providers_via_litellm-->2700+<!--/RS--> cloud models. Local model management with pull/delete/configure for Ollama and LM Studio.
 
 ## Quick Start
 
@@ -89,7 +89,7 @@ curl http://localhost:3001/api/v1/readyz
 
 **[Security & Trust](https://synthorg.io/docs/security/)**: SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels (4 tiers), approval gates, LLM fallback evaluator, and audit logging. Container images are cosign-signed with [SLSA L3](https://slsa.dev) provenance.
 
-**[Memory](https://synthorg.io/docs/design/memory/)**: 5 memory types (episodic, semantic, procedural, working, organizational) with hybrid retrieval, three injection strategies (context, tool-based, and self-editing memory), query reformulation, procedural memory auto-generation from failures, consolidation, and pluggable backends.
+**[Memory](https://synthorg.io/docs/design/memory/)**: 5 memory types (episodic, semantic, procedural, working, social) with hybrid retrieval, three injection strategies (context, tool-based, and self-editing memory), query reformulation, procedural memory auto-generation from failures, consolidation, and pluggable backends.
 
 **[Communication](https://synthorg.io/docs/design/communication/)**: message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), meeting protocols (round-robin, position papers, structured phases), and A2A federation with external agent systems.
 

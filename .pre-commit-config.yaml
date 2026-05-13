@@ -34,7 +34,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -278,6 +278,22 @@ repos:
         # truth + the injector/generator/gate themselves. Keep this
         # list in sync with `_SCOPED_FILES` whenever the scope changes.
         files: ^(README\.md|docs/index\.md|docs/roadmap/index\.md|docs/architecture/decisions\.md|docs/reference/convention-gates\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: runtime-stats-freshness
+        name: runtime_stats.yaml freshness (values + 14-day ceiling)
+        entry: uv
+        args: [run, python, scripts/check_runtime_stats_freshness.py, --skip-network]
+        language: system
+        # Pre-push runs the gate with --skip-network so developers
+        # without a configured `gh` token are not blocked; CI invokes
+        # the gate without the flag to perform the full check.
+        # Trigger on any edit to the YAML, the generator, the gate
+        # itself, or this config so a PR that drifts the values (or
+        # weakens the gate by editing the script) cannot bypass the
+        # check.
+        files: ^(data/runtime_stats\.yaml|scripts/(check_runtime_stats_freshness|generate_runtime_stats)\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 
