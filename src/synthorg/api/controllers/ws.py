@@ -18,7 +18,10 @@ The server pushes ``WsEvent`` JSON on subscribed channels.
 """
 
 import asyncio
+import contextlib
 import json
+import time
+from dataclasses import dataclass
 from typing import Any
 
 from litestar import WebSocket  # noqa: TC002
@@ -64,6 +67,20 @@ _MAX_WS_MESSAGE_BYTES: int = 4096
 _MAX_OUTBOUND_EVENT_BYTES: int = 32_768
 # Per-client outbound queue depth before backpressure drops kick in.
 _OUTBOUND_QUEUE_DEPTH: int = 64
+# After this many consecutive backpressure drops within
+# ``_WS_BACKPRESSURE_WINDOW_SECONDS``, treat the client as
+# persistently slow and close the socket with 1013 ("try again
+# later"). A healthy bursty client easily absorbs a few drops, but
+# a client that cannot catch up across the window is wasting bus
+# capacity for every other subscriber on its channels.
+_WS_BACKPRESSURE_DROP_THRESHOLD: int = 32
+_WS_BACKPRESSURE_WINDOW_SECONDS: float = 5.0
+# RFC 6455 close code 1013: "Try Again Later". Used to signal a
+# slow-client circuit-breaker trip without poisoning the reconnect
+# loop -- the dashboard's WS store treats this as a reconnectable
+# close (not an auth failure), so the same client can come back
+# once it has caught up.
+_WS_CLOSE_BACKPRESSURE: int = 1013
 
 # Application-layer WS close codes (RFC 6455 §7.4.2: 4000-4999).
 # ``_WS_CLOSE_SERVER_ERROR`` lives in :mod:`ws_revalidation`.
@@ -263,12 +280,47 @@ async def _check_ws_role(
     return True
 
 
-async def _on_event(
+@dataclass
+class _BackpressureTracker:
+    """Slow-consumer counter used by the outbound circuit breaker.
+
+    Tracks consecutive backpressure drops within a rolling window;
+    when the count crosses ``_WS_BACKPRESSURE_DROP_THRESHOLD`` the
+    enqueue path closes the socket with 1013 instead of silently
+    dropping yet another event. Reset on a successful enqueue so a
+    client that recovers does not carry a stale tripping count
+    indefinitely.
+    """
+
+    consecutive_drops: int = 0
+    window_started_at: float = 0.0
+
+    def note_drop(self, *, now: float) -> bool:
+        """Record one drop; return ``True`` when the threshold is crossed."""
+        if (
+            self.consecutive_drops == 0
+            or now - self.window_started_at > _WS_BACKPRESSURE_WINDOW_SECONDS
+        ):
+            self.window_started_at = now
+            self.consecutive_drops = 1
+        else:
+            self.consecutive_drops += 1
+        return self.consecutive_drops >= _WS_BACKPRESSURE_DROP_THRESHOLD
+
+    def note_success(self) -> None:
+        """Reset the counter after a successful enqueue."""
+        if self.consecutive_drops:
+            self.consecutive_drops = 0
+
+
+async def _on_event(  # noqa: PLR0911, PLR0913
     event_data: bytes,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
     queue: asyncio.Queue[bytes],
     conn_user: AuthenticatedUser,
+    backpressure: _BackpressureTracker | None = None,
+    socket: WebSocket[Any, Any, Any] | None = None,
 ) -> None:
     """Filter a channel event and enqueue it for the outbound consumer.
 
@@ -277,9 +329,14 @@ async def _on_event(
     per-client backpressure. Events that pass all checks are enqueued
     onto the client's bounded outbound queue. Oversized events are
     dropped with ``API_WS_EVENT_DROPPED``; events that arrive while the
-    queue is full are dropped with ``API_WS_BACKPRESSURE_DROPPED``. In
-    neither case is the socket closed -- a single slow consumer or one
-    oversized emitter must not nuke the channel for everyone.
+    queue is full are dropped with ``API_WS_BACKPRESSURE_DROPPED``.
+
+    When a ``_BackpressureTracker`` is supplied, consecutive drops
+    within ``_WS_BACKPRESSURE_WINDOW_SECONDS`` accumulate; crossing
+    ``_WS_BACKPRESSURE_DROP_THRESHOLD`` trips the circuit breaker and
+    closes the socket with 1013 ("try again later"). A healthy bursty
+    client absorbs a few drops between successful enqueues without
+    tripping; the tracker resets on every successful enqueue.
     """
     # Size-gate before parsing: a 30-MiB malformed frame should not
     # consume the JSON parser at all. We don't have channel/event_type
@@ -317,6 +374,8 @@ async def _on_event(
 
     try:
         queue.put_nowait(event_data)
+        if backpressure is not None:
+            backpressure.note_success()
     except asyncio.QueueFull:
         logger.warning(
             API_WS_BACKPRESSURE_DROPPED,
@@ -325,6 +384,26 @@ async def _on_event(
             queue_depth=queue.qsize(),
             max_depth=_OUTBOUND_QUEUE_DEPTH,
         )
+        if backpressure is None or socket is None:
+            return
+        tripped = backpressure.note_drop(now=time.monotonic())
+        if not tripped:
+            return
+        logger.warning(
+            API_WS_BACKPRESSURE_DROPPED,
+            channel=channel,
+            event_type=str(event_type),
+            queue_depth=queue.qsize(),
+            max_depth=_OUTBOUND_QUEUE_DEPTH,
+            reason="circuit_breaker_tripped",
+            drop_threshold=_WS_BACKPRESSURE_DROP_THRESHOLD,
+            window_seconds=_WS_BACKPRESSURE_WINDOW_SECONDS,
+        )
+        with contextlib.suppress(Exception):
+            await socket.close(
+                code=_WS_CLOSE_BACKPRESSURE,
+                reason="Slow consumer; reconnect after catching up.",
+            )
 
 
 async def _outbound_consumer(
@@ -635,6 +714,7 @@ async def ws_handler(
     outbound_queue: asyncio.Queue[bytes] = asyncio.Queue(
         maxsize=_OUTBOUND_QUEUE_DEPTH,
     )
+    backpressure_tracker = _BackpressureTracker()
 
     async def _event_callback(event_data: bytes) -> None:
         await _on_event(
@@ -643,6 +723,8 @@ async def ws_handler(
             filters,
             outbound_queue,
             user,
+            backpressure=backpressure_tracker,
+            socket=socket,
         )
 
     # Structured concurrency for the WS background workers (CLAUDE.md):

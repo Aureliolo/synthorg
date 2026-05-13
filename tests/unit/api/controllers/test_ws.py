@@ -719,6 +719,109 @@ class TestOutboundPipeline:
 
         assert queue.qsize() == 2
 
+    async def test_backpressure_circuit_breaker_closes_slow_client(self) -> None:
+        """Threshold consecutive drops within window close the socket with 1013."""
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.ws import (
+            _WS_BACKPRESSURE_DROP_THRESHOLD,
+            _WS_CLOSE_BACKPRESSURE,
+            _BackpressureTracker,
+            _on_event,
+        )
+
+        socket = AsyncMock()
+        # Queue size 1 so every event after the first trips the
+        # QueueFull path and accumulates a drop on the tracker.
+        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1)
+        tracker = _BackpressureTracker()
+
+        def make_event(idx: int) -> bytes:
+            return json.dumps(
+                {
+                    "channel": "tasks",
+                    "event_type": "task.created",
+                    "timestamp": "2026-04-21T00:00:00+00:00",
+                    "payload": {"task_id": f"t-{idx}"},
+                },
+            ).encode()
+
+        for idx in range(_WS_BACKPRESSURE_DROP_THRESHOLD + 1):
+            await _on_event(
+                make_event(idx),
+                {"tasks"},
+                {},
+                queue,
+                _TEST_USER,
+                backpressure=tracker,
+                socket=socket,
+            )
+
+        socket.close.assert_awaited_once()
+        kwargs = socket.close.call_args.kwargs
+        assert kwargs.get("code") == _WS_CLOSE_BACKPRESSURE
+
+    async def test_backpressure_tracker_resets_on_success(self) -> None:
+        """A successful enqueue between drops resets the consecutive counter."""
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.ws import (
+            _BackpressureTracker,
+            _on_event,
+        )
+
+        socket = AsyncMock()
+        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1)
+        tracker = _BackpressureTracker()
+
+        def make_event(idx: int) -> bytes:
+            return json.dumps(
+                {
+                    "channel": "tasks",
+                    "event_type": "task.created",
+                    "timestamp": "2026-04-21T00:00:00+00:00",
+                    "payload": {"task_id": f"t-{idx}"},
+                },
+            ).encode()
+
+        # Fill the queue.
+        await _on_event(
+            make_event(0),
+            {"tasks"},
+            {},
+            queue,
+            _TEST_USER,
+            backpressure=tracker,
+            socket=socket,
+        )
+        # Drop while full.
+        await _on_event(
+            make_event(1),
+            {"tasks"},
+            {},
+            queue,
+            _TEST_USER,
+            backpressure=tracker,
+            socket=socket,
+        )
+        assert tracker.consecutive_drops == 1
+        # Drain to unblock subsequent enqueues.
+        queue.get_nowait()
+        # Successful enqueue resets the counter.
+        await _on_event(
+            make_event(2),
+            {"tasks"},
+            {},
+            queue,
+            _TEST_USER,
+            backpressure=tracker,
+            socket=socket,
+        )
+        assert tracker.consecutive_drops == 0
+        socket.close.assert_not_awaited()
+
     async def test_outbound_consumer_drains_queue(self) -> None:
         """The consumer task forwards every queued event to the socket."""
         import asyncio

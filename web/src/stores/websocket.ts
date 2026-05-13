@@ -221,6 +221,16 @@ function startHeartbeat(target: WebSocket) {
   }, WS_HEARTBEAT_INTERVAL_MS)
 }
 
+function queueSubscriptionForReconnect(
+  channels: WsChannel[],
+  filters: WsSubscriptionFilters | undefined,
+  key: string,
+): void {
+  if (!pendingSubscriptions.some((s) => subscriptionKey(s.channels, s.filters) === key)) {
+    pendingSubscriptions.push({ channels, filters })
+  }
+}
+
 export const useWebSocketStore = create<WebSocketState>()((set) => {
   function scheduleReconnect() {
     if (reconnectTimer) clearTimeout(reconnectTimer)
@@ -490,13 +500,33 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         }
         return
       }
+      const frame = JSON.stringify({ action: 'subscribe', channels, filters })
       try {
-        socket.send(JSON.stringify({ action: 'subscribe', channels, filters }))
+        socket.send(frame)
       } catch (err) {
-        log.error('Subscribe send failed (queued for replay):', err)
-        if (!pendingSubscriptions.some((s) => subscriptionKey(s.channels, s.filters) === key)) {
-          pendingSubscriptions.push({ channels, filters })
-        }
+        // D1: a transient send failure (e.g. an instant of socket
+        // back-pressure) used to drop straight into the reconnect
+        // queue, stranding the subscription for tens of seconds until
+        // the auth_ok handshake replayed it. Schedule one immediate
+        // microtask retry against the same socket so a single
+        // failure does not silently disable the channel; on the
+        // second failure (or if the socket has moved out of OPEN),
+        // fall through to the queue-for-reconnect path.
+        log.warn('Subscribe send failed, retrying on next microtask:', sanitizeForLog(err))
+        const retrySocket = socket
+        queueMicrotask(() => {
+          if (retrySocket !== socket) return
+          if (retrySocket.readyState !== WebSocket.OPEN) {
+            queueSubscriptionForReconnect(channels, filters, key)
+            return
+          }
+          try {
+            retrySocket.send(frame)
+          } catch (retryErr) {
+            log.error('Subscribe send retry failed, queued for reconnect:', sanitizeForLog(retryErr))
+            queueSubscriptionForReconnect(channels, filters, key)
+          }
+        })
       }
     },
 
