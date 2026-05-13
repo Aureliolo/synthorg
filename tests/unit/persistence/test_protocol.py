@@ -587,6 +587,14 @@ class _FakeWorkflowExecutionRepository:
 class _FakeSeenClaimsRepository:
     """Minimal SeenClaimsRepository conforming to the protocol shape."""
 
+    async def is_completed(
+        self,
+        *,
+        idempotency_key: NotBlankStr,
+    ) -> bool:
+        del idempotency_key
+        return False
+
     async def mark_seen(
         self,
         *,
@@ -597,14 +605,6 @@ class _FakeSeenClaimsRepository:
     ) -> bool:
         del idempotency_key, claim_id, now, ttl_seconds
         return True
-
-    async def forget(
-        self,
-        *,
-        idempotency_key: NotBlankStr,
-    ) -> bool:
-        del idempotency_key
-        return False
 
     async def prune_expired(self, now: Any) -> int:
         del now

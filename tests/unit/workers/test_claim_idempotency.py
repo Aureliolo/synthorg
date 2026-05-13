@@ -1,8 +1,12 @@
 """Unit coverage for TaskClaim idempotency_key + worker dedup.
 
-The worker-side dedup test uses a stub ``SeenClaimsRepository`` that
-records every ``mark_seen`` call so we can assert the exact protocol
-contract without spinning up a real persistence backend.
+The worker-side dedup tests use a stub ``SeenClaimsRepository`` that
+records every ``is_completed`` / ``mark_seen`` call so the contract
+can be asserted without spinning up a real persistence backend. Each
+flow test drives the full ``Worker._run_once`` path through a stub
+``JetStreamTaskQueue`` so the regression coverage exercises the
+ordering invariants (pre-execute is_completed read, post-terminal
+mark_seen, RETRY never marks) that the dedup design depends on.
 """
 
 import asyncio
@@ -21,16 +25,24 @@ pytestmark = pytest.mark.unit
 
 
 class _StubSeenClaims:
-    """Records ``mark_seen`` invocations; configurable per-key insert outcome."""
+    """Records every is_completed/mark_seen invocation in order."""
 
     def __init__(
         self,
         *,
-        outcomes: dict[str, bool] | None = None,
+        completed_keys: frozenset[str] | None = None,
     ) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.forgets: list[str] = []
-        self._outcomes = outcomes or {}
+        self.is_completed_calls: list[str] = []
+        self.mark_seen_calls: list[dict[str, Any]] = []
+        self._completed_keys: set[str] = set(completed_keys or frozenset())
+
+    async def is_completed(
+        self,
+        *,
+        idempotency_key: NotBlankStr,
+    ) -> bool:
+        self.is_completed_calls.append(str(idempotency_key))
+        return str(idempotency_key) in self._completed_keys
 
     async def mark_seen(
         self,
@@ -40,7 +52,7 @@ class _StubSeenClaims:
         now: datetime,
         ttl_seconds: float,
     ) -> bool:
-        self.calls.append(
+        self.mark_seen_calls.append(
             {
                 "idempotency_key": str(idempotency_key),
                 "claim_id": str(claim_id),
@@ -48,22 +60,57 @@ class _StubSeenClaims:
                 "ttl_seconds": ttl_seconds,
             },
         )
-        return self._outcomes.get(str(idempotency_key), True)
-
-    async def forget(
-        self,
-        *,
-        idempotency_key: NotBlankStr,
-    ) -> bool:
-        self.forgets.append(str(idempotency_key))
-        return True
+        first = str(idempotency_key) not in self._completed_keys
+        self._completed_keys.add(str(idempotency_key))
+        return first
 
     async def prune_expired(self, now: datetime) -> int:
+        del now
         return 0
 
 
+class _StubRawMessage:
+    """Stand-in for the NATS JetStream message handle the worker acks.
+
+    ``JetStreamTaskQueue.ack`` / ``nack`` reach into ``raw.ack()`` /
+    ``raw.nak()`` directly so the worker test needs a minimal handle
+    that records each call without pulling in a live NATS client.
+    """
+
+    def __init__(self) -> None:
+        self.ack_calls: int = 0
+        self.nak_calls: list[float] = []
+
+    async def ack(self) -> None:
+        self.ack_calls += 1
+
+    async def nak(self, delay: float = 0.0) -> None:
+        self.nak_calls.append(delay)
+
+
+class _ScriptedTaskQueue:
+    """Yields the queued (claim, raw) pairs in order, then None."""
+
+    is_running = True
+
+    def __init__(
+        self,
+        deliveries: list[tuple[TaskClaim, _StubRawMessage]],
+    ) -> None:
+        self._deliveries = list(deliveries)
+
+    async def next_claim(
+        self,
+        timeout: float,  # noqa: ASYNC109 -- mirrors prod signature
+    ) -> tuple[TaskClaim, _StubRawMessage] | None:
+        del timeout
+        if not self._deliveries:
+            return None
+        return self._deliveries.pop(0)
+
+
 class _NullTaskQueue:
-    """Stand-in for ``JetStreamTaskQueue`` -- worker never calls these."""
+    """Stand-in for ``JetStreamTaskQueue`` that never yields a claim."""
 
     is_running = True
 
@@ -129,18 +176,18 @@ class TestWorkerDedup:
             task_id=NotBlankStr("t-1"),
             new_status=NotBlankStr("assigned"),
         )
-        is_dup = await worker._is_duplicate(claim)
-        assert is_dup is False
+        is_completed = await worker._is_completed(claim)
+        assert is_completed is False
         assert execution_count == 0
-        assert len(seen.calls) == 1
-        assert seen.calls[0]["idempotency_key"] == claim.idempotency_key
+        assert seen.is_completed_calls == [claim.idempotency_key]
+        assert seen.mark_seen_calls == []
 
     async def test_duplicate_claim_short_circuits(
         self,
         queue_config: QueueConfig,
     ) -> None:
         clock = FakeClock(start=datetime(2026, 5, 13, tzinfo=UTC))
-        seen = _StubSeenClaims(outcomes={"already-seen": False})
+        seen = _StubSeenClaims(completed_keys=frozenset({"already-seen"}))
 
         async def executor(_claim: TaskClaim) -> TaskClaimStatus:
             return TaskClaimStatus.SUCCESS
@@ -158,8 +205,8 @@ class TestWorkerDedup:
             new_status=NotBlankStr("assigned"),
             idempotency_key=NotBlankStr("already-seen"),
         )
-        is_dup = await worker._is_duplicate(claim)
-        assert is_dup is True
+        is_completed = await worker._is_completed(claim)
+        assert is_completed is True
 
     async def test_no_repo_means_no_dedup(
         self,
@@ -178,57 +225,171 @@ class TestWorkerDedup:
             task_id=NotBlankStr("t-3"),
             new_status=NotBlankStr("assigned"),
         )
-        is_dup = await worker._is_duplicate(claim)
-        assert is_dup is False
+        is_completed = await worker._is_completed(claim)
+        assert is_completed is False
 
-    async def test_retry_status_rolls_back_dedup_row(
+
+class TestWorkerRunOnceDedupLifecycle:
+    """Exercises the actual ``_run_once`` flow end-to-end.
+
+    The previous version of these tests called ``_forget_seen`` /
+    ``_mark_completed`` directly, which made them pass even when the
+    surrounding orchestration regressed. Driving ``_run_once`` with a
+    scripted queue + stub repository asserts the contract the worker
+    is supposed to honour: pre-execute read, post-terminal write, and
+    no write on RETRY.
+    """
+
+    async def test_retry_outcome_does_not_mark_completed(
         self,
         queue_config: QueueConfig,
     ) -> None:
-        """RETRY MUST trigger ``forget`` so the next redelivery executes.
+        """RETRY must leave the dedup repo untouched.
 
-        Without this rollback, the speculative ``mark_seen`` row written
-        before the executor ran would trap the JetStream redelivery
-        in the duplicate-suppress path and silently drop the task.
+        Without this guard the JetStream redelivery would observe a
+        ``seen_claims`` row written speculatively before the executor
+        ran and ack-and-skip the redelivery, silently dropping the
+        task. The defer-mark design closes that by writing the row
+        only when the executor returns SUCCESS/FAILED.
         """
         clock = FakeClock(start=datetime(2026, 5, 13, tzinfo=UTC))
         seen = _StubSeenClaims()
-
-        worker = Worker(
-            queue_config=queue_config,
-            task_queue=_NullTaskQueue(),  # type: ignore[arg-type]
-            executor=_unused_executor,
-            worker_id="test-worker",
-            seen_claims=seen,
-            clock=clock,
-        )
         claim = TaskClaim(
             task_id=NotBlankStr("t-retry"),
             new_status=NotBlankStr("assigned"),
             idempotency_key=NotBlankStr("idem-retry-key"),
         )
-        await worker._forget_seen(claim)
-        assert seen.forgets == ["idem-retry-key"]
+        executor_calls = 0
 
-    async def test_forget_is_a_noop_when_no_repo(
+        async def executor(received: TaskClaim) -> TaskClaimStatus:
+            nonlocal executor_calls
+            executor_calls += 1
+            assert received.idempotency_key == "idem-retry-key"
+            return TaskClaimStatus.RETRY
+
+        queue = _ScriptedTaskQueue([(claim, _StubRawMessage())])
+        worker = Worker(
+            queue_config=queue_config,
+            task_queue=queue,  # type: ignore[arg-type]
+            executor=executor,
+            worker_id="test-worker",
+            seen_claims=seen,
+            clock=clock,
+        )
+
+        await worker._run_once()
+
+        assert executor_calls == 1
+        assert seen.is_completed_calls == ["idem-retry-key"]
+        assert seen.mark_seen_calls == []
+
+    async def test_retry_then_success_executes_twice(
         self,
         queue_config: QueueConfig,
     ) -> None:
+        """A RETRY-then-SUCCESS sequence must run the executor twice.
+
+        This pins the regression the dedup row used to cause: the
+        first delivery returns RETRY, the second redelivery (same
+        idempotency_key) must NOT be suppressed because the first
+        outcome never reached a terminal SUCCESS/FAILED.
+        """
         clock = FakeClock(start=datetime(2026, 5, 13, tzinfo=UTC))
+        seen = _StubSeenClaims()
+        idempotency_key = NotBlankStr("idem-retry-then-success")
+        outcomes = iter([TaskClaimStatus.RETRY, TaskClaimStatus.SUCCESS])
+        executor_calls = 0
+
+        async def executor(_claim: TaskClaim) -> TaskClaimStatus:
+            nonlocal executor_calls
+            executor_calls += 1
+            return next(outcomes)
+
+        first_delivery = (
+            TaskClaim(
+                task_id=NotBlankStr("t-1"),
+                new_status=NotBlankStr("assigned"),
+                idempotency_key=idempotency_key,
+            ),
+            _StubRawMessage(),
+        )
+        second_delivery = (
+            TaskClaim(
+                task_id=NotBlankStr("t-1"),
+                new_status=NotBlankStr("assigned"),
+                idempotency_key=idempotency_key,
+            ),
+            _StubRawMessage(),
+        )
+        queue = _ScriptedTaskQueue([first_delivery, second_delivery])
         worker = Worker(
             queue_config=queue_config,
-            task_queue=_NullTaskQueue(),  # type: ignore[arg-type]
-            executor=_unused_executor,
+            task_queue=queue,  # type: ignore[arg-type]
+            executor=executor,
             worker_id="test-worker",
-            seen_claims=None,
+            seen_claims=seen,
             clock=clock,
         )
-        claim = TaskClaim(
-            task_id=NotBlankStr("t-no-repo"),
-            new_status=NotBlankStr("assigned"),
+
+        await worker._run_once()
+        await worker._run_once()
+
+        assert executor_calls == 2
+        assert seen.mark_seen_calls == [
+            {
+                "idempotency_key": "idem-retry-then-success",
+                "claim_id": "t-1",
+                "now": clock.now(),
+                "ttl_seconds": worker._dedup_ttl_seconds,
+            },
+        ]
+
+    async def test_success_marks_and_subsequent_delivery_short_circuits(
+        self,
+        queue_config: QueueConfig,
+    ) -> None:
+        """SUCCESS writes the row; redelivery of the same key skips."""
+        clock = FakeClock(start=datetime(2026, 5, 13, tzinfo=UTC))
+        seen = _StubSeenClaims()
+        idempotency_key = NotBlankStr("idem-success")
+        executor_calls = 0
+
+        async def executor(_claim: TaskClaim) -> TaskClaimStatus:
+            nonlocal executor_calls
+            executor_calls += 1
+            return TaskClaimStatus.SUCCESS
+
+        first_delivery = (
+            TaskClaim(
+                task_id=NotBlankStr("t-ok"),
+                new_status=NotBlankStr("assigned"),
+                idempotency_key=idempotency_key,
+            ),
+            _StubRawMessage(),
         )
-        # Must not raise.
-        await worker._forget_seen(claim)
+        second_delivery = (
+            TaskClaim(
+                task_id=NotBlankStr("t-ok"),
+                new_status=NotBlankStr("assigned"),
+                idempotency_key=idempotency_key,
+            ),
+            _StubRawMessage(),
+        )
+        queue = _ScriptedTaskQueue([first_delivery, second_delivery])
+        worker = Worker(
+            queue_config=queue_config,
+            task_queue=queue,  # type: ignore[arg-type]
+            executor=executor,
+            worker_id="test-worker",
+            seen_claims=seen,
+            clock=clock,
+        )
+
+        await worker._run_once()
+        await worker._run_once()
+
+        assert executor_calls == 1
+        assert len(seen.mark_seen_calls) == 1
 
 
 async def _unused_executor(_claim: TaskClaim) -> TaskClaimStatus:  # pragma: no cover

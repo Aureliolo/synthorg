@@ -503,8 +503,8 @@ PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED: Final[str] = (
 
 # Worker seen-claims events (TaskClaim idempotency dedup)
 PERSISTENCE_SEEN_CLAIMS_MARK_FAILED: Final[str] = "persistence.seen_claims.mark_failed"
-PERSISTENCE_SEEN_CLAIMS_FORGET_FAILED: Final[str] = (
-    "persistence.seen_claims.forget_failed"
+PERSISTENCE_SEEN_CLAIMS_LOOKUP_FAILED: Final[str] = (
+    "persistence.seen_claims.lookup_failed"
 )
 PERSISTENCE_SEEN_CLAIMS_PRUNED: Final[str] = "persistence.seen_claims.pruned"
 PERSISTENCE_SEEN_CLAIMS_PRUNE_FAILED: Final[str] = (

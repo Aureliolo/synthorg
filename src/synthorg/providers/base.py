@@ -80,7 +80,7 @@ class BaseCompletionProvider(ABC):
     ) -> None:
         self._retry_handler = retry_handler
         self._rate_limiter = rate_limiter
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     def _provider_label(self) -> str:
         """Return the bounded provider identifier used for metrics / logs.
@@ -174,6 +174,8 @@ class BaseCompletionProvider(ABC):
                     result = retry_info.value
                 else:
                     result = await _attempt()
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 latency_ms = (self._clock.monotonic() - t_start) * 1000.0
                 # ``logger.exception`` (what TRY400 suggests) would
@@ -309,6 +311,8 @@ class BaseCompletionProvider(ABC):
 
         try:
             return await self._resilient_execute(_attempt)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # See the ``complete`` sibling handler; ``logger.error``
             # + scrubbed fields instead of ``logger.exception``
@@ -358,6 +362,8 @@ class BaseCompletionProvider(ABC):
 
         try:
             return await self._resilient_execute(_attempt)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # ``logger.exception`` would attach a traceback whose
             # frame-locals can leak provider credentials; use

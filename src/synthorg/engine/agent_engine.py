@@ -190,7 +190,7 @@ class AgentEngine(
     ) -> None:
         self._agent_middleware_chain = agent_middleware_chain
         self._event_reader = event_reader
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._event_stream_hub = event_stream_hub
         self._interrupt_store = interrupt_store
         if execution_loop is not None and auto_loop_config is not None:

@@ -29,6 +29,8 @@ logger = get_logger(__name__)
 # Rules whose ALLOW verdict should not short-circuit remaining rules.
 _SOFT_ALLOW_RULES: frozenset[str] = frozenset({_POLICY_VALIDATOR_RULE_NAME})
 
+_MILLISECONDS_PER_SECOND: float = 1000.0
+
 
 class RuleEngine:
     """Evaluates security rules in a defined order.
@@ -97,7 +99,7 @@ class RuleEngine:
             if verdict is None:
                 continue
 
-            duration_ms = (self._clock.monotonic() - start) * 1000
+            duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
 
             # Soft-allow rules (e.g. policy_validator auto-approve)
             # record their verdict but do NOT short-circuit.
@@ -122,7 +124,7 @@ class RuleEngine:
             )
 
         # No rule returned DENY/ESCALATE.
-        duration_ms = (self._clock.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
 
         # If a soft-allow was recorded, use it.
         if soft_allow is not None:

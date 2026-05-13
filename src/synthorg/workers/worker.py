@@ -26,8 +26,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_CLAIM_RECEIVED,
-    WORKERS_DEDUP_FORGET_FAILED,
     WORKERS_DEDUP_LOOKUP_FAILED,
+    WORKERS_DEDUP_MARK_FAILED,
     WORKERS_DUPLICATE_CLAIM_SUPPRESSED,
     WORKERS_EXECUTOR_FAILED,
     WORKERS_FINALIZE_FAILED,
@@ -173,6 +173,14 @@ class Worker:
         deadline. The loop's outer ``while not self._stop_event.is_set()``
         handles the stop signal; this method just returns eagerly on
         an empty fetch so the loop can observe it.
+
+        Dedup is consulted as a read-only check BEFORE execution and
+        the completion row is written AFTER the executor reaches a
+        terminal outcome (SUCCESS / FAILED). Writing post-execution
+        means a worker that crashes mid-execute leaves no row behind,
+        so the JetStream redelivery re-runs the claim instead of being
+        silently ack-and-skipped under a stale "we already saw this"
+        marker.
         """
         claim_and_raw = await self._task_queue.next_claim(
             timeout=_MAX_FETCH_POLL_SECONDS,
@@ -180,23 +188,22 @@ class Worker:
         if claim_and_raw is None:
             return
         claim, raw = claim_and_raw
-        if await self._is_duplicate(claim):
+        if await self._is_completed(claim):
             await self._finalize_claim(raw, TaskClaimStatus.SUCCESS)
             return
         status = await self._execute_claim(claim)
-        if status == TaskClaimStatus.RETRY:
-            # ``_is_duplicate`` wrote a speculative row before the
-            # executor ran (the persistence layer's only atomic
-            # first-write primitive is INSERT-IF-NOT-EXISTS). On a
-            # retry-able outcome we must roll that row back so the
-            # next JetStream redelivery runs the executor again
-            # instead of taking the duplicate-suppress branch and
-            # silently dropping the claim.
-            await self._forget_seen(claim)
+        # Mark before ack: a crash between ``_mark_completed`` and
+        # ``_finalize_claim`` still leaves the row in place, so the
+        # JetStream redelivery (triggered by the missing ack) observes
+        # the completion and ack-skips. The opposite ordering would
+        # let a successful claim be silently re-executed when the ack
+        # raced redelivery.
+        if status in {TaskClaimStatus.SUCCESS, TaskClaimStatus.FAILED}:
+            await self._mark_completed(claim)
         await self._finalize_claim(raw, status)
 
-    async def _is_duplicate(self, claim: TaskClaim) -> bool:
-        """Return ``True`` if the claim has already been processed.
+    async def _is_completed(self, claim: TaskClaim) -> bool:
+        """Return ``True`` if the claim has already completed.
 
         Resolves to ``False`` when no dedup repository is wired or when
         the repo lookup fails (fail-open: a transient persistence error
@@ -206,11 +213,8 @@ class Worker:
         if self._seen_claims is None:
             return False
         try:
-            inserted = await self._seen_claims.mark_seen(
+            seen = await self._seen_claims.is_completed(
                 idempotency_key=NotBlankStr(claim.idempotency_key),
-                claim_id=NotBlankStr(claim.task_id),
-                now=self._clock.now(),
-                ttl_seconds=self._dedup_ttl_seconds,
             )
         except QueryError as exc:
             logger.warning(
@@ -222,7 +226,7 @@ class Worker:
                 error=safe_error_description(exc),
             )
             return False
-        if inserted:
+        if not seen:
             return False
         logger.info(
             WORKERS_DUPLICATE_CLAIM_SUPPRESSED,
@@ -232,24 +236,29 @@ class Worker:
         )
         return True
 
-    async def _forget_seen(self, claim: TaskClaim) -> None:
-        """Roll back the speculative dedup row recorded in ``_is_duplicate``.
+    async def _mark_completed(self, claim: TaskClaim) -> None:
+        """Record the claim's terminal outcome in the dedup repository.
 
         Fail-open: a transient persistence error here is logged and
-        swallowed. The JetStream redelivery horizon (``ack_wait *
-        max_deliver``) still bounds repeat attempts, and a stuck row
-        only mis-classifies one redelivery as a duplicate rather than
-        stalling the whole worker.
+        swallowed. The worst-case is that a duplicate redelivery
+        executes the work twice; the work itself is idempotent at the
+        task-engine layer (single-writer transitions plus the API's
+        idempotency-key envelope), so re-execution converges on the
+        same state rather than corrupting it. Raising would crash the
+        worker loop and stall every claim sharing this subscriber.
         """
         if self._seen_claims is None:
             return
         try:
-            await self._seen_claims.forget(
+            await self._seen_claims.mark_seen(
                 idempotency_key=NotBlankStr(claim.idempotency_key),
+                claim_id=NotBlankStr(claim.task_id),
+                now=self._clock.now(),
+                ttl_seconds=self._dedup_ttl_seconds,
             )
         except QueryError as exc:
             logger.warning(
-                WORKERS_DEDUP_FORGET_FAILED,
+                WORKERS_DEDUP_MARK_FAILED,
                 worker_id=self._worker_id,
                 task_id=claim.task_id,
                 idempotency_key=claim.idempotency_key,

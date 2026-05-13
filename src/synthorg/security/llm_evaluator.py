@@ -89,6 +89,8 @@ _MAX_VALUE_LENGTH: Final[int] = 200
 # and approval queue).
 _MAX_REASON_LENGTH: Final[int] = 300
 
+_MILLISECONDS_PER_SECOND: Final[float] = 1000.0
+
 # Regex to strip control characters from LLM-returned reason.
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -303,7 +305,7 @@ class LlmSecurityEvaluator:
         start: float,
     ) -> SecurityVerdict:
         """Handle LLM call timeout."""
-        duration_ms = (self._clock.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         logger.warning(
             SECURITY_LLM_EVAL_TIMEOUT,
             tool_name=context.tool_name,
@@ -323,7 +325,7 @@ class LlmSecurityEvaluator:
         exc: Exception,
     ) -> SecurityVerdict:
         """Handle unexpected LLM call errors."""
-        duration_ms = (self._clock.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         # Use ``logger.warning`` + ``safe_error_description``
         # instead of ``logger.exception`` so we don't emit a
         # traceback that could leak credential-bearing locals
@@ -349,7 +351,7 @@ class LlmSecurityEvaluator:
         start: float,
     ) -> None:
         """Log a successful LLM evaluation completion."""
-        duration_ms = (self._clock.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         logger.info(
             SECURITY_LLM_EVAL_COMPLETE,
             tool_name=context.tool_name,
@@ -625,7 +627,7 @@ class LlmSecurityEvaluator:
             )
 
         reason = self._sanitize_reason(raw_reason)
-        duration_ms = (self._clock.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         full_reason = f"LLM security eval: {reason}"
 
         return SecurityVerdict(

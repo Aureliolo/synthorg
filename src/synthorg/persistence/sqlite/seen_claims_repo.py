@@ -1,10 +1,11 @@
 """SQLite repository for worker claim dedup persistence.
 
 Backs :class:`SeenClaimsRepository` against an aiosqlite connection.
-Uses an ``INSERT ... ON CONFLICT DO NOTHING`` so the first writer
-inserts and concurrent writers observe a no-op insert. Returning
-``cursor.rowcount`` distinguishes first-write from duplicate without
-a separate read.
+``mark_seen`` uses ``INSERT ... ON CONFLICT DO NOTHING`` so the first
+writer inserts and concurrent writers observe a no-op insert;
+``cursor.rowcount`` distinguishes first-write from duplicate without a
+separate read. ``is_completed`` is the pre-execute existence check
+workers consult before re-running a claim.
 """
 
 import contextlib
@@ -18,7 +19,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
-    PERSISTENCE_SEEN_CLAIMS_FORGET_FAILED,
+    PERSISTENCE_SEEN_CLAIMS_LOOKUP_FAILED,
     PERSISTENCE_SEEN_CLAIMS_MARK_FAILED,
     PERSISTENCE_SEEN_CLAIMS_PRUNE_FAILED,
     PERSISTENCE_SEEN_CLAIMS_PRUNED,
@@ -41,6 +42,29 @@ class SQLiteSeenClaimsRepository:
         """Bind to *db* and serialise writes via the backend *write_context*."""
         self._db = db
         self._write_context = write_context
+
+    async def is_completed(
+        self,
+        *,
+        idempotency_key: NotBlankStr,
+    ) -> bool:
+        """Return ``True`` when a row for ``idempotency_key`` exists."""
+        try:
+            cursor = await self._db.execute(
+                "SELECT 1 FROM seen_claims WHERE idempotency_key = ? LIMIT 1",
+                (str(idempotency_key),),
+            )
+            row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to look up seen claim {idempotency_key!r}"
+            logger.warning(
+                PERSISTENCE_SEEN_CLAIMS_LOOKUP_FAILED,
+                idempotency_key=str(idempotency_key),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return row is not None
 
     async def mark_seen(
         self,
@@ -96,33 +120,6 @@ class SQLiteSeenClaimsRepository:
                 )
                 raise QueryError(msg) from exc
         return inserted
-
-    async def forget(
-        self,
-        *,
-        idempotency_key: NotBlankStr,
-    ) -> bool:
-        """Delete the dedup row for *idempotency_key* (idempotent)."""
-        async with self._write_context():
-            try:
-                cursor = await self._db.execute(
-                    "DELETE FROM seen_claims WHERE idempotency_key = ?",
-                    (str(idempotency_key),),
-                )
-                removed = cursor.rowcount > 0
-                await self._db.commit()
-            except (sqlite3.Error, aiosqlite.Error) as exc:
-                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
-                    await self._db.rollback()
-                msg = f"Failed to forget claim {idempotency_key!r}"
-                logger.warning(
-                    PERSISTENCE_SEEN_CLAIMS_FORGET_FAILED,
-                    idempotency_key=str(idempotency_key),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
-        return removed
 
     async def prune_expired(self, now: AwareDatetime) -> int:
         """Delete rows past their ``expires_at`` boundary."""
