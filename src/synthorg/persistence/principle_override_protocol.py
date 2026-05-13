@@ -8,11 +8,13 @@ recording the rollback operation that produced it for forensic audit.
 """
 
 from datetime import datetime  # noqa: TC003 -- runtime default in protocol signature
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+_DEFAULT_LIST_LIMIT_100: Final[int] = 100
 
 
 class PrincipleOverride(BaseModel):
@@ -83,7 +85,7 @@ class PrincipleOverrideRepository(Protocol):
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = _DEFAULT_LIST_LIMIT_100,
         offset: int = 0,
     ) -> tuple[PrincipleOverride, ...]:
         """List all overrides, ordered by ``scope`` ascending."""

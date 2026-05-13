@@ -14,7 +14,10 @@ from synthorg.persistence._shared import (
     normalize_utc,
     parse_iso_utc,
 )
-from synthorg.persistence.principle_override_protocol import PrincipleOverride
+from synthorg.persistence.principle_override_protocol import (
+    _DEFAULT_LIST_LIMIT_100,
+    PrincipleOverride,
+)
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -126,7 +129,7 @@ class SQLitePrincipleOverrideRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = _DEFAULT_LIST_LIMIT_100,
         offset: int = 0,
     ) -> tuple[PrincipleOverride, ...]:
         """List all overrides ordered by ``scope`` ascending."""

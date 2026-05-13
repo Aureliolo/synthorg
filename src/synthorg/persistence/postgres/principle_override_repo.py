@@ -9,7 +9,10 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.persistence._shared import normalize_utc
-from synthorg.persistence.principle_override_protocol import PrincipleOverride
+from synthorg.persistence.principle_override_protocol import (
+    _DEFAULT_LIST_LIMIT_100,
+    PrincipleOverride,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -111,7 +114,7 @@ class PostgresPrincipleOverrideRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = _DEFAULT_LIST_LIMIT_100,
         offset: int = 0,
     ) -> tuple[PrincipleOverride, ...]:
         """List all overrides ordered by ``scope`` ascending."""
