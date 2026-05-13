@@ -371,6 +371,40 @@ class TelemetryCollector:
             NoopReporter,
         )
 
+    def _log_token_missing(self) -> None:
+        """Log the missing-token bail-out at the right severity.
+
+        Only a production release wheel is expected to carry an
+        embedded token; in dev / pre-release / CI the operator routinely
+        enables telemetry against a source install whose build pipeline
+        never ran the embedder. ERROR every boot there buries real
+        production-only failures. Keep ERROR for
+        ``environment == "prod"`` and downgrade everything else to INFO
+        with an actionable detail message.
+        """
+        if self._config.environment == "prod":
+            logger.error(
+                TELEMETRY_TOKEN_MISSING,
+                detail=(
+                    "build artifact missing embedded token; rebuild "
+                    "release wheel with LOGFIRE_PROJECT_TOKEN CI secret"
+                ),
+                backend=self._config.backend.value,
+                environment=self._config.environment,
+            )
+        else:
+            logger.info(
+                TELEMETRY_TOKEN_MISSING,
+                detail=(
+                    "telemetry token not embedded in this build; "
+                    "telemetry will stay disabled. To exercise the "
+                    "reporter locally run scripts/embed_logfire_token.py "
+                    "before starting the backend."
+                ),
+                backend=self._config.backend.value,
+                environment=self._config.environment,
+            )
+
     async def start(self) -> None:
         """Load the deployment ID and start the periodic heartbeat.
 
@@ -420,14 +454,7 @@ class TelemetryCollector:
                 and not is_token_embedded()
             ):
                 self._token_missing_at_start = True
-                logger.error(
-                    TELEMETRY_TOKEN_MISSING,
-                    detail=(
-                        "build artifact missing embedded token; rebuild "
-                        "release wheel with LOGFIRE_PROJECT_TOKEN CI secret"
-                    ),
-                    backend=self._config.backend.value,
-                )
+                self._log_token_missing()
                 return
             if self._heartbeat_task is not None and not self._heartbeat_task.done():
                 return
