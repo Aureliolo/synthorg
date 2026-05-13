@@ -292,7 +292,7 @@ class QuotaCheckResult(BaseModel):
         exhausted_windows: Which windows are exhausted (if any).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     allowed: bool = Field(description="Whether the request is allowed")
     provider_name: NotBlankStr = Field(description="Provider checked")

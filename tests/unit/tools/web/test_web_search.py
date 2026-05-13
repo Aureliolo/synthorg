@@ -1,6 +1,7 @@
 """Unit tests for WebSearchTool."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.tools.web.web_search import SearchResult, WebSearchTool
 
@@ -61,3 +62,14 @@ class TestSearchResult:
         sr = SearchResult(title="T", url="U", snippet="S")
         with pytest.raises(Exception):  # noqa: B017, PT011
             sr.title = "other"  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_extra_field_rejected(self) -> None:
+        """Unknown fields are rejected (extra='forbid')."""
+        with pytest.raises(ValidationError, match="extra"):
+            SearchResult(
+                title="T",
+                url="U",
+                snippet="S",
+                unknown_field="surprise",  # type: ignore[call-arg]
+            )
