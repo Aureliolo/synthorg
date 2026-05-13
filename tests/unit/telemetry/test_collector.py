@@ -84,24 +84,35 @@ class TestTelemetryCollector:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Enabled + sentinel token -> ONE ERROR, no heartbeat.
+        """Enabled + sentinel token in prod -> ONE ERROR, no heartbeat.
 
         With telemetry enabled but the build artifact shipping the
-        sentinel token, the collector must log a single
-        ``telemetry.token.missing`` ERROR at startup and skip the
-        heartbeat scheduling so the per-cycle warning spam is
-        eliminated.
+        sentinel token in a prod environment, the collector must log a
+        single ``telemetry.token.missing`` ERROR at startup and skip
+        the heartbeat scheduling so the per-cycle warning spam is
+        eliminated. Non-prod environments downgrade the same condition
+        to INFO (covered in
+        :meth:`test_enabled_logfire_with_sentinel_token_in_dev_emits_info`).
 
-        Pin ``is_token_embedded()`` to ``False`` so the missing-token
-        branch is exercised deterministically. Without the patch, a
-        future build artifact carrying a real token would flip the
-        branch and silently stop testing the regression we're locking
-        down.
+        Pin ``is_token_embedded()`` to ``False`` and the resolved
+        environment to ``prod`` so the missing-token branch is
+        exercised deterministically. Without the patches, a future
+        build artifact carrying a real token or a CI-mode override
+        would flip the branch and silently stop testing the regression
+        we're locking down.
         """
-        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.LOGFIRE)
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.LOGFIRE,
+            environment="prod",
+        )
         monkeypatch.setattr(
             "synthorg.telemetry.collector.is_token_embedded",
             lambda: False,
+        )
+        monkeypatch.setattr(
+            "synthorg.telemetry.collector._resolve_environment",
+            lambda configured, environ=None: "prod",
         )
         with structlog.testing.capture_logs() as logs:
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
@@ -118,6 +129,54 @@ class TestTelemetryCollector:
         ]
         assert len(token_missing) == 1
         # Heartbeat task never scheduled when token is sentinel.
+        assert collector._heartbeat_task is None
+
+    async def test_enabled_logfire_with_sentinel_token_in_dev_emits_info(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Enabled + sentinel token outside prod -> INFO not ERROR.
+
+        Dev / pre-release / CI builds never run the embedder, so an
+        ERROR every boot would bury real production-only failures.
+        The condition still short-circuits the heartbeat; only the
+        severity changes.
+        """
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.LOGFIRE,
+            environment="dev",
+        )
+        monkeypatch.setattr(
+            "synthorg.telemetry.collector.is_token_embedded",
+            lambda: False,
+        )
+        monkeypatch.setattr(
+            "synthorg.telemetry.collector._resolve_environment",
+            lambda configured, environ=None: "dev",
+        )
+        with structlog.testing.capture_logs() as logs:
+            collector = TelemetryCollector(config=config, data_dir=tmp_path)
+            try:
+                await collector.start()
+            finally:
+                await collector.shutdown()
+
+        info_logs = [
+            log
+            for log in logs
+            if log.get("event") == "telemetry.token.missing"
+            and log.get("log_level") == "info"
+        ]
+        error_logs = [
+            log
+            for log in logs
+            if log.get("event") == "telemetry.token.missing"
+            and log.get("log_level") == "error"
+        ]
+        assert len(info_logs) == 1
+        assert error_logs == []
         assert collector._heartbeat_task is None
 
     async def test_enabled_noop_backend_skips_token_check(

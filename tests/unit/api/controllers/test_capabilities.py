@@ -42,14 +42,17 @@ class TestCapabilitiesController:
             assert isinstance(data[key], bool), key
         # Exact-value assertions against the test conftest's wiring.
         # The test fixture does NOT wire the optional subsystems
-        # (client simulation state, ontology service, telemetry
-        # collector, tunnel provider) and ships with
-        # ``integrations.enabled=False``, so each flag has a known
-        # value. A regression where the controller hardcodes a flag
-        # to True (e.g. via a copy-paste mistake) is caught here.
+        # (client simulation state, telemetry collector, tunnel
+        # provider) and ships with ``integrations.enabled=False``, so
+        # each flag has a known value. A regression where the
+        # controller hardcodes a flag to True (e.g. via a copy-paste
+        # mistake) is caught here. ``ontology`` is wired automatically
+        # in the on-startup phase whenever persistence is connected
+        # (the test fixture connects an in-memory backend), so it
+        # reads True.
         assert data["simulations"] is False
         assert data["requests"] is False
-        assert data["ontology"] is False
+        assert data["ontology"] is True
         assert data["tunnel"] is False
         assert data["webhooks"] is False
         assert data["a2a"] is False
