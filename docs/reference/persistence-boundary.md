@@ -62,6 +62,25 @@ Services:
 
 Repositories **must not** log mutations themselves (enforced by `scripts/check_persistence_boundary.py`). The service layer is the canonical logging point so audit trails do not duplicate when multiple callers share a repo. Repos may still log fetch telemetry (`*_FETCHED`, `*_LISTED`, `*_COUNTED`) and error paths (`*_SAVE_FAILED`, `*_DELETE_FAILED`, `*_DUPLICATE`); the rule targets entity-mutation audit specifically.
 
+## Cross-backend write_context
+
+`PersistenceBackend.write_context()` returns an async context manager that callers wrap around mutating SQL. The call shape is identical on both backends:
+
+```python
+async with backend.write_context():
+    await artifact_repo.save(artifact)
+    await project_repo.save(project)
+```
+
+The mutual-exclusion guarantee, however, is backend-specific:
+
+- **SQLite** acquires a shared in-process `asyncio.Lock`. The single `aiosqlite.Connection` is shared by every repository on that backend, so concurrent writers must serialize at the statement level. Repositories receive the backend's `write_context` bound method at construction and call `async with self._write_context():` around every multi-statement transaction.
+- **Postgres** yields immediately. Each repository operation checks out an independent connection from the async pool, so writers are isolated at the database level without an in-process lock. The method exists only to keep the cross-backend interface uniform; it does not provide mutual exclusion beyond what the pool already gives.
+
+Callers must not rely on `write_context()` for distributed mutual exclusion or cross-backend serializability; for true cross-process locking, use a database-side primitive.
+
+Repositories never own a private write lock. Tests that construct a repository in isolation use `tests._shared.persistence.make_private_write_context()` to satisfy the constructor; that helper returns a fresh per-call lock and is unsafe for production wiring.
+
 ## Migrations
 
 Adding a migration: read `docs/guides/persistence-migrations.md` first.  Never hand-edit a revision file that already exists on `origin/main`; yoyo's content-hash check refuses to re-apply an edited file.  Author a new revision with your delta instead.

@@ -103,6 +103,12 @@ class SQLiteFineTuneRunRepository:
 
     Args:
         db: An open aiosqlite connection with row_factory set.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
@@ -324,6 +330,12 @@ class SQLiteFineTuneCheckpointRepository:
 
     Args:
         db: An open aiosqlite connection with row_factory set.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(

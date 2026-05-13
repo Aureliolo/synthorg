@@ -114,7 +114,6 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         *,
         write_context: WriteContext,
     ) -> None:
-        """Initialise the repository with a shared aiosqlite connection."""
         self._db: aiosqlite.Connection = db
         self._db.row_factory = aiosqlite.Row
         self._write_context = write_context

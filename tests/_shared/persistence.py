@@ -6,6 +6,11 @@ serialize across the shared ``aiosqlite.Connection``. Tests that
 exercise a single repository in isolation (no sibling repos on the
 connection) use :func:`make_private_write_context` to satisfy the
 required ``write_context`` constructor argument.
+
+DO NOT import this module from application code. Each
+``make_private_write_context()`` call returns its own isolated lock,
+so two repositories that should share the backend write lock will
+silently fail to serialize if both are constructed via this helper.
 """
 
 import asyncio

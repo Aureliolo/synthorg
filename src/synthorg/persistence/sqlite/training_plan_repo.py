@@ -162,6 +162,12 @@ class SQLiteTrainingPlanRepository:
     Args:
         db: An open aiosqlite connection with ``row_factory``
             set to ``aiosqlite.Row``.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(

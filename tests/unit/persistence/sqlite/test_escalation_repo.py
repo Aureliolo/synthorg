@@ -1,5 +1,6 @@
 """SQLite escalation queue repository tests."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
@@ -283,3 +284,54 @@ async def test_invalid_limit_raises(backend: SQLitePersistenceBackend) -> None:
         await repo.list_items(limit=0)
     with pytest.raises(ValueError, match="offset"):
         await repo.list_items(offset=-1)
+
+
+async def test_build_escalations_serializes_with_backend_write_context(
+    backend: SQLitePersistenceBackend,
+) -> None:
+    """``build_escalations`` must wire the backend's shared write lock.
+
+    The factory previously constructed ``SQLiteEscalationRepository``
+    without a shared lock, so escalation writes could interleave with
+    sibling repos' writes on the single ``aiosqlite.Connection``. This
+    regression test asserts that an escalation operation started while
+    another task already holds ``backend.write_context()`` blocks until
+    the holder releases, proving both sides contend on the same lock.
+    """
+    escalation_repo = backend.build_escalations()
+    assert isinstance(escalation_repo, SQLiteEscalationRepository)
+
+    events: list[str] = []
+    backend_holding = asyncio.Event()
+    release_backend = asyncio.Event()
+    escalation_contender_started = asyncio.Event()
+
+    async def hold_backend_lock() -> None:
+        async with backend.write_context():
+            events.append("backend-acquired")
+            backend_holding.set()
+            await release_backend.wait()
+            events.append("backend-released")
+
+    async def try_escalation_lock() -> None:
+        await backend_holding.wait()
+        escalation_contender_started.set()
+        async with escalation_repo._write_context():
+            events.append("escalation-acquired")
+
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(hold_backend_lock())
+        tg.create_task(try_escalation_lock())
+        await escalation_contender_started.wait()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert "escalation-acquired" not in events, (
+            f"escalation_repo acquired the lock while backend held it; events={events}"
+        )
+        release_backend.set()
+
+    assert events == [
+        "backend-acquired",
+        "backend-released",
+        "escalation-acquired",
+    ], events

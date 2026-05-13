@@ -1,18 +1,27 @@
 """Shared helpers for the SQLite persistence backend."""
 
 import sqlite3
-from collections.abc import Callable
-from contextlib import AbstractAsyncContextManager
+from typing import TYPE_CHECKING, Protocol
 
-WriteContext = Callable[[], AbstractAsyncContextManager[None]]
-"""Factory of a one-shot async context manager that serializes writes.
+if TYPE_CHECKING:
+    from contextlib import AbstractAsyncContextManager
 
-Repositories store one of these and call
-``async with self._write_context()`` around every multi-statement
-transaction. The backend wires its own ``write_context`` bound method,
-so each call returns a fresh CM whose underlying lock is shared across
-every repo on the connection.
-"""
+
+class WriteContext(Protocol):
+    """Factory of a one-shot async context manager that serializes writes.
+
+    Repositories store one of these and call
+    ``async with self._write_context()`` around every multi-statement
+    transaction. The backend wires its own ``write_context`` bound method
+    as the factory, so each call returns a fresh context manager whose
+    underlying lock is shared across every repo on the connection.
+
+    Modelled as a ``Protocol`` (rather than ``Callable[[], CM[None]]``)
+    so the name carries the intent (serializing-writes factory) at the
+    type level, not just the shape.
+    """
+
+    def __call__(self) -> AbstractAsyncContextManager[None]: ...
 
 
 def is_unique_constraint_error(exc: BaseException) -> bool:
