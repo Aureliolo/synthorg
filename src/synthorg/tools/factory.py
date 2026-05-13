@@ -10,7 +10,7 @@ in a ``ToolRegistry``.
 import math
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import ToolCategory
+from synthorg.core.enums import AutonomyLevel, ToolCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_FACTORY_BUILT,
@@ -45,6 +45,9 @@ if TYPE_CHECKING:
 
     from synthorg.communication.async_tasks.service import AsyncTaskService
     from synthorg.config.schema import RootConfig
+    from synthorg.memory.consolidation.wiki_export import WikiExporter
+    from synthorg.memory.org.protocol import OrgMemoryBackend
+    from synthorg.memory.org.store import OrgFactStore
     from synthorg.tools.analytics.config import AnalyticsToolsConfig
     from synthorg.tools.analytics.data_aggregator import AnalyticsProvider
     from synthorg.tools.analytics.metric_collector import MetricSink
@@ -323,6 +326,64 @@ def _build_analytics_tools(
     return tuple(tools)
 
 
+_DEFAULT_ARCHITECT_AGENT_ID: Final[str] = "knowledge-architect"
+_DEFAULT_ARCHITECT_AUTONOMY: Final[AutonomyLevel] = AutonomyLevel.SUPERVISED
+
+
+def _build_knowledge_architect_tools(  # noqa: PLR0913
+    *,
+    org_backend: OrgMemoryBackend | None,
+    fact_store: OrgFactStore | None,
+    wiki_exporter: WikiExporter | None,
+    architect_agent_id: str,
+    architect_autonomy_level: AutonomyLevel,
+    architect_writes_enabled: bool,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the six KnowledgeArchitect org-memory tools.
+
+    Returns an empty tuple unless all three collaborators are wired.
+    Per-agent autonomy gating lives inside the Write/Delete tools
+    themselves (FULL blocks, SEMI requires opt-in, SUPERVISED/LOCKED
+    rely on upstream plan-review). The MCP boundary additionally wraps
+    write/delete with ``admin_tool`` for human-operator gating.
+    """
+    if org_backend is None or fact_store is None or wiki_exporter is None:
+        return ()
+    from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+    from synthorg.memory.tools import (  # noqa: PLC0415
+        KnowledgeArchitectBrowseWikiTool,
+        KnowledgeArchitectDeleteTool,
+        KnowledgeArchitectGuideTool,
+        KnowledgeArchitectReadTool,
+        KnowledgeArchitectSearchTool,
+        KnowledgeArchitectWriteTool,
+    )
+
+    typed_agent_id = NotBlankStr(architect_agent_id)
+    return (
+        KnowledgeArchitectGuideTool(),
+        KnowledgeArchitectSearchTool(org_backend=org_backend),
+        KnowledgeArchitectReadTool(org_backend=org_backend),
+        KnowledgeArchitectWriteTool(
+            org_backend=org_backend,
+            agent_id=typed_agent_id,
+            autonomy_level=architect_autonomy_level,
+            architect_writes_enabled=architect_writes_enabled,
+        ),
+        KnowledgeArchitectDeleteTool(
+            org_backend=org_backend,
+            fact_store=fact_store,
+            agent_id=typed_agent_id,
+            autonomy_level=architect_autonomy_level,
+            architect_writes_enabled=architect_writes_enabled,
+        ),
+        KnowledgeArchitectBrowseWikiTool(
+            wiki_exporter=wiki_exporter,
+            agent_id=typed_agent_id,
+        ),
+    )
+
+
 def build_default_tools(  # noqa: PLR0913
     *,
     workspace: Path,
@@ -345,6 +406,12 @@ def build_default_tools(  # noqa: PLR0913
     async_task_supervisor_id: str = "supervisor",
     async_task_supervisor_task_id: str = "default",
     code_execution_sandbox: SandboxBackend | None = None,
+    org_memory_backend: OrgMemoryBackend | None = None,
+    org_fact_store: OrgFactStore | None = None,
+    wiki_exporter: WikiExporter | None = None,
+    architect_agent_id: str = _DEFAULT_ARCHITECT_AGENT_ID,
+    architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
+    architect_writes_enabled: bool = False,
 ) -> tuple[BaseTool, ...]:
     """Instantiate all built-in workspace tools.
 
@@ -389,6 +456,23 @@ def build_default_tools(  # noqa: PLR0913
         code_execution_sandbox: Sandbox backend for the
             ``code_runner`` tool.  When ``None``, ``code_runner`` is
             not registered.
+        org_memory_backend: OrgMemoryBackend collaborator for the
+            KnowledgeArchitect tools.  Must be wired together with
+            ``org_fact_store`` and ``wiki_exporter`` to register the
+            six ``memory.*`` architect tools; missing any of the three
+            keeps the surface inert.
+        org_fact_store: OrgFactStore for write/delete operations on
+            org facts.
+        wiki_exporter: Wiki exporter used by ``memory.browse_wiki``.
+        architect_agent_id: Agent identity bound to the architect
+            tools.  Defaults to a sentinel string operators can
+            override at startup.
+        architect_autonomy_level: Default autonomy level for the
+            architect tools.  ``SUPERVISED`` requires upstream plan
+            review before the tool runs; ``FULL`` blocks writes
+            entirely.
+        architect_writes_enabled: ``SEMI`` autonomy opt-in flag.
+            Ignored unless ``architect_autonomy_level`` is ``SEMI``.
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -477,6 +561,16 @@ def build_default_tools(  # noqa: PLR0913
     )
     all_tools.extend(
         _build_code_execution_tools(sandbox=code_execution_sandbox),
+    )
+    all_tools.extend(
+        _build_knowledge_architect_tools(
+            org_backend=org_memory_backend,
+            fact_store=org_fact_store,
+            wiki_exporter=wiki_exporter,
+            architect_agent_id=architect_agent_id,
+            architect_autonomy_level=architect_autonomy_level,
+            architect_writes_enabled=architect_writes_enabled,
+        ),
     )
     all_tools.extend(_build_other_tools())
 
