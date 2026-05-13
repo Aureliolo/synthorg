@@ -15,9 +15,9 @@ import pytest
 pytestmark = pytest.mark.unit
 
 # Acceptance bar from #1888: drop below 5 in src/synthorg/.
-# Set just above the documented helper-internal floor so this test
-# fires as soon as a new consumer-side inline pattern leaks in.
-_MAX_INLINE_HITS: int = 8
+# Current state is zero; this threshold guards against any new
+# consumer-side inline ``.strip().lower()`` leaking back in.
+_MAX_INLINE_HITS: int = 4
 
 _PATTERN = re.compile(r"\.strip\(\)\.lower\(\)|\.lower\(\)\.strip\(\)")
 

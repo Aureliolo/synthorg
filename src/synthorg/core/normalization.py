@@ -177,9 +177,11 @@ def normalize_ascii_lowercase(value: str) -> str:
         value: The string to normalise.
 
     Returns:
-        ``value.strip().lower()`` -- whitespace stripped, ASCII-lowercased.
+        ``value`` with surrounding whitespace stripped and remaining
+        ASCII characters lowercased.
     """
-    return value.strip().lower()
+    stripped = value.strip()
+    return stripped.lower()
 
 
 def normalize_ascii_lowercase_or_default(
@@ -187,11 +189,11 @@ def normalize_ascii_lowercase_or_default(
     *,
     default: str = "",
 ) -> str:
-    """``normalize_ascii_lowercase((value or default))`` without the inline pattern.
+    """Normalise ``value or default`` via :func:`normalize_ascii_lowercase`.
 
-    Replaces the ``(value or default).strip().lower()`` idiom at NULL-coalescing
-    call sites (model-affinity lookup, TLS-flag parse, setup boolean parse,
-    classification-detector unit extraction).
+    Replaces the ``(value or default)``-then-strip-then-lower idiom at
+    NULL-coalescing call sites (model-affinity lookup, TLS-flag parse,
+    setup boolean parse, classification-detector unit extraction).
 
     Args:
         value: Optional string, possibly ``None`` or empty.
@@ -199,9 +201,9 @@ def normalize_ascii_lowercase_or_default(
             the desired final form; it is *not* re-normalised.
 
     Returns:
-        ``(value or default).strip().lower()``.
+        ``normalize_ascii_lowercase(value or default)``.
     """
-    return (value or default).strip().lower()
+    return normalize_ascii_lowercase(value or default)
 
 
 def extract_media_type(content_type_header: str) -> str:
@@ -246,9 +248,9 @@ def extract_bearer_token(header: str) -> str | None:
 def collapse_whitespace_lowercase(value: str) -> str:
     """Strip, ASCII-lowercase, and collapse internal whitespace runs to single spaces.
 
-    Replaces the ``" ".join(value.strip().lower().split())`` idiom at
-    command-pattern detection and prompt-normalisation sites where two
-    inputs that differ only in whitespace runs should compare equal.
+    Replaces the strip + lower + split + join idiom at command-pattern
+    detection and prompt-normalisation sites where two inputs that
+    differ only in whitespace runs should compare equal.
 
     Args:
         value: The string to canonicalise.
@@ -257,4 +259,4 @@ def collapse_whitespace_lowercase(value: str) -> str:
         ``value`` with surrounding whitespace stripped, ASCII-lowercased,
         and internal whitespace runs collapsed to single space characters.
     """
-    return " ".join(value.strip().lower().split())
+    return " ".join(normalize_ascii_lowercase(value).split())
