@@ -29,7 +29,7 @@ def _make_entry(entry_id: str) -> AuditEntry:
         tool_category=ToolCategory.CODE_EXECUTION,
         action_type=NotBlankStr("code:write"),
         arguments_hash="a" * 64,
-        verdict="allow",  # type: ignore[arg-type]
+        verdict="allow",
         risk_level=ApprovalRiskLevel.LOW,
         reason="test",
         evaluation_duration_ms=1.0,
@@ -38,7 +38,7 @@ def _make_entry(entry_id: str) -> AuditEntry:
 
 def _gauge_value(collector: PrometheusCollector) -> float:
     """Read the current gauge value through the collector's registry."""
-    samples = collector.registry.collect()  # type: ignore[attr-defined]
+    samples = collector.registry.collect()
     for metric in samples:
         if metric.name.endswith("synthorg_security_audit_log_fill_ratio"):
             for sample in metric.samples:
@@ -56,7 +56,7 @@ class TestAuditFillRatioGauge:
         import synthorg.observability.metrics_hub as _hub
 
         collector = PrometheusCollector(prefix="synthorg")
-        monkeypatch.setattr(_hub, "_active", lambda: collector)  # type: ignore[arg-type]
+        monkeypatch.setattr(_hub, "_active", lambda: collector)
 
         log = AuditLog(max_entries=4)
 

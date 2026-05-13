@@ -42,7 +42,7 @@ class _FakeNatsMessage:
 def _envelope_bytes() -> bytes:
     msg = Message(
         timestamp=datetime.now(UTC),
-        sender=NotBlankStr("agent-a"),  # type: ignore[call-arg]
+        sender=NotBlankStr("agent-a"),
         to=NotBlankStr("agent-b"),
         type=MessageType.ANNOUNCEMENT,
         channel=NotBlankStr("#general"),
@@ -55,7 +55,7 @@ class TestNatsReceiveAckOrdering:
     async def test_build_envelope_does_not_ack_on_success_path(self) -> None:
         msg = _FakeNatsMessage(_envelope_bytes())
         envelope = await build_envelope(
-            [msg],  # type: ignore[list-item]
+            [msg],
             channel_name="#general",
             subscriber_id="agent-b",
         )
@@ -67,7 +67,7 @@ class TestNatsReceiveAckOrdering:
     async def test_envelope_ack_forwards_to_msg_ack(self) -> None:
         msg = _FakeNatsMessage(_envelope_bytes())
         envelope = await build_envelope(
-            [msg],  # type: ignore[list-item]
+            [msg],
             channel_name="#general",
             subscriber_id="agent-b",
         )
@@ -81,7 +81,7 @@ class TestNatsReceiveOversizedAckImmediately:
         oversized = b"\x00" * (10 * 1024 * 1024)
         msg = _FakeNatsMessage(oversized)
         envelope = await build_envelope(
-            [msg],  # type: ignore[list-item]
+            [msg],
             channel_name="#general",
             subscriber_id="agent-b",
         )

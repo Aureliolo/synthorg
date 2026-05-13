@@ -19,6 +19,7 @@ import structlog
 from structlog.testing import capture_logs
 
 from synthorg.api.controllers import activities
+from synthorg.budget.currency import DEFAULT_CURRENCY
 
 pytestmark = pytest.mark.unit
 
@@ -52,7 +53,7 @@ class TestSilentExceptStructuredLogging:
                 degraded,
             )
         # Default currency fallback fires.
-        assert result == activities.DEFAULT_CURRENCY
+        assert result == DEFAULT_CURRENCY
         # The warning record carries the new structured fields.
         warnings = [r for r in caplog if r.get("log_level") == "warning"]
         assert warnings, "expected a WARNING record from the exception path"

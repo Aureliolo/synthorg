@@ -68,7 +68,7 @@ class _RecordingTracer:
         attributes: dict[str, Any] | None = None,
         record_exception: bool = True,
         set_status_on_exception: bool = True,
-    ):
+    ) -> Any:
         span = _RecordingSpan()
         if attributes:
             span.attributes.update(attributes)
@@ -108,7 +108,10 @@ class _StubProvider(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
-        return await self._completer(messages, model, tools, config)
+        result: CompletionResponse = await self._completer(
+            messages, model, tools, config
+        )
+        return result
 
     async def _do_stream(
         self,
@@ -117,9 +120,11 @@ class _StubProvider(BaseCompletionProvider):
         *,
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
-    ):  # pragma: no cover
-        raise NotImplementedError
-        yield  # type: ignore[unreachable]
+    ) -> Any:  # pragma: no cover
+        # Stub never streams; satisfy the abstract signature with a
+        # bare async generator that yields nothing and then exits.
+        return
+        yield None
 
     async def _do_get_model_capabilities(self, model: str) -> Any:  # pragma: no cover
         return None

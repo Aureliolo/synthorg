@@ -113,7 +113,7 @@ class TestWorkerDedup:
             task_queue=_NullTaskQueue(),  # type: ignore[arg-type]
             executor=executor,
             worker_id="test-worker",
-            seen_claims=seen,  # type: ignore[arg-type]
+            seen_claims=seen,
             clock=clock,
         )
         claim = TaskClaim(
@@ -141,7 +141,7 @@ class TestWorkerDedup:
             task_queue=_NullTaskQueue(),  # type: ignore[arg-type]
             executor=executor,
             worker_id="test-worker",
-            seen_claims=seen,  # type: ignore[arg-type]
+            seen_claims=seen,
             clock=clock,
         )
         claim = TaskClaim(
