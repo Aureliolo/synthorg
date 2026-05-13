@@ -52,16 +52,16 @@ class SQLiteSeenClaimsRepository:
     ) -> bool:
         """Insert the dedup row; return ``True`` only on first write.
 
-        The ``write_lock`` is intentionally held across the COMMIT so
-        concurrent ``mark_seen`` callers serialise on the same SQLite
-        connection.  Under WAL mode SQLite only serialises writers (not
-        readers) at the file lock, but the in-process lock keeps
-        ``cursor.rowcount`` semantics clean: a duplicate observed by
-        the conflict clause returns ``rowcount == 0`` only if the
-        first writer's transaction has already been committed when
-        the second one queries.  Releasing the lock pre-commit would
-        let a sibling caller observe a stale ``rowcount`` and treat
-        a duplicate as a first-write.
+        The backend ``write_context`` is intentionally held across the
+        COMMIT so concurrent ``mark_seen`` callers serialise on the
+        same SQLite connection. Under WAL mode SQLite only serialises
+        writers (not readers) at the file lock, but the in-process
+        lock keeps ``cursor.rowcount`` semantics clean: a duplicate
+        observed by the conflict clause returns ``rowcount == 0`` only
+        if the first writer's transaction has already been committed
+        when the second one queries. Releasing the lock pre-commit
+        would let a sibling caller observe a stale ``rowcount`` and
+        treat a duplicate as a first-write.
         """
         seen_at = normalize_utc(now)
         expires_at: datetime = seen_at + timedelta(seconds=ttl_seconds)
@@ -103,7 +103,7 @@ class SQLiteSeenClaimsRepository:
         idempotency_key: NotBlankStr,
     ) -> bool:
         """Delete the dedup row for *idempotency_key* (idempotent)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM seen_claims WHERE idempotency_key = ?",
