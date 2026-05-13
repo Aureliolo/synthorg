@@ -513,6 +513,41 @@ class TestSyncModels:
                 actor=actor,
             )
 
+    async def test_sync_rejects_when_models_added_between_pre_discover_and_lock(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        """Race: pre-lock snapshot empty, post-lock snapshot non-empty.
+
+        If a concurrent ``add_model()`` lands between the pre-discover
+        read and lock acquisition, ``replace_existing=True`` with an
+        empty discovery would wipe the freshly-added models unless the
+        guard re-checks against the post-lock snapshot.
+        """
+        empty = _make_provider_config(models=())
+        # Concurrent ``add_model()`` populated the persisted set
+        # between the pre-discover read and lock acquisition.
+        populated = empty.model_copy(
+            update={"models": (ProviderModelConfig(id="race-m1", alias="m1"),)},
+        )
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            side_effect=[
+                {"cloud-test": empty},  # get_provider() pre-discover
+                {"cloud-test": populated},  # post-lock snapshot
+            ],
+        )
+        # Discovery returns empty (the destructive trigger).
+        service.discover_models_for_provider = AsyncMock(  # type: ignore[method-assign]
+            return_value=(),
+        )
+        with pytest.raises(ProviderValidationError, match="refusing destructive"):
+            await service.sync_models(
+                "cloud-test",
+                SyncModelsRequest(replace_existing=True),
+                actor=actor,
+            )
+
 
 @pytest.mark.unit
 class TestSubscriptionRotationToSGuard:

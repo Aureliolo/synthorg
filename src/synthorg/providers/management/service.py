@@ -10,7 +10,7 @@ import time
 from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -90,6 +90,87 @@ if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
+
+# Provider fields that carry credential / secret material.  Their
+# values must never appear in audit-row payloads: the audit table is
+# operator-readable and is included in data backups.  Diffs against
+# these fields collapse to a sentinel that preserves the
+# "this field changed" signal without exposing either value.
+#
+# This list must stay synchronised with every credential-bearing
+# field on ``ProviderConfig``.  Adding a new credential field without
+# extending this set leaks it on the next ``update_provider`` audit
+# entry.  ``_assert_sensitive_fields_complete`` runs at import time
+# to fail fast when ``ProviderConfig`` grows a credential field that
+# is not whitelisted here.
+_SENSITIVE_PROVIDER_FIELDS: frozenset[str] = frozenset(
+    {
+        "api_key",
+        "subscription_token",
+        "oauth_client_secret",
+        "custom_header_value",
+    },
+)
+
+
+def _assert_sensitive_fields_complete() -> None:
+    """Fail-fast guard against silent credential leakage in audit diffs.
+
+    A new ``ProviderConfig`` field whose name encodes a credential
+    (matches ``*_key`` / ``*_token`` / ``*_secret`` / contains
+    ``password``) must be added to ``_SENSITIVE_PROVIDER_FIELDS``.
+    Catching the omission here, at import time, prevents the field
+    from ever reaching an audit row in production.
+    """
+    credential_suffixes = ("_key", "_token", "_secret", "_password")
+    suspected = {
+        name
+        for name in ProviderConfig.model_fields
+        if name.endswith(credential_suffixes) or "password" in name.lower()
+    }
+    leaks = suspected - _SENSITIVE_PROVIDER_FIELDS
+    if leaks:
+        msg = (
+            "ProviderConfig fields look credential-bearing but are not "
+            f"redacted in audit diffs: {sorted(leaks)!r}. Add them to "
+            "synthorg.providers.management.service._SENSITIVE_PROVIDER_FIELDS."
+        )
+        raise RuntimeError(msg)
+
+
+_assert_sensitive_fields_complete()
+
+
+def _diff_provider_update(
+    existing: ProviderConfig,
+    updated: ProviderConfig,
+) -> dict[str, object]:
+    """Build an audit payload listing only fields whose value changed.
+
+    The EDIT form on the frontend re-sends every field on every submit,
+    so ``request.model_dump(exclude_unset=True)`` would mark every
+    field as "changed" even when the user only touched ``base_url``.
+    Comparing the persisted ``existing`` config against the post-merge
+    ``updated`` config produces the operator-meaningful diff: each
+    changed field gets an ``{"old": ..., "new": ...}`` entry, sensitive
+    fields collapse to ``"<redacted>"`` sentinels, and the legacy
+    ``fields_changed`` list is kept for downstream audit-log
+    consumers that already filter on it.
+    """
+    before = existing.model_dump(mode="json")
+    after = updated.model_dump(mode="json")
+    changes: dict[str, dict[str, object]] = {}
+    for key in sorted(set(before) | set(after)):
+        if before.get(key) == after.get(key):
+            continue
+        if key in _SENSITIVE_PROVIDER_FIELDS:
+            changes[key] = {"old": "<redacted>", "new": "<redacted>"}
+        else:
+            changes[key] = {"old": before.get(key), "new": after.get(key)}
+    return {
+        "fields_changed": list(changes.keys()),
+        "diff": changes,
+    }
 
 
 def _safe_task_id_segment(value: str) -> str:
@@ -267,11 +348,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 provider_name=name,
                 event_type="provider_updated",
                 actor=actor,
-                payload={
-                    "fields_changed": sorted(
-                        request.model_dump(exclude_unset=True).keys(),
-                    ),
-                },
+                payload=_diff_provider_update(existing, updated),
             )
             return updated
 

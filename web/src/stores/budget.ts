@@ -5,6 +5,8 @@ import { listActivities } from '@/api/endpoints/activities'
 import { listAgents } from '@/api/endpoints/agents'
 import { wsEventToActivityItem } from '@/utils/dashboard'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
+import { sanitizeWsString } from '@/stores/notifications'
 import { createLogger } from '@/lib/logger'
 import { aggregateWeekly, type AggregationPeriod } from '@/utils/budget'
 import type {
@@ -81,7 +83,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
           getOverviewMetrics(),
           getBudgetConfig(),
           getForecast(),
-          listCostRecords({ limit: 500 }),
+          listCostRecords({ limit: 200 }),
           getTrends('30d', 'spend'),
           listActivities({ limit: 30 }),
         ])
@@ -106,18 +108,23 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
       const activitiesData =
         activitiesR.status === 'fulfilled' ? activitiesR.value.data : []
 
-      // Log non-critical failures so degradation is debuggable
+      // Log non-critical failures so degradation is debuggable.
+      // Each rejection reason is sanitised explicitly to match the
+      // store-wide pattern in approvals.ts / agents.ts / company.ts;
+      // the logger sanitizes separate args automatically but the
+      // explicit wrap is the project convention and avoids drifting
+      // when this store later switches to structured payloads.
       if (forecastR.status === 'rejected') {
-        log.warn('Failed to fetch forecast:', forecastR.reason)
+        log.warn('Failed to fetch forecast:', sanitizeForLog(forecastR.reason))
       }
       if (recordsR.status === 'rejected') {
-        log.warn('Failed to fetch cost records:', recordsR.reason)
+        log.warn('Failed to fetch cost records:', sanitizeForLog(recordsR.reason))
       }
       if (trendsR.status === 'rejected') {
-        log.warn('Failed to fetch trends:', trendsR.reason)
+        log.warn('Failed to fetch trends:', sanitizeForLog(trendsR.reason))
       }
       if (activitiesR.status === 'rejected') {
-        log.warn('Failed to fetch activities:', activitiesR.reason)
+        log.warn('Failed to fetch activities:', sanitizeForLog(activitiesR.reason))
       }
 
       // Agent metadata fetch (separate from main data -- failures degrade display names to raw IDs but don't block rendering)
@@ -134,7 +141,10 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
           }
         }
       } catch (err) {
-        log.warn('Failed to fetch agent list for name/dept mapping:', err)
+        log.warn(
+          'Failed to fetch agent list for name/dept mapping:',
+          sanitizeForLog(err),
+        )
       }
 
       set({
@@ -161,7 +171,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
       const overview = await getOverviewMetrics()
       set({ overview })
     } catch (err) {
-      log.warn('Failed to refresh overview (polling):', err)
+      log.warn('Failed to refresh overview (polling):', sanitizeForLog(err))
     }
   },
 
@@ -183,7 +193,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     } catch (err) {
       // Clear stale data from previous period so chart doesn't mislead
       set({ trends: null })
-      log.warn('Failed to fetch trends:', err)
+      log.warn('Failed to fetch trends:', sanitizeForLog(err))
     }
   },
 
@@ -208,7 +218,11 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
         get().fetchOverview()
       }
     } catch (err) {
-      log.error('Failed to process WS event:', { type: event.event_type, channel: event.channel }, err)
+      log.error('Failed to process WS event:', {
+        type: sanitizeWsString(event.event_type),
+        channel: sanitizeWsString(event.channel),
+        error: sanitizeForLog(err),
+      })
     }
   },
 }))

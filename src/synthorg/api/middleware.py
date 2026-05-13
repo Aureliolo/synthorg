@@ -41,7 +41,28 @@ from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
 
 _UNMATCHED_ROUTE: Final[str] = "__unmatched__"
 
+# Healthcheck routes are polled by supervisors (Docker, k8s) on a
+# fixed-interval schedule and produce thousands of identical
+# ``api.request.started`` / ``api.request.completed`` records per
+# day. They carry no operational signal beyond uptime, drown out
+# real traffic in log queries, and inflate file-sink rotation churn.
+# Suppress the structured request-log pair for these paths; the
+# Prometheus duration metric and OpenTelemetry span still fire so
+# operators retain aggregated latency visibility.
+#
+# Suffix match (not exact match) because the router prefix
+# (``api.api_prefix``, default ``/api/v1``) is operator-configurable
+# and the healthcheck controller paths are defined as ``/healthz``
+# and ``/readyz`` without a leading prefix.
+_HEALTHCHECK_PATH_SUFFIXES: Final[tuple[str, ...]] = ("/healthz", "/readyz")
+
 logger = get_logger(__name__)
+
+
+def _is_healthcheck_path(path: str) -> bool:
+    """Return True for paths whose request-log pair should be skipped."""
+    return path.endswith(_HEALTHCHECK_PATH_SUFFIXES)
+
 
 # ── Security headers ────────────────────────────────────────────
 # Applied to every HTTP response via the before_send hook.
@@ -237,6 +258,13 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
         headers["Pragma"] = _API_PRAGMA
 
 
+def _log_request_started(method: str, path: str) -> None:
+    """Log request start at INFO, skipping supervisor healthcheck paths."""
+    if _is_healthcheck_path(path):
+        return
+    logger.info(API_REQUEST_STARTED, method=method, path=path)
+
+
 def _log_request_completion(
     method: str,
     path: str,
@@ -244,6 +272,8 @@ def _log_request_completion(
     duration_ms: float,
 ) -> None:
     """Log request completion at the appropriate level."""
+    if _is_healthcheck_path(path):
+        return
     if status_code is None:
         logger.warning(
             API_REQUEST_COMPLETED,
@@ -377,7 +407,7 @@ class RequestLoggingMiddleware:
 
         correlation_id = generate_correlation_id()
         bind_correlation_id(request_id=correlation_id)
-        logger.info(API_REQUEST_STARTED, method=method, path=path)
+        _log_request_started(method, path)
         start = time.perf_counter()
 
         status_code: int | None = None

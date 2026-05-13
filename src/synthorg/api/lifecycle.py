@@ -317,6 +317,64 @@ async def _init_persistence(
             )
             raise
 
+    if app_state.has_connection_catalog:
+        await _rebind_connection_catalog(persistence, app_state)
+
+
+async def _rebind_connection_catalog(
+    persistence: PersistenceBackend,
+    app_state: AppState,
+) -> None:
+    """Re-bind the ConnectionCatalog onto a persistence-backed repo.
+
+    ``auto_wire_integrations`` runs before ``persistence.connect()``,
+    so the catalog is initially seeded with an in-memory stub; without
+    this re-bind, every ``POST /connections`` would write to a stub
+    that the ``mcp_installations.connection_name`` foreign key cannot
+    observe, surfacing as cross-store FK violations on install.
+
+    ``AttributeError`` keeps the helper backend-agnostic for tests /
+    backends without a ``connections`` accessor (the in-memory stub
+    stays bound for read-only flows); any other property-getter
+    failure surfaces via the warning path so the operator sees the
+    cause instead of an opaque startup crash. A failure inside the
+    catalog's own ``rebind_repository`` is fatal and logged at ERROR
+    before re-raising, so root-cause diagnosis is not blind.
+    """
+    try:
+        persistent_connections = persistence.connections
+    except AttributeError:
+        return
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Persistence backend connections accessor failed; "
+            "catalog stays bound to the startup-window stub",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    try:
+        await app_state.connection_catalog.rebind_repository(
+            persistent_connections,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.error(
+            API_APP_STARTUP,
+            note="Failed to re-bind ConnectionCatalog to persistence-backed repo",
+            backend=type(persistence).__name__,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
+    logger.info(
+        API_APP_STARTUP,
+        note="Re-bound ConnectionCatalog to persistence-backed repo",
+        backend=type(persistence).__name__,
+    )
+
 
 def _reset_if_tasks_dead(  # noqa: PLR0911
     obj: object,

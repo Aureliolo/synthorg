@@ -7,12 +7,22 @@ import type {
   SeniorityLevel,
 } from './enums'
 
+export type AgentTier = 'large' | 'medium' | 'small'
+
+export type StrategicOutputMode =
+  | 'mission_first'
+  | 'evidence_first'
+  | 'option_first'
+
 /**
  * Agent configuration as returned by the /agents API endpoints.
  *
  * Matches the backend AgentConfig Pydantic model (config/schema.py).
- * Runtime fields (id, status, hiring_date) are optional -- they exist
+ * Runtime fields (id, status, hiring_date) are optional; they exist
  * on AgentIdentity but may not be present in config-level responses.
+ * Wizard round-trip fields (personality_preset, strategic_output_mode,
+ * tier, model_requirement) are optional and null when the agent was
+ * not built through the setup wizard.
  */
 export interface AgentConfig {
   id?: string
@@ -22,12 +32,16 @@ export interface AgentConfig {
   level: SeniorityLevel
   status?: AgentStatus
   personality: Record<string, unknown>
+  personality_preset?: string | null
+  strategic_output_mode?: StrategicOutputMode | null
   model: Record<string, unknown>
   memory: Record<string, unknown>
   tools: Record<string, unknown>
   authority: Record<string, unknown>
   autonomy_level: AutonomyLevel | null
   hiring_date?: string
+  tier?: AgentTier | null
+  model_requirement?: Record<string, unknown> | null
 }
 
 export type TrendDirection = 'improving' | 'stable' | 'declining' | 'insufficient_data'

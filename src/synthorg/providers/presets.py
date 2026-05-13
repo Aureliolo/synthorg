@@ -395,21 +395,18 @@ _COHERE = CloudPreset(
 _OLLAMA_CLOUD = CloudPreset(
     name="ollama-cloud",
     display_name="Ollama Cloud",
-    description=(
-        "Hosted Ollama models (managed inference). Supply the API base URL"
-        " from your ollama.com account."
-    ),
+    description="Hosted Ollama models (managed inference) at ollama.com.",
     driver="litellm",
     litellm_provider="ollama",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
-    # No default base URL on purpose: the canonical hosted endpoint can
-    # change as the service evolves, and we should not bake an unverified
-    # marketing URL into the form.  Users supply the URL from their
-    # ollama.com account; once a stable canonical endpoint is documented
-    # we can ship a safe default and flip ``requires_base_url`` back.
-    default_base_url=None,
-    requires_base_url=True,
+    # ollama.com is the canonical hosted Ollama endpoint that LiteLLM's
+    # ``ollama`` provider targets when a base URL is supplied. Users
+    # with a private deployment may override the field; the default
+    # matches the public service so the form is submit-ready after
+    # entering an API key alone.
+    default_base_url="https://ollama.com",
+    requires_base_url=False,
     default_models=(),
 )
 

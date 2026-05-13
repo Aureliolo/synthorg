@@ -330,3 +330,81 @@ class TestModelsFromLitellm:
         assert small.cost_per_1k_input == round(0.000003 * 1000, 6)
         assert small.cost_per_1k_output == round(0.000015 * 1000, 6)
         assert small.max_context == 128_000
+
+
+@pytest.mark.unit
+class TestDiffProviderUpdate:
+    """Tests for the structured field-diff audit payload.
+
+    The EDIT form on the frontend re-sends every field on every
+    submit, so ``request.model_dump(exclude_unset=True)`` would mark
+    every field as "changed" even when the user only touched
+    ``base_url``.  Comparing the persisted ``existing`` config
+    against the post-merge ``updated`` config produces the
+    operator-meaningful diff; sensitive fields must collapse to
+    ``"<redacted>"`` so credentials never reach the audit table.
+    """
+
+    def test_only_changed_fields_appear(self) -> None:
+        from synthorg.providers.management.service import _diff_provider_update
+
+        before = _make_config(base_url="http://old.example/api")
+        after = before.model_copy(update={"base_url": "http://new.example/api"})
+
+        diff = _diff_provider_update(before, after)
+
+        assert diff["fields_changed"] == ["base_url"]
+        inner = diff["diff"]
+        assert isinstance(inner, dict)
+        assert inner == {
+            "base_url": {
+                "old": "http://old.example/api",
+                "new": "http://new.example/api",
+            },
+        }
+
+    def test_sensitive_fields_collapse_to_redacted_sentinel(self) -> None:
+        from synthorg.providers.management.service import _diff_provider_update
+
+        before = _make_config(api_key="old-secret-do-not-leak")
+        after = before.model_copy(update={"api_key": "new-secret-do-not-leak"})
+
+        diff = _diff_provider_update(before, after)
+        assert diff["fields_changed"] == ["api_key"]
+        inner = diff["diff"]
+        assert isinstance(inner, dict)
+        # Neither the prior nor the new credential may appear; both
+        # collapse to the redacted sentinel while keeping the
+        # ``this-field-changed`` signal so the audit row is still
+        # informative.
+        assert inner == {
+            "api_key": {"old": "<redacted>", "new": "<redacted>"},
+        }
+        rendered = repr(inner)
+        assert "old-secret-do-not-leak" not in rendered
+        assert "new-secret-do-not-leak" not in rendered
+
+    def test_sensitive_fields_complete_against_provider_config(self) -> None:
+        """No credential-bearing field on ProviderConfig is left unredacted.
+
+        Backstops the import-time
+        ``_assert_sensitive_fields_complete`` guard: if a future
+        rename or new field slips past the heuristic, this test
+        flags it via the explicit name list rather than a startup
+        crash.
+        """
+        from synthorg.providers.management.service import (
+            _SENSITIVE_PROVIDER_FIELDS,
+        )
+
+        credential_suffixes = ("_key", "_token", "_secret", "_password")
+        suspected = {
+            name
+            for name in ProviderConfig.model_fields
+            if name.endswith(credential_suffixes) or "password" in name.lower()
+        }
+        leaks = suspected - _SENSITIVE_PROVIDER_FIELDS
+        assert leaks == set(), (
+            f"ProviderConfig field(s) look credential-bearing but are "
+            f"missing from _SENSITIVE_PROVIDER_FIELDS: {sorted(leaks)!r}"
+        )

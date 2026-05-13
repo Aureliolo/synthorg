@@ -1,6 +1,7 @@
 """Tests for provider controller."""
 
 import json
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -545,7 +546,35 @@ class TestProbeLocalEndpoint:
             assert resp.status_code == 429
 
 
+@pytest.fixture
+async def _bound_audit_actor() -> AsyncIterator[None]:
+    """Bind a synthetic authenticated user so ``audit_actor_from_context``
+    resolves to a real ``ProviderAuditActor`` instead of raising
+    ``AuthContextMissingError`` during direct controller-handler calls.
+
+    Production traffic goes through ``AuthContextMiddleware`` which
+    populates the same ContextVar; these direct-handler tests bypass
+    the middleware stack, so the fixture has to bind the user
+    explicitly. Inherits the default function scope so the
+    ``ContextVar`` reset happens between every test, even when
+    xdist groups them onto one worker.
+    """
+    from synthorg.api.auth.context import authenticated_user_scope
+    from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+    from synthorg.core.auth.roles import HumanRole
+
+    user = AuthenticatedUser(
+        user_id="test-user-id",
+        username="test-user",
+        role=HumanRole.CEO,
+        auth_method=AuthMethod.JWT,
+    )
+    async with authenticated_user_scope(user):
+        yield
+
+
 @pytest.mark.unit
+@pytest.mark.usefixtures("_bound_audit_actor")
 class TestProviderControllerErrorSanitization:
     """Validation / conflict error paths must surface sanitized text.
 

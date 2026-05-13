@@ -52,6 +52,45 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _reject_destructive_empty_discovery(
+    *,
+    name: str,
+    request: SyncModelsRequest,
+    discovered: tuple[ProviderModelConfig, ...],
+    pre_discover: ProviderConfig,
+) -> None:
+    """Refuse a replace-mode sync that would wipe every persisted model.
+
+    Invariant: when ``replace_existing=True`` and discovery returns
+    no models while persisted models exist, refuse the sync so a
+    transient 404 / timeout / wrong-URL outcome cannot delete every
+    persisted model. ``replace_existing=False`` (append-only) is the
+    safe path for operators to retry while debugging the discovery
+    endpoint, since it adds nothing when discovery is empty.
+    """
+    if not request.replace_existing or discovered:
+        return
+    existing_count = len(pre_discover.models)
+    if not existing_count:
+        return
+    msg = (
+        f"Sync would delete all {existing_count} persisted "
+        f"model(s) for provider {name!r} because discovery "
+        f"returned no models; refusing destructive replace. "
+        f"Re-check the provider URL or retry with "
+        f"``replace_existing=false``."
+    )
+    logger.warning(
+        PROVIDER_VALIDATION_FAILED,
+        provider=name,
+        error=msg,
+        discovered_count=0,
+        existing_count=existing_count,
+        replace_existing=True,
+    )
+    raise ProviderValidationError(msg)
+
+
 # Narrows the mixin's self-type to the 3 attrs + 3 methods consumed;
 # host: ProviderManagementService (composed via MRO in service.py).
 class _ServiceProtocol(Protocol):
@@ -224,6 +263,20 @@ class ProviderCapabilitiesMixin:
                 msg = f"Provider {name!r} not found"
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
+
+            # Re-check the destructive-empty guard against the
+            # post-lock snapshot; a concurrent ``add_model()`` that
+            # lands between the pre-lock ``pre_discover`` read and
+            # ``self._lock`` acquisition can flip the persisted set
+            # from empty (guard returns early) to non-empty (guard
+            # MUST refuse the wipe). Using ``current`` closes that
+            # window.
+            _reject_destructive_empty_discovery(
+                name=name,
+                request=request,
+                discovered=discovered,
+                pre_discover=current,
+            )
 
             # If the discovery target was swapped under us (different
             # base_url / auth_type / preset) we must NOT persist the

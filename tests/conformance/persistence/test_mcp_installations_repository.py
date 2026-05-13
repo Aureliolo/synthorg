@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.persistence.protocol import PersistenceBackend
@@ -165,3 +165,26 @@ class TestMcpInstallationRepository:
             NotBlankStr("never_existed"),
         )
         assert deleted is False
+
+    async def test_save_raises_constraint_violation_on_unknown_connection(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Both backends surface FK violations as ConstraintViolationError.
+
+        Pre-parity, Postgres translated the psycopg ``IntegrityError``
+        but SQLite returned a generic ``QueryError``; callers had to
+        branch on backend type to render the right 4xx vs 5xx
+        response. Both must now raise the same shape so the central
+        exception handler can route uniformly.
+        """
+        rogue = _installation(
+            "catalog_fk_violation",
+            connection_name="never_registered_connection",
+        )
+        with pytest.raises(ConstraintViolationError) as exc_info:
+            await backend.mcp_installations.save(rogue)
+        # The constraint identity is the FK on connection_name; both
+        # backends must surface a non-empty identifier so the handler
+        # can include it in the structured error payload.
+        assert exc_info.value.constraint
+        assert exc_info.value.constraint != "<unknown>"

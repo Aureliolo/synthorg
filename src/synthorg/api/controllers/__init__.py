@@ -168,8 +168,8 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
 # ``app.py`` includes the controller in ``route_handlers`` only when
 # the predicate evaluates truthy at controller-list assembly time.
 OPTIONAL_CONTROLLERS: tuple[tuple[type[Controller], str], ...] = (
-    (SimulationController, "has_client_simulation_state"),
-    (RequestController, "has_client_simulation_state"),
+    (SimulationController, "has_simulation_runtime"),
+    (RequestController, "has_simulation_runtime"),
 )
 
 # Integration subsystem controllers. Registered only when

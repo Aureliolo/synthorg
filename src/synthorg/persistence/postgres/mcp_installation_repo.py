@@ -11,9 +11,10 @@ name -- robust to accidental SELECT re-ordering.
 
 from typing import TYPE_CHECKING, Any
 
+import psycopg
 from psycopg.rows import dict_row
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger, safe_error_description
@@ -58,7 +59,20 @@ class PostgresMcpInstallationRepository:
         self._pool = pool
 
     async def save(self, installation: McpInstallation) -> None:
-        """Upsert an installation row (idempotent on catalog_entry_id)."""
+        """Upsert an installation row (idempotent on catalog_entry_id).
+
+        Raises:
+            ConstraintViolationError: When the upsert violates a
+                database constraint, in practice the foreign key on
+                ``connection_name`` when the supplied connection has
+                not been persisted. Surfaces the constraint identity
+                so the central exception handler can return a
+                structured 4xx envelope.
+            QueryError: For all other ``psycopg`` failures (pool
+                checkout errors, transient connectivity, etc.). Parity
+                with the SQLite backend so callers receive a uniform
+                envelope across backends.
+        """
         installed_at = normalize_utc(installation.installed_at)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -79,6 +93,26 @@ class PostgresMcpInstallationRepository:
                 )
         except MemoryError, RecursionError:
             raise
+        except psycopg.errors.IntegrityError as exc:
+            constraint = (
+                getattr(getattr(exc, "diag", None), "constraint_name", None)
+                or "<unknown>"
+            )
+            logger.warning(
+                MCP_SERVER_INSTALL_FAILED,
+                operation="upsert",
+                catalog_entry_id=installation.catalog_entry_id,
+                connection_name=installation.connection_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                constraint=constraint,
+                backend="postgres",
+            )
+            msg = (
+                f"Constraint violation saving MCP installation "
+                f"{installation.catalog_entry_id!r}"
+            )
+            raise ConstraintViolationError(msg, constraint=constraint) from exc
         except Exception as exc:
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
@@ -89,7 +123,8 @@ class PostgresMcpInstallationRepository:
                 error=safe_error_description(exc),
                 backend="postgres",
             )
-            raise
+            msg = f"Failed to save mcp installation {installation.catalog_entry_id!r}"
+            raise QueryError(msg) from exc
         logger.info(
             MCP_SERVER_INSTALLED,
             catalog_entry_id=installation.catalog_entry_id,

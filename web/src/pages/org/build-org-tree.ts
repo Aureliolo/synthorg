@@ -6,6 +6,30 @@ import type { CompanyConfig, Department } from '@/api/types/org'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import { resolveRuntimeStatus } from './status-mapping'
 
+/**
+ * Render a department's identifier in human-readable form.
+ *
+ * The backend stores department names as ``snake_case`` machine keys
+ * (e.g. ``quality_assurance``). Without humanisation the org chart's
+ * ``uppercase tracking-wide`` text styling on
+ * ``DepartmentGroupNode`` renders the underscore verbatim
+ * (``QUALITY_ASSURANCE``), which looks like a leaked enum value.
+ * Replacing ``_`` with a space restores word boundaries
+ * (``Quality Assurance`` -> ``QUALITY ASSURANCE``) so the upstream
+ * CSS transform produces a real heading.
+ */
+export function humanizeDepartmentName(raw: string): string {
+  if (!raw) return raw
+  return raw
+    .split('_')
+    .map((seg) => {
+      if (!seg) return seg
+      const first = seg.charAt(0).toUpperCase()
+      return first + seg.slice(1)
+    })
+    .join(' ')
+}
+
 // ── Node data interfaces ────────────────────────────────────
 
 export interface OwnerNodeData {
@@ -223,7 +247,7 @@ export function buildOrgTree(
     if (!configuredDeptNames.has(deptName)) {
       syntheticDepts.push({
         name: deptName,
-        display_name: deptName,
+        display_name: humanizeDepartmentName(deptName),
         teams: [],
       })
     }
@@ -261,7 +285,7 @@ export function buildOrgTree(
     }))
     return {
       departmentName: dept.name,
-      displayName: dept.display_name ?? dept.name,
+      displayName: dept.display_name ?? humanizeDepartmentName(dept.name),
       agentCount: deptMembers.length,
       activeCount,
       budgetPercent,
@@ -522,13 +546,13 @@ function findHighestSeniority(agents: readonly AgentConfig[]): AgentConfig | nul
 }
 
 function findCeo(agents: readonly AgentConfig[]): AgentConfig | null {
-  const execCSuite = agents.filter(
+  const [execCeo] = agents.filter(
     (a) => a.department === 'executive' && a.level === 'c_suite',
   )
-  if (execCSuite.length > 0) return execCSuite[0]!
+  if (execCeo) return execCeo
 
-  const cSuite = agents.filter((a) => a.level === 'c_suite')
-  if (cSuite.length > 0) return cSuite[0]!
+  const [anyCSuite] = agents.filter((a) => a.level === 'c_suite')
+  if (anyCSuite) return anyCSuite
 
   return findHighestSeniority(agents)
 }

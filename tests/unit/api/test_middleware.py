@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+import structlog
 from litestar import Litestar, get, post
 from litestar.enums import ScopeType
 from litestar.exceptions import ValidationException
@@ -577,3 +578,69 @@ class TestLogRequestCompletion:
         info_logs = [entry for entry in logs if entry.get("log_level") == "info"]
         assert len(info_logs) >= 1
         assert info_logs[0]["status_code"] == 201
+
+
+class TestHealthcheckLogSuppression:
+    """Healthcheck paths must not emit api.request.* log records.
+
+    Supervisors (Docker healthcheck, k8s probes) hammer ``/readyz``
+    and ``/healthz`` on a fixed interval, producing thousands of
+    duplicate entries per day. The middleware suppresses the
+    structured request-log pair for those paths while keeping the
+    Prometheus metric and OpenTelemetry span so operators still see
+    aggregated latency.
+    """
+
+    @pytest.mark.parametrize(
+        "path",
+        ["/healthz", "/readyz", "/api/v1/healthz", "/api/v1/readyz"],
+    )
+    def test_healthcheck_paths_emit_no_request_log_pair(self, path: str) -> None:
+        """No ``api.request.started`` / ``api.request.completed`` for probes."""
+
+        @get(path)
+        async def handler() -> dict[str, str]:
+            return {"status": "ok"}
+
+        app = Litestar(
+            route_handlers=[handler],
+            middleware=[RequestLoggingMiddleware],
+            exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
+        )
+        with structlog.testing.capture_logs() as logs, TestClient(app) as client:
+            resp = client.get(path)
+            assert resp.status_code == 200
+
+        events = [entry.get("event") for entry in logs]
+        assert "api.request.started" not in events, (
+            f"healthcheck path {path} emitted api.request.started"
+        )
+        assert "api.request.completed" not in events, (
+            f"healthcheck path {path} emitted api.request.completed"
+        )
+
+    def test_non_healthcheck_path_still_logs(self) -> None:
+        """Regular routes continue to emit the started/completed pair."""
+
+        @get("/some/business/endpoint")
+        async def handler() -> dict[str, str]:
+            return {"ok": "true"}
+
+        app = Litestar(
+            route_handlers=[handler],
+            middleware=[RequestLoggingMiddleware],
+            exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
+        )
+        with structlog.testing.capture_logs() as logs, TestClient(app) as client:
+            resp = client.get("/some/business/endpoint")
+            assert resp.status_code == 200
+
+        events = [entry.get("event") for entry in logs]
+        # Exactly one of each, started before completed; bare presence
+        # checks miss the ordering invariant and would also accept a
+        # duplicate pair from accidental middleware re-entry.
+        assert events.count("api.request.started") == 1
+        assert events.count("api.request.completed") == 1
+        assert events.index("api.request.started") < events.index(
+            "api.request.completed",
+        )

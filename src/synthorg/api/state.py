@@ -876,8 +876,35 @@ class AppState(AppStateServicesMixin):
 
     @property
     def has_client_simulation_state(self) -> bool:
-        """Check whether client simulation state is configured."""
+        """Check whether client simulation state is configured.
+
+        Always ``True`` in production: ``create_app`` default-constructs
+        a fresh ``ClientSimulationState`` so the always-registered
+        ``ClientController`` (``GET /clients``, CRUD) can serve an
+        empty profile list rather than 503ing on every dashboard poll.
+        The stricter ``has_simulation_runtime`` predicate gates the
+        controllers that actually need ``intake_engine`` /
+        ``review_pipeline``.
+        """
         return self._client_simulation_state is not None
+
+    @property
+    def has_simulation_runtime(self) -> bool:
+        """Check whether the full simulation runtime is wired.
+
+        Requires both ``intake_engine`` and ``review_pipeline`` on the
+        attached ``ClientSimulationState``; without them the
+        ``Simulation`` and ``Request`` controllers cannot execute
+        end-to-end flows, so the optional-controller predicate keeps
+        their routes off the router and the ``/capabilities`` flag
+        reads ``False`` so the dashboard skips polling them.
+        """
+        if self._client_simulation_state is None:
+            return False
+        return (
+            self._client_simulation_state.intake_engine is not None
+            and self._client_simulation_state.review_pipeline is not None
+        )
 
     @property
     def client_simulation_state(self) -> ClientSimulationState:

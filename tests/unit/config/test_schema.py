@@ -283,6 +283,62 @@ class TestAgentConfig:
         assert isinstance(a, AgentConfig)
         assert a.name
 
+    def test_tier_roundtrips_through_pydantic(self) -> None:
+        """``tier`` survives serialise/deserialise.
+
+        Setup wizard persists ``tier`` alongside the model selection;
+        without round-trip support every read would drop the field
+        and the company-agents setting would surface as
+        ``no agents visible`` across the dashboard.
+        """
+        a = AgentConfig(
+            name="Alice",
+            role="dev",
+            department="eng",
+            tier="medium",
+        )
+        rebuilt = AgentConfig.model_validate(a.model_dump(mode="json"))
+        assert rebuilt.tier == "medium"
+
+    def test_tier_rejects_unknown_value(self) -> None:
+        """``tier`` is constrained to large / medium / small.
+
+        Typos like ``"med"`` or ``"big"`` were silently accepted as
+        ``str`` and broke the wizard's tier-to-model matcher at use
+        time; the Literal narrows the contract so the failure
+        happens at config-load.
+        """
+        with pytest.raises(ValidationError):
+            AgentConfig(
+                name="Alice",
+                role="dev",
+                department="eng",
+                tier="extra-large",  # type: ignore[arg-type]
+            )
+
+    def test_model_requirement_roundtrips_as_raw_dict(self) -> None:
+        """``model_requirement`` survives serialise/deserialise.
+
+        Stored as a raw dict because the canonical
+        ``ModelRequirement`` model lives in ``synthorg.templates``
+        and importing it here would create a config -> templates
+        cycle.  The matcher rehydrates the dict at use sites.
+        """
+        requirement = {
+            "tier": "medium",
+            "priority": "balanced",
+            "min_context": 32_000,
+            "capabilities": ["text", "tool_use"],
+        }
+        a = AgentConfig(
+            name="Alice",
+            role="dev",
+            department="eng",
+            model_requirement=requirement,
+        )
+        rebuilt = AgentConfig.model_validate(a.model_dump(mode="json"))
+        assert rebuilt.model_requirement == requirement
+
 
 # ── RootConfig ───────────────────────────────────────────────────
 

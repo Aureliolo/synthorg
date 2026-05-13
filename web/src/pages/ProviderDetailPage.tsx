@@ -6,7 +6,6 @@ import { useProvidersStore } from '@/stores/providers'
 import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ROUTES } from '@/router/routes'
 import {
@@ -27,7 +26,6 @@ import { CredentialsRotateDialog } from './providers/CredentialsRotateDialog'
 import { AddManualModelDialog } from './providers/AddManualModelDialog'
 import { SyncModelsConfirmDialog } from './providers/SyncModelsConfirmDialog'
 import { Button } from '@/components/ui/button'
-import { Server } from 'lucide-react'
 import type { ProviderModelResponse } from '@/api/types/providers'
 
 export default function ProviderDetailPage() {
@@ -39,7 +37,6 @@ export default function ProviderDetailPage() {
     provider,
     models,
     health,
-    loading,
     error,
     testConnectionResult,
     testingConnection,
@@ -59,6 +56,10 @@ export default function ProviderDetailPage() {
   const discoveringModels = useProvidersStore((s) => s.discoveringModels)
   const deletingModel = useProvidersStore((s) => s.deletingModel)
 
+  const handleDeleteModelOpenChange = useCallback((open: boolean) => {
+    if (!open) setDeleteModelId(null)
+  }, [])
+
   // Walk the parent provider list (filtered + sorted) so prev/next on
   // this detail page steps through the same providers the operator
   // saw on ProvidersPage. ``ProviderWithName.name`` is the URL key.
@@ -76,12 +77,12 @@ export default function ProviderDetailPage() {
   })
   const { goPrev, goNext } = useDetailNavigationCallbacks(nav)
 
-  // Loading state
-  if (loading && !provider) {
-    return <ProviderDetailSkeleton />
-  }
-
-  // Error state
+  // Error state: a definitive negative answer from the backend always
+  // sets ``detailError`` (the store rewrites a missing-provider 404
+  // into ``'Provider not found'``), so the error banner is the right
+  // surface for both "could not load" and "this provider does not
+  // exist". Checked before the skeleton so a stale ``selectedProvider``
+  // from a prior detail view does not mask a fresh error.
   if (error && !provider) {
     return (
       <div className="flex flex-col gap-section-gap">
@@ -94,15 +95,14 @@ export default function ProviderDetailPage() {
     )
   }
 
+  // Loading / pre-fetch state: the page mounts with
+  // ``detailLoading=false`` because the polling effect runs after the
+  // first render -- showing the skeleton whenever no provider is
+  // resolved yet (regardless of ``loading``) eliminates the
+  // "Provider not found" flash that used to appear for the few
+  // hundred ms before the polled fetch landed.
   if (!provider) {
-    return (
-      <EmptyState
-        icon={Server}
-        title="Provider not found"
-        description="The provider you are looking for does not exist or has been removed."
-        action={{ label: 'Back to Providers', onClick: () => navigate(ROUTES.PROVIDERS) }}
-      />
-    )
+    return <ProviderDetailSkeleton />
   }
 
   return (
@@ -231,7 +231,7 @@ export default function ProviderDetailPage() {
       {/* Delete model confirmation */}
       <ConfirmDialog
         open={deleteModelId !== null}
-        onOpenChange={(open) => { if (!open) setDeleteModelId(null) }}
+        onOpenChange={handleDeleteModelOpenChange}
         title="Delete Model"
         description={`Are you sure you want to delete "${deleteModelId ?? ''}" from this provider? This will remove the model from the local instance.`}
         variant="destructive"
