@@ -120,6 +120,8 @@ class SQLiteSessionRepository:
                     ),
                 )
                 await self._db.commit()
+                if session.revoked:
+                    self._revoked.add(session.session_id)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -132,8 +134,6 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        if session.revoked:
-            self._revoked.add(session.session_id)
 
     async def get(self, session_id: str) -> Session | None:
         """Look up a session by ID."""
@@ -199,6 +199,8 @@ class SQLiteSessionRepository:
                 )
                 await self._db.commit()
                 rowcount = cursor.rowcount
+                if rowcount > 0:
+                    self._revoked.add(session_id)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -210,14 +212,10 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        if rowcount > 0:
-            self._revoked.add(session_id)
-            # Audit emission moved to service/controller layer per the
-            # persistence-boundary rule -- controllers that call
-            # ``revoke`` are responsible for logging
-            # SECURITY_SESSION_REVOKED.
-            return True
-        return False
+        # Audit emission moved to service/controller layer per the
+        # persistence-boundary rule -- controllers that call ``revoke``
+        # are responsible for logging SECURITY_SESSION_REVOKED.
+        return rowcount > 0
 
     async def revoke_all_for_user(self, user_id: str) -> int:
         """Revoke all active sessions for a user.
@@ -252,6 +250,7 @@ class SQLiteSessionRepository:
                 # UPDATE succeeded; in-memory mutation only happens
                 # after a successful commit.
                 await self._db.commit()
+                self._revoked.update(row["session_id"] for row in rows)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -263,7 +262,6 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        self._revoked.update(row["session_id"] for row in rows)
         # Audit emission moved to service/controller layer per the
         # persistence-boundary rule.
         return count
@@ -314,6 +312,7 @@ class SQLiteSessionRepository:
                     (now,),
                 )
                 await self._db.commit()
+                self._revoked -= ids
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -325,6 +324,5 @@ class SQLiteSessionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        self._revoked -= ids
         logger.debug(API_SESSION_CLEANUP, removed=len(ids))
         return len(ids)

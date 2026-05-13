@@ -83,8 +83,8 @@ class SQLiteSsrfViolationRepository:
             format_iso_utc(violation.resolved_at) if violation.resolved_at else None
         )
 
-        try:
-            async with self._write_context():
+        async with self._write_context():
+            try:
                 await self._db.execute(
                     f"INSERT INTO ssrf_violations ({_COLS}) "  # noqa: S608
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -103,27 +103,27 @@ class SQLiteSsrfViolationRepository:
                     ),
                 )
                 await self._db.commit()
-        except sqlite3.IntegrityError as exc:
-            await self._rollback_quietly()
-            if is_unique_constraint_error(exc):
-                msg = f"SSRF violation {violation.id!r} already exists"
-                raise DuplicateRecordError(msg) from exc
-            msg = "Failed to save SSRF violation"
-            logger.warning(
-                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise PersistenceError(msg) from exc
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._rollback_quietly()
-            msg = "Failed to save SSRF violation"
-            logger.warning(
-                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise PersistenceError(msg) from exc
+            except sqlite3.IntegrityError as exc:
+                await self._rollback_quietly()
+                if is_unique_constraint_error(exc):
+                    msg = f"SSRF violation {violation.id!r} already exists"
+                    raise DuplicateRecordError(msg) from exc
+                msg = "Failed to save SSRF violation"
+                logger.warning(
+                    PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._rollback_quietly()
+                msg = "Failed to save SSRF violation"
+                logger.warning(
+                    PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
 
     async def get(
         self,
@@ -250,8 +250,8 @@ class SQLiteSsrfViolationRepository:
             raise ValueError(msg)
 
         resolved_at_utc = format_iso_utc(resolved_at)
-        try:
-            async with self._write_context():
+        async with self._write_context():
+            try:
                 cursor = await self._db.execute(
                     "UPDATE ssrf_violations "
                     "SET status = ?, resolved_by = ?, resolved_at = ? "
@@ -264,15 +264,15 @@ class SQLiteSsrfViolationRepository:
                     ),
                 )
                 await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._rollback_quietly()
-            msg = "Failed to update SSRF violation status"
-            logger.warning(
-                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise PersistenceError(msg) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._rollback_quietly()
+                msg = "Failed to update SSRF violation status"
+                logger.warning(
+                    PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
 
         return cursor.rowcount > 0
 

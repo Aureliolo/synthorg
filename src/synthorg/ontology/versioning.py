@@ -8,6 +8,8 @@ backend; the caller picks the right factory for the active backend.
 """
 
 import json
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 from pydantic import ValidationError
@@ -19,7 +21,6 @@ from synthorg.observability.events.ontology import (
 from synthorg.ontology.errors import OntologyError
 from synthorg.ontology.models import EntityDefinition
 from synthorg.persistence.postgres.version_repo import PostgresVersionRepository
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.persistence.version_protocol import (
     VersionRepository,  # noqa: TC001 -- documented return type
@@ -27,6 +28,8 @@ from synthorg.persistence.version_protocol import (
 from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
+
+type WriteContextFn = Callable[[], AbstractAsyncContextManager[None]]
 
 
 def _safe_deserialize_snapshot_json(raw: str) -> EntityDefinition:
@@ -60,7 +63,7 @@ def _safe_deserialize_snapshot_dict(data: object) -> EntityDefinition:
 def create_ontology_version_repo(
     db: Any,
     *,
-    write_context: WriteContext,
+    write_context: WriteContextFn,
 ) -> VersionRepository[EntityDefinition]:
     """Create a SQLite-backed VersionRepository for EntityDefinition.
 
@@ -91,7 +94,7 @@ def create_ontology_version_repo(
 def create_ontology_versioning(
     db: Any,
     *,
-    write_context: WriteContext,
+    write_context: WriteContextFn,
 ) -> VersioningService[EntityDefinition]:
     """Create a SQLite-backed VersioningService for EntityDefinition.
 

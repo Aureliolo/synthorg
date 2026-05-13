@@ -24,9 +24,13 @@ def make_private_write_context() -> WriteContext:
     """Return a ``WriteContext`` backed by a fresh private ``asyncio.Lock``.
 
     Each call returns a new context-manager factory closed over its
-    own lock; multiple calls produce independent serialization
-    domains. Use one per repository per test so concurrent operations
-    on the same repo still serialize correctly.
+    own lock; multiple calls produce independent serialization domains.
+    Create one private write-context per shared connection per test:
+    every repository attached to that connection MUST receive the same
+    context so writes serialize across siblings, matching production
+    where the backend hands out a single shared context. See the
+    module-level warning above for why mixing contexts on one
+    connection is unsafe.
     """
     lock = asyncio.Lock()
 

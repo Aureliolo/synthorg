@@ -86,8 +86,8 @@ class SQLiteRiskOverrideRepository:
             format_iso_utc(override.revoked_at) if override.revoked_at else None
         )
 
-        try:
-            async with self._write_context():
+        async with self._write_context():
+            try:
                 await self._db.execute(
                     f"INSERT INTO risk_overrides ({_COLS}) "  # noqa: S608
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -105,27 +105,27 @@ class SQLiteRiskOverrideRepository:
                     ),
                 )
                 await self._db.commit()
-        except sqlite3.IntegrityError as exc:
-            await self._rollback_quietly()
-            if is_unique_constraint_error(exc):
-                msg = f"Risk override {override.id!r} already exists"
-                raise DuplicateRecordError(msg) from exc
-            msg = "Failed to save risk override"
-            logger.warning(
-                PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise PersistenceError(msg) from exc
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._rollback_quietly()
-            msg = "Failed to save risk override"
-            logger.warning(
-                PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise PersistenceError(msg) from exc
+            except sqlite3.IntegrityError as exc:
+                await self._rollback_quietly()
+                if is_unique_constraint_error(exc):
+                    msg = f"Risk override {override.id!r} already exists"
+                    raise DuplicateRecordError(msg) from exc
+                msg = "Failed to save risk override"
+                logger.warning(
+                    PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._rollback_quietly()
+                msg = "Failed to save risk override"
+                logger.warning(
+                    PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
 
     async def get(
         self,
@@ -218,8 +218,8 @@ class SQLiteRiskOverrideRepository:
     ) -> bool:
         """Mark an override as revoked."""
         revoked_at_utc = format_iso_utc(revoked_at)
-        try:
-            async with self._write_context():
+        async with self._write_context():
+            try:
                 cursor = await self._db.execute(
                     "UPDATE risk_overrides "
                     "SET revoked_at = ?, revoked_by = ? "
@@ -227,15 +227,15 @@ class SQLiteRiskOverrideRepository:
                     (revoked_at_utc, revoked_by, override_id),
                 )
                 await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._rollback_quietly()
-            msg = "Failed to revoke risk override"
-            logger.warning(
-                PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise PersistenceError(msg) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._rollback_quietly()
+                msg = "Failed to revoke risk override"
+                logger.warning(
+                    PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
 
         return cursor.rowcount > 0
 

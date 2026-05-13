@@ -20,7 +20,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 async def test_write_context_enters_and_exits(
     backend: PersistenceBackend,
 ) -> None:
-    async with backend.write_context():
-        pass
-    async with backend.write_context():
-        pass
+    async with backend.write_context() as first:
+        assert first is None
+    async with backend.write_context() as second:
+        assert second is None
