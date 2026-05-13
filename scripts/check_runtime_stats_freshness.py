@@ -73,13 +73,28 @@ def _load_generator() -> ModuleType:
         msg = f"could not load generator at {_GENERATOR_PATH}"
         raise RuntimeError(msg)
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as exc:
+        msg = f"could not import {_GENERATOR_PATH}: {type(exc).__name__}: {exc}"
+        raise RuntimeError(msg) from exc
     return mod
 
 
 # Tests patch this attribute to point at their own loaded generator
-# instance so monkeypatched ``_FETCHERS`` are honoured.
-GENERATOR_MODULE: ModuleType = _load_generator()
+# instance so monkeypatched ``_FETCHERS`` are honoured. The default
+# value is ``None``; ``main()`` resolves it via ``_ensure_generator()``
+# so an import-time failure surfaces as a clean exit 1 instead of an
+# unhandled traceback before ``argparse`` even runs.
+GENERATOR_MODULE: ModuleType | None = None
+
+
+def _ensure_generator() -> ModuleType:
+    """Return the cached generator module, importing on first call."""
+    global GENERATOR_MODULE  # noqa: PLW0603
+    if GENERATOR_MODULE is None:
+        GENERATOR_MODULE = _load_generator()
+    return GENERATOR_MODULE
 
 
 def _load_committed() -> dict[str, Any]:
@@ -126,7 +141,7 @@ def _check_age(committed: dict[str, Any]) -> list[str]:
         ]
     try:
         parsed = _parse_iso_utc(raw_ts)
-    except ValueError as exc:
+    except (ValueError, TypeError, OSError) as exc:
         return [
             f"{_YAML_FILE.name}: 'last_generated_utc' invalid ({exc}).",
             _REMEDIATION,
@@ -143,26 +158,41 @@ def _check_age(committed: dict[str, Any]) -> list[str]:
 
 def _check_drift(
     committed: dict[str, Any],
+    gen_mod: ModuleType,
     *,
     skip_network: bool,
 ) -> list[str]:
     """Return drift lines (empty if every checked stat matches)."""
-    gen_mod = GENERATOR_MODULE
     stats_block = committed.get("stats", {})
     if not isinstance(stats_block, dict):
         return [
             f"{_YAML_FILE.name}: 'stats' is not a mapping; cannot check drift.",
             _REMEDIATION,
         ]
+    stat_fetch_error = gen_mod._StatFetchError  # noqa: SLF001
     lines: list[str] = []
     for name, fetcher in gen_mod._FETCHERS.items():  # noqa: SLF001
         if skip_network and name in _NETWORK_STATS:
             continue
         try:
             entry = fetcher()
-        except gen_mod._StatFetchError as exc:  # noqa: SLF001
+        except stat_fetch_error as exc:
+            # Expected offline-tolerant skip.
             print(
                 f"note: skipping drift check for {name} (fetch failed: {exc.reason})",
+                file=sys.stderr,
+            )
+            continue
+        except MemoryError, RecursionError:
+            # Programming errors propagate per the project's async / error
+            # convention; do not silently absorb resource exhaustion.
+            raise
+        except Exception as exc:
+            # An unexpected fetcher failure (KeyError, ConnectionError, ...)
+            # for one stat must not abort drift detection for the others.
+            print(
+                f"note: skipping drift check for {name} "
+                f"(unexpected error: {type(exc).__name__}: {exc})",
                 file=sys.stderr,
             )
             continue
@@ -207,9 +237,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
+    try:
+        gen_mod = _ensure_generator()
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
     failures: list[str] = []
     failures.extend(_check_age(committed))
-    failures.extend(_check_drift(committed, skip_network=args.skip_network))
+    failures.extend(_check_drift(committed, gen_mod, skip_network=args.skip_network))
 
     if failures:
         for line in failures:

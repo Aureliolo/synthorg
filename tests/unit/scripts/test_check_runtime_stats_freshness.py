@@ -13,7 +13,7 @@ Pins the gate's contract:
 
 import datetime as dt
 import importlib.util
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -80,8 +80,13 @@ def _iso(days_ago: int) -> str:
     )
 
 
+def _seed_fresh_yaml(yaml_path: Path) -> None:
+    """Write a 1-day-old YAML with the canonical deterministic stats."""
+    yaml_path.write_text(yaml.safe_dump(_good_yaml_payload(_iso(1))), encoding="utf-8")
+
+
 @pytest.fixture
-def yaml_path(tmp_path: Path) -> Generator[Path]:
+def yaml_path(tmp_path: Path) -> Iterator[Path]:
     """Yield a writable tmp YAML path patched in as the gate's target."""
     target = tmp_path / "runtime_stats.yaml"
     with patch.object(check, "_YAML_FILE", target):
@@ -89,7 +94,7 @@ def yaml_path(tmp_path: Path) -> Generator[Path]:
 
 
 @pytest.fixture
-def wired_generator() -> Generator[None]:
+def wired_generator() -> Iterator[None]:
     """Point the gate at the test's loaded generator instance.
 
     The gate imports the generator at module load with its own private
@@ -110,9 +115,7 @@ class TestCleanCase:
         yaml_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        yaml_path.write_text(
-            yaml.safe_dump(_good_yaml_payload(_iso(1))), encoding="utf-8"
-        )
+        _seed_fresh_yaml(yaml_path)
         with patch.object(gen, "_FETCHERS", _deterministic_fetchers()):
             assert check.main([]) == 0
         captured = capsys.readouterr()
@@ -130,9 +133,7 @@ class TestValueDrift:
         yaml_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        yaml_path.write_text(
-            yaml.safe_dump(_good_yaml_payload(_iso(1))), encoding="utf-8"
-        )
+        _seed_fresh_yaml(yaml_path)
         fetchers = _deterministic_fetchers()
         fetchers["tests"] = lambda: {
             "raw": 29963,
@@ -181,9 +182,7 @@ class TestOfflineToleranceForFailingFetcher:
         yaml_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        yaml_path.write_text(
-            yaml.safe_dump(_good_yaml_payload(_iso(1))), encoding="utf-8"
-        )
+        _seed_fresh_yaml(yaml_path)
         fetchers = _deterministic_fetchers()
 
         stat_name = "mem0_stars"
@@ -236,9 +235,7 @@ class TestSkipNetworkFlag:
         self,
         yaml_path: Path,
     ) -> None:
-        yaml_path.write_text(
-            yaml.safe_dump(_good_yaml_payload(_iso(1))), encoding="utf-8"
-        )
+        _seed_fresh_yaml(yaml_path)
         called: list[str] = []
         fetchers = _deterministic_fetchers()
         skip_reason = "should not have run"
@@ -272,3 +269,110 @@ class TestNetworkStatsInventory:
         # deliberate decision on whether to add it to the network set.
         expected = frozenset({"tests", "version", "mem0_stars"})
         assert expected == check._NETWORK_STATS
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("wired_generator")
+class TestMalformedTimestamp:
+    """``last_generated_utc`` shape errors fail with a clear age-line."""
+
+    def test_non_string_timestamp_fails(
+        self,
+        yaml_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        payload = _good_yaml_payload(_iso(1))
+        payload["last_generated_utc"] = 12345
+        yaml_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+        with patch.object(gen, "_FETCHERS", _deterministic_fetchers()):
+            assert check.main([]) == 1
+        err = capsys.readouterr().err
+        assert "missing or non-string" in err
+        assert "scripts/generate_runtime_stats.py" in err
+
+    def test_malformed_iso_timestamp_fails(
+        self,
+        yaml_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        payload = _good_yaml_payload(_iso(1))
+        payload["last_generated_utc"] = "2026-13-45T99:99:99Z"
+        yaml_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+        with patch.object(gen, "_FETCHERS", _deterministic_fetchers()):
+            assert check.main([]) == 1
+        err = capsys.readouterr().err
+        assert "invalid" in err
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("wired_generator")
+class TestMalformedStatsBlock:
+    """Shape errors inside the ``stats`` block surface cleanly."""
+
+    def test_stats_block_not_a_mapping_fails(
+        self,
+        yaml_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        payload = _good_yaml_payload(_iso(1))
+        payload["stats"] = ["not", "a", "mapping"]
+        yaml_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+        with patch.object(gen, "_FETCHERS", _deterministic_fetchers()):
+            assert check.main([]) == 1
+        err = capsys.readouterr().err
+        assert "'stats' is not a mapping" in err
+
+    def test_committed_entry_not_a_mapping_fails(
+        self,
+        yaml_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        payload = _good_yaml_payload(_iso(1))
+        payload["stats"]["tests"] = 17995  # raw int instead of nested dict
+        yaml_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+        with patch.object(gen, "_FETCHERS", _deterministic_fetchers()):
+            assert check.main([]) == 1
+        err = capsys.readouterr().err
+        assert "stats.tests missing from committed YAML" in err
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("wired_generator")
+class TestEmptyYAML:
+    """An empty (but present) YAML file is treated as corrupt."""
+
+    def test_empty_yaml_hard_fails(
+        self,
+        yaml_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        yaml_path.write_text("", encoding="utf-8")
+        assert check.main([]) == 1
+        err = capsys.readouterr().err
+        assert "is empty" in err or "could not parse" in err
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("wired_generator")
+class TestFetcherUnexpectedException:
+    """A fetcher raising a non-``_StatFetchError`` exception is skipped, not crashed."""
+
+    def test_unexpected_exception_skips_stat_and_continues(
+        self,
+        yaml_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _seed_fresh_yaml(yaml_path)
+        fetchers = _deterministic_fetchers()
+
+        def _raise_runtime() -> dict[str, Any]:
+            msg = "unexpected boom"
+            raise RuntimeError(msg)
+
+        fetchers["mem0_stars"] = _raise_runtime
+        with patch.object(gen, "_FETCHERS", fetchers):
+            assert check.main([]) == 0
+        captured = capsys.readouterr()
+        assert "stats.mem0_stars.raw drift" not in captured.err
+        assert "mem0_stars" in captured.err
+        assert "RuntimeError" in captured.err
