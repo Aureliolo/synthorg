@@ -34,7 +34,7 @@ from synthorg.integrations.webhooks.replay_protection import (
     ReplayProtector,
 )
 from synthorg.integrations.webhooks.verifiers.factory import get_verifier
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import (
     WEBHOOK_ACCEPTED,
@@ -61,6 +61,7 @@ _IDEMPOTENCY_KEY_MAX_LEN: int = 255
 # status-transition log so the wire value stays in one place.
 _RECEIPT_STATUS_RETRYING: Final[str] = "retrying"
 _RECEIPT_STATUS_RECEIVED: Final[str] = "received"
+_RECEIPT_STATUS_FAILED: Final[str] = "failed"
 
 
 async def _get_connection_or_404(state: State, connection_name: str) -> Any:
@@ -637,41 +638,70 @@ class WebhooksController(Controller):
         else:
             payload = {"data": raw_payload}
 
+        async def _transition_status(
+            *,
+            new_status: str,
+            previous: str | None,
+            processed_at: datetime | None,
+            error: str | None,
+        ) -> None:
+            # Persist first; only log the transition if the row was
+            # actually updated. The bool result is checked so a log
+            # claim of ``status=retrying`` never appears against a
+            # receipt the DB never wrote.
+            updated = await persistence.webhook_receipts.update_status(
+                NotBlankStr(receipt.id),
+                status=new_status,
+                processed_at=processed_at,
+                error=error,
+            )
+            if not updated:
+                msg = f"Webhook receipt {receipt.id!r} not found"
+                raise NotFoundError(msg)
+            logger.info(
+                WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
+                receipt_id=str(receipt.id),
+                connection_name=str(receipt.connection_name),
+                previous_status=previous,
+                status=new_status,
+            )
+
         previous_status = receipt.status
-        await persistence.webhook_receipts.update_status(
-            NotBlankStr(receipt.id),
-            status=_RECEIPT_STATUS_RETRYING,
+        await _transition_status(
+            new_status=_RECEIPT_STATUS_RETRYING,
+            previous=previous_status,
             processed_at=None,
             error=None,
         )
-        logger.info(
-            WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
-            receipt_id=str(receipt.id),
-            connection_name=str(receipt.connection_name),
-            previous_status=previous_status,
-            status=_RECEIPT_STATUS_RETRYING,
-        )
 
         bus = state["app_state"].message_bus
-        result = await _publish_webhook_event_and_log(
-            bus=bus,
-            connection_name=str(receipt.connection_name),
-            event_type=receipt.event_type or "",
-            payload=payload,
-            dedup_source="manual_retry",
-        )
+        try:
+            result = await _publish_webhook_event_and_log(
+                bus=bus,
+                connection_name=str(receipt.connection_name),
+                event_type=receipt.event_type or "",
+                payload=payload,
+                dedup_source="manual_retry",
+            )
+        except Exception as exc:
+            # The receipt would otherwise stay pinned to ``retrying``
+            # forever -- failing-fast back to ``failed`` lets a follow-up
+            # operator retry pick the row up again and gives the
+            # status feed an honest signal.
+            if isinstance(exc, MemoryError | RecursionError):
+                raise
+            await _transition_status(
+                new_status=_RECEIPT_STATUS_FAILED,
+                previous=_RECEIPT_STATUS_RETRYING,
+                processed_at=datetime.now(UTC),
+                error=safe_error_description(exc),
+            )
+            raise
 
-        await persistence.webhook_receipts.update_status(
-            NotBlankStr(receipt.id),
-            status=_RECEIPT_STATUS_RECEIVED,
+        await _transition_status(
+            new_status=_RECEIPT_STATUS_RECEIVED,
+            previous=_RECEIPT_STATUS_RETRYING,
             processed_at=datetime.now(UTC),
             error=None,
-        )
-        logger.info(
-            WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
-            receipt_id=str(receipt.id),
-            connection_name=str(receipt.connection_name),
-            previous_status=_RECEIPT_STATUS_RETRYING,
-            status=_RECEIPT_STATUS_RECEIVED,
         )
         return ApiResponse(data={**result, "receipt_id": str(receipt.id)})

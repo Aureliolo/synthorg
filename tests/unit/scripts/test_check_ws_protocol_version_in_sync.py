@@ -11,8 +11,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.unit
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCRIPT = _REPO_ROOT / "scripts" / "check_ws_protocol_version_in_sync.py"
 
@@ -46,6 +44,7 @@ def _run(tmp_root: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+@pytest.mark.unit
 def test_passes_when_versions_match(tmp_path: Path) -> None:
     _write_pair(
         tmp_path,
@@ -56,6 +55,7 @@ def test_passes_when_versions_match(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.unit
 def test_fails_on_version_mismatch(tmp_path: Path) -> None:
     _write_pair(
         tmp_path,
@@ -67,6 +67,7 @@ def test_fails_on_version_mismatch(tmp_path: Path) -> None:
     assert "drift" in result.stderr.lower()
 
 
+@pytest.mark.unit
 def test_fails_when_python_file_missing(tmp_path: Path) -> None:
     _write_pair(
         tmp_path,
@@ -77,6 +78,7 @@ def test_fails_when_python_file_missing(tmp_path: Path) -> None:
     assert result.returncode == 1
 
 
+@pytest.mark.unit
 def test_fails_when_declaration_missing(tmp_path: Path) -> None:
     _write_pair(
         tmp_path,

@@ -52,11 +52,19 @@ export function WizardShell() {
   // they understand the partial state and can resume. Without this
   // they land on whatever step the merge() clamped them to and the
   // only signal that "the company exists" is implicit in the form
-  // already-pre-populated state. The ref guards against re-firing
-  // on every nav inside the same session.
+  // already-pre-populated state. The toast must NOT fire when the
+  // company is created during the current session -- capturing the
+  // initial mount-time value distinguishes "hydrated from persisted
+  // state" (re-entry) from "set to non-null during this session"
+  // (newly created).
   const reEntryToastShownRef = useRef(false)
+  const companyExistedAtMountRef = useRef<boolean | null>(null)
+  if (companyExistedAtMountRef.current === null) {
+    companyExistedAtMountRef.current = companyResponse !== null
+  }
   useEffect(() => {
     if (reEntryToastShownRef.current) return
+    if (companyExistedAtMountRef.current !== true) return
     if (companyResponse === null) return
     if (stepsCompleted.complete) return
     if (!stepOrder.includes('complete')) return

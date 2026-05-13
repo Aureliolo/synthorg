@@ -215,7 +215,9 @@ export class ApiRequestError extends Error {
    */
   get correlationId(): string | null {
     const value = this.errorDetail?.instance
-    return typeof value === 'string' && value.length > 0 ? value : null
+    if (typeof value !== 'string') return null
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
   }
 }
 

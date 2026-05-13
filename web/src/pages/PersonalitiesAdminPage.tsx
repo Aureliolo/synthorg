@@ -109,6 +109,10 @@ export default function PersonalitiesAdminPage() {
     <div className="space-y-section-gap">
       <ListHeader title="Personality presets" count={totalItems} />
 
+      {error && (
+        <ErrorBanner severity="error" title="Could not load personality presets" description={error} />
+      )}
+
       <SearchFilterSort
         search={
           <SearchInput
@@ -136,10 +140,6 @@ export default function PersonalitiesAdminPage() {
           </label>
         }
       />
-
-      {error && (
-        <ErrorBanner severity="error" title="Could not load personality presets" description={error} />
-      )}
 
       {loading && presets.length === 0 ? (
         <div className="flex items-center justify-center py-12">

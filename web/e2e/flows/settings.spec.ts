@@ -32,7 +32,18 @@ test.describe('Settings management critical flow', () => {
   test('reacts to a system.restart_required WS event without unmounting', async ({ page }) => {
     await page.goto('/settings')
     await expect(page.locator('main')).toBeVisible()
+    const heading = page.getByRole('heading').first()
+    await expect(heading).toBeVisible()
 
+    // ``system.restart_required`` is a NotificationCategory (see
+    // ``web/src/types/notifications.ts``), NOT a top-level
+    // ``WsEventType`` (only ``system.error`` / ``startup`` /
+    // ``shutdown`` are wire event types). The actual restart-required
+    // surface is the notification-store toast/drawer, not a WS-driven
+    // page banner. This spec deliberately injects an unknown wire
+    // event type to verify the dispatch loop tolerates it without
+    // unmounting; the unit tests for the notification store cover
+    // the restart-required toast path.
     await injectEvent(page, {
       event_type: 'system.restart_required',
       channel: 'system',
@@ -41,5 +52,6 @@ test.describe('Settings management critical flow', () => {
     })
 
     await expect(page.locator('main')).toBeVisible()
+    await expect(heading).toBeVisible()
   })
 })

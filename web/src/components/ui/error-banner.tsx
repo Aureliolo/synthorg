@@ -204,7 +204,7 @@ export function ErrorBanner({
             </div>
           )
         )}
-        {Boolean(onRetry ?? action ?? correlationId) && (
+        {(onRetry != null || action != null || correlationId != null) && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {onRetry && (
               <div className="inline-flex items-center gap-2">

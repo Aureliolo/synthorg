@@ -35,5 +35,15 @@ test.describe('A2A federation critical flow', () => {
     await page.goto('/connections')
     await expect(page.locator('main')).toBeVisible()
     await expect(page.getByText('a2a-peer-eu').first()).toBeVisible()
+
+    // Per-row "More actions" button opens the edit modal -- the
+    // closest thing the connections page has to a row-detail view
+    // (no /connections/:name route is mounted yet). Clicking it and
+    // asserting the dialog appears proves the row's action handler
+    // is wired, not just that the text renders.
+    const moreActions = page.getByRole('button', { name: /More actions for a2a-peer-eu/ })
+    await expect(moreActions).toBeVisible()
+    await moreActions.click()
+    await expect(page.getByRole('dialog')).toBeVisible()
   })
 })

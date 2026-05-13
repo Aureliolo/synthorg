@@ -29,7 +29,12 @@ export function useElapsedSeconds(startedAt: Date | string | null | undefined): 
   const setTick = tick[1]
 
   useEffect(() => {
-    if (startedAt === null || startedAt === undefined) return
+    // Skip scheduling the interval when ``startedAt`` is null, undefined,
+    // or an unparseable string. The render-time path
+    // (``computeElapsedSeconds``) returns ``null`` in those cases, so
+    // ticking once per second would only burn re-renders for a value
+    // that never changes.
+    if (!isParseableStart(startedAt)) return
     const id = setInterval(() => {
       setTick((t) => t + 1)
     }, MS_PER_SECOND)
@@ -37,6 +42,12 @@ export function useElapsedSeconds(startedAt: Date | string | null | undefined): 
   }, [startedAt, setTick])
 
   return computeElapsedSeconds(startedAt)
+}
+
+function isParseableStart(startedAt: Date | string | null | undefined): boolean {
+  if (startedAt === null || startedAt === undefined) return false
+  const startedMs = startedAt instanceof Date ? startedAt.getTime() : Date.parse(startedAt)
+  return Number.isFinite(startedMs)
 }
 
 function computeElapsedSeconds(startedAt: Date | string | null | undefined): number | null {

@@ -21,6 +21,8 @@ test.describe('Meeting creation critical flow', () => {
     await page.goto('/meetings')
     await expect(page).toHaveURL(/\/meetings/)
     await expect(page.locator('main')).toBeVisible()
+    const heading = page.getByRole('heading').first()
+    await expect(heading).toBeVisible()
 
     const meeting = makeMeeting({ status: 'completed' })
     await injectEvent(page, {
@@ -30,6 +32,12 @@ test.describe('Meeting creation critical flow', () => {
       payload: { ...meeting, meeting_id: meeting.id },
     })
 
+    // ``meeting.completed`` is a real ``WsEventType``; the store
+    // dispatch for it lives in the meetings store unit tests. This
+    // E2E pins the orchestrator: heading + ``main`` both survive
+    // the injected frame, so the dispatch loop didn't tear React
+    // down on the live event type.
     await expect(page.locator('main')).toBeVisible()
+    await expect(heading).toBeVisible()
   })
 })

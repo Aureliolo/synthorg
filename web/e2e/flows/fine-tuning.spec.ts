@@ -39,7 +39,17 @@ test.describe('Fine-tuning pipeline critical flow', () => {
   test('loads the fine-tuning page and processes a status event', async ({ page }) => {
     await page.goto('/settings/memory/fine-tuning')
     await expect(page.locator('main')).toBeVisible()
+    const heading = page.getByRole('heading').first()
+    await expect(heading).toBeVisible()
 
+    // ``fine_tuning.status_changed`` is intentionally NOT in
+    // ``WS_EVENT_TYPE_VALUES`` -- the wire enum carries the
+    // ``memory.fine_tune.*`` family instead. The harness still
+    // accepts the frame; this spec pins that the dispatch loop
+    // tolerates a foreign event type without unmounting the page.
+    // The fine-tune stage UI updates live behind the
+    // ``memory.fine_tune.stage_changed`` event covered by the unit
+    // store tests, not this E2E.
     await injectEvent(page, {
       event_type: 'fine_tuning.status_changed',
       channel: 'system',
@@ -48,5 +58,6 @@ test.describe('Fine-tuning pipeline critical flow', () => {
     })
 
     await expect(page.locator('main')).toBeVisible()
+    await expect(heading).toBeVisible()
   })
 })

@@ -25,12 +25,21 @@ test.describe('Inter-company messaging critical flow', () => {
     await page.goto('/messages')
     await expect(page).toHaveURL(/\/messages/)
     await expect(page.locator('main')).toBeVisible()
+    const heading = page.getByRole('heading').first()
+    await expect(heading).toBeVisible()
 
     const inbound = makeMessage({
       sender: 'agent-other-co-007',
       to: 'agent-001',
       channel: '#inbound-federation',
     })
+    // ``message.received`` is intentionally NOT in ``WS_EVENT_TYPE_VALUES``
+    // (the wire enum only carries ``message.sent``). The harness still
+    // accepts the frame; the page-survival assertions below verify the
+    // dispatch loop tolerates unknown event types without crashing the
+    // surrounding shell -- the actual cross-company display path lives
+    // elsewhere and is exercised by the unit-level messages store
+    // tests, not this E2E.
     await injectEvent(page, {
       event_type: 'message.received',
       channel: 'messages',
@@ -38,6 +47,11 @@ test.describe('Inter-company messaging critical flow', () => {
       payload: { ...inbound, message_id: inbound.id, origin: 'external_a2a' },
     })
 
+    // The page heading + ``main`` both surviving the injected frame
+    // proves the dispatch loop didn't tear React down on the unknown
+    // event_type. Bare ``main.visible`` alone would still pass if a
+    // blank shell rendered after a crash.
     await expect(page.locator('main')).toBeVisible()
+    await expect(heading).toBeVisible()
   })
 })

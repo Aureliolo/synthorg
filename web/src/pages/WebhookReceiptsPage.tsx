@@ -148,7 +148,12 @@ export default function WebhookReceiptsPage() {
       selection.clear()
     })
     return () => { cancelled = true }
-  }, [selected, selection])
+    // The effect intentionally clears state only when ``selected``
+    // changes; ``useBulkSelection`` memoises the ``selection`` object
+    // (it changes whenever ``selectedIds`` mutates), so listing it
+    // here would re-run the clear loop after every selection toggle.
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
+  }, [selected])
 
   useEffect(() => {
     void reload()
@@ -187,7 +192,7 @@ export default function WebhookReceiptsPage() {
           succeeded += 1
         } else {
           failed += 1
-          log.warn('Retry failed', sanitizeForLog(result.reason))
+          log.warn('Retry failed', { reason: sanitizeForLog(result.reason) })
         }
       }
     }

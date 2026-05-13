@@ -30,8 +30,12 @@ class FakeEventSource implements MockEventSource {
   }
 }
 
+let originalEventSource: typeof globalThis.EventSource | undefined
+
 beforeEach(() => {
   lastEventSource = null
+  originalEventSource = (globalThis as { EventSource?: typeof globalThis.EventSource })
+    .EventSource
   Object.defineProperty(globalThis, 'EventSource', {
     configurable: true,
     writable: true,
@@ -40,6 +44,15 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  if (originalEventSource === undefined) {
+    delete (globalThis as { EventSource?: typeof globalThis.EventSource }).EventSource
+  } else {
+    Object.defineProperty(globalThis, 'EventSource', {
+      configurable: true,
+      writable: true,
+      value: originalEventSource,
+    })
+  }
   vi.restoreAllMocks()
 })
 

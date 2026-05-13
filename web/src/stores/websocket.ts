@@ -290,8 +290,8 @@ async function notifyConnectionLimited(): Promise<void> {
     // (cold-boot or test harness without the notifications surface),
     // operators inspecting the console still see the limited-
     // connection state so chat/settings failures aren't a mystery.
-    console.warn(
-      '[ws] SSE fallback active; chat and settings features unavailable until reload',
+    log.warn(
+      'SSE fallback active; chat and settings features unavailable until reload',
     )
   }
 }

@@ -177,7 +177,7 @@ function IndeterminateBar({
           )}
         />
       </div>
-      {!label && description && (
+      {!label && !elapsedChip && description && (
         <p className="text-xs text-muted-foreground">{description}</p>
       )}
     </div>

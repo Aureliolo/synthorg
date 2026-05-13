@@ -29,6 +29,11 @@ interface SubworkflowsState {
   listLoading: boolean
   listError: string | null
   searchQuery: string
+  // ``true`` when the paged drain stopped at ``MAX_PAGES`` while the
+  // server reported there were still more results. Callers can use this
+  // to render an honest "showing first N" banner instead of pretending
+  // the visible list is the whole registry.
+  subworkflowsTruncated: boolean
 
   fetchSubworkflows: () => Promise<void>
   deleteSubworkflow: (id: string, version: string) => Promise<boolean>
@@ -46,6 +51,7 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
   listLoading: false,
   listError: null,
   searchQuery: '',
+  subworkflowsTruncated: false,
 
   async fetchSubworkflows() {
     const token = ++_listRequestToken
@@ -53,6 +59,7 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
       listLoading: true,
       listError: null,
       subworkflows: [],
+      subworkflowsTruncated: false,
     }))
     try {
       const query = get().searchQuery.trim()
@@ -62,7 +69,11 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
         // matches, not a single page.
         const results = await searchSubworkflows(query)
         if (isStaleRequest(token)) return
-        set(() => ({ subworkflows: results, listLoading: false }))
+        set(() => ({
+          subworkflows: results,
+          listLoading: false,
+          subworkflowsTruncated: false,
+        }))
         return
       }
       // Drain cursored pages eagerly so the page can render a
@@ -70,6 +81,7 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
       // button. MAX_PAGES bounds the worst case.
       const collected: SubworkflowSummary[] = []
       let cursor: string | null = null
+      let truncated = false
       for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex += 1) {
         const page = await listSubworkflows({
           cursor: cursor ?? undefined,
@@ -79,8 +91,16 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
         collected.push(...page.data)
         if (!page.hasMore || !page.nextCursor) break
         cursor = page.nextCursor
+        // The loop is about to exit on the next ``pageIndex`` increment
+        // while the server still has more results; signal that the
+        // visible list is a prefix, not the whole registry.
+        if (pageIndex === MAX_PAGES - 1) truncated = true
       }
-      set(() => ({ subworkflows: collected, listLoading: false }))
+      set(() => ({
+        subworkflows: collected,
+        listLoading: false,
+        subworkflowsTruncated: truncated,
+      }))
     } catch (err: unknown) {
       if (isStaleRequest(token)) return
       log.warn('Failed to fetch subworkflows', sanitizeForLog(err))

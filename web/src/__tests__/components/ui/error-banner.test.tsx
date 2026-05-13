@@ -135,15 +135,30 @@ describe('ErrorBanner', () => {
     it('copies the full correlation ID to the clipboard', async () => {
       const user = userEvent.setup()
       const writeText = vi.fn().mockResolvedValue(undefined)
+      // Capture the original clipboard descriptor up-front so test
+      // teardown can restore it; without this restore other tests
+      // inherit the mocked clipboard via test-order leakage.
+      const originalDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
         value: { writeText },
       })
-      render(<ErrorBanner title="Boom" correlationId="ulid-12345" />)
-      await user.click(
-        screen.getByRole('button', { name: /Copy correlation ID ulid-12345/ }),
-      )
-      expect(writeText).toHaveBeenCalledWith('ulid-12345')
+      try {
+        render(<ErrorBanner title="Boom" correlationId="ulid-12345" />)
+        await user.click(
+          screen.getByRole('button', { name: /Copy correlation ID ulid-12345/ }),
+        )
+        expect(writeText).toHaveBeenCalledWith('ulid-12345')
+      } finally {
+        if (originalDescriptor) {
+          Object.defineProperty(navigator, 'clipboard', originalDescriptor)
+        } else {
+          // The harness may have left ``clipboard`` undefined; in that
+          // case removing the override is the closest we can get to a
+          // clean restore.
+          delete (navigator as unknown as { clipboard?: unknown }).clipboard
+        }
+      }
     })
 
     it('does not render when correlationId is null', () => {

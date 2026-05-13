@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Collapsible } from '@/components/ui/collapsible'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { ListHeader } from '@/components/ui/list-header'
 import { MetadataGrid } from '@/components/ui/metadata-grid'
 import { ProgressIndicator } from '@/components/ui/progress-indicator'
@@ -218,6 +219,22 @@ export default function ReportsPage() {
     [],
   )
 
+  const trimmedPeriodFilter = periodFilter.trim()
+  const periodEmptyStateProps = useEmptyStateProps({
+    filteredCount: visiblePeriods?.length ?? 0,
+    totalCount: periods?.length ?? 0,
+    filterActive: trimmedPeriodFilter.length > 0,
+    icon: FileText,
+    empty: {
+      title: 'No report periods available',
+      description: 'The report service has not published any periods yet.',
+    },
+    filtered: {
+      title: 'No matching report periods',
+      description: 'Try a different search term or clear the filter above.',
+    },
+  })
+
   return (
     <div className="space-y-section-gap p-card">
       <ListHeader
@@ -225,6 +242,15 @@ export default function ReportsPage() {
         count={visiblePeriods?.length ?? periods?.length}
         description="Generate on-demand spending, performance, and task completion summaries for a chosen reporting period."
       />
+
+      {periodsError && (
+        <ErrorBanner
+          severity="error"
+          title="Could not load report periods"
+          description={periodsError}
+          onRetry={() => void fetchPeriods()}
+        />
+      )}
 
       {periods && periods.length > 0 && (
         <SearchFilterSort
@@ -256,20 +282,13 @@ export default function ReportsPage() {
         />
       )}
 
-      {periodsError ? (
-        <ErrorBanner
-          severity="error"
-          title="Could not load report periods"
-          description={periodsError}
-          onRetry={() => void fetchPeriods()}
-        />
-      ) : loadingPeriods ? (
+      {!periodsError && loadingPeriods ? (
         <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
         </div>
-      ) : visiblePeriods && visiblePeriods.length > 0 ? (
+      ) : !periodsError && visiblePeriods && visiblePeriods.length > 0 ? (
         <Collapsible
           title="Available reporting periods"
           summary={`${visiblePeriods.length} period${visiblePeriods.length === 1 ? '' : 's'}`}
@@ -285,17 +304,9 @@ export default function ReportsPage() {
             ))}
           </div>
         </Collapsible>
-      ) : (
-        <EmptyState
-          icon={FileText}
-          title={periodFilter ? 'No matching report periods' : 'No report periods available'}
-          description={
-            periodFilter
-              ? 'Try a different search term or clear the filter above.'
-              : 'The report service has not published any periods yet.'
-          }
-        />
-      )}
+      ) : !periodsError && periodEmptyStateProps ? (
+        <EmptyState {...periodEmptyStateProps} />
+      ) : null}
 
       {report ? (
         <Collapsible

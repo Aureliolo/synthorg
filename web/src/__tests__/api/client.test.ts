@@ -68,6 +68,16 @@ describe('ApiRequestError', () => {
     const err = new ApiRequestError('test', { ...testErrorDetail, instance: '' })
     expect(err.correlationId).toBeNull()
   })
+
+  it('correlationId returns null for whitespace-only instance', () => {
+    const err = new ApiRequestError('test', { ...testErrorDetail, instance: '   ' })
+    expect(err.correlationId).toBeNull()
+  })
+
+  it('correlationId trims surrounding whitespace', () => {
+    const err = new ApiRequestError('test', { ...testErrorDetail, instance: '  req-abc  ' })
+    expect(err.correlationId).toBe('req-abc')
+  })
 })
 
 describe('unwrap', () => {

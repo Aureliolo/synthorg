@@ -37,15 +37,22 @@ export function installGlobalErrorHandlers(): void {
   })
 
   window.addEventListener('error', (event: ErrorEvent) => {
-    if (event.error === undefined || event.error === null) return
+    // Some browser errors only carry message / filename / lineno /
+    // colno and have a null ``event.error`` (cross-origin script
+    // failures, certain resource-load errors, etc.). Falling back to
+    // ``event.message`` keeps those visible in the observability
+    // pipeline instead of dropping the signal on the floor.
+    const reason = event.error != null
+      ? formatReason(event.error)
+      : (event.message || 'Uncaught global error')
     log.error('Uncaught global error', {
       message: sanitizeForLog(event.message),
       filename: sanitizeForLog(event.filename),
       lineno: event.lineno,
       colno: event.colno,
-      reason: sanitizeForLog(formatReason(event.error)),
+      reason: sanitizeForLog(reason),
     })
-    notifyOperator('Background task failed', formatReason(event.error))
+    notifyOperator('Background task failed', reason)
   })
 }
 
