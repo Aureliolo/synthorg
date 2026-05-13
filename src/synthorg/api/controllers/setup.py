@@ -822,10 +822,12 @@ class SetupController(Controller):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 SETUP_COMPLETE_CHECK_ERROR,
                 check="auto_select_embedder",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
         await settings_svc.set("api", "setup_complete", "true")

@@ -33,7 +33,7 @@ from synthorg.budget.trends import (
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import TaskStatus
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import (
     ANALYTICS_FORECAST_QUERIED,
     ANALYTICS_OVERVIEW_QUERIED,
@@ -216,11 +216,13 @@ async def _resolve_budget_context(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="analytics.budget_context",
-            error="period_cost_query_failed",
+            detail="period_cost_query_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         period_cost = fallback_total_cost
 
