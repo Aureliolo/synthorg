@@ -1,16 +1,16 @@
 schema_version: 1
-last_generated_utc: '2026-05-13T09:56:14Z'
-generator_revision: 6a7f5b5fb
+last_generated_utc: '2026-05-13T10:19:00Z'
+generator_revision: 28ebda1b4
 stats:
   tests:
     raw: 29978
     rounded: 29000
     display: 29,000+
   version:
-    raw: v0.8.4-dev.3
-    display: v0.8.4-dev.3
+    raw: v0.8.4-dev.2
+    display: v0.8.4-dev.2
   mem0_stars:
-    raw: 55565
+    raw: 55567
     rounded: 55000
     display: 55k+
   providers_curated:
@@ -27,7 +27,7 @@ stats:
     display: '43'
 sources:
   tests: uv run python -m pytest --collect-only -q
-  version: gh release list --limit 1 --json tagName
+  version: gh release list --limit 1 --exclude-drafts --json tagName
   mem0_stars: gh api repos/mem0ai/mem0 --jq .stargazers_count
   providers_curated: synthorg.providers.presets.list_presets
   providers_via_litellm: len(litellm.model_cost)
