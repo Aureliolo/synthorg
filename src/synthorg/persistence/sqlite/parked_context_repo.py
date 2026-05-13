@@ -169,6 +169,8 @@ INSERT OR REPLACE INTO parked_contexts (
                 await self._db.commit()
                 deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to delete parked context {parked_id!r}"
                 # Use the delete-specific event so audit dashboards
                 # can distinguish read-path failures (QUERY_FAILED)

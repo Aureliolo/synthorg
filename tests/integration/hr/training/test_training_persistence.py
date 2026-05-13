@@ -55,11 +55,12 @@ class TestTrainingPersistencePipeline:
         migrated_db: aiosqlite.Connection,
     ) -> None:
         """Plan -> execute -> persist result -> fetch result."""
+        write_context = make_private_write_context()
         plan_repo = SQLiteTrainingPlanRepository(
-            migrated_db, write_context=make_private_write_context()
+            migrated_db, write_context=write_context
         )
         result_repo = SQLiteTrainingResultRepository(
-            migrated_db, write_context=make_private_write_context()
+            migrated_db, write_context=write_context
         )
 
         # 1. Create and persist a training plan.

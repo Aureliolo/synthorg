@@ -62,6 +62,8 @@ class SQLiteRiskOverrideRepository:
         """Roll back the current transaction, swallowing errors."""
         try:
             await self._db.rollback()
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,

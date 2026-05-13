@@ -60,6 +60,8 @@ class SQLiteSsrfViolationRepository:
         """Roll back the current transaction, swallowing errors."""
         try:
             await self._db.rollback()
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,

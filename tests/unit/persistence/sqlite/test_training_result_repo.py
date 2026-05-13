@@ -80,11 +80,10 @@ def _make_result(  # noqa: PLR0913
 async def repos(
     migrated_db: aiosqlite.Connection,
 ) -> tuple[SQLiteTrainingPlanRepository, SQLiteTrainingResultRepository]:
-    plan_repo = SQLiteTrainingPlanRepository(
-        migrated_db, write_context=make_private_write_context()
-    )
+    write_context = make_private_write_context()
+    plan_repo = SQLiteTrainingPlanRepository(migrated_db, write_context=write_context)
     result_repo = SQLiteTrainingResultRepository(
-        migrated_db, write_context=make_private_write_context()
+        migrated_db, write_context=write_context
     )
     return plan_repo, result_repo
 
