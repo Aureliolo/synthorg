@@ -4,7 +4,7 @@
 Sources (best-effort; failures keep the previously-stored value):
 
 * ``tests``                 -- ``uv run python -m pytest --collect-only -q``
-* ``version``               -- ``gh release list --limit 1 --json tagName``
+* ``version``               -- ``gh release list --limit 1 --exclude-drafts --json tagName``
 * ``mem0_stars``            -- ``gh api repos/mem0ai/mem0 --jq .stargazers_count``
 * ``providers_curated``     -- ``len(synthorg.providers.presets.list_presets())``
 * ``providers_via_litellm`` -- ``len(litellm.model_cost)``
@@ -66,7 +66,7 @@ _PYTEST_SUMMARY_RE: Final[re.Pattern[str]] = re.compile(
 
 _SOURCES: Final[dict[str, str]] = {
     "tests": "uv run python -m pytest --collect-only -q",
-    "version": "gh release list --limit 1 --json tagName",
+    "version": "gh release list --limit 1 --exclude-drafts --json tagName",
     "mem0_stars": "gh api repos/mem0ai/mem0 --jq .stargazers_count",
     "providers_curated": "synthorg.providers.presets.list_presets",
     "providers_via_litellm": "len(litellm.model_cost)",
@@ -177,11 +177,25 @@ def _fetch_tests() -> StatEntry:
 
 
 def _fetch_version() -> StatEntry:
-    """Read the latest release tag via ``gh release list --limit 1``."""
+    """Read the latest published release tag via ``gh release list``.
+
+    Drafts are excluded because they are not yet released, so quoting them in
+    user-facing docs is misleading; this also keeps the value stable between
+    local runs (which see drafts) and CI (which often does not).
+    """
     name = "version"
     source = _SOURCES[name]
     result = _run(
-        ["gh", "release", "list", "--limit", "1", "--json", "tagName"],
+        [
+            "gh",
+            "release",
+            "list",
+            "--limit",
+            "1",
+            "--exclude-drafts",
+            "--json",
+            "tagName",
+        ],
         timeout=_GH_TIMEOUT_SECONDS,
         stat_name=name,
         source=source,

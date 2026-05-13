@@ -261,7 +261,7 @@ async run(
    the gate also emits an `APPROVAL_INTERRUPT` SSE event and creates an
    `Interrupt` record for real-time HITL resolution. On resume, an
    `APPROVAL_RESUMED` event is emitted. See
-   [Communication: Event Stream](communication.md#event-stream--hitl-surface)
+   [Event Stream and Async Delegation](communication-events.md#interrupt--resume-protocol)
    for the full interrupt/resume protocol and `EvidencePackage` schema.
 11. **Record costs**: records accumulated `TokenUsage` to `CostTracker` (if
     available), tagged with `project_id` for project-level cost aggregation.
@@ -326,9 +326,11 @@ async run(
       `STAGNATION` indicates the agent was stuck in a repetitive loop.
       `PARKED` indicates the agent paused while waiting for a human
       approval decision from `ApprovalGate`; the task remains at its
-      current status until explicitly resumed. The Approval Timeout
-      Policy controls how long the parked state persists and how it
-      ultimately resolves. Approval parking is distinct from the
+      current status (typically `IN_PROGRESS` or `AUTH_REQUIRED` in the
+      task-state diagram; see [Task Lifecycle](engine.md#task-lifecycle))
+      until explicitly resumed. The Approval Timeout Policy controls
+      how long the parked state persists and how it ultimately
+      resolves. Approval parking is distinct from the
       checkpoint-based `SUSPENDED` state produced by graceful shutdown
       (which preserves an agent's full context across a process restart);
       see [Approval Timeout Policy](security.md#approval-timeout-policy)
@@ -343,7 +345,7 @@ async run(
     (recovery_result exists), a separate proposer LLM call analyzes the
     failure and stores a `PROCEDURAL` memory entry for future retrieval.
     Optionally materializes a SKILL.md file. Failures are logged but do
-    not affect the result (see [Memory > Procedural Memory Auto-Generation](memory.md#procedural-memory-auto-generation)).
+    not affect the result (see [Memory Learning: Procedural Memory Auto-Generation](memory-learning.md#procedural-memory-auto-generation)).
 14. **Return result**: wraps `ExecutionResult` in `AgentRunResult` with
     engine-level metadata.
 

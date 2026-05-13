@@ -17,7 +17,21 @@ import (
 var doctorReportCmd = &cobra.Command{
 	Use:   "report",
 	Short: "Generate a diagnostic archive and bug report URL",
-	Long:  "Collects diagnostics, saves a report file, and prints a pre-filled GitHub issue URL.",
+	Long: `Collect a diagnostic snapshot and emit a pre-filled GitHub issue URL.
+
+The archive lands at $DATA_DIR/synthorg-diagnostic-<timestamp>.txt with
+mode 0600 and bundles: host OS / architecture / CLI version, Docker
+and Compose versions, backend health verdict, per-container state,
+configured persistence and memory backends, image tag and signature
+verification cache state, the resolved config (with secrets redacted),
+recent container log lines, and disk / volume usage.
+
+Secrets stored in the resolved config (JWT secret, settings encryption
+key) are redacted. Container log lines and other Docker / Compose
+output are included as captured. The printed bug-report URL pre-fills
+the issue title with OS/arch/CLI version and the body with an
+environment + containers table; you attach the diagnostic file
+manually.`,
 	Example: `  synthorg doctor report           # write archive + print issue URL
   synthorg doctor report --json    # machine-readable summary`,
 	RunE: runDoctorReport,

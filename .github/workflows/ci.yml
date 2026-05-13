@@ -26,6 +26,7 @@ jobs:
       dashboard: ${{ steps.filter.outputs.dashboard }}
       docker: ${{ steps.filter.outputs.docker }}
       doc_claims: ${{ steps.filter.outputs.doc_claims }}
+      runtime_stats: ${{ steps.filter.outputs.runtime_stats }}
       # release-please PRs only touch CHANGELOG.md, version.txt, and
       # the manifest. There is no source code to test, so every heavy
       # job below short-circuits on this flag and ci-pass posts success
@@ -85,6 +86,14 @@ jobs:
               - 'docs/research/acg-formalism-evaluation.md'
               - 'src/synthorg/observability/events/**'
               - 'scripts/check_doc_drift_counts.py'
+            # Trigger the runtime_stats freshness gate when the YAML or
+            # the gate / generator change. YAML-only edits would not
+            # match the `python:` filter, so without this a manual seed
+            # could land without the freshness check running.
+            runtime_stats:
+              - 'data/runtime_stats.yaml'
+              - 'scripts/check_runtime_stats_freshness.py'
+              - 'scripts/generate_runtime_stats.py'
 
   # ── Python: Lint ──
   lint:
@@ -147,6 +156,34 @@ jobs:
 
       - name: Long-running-loop kill-switch gate (src/synthorg)
         run: uv run python scripts/check_long_running_loops_have_kill_switch.py
+
+  # ── Runtime Stats Freshness ──
+  # Fails the build when data/runtime_stats.yaml has drifted (any
+  # stats.<name>.raw differs from a freshly-fetched value) or when
+  # last_generated_utc is older than the 14-day ceiling. Runs on python
+  # OR runtime_stats so a YAML-only edit (e.g. a manual seed) still
+  # triggers the gate.
+  runtime-stats-freshness:
+    name: Runtime Stats Freshness Gate
+    needs: changes
+    if: (needs.changes.outputs.python == 'true' || needs.changes.outputs.runtime_stats == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Check runtime_stats freshness
+        env:
+          # `gh release list` / `gh api` calls inside the generator's
+          # fetchers need an authenticated token; GITHUB_TOKEN is
+          # sufficient for the public-repo metadata they read.
+          GH_TOKEN: ${{ github.token }}
+        run: uv run python scripts/check_runtime_stats_freshness.py
 
   # ── Docs: Doc-claim drift gate ──
   # Runs on python OR doc_claims so a docs-only PR that bumps a guarded
@@ -757,7 +794,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, doc-drift, schema-validate, type-check, openapi-liveness, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
+    needs: [changes, lint, doc-drift, runtime-stats-freshness, schema-validate, type-check, openapi-liveness, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -770,6 +807,7 @@ jobs:
             ${{ needs.changes.result }}
             ${{ needs.lint.result }}
             ${{ needs.doc-drift.result }}
+            ${{ needs.runtime-stats-freshness.result }}
             ${{ needs.schema-validate.result }}
             ${{ needs.type-check.result }}
             ${{ needs.openapi-liveness.result }}

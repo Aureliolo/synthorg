@@ -65,7 +65,7 @@ Personality is split into two tiers:
 ### Skill Model
 
 Agent skills are represented as structured capability descriptions aligned with the
-[A2A AgentSkill specification](communication.md#agent-card-projection), enabling lossless
+[A2A AgentSkill specification](communication-a2a.md#agent-card-projection), enabling lossless
 bidirectional mapping between internal skills and external Agent Card capabilities.
 
 ```python
@@ -135,7 +135,7 @@ Tools are grouped by namespace and gated by `ToolPermission`:
 | `communication.async_tasks` | `DELEGATION` | `start_async_task`, `check_async_task`, `update_async_task`, `cancel_async_task`, `list_async_tasks` |
 
 The `communication.async_tasks` tools provide supervisor-facing async task
-management wrapping `TaskEngine` (see [Async Delegation](communication.md#async-delegation)).
+management wrapping `TaskEngine` (see [Async Delegation](communication-events.md#async-delegation)).
 
 ### Agent Configuration Example
 

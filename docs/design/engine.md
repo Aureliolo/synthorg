@@ -76,6 +76,20 @@ stateDiagram-v2
     - **COMPLETED**, **CANCELLED**, and **REJECTED** are terminal states with no
       outgoing transitions.
 
+!!! info "Approval parking vs. AUTH_REQUIRED"
+    `AUTH_REQUIRED` is the **task-state** representation for the
+    approval-waiting case in the state diagram above. The agent-loop
+    side uses the `PARKED` termination reason for the same situation;
+    see [Agent Execution](agent-execution.md#agentengine-orchestrator)
+    for the loop-level view. PARKED does NOT mint a new task state:
+    when the agent loop terminates with `PARKED`, the task remains at
+    its current status (typically `IN_PROGRESS` or `AUTH_REQUIRED`)
+    until `ApprovalGate` resolves the decision and the
+    [Approval Timeout Policy](security.md#approval-timeout-policy)
+    rules out timeout. This page (the Task Lifecycle diagram) is
+    the canonical source for task-state transitions; agent-execution.md
+    is the canonical source for agent-loop termination reasons.
+
 !!! info "Runtime wrapper"
     During execution, `Task` is wrapped by `TaskExecution` (a frozen Pydantic
     model) that tracks status transitions via `model_copy(update=...)`,

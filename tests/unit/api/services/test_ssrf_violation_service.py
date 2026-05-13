@@ -219,11 +219,11 @@ async def test_list_audits_status_filter_none() -> None:
 class _RaisingReadRepo(_FakeSsrfViolationRepo):
     """Stub that raises ``QueryError`` on every read.
 
-    Pins the read-side failure audits (``API_SSRF_VIOLATION_FETCH_FAILED``
-    for ``get`` and the WARNING form of ``API_SSRF_VIOLATION_LISTED`` for
-    ``list_violations``) -- these were added in round 5 / 6 and would
-    otherwise regress unnoticed since the success-path tests only
-    cover the happy branch.
+    Pins the read-side failure audits: ``API_SSRF_VIOLATION_FETCH_FAILED``
+    on ``get`` and the WARNING form of ``API_SSRF_VIOLATION_LISTED`` on
+    ``list_violations``. The success-path tests only cover the happy
+    branch, so these stubs guard the error-path emissions against
+    silent regressions.
     """
 
     async def get(self, violation_id: NotBlankStr) -> SsrfViolation | None:

@@ -2,13 +2,14 @@
 
 The four inbound (client -> server) message kinds share an ``action``
 discriminator literal so :data:`WsControlMessage` deserialises into the
-correct variant, eliminating the legacy field-pluck pattern in
-:mod:`synthorg.api.controllers.ws_protocol`.
+correct variant. :mod:`synthorg.api.controllers.ws_protocol` consumes
+the discriminated union directly rather than reaching into the raw
+payload for individual fields.
 
 The shape mirrors the typed contract in
-``web/src/api/types/websocket.ts`` (PR #1718). Wire-protocol
-versioning lives on the outbound :class:`~synthorg.api.ws_models.WsEvent`
-side; inbound control messages do not currently carry a version field.
+``web/src/api/types/websocket.ts``. Wire-protocol versioning lives on
+the outbound :class:`~synthorg.api.ws_models.WsEvent` side; inbound
+control messages do not carry a version field.
 """
 
 from typing import Annotated, Literal

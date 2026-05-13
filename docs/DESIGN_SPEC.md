@@ -14,13 +14,19 @@ The design specification has been split into focused documentation pages for bet
 | [Agents](design/agents.md) | Agent Identity | Identity card, personality (OCEAN + behavioural enums), skill model, tool namespaces, identity versioning |
 | [HR & Agent Lifecycle](design/hr-lifecycle.md) | HR | Seniority, role catalog, hiring (templates + LLM), pruning, dynamic scaling, firing, performance, evaluation, promotions, evolution, five-pillar framework, client agents |
 | [Organization & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
-| [Communication](design/communication.md) | Communication Architecture | Message bus, delegation, conflict resolution, meetings |
+| [Communication](design/communication.md) | Communication Architecture | Message bus transport, patterns, message format, config and lifecycle |
+| [Communication A2A Gateway](design/communication-a2a.md) | External Federation | Optional gateway, agent cards, concept mapping, SSE streaming, outbound client |
+| [Communication Coordination](design/communication-coordination.md) | Orchestration | Loop prevention, conflict resolution, meeting protocols, scheduler, MCP facades, failure guardrails |
+| [Communication Event Stream](design/communication-events.md) | Observability + HITL | AG-UI projection, SSE endpoint, interrupt/resume, EvidencePackage, async delegation, citations |
 | [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |
 | [Task & Workflow Engine](design/engine.md) | Task Engine Core | Task lifecycle, routing, workflow types and definitions, TaskEngine centralized state coordination |
 | [Agent Execution](design/agent-execution.md) | Execution Loops | Execution status, ReAct/Plan-Execute/Hybrid loops, prompt profiles, stagnation detection, context budget, brain/hands/session |
 | [Coordination & Resilience](design/coordination.md) | Multi-agent + Recovery | Crash recovery, graceful shutdown, workspace isolation, task decomposability, coordination topology |
 | [Verification & Quality](design/verification-quality.md) | Quality Pipeline | Verification stage, harness middleware, review pipeline, intake engine |
-| [Memory](design/memory.md) | Memory | Memory types, backends, retrieval, consolidation, procedural generation |
+| [Memory](design/memory.md) | Memory | Memory types, backends, retrieval, embedding selection, consolidation |
+| [Memory Organizational](design/memory-organizational.md) | Shared Knowledge | Company-wide policies, ADRs, OrgMemoryBackend protocol, research directions |
+| [Memory Operational](design/memory-operational.md) | Operational Data Persistence | PersistenceBackend protocol, per-entity repositories, SQLite + Postgres, multi-tenancy, invariants |
+| [Memory Learning](design/memory-learning.md) | Learning + Injection | Procedural memory auto-gen, capture / pruning / propagation strategies, injection strategies, MemoryService |
 | [Persistence](design/persistence.md) | Persistence | Repository protocol, SQLite/Postgres backends, time-series tables, TimescaleDB, migrations |
 | [Multi-Agent Memory Consistency](design/memory-consistency.md) | Consistency Model | Append-only writes, MVCC snapshot reads, conflict handling, deployment rollout |
 | [Semantic Ontology](design/ontology.md) | Entity Definitions, Versioning, Drift | Shared vocabulary, decorator, backend, bootstrap, drift detection |

@@ -461,7 +461,7 @@ waves; it runs small coordination groups drawn from the roster.
 |-------|-------|-------------|
 | Per-coordination-group (agents in a single `coordination_topology` wave) | **3-4 agents** (recommended) | `CoordinationConfig.max_concurrency_per_wave` |
 | Per-task total team (orchestrator + sub-agents + verifiers) | **~7 agents** | Soft cap; logged warning above threshold |
-| Per-meeting participants | **3-5 ideal, 8 hard cap** | Enforced by meeting protocol token budgets and quadratic-growth warnings (see [Meeting Protocol](communication.md#meeting-protocol)) |
+| Per-meeting participants | **3-5 ideal, 8 hard cap** | Enforced by meeting protocol token budgets and quadratic-growth warnings (see [Meeting Protocol](communication-coordination.md#meeting-protocol)) |
 | Per-company / org roster | **No hard bound** | Organizational-simulation fidelity, not per-task reasoning efficiency |
 
 ### Multi-Agent Coordination Pipeline

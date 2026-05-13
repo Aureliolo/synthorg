@@ -60,6 +60,19 @@ Running 'synthorg backup' without a subcommand triggers a manual backup
 var backupCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Trigger a manual backup",
+	Long: `Trigger a manual backup via the admin API.
+
+The backend assembles a single archive of the persistence database
+(SQLite or Postgres), artifact storage, and runtime settings, writes
+it inside the backend container's data volume, and returns a manifest
+with backup ID, components, size, and SHA-256 checksum.
+
+The cluster keeps serving requests while the snapshot is taken; the
+backend uses online-consistent reads, so no downtime is required.
+Pass --output to copy the resulting archive out of the container to a
+local path; otherwise the archive lives only in the backend volume
+until 'synthorg backup restore <id>' references it. Authentication uses
+a short-lived HMAC-SHA256 JWT signed with the local jwt_secret.`,
 	Example: `  synthorg backup create                          # create backup
   synthorg backup create --output ~/backup.tar.gz  # save to specific path
   synthorg backup create --timeout 120s            # custom API timeout`,
@@ -70,6 +83,14 @@ var backupCreateCmd = &cobra.Command{
 var backupListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List available backups",
+	Long: `List backups recorded in the backend's manifest store.
+
+The output table reports backup ID (12-char hex), timestamp, trigger
+(manual or scheduled), included components, size, and whether the
+archive is compressed. Filter and sort with the flags below; the
+default ordering is newest first. Pass a backup ID returned here to
+'synthorg backup restore <id> --confirm' to roll the cluster back to
+that snapshot.`,
 	Example: `  synthorg backup list                # list all backups
   synthorg backup list --limit 5     # show 5 most recent
   synthorg backup list --sort size   # sort by size`,
