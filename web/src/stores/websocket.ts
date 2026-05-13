@@ -7,6 +7,7 @@
 
 import { create } from 'zustand'
 import { AxiosError } from 'axios'
+import { openSseFallback } from '@/api/sse/client'
 import { WS_CHANNELS } from '@/api/types/websocket'
 import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types/websocket'
 import { getWsTicket } from '@/api/endpoints/auth'
@@ -54,6 +55,19 @@ let connectGeneration = 0
 const channelHandlers = new Map<string, Set<WsEventHandler>>()
 let pendingSubscriptions: { channels: WsChannel[]; filters?: Record<string, string> }[] = []
 const activeSubscriptions: { channels: WsChannel[]; filters?: Record<string, string> }[] = []
+
+// SSE fallback transport bookkeeping. When the WS handshake fails
+// twice in a row with a 1006 close (proxy-blocked WS upgrade is the
+// canonical failure mode), the store switches to a read-only SSE
+// feed against `/api/v1/events/stream`. The fallback dispatches
+// AG-UI projected events through the same `dispatchEvent` handler
+// chain so the dashboard's tasks / agents / approvals / budget
+// stores keep updating; write-path features rely on the
+// `connection.limited` toast to direct the user.
+let sseClient: { close: () => void } | null = null
+let proxyBlockSuspicion = 0
+const PROXY_BLOCK_THRESHOLD = 2
+const WS_ABNORMAL_CLOSE_CODE = 1006
 
 // ── Store types ─────────────────────────────────────────────
 
@@ -231,6 +245,50 @@ function queueSubscriptionForReconnect(
   }
 }
 
+function activateSseFallback(): void {
+  if (sseClient !== null) return
+  log.warn('WS handshake repeatedly failed with 1006; activating SSE fallback')
+  // Stop attempting to reconnect WS while the fallback runs; the
+  // user has to reload to retry the WS transport (the reload also
+  // resets ``proxyBlockSuspicion``). Without this guard, the
+  // backoff loop would keep cycling through 1006 closes while the
+  // SSE feed already covers the read surface.
+  shouldBeConnected = false
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  sseClient = openSseFallback({
+    onOpen: () => {
+      log.debug('SSE fallback connected')
+    },
+    onEvent: (wsEvent) => {
+      dispatchEvent(wsEvent)
+    },
+    onError: (err) => {
+      log.warn('SSE fallback transport error', sanitizeForLog(err.message))
+    },
+  })
+  void notifyConnectionLimited()
+}
+
+async function notifyConnectionLimited(): Promise<void> {
+  // Lazy-import the toast store so the websocket module does not
+  // pull in the entire notifications surface during cold start;
+  // the dynamic import also keeps the test harness's stubbing path
+  // (vi.mock) simpler.
+  try {
+    const { useToastStore } = await import('@/stores/toast')
+    useToastStore.getState().add({
+      variant: 'warning',
+      title: 'Connection limited',
+      description: 'Real-time WebSocket is blocked. Falling back to SSE; some interactive features (chat, settings actions) may be unavailable until you reload after fixing your proxy.',
+    })
+  } catch (err) {
+    log.warn('Could not surface connection-limited toast', sanitizeForLog(err))
+  }
+}
+
 export const useWebSocketStore = create<WebSocketState>()((set) => {
   function scheduleReconnect() {
     if (reconnectTimer) clearTimeout(reconnectTimer)
@@ -360,6 +418,10 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         // and start the heartbeat -- this closes the pre-existing flash.
         set({ connected: true })
         reconnectAttempts = 0
+        // Successful handshake clears the proxy-block suspicion; if
+        // a future close fires 1006 it must be a fresh transport
+        // failure, not the same misconfigured upgrade path repeating.
+        proxyBlockSuspicion = 0
         startHeartbeat(thisSocket)
         return
       }
@@ -413,6 +475,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     thisSocket.onclose = (event: CloseEvent) => {
       // Guard: only act on our own socket, not a stale reference
       if (socket !== thisSocket) return
+      const wasConnected = useWebSocketStore.getState().connected
       stopHeartbeat()
       set({ connected: false })
       socket = null
@@ -422,6 +485,25 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         log.error(`Auth failed (code ${event.code}):`, sanitizeForLog(event.reason, LOG_SANITIZE_MAX_LENGTH))
         set({ reconnectExhausted: true })
         return
+      }
+
+      // Proxy-blocked WS detection: a 1006 close that fires BEFORE
+      // ``auth_ok`` ever landed (``wasConnected === false``) is the
+      // canonical signature of a reverse proxy that does not forward
+      // WS upgrades. Count consecutive occurrences; once over
+      // PROXY_BLOCK_THRESHOLD, give up on the WS transport and open
+      // the SSE fallback. The read-only AG-UI projection keeps the
+      // tasks / approvals / agents / budget surfaces live; write-
+      // path features rely on the `connection.limited` toast to
+      // direct the operator.
+      if (event.code === WS_ABNORMAL_CLOSE_CODE && !wasConnected) {
+        proxyBlockSuspicion += 1
+        if (proxyBlockSuspicion >= PROXY_BLOCK_THRESHOLD && sseClient === null) {
+          activateSseFallback()
+          return
+        }
+      } else if (wasConnected) {
+        proxyBlockSuspicion = 0
       }
 
       if (!intentionalClose && shouldBeConnected) {
@@ -468,6 +550,11 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         socket.close()
         socket = null
       }
+      if (sseClient) {
+        sseClient.close()
+        sseClient = null
+      }
+      proxyBlockSuspicion = 0
       set({ connected: false, subscribedChannels: [] })
       pendingSubscriptions = []
       activeSubscriptions.length = 0
@@ -616,6 +703,11 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       connectGeneration++
       connectPromise = null
       reconnectAttempts = 0
+      proxyBlockSuspicion = 0
+      if (sseClient) {
+        sseClient.close()
+        sseClient = null
+      }
       // Step 2: clear every module-scope timer handle. ``stopHeartbeat``
       // covers the heartbeat + pong pair; the reconnect timer is
       // separate.
