@@ -23,8 +23,8 @@ stats:
     raw: 26
     display: '26'
   convention_gates:
-    raw: 43
-    display: '43'
+    raw: 44
+    display: '44'
 sources:
   tests: uv run python -m pytest --collect-only -q
   version: gh release list --limit 1 --exclude-drafts --json tagName
