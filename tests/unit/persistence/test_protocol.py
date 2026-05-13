@@ -1,6 +1,7 @@
 """Tests for persistence protocol compliance."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -651,6 +652,10 @@ class _FakeBackend:
     def get_db(self) -> object:
         msg = "Not supported"
         raise NotImplementedError(msg)
+
+    @asynccontextmanager
+    async def write_context(self) -> AsyncIterator[None]:
+        yield
 
     @property
     def is_connected(self) -> bool:

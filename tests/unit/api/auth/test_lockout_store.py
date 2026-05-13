@@ -10,6 +10,7 @@ from synthorg.core.auth.config import AuthConfig
 from synthorg.persistence.sqlite.lockout_repo import (
     SQLiteLockoutRepository as LockoutStore,
 )
+from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
 
@@ -35,7 +36,7 @@ def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
 
 @pytest.fixture
 async def store(db: aiosqlite.Connection) -> LockoutStore:
-    return LockoutStore(db, _make_config())
+    return LockoutStore(db, _make_config(), write_context=make_private_write_context())
 
 
 class TestLockoutIsLocked:
@@ -103,7 +104,7 @@ class TestLockoutCleanup:
         db: aiosqlite.Connection,
     ) -> None:
         config = _make_config(window_minutes=1)
-        store = LockoutStore(db, config)
+        store = LockoutStore(db, config, write_context=make_private_write_context())
 
         # Insert an old record directly
         await db.execute(
@@ -121,7 +122,7 @@ class TestLockoutCleanup:
 class TestLockoutDurationSeconds:
     async def test_returns_correct_duration(self, db: aiosqlite.Connection) -> None:
         config = _make_config(duration_minutes=15)
-        store_obj = LockoutStore(db, config)
+        store_obj = LockoutStore(db, config, write_context=make_private_write_context())
         assert store_obj.lockout_duration_seconds == 900
 
 
@@ -132,7 +133,7 @@ class TestLockoutWithMockedTime:
     ) -> None:
         """Lock expires when monotonic time passes the duration."""
         config = _make_config(threshold=2, duration_minutes=5)
-        store = LockoutStore(db, config)
+        store = LockoutStore(db, config, write_context=make_private_write_context())
 
         # Trigger lockout
         await store.record_failure("alice")

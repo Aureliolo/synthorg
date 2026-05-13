@@ -8,6 +8,7 @@ from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.persistence.sqlite.checkpoint_repo import (
     SQLiteCheckpointRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -46,7 +47,9 @@ class TestSQLiteCheckpointRepository:
     async def test_save_and_get_latest_roundtrip(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         cp = _make_checkpoint(checkpoint_id="cp-rt-001")
         await repo.save(cp)
 
@@ -63,7 +66,9 @@ class TestSQLiteCheckpointRepository:
     async def test_get_latest_returns_highest_turn_number(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         cp_low = _make_checkpoint(
             checkpoint_id="cp-low",
             turn_number=1,
@@ -89,7 +94,9 @@ class TestSQLiteCheckpointRepository:
     async def test_get_latest_filter_by_task_id(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         cp_a = _make_checkpoint(
             checkpoint_id="cp-a",
             task_id="task-alpha",
@@ -111,7 +118,9 @@ class TestSQLiteCheckpointRepository:
     async def test_get_latest_filter_by_execution_id(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         cp_a = _make_checkpoint(
             checkpoint_id="cp-exec-a",
             execution_id="exec-alpha",
@@ -133,7 +142,9 @@ class TestSQLiteCheckpointRepository:
     async def test_get_latest_both_filters(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         cp_match = _make_checkpoint(
             checkpoint_id="cp-match",
             execution_id="exec-m",
@@ -156,19 +167,25 @@ class TestSQLiteCheckpointRepository:
     async def test_get_latest_returns_none_when_no_match(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         result = await repo.get_latest(execution_id="nonexistent")
         assert result is None
 
     async def test_get_latest_raises_when_no_filter(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with pytest.raises(ValueError, match="At least one"):
             await repo.get_latest()
 
     async def test_upsert_same_id(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         cp_v1 = _make_checkpoint(
             checkpoint_id="cp-upsert",
             context_json='{"version": 1}',
@@ -192,7 +209,9 @@ class TestSQLiteCheckpointRepository:
     async def test_delete_by_execution_returns_count(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         for i in range(3):
             cp = _make_checkpoint(
                 checkpoint_id=f"cp-del-{i}",
@@ -210,14 +229,18 @@ class TestSQLiteCheckpointRepository:
     async def test_delete_by_execution_returns_zero_when_none_exist(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         count = await repo.delete_by_execution("nonexistent")
         assert count == 0
 
     async def test_delete_by_execution_does_not_affect_other_executions(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         cp_keep = _make_checkpoint(
             checkpoint_id="cp-keep",
             execution_id="exec-keep",
@@ -246,7 +269,9 @@ class TestSQLiteCheckpointRepositoryErrors:
         from synthorg.core.persistence_errors import QueryError
 
         # No migrations → table doesn't exist → sqlite error
-        repo = SQLiteCheckpointRepository(memory_db)
+        repo = SQLiteCheckpointRepository(
+            memory_db, write_context=make_private_write_context()
+        )
         cp = _make_checkpoint()
         with pytest.raises(QueryError, match="Failed to save"):
             await repo.save(cp)
@@ -257,7 +282,9 @@ class TestSQLiteCheckpointRepositoryErrors:
         """get_latest() wraps sqlite errors into QueryError."""
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteCheckpointRepository(memory_db)
+        repo = SQLiteCheckpointRepository(
+            memory_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="Failed to query"):
             await repo.get_latest(execution_id="exec-001")
 
@@ -267,7 +294,9 @@ class TestSQLiteCheckpointRepositoryErrors:
         """delete_by_execution() wraps sqlite errors into QueryError."""
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteCheckpointRepository(memory_db)
+        repo = SQLiteCheckpointRepository(
+            memory_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="Failed to delete"):
             await repo.delete_by_execution("exec-001")
 
@@ -277,7 +306,9 @@ class TestSQLiteCheckpointRepositoryErrors:
         """_row_to_model() wraps ValidationError into QueryError."""
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteCheckpointRepository(migrated_db)
+        repo = SQLiteCheckpointRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         # Manually insert a row with invalid data (missing required fields)
         await migrated_db.execute(
             "INSERT INTO checkpoints "

@@ -1,6 +1,5 @@
 """SQLite-backed ontology entity repository."""
 
-import asyncio
 import contextlib
 import json
 import sqlite3
@@ -29,6 +28,7 @@ from synthorg.ontology.models import (
     EntityTier,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -44,14 +44,10 @@ class SQLiteOntologyEntityRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     @property
     def backend_name(self) -> NotBlankStr:
@@ -110,7 +106,7 @@ class SQLiteOntologyEntityRepository:
     async def register(self, entity: EntityDefinition) -> None:
         """Register a new entity definition."""
         params = self._entity_to_params(entity)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """INSERT INTO entity_definitions
@@ -169,7 +165,7 @@ class SQLiteOntologyEntityRepository:
     async def update(self, entity: EntityDefinition) -> None:
         """Update an existing entity definition."""
         params = self._entity_to_params(entity)
-        async with self._write_lock:
+        async with self._write_context():
             cursor = await self._db.execute(
                 """UPDATE entity_definitions
                    SET tier = :tier, source = :source,
@@ -197,7 +193,7 @@ class SQLiteOntologyEntityRepository:
 
     async def delete(self, name: str) -> None:
         """Delete an entity definition by name."""
-        async with self._write_lock:
+        async with self._write_context():
             cursor = await self._db.execute(
                 "DELETE FROM entity_definitions WHERE name = :name",
                 {"name": name},

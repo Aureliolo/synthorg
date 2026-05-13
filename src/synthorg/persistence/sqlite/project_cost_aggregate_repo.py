@@ -32,6 +32,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,
 )
 from synthorg.persistence._shared import parse_iso_utc
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -130,18 +131,22 @@ class SQLiteProjectCostAggregateRepository:
     Args:
         db: An open aiosqlite connection with ``row_factory``
             set to ``aiosqlite.Row``.
-        write_lock: Optional shared write lock for serialising
-            multi-statement write operations.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
         self._pinned_currencies: dict[str, str] = {}
         # Per-project striped locks: each project_id gets its own
         # ``asyncio.Lock`` lazily created in ``_project_lock``.  This
@@ -336,7 +341,7 @@ class SQLiteProjectCostAggregateRepository:
             now = datetime.now(UTC).isoformat()
             db_committed = False
             try:
-                # Run the write inside the write_lock and validate the
+                # Run the write inside write_context and validate the
                 # RETURNING row BEFORE committing.  If deserialize
                 # fails the durable layer must remain unchanged so a
                 # retry doesn't double-count -- without this guard the
@@ -344,7 +349,7 @@ class SQLiteProjectCostAggregateRepository:
                 # would leave a phantom durable row whose currency the
                 # operator can no longer enforce in memory.
                 try:
-                    async with self._write_lock:
+                    async with self._write_context():
                         cursor = await self._db.execute(
                             _UPSERT_SQL,
                             (project_id, cost, input_tokens, output_tokens, now),

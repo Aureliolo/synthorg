@@ -5,7 +5,6 @@ in their own table keyed by ``(subworkflow_id, semver)``.  See
 ``src/synthorg/persistence/subworkflow_repo.py`` for the protocol.
 """
 
-import asyncio
 import json
 import sqlite3
 from collections.abc import Iterable  # noqa: TC003
@@ -45,6 +44,7 @@ from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -210,20 +210,22 @@ class SQLiteSubworkflowRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, definition: WorkflowDefinition) -> None:
         """Insert a new subworkflow version row.
@@ -249,7 +251,7 @@ class SQLiteSubworkflowRepository:
         outputs_json = json.dumps(
             [o.model_dump(mode="json") for o in definition.outputs],
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -484,7 +486,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         version: NotBlankStr,
     ) -> bool:
         """Delete a subworkflow version, returning ``True`` on success."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM subworkflows WHERE subworkflow_id = ? AND semver = ?",
@@ -511,7 +513,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         version: NotBlankStr,
     ) -> tuple[bool, tuple[ParentReference, ...]]:
         """Atomically check-and-delete inside a single transaction."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 # find_parents already uses self._db so we wrap the
                 # whole check + delete in an explicit transaction.

@@ -7,7 +7,6 @@ to eliminate the TOCTOU race that a read-then-write pattern would
 create under concurrent review gate decisions.
 """
 
-import asyncio
 import copy
 import json
 import sqlite3
@@ -30,7 +29,10 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, validate_pagination_args
 from synthorg.persistence.decision_protocol import DecisionRole  # noqa: TC001
-from synthorg.persistence.sqlite._shared import is_unique_constraint_error
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    is_unique_constraint_error,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -142,34 +144,31 @@ class SQLiteDecisionRepository:
     review gate decisions.  Timestamps are normalized to UTC before
     storage for consistent lexicographic ordering.
 
-    An ``asyncio.Lock`` serializes the multi-statement
+    The backend's ``write_context`` serializes the multi-statement
     INSERT -> SELECT -> commit/rollback sequence in
     ``append_with_next_version`` so concurrent coroutines cannot
     interleave their statements or have one coroutine's rollback
-    wipe another's in-flight INSERT.  Production callers should
-    inject the shared ``SQLitePersistenceBackend._shared_write_lock``
-    so this repository coordinates with OTHER repositories that
-    mutate the same underlying ``aiosqlite.Connection``.  When the
-    lock argument is omitted (primarily direct-instantiation tests),
-    a per-instance lock is created as a fallback that only protects
-    against this repository's own concurrent callers.
+    wipe another's in-flight INSERT.  Production callers receive the
+    shared backend write context so this repository coordinates with
+    OTHER repositories that mutate the same underlying
+    ``aiosqlite.Connection``; tests can pass
+    ``tests._shared.persistence.make_private_write_context()`` for
+    standalone construction.
 
     Args:
         db: An open aiosqlite connection.
-        write_lock: Optional shared lock protecting multi-statement
-            transactions on ``db``.  Defaults to a per-instance lock
-            for test ergonomics; production wiring injects the
-            backend's shared lock.
+        write_context: Async context manager that serializes
+            multi-statement transactions on ``db``.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def append_with_next_version(  # noqa: PLR0913
         self,
@@ -323,7 +322,7 @@ class SQLiteDecisionRepository:
                 error_type="TypeError",
             )
             raise
-        async with self._write_lock:
+        async with self._write_context():
             assigned_version = await self._execute_insert(record_id, params)
         return draft_record.model_copy(update={"version": assigned_version})
 
@@ -451,12 +450,12 @@ class SQLiteDecisionRepository:
     async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
         """Retrieve a decision record by ID.
 
-        Serialized against concurrent writers via ``_write_lock`` so
+        Serialized against concurrent writers via ``write_context`` so
         reads never observe rows from an in-flight ``INSERT -> SELECT
         -> commit`` sequence that has not yet committed.
         """
         try:
-            async with self._write_lock:
+            async with self._write_context():
                 cursor = await self._db.execute(
                     f"SELECT {_COLS} FROM decision_records WHERE id = ?",  # noqa: S608
                     (record_id,),
@@ -484,7 +483,7 @@ class SQLiteDecisionRepository:
     ) -> tuple[DecisionRecord, ...]:
         """List decision records for a task, oldest first.
 
-        Serialized against concurrent writers via ``_write_lock`` so
+        Serialized against concurrent writers via ``write_context`` so
         reads never observe phantom rows from a mid-transaction
         ``append_with_next_version``.
 
@@ -518,7 +517,7 @@ class SQLiteDecisionRepository:
         )
         effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
-            async with self._write_lock:
+            async with self._write_context():
                 # ``recorded_at ASC, id ASC`` matches the protocol's
                 # "oldest first" contract; ``version ASC`` would
                 # mis-place a backfilled decision (low ``recorded_at``
@@ -561,7 +560,7 @@ class SQLiteDecisionRepository:
         ``role`` is validated via ``Literal`` at the type level, but we
         re-check at runtime to guard against bad callers that bypass
         type checking.  A rejected role is logged before raising.
-        Serialized against concurrent writers via ``_write_lock``.
+        Serialized against concurrent writers via ``write_context``.
 
         Args:
             agent_id: Identifier of the agent whose decisions are
@@ -645,7 +644,7 @@ class SQLiteDecisionRepository:
                 f"WHERE {column} = ? ORDER BY recorded_at DESC, id DESC "
                 f"LIMIT ? OFFSET ?"
             )
-            async with self._write_lock:
+            async with self._write_context():
                 cursor = await self._db.execute(
                     query,
                     (agent_id, effective_limit, offset),

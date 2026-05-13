@@ -9,6 +9,7 @@ from synthorg.core.auth.refresh_record import RefreshRejectReason
 from synthorg.persistence.sqlite.refresh_repo import (
     SQLiteRefreshTokenRepository as RefreshStore,
 )
+from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
 
@@ -25,7 +26,7 @@ def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
 
 @pytest.fixture
 async def store(db: aiosqlite.Connection) -> RefreshStore:
-    return RefreshStore(db)
+    return RefreshStore(db, write_context=make_private_write_context())
 
 
 class TestRefreshCreate:
@@ -187,7 +188,7 @@ class TestRefreshCleanup:
         self,
         db: aiosqlite.Connection,
     ) -> None:
-        store = RefreshStore(db)
+        store = RefreshStore(db, write_context=make_private_write_context())
         # Expired token -- will be removed
         await store.create(
             token_hash="expired",

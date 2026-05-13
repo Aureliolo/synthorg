@@ -30,6 +30,7 @@ from synthorg.persistence.sqlite.repositories import (
     SQLiteMessageRepository,
     SQLiteTaskRepository,
 )
+from tests._shared.persistence import make_private_write_context
 from tests.unit.persistence.conftest import make_message, make_task
 
 # ── TaskRepository ───────────────────────────────────────────────
@@ -38,7 +39,9 @@ from tests.unit.persistence.conftest import make_message, make_task
 @pytest.mark.unit
 class TestSQLiteTaskRepository:
     async def test_save_and_get(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         task = make_task()
         await repo.save(task)
 
@@ -52,13 +55,17 @@ class TestSQLiteTaskRepository:
     async def test_get_returns_none_for_missing(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert await repo.get("nonexistent") is None
 
     async def test_save_upsert_updates_existing(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         task = make_task()
         await repo.save(task)
 
@@ -71,7 +78,9 @@ class TestSQLiteTaskRepository:
         assert result.assigned_to == "bob"
 
     async def test_list_all(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(make_task(task_id="t1"))
         await repo.save(make_task(task_id="t2"))
 
@@ -81,7 +90,9 @@ class TestSQLiteTaskRepository:
     async def test_list_filter_by_status(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(make_task(task_id="t1"))
         t2 = make_task(task_id="t2").with_transition(
             TaskStatus.ASSIGNED, assigned_to="bob"
@@ -95,7 +106,9 @@ class TestSQLiteTaskRepository:
     async def test_list_filter_by_assigned_to(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         t = make_task().with_transition(TaskStatus.ASSIGNED, assigned_to="bob")
         await repo.save(t)
 
@@ -106,7 +119,9 @@ class TestSQLiteTaskRepository:
     async def test_list_filter_by_project(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(make_task(task_id="t1", project="proj-a"))
         await repo.save(make_task(task_id="t2", project="proj-b"))
 
@@ -115,20 +130,26 @@ class TestSQLiteTaskRepository:
         assert result[0].project == "proj-a"
 
     async def test_delete_existing(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(make_task())
         assert await repo.delete("task-001") is True
         assert await repo.get("task-001") is None
 
     async def test_delete_nonexistent(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert await repo.delete("nonexistent") is False
 
     async def test_list_with_combined_filters(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Multiple filters combine with AND logic."""
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         t1 = make_task(task_id="t1", project="proj-a")
         t2 = make_task(task_id="t2", project="proj-a").with_transition(
             TaskStatus.ASSIGNED, assigned_to="bob"
@@ -176,7 +197,9 @@ class TestSQLiteTaskRepository:
             ),
             delegation_chain=("manager", "lead"),
         )
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(task)
 
         result = await repo.get("task-complex")
@@ -222,7 +245,9 @@ class TestSQLiteCostRecordRepository:
         )
 
     async def test_save_and_query(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         record = self._make_record()
         await repo.save(record)
 
@@ -232,7 +257,9 @@ class TestSQLiteCostRecordRepository:
         assert results[0].cost == 0.05
 
     async def test_query_by_agent(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record(agent_id="alice"))
         await repo.save(self._make_record(agent_id="bob"))
 
@@ -241,7 +268,9 @@ class TestSQLiteCostRecordRepository:
         assert results[0].agent_id == "alice"
 
     async def test_query_by_task(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record(task_id="t1"))
         await repo.save(self._make_record(task_id="t2"))
 
@@ -250,7 +279,9 @@ class TestSQLiteCostRecordRepository:
         assert results[0].task_id == "t1"
 
     async def test_aggregate_all(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record(cost=0.10))
         await repo.save(self._make_record(cost=0.20))
 
@@ -258,7 +289,9 @@ class TestSQLiteCostRecordRepository:
         assert abs(total - 0.30) < 1e-9
 
     async def test_aggregate_by_agent(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record(agent_id="alice", cost=0.10))
         await repo.save(self._make_record(agent_id="bob", cost=0.20))
 
@@ -266,7 +299,9 @@ class TestSQLiteCostRecordRepository:
         assert abs(total - 0.10) < 1e-9
 
     async def test_aggregate_by_task(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record(task_id="t1", cost=0.10))
         await repo.save(self._make_record(task_id="t2", cost=0.20))
 
@@ -276,7 +311,9 @@ class TestSQLiteCostRecordRepository:
     async def test_aggregate_by_agent_and_task(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record(agent_id="alice", task_id="t1", cost=0.10))
         await repo.save(self._make_record(agent_id="alice", task_id="t2", cost=0.20))
         await repo.save(self._make_record(agent_id="bob", task_id="t1", cost=0.30))
@@ -285,7 +322,9 @@ class TestSQLiteCostRecordRepository:
         assert abs(total - 0.10) < 1e-9
 
     async def test_aggregate_empty(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         total = await repo.aggregate()
         assert total == 0.0
 
@@ -293,7 +332,9 @@ class TestSQLiteCostRecordRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Aggregating across USD + EUR rows raises rather than summing."""
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record(task_id="t1", currency="USD", cost=0.10))
         await repo.save(self._make_record(task_id="t2", currency="EUR", cost=0.20))
 
@@ -305,7 +346,9 @@ class TestSQLiteCostRecordRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Filters narrow the aggregation scope before the invariant fires."""
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record(agent_id="alice", currency="USD", cost=0.10))
         await repo.save(self._make_record(agent_id="bob", currency="EUR", cost=0.20))
 
@@ -317,7 +360,9 @@ class TestSQLiteCostRecordRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Mixed-currency rows under the same task_id still raise."""
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(
             self._make_record(
                 agent_id="alice", task_id="shared", currency="USD", cost=0.10
@@ -336,7 +381,9 @@ class TestSQLiteCostRecordRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """agent_id + task_id filters combine correctly."""
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record(agent_id="alice", task_id="t1"))
         await repo.save(self._make_record(agent_id="alice", task_id="t2"))
         await repo.save(self._make_record(agent_id="bob", task_id="t1"))
@@ -363,7 +410,9 @@ class TestSQLiteCostRecordRepository:
             timestamp=datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
             call_category=LLMCallCategory.PRODUCTIVE,
         )
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(record)
 
         results = await repo.query()
@@ -372,7 +421,9 @@ class TestSQLiteCostRecordRepository:
     async def test_round_trip_null_call_category(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(self._make_record())
 
         results = await repo.query()
@@ -387,7 +438,9 @@ class TestSQLiteMessageRepository:
     async def test_save_and_get_history(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         msg = make_message()
         await repo.save(msg)
 
@@ -398,7 +451,9 @@ class TestSQLiteMessageRepository:
     async def test_history_ordered_newest_first(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         msg1 = make_message(
             timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC),
             content="first",
@@ -416,7 +471,9 @@ class TestSQLiteMessageRepository:
         assert history[1].text == "first"
 
     async def test_history_with_limit(self, migrated_db: aiosqlite.Connection) -> None:
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         for i in range(5):
             await repo.save(
                 make_message(
@@ -431,7 +488,9 @@ class TestSQLiteMessageRepository:
     async def test_history_filters_by_channel(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(make_message(channel="general"))
         await repo.save(make_message(channel="engineering"))
 
@@ -442,7 +501,9 @@ class TestSQLiteMessageRepository:
     async def test_duplicate_message_rejected(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         fixed_id = uuid4()
         msg = make_message(msg_id=fixed_id)
         await repo.save(msg)
@@ -454,7 +515,9 @@ class TestSQLiteMessageRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Verify the sender/'from' alias round-trips correctly."""
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         msg = make_message(sender="charlie")
         await repo.save(msg)
 
@@ -474,7 +537,9 @@ class TestSQLiteMessageRepository:
                 extra=(("key1", "val1"),),
             ),
         )
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         await repo.save(msg)
 
         history = await repo.get_history("general")
@@ -487,7 +552,9 @@ class TestSQLiteMessageRepository:
 
     async def test_round_trip_uuid_id(self, migrated_db: aiosqlite.Connection) -> None:
         """Verify UUID id survives round-trip."""
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         msg = make_message()
         original_id = msg.id
         await repo.save(msg)
@@ -501,7 +568,9 @@ class TestSQLiteMessageRepository:
         """Negative or zero limit raises QueryError."""
         from synthorg.core.persistence_errors import QueryError
 
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="positive integer"):
             await repo.get_history("general", limit=0)
         with pytest.raises(QueryError, match="positive integer"):
@@ -517,7 +586,9 @@ class TestSQLiteRepoProtocolCompliance:
     ) -> None:
         from synthorg.persistence.task_protocol import TaskRepository
 
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert isinstance(repo, TaskRepository)
 
     async def test_cost_record_repo_implements_protocol(
@@ -527,7 +598,9 @@ class TestSQLiteRepoProtocolCompliance:
             CostRecordRepository,
         )
 
-        repo = SQLiteCostRecordRepository(migrated_db)
+        repo = SQLiteCostRecordRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert isinstance(repo, CostRecordRepository)
 
     async def test_message_repo_implements_protocol(
@@ -535,7 +608,9 @@ class TestSQLiteRepoProtocolCompliance:
     ) -> None:
         from synthorg.persistence.message_protocol import MessageRepository
 
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         assert isinstance(repo, MessageRepository)
 
 
@@ -561,7 +636,9 @@ INSERT INTO tasks (
         )
         await migrated_db.commit()
 
-        repo = SQLiteTaskRepository(migrated_db)
+        repo = SQLiteTaskRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="deserialize task"):
             await repo.get("corrupt-1")
 
@@ -584,6 +661,8 @@ INSERT INTO messages (
         )
         await migrated_db.commit()
 
-        repo = SQLiteMessageRepository(migrated_db)
+        repo = SQLiteMessageRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
         with pytest.raises(QueryError, match="deserialize message"):
             await repo.get_history("general")

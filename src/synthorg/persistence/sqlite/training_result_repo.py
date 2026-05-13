@@ -4,7 +4,6 @@ Provides ``SQLiteTrainingResultRepository`` which persists
 ``TrainingResult`` models via aiosqlite with upsert semantics.
 """
 
-import asyncio
 import contextlib
 import json
 import sqlite3
@@ -24,6 +23,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -193,27 +193,22 @@ class SQLiteTrainingResultRepository:
     Args:
         db: An open aiosqlite connection with ``row_factory``
             set to ``aiosqlite.Row``.
-        write_lock: Optional shared lock used to serialize writes on
-            the shared connection.  Inject the
-            :class:`SQLitePersistenceBackend._shared_write_lock` so
-            writes from this repo coordinate with sibling repos that
-            share the same connection.  Defaults to ``None``, in
-            which case the repo creates a private :class:`asyncio.Lock`
-            (suitable for standalone test construction).
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, result: TrainingResult) -> None:
         """Persist a training result via upsert.
@@ -224,7 +219,7 @@ class SQLiteTrainingResultRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     _UPSERT_SQL,

@@ -6,7 +6,6 @@ encrypts or decrypts -- callers pass already-encrypted bytes in and
 receive the same bytes back unchanged.
 """
 
-import asyncio
 import contextlib
 import sqlite3
 from datetime import UTC, datetime
@@ -22,6 +21,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CONNECTION_SECRET_STORE_FAILED,
 )
 from synthorg.persistence._shared import format_iso_utc
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -36,11 +36,11 @@ class SQLiteConnectionSecretRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
-        """Bind to *db* and serialize writes via *write_lock*."""
+        """Bind to *db* and serialize writes via *write_context*."""
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def store(
         self,
@@ -54,7 +54,7 @@ class SQLiteConnectionSecretRepository:
         at the secret-backend layer above.
         """
         now_iso = format_iso_utc(datetime.now(UTC))
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """
@@ -106,7 +106,7 @@ class SQLiteConnectionSecretRepository:
 
     async def delete(self, secret_id: NotBlankStr) -> bool:
         """Delete an encrypted secret; return ``True`` if a row was removed."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM connection_secrets WHERE secret_id = ?",

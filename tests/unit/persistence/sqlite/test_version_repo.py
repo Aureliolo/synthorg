@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.hashing import compute_content_hash
 from synthorg.versioning.models import VersionSnapshot
+from tests._shared.persistence import make_private_write_context
 
 _NOW = datetime(2026, 4, 7, 12, 0, tzinfo=UTC)
 
@@ -79,6 +80,7 @@ async def repo(
         table_name="test_versions",
         serialize_snapshot=_serialize,
         deserialize_snapshot=_deserialize,
+        write_context=make_private_write_context(),
     )
 
 
@@ -95,6 +97,7 @@ class TestTableNameValidation:
                 table_name="bad name!",
                 serialize_snapshot=_serialize,
                 deserialize_snapshot=_deserialize,
+                write_context=make_private_write_context(),
             )
 
     @pytest.mark.unit
@@ -107,6 +110,7 @@ class TestTableNameValidation:
                 table_name="TestVersions",
                 serialize_snapshot=_serialize,
                 deserialize_snapshot=_deserialize,
+                write_context=make_private_write_context(),
             )
 
     @pytest.mark.unit
@@ -125,6 +129,7 @@ class TestTableNameValidation:
             table_name="agent_identity_versions",
             serialize_snapshot=_serialize,
             deserialize_snapshot=_deserialize,
+            write_context=make_private_write_context(),
         )
 
 
@@ -336,6 +341,7 @@ class TestTableNameValidationEdgeCases:
                 table_name="",
                 serialize_snapshot=_serialize,
                 deserialize_snapshot=_deserialize,
+                write_context=make_private_write_context(),
             )
 
     @pytest.mark.unit
@@ -348,6 +354,7 @@ class TestTableNameValidationEdgeCases:
                 table_name="1_versions",
                 serialize_snapshot=_serialize,
                 deserialize_snapshot=_deserialize,
+                write_context=make_private_write_context(),
             )
 
 

@@ -1,6 +1,5 @@
 """SQLite-backed org fact repository with MVCC (append-only log + snapshot)."""
 
-import asyncio
 import contextlib
 import json
 import sqlite3
@@ -43,6 +42,7 @@ from synthorg.persistence._shared import (
     format_iso_utc,
 )
 from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_5
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -195,27 +195,22 @@ class SQLiteOrgFactRepository:
 
     Args:
         db: Open aiosqlite connection with ``row_factory`` set.
-        write_lock: Optional shared lock used to serialize writes on
-            the shared connection.  Inject the
-            :class:`SQLitePersistenceBackend._shared_write_lock` so
-            writes from this repo coordinate with sibling repos that
-            share the same connection.  Defaults to ``None``, in
-            which case the repo creates a private :class:`asyncio.Lock`
-            (suitable for standalone test construction).
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def _append_to_operation_log(  # noqa: PLR0913
         self,
@@ -278,7 +273,7 @@ class SQLiteOrgFactRepository:
         # ``BEGIN IMMEDIATE`` transaction holding the write lock.
         created_at_iso = format_iso_utc(fact.created_at)
         tags_json = _tags_to_json(fact.tags)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await db.execute("BEGIN IMMEDIATE")
                 version, _ = await self._append_to_operation_log(
@@ -360,7 +355,7 @@ class SQLiteOrgFactRepository:
     ) -> bool:
         """Retract a fact: append RETRACT to log, mark snapshot."""
         db = self._db
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await db.execute("BEGIN IMMEDIATE")
                 cursor = await db.execute(

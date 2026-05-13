@@ -30,6 +30,7 @@ from synthorg.persistence.sqlite.training_result_repo import (
     SQLiteTrainingResultRepository,
 )
 from tests._shared import mock_of
+from tests._shared.persistence import make_private_write_context
 
 
 def _make_item(
@@ -54,8 +55,12 @@ class TestTrainingPersistencePipeline:
         migrated_db: aiosqlite.Connection,
     ) -> None:
         """Plan -> execute -> persist result -> fetch result."""
-        plan_repo = SQLiteTrainingPlanRepository(migrated_db)
-        result_repo = SQLiteTrainingResultRepository(migrated_db)
+        plan_repo = SQLiteTrainingPlanRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
+        result_repo = SQLiteTrainingResultRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
 
         # 1. Create and persist a training plan.
         plan = TrainingPlan(

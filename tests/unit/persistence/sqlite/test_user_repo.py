@@ -13,6 +13,7 @@ from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 
 @pytest.fixture
@@ -23,12 +24,12 @@ def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
 
 @pytest.fixture
 def user_repo(db: aiosqlite.Connection) -> SQLiteUserRepository:
-    return SQLiteUserRepository(db)
+    return SQLiteUserRepository(db, write_context=make_private_write_context())
 
 
 @pytest.fixture
 def api_key_repo(db: aiosqlite.Connection) -> SQLiteApiKeyRepository:
-    return SQLiteApiKeyRepository(db)
+    return SQLiteApiKeyRepository(db, write_context=make_private_write_context())
 
 
 def _make_user(

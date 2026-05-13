@@ -40,7 +40,10 @@ def _approval_repo(backend: PersistenceBackend) -> ApprovalRepository:
     name = backend.backend_name
     handle = backend.get_db()
     if name == "sqlite":
-        return SQLiteApprovalRepository(cast("aiosqlite.Connection", handle))
+        return SQLiteApprovalRepository(
+            cast("aiosqlite.Connection", handle),
+            write_context=backend.write_context,
+        )
     if name == "postgres":
         from psycopg_pool import AsyncConnectionPool
 

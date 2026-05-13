@@ -1,6 +1,5 @@
 """SQLite repository for operator-authored preset overrides."""
 
-import asyncio
 import json
 import sqlite3
 from typing import TYPE_CHECKING
@@ -17,6 +16,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
     format_iso_utc,
     parse_iso_utc,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 from synthorg.providers.enums import AuthType
 
 if TYPE_CHECKING:
@@ -31,18 +31,22 @@ class SQLitePresetOverrideRepo:
 
     Args:
         db: An open ``aiosqlite.Connection``.
-        write_lock: Shared backend write lock so writes serialise with
-            sibling repos sharing the same connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def get(self, preset_name: NotBlankStr) -> PresetOverride | None:
         """Read the override for ``preset_name``, if any."""
@@ -133,7 +137,7 @@ class SQLitePresetOverrideRepo:
             "candidate_urls, base_url, updated_at, updated_by) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(sql, params)
                 await self._db.commit()
@@ -151,7 +155,7 @@ class SQLitePresetOverrideRepo:
 
     async def delete(self, preset_name: NotBlankStr) -> bool:
         """Remove the override for ``preset_name``."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM preset_overrides WHERE preset_name = ?",

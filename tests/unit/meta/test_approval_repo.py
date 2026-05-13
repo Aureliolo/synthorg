@@ -9,6 +9,7 @@ import pytest
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.persistence.sqlite.approval_repo import SQLiteApprovalRepository
+from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
 
@@ -66,7 +67,7 @@ async def repo() -> AsyncGenerator[SQLiteApprovalRepository]:
     db = await aiosqlite.connect(":memory:")
     await db.execute(_CREATE_TABLE)
     await db.commit()
-    repo = SQLiteApprovalRepository(db)
+    repo = SQLiteApprovalRepository(db, write_context=make_private_write_context())
     yield repo
     await db.close()
 

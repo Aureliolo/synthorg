@@ -5,7 +5,6 @@ persist ``User`` and ``ApiKey`` domain models to SQLite via aiosqlite.
 Both use upsert semantics for ``save`` operations.
 """
 
-import asyncio
 import contextlib
 import json
 import sqlite3
@@ -48,6 +47,7 @@ from synthorg.persistence.constraint_tokens import (
     LAST_OWNER_TRIGGER,
     USERS_USERNAME_UNIQUE,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 
 def _classify_sqlite_user_error(message: str) -> str | None:
@@ -148,14 +148,10 @@ class SQLiteUserRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, user: User) -> None:
         """Persist a user via upsert (insert or update on conflict).
@@ -166,7 +162,7 @@ class SQLiteUserRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -495,7 +491,7 @@ ON CONFLICT(id) DO UPDATE SET
                 error=msg,
             )
             raise QueryError(msg)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM users WHERE id = ?", (user_id,)
@@ -546,14 +542,10 @@ class SQLiteApiKeyRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, key: ApiKey) -> None:
         """Persist an API key via upsert (insert or update on conflict).
@@ -564,7 +556,7 @@ class SQLiteApiKeyRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -763,7 +755,7 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM api_keys WHERE id = ?", (key_id,)

@@ -27,6 +27,7 @@ from synthorg.persistence.sqlite.fine_tune_repo import (
     SQLiteFineTuneRunRepository,
 )
 from tests._shared.fake_clock import FakeClock
+from tests._shared.persistence import make_private_write_context
 
 _SCHEMA_PATH = Path("src/synthorg/persistence/sqlite/schema.sql")
 
@@ -44,14 +45,16 @@ async def db() -> AsyncGenerator[aiosqlite.Connection]:
 
 @pytest.fixture
 def run_repo(db: aiosqlite.Connection) -> SQLiteFineTuneRunRepository:
-    return SQLiteFineTuneRunRepository(db)
+    return SQLiteFineTuneRunRepository(db, write_context=make_private_write_context())
 
 
 @pytest.fixture
 def cp_repo(
     db: aiosqlite.Connection,
 ) -> SQLiteFineTuneCheckpointRepository:
-    return SQLiteFineTuneCheckpointRepository(db)
+    return SQLiteFineTuneCheckpointRepository(
+        db, write_context=make_private_write_context()
+    )
 
 
 @pytest.fixture

@@ -9,13 +9,16 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.sqlite.preset_repo import (
     SQLitePersonalityPresetRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 
 @pytest.fixture
 def repo(
     migrated_db: aiosqlite.Connection,
 ) -> SQLitePersonalityPresetRepository:
-    return SQLitePersonalityPresetRepository(migrated_db)
+    return SQLitePersonalityPresetRepository(
+        migrated_db, write_context=make_private_write_context()
+    )
 
 
 def _sample_config_json() -> str:
@@ -166,7 +169,9 @@ class TestSQLitePersonalityPresetRepository:
 def unmigrated_repo(
     memory_db: aiosqlite.Connection,
 ) -> SQLitePersonalityPresetRepository:
-    return SQLitePersonalityPresetRepository(memory_db)
+    return SQLitePersonalityPresetRepository(
+        memory_db, write_context=make_private_write_context()
+    )
 
 
 @pytest.mark.unit

@@ -1,6 +1,5 @@
 """SQLite repository implementation for custom personality presets."""
 
-import asyncio
 import contextlib
 import sqlite3
 
@@ -23,6 +22,7 @@ from synthorg.persistence._shared.pagination import (
     validate_pagination_args,
 )
 from synthorg.persistence.preset_protocol import PresetListRow, PresetRow
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -41,14 +41,10 @@ class SQLitePersonalityPresetRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(
         self,
@@ -70,7 +66,7 @@ class SQLitePersonalityPresetRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -186,7 +182,7 @@ ON CONFLICT(name) DO UPDATE SET
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 async with self._db.execute(
                     "DELETE FROM custom_presets WHERE name = ?",

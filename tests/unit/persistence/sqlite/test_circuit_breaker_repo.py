@@ -9,6 +9,7 @@ from synthorg.persistence.circuit_breaker_protocol import (
 from synthorg.persistence.sqlite.circuit_breaker_repo import (
     SQLiteCircuitBreakerStateRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 
 @pytest.mark.unit
@@ -17,7 +18,9 @@ class TestSQLiteCircuitBreakerStateRepository:
     def repo(
         self, migrated_db: aiosqlite.Connection
     ) -> SQLiteCircuitBreakerStateRepository:
-        return SQLiteCircuitBreakerStateRepository(migrated_db)
+        return SQLiteCircuitBreakerStateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
 
     async def test_save_and_load_all(
         self,

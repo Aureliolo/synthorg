@@ -2,12 +2,11 @@
 
 Atomic claim semantics rely on ``INSERT OR IGNORE`` followed by an
 ``UPDATE`` of any pre-existing row that has expired or previously
-failed. The shared backend ``write_lock`` serialises writes so the
+failed. The shared backend ``write_context`` serialises writes so the
 discriminator returned to the caller never races against a concurrent
 claim of the same ``(scope, key)``.
 """
 
-import asyncio
 import contextlib
 import secrets
 import sqlite3
@@ -28,6 +27,7 @@ from synthorg.persistence.idempotency_protocol import (
     IdempotencyOutcome,
     IdempotencyRecord,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -49,10 +49,10 @@ class SQLiteIdempotencyRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def claim(
         self,
@@ -64,7 +64,7 @@ class SQLiteIdempotencyRepository:
     ) -> IdempotencyClaim:
         """Atomically claim ``(scope, key)`` for *ttl_seconds*.
 
-        Holds ``self._write_lock`` (asyncio) plus a ``BEGIN IMMEDIATE``
+        Holds ``self._write_context()`` (asyncio) plus a ``BEGIN IMMEDIATE``
         DB-level RESERVED write lock so competing claimants on
         *different* aiosqlite connections (e.g. a sibling repository
         sharing the pool) serialise -- otherwise each would perform
@@ -79,7 +79,7 @@ class SQLiteIdempotencyRepository:
         from datetime import timedelta  # noqa: PLC0415
 
         expires_at = now + timedelta(seconds=ttl_seconds)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute("BEGIN IMMEDIATE")
                 row = await self._fetch_idempotency_row(scope, key)
@@ -246,7 +246,7 @@ class SQLiteIdempotencyRepository:
         worker MUST NOT recover by ignoring this -- the new lease
         owns the row).
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 # Gate on status = 'in_flight' so a stale worker cannot
                 # flip an already-completed row -- completed rows MUST
@@ -285,7 +285,7 @@ class SQLiteIdempotencyRepository:
         claim_token: NotBlankStr,
     ) -> bool:
         """Mark a claimed key as ``FAILED`` if *claim_token* matches."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 # Same status gate as ``complete``: only an in-flight
                 # row owned by the matching lease can transition to
@@ -369,7 +369,7 @@ class SQLiteIdempotencyRepository:
 
     async def cleanup_expired(self, now: AwareDatetime) -> int:
         """Delete expired rows and return the count removed."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM idempotency_keys WHERE expires_at <= ?",

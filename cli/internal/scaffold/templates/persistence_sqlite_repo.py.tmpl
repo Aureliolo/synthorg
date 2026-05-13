@@ -1,6 +1,5 @@
 """SQLite repository for {{.ModuleDocSlug}} items."""
 
-import asyncio
 import sqlite3
 
 import aiosqlite
@@ -15,6 +14,7 @@ from synthorg.observability.events.{{.Domain}}_repo import (
     {{shout .Domain}}_REPO_LISTED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.{{.Domain}}.models import {{.ClassName}}Item
 
 logger = get_logger(__name__)
@@ -61,24 +61,28 @@ class SQLite{{.ClassName}}Repository:
     Args:
         db: An open ``aiosqlite.Connection`` whose ``row_factory`` this
             repository owns.
-        write_lock: Optional shared write lock; falls back to a private
-            lock for standalone test construction.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
         self._db.row_factory = aiosqlite.Row
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, item: {{.ClassName}}Item) -> None:
         """Upsert a {{.ModuleDocSlug}} item."""
         params = (item.id, item.payload, format_iso_utc(item.created_at))
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(_UPSERT_SQL, params)
                 await self._db.commit()
@@ -152,7 +156,7 @@ class SQLite{{.ClassName}}Repository:
 
     async def delete(self, item_id: NotBlankStr) -> bool:
         """Delete an item by ID; returns ``True`` if a row was removed."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(_DELETE_SQL, (item_id,))
                 await self._db.commit()

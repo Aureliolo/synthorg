@@ -32,6 +32,7 @@ from synthorg.persistence.sqlite.subworkflow_repo import (
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 _TS = datetime(2026, 4, 10, 12, 0, 0, tzinfo=UTC)
 
@@ -58,12 +59,14 @@ async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
 
 @pytest.fixture
 def sub_repo(db: aiosqlite.Connection) -> SQLiteSubworkflowRepository:
-    return SQLiteSubworkflowRepository(db)
+    return SQLiteSubworkflowRepository(db, write_context=make_private_write_context())
 
 
 @pytest.fixture
 def def_repo(db: aiosqlite.Connection) -> SQLiteWorkflowDefinitionRepository:
-    return SQLiteWorkflowDefinitionRepository(db)
+    return SQLiteWorkflowDefinitionRepository(
+        db, write_context=make_private_write_context()
+    )
 
 
 @pytest.fixture

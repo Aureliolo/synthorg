@@ -10,7 +10,6 @@ so horizontally-scaled deployments would see per-node drift.
 Multi-instance deployments require a shared lock store.
 """
 
-import asyncio
 import threading
 from datetime import datetime, timedelta
 
@@ -24,6 +23,7 @@ from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_RESTORED,
 )
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -34,13 +34,12 @@ class SQLiteLockoutRepository:
     Args:
         db: Open aiosqlite connection with ``row_factory`` set.
         config: Auth configuration with lockout thresholds.
-        write_lock: Optional shared ``asyncio.Lock`` serializing
-            multi-statement write transactions against the backend's
-            single aiosqlite connection.  The backend owns this lock
-            and passes it to every repository that emits
-            ``BEGIN IMMEDIATE``; callers that construct the repo
-            directly (e.g. one-off tests) can omit it to get a
-            per-repo lock.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
@@ -48,7 +47,7 @@ class SQLiteLockoutRepository:
         db: aiosqlite.Connection,
         config: AuthConfig,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
         clock: Clock | None = None,
     ) -> None:
         self._db = db
@@ -59,7 +58,7 @@ class SQLiteLockoutRepository:
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._locked: dict[str, float] = {}
         self._locked_lock: threading.Lock = threading.Lock()
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     @property
     def lockout_duration_seconds(self) -> int:
@@ -155,7 +154,7 @@ class SQLiteLockoutRepository:
         username = username.lower()
         now = self._clock.now()
         window_start = format_iso_utc(now - self._window)
-        async with self._write_lock:
+        async with self._write_context():
             await self._db.execute("BEGIN IMMEDIATE")
             try:
                 await self._db.execute(
@@ -179,7 +178,7 @@ class SQLiteLockoutRepository:
                 await self._db.rollback()
                 raise
             # Cache mutation MUST happen while still holding
-            # ``_write_lock`` so a concurrent ``record_success``
+            # ``write_context`` so a concurrent ``record_success``
             # cannot interleave between our commit and our cache
             # write -- otherwise two writers can commit DB-order
             # T1->T2 but mutate the cache T2->T1, leaving
@@ -206,7 +205,7 @@ class SQLiteLockoutRepository:
         when there was no prior lockout (no audit emission warranted).
         """
         username = username.lower()
-        async with self._write_lock:
+        async with self._write_context():
             await self._db.execute("BEGIN IMMEDIATE")
             try:
                 await self._db.execute(
@@ -219,7 +218,7 @@ class SQLiteLockoutRepository:
             except Exception:
                 await self._db.rollback()
                 raise
-            # Cache pop while still holding ``_write_lock`` so a
+            # Cache pop while still holding ``write_context`` so a
             # concurrent ``record_failure`` cannot insert + flip
             # ``_locked`` between our commit and our pop.
             with self._locked_lock:
@@ -237,7 +236,7 @@ class SQLiteLockoutRepository:
         """
         retention = self._window + self._duration
         cutoff = format_iso_utc(self._clock.now() - retention)
-        async with self._write_lock:
+        async with self._write_context():
             await self._db.execute("BEGIN IMMEDIATE")
             try:
                 cursor = await self._db.execute(

@@ -21,13 +21,16 @@ from synthorg.engine.workflow.execution_models import (
 from synthorg.persistence.sqlite.workflow_execution_repo import (
     SQLiteWorkflowExecutionRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 
 @pytest.fixture
 def repo(
     migrated_db: aiosqlite.Connection,
 ) -> SQLiteWorkflowExecutionRepository:
-    return SQLiteWorkflowExecutionRepository(migrated_db)
+    return SQLiteWorkflowExecutionRepository(
+        migrated_db, write_context=make_private_write_context()
+    )
 
 
 def _make_execution(

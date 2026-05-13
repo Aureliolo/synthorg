@@ -17,6 +17,7 @@ from synthorg.persistence.auth_protocol import SessionRepository as SessionStore
 from synthorg.persistence.sqlite.session_repo import (
     SQLiteSessionRepository as SqliteSessionStore,
 )
+from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
 
@@ -102,7 +103,7 @@ async def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
 
 @pytest.fixture
 async def store(db: aiosqlite.Connection) -> SessionStore:
-    s = SqliteSessionStore(db)
+    s = SqliteSessionStore(db, write_context=make_private_write_context())
     await s.load_revoked()
     return s
 
@@ -384,14 +385,14 @@ class TestSessionStoreLoadRevoked:
         db: aiosqlite.Connection,
     ) -> None:
         """Revocations survive store recreation (simulates restart)."""
-        store1 = SqliteSessionStore(db)
+        store1 = SqliteSessionStore(db, write_context=make_private_write_context())
         with _patch_now():
             await store1.load_revoked()
         await store1.create(_make_session())
         await store1.revoke("sess-1")
 
         # Create a new store (simulates restart).
-        store2 = SqliteSessionStore(db)
+        store2 = SqliteSessionStore(db, write_context=make_private_write_context())
         assert store2.is_revoked("sess-1") is False
         with _patch_now():
             await store2.load_revoked()

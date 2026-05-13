@@ -28,6 +28,7 @@ from synthorg.persistence.decision_protocol import DecisionRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.service import VersioningService
+from tests._shared.persistence import make_private_write_context
 
 _MODEL = ModelConfig(provider="test-provider", model_id="test-medium-001")
 _HIRE = date(2026, 1, 1)
@@ -70,6 +71,7 @@ async def version_repo(
         table_name="agent_identity_versions",
         serialize_snapshot=lambda m: json.dumps(m.model_dump(mode="json")),
         deserialize_snapshot=lambda s: AgentIdentity.model_validate(json.loads(s)),
+        write_context=make_private_write_context(),
     )
 
 

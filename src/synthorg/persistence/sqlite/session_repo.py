@@ -5,7 +5,6 @@ set provides O(1) sync lookups for the auth middleware hot path; the
 SQLite connection provides survival across restarts.
 """
 
-import asyncio
 import contextlib
 import sqlite3
 from datetime import UTC, datetime
@@ -28,6 +27,7 @@ from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -70,14 +70,10 @@ class SQLiteSessionRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
         self._revoked: set[str] = set()
 
     async def load_revoked(self) -> None:
@@ -97,7 +93,7 @@ class SQLiteSessionRepository:
 
     async def create(self, session: Session) -> None:
         """Persist a new session."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     "INSERT INTO sessions "
@@ -188,7 +184,7 @@ class SQLiteSessionRepository:
 
     async def revoke(self, session_id: str) -> bool:
         """Revoke a session by ID."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "UPDATE sessions SET revoked = 1 "
@@ -227,7 +223,7 @@ class SQLiteSessionRepository:
         through the auth fast path until the next ``load_revoked``.
         """
         now = format_iso_utc(datetime.now(UTC))
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 # SELECT first: capture the ids that WILL be revoked
                 # while they are still pending.  If this read fails we
@@ -297,7 +293,7 @@ class SQLiteSessionRepository:
     async def cleanup_expired(self) -> int:
         """Remove expired sessions from the database."""
         now = format_iso_utc(datetime.now(UTC))
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "SELECT session_id FROM sessions WHERE expires_at <= ?",

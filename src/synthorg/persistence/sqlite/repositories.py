@@ -4,7 +4,6 @@ HR-related repositories (LifecycleEvent, TaskMetric, CollaborationMetric)
 are in ``hr_repositories.py`` within this package.
 """
 
-import asyncio
 import json
 import sqlite3
 
@@ -42,7 +41,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_SAVE_FAILED,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-from synthorg.persistence.sqlite._shared import is_unique_constraint_error
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    is_unique_constraint_error,
+)
 
 logger = get_logger(__name__)
 
@@ -66,24 +68,26 @@ class SQLiteTaskRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, task: Task) -> None:
         """Persist a task (upsert semantics)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 params = task.model_dump(mode="json")
                 # Tuple fields must be stored as JSON strings.
@@ -299,7 +303,7 @@ id, title, description, type, priority, project, created_by,
 
     async def delete(self, task_id: str) -> bool:
         """Delete a task by ID."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM tasks WHERE id = ?", (task_id,)
@@ -323,24 +327,26 @@ class SQLiteCostRecordRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, record: CostRecord) -> None:
         """Persist a cost record (append-only)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 data = record.model_dump(mode="json")
                 await self._db.execute(
@@ -502,20 +508,22 @@ class SQLiteMessageRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def _safe_rollback(self, msg_id: str) -> None:
         """Best-effort rollback on the shared aiosqlite connection.
@@ -543,7 +551,7 @@ class SQLiteMessageRepository:
         data = message.model_dump(mode="json")
         msg_id = str(message.id)
 
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -667,12 +675,12 @@ ORDER BY timestamp DESC"""
 
         Returns ``True`` when a row was removed, ``False`` when the id
         did not exist. Concurrent writes are serialized through the
-        shared backend write lock. The audit-grade mutation log is
+        shared backend write context. The audit-grade mutation log is
         emitted by :class:`MessageService.delete_message`; the
         repository never logs mutations itself (persistence-boundary
         rule, see ``docs/reference/persistence-boundary.md``).
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM messages WHERE id = ?",

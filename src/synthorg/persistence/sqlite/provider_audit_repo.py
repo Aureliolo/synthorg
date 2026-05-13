@@ -7,7 +7,6 @@ schema and a per-provider read API tailored to the dashboard's audit
 drawer.
 """
 
-import asyncio
 import json
 import sqlite3
 from typing import TYPE_CHECKING
@@ -29,6 +28,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
     parse_iso_utc,
 )
 from synthorg.persistence.provider_audit_protocol import _DEFAULT_LIST_LIMIT_50
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -58,19 +58,21 @@ class SQLiteProviderAuditRepo:
 
     Args:
         db: An open ``aiosqlite.Connection``.
-        write_lock: Shared backend write lock so writes serialise
-            with sibling repos that share the same connection.  Falls
-            back to a private lock for standalone test construction.
+        write_context: Shared backend write context so writes
+            serialise with sibling repos on the same connection.
+            Tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def record(self, event: ProviderAuditEvent) -> ProviderAuditEvent:
         """Insert one audit event and return the saved row with id populated."""
@@ -91,7 +93,7 @@ class SQLiteProviderAuditRepo:
             json.dumps(serialized["payload"], sort_keys=True),
             format_iso_utc(event.occurred_at),
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(_INSERT_SQL, params)
                 await self._db.commit()
@@ -174,7 +176,7 @@ class SQLiteProviderAuditRepo:
 
     async def purge_before_id(self, *, before_id: int) -> int:
         """Delete events with ``id < before_id``."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM provider_audit_events WHERE id < ?",

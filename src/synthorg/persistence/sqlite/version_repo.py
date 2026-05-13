@@ -17,7 +17,6 @@ Example::
     )
 """
 
-import asyncio
 import json
 import re
 import sqlite3
@@ -38,6 +37,7 @@ from synthorg.observability.events.versioning import (
     VERSION_LISTED,
     VERSION_SAVE_FAILED,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 from synthorg.persistence.version_protocol import _DEFAULT_LIST_LIMIT_50
 from synthorg.versioning.models import VersionSnapshot
 
@@ -78,7 +78,7 @@ class SQLiteVersionRepository[T: BaseModel]:
         table_name: str,
         serialize_snapshot: Callable[[T], str],
         deserialize_snapshot: Callable[[str], T],
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         if not _TABLE_NAME_RE.match(table_name):
             msg = f"Invalid table name: {table_name!r} (must match [a-z][a-z0-9_]*)"
@@ -87,11 +87,7 @@ class SQLiteVersionRepository[T: BaseModel]:
         self._table = table_name
         self._serialize = serialize_snapshot
         self._deserialize = deserialize_snapshot
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
         _t = self._table
         _c = _SELECT_COLUMNS
         self._insert_sql = (
@@ -216,7 +212,7 @@ class SQLiteVersionRepository[T: BaseModel]:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     self._insert_sql,
@@ -382,7 +378,7 @@ class SQLiteVersionRepository[T: BaseModel]:
 
     async def delete_versions_for_entity(self, entity_id: NotBlankStr) -> int:
         """Delete all version snapshots for an entity."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(self._delete_sql, (entity_id,))
                 await self._db.commit()

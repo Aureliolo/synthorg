@@ -1,6 +1,5 @@
 """SQLite implementation of the SettingsRepository protocol."""
 
-import asyncio
 import sqlite3
 from collections.abc import Mapping, Sequence  # noqa: TC003
 
@@ -16,6 +15,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence.settings_protocol import _DEFAULT_LIST_LIMIT_200
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -34,14 +34,10 @@ class SQLiteSettingsRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def get(
         self,
@@ -162,7 +158,7 @@ class SQLiteSettingsRepository:
             ``True`` if the write succeeded, ``False`` if the
             compare-and-swap condition was not met.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 if expected_updated_at is not None:
                     cursor = await self._db.execute(
@@ -222,7 +218,7 @@ class SQLiteSettingsRepository:
         if not items:
             return True
         cas_map: Mapping[tuple[str, str], str] = expected_updated_at_map or {}
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute("BEGIN IMMEDIATE")
                 try:
@@ -303,7 +299,7 @@ class SQLiteSettingsRepository:
         key: NotBlankStr,
     ) -> bool:
         """Delete a setting. Return True if deleted."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM settings WHERE namespace = ? AND key = ?",
@@ -325,7 +321,7 @@ class SQLiteSettingsRepository:
 
     async def delete_namespace(self, namespace: NotBlankStr) -> int:
         """Delete all settings in a namespace. Return count."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM settings WHERE namespace = ?",
@@ -355,7 +351,7 @@ class SQLiteSettingsRepository:
         concurrent ``set`` -- the returned tuple is exactly the set of
         keys whose override row was removed by *this* call.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM settings WHERE namespace = ? RETURNING key",

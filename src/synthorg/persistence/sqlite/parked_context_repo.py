@@ -1,6 +1,5 @@
 """SQLite repository implementation for parked agent execution contexts."""
 
-import asyncio
 import contextlib
 import json
 import sqlite3
@@ -18,6 +17,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 from synthorg.security.timeout.parked_context import ParkedContext
 
 logger = get_logger(__name__)
@@ -34,18 +34,14 @@ class SQLiteParkedContextRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, context: ParkedContext) -> None:
         """Persist a parked context."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 data = context.model_dump(mode="json")
                 await self._db.execute(
@@ -158,7 +154,7 @@ INSERT OR REPLACE INTO parked_contexts (
 
     async def delete(self, parked_id: str) -> bool:
         """Delete a parked context by ID."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM parked_contexts WHERE id = ?",

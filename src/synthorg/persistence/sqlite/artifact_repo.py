@@ -1,6 +1,5 @@
 """SQLite repository implementation for Artifact."""
 
-import asyncio
 import sqlite3
 from datetime import UTC, datetime
 
@@ -22,6 +21,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -64,22 +64,10 @@ class SQLiteArtifactRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Serialise write transactions on the shared
-        # ``aiosqlite.Connection`` -- without this lock, concurrent
-        # writes from this repo or any *sibling* repo that shares the
-        # same connection can interleave their ``execute`` + ``commit``
-        # calls inside the same connection-scoped transaction context,
-        # breaking atomicity (one commit / rollback affects the other's
-        # writes).  Inject the shared
-        # ``SQLitePersistenceBackend._shared_write_lock`` so every repo
-        # talking to the same connection serializes through one lock;
-        # fall back to a private lock when constructed standalone (e.g.
-        # in unit tests that build a single repo against an in-memory
-        # connection).
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def _safe_rollback(
         self,
@@ -164,7 +152,7 @@ class SQLiteArtifactRepository:
             created_at_iso,
             artifact.project_id,
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 insert_cursor = await self._db.execute(
                     """\
@@ -354,7 +342,7 @@ WHERE id=?""",
         Raises:
             QueryError: If the database operation fails.
         """
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM artifacts WHERE id = ?", (artifact_id,)

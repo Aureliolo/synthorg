@@ -4,6 +4,7 @@ Application code depends on this protocol for storage lifecycle
 management.  Repository protocols provide entity-level access.
 """
 
+from contextlib import AbstractAsyncContextManager  # noqa: TC003
 from typing import Any, Protocol, runtime_checkable
 
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
@@ -233,6 +234,30 @@ class PersistenceBackend(Protocol):
 
         Raises:
             PersistenceConnectionError: If not yet connected.
+        """
+        ...
+
+    def write_context(self) -> AbstractAsyncContextManager[None]:
+        """Async context manager that serializes mutating SQL on this backend.
+
+        SQLite implementations acquire a shared in-process write lock so
+        multi-statement transactions on the single ``aiosqlite.Connection``
+        cannot interleave. Postgres implementations yield immediately
+        because per-checkout connections from the async pool isolate
+        writers at the database level.
+
+        Use this in repository write paths::
+
+            async with backend.write_context():
+                await db.execute(...)
+                await db.commit()
+
+        Each call returns a fresh context manager; the underlying
+        primitive is shared across calls so concurrent writers
+        serialize correctly. Repositories are wired with this callable
+        at backend construction; callers that already hold a
+        ``PersistenceBackend`` reference can use it directly for
+        cross-repo transactional boundaries.
         """
         ...
 

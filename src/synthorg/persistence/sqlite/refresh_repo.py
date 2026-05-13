@@ -5,7 +5,6 @@ Each token is single-use: consuming it atomically marks it as used
 and returns the associated session/user info for re-issuance.
 """
 
-import asyncio
 import contextlib
 import sqlite3
 from collections.abc import Callable  # noqa: TC003
@@ -24,6 +23,7 @@ from synthorg.observability.events.api import (
     API_AUTH_REFRESH_PERSISTENCE_ERROR,
 )
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 # Persistence-boundary rule: SECURITY_AUTH_REFRESH_* events are
 # auth decisions, not storage facts. Repos must not emit them; the
@@ -46,14 +46,10 @@ class SQLiteRefreshTokenRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def create(
         self,
@@ -64,7 +60,7 @@ class SQLiteRefreshTokenRepository:
     ) -> None:
         """Store a new refresh token."""
         now = datetime.now(UTC)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     "INSERT INTO refresh_tokens "
@@ -115,7 +111,7 @@ class SQLiteRefreshTokenRepository:
         """
         now = format_iso_utc(datetime.now(UTC))
         revoked = False
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "UPDATE refresh_tokens SET used = 1 "
@@ -188,7 +184,7 @@ class SQLiteRefreshTokenRepository:
 
     async def revoke_by_session(self, session_id: str) -> int:
         """Mark all refresh tokens for a session as used."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "UPDATE refresh_tokens SET used = 1 "
@@ -215,7 +211,7 @@ class SQLiteRefreshTokenRepository:
 
     async def revoke_by_user(self, user_id: str) -> int:
         """Mark all refresh tokens for a user as used."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "UPDATE refresh_tokens SET used = 1 WHERE user_id = ? AND used = 0",
@@ -249,7 +245,7 @@ class SQLiteRefreshTokenRepository:
         repositories do not emit operational events.
         """
         now = format_iso_utc(datetime.now(UTC))
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM refresh_tokens WHERE expires_at <= ?",

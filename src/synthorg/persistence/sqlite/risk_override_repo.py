@@ -1,6 +1,5 @@
 """SQLite repository implementation for risk tier overrides."""
 
-import asyncio
 import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -20,7 +19,10 @@ from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
-from synthorg.persistence.sqlite._shared import is_unique_constraint_error
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    is_unique_constraint_error,
+)
 from synthorg.security.rules.risk_override import RiskTierOverride
 
 if TYPE_CHECKING:
@@ -39,20 +41,22 @@ class SQLiteRiskOverrideRepository:
 
     Args:
         db: An open aiosqlite connection.
-        write_lock: Optional shared lock protecting multi-statement
-            transactions.  Defaults to a per-instance lock for test
-            ergonomics; production wiring injects the backend's
-            shared lock.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def _rollback_quietly(self) -> None:
         """Roll back the current transaction, swallowing errors."""
@@ -81,7 +85,7 @@ class SQLiteRiskOverrideRepository:
         )
 
         try:
-            async with self._write_lock:
+            async with self._write_context():
                 await self._db.execute(
                     f"INSERT INTO risk_overrides ({_COLS}) "  # noqa: S608
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -213,7 +217,7 @@ class SQLiteRiskOverrideRepository:
         """Mark an override as revoked."""
         revoked_at_utc = format_iso_utc(revoked_at)
         try:
-            async with self._write_lock:
+            async with self._write_context():
                 cursor = await self._db.execute(
                     "UPDATE risk_overrides "
                     "SET revoked_at = ?, revoked_by = ? "

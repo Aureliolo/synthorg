@@ -32,6 +32,7 @@ from synthorg.core.persistence_errors import ConstraintViolationError, QueryErro
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -99,22 +100,24 @@ class SQLiteEscalationRepository(EscalationQueueStore):
     Args:
         db: An open aiosqlite connection (typically the one shared by
             the :class:`SQLiteBackend` with all other SQLite repos).
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         """Initialise the repository with a shared aiosqlite connection."""
         self._db: aiosqlite.Connection = db
         self._db.row_factory = aiosqlite.Row
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def create(self, escalation: Escalation) -> None:
         """Insert a PENDING escalation row."""
@@ -132,7 +135,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             None,
             None,
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(_UPSERT_SQL, params)
                 await self._db.commit()
@@ -280,7 +283,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             "AND expires_at <= ? "
             "RETURNING id"
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(update_sql, (now_iso, now_iso))
                 rows = await cursor.fetchall()
@@ -368,7 +371,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             decision_json,
             escalation_id,
         )
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(update_sql, params)
                 await self._db.commit()

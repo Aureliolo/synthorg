@@ -1,6 +1,18 @@
 """Shared helpers for the SQLite persistence backend."""
 
 import sqlite3
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
+
+WriteContext = Callable[[], AbstractAsyncContextManager[None]]
+"""Factory of a one-shot async context manager that serializes writes.
+
+Repositories store one of these and call
+``async with self._write_context()`` around every multi-statement
+transaction. The backend wires its own ``write_context`` bound method,
+so each call returns a fresh CM whose underlying lock is shared across
+every repo on the connection.
+"""
 
 
 def is_unique_constraint_error(exc: BaseException) -> bool:

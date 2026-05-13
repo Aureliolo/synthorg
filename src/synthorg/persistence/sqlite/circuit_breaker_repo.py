@@ -1,6 +1,5 @@
 """SQLite repository for circuit breaker state persistence."""
 
-import asyncio
 import sqlite3
 
 import aiosqlite
@@ -17,6 +16,7 @@ from synthorg.observability.events.persistence import (
 from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -26,18 +26,22 @@ class SQLiteCircuitBreakerStateRepository:
 
     Args:
         db: An open aiosqlite connection.
-        write_lock: Optional shared write lock to serialize writes
-            across repositories on the same connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection. Supplied by
+            ``SQLitePersistenceBackend.write_context`` in production;
+            tests can pass
+            ``tests._shared.persistence.make_private_write_context()``
+            for standalone construction.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def _rollback_quietly(self, event: str) -> None:
         """Roll back the current transaction, swallowing errors."""
@@ -53,7 +57,7 @@ class SQLiteCircuitBreakerStateRepository:
 
     async def save(self, record: CircuitBreakerStateRecord) -> None:
         """Persist a circuit breaker state record (upsert by pair key)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """\
@@ -126,7 +130,7 @@ INSERT OR REPLACE INTO circuit_breaker_state (
 
     async def delete(self, pair_key_a: str, pair_key_b: str) -> bool:
         """Delete a circuit breaker state record."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM circuit_breaker_state "

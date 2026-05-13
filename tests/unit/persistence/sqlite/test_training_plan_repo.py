@@ -10,6 +10,7 @@ from synthorg.hr.training.models import ContentType, TrainingPlan, TrainingPlanS
 from synthorg.persistence.sqlite.training_plan_repo import (
     SQLiteTrainingPlanRepository,
 )
+from tests._shared.persistence import make_private_write_context
 
 
 def _make_plan(  # noqa: PLR0913
@@ -46,7 +47,9 @@ def _make_plan(  # noqa: PLR0913
 
 @pytest.fixture
 def repo(migrated_db: aiosqlite.Connection) -> SQLiteTrainingPlanRepository:
-    return SQLiteTrainingPlanRepository(migrated_db)
+    return SQLiteTrainingPlanRepository(
+        migrated_db, write_context=make_private_write_context()
+    )
 
 
 @pytest.mark.unit

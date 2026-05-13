@@ -1,7 +1,6 @@
 """SQLite repository implementation for checkpoint persistence."""
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
-import asyncio
 import contextlib
 import sqlite3
 
@@ -20,6 +19,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CHECKPOINT_QUERY_FAILED,
     PERSISTENCE_CHECKPOINT_SAVE_FAILED,
 )
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -35,18 +35,14 @@ class SQLiteCheckpointRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, checkpoint: Checkpoint) -> None:
         """Persist a checkpoint (upsert)."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 data = checkpoint.model_dump(mode="json")
                 await self._db.execute(
@@ -145,7 +141,7 @@ INSERT OR REPLACE INTO checkpoints (
 
     async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
         """Delete all checkpoints for an execution."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM checkpoints WHERE execution_id = ?",

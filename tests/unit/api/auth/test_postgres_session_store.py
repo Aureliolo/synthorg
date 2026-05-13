@@ -25,6 +25,7 @@ from synthorg.persistence.sqlite.session_repo import (
     SQLiteSessionRepository as SqliteSessionStore,
 )
 from tests._shared import mock_of
+from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
 
@@ -121,7 +122,9 @@ def test_concrete_stores_expose_protocol_shape() -> None:
     pg_pool = MagicMock()
     sqlite_db = mock_of[Connection]()
     pg_store = PostgresSessionStore(pg_pool)
-    sqlite_store = SqliteSessionStore(sqlite_db)
+    sqlite_store = SqliteSessionStore(
+        sqlite_db, write_context=make_private_write_context()
+    )
     assert isinstance(pg_store, SessionStore)
     assert isinstance(sqlite_store, SessionStore)
     # Every SessionStore method must exist on both concretes (catches a

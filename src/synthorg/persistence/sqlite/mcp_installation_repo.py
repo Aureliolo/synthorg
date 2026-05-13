@@ -5,7 +5,6 @@ table.  Bound to an open ``aiosqlite.Connection`` at construction;
 the persistence backend owns connection lifecycle.
 """
 
-import asyncio
 import contextlib
 import sqlite3
 
@@ -26,6 +25,7 @@ from synthorg.persistence._shared import (
     format_iso_utc,
 )
 from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -37,19 +37,15 @@ class SQLiteMcpInstallationRepository:
         self,
         db: aiosqlite.Connection,
         *,
-        write_lock: asyncio.Lock | None = None,
+        write_context: WriteContext,
     ) -> None:
         self._db = db
-        # Inject the shared backend write lock so writes from this repo
-        # serialize with sibling repos that share the same
-        # ``aiosqlite.Connection``; fall back to a private lock for
-        # standalone test construction.
-        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+        self._write_context = write_context
 
     async def save(self, installation: McpInstallation) -> None:
         """Upsert an installation row (idempotent on catalog_entry_id)."""
         installed_at_iso = format_iso_utc(installation.installed_at)
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 await self._db.execute(
                     """
@@ -166,7 +162,7 @@ class SQLiteMcpInstallationRepository:
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete an installation.  Returns ``True`` if a row was removed."""
-        async with self._write_lock:
+        async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM mcp_installations WHERE catalog_entry_id = ?",
