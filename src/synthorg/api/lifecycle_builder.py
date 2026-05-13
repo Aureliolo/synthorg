@@ -476,6 +476,74 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     error=safe_error_description(exc),
                 )
 
+        # Wire ``WorkflowVersionService`` and ``AgentVersionService`` so
+        # the version-history controllers (workflow_versions.py and
+        # agent_identity_versions.py) can read snapshots through the
+        # service facade rather than reaching into
+        # ``app_state.persistence.*_versions`` directly. Mirrors the
+        # rollback wiring above and gates on the same persistence
+        # readiness pre-conditions so a missing repository never
+        # surfaces as a 500 when the controller pulls a service.
+        if (
+            persistence is not None
+            and getattr(persistence, "is_connected", False)
+            and not app_state.has_workflow_version_service
+            and hasattr(persistence, "workflow_versions")
+        ):
+            try:
+                from synthorg.engine.workflow.version_service import (  # noqa: PLC0415
+                    WorkflowVersionService,
+                )
+
+                app_state.set_workflow_version_service(
+                    WorkflowVersionService(
+                        version_repo=persistence.workflow_versions,
+                    ),
+                )
+                logger.info(
+                    API_SERVICE_AUTO_WIRED,
+                    service="workflow_version_service",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    API_SERVICE_AUTO_WIRE_FAILED,
+                    service="workflow_version_service",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+
+        if (
+            persistence is not None
+            and getattr(persistence, "is_connected", False)
+            and not app_state.has_agent_version_service
+            and hasattr(persistence, "identity_versions")
+        ):
+            try:
+                from synthorg.hr.identity.version_service import (  # noqa: PLC0415
+                    AgentVersionService,
+                )
+
+                app_state.set_agent_version_service(
+                    AgentVersionService(
+                        version_repo=persistence.identity_versions,
+                    ),
+                )
+                logger.info(
+                    API_SERVICE_AUTO_WIRED,
+                    service="agent_version_service",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    API_SERVICE_AUTO_WIRE_FAILED,
+                    service="agent_version_service",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+
         # On-startup auto-wire: SettingsService (needs connected persistence)
         if (
             should_auto_wire_settings
