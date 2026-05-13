@@ -26,18 +26,32 @@ The SynthOrg backend has an 11-sink structlog pipeline:
 | Sink | File | Level | Filter | Format |
 |------|------|-------|--------|--------|
 | Console | (stderr/Docker logs) | INFO | none | colored text |
-| Main | `synthorg.log` | INFO | none (catch-all) | JSON |
+| Main | `synthorg.log` | INFO | catch-all minus `SINK_EVENT_EXCLUDES` | JSON |
 | Audit | `audit.log` | INFO | `synthorg.security.*`, `synthorg.hr.*`, `synthorg.observability.*` | JSON |
 | Errors | `errors.log` | ERROR | none | JSON |
 | Agent | `agent_activity.log` | DEBUG | `synthorg.engine.*`, `synthorg.core.*`, `synthorg.communication.*`, `synthorg.tools.*`, `synthorg.memory.*` | JSON |
 | Cost | `cost_usage.log` | INFO | `synthorg.budget.*`, `synthorg.providers.*` | JSON |
-| Debug | `debug.log` | DEBUG | none (catch-all) | JSON |
+| Debug | `debug.log` | DEBUG only (exact) | catch-all + `SINK_EXACT_LEVELS` | JSON |
 | Access | `access.log` | INFO | `synthorg.api.*` | JSON |
 | Persistence | `persistence.log` | INFO | `synthorg.persistence.*` | JSON |
 | Configuration | `configuration.log` | INFO | `synthorg.settings.*`, `synthorg.config.*` | JSON |
 | Backup | `backup.log` | INFO | `synthorg.backup.*` | JSON |
 
-**Key invariant**: Every message that appears in Docker logs (console sink, INFO+) MUST also appear in `synthorg.log` (catch-all, INFO+) and `debug.log` (catch-all, DEBUG+). A message in Docker logs but missing from file sinks is a **routing bug** in the observability pipeline.
+### Event-level exclusions (`SINK_EVENT_EXCLUDES`)
+
+Some sinks have a deny-list of event names that get filtered out even when the logger-name include filter matches. The source of truth is `SINK_EVENT_EXCLUDES` in `src/synthorg/observability/sinks.py`. Today the only entry is:
+
+- `synthorg.log` excludes `api.request.started` and `api.request.completed`. These already have a dedicated home in `access.log`; without the exclusion ~96% of `synthorg.log` would be duplicated request records.
+
+A discrepancy check that compares Docker stdout against `synthorg.log` MUST treat these event names as expected absences from `synthorg.log`, not as routing bugs.
+
+### Exact-level pinning (`SINK_EXACT_LEVELS`)
+
+`debug.log` is pinned to level **exactly DEBUG** via `SINK_EXACT_LEVELS`, not DEBUG+. This is intentional: it keeps the file empty when nothing emits DEBUG instead of accidentally collecting INFO+ as a duplicate of `synthorg.log`. An empty `debug.log` is the expected steady-state on a deployment whose loggers all default to INFO. To populate it, raise specific loggers to DEBUG via env vars (`SYNTHORG_LOG_LEVEL_<name>=DEBUG`) or settings.
+
+### Key invariant
+
+Every message that appears in Docker logs (console sink, INFO+) MUST also appear in `synthorg.log`, **except** for events listed in `SINK_EVENT_EXCLUDES`. A message in Docker logs but missing from `synthorg.log` whose event name is NOT in the exclude list is a **routing bug** in the observability pipeline.
 
 The reverse is fine: file sinks contain DEBUG-level messages and routed messages that the console sink filters out.
 
@@ -133,7 +147,7 @@ for k, v in loggers.most_common(20): print(f'  {k}: {v}')
 
 ## Step 3: Discrepancy Detection
 
-This is the critical check. Every INFO+ message in Docker logs must also exist in the file-based logs.
+This is the critical check. Every INFO+ message in Docker logs must also exist in the file-based logs, **except** for events listed in `SINK_EVENT_EXCLUDES` (see Architecture Context). Those are deliberately filtered from `synthorg.log` and must be skipped here.
 
 ### Method
 
@@ -145,15 +159,18 @@ This is the critical check. Every INFO+ message in Docker logs must also exist i
 
    Extract: timestamp, level, event, logger name. If `--timestamps` was accidentally used, strip the Docker-added RFC 3339 prefix (everything up to and including the first space before the app timestamp) before parsing.
 
-2. **Parse `synthorg.log`** (the INFO+ catch-all) into a set of `(event, logger, approximate_timestamp)` tuples.
+2. **Resolve `SINK_EVENT_EXCLUDES`** for `synthorg.log` by reading `src/synthorg/observability/sinks.py` (or hard-code the known set today: `api.request.started`, `api.request.completed`). Treat any Docker entry whose event name appears in this set as an expected absence from `synthorg.log`; verify it lands in its dedicated sink instead (e.g., `access.log` for the request lifecycle events) and skip it from the discrepancy report.
 
-3. **For each Docker log entry**, check if a matching record exists in `synthorg.log` within a small timestamp window (1 second). Match on `event` + `logger`.
+3. **Parse `synthorg.log`** (the INFO+ catch-all) into a set of `(event, logger, approximate_timestamp)` tuples.
 
-4. **Report discrepancies**: Docker log entries with no matching file log entry. These indicate:
+4. **For each Docker log entry**, check if a matching record exists in `synthorg.log` within a small timestamp window (1 second). Match on `event` + `logger`. Skip entries whose event name is in `SINK_EVENT_EXCLUDES`.
+
+5. **Report discrepancies**: Docker log entries with no matching file log entry. These indicate:
    - A logger that somehow bypasses the file handler chain
    - A foreign library logging directly to stderr without going through structlog
    - A `print()` statement in application code (forbidden by convention)
    - Handler initialization failure that was silently swallowed
+   - A new event name added to a logger whose entries should be excluded from `synthorg.log`; if intentional, update `SINK_EVENT_EXCLUDES` and re-run.
 
 ### Discrepancy analysis script pattern
 
