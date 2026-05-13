@@ -826,14 +826,24 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 service="a2a_gateway",
             )
 
-    # Wire the optional client-simulation runtime onto AppState BEFORE the
+    # Wire the client-simulation runtime onto AppState BEFORE the
     # optional-controllers tuple is built so the predicate check below
-    # sees its presence at controller-list-assembly time. Production
-    # callers that need the surface pass it as a kwarg; tests that
-    # exercise the simulation/request endpoints do the same instead of
-    # post-construction ``set_client_simulation_state``.
-    if client_simulation_state is not None:
-        app_state.set_client_simulation_state(client_simulation_state)
+    # sees its presence at controller-list-assembly time. Default to a
+    # fresh ``ClientSimulationState()`` with empty in-memory stores so
+    # the always-registered ``ClientController`` can serve an empty
+    # ``/clients`` list instead of 503ing on every dashboard poll;
+    # callers that need a configured intake / review pipeline pass a
+    # fully-built state via the kwarg. The optional Simulation /
+    # Request controllers still gate on the same predicate so endpoints
+    # that require ``intake_engine`` / ``review_pipeline`` only register
+    # when those fields are actually populated.
+    if client_simulation_state is None:
+        from synthorg.client.simulation_state import (  # noqa: PLC0415
+            ClientSimulationState as _ClientSimulationState,
+        )
+
+        client_simulation_state = _ClientSimulationState()
+    app_state.set_client_simulation_state(client_simulation_state)
 
     # Optional controllers gated on their primary collaborator service.
     # Routes for unconfigured subsystems are not registered at all so

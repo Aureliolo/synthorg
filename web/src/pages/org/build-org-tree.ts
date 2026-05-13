@@ -6,6 +6,30 @@ import type { CompanyConfig, Department } from '@/api/types/org'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import { resolveRuntimeStatus } from './status-mapping'
 
+/**
+ * Render a department's identifier in human-readable form.
+ *
+ * The backend stores department names as ``snake_case`` machine keys
+ * (e.g. ``quality_assurance``). Without humanisation the org chart's
+ * ``uppercase tracking-wide`` text styling on
+ * ``DepartmentGroupNode`` renders the underscore verbatim
+ * (``QUALITY_ASSURANCE``), which looks like a leaked enum value.
+ * Replacing ``_`` with a space restores word boundaries
+ * (``Quality Assurance`` -> ``QUALITY ASSURANCE``) so the upstream
+ * CSS transform produces a real heading.
+ */
+export function humanizeDepartmentName(raw: string): string {
+  if (!raw) return raw
+  return raw
+    .split('_')
+    .map((seg) => {
+      if (!seg) return seg
+      const first = seg.charAt(0).toUpperCase()
+      return first + seg.slice(1)
+    })
+    .join(' ')
+}
+
 // ── Node data interfaces ────────────────────────────────────
 
 export interface OwnerNodeData {
@@ -261,7 +285,7 @@ export function buildOrgTree(
     }))
     return {
       departmentName: dept.name,
-      displayName: dept.display_name ?? dept.name,
+      displayName: dept.display_name ?? humanizeDepartmentName(dept.name),
       agentCount: deptMembers.length,
       activeCount,
       budgetPercent,

@@ -317,6 +317,38 @@ async def _init_persistence(
             )
             raise
 
+    # Re-bind the ConnectionCatalog onto the persistence-backed
+    # repository.  ``auto_wire_integrations`` runs before
+    # ``persistence.connect()``, so the catalog is initially seeded
+    # with an in-memory stub repo.  Without this re-bind, every
+    # ``POST /connections`` would write to a stub that the
+    # ``mcp_installations.connection_name`` foreign key cannot
+    # observe, surfacing as cross-store FK violations on install.
+    # Wrapping in ``hasattr`` keeps the helper backend-agnostic for
+    # tests / backends that have not implemented a ``connections``
+    # accessor; missing accessors fall through quietly because the
+    # in-memory stub is still functional for read-only flows.
+    if app_state.has_connection_catalog and hasattr(persistence, "connections"):
+        try:
+            persistent_connections = persistence.connections
+        except Exception as exc:
+            logger.warning(
+                API_APP_STARTUP,
+                note="Persistence backend exposes no connections repo; "
+                "catalog stays bound to the startup-window stub",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        else:
+            await app_state.connection_catalog.rebind_repository(
+                persistent_connections,
+            )
+            logger.info(
+                API_APP_STARTUP,
+                note="Re-bound ConnectionCatalog to persistence-backed repo",
+                backend=type(persistence).__name__,
+            )
+
 
 def _reset_if_tasks_dead(  # noqa: PLR0911
     obj: object,

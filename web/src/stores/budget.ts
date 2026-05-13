@@ -81,7 +81,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
           getOverviewMetrics(),
           getBudgetConfig(),
           getForecast(),
-          listCostRecords({ limit: 500 }),
+          listCostRecords({ limit: 200 }),
           getTrends('30d', 'spend'),
           listActivities({ limit: 30 }),
         ])

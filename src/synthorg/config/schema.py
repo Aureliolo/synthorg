@@ -223,6 +223,26 @@ class AgentConfig(BaseModel):
             "None inherits the company strategy config default."
         ),
     )
+    tier: str | None = Field(
+        default=None,
+        description=(
+            "Resolved model tier from the setup wizard "
+            "(``large`` / ``medium`` / ``small``). Round-trips so the "
+            "company-agents setting survives Pydantic validation when "
+            "the wizard persists tier alongside the model selection."
+        ),
+    )
+    model_requirement: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Structured model requirement dict emitted by the setup "
+            "wizard (tier / priority / min_context / capabilities). "
+            "Stored as a raw dict because the canonical "
+            "``ModelRequirement`` model lives in ``synthorg.templates`` "
+            "and importing it here would create a config -> templates "
+            "cycle; the matcher rehydrates the dict at use sites."
+        ),
+    )
 
 
 class GracefulShutdownConfig(BaseModel):

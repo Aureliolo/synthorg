@@ -92,6 +92,27 @@ class ConnectionCatalog:
         self._name_locks: dict[str, asyncio.Lock] = {}
         self._name_locks_lock = asyncio.Lock()
 
+    async def rebind_repository(self, repository: ConnectionRepository) -> None:
+        """Swap the underlying repository and invalidate the cache.
+
+        Used by the API lifecycle hook to graduate the catalog from the
+        startup-window ``InMemoryConnectionRepository`` stub (installed
+        before ``persistence.connect()`` succeeds) to the real
+        backend-bound repository once persistence is live. Holding
+        ``_cache_lock`` for the swap keeps a concurrent
+        ``_ensure_cache`` from observing a half-swapped state where
+        ``self._repo`` is the new backend but ``self._cache`` still
+        carries entries from the in-memory stub.
+
+        Args:
+            repository: The newly-available persistence-backed
+                ``ConnectionRepository`` to take over from this point on.
+        """
+        async with self._cache_lock:
+            self._repo = repository
+            self._cache = {}
+            self._cache_valid = False
+
     async def _ensure_cache(self) -> None:
         """Populate the cache from persistence if invalid."""
         if self._cache_valid:

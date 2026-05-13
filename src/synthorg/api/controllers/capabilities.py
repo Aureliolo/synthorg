@@ -118,8 +118,8 @@ class CapabilitiesController(Controller):
         a2a_wired = getattr(app_state, "_a2a_peer_registry", None) is not None
         return ApiResponse(
             data=CapabilitiesResponse(
-                simulations=app_state.has_client_simulation_state,
-                requests=app_state.has_client_simulation_state,
+                simulations=app_state.has_simulation_runtime,
+                requests=app_state.has_simulation_runtime,
                 ontology=app_state.has_ontology_service,
                 tunnel=app_state.has_tunnel_provider,
                 webhooks=webhooks_wired,
