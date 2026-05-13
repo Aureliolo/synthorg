@@ -101,6 +101,9 @@ from synthorg.persistence.provider_audit_protocol import (  # noqa: TC001
 from synthorg.persistence.risk_override_protocol import (
     RiskOverrideRepository,  # noqa: TC001
 )
+from synthorg.persistence.seen_claims_protocol import (
+    SeenClaimsRepository,  # noqa: TC001
+)
 from synthorg.persistence.settings_protocol import SettingsRepository  # noqa: TC001
 from synthorg.persistence.ssrf_violation_protocol import (
     SsrfViolationRepository,  # noqa: TC001
@@ -471,6 +474,11 @@ class PersistenceBackend(Protocol):
     @property
     def idempotency_keys(self) -> IdempotencyRepository:
         """Repository for persistent idempotency keys."""
+        ...
+
+    @property
+    def seen_claims(self) -> SeenClaimsRepository:
+        """Repository for worker TaskClaim dedup persistence."""
         ...
 
     @property

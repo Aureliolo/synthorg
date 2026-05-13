@@ -12,6 +12,7 @@ API behind a small ``publish_claim`` / ``next_claim`` / ``ack`` /
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final
+from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -64,6 +65,11 @@ class TaskClaim(BaseModel):
         new_status: The status that caused the dispatch (typically
             ``READY`` or equivalent).
         dispatched_at: When the dispatcher enqueued this claim.
+        idempotency_key: UUID generated at publish time so the worker
+            can dedupe a JetStream redelivery (ack lost in transit,
+            worker crash before ack). Workers ``mark_seen`` this key
+            via :class:`SeenClaimsRepository` and short-circuit any
+            duplicate observation back to ack-and-skip.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -83,6 +89,10 @@ class TaskClaim(BaseModel):
     dispatched_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="When the dispatcher enqueued the claim",
+    )
+    idempotency_key: NotBlankStr = Field(
+        default_factory=lambda: uuid4().hex,
+        description="Per-dispatch UUID for worker-side redelivery dedup",
     )
 
 

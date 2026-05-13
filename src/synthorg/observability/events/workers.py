@@ -17,6 +17,10 @@ WORKERS_POOL_STARTED: Final[str] = "workers.pool.started"
 WORKERS_CLAIM_RECEIVED: Final[str] = "workers.worker.claim_received"
 WORKERS_EXECUTOR_FAILED: Final[str] = "workers.worker.executor_failed"
 WORKERS_FINALIZE_FAILED: Final[str] = "workers.worker.finalize_failed"
+WORKERS_DUPLICATE_CLAIM_SUPPRESSED: Final[str] = (
+    "workers.worker.duplicate_claim_suppressed"
+)
+WORKERS_DEDUP_LOOKUP_FAILED: Final[str] = "workers.worker.dedup_lookup_failed"
 
 # Dispatcher
 WORKERS_DISPATCHER_QUEUE_NOT_RUNNING: Final[str] = (

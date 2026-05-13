@@ -500,3 +500,21 @@ PERSISTENCE_CIRCUIT_BREAKER_DELETED: Final[str] = "persistence.circuit_breaker.d
 PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED: Final[str] = (
     "persistence.circuit_breaker.delete_failed"
 )
+
+# Worker seen-claims events (TaskClaim idempotency dedup)
+PERSISTENCE_SEEN_CLAIMS_MARK_FAILED: Final[str] = "persistence.seen_claims.mark_failed"
+PERSISTENCE_SEEN_CLAIMS_PRUNED: Final[str] = "persistence.seen_claims.pruned"
+PERSISTENCE_SEEN_CLAIMS_PRUNE_FAILED: Final[str] = (
+    "persistence.seen_claims.prune_failed"
+)
+
+# Cost-tracker claim-dedup events (persistent claim_id dedup)
+PERSISTENCE_COST_CLAIM_DEDUPE_FAILED: Final[str] = (
+    "persistence.cost_claim_dedupe.claim_failed"
+)
+PERSISTENCE_COST_CLAIM_DEDUPE_PRUNED: Final[str] = (
+    "persistence.cost_claim_dedupe.pruned"
+)
+PERSISTENCE_COST_CLAIM_DEDUPE_PRUNE_FAILED: Final[str] = (
+    "persistence.cost_claim_dedupe.prune_failed"
+)

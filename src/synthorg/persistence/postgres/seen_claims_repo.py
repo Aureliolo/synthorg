@@ -1,0 +1,103 @@
+"""Postgres repository for worker claim dedup persistence.
+
+Postgres sibling of :mod:`synthorg.persistence.sqlite.seen_claims_repo`.
+``seen_at`` and ``expires_at`` are ``TIMESTAMPTZ`` columns instead of
+TEXT; the first-write discrimination is the same
+``INSERT ... ON CONFLICT DO NOTHING`` pattern, and the row count from
+``cursor.rowcount`` distinguishes first-write from duplicate.
+"""
+
+from datetime import timedelta
+from typing import TYPE_CHECKING
+
+import psycopg
+from pydantic import AwareDatetime  # noqa: TC002
+
+from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_SEEN_CLAIMS_MARK_FAILED,
+    PERSISTENCE_SEEN_CLAIMS_PRUNE_FAILED,
+    PERSISTENCE_SEEN_CLAIMS_PRUNED,
+)
+from synthorg.persistence._shared import normalize_utc
+
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
+
+logger = get_logger(__name__)
+
+
+class PostgresSeenClaimsRepository:
+    """Postgres implementation of :class:`SeenClaimsRepository`."""
+
+    def __init__(self, pool: AsyncConnectionPool) -> None:
+        self._pool = pool
+
+    async def mark_seen(
+        self,
+        *,
+        idempotency_key: NotBlankStr,
+        claim_id: NotBlankStr,
+        now: AwareDatetime,
+        ttl_seconds: float,
+    ) -> bool:
+        """Insert the dedup row; return ``True`` only on first write."""
+        seen_at = normalize_utc(now)
+        expires_at = seen_at + timedelta(seconds=ttl_seconds)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO seen_claims (
+                        idempotency_key, claim_id, seen_at, expires_at
+                    ) VALUES (%s, %s, %s, %s)
+                    ON CONFLICT(idempotency_key) DO NOTHING
+                    """,
+                    (
+                        str(idempotency_key),
+                        str(claim_id),
+                        seen_at,
+                        expires_at,
+                    ),
+                )
+                inserted = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to mark claim {idempotency_key!r} as seen"
+            logger.warning(
+                PERSISTENCE_SEEN_CLAIMS_MARK_FAILED,
+                idempotency_key=str(idempotency_key),
+                claim_id=str(claim_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return inserted
+
+    async def prune_expired(self, now: AwareDatetime) -> int:
+        """Delete rows past their ``expires_at`` boundary."""
+        cutoff = normalize_utc(now)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM seen_claims WHERE expires_at < %s",
+                    (cutoff,),
+                )
+                removed = cur.rowcount
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = "Failed to prune expired seen_claims rows"
+            logger.warning(
+                PERSISTENCE_SEEN_CLAIMS_PRUNE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if removed:
+            logger.info(
+                PERSISTENCE_SEEN_CLAIMS_PRUNED,
+                removed=removed,
+            )
+        return removed

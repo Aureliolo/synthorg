@@ -1320,3 +1320,17 @@ CREATE TABLE preset_overrides (
     updated_at TIMESTAMPTZ NOT NULL,
     updated_by TEXT NOT NULL CHECK (length(trim(updated_by)) > 0)
 );
+
+-- ── Worker claim dedup ────────────────────────────────────────────────
+-- First-write store for ``TaskClaim.idempotency_key``.  Workers consult
+-- this table before processing a claim so a JetStream redelivery (ack
+-- lost, worker crash) cannot trigger a second execution.  Pruned by
+-- ``SeenClaimsRepository.prune_expired`` past the row's ``expires_at``.
+CREATE TABLE seen_claims (
+    idempotency_key TEXT NOT NULL PRIMARY KEY
+        CHECK (length(trim(idempotency_key)) > 0),
+    claim_id TEXT NOT NULL CHECK (length(trim(claim_id)) > 0),
+    seen_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL CHECK (expires_at > seen_at)
+);
+CREATE INDEX idx_seen_claims_expires_at ON seen_claims (expires_at);

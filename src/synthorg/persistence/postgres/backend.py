@@ -122,6 +122,9 @@ from synthorg.persistence.postgres.repositories import (
 from synthorg.persistence.postgres.risk_override_repo import (
     PostgresRiskOverrideRepository,
 )
+from synthorg.persistence.postgres.seen_claims_repo import (
+    PostgresSeenClaimsRepository,
+)
 from synthorg.persistence.postgres.session_repo import (
     PostgresSessionRepository,
 )
@@ -207,6 +210,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
     from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
+    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
     from synthorg.persistence.settings_protocol import SettingsRepository
     from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
     from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
@@ -289,6 +293,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._sessions: PostgresSessionRepository | None = None
         self._refresh_tokens: PostgresRefreshTokenRepository | None = None
         self._idempotency_keys: PostgresIdempotencyRepository | None = None
+        self._seen_claims: PostgresSeenClaimsRepository | None = None
         self._mcp_installations: PostgresMcpInstallationRepository | None = None
         self._custom_rules: PostgresCustomRuleRepository | None = None
         self._org_facts: PostgresOrgFactRepository | None = None
@@ -345,6 +350,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._sessions = None
         self._refresh_tokens = None
         self._idempotency_keys = None
+        self._seen_claims = None
         self._mcp_installations = None
         self._custom_rules = None
         self._org_facts = None
@@ -432,6 +438,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._sessions = PostgresSessionRepository(pool)
         self._refresh_tokens = PostgresRefreshTokenRepository(pool)
         self._idempotency_keys = PostgresIdempotencyRepository(pool)
+        self._seen_claims = PostgresSeenClaimsRepository(pool)
         self._mcp_installations = PostgresMcpInstallationRepository(pool)
         self._custom_rules = PostgresCustomRuleRepository(pool)
         self._org_facts = PostgresOrgFactRepository(pool)
@@ -768,6 +775,14 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         return self._require_connected(
             self._idempotency_keys,
             "idempotency_keys",
+        )
+
+    @property
+    def seen_claims(self) -> SeenClaimsRepository:
+        """Repository for worker TaskClaim dedup persistence."""
+        return self._require_connected(
+            self._seen_claims,
+            "seen_claims",
         )
 
     @property

@@ -18,11 +18,16 @@ follow-up PR).
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
-from synthorg.observability import get_logger
+from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_CLAIM_RECEIVED,
+    WORKERS_DEDUP_LOOKUP_FAILED,
+    WORKERS_DUPLICATE_CLAIM_SUPPRESSED,
     WORKERS_EXECUTOR_FAILED,
     WORKERS_FINALIZE_FAILED,
     WORKERS_POOL_STARTED,
@@ -35,6 +40,9 @@ from synthorg.workers.claim import (
     TaskClaimStatus,
 )
 from synthorg.workers.config import QueueConfig  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 
 logger = get_logger(__name__)
 
@@ -57,6 +65,16 @@ the claim ack/nack based on the returned status.
 """
 
 
+_DEDUP_TTL_SAFETY_MULTIPLIER: Final[float] = 2.0
+"""Multiplier applied to ``ack_wait * max_deliver`` for the dedup TTL.
+
+The dedup row must outlive the JetStream redelivery horizon
+(``ack_wait * max_deliver``) by enough slack that a slow worker
+finalising its ack just past the deadline still finds the row. The
+2.0 multiplier gives that slack without keeping the table unbounded
+in size."""
+
+
 class Worker:
     """Single-process distributed worker.
 
@@ -65,20 +83,36 @@ class Worker:
         task_queue: Connected :class:`JetStreamTaskQueue`.
         executor: Async callable invoked for each claim.
         worker_id: Identifier for logging + heartbeat subject.
+        seen_claims: Durable dedup repository consulted before each
+            claim is executed; protects against JetStream
+            redeliveries (ack lost in transit, worker crash before
+            ack). When ``None``, dedup is disabled (legacy behaviour;
+            tests without a persistence backend rely on this).
+        clock: Time source for the dedup row's ``seen_at`` /
+            ``expires_at`` timestamps. Inject ``FakeClock`` in tests.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- canonical worker construction surface
         self,
         *,
         queue_config: QueueConfig,
         task_queue: JetStreamTaskQueue,
         executor: TaskExecutor,
         worker_id: str,
+        seen_claims: SeenClaimsRepository | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._queue_config = queue_config
         self._task_queue = task_queue
         self._executor = executor
         self._worker_id = worker_id
+        self._seen_claims = seen_claims
+        self._clock: Clock = clock or SystemClock()
+        self._dedup_ttl_seconds: float = (
+            float(queue_config.ack_wait_seconds)
+            * float(queue_config.max_deliver)
+            * _DEDUP_TTL_SAFETY_MULTIPLIER
+        )
         self._running = False
         # Eager init: ``stop()`` may set the event before ``run()`` has
         # ever entered the loop, so a half-published attribute would
@@ -145,8 +179,48 @@ class Worker:
         if claim_and_raw is None:
             return
         claim, raw = claim_and_raw
+        if await self._is_duplicate(claim):
+            await self._finalize_claim(raw, TaskClaimStatus.SUCCESS)
+            return
         status = await self._execute_claim(claim)
         await self._finalize_claim(raw, status)
+
+    async def _is_duplicate(self, claim: TaskClaim) -> bool:
+        """Return ``True`` if the claim has already been processed.
+
+        Resolves to ``False`` when no dedup repository is wired or when
+        the repo lookup fails (fail-open: a transient persistence error
+        must not stall the worker; the JetStream ``ack_wait`` window
+        will redeliver and the next worker tries again).
+        """
+        if self._seen_claims is None:
+            return False
+        try:
+            inserted = await self._seen_claims.mark_seen(
+                idempotency_key=NotBlankStr(claim.idempotency_key),
+                claim_id=NotBlankStr(claim.task_id),
+                now=self._clock.now(),
+                ttl_seconds=self._dedup_ttl_seconds,
+            )
+        except QueryError as exc:
+            logger.warning(
+                WORKERS_DEDUP_LOOKUP_FAILED,
+                worker_id=self._worker_id,
+                task_id=claim.task_id,
+                idempotency_key=claim.idempotency_key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
+        if inserted:
+            return False
+        logger.info(
+            WORKERS_DUPLICATE_CLAIM_SUPPRESSED,
+            worker_id=self._worker_id,
+            task_id=claim.task_id,
+            idempotency_key=claim.idempotency_key,
+        )
+        return True
 
     async def _execute_claim(self, claim: TaskClaim) -> TaskClaimStatus:
         """Invoke the executor, translating exceptions into RETRY."""
@@ -194,19 +268,36 @@ class Worker:
             raise
 
 
-async def run_worker_pool(
+async def run_worker_pool(  # noqa: PLR0913 -- canonical worker-pool entry point
     *,
     queue_config: QueueConfig,
     task_queue: JetStreamTaskQueue,
     executor: TaskExecutor,
     worker_count: int,
     worker_id_prefix: str = "worker",
+    seen_claims: SeenClaimsRepository | None = None,
+    clock: Clock | None = None,
 ) -> None:
     """Run ``worker_count`` workers concurrently until cancelled.
 
     Blocks until all workers exit (via ``stop`` or cancellation).
     Uses :class:`asyncio.TaskGroup` so a failing worker propagates
     the exception after sibling cancellation.
+
+    Args:
+        queue_config: Queue configuration forwarded to each
+            :class:`Worker` (ack wait, max deliver).
+        task_queue: Connected :class:`JetStreamTaskQueue` shared
+            across all workers in the pool.
+        executor: Async callable invoked for each fetched claim.
+        worker_count: Number of concurrent workers to spawn.
+        worker_id_prefix: Prefix used to compose each worker's
+            identifier (e.g. ``"worker-0"``).
+        seen_claims: Optional dedup repository forwarded to every
+            spawned :class:`Worker`. When ``None``, claim dedup is
+            disabled; production callers must wire this from the
+            persistence backend.
+        clock: Optional clock seam forwarded to every spawned worker.
     """
     workers = [
         Worker(
@@ -214,6 +305,8 @@ async def run_worker_pool(
             task_queue=task_queue,
             executor=executor,
             worker_id=f"{worker_id_prefix}-{i}",
+            seen_claims=seen_claims,
+            clock=clock,
         )
         for i in range(worker_count)
     ]
