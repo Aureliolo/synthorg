@@ -555,7 +555,9 @@ async def _bound_audit_actor() -> AsyncIterator[None]:
     Production traffic goes through ``AuthContextMiddleware`` which
     populates the same ContextVar; these direct-handler tests bypass
     the middleware stack, so the fixture has to bind the user
-    explicitly.
+    explicitly. Inherits the default function scope so the
+    ``ContextVar`` reset happens between every test, even when
+    xdist groups them onto one worker.
     """
     from synthorg.api.auth.context import authenticated_user_scope
     from synthorg.core.auth.models import AuthenticatedUser, AuthMethod

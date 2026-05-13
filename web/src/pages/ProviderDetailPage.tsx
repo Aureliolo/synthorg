@@ -56,6 +56,10 @@ export default function ProviderDetailPage() {
   const discoveringModels = useProvidersStore((s) => s.discoveringModels)
   const deletingModel = useProvidersStore((s) => s.deletingModel)
 
+  const handleDeleteModelOpenChange = useCallback((open: boolean) => {
+    if (!open) setDeleteModelId(null)
+  }, [])
+
   // Walk the parent provider list (filtered + sorted) so prev/next on
   // this detail page steps through the same providers the operator
   // saw on ProvidersPage. ``ProviderWithName.name`` is the URL key.
@@ -227,7 +231,7 @@ export default function ProviderDetailPage() {
       {/* Delete model confirmation */}
       <ConfirmDialog
         open={deleteModelId !== null}
-        onOpenChange={(open) => { if (!open) setDeleteModelId(null) }}
+        onOpenChange={handleDeleteModelOpenChange}
         title="Delete Model"
         description={`Are you sure you want to delete "${deleteModelId ?? ''}" from this provider? This will remove the model from the local instance.`}
         variant="destructive"

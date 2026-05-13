@@ -571,3 +571,58 @@ class TestAppStateApiBridgeConfig:
         state.swap_api_bridge_config(snapshot)
         state.swap_api_bridge_config(snapshot)
         assert state.api_bridge_config is snapshot
+
+
+@pytest.mark.unit
+class TestAppStateSimulationRuntime:
+    """Tests for has_client_simulation_state vs has_simulation_runtime.
+
+    The two predicates intentionally differ: the broad one is always
+    true in production (so ``/clients`` serves an empty list rather
+    than 503ing on the dashboard's first poll), and the strict one
+    gates the optional Simulation / Request controllers that need a
+    real ``intake_engine`` + ``review_pipeline``.
+    """
+
+    def _state_with_simulation(
+        self,
+        *,
+        intake_engine: object | None = None,
+        review_pipeline: object | None = None,
+    ) -> AppState:
+        from synthorg.client.simulation_state import ClientSimulationState
+
+        sim = ClientSimulationState(
+            intake_engine=intake_engine,  # type: ignore[arg-type]
+            review_pipeline=review_pipeline,  # type: ignore[arg-type]
+        )
+        state = _make_state()
+        state.set_client_simulation_state(sim)
+        return state
+
+    def test_has_simulation_runtime_false_when_no_state(self) -> None:
+        state = _make_state()
+        assert state.has_client_simulation_state is False
+        assert state.has_simulation_runtime is False
+
+    def test_has_simulation_runtime_false_when_only_state_present(self) -> None:
+        state = self._state_with_simulation()
+        assert state.has_client_simulation_state is True
+        assert state.has_simulation_runtime is False
+
+    def test_has_simulation_runtime_false_when_only_intake_engine(self) -> None:
+        sentinel = object()
+        state = self._state_with_simulation(intake_engine=sentinel)
+        assert state.has_simulation_runtime is False
+
+    def test_has_simulation_runtime_false_when_only_review_pipeline(self) -> None:
+        sentinel = object()
+        state = self._state_with_simulation(review_pipeline=sentinel)
+        assert state.has_simulation_runtime is False
+
+    def test_has_simulation_runtime_true_when_both_present(self) -> None:
+        state = self._state_with_simulation(
+            intake_engine=object(),
+            review_pipeline=object(),
+        )
+        assert state.has_simulation_runtime is True

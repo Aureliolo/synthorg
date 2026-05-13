@@ -546,13 +546,13 @@ function findHighestSeniority(agents: readonly AgentConfig[]): AgentConfig | nul
 }
 
 function findCeo(agents: readonly AgentConfig[]): AgentConfig | null {
-  const execCSuite = agents.filter(
+  const [execCeo] = agents.filter(
     (a) => a.department === 'executive' && a.level === 'c_suite',
   )
-  if (execCSuite.length > 0) return execCSuite[0]!
+  if (execCeo) return execCeo
 
-  const cSuite = agents.filter((a) => a.level === 'c_suite')
-  if (cSuite.length > 0) return cSuite[0]!
+  const [anyCSuite] = agents.filter((a) => a.level === 'c_suite')
+  if (anyCSuite) return anyCSuite
 
   return findHighestSeniority(agents)
 }

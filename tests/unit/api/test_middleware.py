@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+import structlog
 from litestar import Litestar, get, post
 from litestar.enums import ScopeType
 from litestar.exceptions import ValidationException
@@ -596,7 +597,6 @@ class TestHealthcheckLogSuppression:
     )
     def test_healthcheck_paths_emit_no_request_log_pair(self, path: str) -> None:
         """No ``api.request.started`` / ``api.request.completed`` for probes."""
-        import structlog as _structlog
 
         @get(path)
         async def handler() -> dict[str, str]:
@@ -607,7 +607,7 @@ class TestHealthcheckLogSuppression:
             middleware=[RequestLoggingMiddleware],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with _structlog.testing.capture_logs() as logs, TestClient(app) as client:
+        with structlog.testing.capture_logs() as logs, TestClient(app) as client:
             resp = client.get(path)
             assert resp.status_code == 200
 
@@ -621,7 +621,6 @@ class TestHealthcheckLogSuppression:
 
     def test_non_healthcheck_path_still_logs(self) -> None:
         """Regular routes continue to emit the started/completed pair."""
-        import structlog as _structlog
 
         @get("/some/business/endpoint")
         async def handler() -> dict[str, str]:
@@ -632,10 +631,16 @@ class TestHealthcheckLogSuppression:
             middleware=[RequestLoggingMiddleware],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with _structlog.testing.capture_logs() as logs, TestClient(app) as client:
+        with structlog.testing.capture_logs() as logs, TestClient(app) as client:
             resp = client.get("/some/business/endpoint")
             assert resp.status_code == 200
 
         events = [entry.get("event") for entry in logs]
-        assert "api.request.started" in events
-        assert "api.request.completed" in events
+        # Exactly one of each, started before completed; bare presence
+        # checks miss the ordering invariant and would also accept a
+        # duplicate pair from accidental middleware re-entry.
+        assert events.count("api.request.started") == 1
+        assert events.count("api.request.completed") == 1
+        assert events.index("api.request.started") < events.index(
+            "api.request.completed",
+        )

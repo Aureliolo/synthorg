@@ -826,17 +826,11 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 service="a2a_gateway",
             )
 
-    # Wire the client-simulation runtime onto AppState BEFORE the
-    # optional-controllers tuple is built so the predicate check below
-    # sees its presence at controller-list-assembly time. Default to a
-    # fresh ``ClientSimulationState()`` with empty in-memory stores so
-    # the always-registered ``ClientController`` can serve an empty
-    # ``/clients`` list instead of 503ing on every dashboard poll;
-    # callers that need a configured intake / review pipeline pass a
-    # fully-built state via the kwarg. The optional Simulation /
-    # Request controllers still gate on the same predicate so endpoints
-    # that require ``intake_engine`` / ``review_pipeline`` only register
-    # when those fields are actually populated.
+    # Default to a fresh ``ClientSimulationState()`` so the
+    # always-registered ``ClientController`` can serve an empty
+    # ``/clients`` list instead of 503ing on every dashboard poll.
+    # Callers wanting the full intake / review pipeline pass a
+    # configured state via the kwarg.
     if client_simulation_state is None:
         from synthorg.client.simulation_state import (  # noqa: PLC0415
             ClientSimulationState as _ClientSimulationState,

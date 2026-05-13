@@ -190,6 +190,32 @@ class TestDiscoverOllama:
         assert result[0].id == "test-model-001"
         assert result[1].id == "test-model-002"
 
+    async def test_ollama_cloud_routes_through_api_tags(self) -> None:
+        """``ollama-cloud`` must hit ``/api/tags`` (not ``/models``).
+
+        Pre-fix, the cloud variant fell through to ``_discover_standard_api``
+        which fetched ``GET {base}/models``; Ollama returns 404 there,
+        the response was treated as an empty model list, and
+        ``replace_existing=True`` then deleted every persisted model
+        on the first sync click.
+        """
+        response = _mock_response({"models": [{"name": "cloud-model-001"}]})
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            client = _mock_client(response)
+            mock_cls.return_value = client
+
+            result = await discover_models(
+                "http://localhost:11434",
+                "ollama-cloud",
+            )
+
+            client.get.assert_called_once_with(
+                "http://127.0.0.1:11434/api/tags",
+                headers={"Host": "localhost"},
+            )
+        assert len(result) == 1
+        assert result[0].id == "cloud-model-001"
+
 
 @pytest.mark.usefixtures("_bypass_ssrf")
 class TestDiscoverStandardApi:

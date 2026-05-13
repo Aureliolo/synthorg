@@ -10,7 +10,7 @@ import sqlite3
 
 import aiosqlite
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger, safe_error_description
@@ -30,6 +30,27 @@ from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 logger = get_logger(__name__)
 
 
+def _classify_sqlite_constraint(exc: sqlite3.IntegrityError) -> str:
+    """Map a SQLite IntegrityError message to a stable constraint label.
+
+    SQLite (unlike Postgres) does not name constraints in its
+    exception payload; the only identity is the human-readable
+    message text. Match the message prefix and emit a stable token
+    that mirrors the Postgres ``exc.diag.constraint_name`` shape so
+    callers can route both backends through the same handler.
+    """
+    text = str(exc).lower()
+    if "foreign key" in text:
+        return "mcp_installations_connection_name_fkey"
+    if "unique" in text:
+        return "mcp_installations_catalog_entry_id_key"
+    if "not null" in text:
+        return "mcp_installations_not_null"
+    if "check" in text:
+        return "mcp_installations_check"
+    return "<unknown>"
+
+
 class SQLiteMcpInstallationRepository:
     """SQLite implementation of :class:`McpInstallationRepository`."""
 
@@ -43,7 +64,19 @@ class SQLiteMcpInstallationRepository:
         self._write_context = write_context
 
     async def save(self, installation: McpInstallation) -> None:
-        """Upsert an installation row (idempotent on catalog_entry_id)."""
+        """Upsert an installation row (idempotent on catalog_entry_id).
+
+        Raises:
+            ConstraintViolationError: When the upsert violates a
+                database constraint, in practice the foreign key on
+                ``connection_name`` when the supplied connection has
+                not been persisted. Surfaces the constraint identity
+                so the central exception handler can return a
+                structured 4xx envelope. Parity with the Postgres
+                backend, which extracts ``exc.diag.constraint_name``.
+            QueryError: For all other ``sqlite3`` / ``aiosqlite``
+                failures (lock timeouts, disk I/O errors, etc.).
+        """
         installed_at_iso = format_iso_utc(installation.installed_at)
         async with self._write_context():
             try:
@@ -63,6 +96,29 @@ class SQLiteMcpInstallationRepository:
                     ),
                 )
                 await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                # SQLite does not expose constraint names; the error
+                # message text is the only identity available.
+                # Surface the literal "FOREIGN KEY constraint failed"
+                # so callers can route the same way as Postgres'
+                # named foreign-key constraint.
+                constraint = _classify_sqlite_constraint(exc)
+                logger.warning(
+                    PERSISTENCE_MCP_INSTALLATION_SAVE_FAILED,
+                    catalog_entry_id=installation.catalog_entry_id,
+                    connection_name=installation.connection_name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    constraint=constraint,
+                    backend="sqlite",
+                )
+                msg = (
+                    f"Constraint violation saving MCP installation "
+                    f"{installation.catalog_entry_id!r}"
+                )
+                raise ConstraintViolationError(msg, constraint=constraint) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()

@@ -35,6 +35,7 @@ from synthorg.observability.events.integrations import (
     CONNECTION_UPDATE_FAILED,
     CONNECTION_UPDATED,
     CONNECTION_VALIDATION_FAILED,
+    HEALTH_STATUS_TRANSITIONED,
     OAUTH_TOKEN_EXCHANGE_FAILED,
     OAUTH_TOKEN_EXCHANGED,
     SECRET_DELETE_FAILED,
@@ -98,16 +99,16 @@ class ConnectionCatalog:
         Used by the API lifecycle hook to graduate the catalog from the
         startup-window ``InMemoryConnectionRepository`` stub (installed
         before ``persistence.connect()`` succeeds) to the real
-        backend-bound repository once persistence is live. Holding
-        ``_cache_lock`` for the swap keeps a concurrent
-        ``_ensure_cache`` from observing a half-swapped state where
-        ``self._repo`` is the new backend but ``self._cache`` still
-        carries entries from the in-memory stub.
+        backend-bound repository once persistence is live.
 
         Args:
             repository: The newly-available persistence-backed
                 ``ConnectionRepository`` to take over from this point on.
         """
+        # Hold ``_cache_lock`` for the swap so a concurrent
+        # ``_ensure_cache`` cannot observe a half-swapped state where
+        # ``self._repo`` is already the new backend but ``self._cache``
+        # still carries entries seeded from the in-memory stub.
         async with self._cache_lock:
             self._repo = repository
             self._cache = {}
@@ -556,6 +557,16 @@ class ConnectionCatalog:
             )
             await self._repo.save(updated)
             self._invalidate_cache()
+            # Log the transition only when it actually changed, so a
+            # quiet health prober cycling the same status does not
+            # flood the log stream.
+            if existing.health_status != status:
+                logger.info(
+                    HEALTH_STATUS_TRANSITIONED,
+                    connection_name=name,
+                    previous_status=existing.health_status.value,
+                    new_status=status.value,
+                )
             return updated
 
     async def delete(self, name: str) -> None:

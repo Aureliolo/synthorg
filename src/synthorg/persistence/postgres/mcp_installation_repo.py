@@ -63,13 +63,11 @@ class PostgresMcpInstallationRepository:
 
         Raises:
             ConstraintViolationError: When the upsert violates a
-                database constraint -- in practice the
-                ``mcp_installations_connection_name_fkey`` foreign key
-                on ``connection_name``, raised when the supplied
-                connection has not been persisted. Surfaces the
-                Postgres constraint name so the central exception
-                handler can return a 400 with a structured payload
-                rather than a 500.
+                database constraint, in practice the foreign key on
+                ``connection_name`` when the supplied connection has
+                not been persisted. Surfaces the constraint identity
+                so the central exception handler can return a
+                structured 4xx envelope.
         """
         installed_at = normalize_utc(installation.installed_at)
         try:

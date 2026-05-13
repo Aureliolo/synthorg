@@ -14,10 +14,11 @@ interface SyncModelsConfirmDialogProps {
 }
 
 /**
- * Confirmation modal for the bulk model sync flow.  Defaults to
- * ``replace_existing=true``; the operator can opt into append-only
- * merge via a toggle.  After a successful sync, the result banner
- * shows the diff (added / removed / updated) until dismissed.
+ * Confirmation modal for the bulk model sync flow. Defaults to
+ * ``replace_existing=false`` (non-destructive append-only merge);
+ * the operator can opt into the destructive replace mode via a
+ * toggle. After a successful sync, the result banner shows the
+ * diff (added / removed / updated) until dismissed.
  */
 export function SyncModelsConfirmDialog({
   providerName,
