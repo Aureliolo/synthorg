@@ -88,7 +88,7 @@ class HumanEscalationResolver:
             configured backend still produce an auditable row.
         processor: Converts an operator decision into a
             :class:`ConflictResolution`.  Defaults to
-            :class:`HumanDecisionProcessor` in ``"winner"`` mode.
+            :class:`WinnerOnlyDecisionProcessor`.
         registry: In-process map of awaited Futures.  Decisions
             arriving via the REST endpoint resolve Futures registered
             here to wake the awaiting resolver coroutine.  Defaults
@@ -126,14 +126,12 @@ class HumanEscalationResolver:
             InMemoryEscalationStore,
         )
         from synthorg.communication.conflict_resolution.escalation.processors import (  # noqa: PLC0415
-            HumanDecisionProcessor,
+            WinnerOnlyDecisionProcessor,
         )
 
         self._store: EscalationQueueStore = store or InMemoryEscalationStore()
         self._processor: DecisionProcessor = (
-            processor
-            if processor is not None
-            else HumanDecisionProcessor(mode="winner")
+            processor if processor is not None else WinnerOnlyDecisionProcessor()
         )
         self._registry: PendingFuturesRegistry = registry or PendingFuturesRegistry()
         self._notifier: NotificationDispatcher | None = notifier

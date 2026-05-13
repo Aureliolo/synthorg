@@ -178,11 +178,13 @@ class DecisionProcessor(Protocol):
     Concrete implementations differ in which decision shapes they
     accept:
 
-    - :class:`HumanDecisionProcessor` (the bundled implementation)
-      carries a ``mode`` discriminator: ``"winner"`` accepts only
-      :class:`WinnerDecision` (safest surface, the default); ``"hybrid"``
-      additionally accepts :class:`RejectDecision` and produces a
-      ``REJECTED_BY_HUMAN`` outcome.
+    - :class:`WinnerOnlyDecisionProcessor` (safest surface, the
+      default) accepts only :class:`WinnerDecision`. Receiving a
+      :class:`RejectDecision` raises
+      :class:`EscalationDecisionShapeError`.
+    - :class:`HybridDecisionProcessor` additionally accepts
+      :class:`RejectDecision` and produces a ``REJECTED_BY_HUMAN``
+      outcome so callers can fall back to a different strategy.
     """
 
     def process(
@@ -195,9 +197,10 @@ class DecisionProcessor(Protocol):
         """Build a :class:`ConflictResolution` from a decision.
 
         Raises:
-            ValueError: the decision shape is not accepted by this
-                strategy, or the decision references an agent outside
-                the conflict.
+            EscalationDecisionShapeError: the decision shape is not
+                accepted by this strategy.
+            EscalationDecisionAgentError: the decision references an
+                agent outside the conflict.
         """
         ...
 

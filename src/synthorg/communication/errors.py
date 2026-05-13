@@ -136,3 +136,22 @@ class ConflictStrategyError(ConflictResolutionError):
 
 class ConflictHierarchyError(ConflictResolutionError):
     """No common manager found for cross-department conflict."""
+
+
+class EscalationDecisionError(ConflictResolutionError):
+    """A human-supplied escalation decision cannot be applied.
+
+    Concrete subclasses distinguish the failure mode: the decision shape
+    is not accepted by the active processor variant
+    (:class:`EscalationDecisionShapeError`) or the decision references
+    an agent outside the conflict
+    (:class:`EscalationDecisionAgentError`).
+    """
+
+
+class EscalationDecisionShapeError(EscalationDecisionError):
+    """The decision variant is not accepted by the active processor."""
+
+
+class EscalationDecisionAgentError(EscalationDecisionError):
+    """A winner decision references an agent outside the conflict."""

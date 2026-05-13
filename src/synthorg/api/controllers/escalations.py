@@ -27,6 +27,7 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationDecision,
     EscalationStatus,
 )
+from synthorg.communication.errors import EscalationDecisionError
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
     ConflictError,
@@ -269,7 +270,7 @@ class EscalationsController(Controller):
         # 422 before the store transition.
         try:
             processor.process(row.conflict, data.decision, decided_by=operator)
-        except ValueError as exc:
+        except EscalationDecisionError as exc:
             logger.warning(
                 CONFLICT_ESCALATION_RESOLVED,
                 escalation_id=escalation_id,
