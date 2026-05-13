@@ -95,6 +95,7 @@ class RecordingMixin:
     _coordination_efficiency: Gauge
     _coordination_overhead_percent: Gauge
     _escalation_queue_depth: Gauge
+    _security_audit_log_fill_ratio: Gauge
     _agent_identity_changes: PromCounter
     _workflow_execution_duration: Histogram
     _client_disconnects: PromCounter
@@ -366,6 +367,23 @@ class RecordingMixin:
         self._audit_chain_appends.labels(status=status).inc()
         self._audit_chain_depth.set(chain_depth)
         self._audit_chain_last_append_ts.set(timestamp_unix)
+
+    def record_security_audit_fill_ratio(self, *, ratio: float) -> None:
+        """Set the security audit log occupancy fraction.
+
+        Args:
+            ratio: ``len(_entries) / _max_entries`` of the
+                ``AuditLog``; bounded in ``[0.0, 1.0]`` so a value
+                near ``1.0`` signals imminent eviction.
+
+        Raises:
+            ValueError: If *ratio* is non-finite or outside [0.0, 1.0].
+        """
+        require_finite("record_security_audit_fill_ratio: ratio", ratio)
+        if not 0.0 <= ratio <= 1.0:
+            msg = f"ratio must be in [0.0, 1.0], got {ratio}"
+            raise ValueError(msg)
+        self._security_audit_log_fill_ratio.set(ratio)
 
     def record_otlp_export(
         self,

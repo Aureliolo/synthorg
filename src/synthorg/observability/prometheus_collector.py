@@ -265,6 +265,7 @@ class PrometheusCollector(RecordingMixin):
         self._otlp_export_batches = self._push.otlp_export_batches
         self._otlp_export_dropped = self._push.otlp_export_dropped
         self._escalation_queue_depth = self._push.escalation_queue_depth
+        self._security_audit_log_fill_ratio = self._push.security_audit_log_fill_ratio
         self._agent_identity_changes = self._push.agent_identity_changes
         self._workflow_execution_duration = self._push.workflow_execution_duration
         self._provider_errors = self._push.provider_errors
