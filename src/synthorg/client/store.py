@@ -78,10 +78,30 @@ class FeedbackStore:
     async def list_for_client(
         self,
         client_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[ClientFeedback, ...]:
-        """Return all feedback entries recorded for a client."""
+        """Return feedback entries recorded for a client, optionally paginated.
+
+        ``limit=None`` (the default) preserves the historical "return
+        everything" contract for aggregation callers (e.g.
+        ``get_satisfaction_history`` computes acceptance rate over the
+        entire feedback set). When ``limit`` is set, ``offset`` is
+        honoured and the snapshot is sliced in insertion order.
+        """
         async with self._lock:
-            return tuple(self._by_client.get(client_id, ()))
+            snapshot = tuple(self._by_client.get(client_id, ()))
+        if limit is None and offset == 0:
+            return snapshot
+        offset = max(0, offset)
+        end = None if limit is None else offset + max(0, limit)
+        return snapshot[offset:end]
+
+    async def count_for_client(self, client_id: str) -> int:
+        """Return the count of feedback entries recorded for ``client_id``."""
+        async with self._lock:
+            return len(self._by_client.get(client_id, ()))
 
     async def clear(self, client_id: str) -> None:
         """Remove all feedback entries for a client (no-op if absent)."""
@@ -128,10 +148,30 @@ class RequestStore:
                 raise KeyError(msg)
             return self._requests[request_id]
 
-    async def list_all(self) -> tuple[ClientRequest, ...]:
-        """Return a snapshot of all stored requests."""
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[ClientRequest, ...]:
+        """Return a snapshot of stored requests, optionally paginated.
+
+        ``limit=None`` (the default) preserves the historical "return
+        everything" contract. When ``limit`` is set, ``offset`` is
+        honoured and the snapshot is sliced in insertion order.
+        """
         async with self._lock:
-            return tuple(self._requests.values())
+            snapshot = tuple(self._requests.values())
+        if limit is None and offset == 0:
+            return snapshot
+        offset = max(0, offset)
+        end = None if limit is None else offset + max(0, limit)
+        return snapshot[offset:end]
+
+    async def count_all(self) -> int:
+        """Return the count of stored requests."""
+        async with self._lock:
+            return len(self._requests)
 
     async def delete(self, request_id: str) -> None:
         """Remove a request by id (no-op if absent)."""
@@ -231,10 +271,30 @@ class SimulationStore:
                 raise KeyError(msg)
             return self._runs[simulation_id]
 
-    async def list_all(self) -> tuple[SimulationRecord, ...]:
-        """Return a snapshot of all records."""
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[SimulationRecord, ...]:
+        """Return a snapshot of records, optionally paginated.
+
+        ``limit=None`` (the default) preserves the historical "return
+        everything" contract. When ``limit`` is set, ``offset`` is
+        honoured and the snapshot is sliced in insertion order.
+        """
         async with self._lock:
-            return tuple(self._runs.values())
+            snapshot = tuple(self._runs.values())
+        if limit is None and offset == 0:
+            return snapshot
+        offset = max(0, offset)
+        end = None if limit is None else offset + max(0, limit)
+        return snapshot[offset:end]
+
+    async def count_all(self) -> int:
+        """Return the count of simulation records."""
+        async with self._lock:
+            return len(self._runs)
 
     async def update_status(
         self,

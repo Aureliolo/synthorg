@@ -383,19 +383,58 @@ class ConnectionCatalog:
             raise ConnectionNotFoundError(msg)
         return conn
 
-    async def list_all(self) -> tuple[Connection, ...]:
-        """List all connections."""
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Connection, ...]:
+        """List all connections, optionally paginated.
+
+        ``limit=None`` (the default) preserves the unbounded behaviour
+        existing callers rely on; when ``limit`` is set, ``offset`` is
+        honoured and the cache snapshot is sliced consistently with
+        the connection's natural insertion order in the cache.
+        """
         await self._ensure_cache()
-        return tuple(self._cache.values())
+        snapshot = tuple(self._cache.values())
+        if limit is None and offset == 0:
+            return snapshot
+        offset = max(0, offset)
+        end = None if limit is None else offset + max(0, limit)
+        return snapshot[offset:end]
 
     async def list_by_type(
         self,
         connection_type: ConnectionType,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List connections of a specific type."""
+        """List connections of a specific type, optionally paginated.
+
+        See :meth:`list_all` for the limit/offset contract.
+        """
         await self._ensure_cache()
-        return tuple(
+        filtered = tuple(
             c for c in self._cache.values() if c.connection_type == connection_type
+        )
+        if limit is None and offset == 0:
+            return filtered
+        offset = max(0, offset)
+        end = None if limit is None else offset + max(0, limit)
+        return filtered[offset:end]
+
+    async def count_all(self) -> int:
+        """Return the unfiltered count of cached connections."""
+        await self._ensure_cache()
+        return len(self._cache)
+
+    async def count_by_type(self, connection_type: ConnectionType) -> int:
+        """Return the count of cached connections of ``connection_type``."""
+        await self._ensure_cache()
+        return sum(
+            1 for c in self._cache.values() if c.connection_type == connection_type
         )
 
     def _build_update_candidate(

@@ -114,15 +114,24 @@ class HybridPromptRetrievalBackend:
             logger.warning(ORG_MEMORY_NOT_CONNECTED, backend="hybrid_prompt_retrieval")
             raise OrgMemoryConnectionError(msg)
 
-    async def list_policies(self) -> tuple[OrgFact, ...]:
-        """Return all core policies -- static config *and* dynamically written.
+    async def list_policies(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[OrgFact, ...]:
+        """Return core policies, optionally paginated.
 
         Static policies (from ``core_policies`` config) are returned
-        first as synthetic ``OrgFact`` objects.  Dynamically written
+        first as synthetic ``OrgFact`` objects. Dynamically written
         ``CORE_POLICY`` facts stored in the extended store follow.
+        When ``limit`` is None the full set is returned (back-compat
+        with pre-pagination callers); otherwise the combined sequence
+        is sliced by ``offset`` and ``limit``.
 
         Returns:
-            Core policy facts with category ``CORE_POLICY``.
+            Core policy facts with category ``CORE_POLICY`` (full or
+            sliced view).
         """
         self._require_connected()
         now = datetime.now(UTC)
@@ -139,7 +148,17 @@ class HybridPromptRetrievalBackend:
         dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
         facts = static + dynamic
         logger.debug(ORG_MEMORY_POLICIES_LISTED, count=len(facts))
-        return facts
+        if limit is None and offset == 0:
+            return facts
+        offset = max(0, offset)
+        end = None if limit is None else offset + max(0, limit)
+        return facts[offset:end]
+
+    async def count_policies(self) -> int:
+        """Return the unfiltered count of core policy facts."""
+        self._require_connected()
+        dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
+        return len(self._core_policies) + len(dynamic)
 
     async def query(self, query: OrgMemoryQuery) -> tuple[OrgFact, ...]:
         """Query facts from the extended store.

@@ -98,13 +98,33 @@ class OrgMemoryBackend(Protocol):
         """
         ...
 
-    async def list_policies(self) -> tuple[OrgFact, ...]:
-        """List all core policy facts.
+    async def list_policies(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[OrgFact, ...]:
+        """List core policy facts, optionally paginated.
+
+        ``limit=None`` (the default) preserves the historical
+        "return everything" contract for callers that pre-date
+        pagination. When ``limit`` is set, the implementation MUST
+        honour ``offset`` and slice the policy snapshot consistently
+        with its intrinsic ordering (static config first, then
+        dynamically written facts, in the reference impl).
 
         Returns:
-            Tuple of core policy facts.
+            Tuple of core policy facts (full or sliced view).
 
         Raises:
             OrgMemoryConnectionError: If not connected.
+        """
+        ...
+
+    async def count_policies(self) -> int:
+        """Return the unfiltered count of core policy facts.
+
+        Companion to :meth:`list_policies` for paginated controllers
+        that need a total alongside the page.
         """
         ...
