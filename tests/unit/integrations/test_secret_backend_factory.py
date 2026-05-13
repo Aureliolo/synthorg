@@ -143,8 +143,8 @@ class TestResolveSecretBackendConfig:
             sqlite_db_path=None,
         )
         assert selection.config.backend_type == "encrypted_postgres"
-        assert "promoted" in selection.reason
-        assert selection.level == "warning"
+        assert "aligned" in selection.reason
+        assert selection.level == "info"
 
     def test_default_sqlite_in_postgres_mode_no_pool_downgrades(
         self,
@@ -283,4 +283,4 @@ class TestResolveSecretBackendConfig:
         )
         assert selection.config.backend_type == "encrypted_postgres"
         assert selection.config.encrypted_postgres.master_key_env == "MY_CUSTOM_KEY"
-        assert selection.level == "warning"
+        assert selection.level == "info"

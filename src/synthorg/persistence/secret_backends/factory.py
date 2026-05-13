@@ -68,13 +68,19 @@ def _resolve_backend_type(
     resolved = config.backend_type
     if resolved == "encrypted_sqlite" and postgres_mode:
         if pg_pool_available:
+            # Benign auto-correction: the config default
+            # ``encrypted_sqlite`` is automatically aligned to
+            # ``encrypted_postgres`` so a Postgres deployment with the
+            # default secret backend "just works". Logged at INFO
+            # because it is the expected behaviour for the default
+            # config, not an operator misconfiguration to escalate.
             return (
                 "encrypted_postgres",
                 (
-                    "default encrypted_sqlite promoted to encrypted_postgres "
+                    "default encrypted_sqlite aligned to encrypted_postgres "
                     "to match Postgres persistence"
                 ),
-                "warning",
+                "info",
             )
         return (
             "env_var",
