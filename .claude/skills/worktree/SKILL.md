@@ -113,10 +113,10 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    - **Stash**: `git stash push -m "worktree-setup-autostash"` then `git checkout main`
    - **Abort**: stop setup
 
-   Then fetch and fast-forward (refuses to merge if local `main` diverged, surfacing the divergence loudly instead of silently merging):
+   Then fetch and fast-forward (refuses to merge if local `main` diverged, surfacing the divergence loudly instead of silently merging). Pass `origin main` explicitly rather than relying on the current branch's upstream:
 
    ```bash
-   git fetch origin main && git pull --ff-only
+   git fetch origin main && git pull --ff-only origin main
    ```
 
    d. For each worktree definition, verify:
@@ -151,6 +151,23 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
    b. **Path A (helper present)**: one call per worktree.
 
+   Before building the command, re-validate the two interpolated values at the invocation site (defence in depth; the "Directory naming" and "Input validation (CRITICAL)" rules already cover this upstream, but agents may reach step 4 without having read them):
+
+   - `<slug>` must match `^[a-zA-Z0-9._-]+$`.
+   - `<type>` must match `^[a-z]+$` (lowercase prefix like `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`, `ci`).
+
+   If either fails validation, reject and abort the whole setup; do not interpolate into shell.
+
+   Probe for `pwsh` once before the per-worktree loop (skip if already done):
+
+   ```bash
+   command -v pwsh 2>&1 | grep -q . && echo pwsh-found || echo pwsh-missing
+   ```
+
+   `pwsh-missing` means PowerShell 7 isn't on PATH even though the `.ps1` is. Fall through to path B (inline) for every worktree rather than emitting broken commands.
+
+   When `pwsh-found`, invoke the helper per worktree:
+
    ```bash
    pwsh -NoProfile -Command "wt-synthorg -Name '<slug>' -BranchType '<type>' -NonInteractive -NoLaunch"
    ```
@@ -158,6 +175,8 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    `<slug>` is the bare derived slug (no `wt-` prefix), `<type>` is the branch type prefix (`feat`, `fix`, `refactor`, etc., as derived from issue labels or user input). The helper handles: dirty-tree guard, branch-base from `origin/main`, `.claude/*.local.*` copy, `uv sync`, `npm ci` (web), `go mod download` (cli). It does NOT cd or launch claude (because of `-NoLaunch`).
 
    Always pass `-NonInteractive -NoLaunch` regardless of any skill flags: the skill keeps full control over post-setup launching.
+
+   **Error handling:** if the `pwsh` command exits non-zero (helper aborted: dirty target dir conflict it could not auto-resolve, network failure during fetch, dep-sync failure, etc.), do not silently continue to the next worktree. Surface the failure to the user via AskUserQuestion with three options: (a) retry the helper, (b) fall back to path B (inline) for this worktree only, (c) abort the whole setup.
 
    Skip the rest of step 4 (c, d) for this worktree and continue to the next one. After all worktrees are created, continue to step 5.
 
@@ -295,7 +314,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 7. **Auto-launch tabs if running in Windows Terminal.** Skip this step entirely if the user passed `--no-launch` (see "Input formats"). Check `$WT_SESSION` and `wt.exe` availability:
 
    ```bash
-   test -n "$WT_SESSION" && which wt.exe 2>&1 | grep -q wt.exe && echo "auto-launch-ok" || echo "manual"
+   test -n "$WT_SESSION" && which wt.exe 2>&1 | grep -q "wt\.exe$" && echo "auto-launch-ok" || echo "manual"
    ```
 
    If `auto-launch-ok`, spawn one tab per worktree sequentially (same invocation as the `launch` subcommand, no trailing command so the user's default profile loads normally):
@@ -361,7 +380,7 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
 
    ```bash
    test -n "$WT_SESSION" && echo "in-wt" || echo "not-in-wt"
-   which wt.exe 2>&1 | grep -q wt.exe || echo "wt-missing"
+   which wt.exe 2>&1 | grep -q "wt\.exe$" || echo "wt-missing"
    ```
 
    - If `wt.exe` is missing: report "Windows Terminal not installed or not on PATH. Cannot launch." and stop.
