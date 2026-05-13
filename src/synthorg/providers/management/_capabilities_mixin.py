@@ -52,6 +52,44 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _reject_destructive_empty_discovery(
+    *,
+    name: str,
+    request: SyncModelsRequest,
+    discovered: tuple[ProviderModelConfig, ...],
+    pre_discover: ProviderConfig,
+) -> None:
+    """Refuse a replace-mode sync that would wipe every persisted model.
+
+    An empty discovery paired with ``replace_existing=True`` used to
+    silently delete every model when discovery hit a 404 / timeout /
+    wrong URL. The safe fallback is ``replace_existing=False`` (append-
+    only); it adds nothing when discovery is empty, so the operator
+    can run it freely while debugging the discovery endpoint.
+    """
+    if not request.replace_existing or discovered:
+        return
+    existing_count = len(pre_discover.models)
+    if not existing_count:
+        return
+    msg = (
+        f"Sync would delete all {existing_count} persisted "
+        f"model(s) for provider {name!r} because discovery "
+        f"returned no models; refusing destructive replace. "
+        f"Re-check the provider URL or retry with "
+        f"``replace_existing=false``."
+    )
+    logger.warning(
+        PROVIDER_VALIDATION_FAILED,
+        provider=name,
+        error=msg,
+        discovered_count=0,
+        existing_count=existing_count,
+        replace_existing=True,
+    )
+    raise ProviderValidationError(msg)
+
+
 # Narrows the mixin's self-type to the 3 attrs + 3 methods consumed;
 # host: ProviderManagementService (composed via MRO in service.py).
 class _ServiceProtocol(Protocol):
@@ -213,6 +251,13 @@ class ProviderCapabilitiesMixin:
         discovered = await self.discover_models_for_provider(
             name,
             preset_hint=request.preset_hint,
+        )
+
+        _reject_destructive_empty_discovery(
+            name=name,
+            request=request,
+            discovered=discovered,
+            pre_discover=pre_discover,
         )
 
         async with self._lock:

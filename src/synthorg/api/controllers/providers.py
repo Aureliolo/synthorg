@@ -410,9 +410,11 @@ class ProviderController(Controller):
         # Strip preset_name from external requests -- only
         # create_from_preset may set it (capability flag injection).
         safe_data = data.model_copy(update={"preset_name": None})
+        actor = audit_actor_from_context()
         try:
             config = await app_state.provider_management.create_provider(
                 safe_data,
+                actor=actor,
             )
         except ProviderAlreadyExistsError as exc:
             logger.warning(
@@ -461,9 +463,11 @@ class ProviderController(Controller):
                 validation fails.
         """
         app_state: AppState = state.app_state
+        actor = audit_actor_from_context()
         try:
             config = await app_state.provider_management.create_from_preset(
                 data,
+                actor=actor,
             )
         except ProviderAlreadyExistsError as exc:
             logger.warning(
@@ -510,10 +514,12 @@ class ProviderController(Controller):
             ValidationError: If the update fails validation.
         """
         app_state: AppState = state.app_state
+        actor = audit_actor_from_context()
         try:
             config = await app_state.provider_management.update_provider(
                 name,
                 data,
+                actor=actor,
             )
         except ProviderNotFoundError as exc:
             logger.warning(
@@ -555,8 +561,9 @@ class ProviderController(Controller):
             NotFoundError: If the provider does not exist.
         """
         app_state: AppState = state.app_state
+        actor = audit_actor_from_context()
         try:
-            await app_state.provider_management.delete_provider(name)
+            await app_state.provider_management.delete_provider(name, actor=actor)
         except ProviderNotFoundError as exc:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -874,8 +881,13 @@ class ProviderController(Controller):
             model_id: Model identifier (may contain colons).
         """
         app_state: AppState = state.app_state
+        actor = audit_actor_from_context()
         try:
-            await app_state.provider_management.delete_model(name, model_id)
+            await app_state.provider_management.delete_model(
+                name,
+                model_id,
+                actor=actor,
+            )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
             logger.warning(
@@ -946,11 +958,13 @@ class ProviderController(Controller):
             ValidationError: If the launch parameters are unsupported.
         """
         app_state: AppState = state.app_state
+        actor = audit_actor_from_context()
         try:
             updated = await app_state.provider_management.update_model_config(
                 name,
                 model_id,
                 data.local_params,
+                actor=actor,
             )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"

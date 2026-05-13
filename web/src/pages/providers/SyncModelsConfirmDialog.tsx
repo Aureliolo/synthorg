@@ -27,7 +27,13 @@ export function SyncModelsConfirmDialog({
 }: SyncModelsConfirmDialogProps) {
   const syncProviderModels = useProvidersStore((s) => s.syncProviderModels)
 
-  const [replaceExisting, setReplaceExisting] = useState(true)
+  // Default to the non-destructive append-only mode. The destructive
+  // ``replace_existing=true`` path can delete every persisted model
+  // if discovery returns an empty set (wrong URL / network blip /
+  // provider outage); the backend now refuses that case explicitly,
+  // but the safe default for the click path is still merge-not-replace
+  // so a single mis-clicked button cannot lose data.
+  const [replaceExisting, setReplaceExisting] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<SyncModelsResponse | null>(null)
 
@@ -42,7 +48,7 @@ export function SyncModelsConfirmDialog({
   }, [open])
 
   const reset = (): void => {
-    setReplaceExisting(true)
+    setReplaceExisting(false)
     setSubmitting(false)
     setResult(null)
   }
