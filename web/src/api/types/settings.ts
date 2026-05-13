@@ -43,6 +43,20 @@ export interface SettingDefinition {
   level: SettingLevel
   sensitive: boolean
   restart_required: boolean
+  /**
+   * Whether the value is resolved only from env / YAML at startup and
+   * cannot be mutated through ``/settings`` afterwards. Implies
+   * ``restart_required``. The dashboard disables the input for these
+   * fields and surfaces a notice directing operators to configure them
+   * via environment variable or YAML before launch.
+   */
+  read_only_post_init: boolean
+  /**
+   * Override for the auto-derived ``SYNTHORG_{NAMESPACE}_{KEY}`` env
+   * var name (used when an established operator-facing env var name
+   * predates the auto-derivation rule, e.g. ``SYNTHORG_LOG_DIR``).
+   */
+  env_var_override: string | null
   enum_values: readonly string[]
   validator_pattern: string | null
   min_value: number | null

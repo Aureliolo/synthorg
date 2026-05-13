@@ -65,7 +65,9 @@ export function SettingRow({
   }, [flash, triggerFlash])
   const displayValue = dirtyValue ?? entry.value
   const isEnvLocked = source === 'env'
-  const isDisabled = isEnvLocked || saving || controllerDisabled === true
+  const isReadOnlyPostInit = definition.read_only_post_init
+  const isDisabled =
+    isEnvLocked || saving || controllerDisabled === true || isReadOnlyPostInit
   const isSecuritySensitive = SECURITY_SENSITIVE_SETTINGS.has(compositeKey)
 
   return (
@@ -91,6 +93,11 @@ export function SettingRow({
         <p className="text-xs text-text-secondary">{highlightText(definition.description, highlightQuery)}</p>
         {isEnvLocked && (
           <p className="text-[10px] text-warning">Value set by environment variable (read-only)</p>
+        )}
+        {isReadOnlyPostInit && !isEnvLocked && (
+          <p className="text-[10px] text-warning">
+            Read-only after startup. Configure via environment variable or YAML before launch.
+          </p>
         )}
         {isSecuritySensitive && (
           <p className="text-[10px] text-danger">
