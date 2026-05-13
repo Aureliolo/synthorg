@@ -32,16 +32,22 @@ export interface DetailDataBase {
 export function useDetailData<T>(config: DetailDataConfig<T>): T & DetailDataBase {
   const { id, fetchDetail, clearDetail, channels, selectors } = config
 
+  // Detail teardown / fast-path inactive state. Polling owns the initial
+  // fetch (``polling.start()`` runs the function immediately, then on its
+  // interval); a separate fetchDetail call here would race the polling
+  // tick on the same store token and the loser's "Project not found"
+  // result would land in state, surfacing as a flash of the
+  // not-found banner on every navigation. Keep this effect to the
+  // teardown and the no-id reset path only.
   useEffect(() => {
     if (!id) {
       clearDetail()
       return
     }
-    fetchDetail(id)
     return () => {
       clearDetail()
     }
-  }, [id, fetchDetail, clearDetail])
+  }, [id, clearDetail])
 
   const pollFn = useCallback(async () => {
     if (!id) return
