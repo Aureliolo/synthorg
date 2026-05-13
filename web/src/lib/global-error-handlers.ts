@@ -4,6 +4,32 @@ import { useToastStore } from '@/stores/toast'
 
 const log = createLogger('global-error')
 
+const TOAST_TITLE = 'Unexpected client error'
+
+// Patterns the W3C / browsers fire as warnings that are NOT actionable
+// failures. ResizeObserver loop is benign per the spec: it reports that
+// a callback mutated layout, triggering another resize before the next
+// paint, and is the browser's way of asking the page to defer the
+// follow-up resize, not a crash. Hydration / chunk-load patterns are
+// the React + Vite equivalents: extremely common in dev, recoverable
+// by a reload, and not worth waking the operator over.
+const BENIGN_ERROR_PATTERNS: readonly RegExp[] = [
+  /^ResizeObserver loop /,
+  /^Hydration failed because /,
+  /^Text content does not match server-rendered HTML/,
+  /^Hydration completed but contains mismatches/,
+  /Loading chunk \d+ failed/,
+  /Failed to fetch dynamically imported module/,
+]
+
+export function isBenignError(reason: unknown): boolean {
+  const msg = reason instanceof Error
+    ? reason.message
+    : typeof reason === 'string' ? reason : null
+  if (!msg) return false
+  return BENIGN_ERROR_PATTERNS.some((pattern) => pattern.test(msg))
+}
+
 /**
  * Install window-level handlers for unhandled async failures.
  *
@@ -16,10 +42,10 @@ const log = createLogger('global-error')
  * production. Same story for synchronous errors that bubble out of
  * `requestAnimationFrame` / `setTimeout` callbacks.
  *
- * The handlers log via the structured logger so observability
- * pipelines can sample them, and surface a low-noise toast in
- * production so operators see SOMETHING when an async path drops
- * without explicit error UX in the calling component.
+ * Benign browser warnings (see `BENIGN_ERROR_PATTERNS`) are filtered
+ * to DEBUG so they do not toast or pollute the error sink. Everything
+ * else logs via the structured logger and surfaces a low-noise toast
+ * in production.
  */
 let installed = false
 
@@ -30,10 +56,17 @@ export function installGlobalErrorHandlers(): void {
 
   window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
     const reason = event.reason
+    const formatted = formatReason(reason)
+    if (isBenignError(reason)) {
+      log.debug('Benign promise rejection ignored', {
+        reason: sanitizeForLog(formatted),
+      })
+      return
+    }
     log.error('Unhandled promise rejection', {
-      reason: sanitizeForLog(formatReason(reason)),
+      reason: sanitizeForLog(formatted),
     })
-    notifyOperator('Background task failed', formatReason(reason))
+    notifyOperator(TOAST_TITLE, formatted)
   })
 
   window.addEventListener('error', (event: ErrorEvent) => {
@@ -45,6 +78,12 @@ export function installGlobalErrorHandlers(): void {
     const reason = event.error != null
       ? formatReason(event.error)
       : (event.message || 'Uncaught global error')
+    if (isBenignError(event.error ?? event.message)) {
+      log.debug('Benign global error ignored', {
+        reason: sanitizeForLog(reason),
+      })
+      return
+    }
     log.error('Uncaught global error', {
       message: sanitizeForLog(event.message),
       filename: sanitizeForLog(event.filename),
@@ -52,7 +91,7 @@ export function installGlobalErrorHandlers(): void {
       colno: event.colno,
       reason: sanitizeForLog(reason),
     })
-    notifyOperator('Background task failed', reason)
+    notifyOperator(TOAST_TITLE, reason)
   })
 }
 
