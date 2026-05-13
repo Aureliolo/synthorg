@@ -12,7 +12,7 @@ Callers that need form equivalence (e.g. ``café`` written as
 upstream.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 
@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 logger = get_logger(__name__)
+
+_BEARER_PARTS: Final[int] = 2
 
 
 def normalize_identifier(value: str) -> str:
@@ -156,3 +158,103 @@ def normalize_path(path: str | None) -> str:
         would otherwise be empty.
     """
     return (path or "").rstrip("/") or "/"
+
+
+def normalize_ascii_lowercase(value: str) -> str:
+    """Strip whitespace and lowercase using ASCII semantics.
+
+    Use this for protocol identifiers where the spec prescribes ASCII
+    case-insensitive equality: MIME media types (RFC 6838), boolean
+    string parses (``"true"``/``"false"``), Docker memory-format
+    suffixes, and ASCII-only dict-lookup keys.
+
+    Differs from :func:`normalize_identifier`, which applies
+    :py:meth:`str.casefold` for Unicode safety (German sharp-s,
+    Greek final-sigma). For any user-supplied identifier that may
+    contain non-ASCII characters, prefer :func:`normalize_identifier`.
+
+    Args:
+        value: The string to normalise.
+
+    Returns:
+        ``value.strip().lower()`` -- whitespace stripped, ASCII-lowercased.
+    """
+    return value.strip().lower()
+
+
+def normalize_ascii_lowercase_or_default(
+    value: str | None,
+    *,
+    default: str = "",
+) -> str:
+    """``normalize_ascii_lowercase((value or default))`` without the inline pattern.
+
+    Replaces the ``(value or default).strip().lower()`` idiom at NULL-coalescing
+    call sites (model-affinity lookup, TLS-flag parse, setup boolean parse,
+    classification-detector unit extraction).
+
+    Args:
+        value: Optional string, possibly ``None`` or empty.
+        default: Fallback used when ``value`` is falsy. Must already be in
+            the desired final form; it is *not* re-normalised.
+
+    Returns:
+        ``(value or default).strip().lower()``.
+    """
+    return (value or default).strip().lower()
+
+
+def extract_media_type(content_type_header: str) -> str:
+    """Extract the MIME media type from a ``Content-Type`` header.
+
+    ``"application/json; charset=utf-8"`` becomes ``"application/json"``.
+    Strips parameters after the first ``;``, then ASCII-lowercases.
+    Spec: RFC 6838 (media types are defined in the ASCII subset).
+
+    Args:
+        content_type_header: Raw header value, possibly with parameters.
+
+    Returns:
+        The lowercased media type alone, with surrounding whitespace
+        removed. Empty input yields an empty string.
+    """
+    return normalize_ascii_lowercase(content_type_header.split(";", 1)[0])
+
+
+def extract_bearer_token(header: str) -> str | None:
+    """Extract the token from a ``Bearer <token>`` Authorization header.
+
+    Case-insensitive on the scheme: ``"Bearer"``, ``"bearer"``,
+    ``"BEARER"`` all parse. Returns ``None`` if the header is
+    malformed (wrong number of fields), uses a non-bearer scheme,
+    or carries a blank token.
+
+    Args:
+        header: Raw ``Authorization`` header value.
+
+    Returns:
+        The token portion, or ``None`` when the header does not
+        match the ``Bearer <token>`` shape.
+    """
+    parts = header.split(None, 1)
+    if len(parts) != _BEARER_PARTS or not compare_ci(parts[0], "bearer"):
+        return None
+    token = parts[1].strip()
+    return token or None
+
+
+def collapse_whitespace_lowercase(value: str) -> str:
+    """Strip, ASCII-lowercase, and collapse internal whitespace runs to single spaces.
+
+    Replaces the ``" ".join(value.strip().lower().split())`` idiom at
+    command-pattern detection and prompt-normalisation sites where two
+    inputs that differ only in whitespace runs should compare equal.
+
+    Args:
+        value: The string to canonicalise.
+
+    Returns:
+        ``value`` with surrounding whitespace stripped, ASCII-lowercased,
+        and internal whitespace runs collapsed to single space characters.
+    """
+    return " ".join(value.strip().lower().split())
