@@ -6,29 +6,37 @@ const MS_PER_SECOND = 1000
  * Reactive seconds-elapsed-since-`startedAt` counter.
  *
  * Returns `null` when `startedAt` is `null`/`undefined` so callers can render
- * "Starting..." copy without a fallback elapsed value. Updates once per
- * second via `setInterval`; the timer is torn down on unmount and when
- * `startedAt` changes (e.g. a pipeline restart). Future timestamps clamp to
- * zero so a clock skew between client and server never produces a negative
- * elapsed display.
+ * "Starting..." copy without a fallback elapsed value. The hook keeps a
+ * `tick` counter that bumps once per second via `setInterval`; the elapsed
+ * value is derived fresh on every render from `startedAt` and the current
+ * wall clock, so changing `startedAt` mid-flight updates the display on
+ * the very next render rather than the next tick.
+ *
+ * Future timestamps clamp to zero so a clock skew between client and server
+ * never produces a negative elapsed display.
  *
  * For pure-formatting use, pair with `formatElapsed` from `@/utils/format`.
  */
 export function useElapsedSeconds(startedAt: Date | string | null | undefined): number | null {
-  const initial = computeElapsedSeconds(startedAt)
-  const [elapsed, setElapsed] = useState<number | null>(initial)
+  // The hook does not surface ``tick`` to callers; the value only
+  // exists to force a re-render once per second so the derived
+  // elapsed in the return path picks up the new wall-clock time.
+  // ESLint's ``@eslint-react/use-state`` rule wants destructuring,
+  // but the setter-only form is the right shape here and the
+  // narrow eslint-disable keeps the rule's signal everywhere else.
+  // eslint-disable-next-line @eslint-react/use-state
+  const tick = useState(0)
+  const setTick = tick[1]
 
   useEffect(() => {
-    const next = computeElapsedSeconds(startedAt)
-    setElapsed(next)
-    if (next === null) return
+    if (startedAt === null || startedAt === undefined) return
     const id = setInterval(() => {
-      setElapsed(computeElapsedSeconds(startedAt))
+      setTick((t) => t + 1)
     }, MS_PER_SECOND)
     return () => clearInterval(id)
-  }, [startedAt])
+  }, [startedAt, setTick])
 
-  return elapsed
+  return computeElapsedSeconds(startedAt)
 }
 
 function computeElapsedSeconds(startedAt: Date | string | null | undefined): number | null {

@@ -18,9 +18,11 @@ class FakeEventSource implements MockEventSource {
   onmessage: ((ev: MessageEvent) => void) | null = null
   onerror: ((ev: Event) => void) | null = null
 
-  constructor(url: string, _init?: EventSourceInit) {
+  constructor(url: string) {
     this.url = url
-    lastEventSource = this
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const ref: FakeEventSource = this
+    lastEventSource = ref
   }
 
   close(): void {

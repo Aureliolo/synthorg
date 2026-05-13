@@ -74,7 +74,7 @@ export function Collapsible({
           />
           {title}
         </span>
-        {summary && (
+        {summary !== undefined && summary !== null && summary !== false && (
           <span className="text-xs text-muted-foreground">{summary}</span>
         )}
       </button>
