@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Users } from 'lucide-react'
 import { Link } from 'react-router'
 
@@ -8,6 +8,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
+import { SelectField } from '@/components/ui/select-field'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useClientsData } from '@/hooks/useClientsData'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
@@ -58,13 +59,6 @@ export default function ClientListPage() {
       }
     })
   }, [clients, searchQuery, sortKey])
-
-  const handleSortChange = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
-      setSortKey(event.target.value as ClientSortKey)
-    },
-    [],
-  )
 
   // Hook before any early-return (rules-of-hooks): the loading
   // branch below short-circuits before the empty state matters.
@@ -125,21 +119,12 @@ export default function ClientListPage() {
             />
           }
           sort={
-            <label className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Sort by</span>
-              <select
-                value={sortKey}
-                onChange={handleSortChange}
-                aria-label="Sort clients"
-                className="rounded-md border border-border bg-background px-2 py-1 text-sm"
-              >
-                {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Sort by"
+              value={sortKey}
+              onChange={(value) => setSortKey(value as ClientSortKey)}
+              options={SORT_OPTIONS}
+            />
           }
         />
       )}

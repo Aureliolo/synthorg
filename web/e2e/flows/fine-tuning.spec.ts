@@ -36,28 +36,25 @@ test.describe('Fine-tuning pipeline critical flow', () => {
     )
   })
 
-  test('loads the fine-tuning page and processes a status event', async ({ page }) => {
+  test('loads the fine-tuning page and processes a stage_changed WS event', async ({ page }) => {
     await page.goto('/settings/memory/fine-tuning')
     await expect(page.locator('main')).toBeVisible()
-    const heading = page.getByRole('heading').first()
-    await expect(heading).toBeVisible()
+    // The initial API mock returns ``stage: 'training'``; the
+    // pipeline progress bar therefore shows "Stage: Training"
+    // before the WS event flips the store to ``evaluating``.
+    await expect(page.getByText('Stage: Training').first()).toBeVisible()
 
-    // ``fine_tuning.status_changed`` is intentionally NOT in
-    // ``WS_EVENT_TYPE_VALUES`` -- the wire enum carries the
-    // ``memory.fine_tune.*`` family instead. The harness still
-    // accepts the frame; this spec pins that the dispatch loop
-    // tolerates a foreign event type without unmounting the page.
-    // The fine-tune stage UI updates live behind the
-    // ``memory.fine_tune.stage_changed`` event covered by the unit
-    // store tests, not this E2E.
+    // Use the real wire event type ``memory.fine_tune.stage_changed``;
+    // the store handler in web/src/stores/fine-tuning.ts (~line 252)
+    // narrows on it and resets ``progress: 0`` while applying the
+    // new stage, which is observable as the progress-bar label flip.
     await injectEvent(page, {
-      event_type: 'fine_tuning.status_changed',
+      event_type: 'memory.fine_tune.stage_changed',
       channel: 'system',
       timestamp: '2026-05-13T10:05:00Z',
-      payload: { stage: 'evaluating', progress: 0.85, run_id: 'run-001' },
+      payload: { run_id: 'run-001', stage: 'evaluating', previous_stage: 'training' },
     })
 
-    await expect(page.locator('main')).toBeVisible()
-    await expect(heading).toBeVisible()
+    await expect(page.getByText('Stage: Evaluation').first()).toBeVisible()
   })
 })

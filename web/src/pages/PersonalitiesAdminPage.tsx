@@ -6,7 +6,7 @@
  * presets as a fixed list); the page is in place so the admin
  * surface can grow into a full CRUD view when bespoke presets ship.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -15,6 +15,7 @@ import { Pagination } from '@/components/ui/pagination'
 import { SectionCard } from '@/components/ui/section-card'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
+import { SelectField } from '@/components/ui/select-field'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { listPersonalityPresets } from '@/api/endpoints/setup'
 import type { PersonalityPresetInfo } from '@/api/types/setup'
@@ -98,13 +99,6 @@ export default function PersonalitiesAdminPage() {
     resetPage()
   }, [searchQuery, sortKey, resetPage])
 
-  const handleSortChange = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
-      setSortKey(event.target.value as PresetSortKey)
-    },
-    [],
-  )
-
   return (
     <div className="space-y-section-gap">
       <ListHeader title="Personality presets" count={totalItems} />
@@ -123,21 +117,12 @@ export default function PersonalitiesAdminPage() {
           />
         }
         sort={
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Sort by</span>
-            <select
-              value={sortKey}
-              onChange={handleSortChange}
-              aria-label="Sort personality presets"
-              className="rounded-md border border-border bg-background px-2 py-1 text-sm"
-            >
-              {SORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectField
+            label="Sort by"
+            value={sortKey}
+            onChange={(value) => setSortKey(value as PresetSortKey)}
+            options={SORT_OPTIONS}
+          />
         }
       />
 

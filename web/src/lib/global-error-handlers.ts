@@ -72,14 +72,11 @@ function notifyOperator(title: string, description: string): void {
   // production the only signal would otherwise be the structured
   // log, which most operators don't tail in real time.
   if (import.meta.env?.DEV) return
-  try {
-    useToastStore.getState().add({
-      variant: 'warning',
-      title,
-      description,
-    })
-  } catch {
-    // Toast store may not be hydrated yet during the earliest bootstrap
-    // failures; swallow so the handler itself never throws.
-  }
+  // The toast store owns mutation error UX (per the Zustand store
+  // mutation contract); callers do not wrap ``add`` in try/catch.
+  useToastStore.getState().add({
+    variant: 'warning',
+    title,
+    description,
+  })
 }

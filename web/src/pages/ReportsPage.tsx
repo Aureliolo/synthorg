@@ -11,6 +11,7 @@ import { ProgressIndicator } from '@/components/ui/progress-indicator'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
+import { SelectField } from '@/components/ui/select-field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToastStore } from '@/stores/toast'
 import { getLocale } from '@/utils/locale'
@@ -212,13 +213,6 @@ export default function ReportsPage() {
     })
   }, [periods, periodFilter, periodSort])
 
-  const handleSortChange = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
-      setPeriodSort(event.target.value as PeriodSortKey)
-    },
-    [],
-  )
-
   const trimmedPeriodFilter = periodFilter.trim()
   const periodEmptyStateProps = useEmptyStateProps({
     filteredCount: visiblePeriods?.length ?? 0,
@@ -263,21 +257,12 @@ export default function ReportsPage() {
             />
           }
           sort={
-            <label className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Sort by</span>
-              <select
-                value={periodSort}
-                onChange={handleSortChange}
-                aria-label="Sort report periods"
-                className="rounded-md border border-border bg-background px-2 py-1 text-sm"
-              >
-                {PERIOD_SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Sort by"
+              value={periodSort}
+              onChange={(value) => setPeriodSort(value as PeriodSortKey)}
+              options={PERIOD_SORT_OPTIONS}
+            />
           }
         />
       )}

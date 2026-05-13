@@ -17,6 +17,7 @@ export default function SubworkflowsPage() {
   const { filteredSubworkflows, loading, error } = useSubworkflowsData()
   const searchQuery = useSubworkflowsStore((s) => s.searchQuery)
   const setSearchQuery = useSubworkflowsStore((s) => s.setSearchQuery)
+  const subworkflowsTruncated = useSubworkflowsStore((s) => s.subworkflowsTruncated)
 
   const {
     page,
@@ -69,6 +70,14 @@ export default function SubworkflowsPage() {
 
       {error && (
         <ErrorBanner severity="error" title="Could not load subworkflows" description={error} />
+      )}
+
+      {subworkflowsTruncated && (
+        <ErrorBanner
+          severity="warning"
+          title="Subworkflow list truncated"
+          description={`Showing the first ${filteredSubworkflows.length} subworkflows. The registry has more results than the dashboard streams in one pass; refine the search to narrow the visible set.`}
+        />
       )}
 
       <div className="max-w-sm">

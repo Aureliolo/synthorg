@@ -29,7 +29,7 @@ test.describe('Settings management critical flow', () => {
     await expect(page.locator('main')).toBeVisible()
   })
 
-  test('reacts to a system.restart_required WS event without unmounting', async ({ page }) => {
+  test('tolerates an unknown WS event_type (system.restart_required) without unmounting', async ({ page }) => {
     await page.goto('/settings')
     await expect(page.locator('main')).toBeVisible()
     const heading = page.getByRole('heading').first()

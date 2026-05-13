@@ -136,7 +136,15 @@ function mapAgUiToWsEvent(sse: SseRawEvent): WsEvent | null {
     log.debug('Unmapped AG-UI event type discarded', sanitizeForLog(sse.type))
     return null
   }
-  const payload = sse.payload !== undefined && sse.payload !== null && typeof sse.payload === 'object'
+  // ``typeof null === 'object'`` is excluded above; the extra
+  // ``!Array.isArray`` guard rejects array payloads too so the
+  // outbound ``WsEvent.payload`` envelope stays a plain
+  // ``Record<string, unknown>`` and downstream channel handlers
+  // can rely on the shape.
+  const payload = sse.payload !== undefined
+    && sse.payload !== null
+    && typeof sse.payload === 'object'
+    && !Array.isArray(sse.payload)
     ? (sse.payload as Record<string, unknown>)
     : {}
   return {

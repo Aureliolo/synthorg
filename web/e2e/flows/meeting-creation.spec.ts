@@ -17,13 +17,22 @@ test.describe('Meeting creation critical flow', () => {
     await mockApiRoutes(page)
   })
 
-  test('loads the meetings list page and accepts WS-pushed updates', async ({ page }) => {
+  test('tolerates a malformed meeting.completed WS payload without unmounting', async ({ page }) => {
     await page.goto('/meetings')
     await expect(page).toHaveURL(/\/meetings/)
     await expect(page.locator('main')).toBeVisible()
     const heading = page.getByRole('heading').first()
     await expect(heading).toBeVisible()
 
+    // The meetings store handler expects ``payload.meeting`` to wrap
+    // the meeting record (see ``handleWsEvent`` in
+    // web/src/stores/meetings.ts ~line 498); this spec injects the
+    // older flat-payload shape so the store skips the upsert with a
+    // warning. The assertion below pins that the dispatch loop
+    // gracefully handles the malformed shape -- the page stays
+    // mounted instead of crashing. The wrapped-payload upsert path
+    // is covered by the meetings-store unit tests, which can mock
+    // the list-endpoint shape without an end-to-end browser round.
     const meeting = makeMeeting({ status: 'completed' })
     await injectEvent(page, {
       event_type: 'meeting.completed',
@@ -32,11 +41,6 @@ test.describe('Meeting creation critical flow', () => {
       payload: { ...meeting, meeting_id: meeting.id },
     })
 
-    // ``meeting.completed`` is a real ``WsEventType``; the store
-    // dispatch for it lives in the meetings store unit tests. This
-    // E2E pins the orchestrator: heading + ``main`` both survive
-    // the injected frame, so the dispatch loop didn't tear React
-    // down on the live event type.
     await expect(page.locator('main')).toBeVisible()
     await expect(heading).toBeVisible()
   })
