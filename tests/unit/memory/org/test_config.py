@@ -15,12 +15,7 @@ class TestExtendedStoreConfig:
 
     def test_defaults(self) -> None:
         config = ExtendedStoreConfig()
-        assert config.backend == "sqlite"
         assert config.max_retrieved_per_query == 5
-
-    def test_unknown_backend_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown extended store backend"):
-            ExtendedStoreConfig(backend="postgres")
 
     def test_max_retrieved_bounds(self) -> None:
         low = ExtendedStoreConfig(max_retrieved_per_query=1)
@@ -32,6 +27,10 @@ class TestExtendedStoreConfig:
         with pytest.raises(ValidationError):
             ExtendedStoreConfig(max_retrieved_per_query=51)
 
+    def test_unknown_field_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ExtendedStoreConfig(backend="postgres")  # type: ignore[call-arg]
+
 
 @pytest.mark.unit
 class TestOrgMemoryConfig:
@@ -39,16 +38,15 @@ class TestOrgMemoryConfig:
 
     def test_defaults(self) -> None:
         config = OrgMemoryConfig()
-        assert config.backend == "hybrid_prompt_retrieval"
         assert config.core_policies == ()
-        assert config.extended_store.backend == "sqlite"
-
-    def test_unknown_backend_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown org memory backend"):
-            OrgMemoryConfig(backend="unknown")
+        assert config.extended_store.max_retrieved_per_query == 5
 
     def test_core_policies(self) -> None:
         config = OrgMemoryConfig(
             core_policies=("All code must be reviewed", "No direct production access"),
         )
         assert len(config.core_policies) == 2
+
+    def test_unknown_field_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            OrgMemoryConfig(backend="unknown")  # type: ignore[call-arg]

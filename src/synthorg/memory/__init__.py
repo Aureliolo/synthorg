@@ -64,6 +64,7 @@ from synthorg.memory.models import (
     MemoryStoreRequest,
 )
 from synthorg.memory.org import (
+    HybridPromptRetrievalBackend,
     OrgFact,
     OrgFactAuthor,
     OrgFactStore,
@@ -72,7 +73,6 @@ from synthorg.memory.org import (
     OrgMemoryConfig,
     OrgMemoryError,
     OrgMemoryQuery,
-    create_org_memory_backend,
 )
 from synthorg.memory.procedural import (
     FailureAnalysisPayload,
@@ -117,6 +117,7 @@ __all__ = [
     # Procedural memory
     "FailureAnalysisPayload",
     "FusionStrategy",
+    "HybridPromptRetrievalBackend",
     "InjectionPoint",
     "InjectionStrategy",
     # Query reformulation
@@ -167,7 +168,6 @@ __all__ = [
     # Tool-based strategy
     "ToolBasedInjectionStrategy",
     "create_memory_backend",
-    "create_org_memory_backend",
     "fuse_ranked_lists",
     "materialize_skill_md",
     "propose_procedural_memory",
