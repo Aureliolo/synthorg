@@ -93,6 +93,21 @@ const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
     // reordered-required ``providers`` step sits incomplete, letting the
     // user slip past it. Snapping back to the first incomplete index keeps
     // the wizard monotonic forward only.
+    // E3 rehydration race fix: the ``agents`` slice fetches asynchronously
+    // on mount, so a payload that persisted ``stepsCompleted.agents = true``
+    // is racing the (re)fetch. If the rehydrated agents list is empty,
+    // re-mark the step as incomplete so the user is not silently allowed
+    // past the agents page with a stale "configured" badge and an empty
+    // list under it. The fetch fires from AgentsStep's mount effect; this
+    // guard keeps the gate honest while the network round-trip runs.
+    const rehydratedAgents = (merged as { agents?: readonly unknown[] }).agents
+    if (
+      stepOrder.includes('agents')
+      && stepsCompleted.agents
+      && (!Array.isArray(rehydratedAgents) || rehydratedAgents.length === 0)
+    ) {
+      stepsCompleted.agents = false
+    }
     const firstIncomplete = stepOrder.find((s: WizardStep) => !stepsCompleted[s])
     const currentStepIndex = stepOrder.indexOf(merged.currentStep)
     const firstIncompleteIndex =

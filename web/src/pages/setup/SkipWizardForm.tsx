@@ -86,10 +86,23 @@ export function SkipWizardForm() {
         />
 
         {error && (
-          <ErrorBanner variant="section" severity="error" title="Could not skip the wizard" description={error} />
+          <ErrorBanner
+            variant="section"
+            severity="error"
+            title="Could not skip the wizard"
+            description={error}
+            onRetry={() => {
+              setError(null)
+              void handleSubmit()
+            }}
+          />
         )}
 
-        <Button type="submit" disabled={loading} className="w-full">
+        <Button
+          type="submit"
+          disabled={loading || companyName.trim().length === 0}
+          className="w-full"
+        >
           {loading ? 'Setting up...' : 'Complete Setup'}
         </Button>
       </form>
