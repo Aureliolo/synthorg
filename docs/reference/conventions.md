@@ -566,6 +566,191 @@ transition. `enable_*` / `disable_*` are reserved for boolean feature
 flags read from settings, not for domain-entity lifecycle, so avoid
 those as synonyms for the lifecycle pair documented here.
 
+## 19. Factory module naming
+
+Pluggable subsystems expose their construction surface through a
+sibling `factory.py`: `backup/factory.py`, `client/factory.py`,
+`engine/evolution/factory.py`, `hr/scaling/factory.py`,
+`memory/factory.py`, `notifications/factory.py`, plus equivalents
+under `engine/coordination/`, `engine/identity/store/`,
+`engine/middleware/`, `integrations/webhooks/verifiers/`, and
+`memory/org/`.
+
+Narrow / module-private factories that build one specific collaborator
+(not the subsystem's full assembly graph) use a scoped suffix instead:
+`engine/coordination/dispatcher_factory.py`,
+`engine/checkpoint/callback_factory.py`,
+`engine/quality/verification_factory.py`,
+`api/rate_limits/inflight_factory.py`, `api/middleware_factory.py`.
+
+Rule: a subsystem's canonical assembly entry point is `factory.py`;
+collaborator-specific helpers within the same subsystem use
+`<scope>_factory.py`. The single `engine/agent_engine_factories.py`
+(plural) carries the top-level engine assembly surface and is the
+deliberate exception.
+
+## 20. Args-model file naming at the MCP boundary
+
+Args models for MCP tool / domain registrations live in
+`src/synthorg/meta/mcp/domains/*_args.py`. One file per logical domain
+(`_workflows_org_args.py`, `_workflows_engine_args.py`, etc.). Types
+inside follow `<Verb><Noun>Args` and extend `_ArgsBase` (which is
+itself the per-domain frozen + `extra="forbid"` base).
+
+See [mcp-handler-contract.md](mcp-handler-contract.md) for the full
+boundary contract; §20 documents the naming so a new domain lands its
+args in the canonical place.
+
+## 21. Subpackage `_shared.py` pattern
+
+Helpers needed by multiple siblings within a single subpackage and not
+intended for external import live in a leading-underscore
+`_shared.py` at the subpackage root. Current sites:
+`engine/assignment/_shared.py`, `hr/evaluation/extractors/_shared.py`,
+`memory/tools/_shared.py`, `persistence/sqlite/_shared.py`.
+
+The leading underscore signals "private to this subpackage"; callers
+outside the subpackage import from the subpackage's public surface
+(`engine/assignment/__init__.py` etc.) instead. Use this pattern any
+time three or more sibling files in a subpackage want the same
+helper.
+
+## 22. When a subpackage gets its own `errors.py`
+
+Section 6 covers the `<Domain><Condition>Error(DomainError)` hierarchy
+itself. The orthogonal question of *file location* follows this rule:
+a subpackage gets its own `errors.py` when it owns at least one
+bounded-context-specific error meaningful only inside that subpackage.
+The 30+ instances of `<package>/errors.py` under `src/synthorg/`
+(`backup/errors.py`, `budget/errors.py`,
+`communication/meeting/errors.py`, `engine/middleware/errors.py`,
+`hr/scaling/errors.py`, `memory/org/errors.py`, etc.) all follow this
+rule. Subpackages without their own bounded-context errors raise from
+the parent package's `errors.py` instead.
+
+## 23. Service vs Repository naming
+
+`XService` types hold orchestration / business logic: they depend on
+repositories, other services, and protocol-typed collaborators, and
+they live next to the domain they orchestrate (`backup/service.py`,
+`hr/training/service.py`).
+
+`XRepository` types implement the per-backend persistence protocol
+and live under `persistence/<backend>/` (one file per repository per
+backend, e.g. `persistence/sqlite/agent_identity_repository.py`,
+`persistence/postgres/agent_identity_repository.py`). The protocol
+definition (the `XProtocol` / `XRepository` Protocol class) lives
+under `persistence/<entity>_protocol.py` and is shared by both
+backends.
+
+## 24. `conftest.py` scoping
+
+`tests/conftest.py` (one file at the top level) hosts cross-suite
+fixtures: Hypothesis profile selection, the `FakeClock` factory, the
+repo-root resolver, the Windows `WindowsSelectorEventLoopPolicy`
+override. Per-domain `tests/<area>/conftest.py` files host fixtures
+local to that suite (controller fixtures under `tests/api/`,
+persistence-conformance fixtures under `tests/conformance/persistence/`,
+etc.).
+
+`tests/_shared/` is not a pytest suite and carries no `conftest.py`;
+it exposes the test-double ladder (`FakeClock`, `mock_of`,
+`SimpleNamespace`-bag helpers) as importable utilities consumed by
+fixtures declared elsewhere.
+
+## 25. Settings-definitions structure
+
+Every settings registration lives in
+`src/synthorg/settings/definitions/<area>.py` (`api.py`, `budget.py`,
+`security.py`, ...). Each module imports the per-area registrar
+(typically aliased `_r`) and calls `_r.register(SettingDefinition(...))`
+once per setting.
+
+New settings consumed by a service that starts at boot must also be
+wired into `src/synthorg/api/lifecycle_helpers.py` so the value is
+read from the resolver at startup. The
+`setting-to-startup-trace` gate enforces this trace; ghost-wired
+settings (defined but never read at startup) fail the gate.
+
+## 26. Boundary `parse_typed()` helper
+
+Every external dict ingestion at a system boundary (HTTP body, MCP
+tool args, WebSocket control frame, CLI argument bag) parses through
+`parse_typed()` (defined in `synthorg.api.boundary`). Direct
+`Model.model_validate(payload)` at a boundary is blocked by
+`scripts/check_boundary_typed.py`.
+
+`parse_typed()` provides a single error-translation path (Pydantic
+`ValidationError` becomes the appropriate `<Domain><Condition>Error`
+or RFC 9457 problem detail at the boundary), structured logging of
+the rejected payload shape, and uniform handling of `extra="forbid"`
+violations. Internal-only model construction (a service handing a
+known-shape dict to a repository) does not need `parse_typed()`.
+
+## 27. Module `__all__` usage
+
+Packages that re-export a public surface declare `__all__` to pin the
+exported names: the top-level `synthorg/__init__.py`, each
+subsystem's `<subsystem>/__init__.py`, `persistence/__init__.py`.
+Single-purpose internal modules do not declare `__all__`.
+
+Rule: declare `__all__` only when the module exists to re-export
+across a package boundary; do not declare it as a substitute for
+module-level access control inside a single implementation file. A
+new public re-export point should land in the matching
+`__init__.py`, not in a sibling implementation module.
+
+## 28. Controller method naming
+
+Litestar controllers in `src/synthorg/api/controllers/` name handler
+methods `<resource>_<action>` (`agents_list`, `agents_get`,
+`agents_create`, `agents_update`, `agents_delete`). Handlers are
+`async def`; each takes a typed `*Request` DTO from
+`synthorg.api.dto` or a domain-specific `dto_*.py`. Response shapes
+are typed `*Response` DTOs returned through the standard envelope
+wrapper.
+
+`<resource>` is the persistence-entity noun, not the URL segment, so
+search-as-a-shape stays consistent (`workflow_versions_list`, not
+`workflow_versions_index`).
+
+## 29. Request / Response / Snapshot suffix taxonomy
+
+The frozen + `extra="forbid"` rule (§8) applies to every DTO at an
+API boundary. The naming suffix encodes its role:
+
+* `*Request`: inbound payload (HTTP body, WebSocket control frame,
+  MCP tool args). Validated through `parse_typed()` (§26).
+* `*Response`: outbound payload, wrapped in the standard envelope
+  before serialisation.
+* `*Snapshot`: point-in-time projection of mutable state (e.g.
+  `AgentSnapshot`, `WorkflowSnapshot`). Suitable for caching and
+  diffing; not used for mutation inputs.
+* `*Result`: outcome of a discrete operation that does not have a
+  natural "request" / "response" pair (e.g. `RestoreResult`,
+  `TrainingResult`). Carries a status discriminator plus the
+  operation-specific payload.
+* `*Envelope`: typed error wrapper or generic transport container.
+* `*Status`: read-only state projection (e.g. `BackupStatus`).
+* `*Info`: derived metadata (e.g. `ProviderInfo`).
+* `*Summary`: aggregate / rollup view (e.g. `BudgetSummary`).
+
+The `dto-forbid-extra` gate scans for any DTO carrying one of these
+suffixes and verifies it sets `extra="forbid"`.
+
+## 30. Import order
+
+stdlib imports, blank line, third-party imports, blank line,
+`synthorg.*` imports. Within each group, lines are alphabetical by
+module path. Enforced by `ruff` rule `I` (isort).
+
+Re-exports through `synthorg.observability` (e.g.
+`from synthorg.observability import get_logger`) and through other
+`synthorg.*` top-level facades count as project-internal imports for
+ordering purposes, even though they wrap a third-party logger
+under the hood. The package facade is the convention boundary; what
+it wraps is an implementation detail.
+
 ## See also
 
 * [persistence-boundary.md](persistence-boundary.md): repository /
