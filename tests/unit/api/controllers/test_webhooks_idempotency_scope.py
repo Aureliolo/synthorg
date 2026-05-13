@@ -17,22 +17,22 @@ pytestmark = pytest.mark.unit
 class TestWebhookIdempotencyKey:
     def test_key_contains_connection_name(self) -> None:
         key = _build_idem_key(
-            connection_name="github-primary",
+            connection_name="example-provider-primary",
             event_type="push",
             nonce="nonce-abc",
         )
-        assert "github-primary" in key
+        assert "example-provider-primary" in key
         assert "push" in key
         assert "nonce-abc" in key
 
     def test_distinct_connections_produce_distinct_keys(self) -> None:
         first = _build_idem_key(
-            connection_name="github-primary",
+            connection_name="example-provider-primary",
             event_type="push",
             nonce="nonce-abc",
         )
         second = _build_idem_key(
-            connection_name="github-secondary",
+            connection_name="example-provider-secondary",
             event_type="push",
             nonce="nonce-abc",
         )
@@ -51,18 +51,20 @@ class TestWebhookIdempotencyScope:
         # Exercise the controller's own helper so a future refactor
         # that drops ``connection_name`` from the scope format trips
         # the assertion. A local f-string would silently keep passing.
-        connection_type = "github"
-        connection_name = "github-primary"
+        connection_type = "example-provider"
+        connection_name = "example-provider-primary"
         scope = _build_idem_scope(
             connection_type=connection_type,
             connection_name=connection_name,
         )
-        assert scope.startswith("webhooks:")
-        assert connection_type in scope
-        assert connection_name in scope
+        # Exact-equality pin: any reordering of the token positions
+        # (e.g. ``{connection_name}:{connection_type}``) trips the
+        # assertion immediately. Substring / startswith checks would
+        # silently keep passing under such a refactor.
+        assert scope == f"webhooks:{connection_type}:{connection_name}"
         # And scopes for sibling connections of the same type must differ.
         sibling = _build_idem_scope(
             connection_type=connection_type,
-            connection_name="github-secondary",
+            connection_name="example-provider-secondary",
         )
         assert scope != sibling
