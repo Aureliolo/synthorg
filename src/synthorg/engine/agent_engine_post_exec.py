@@ -2,7 +2,6 @@
 
 import asyncio
 import contextlib
-import time
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.engine.checkpoint.resume import (
@@ -68,6 +67,10 @@ class AgentEnginePostExecMixin:
     _procedural_proposer: Any
     _provider: Any
     _shutdown_checker: Any
+    # Injected by ``AgentEngine.__init__``; declared on the mixin so
+    # type checkers see the attribute when the helper accesses it
+    # below. The concrete class owns the assignment.
+    _clock: Any
 
     async def _post_execution_pipeline(  # noqa: PLR0913
         self,
@@ -335,7 +338,7 @@ class AgentEnginePostExecMixin:
         task_id: str,
     ) -> AgentRunResult:
         """Build ``AgentRunResult`` and log completion metrics."""
-        duration = time.monotonic() - start
+        duration = self._clock.monotonic() - start
         result = AgentRunResult(
             execution_result=execution_result,
             system_prompt=system_prompt,
@@ -410,7 +413,7 @@ class AgentEnginePostExecMixin:
         if not pending:
             return loop_task.result()
 
-        duration = time.monotonic() - start
+        duration = self._clock.monotonic() - start
         error_msg = (
             f"Wall-clock timeout after {duration:.1f}s (limit: {timeout_seconds}s)"
         )
