@@ -30,9 +30,21 @@ export function DialogContent({ className, children }: DialogContentProps) {
       />
       <BaseDialog.Popup
         className={cn(
-          'fixed top-1/2 left-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2',
+          'fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
+          // Responsive width: shrink to viewport minus the design-
+          // system ``--so-space-8`` gutter (32px / 2rem) on narrow
+          // screens; cap at the original max-w-2xl on >= sm so a
+          // dialog never edge-bleeds on tablet (768-1023px) without
+          // losing the tidy desktop width. Routing the gutter through
+          // the token keeps overlay spacing centrally governed (no
+          // hard-coded pixel literal in a shared UI primitive).
+          'w-[calc(100%-var(--so-space-8))] sm:w-full sm:max-w-2xl',
           'rounded-xl border border-border bg-background shadow-[var(--so-shadow-card-hover)]',
-          'max-h-[80vh] overflow-hidden',
+          // Responsive max-height: tighter on narrow viewports so the
+          // body never pushes the dialog past the viewport bottom on
+          // tablet landscape; default 80vh on >= sm matches the prior
+          // desktop sizing.
+          'max-h-[85vh] sm:max-h-[80vh] overflow-hidden',
           'transition-[opacity,translate,scale] duration-200 ease-out',
           'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
           'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
@@ -52,7 +64,15 @@ export interface DialogHeaderProps {
 
 export function DialogHeader({ className, children }: DialogHeaderProps) {
   return (
-    <div className={cn('flex items-center justify-between border-b border-border p-card', className)}>
+    <div
+      className={cn(
+        // Slightly tighter padding on narrow viewports so the header
+        // does not eat half the available vertical space at tablet
+        // landscape. `p-card` resumes the desktop density on >= sm.
+        'flex items-center justify-between border-b border-border p-card-tight sm:p-card',
+        className,
+      )}
+    >
       {children}
     </div>
   )

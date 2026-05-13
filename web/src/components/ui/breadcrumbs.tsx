@@ -78,6 +78,14 @@ function BreadcrumbRow({ item, isLast }: BreadcrumbRowProps) {
  *
  * When `items.length > maxItems`, middle items are collapsed into an
  * ellipsis node so the trail never wraps over two lines on narrow viewports.
+ *
+ * **Depth convention**: keep visible trails to 2 or 3 items. The dashboard
+ * is a flat info-architecture (every primary domain is one sidebar click
+ * away), so deeper trails almost always reflect an organisational mistake
+ * the user has to mentally unwind. When the natural depth grows past 3,
+ * either route the user to a flatter parent or rely on `maxItems` so the
+ * middle items collapse into the ellipsis node. See web/CLAUDE.md for the
+ * full convention.
  */
 export function Breadcrumbs({ items, maxItems = 4, className }: BreadcrumbsProps) {
   if (items.length === 0) return null

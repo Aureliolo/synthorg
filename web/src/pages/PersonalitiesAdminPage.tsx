@@ -11,22 +11,39 @@ import { Loader2, Sparkles } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
 import { SectionCard } from '@/components/ui/section-card'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
+import { SelectField } from '@/components/ui/select-field'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { listPersonalityPresets } from '@/api/endpoints/setup'
 import type { PersonalityPresetInfo } from '@/api/types/setup'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
+import { getLocale } from '@/utils/locale'
 
 const log = createLogger('PersonalitiesAdminPage')
+
+// Hoisted out of render so ``navigator.language`` is read once at
+// module init instead of inside ``useMemo`` -- ``@eslint-react/globals``
+// flags in-render reads of ``navigator`` / ``window`` / ``document``.
+const LOCALE = getLocale()
+
+type PresetSortKey = 'name-asc' | 'name-desc'
+
+const SORT_OPTIONS: ReadonlyArray<{ value: PresetSortKey; label: string }> = [
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+]
 
 export default function PersonalitiesAdminPage() {
   const [presets, setPresets] = useState<readonly PersonalityPresetInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [sortKey, setSortKey] = useState<PresetSortKey>('name-asc')
 
   useEffect(() => {
     let cancelled = false
@@ -54,17 +71,45 @@ export default function PersonalitiesAdminPage() {
 
   const visible = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return presets
-    return presets.filter(
-      (preset) =>
-        preset.name.toLowerCase().includes(q) ||
-        preset.description.toLowerCase().includes(q),
-    )
-  }, [presets, searchQuery])
+    const matched = q
+      ? presets.filter(
+          (preset) =>
+            preset.name.toLowerCase().includes(q) ||
+            preset.description.toLowerCase().includes(q),
+        )
+      : presets
+    return [...matched].sort((a, b) => {
+      const cmp = a.name.localeCompare(b.name, LOCALE)
+      return sortKey === 'name-asc' ? cmp : -cmp
+    })
+  }, [presets, searchQuery, sortKey])
+
+  const {
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems: pagedPresets,
+    setPage,
+    setPageSize,
+    resetPage,
+  } = useListPagination({
+    items: visible,
+    namespace: 'personalities',
+    defaultPageSize: 24,
+    pageSizeOptions: [12, 24, 48],
+  })
+
+  useEffect(() => {
+    resetPage()
+  }, [searchQuery, sortKey, resetPage])
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader title="Personality presets" count={visible.length} />
+      <ListHeader title="Personality presets" count={totalItems} />
+
+      {error && (
+        <ErrorBanner severity="error" title="Could not load personality presets" description={error} />
+      )}
 
       <SearchFilterSort
         search={
@@ -75,11 +120,15 @@ export default function PersonalitiesAdminPage() {
             ariaLabel="Search personality presets"
           />
         }
+        sort={
+          <SelectField
+            label="Sort by"
+            value={sortKey}
+            onChange={(value) => setSortKey(value as PresetSortKey)}
+            options={SORT_OPTIONS}
+          />
+        }
       />
-
-      {error && (
-        <ErrorBanner severity="error" title="Could not load personality presets" description={error} />
-      )}
 
       {loading && presets.length === 0 ? (
         <div className="flex items-center justify-center py-12">
@@ -96,18 +145,27 @@ export default function PersonalitiesAdminPage() {
           }
         />
       ) : visible.length === 0 ? null : (
-        <SectionCard title="Available presets" icon={Sparkles}>
-          <ul className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
-            {visible.map((preset) => (
-              <li key={preset.name}>
-                <article className="rounded-lg border border-border bg-card p-card">
-                  <h3 className="text-sm font-semibold text-foreground">{preset.name}</h3>
-                  <p className="mt-2 text-xs text-text-secondary">{preset.description}</p>
-                </article>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
+        <>
+          <SectionCard title="Available presets" icon={Sparkles}>
+            <ul className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
+              {pagedPresets.map((preset) => (
+                <li key={preset.name}>
+                  <article className="rounded-lg border border-border bg-card p-card">
+                    <h3 className="text-sm font-semibold text-foreground">{preset.name}</h3>
+                    <p className="mt-2 text-xs text-text-secondary">{preset.description}</p>
+                  </article>
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        </>
       )}
     </div>
   )

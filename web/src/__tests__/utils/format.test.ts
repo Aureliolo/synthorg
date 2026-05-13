@@ -5,6 +5,7 @@ import {
   formatDateOnly,
   formatDateTime,
   formatDayLabel,
+  formatElapsed,
   formatRelativeTime,
   formatCurrency,
   formatCurrencyCompact,
@@ -367,5 +368,33 @@ describe('formatCurrencyCompact', () => {
   it('formats zero correctly', () => {
     const result = formatCurrencyCompact(0)
     expect(result).toMatch(/0/)
+  })
+})
+
+describe('formatElapsed', () => {
+  it('formats seconds under a minute', () => {
+    expect(formatElapsed(0)).toBe('0s')
+    expect(formatElapsed(45)).toBe('45s')
+  })
+
+  it('formats minutes + seconds', () => {
+    expect(formatElapsed(60)).toBe('1m')
+    expect(formatElapsed(125)).toBe('2m 5s')
+  })
+
+  it('formats hours + minutes', () => {
+    expect(formatElapsed(3600)).toBe('1h')
+    expect(formatElapsed(3725)).toBe('1h 2m')
+  })
+
+  it('formats days + hours', () => {
+    expect(formatElapsed(86400)).toBe('1d')
+    expect(formatElapsed(90000)).toBe('1d 1h')
+  })
+
+  it('returns -- on negative or non-finite input', () => {
+    expect(formatElapsed(-1)).toBe('--')
+    expect(formatElapsed(NaN)).toBe('--')
+    expect(formatElapsed(Infinity)).toBe('--')
   })
 })

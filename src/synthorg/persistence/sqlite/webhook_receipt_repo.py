@@ -123,6 +123,126 @@ class SQLiteWebhookReceiptRepository:
                 )
                 raise QueryError(msg) from exc
 
+    async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
+        """Fetch a single receipt by ID, or ``None`` when absent."""
+        try:
+            async with self._db.execute(
+                f"SELECT {_SELECT_COLS} FROM webhook_receipts "  # noqa: S608
+                "WHERE id = ?",
+                (str(receipt_id),),
+            ) as cursor:
+                row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to fetch webhook receipt {receipt_id!r}"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                receipt_id=str(receipt_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        try:
+            return _row_to_receipt(row)
+        except (ValueError, TypeError, KeyError) as exc:
+            msg = f"Failed to deserialize webhook receipt {receipt_id!r}"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                receipt_id=str(receipt_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def update_status(
+        self,
+        receipt_id: NotBlankStr,
+        *,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
+    ) -> bool:
+        """Update the status / processed_at / error of an existing receipt.
+
+        Returns ``True`` when the row existed and was updated, ``False``
+        when no row matched the ID. Callers can use the boolean to
+        distinguish "not found" from a successful no-op.
+        """
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "UPDATE webhook_receipts SET "
+                    "status = ?, processed_at = ?, error = ? "
+                    "WHERE id = ?",
+                    (
+                        status,
+                        format_iso_utc(processed_at) if processed_at else None,
+                        error,
+                        str(receipt_id),
+                    ),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to update webhook receipt {receipt_id!r}"
+                logger.warning(
+                    PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
+                    receipt_id=str(receipt_id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            else:
+                return cursor.rowcount > 0
+
+    async def update_status_if_current(
+        self,
+        receipt_id: NotBlankStr,
+        *,
+        expected_status: str,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
+    ) -> bool:
+        """Compare-and-set ``status`` only when the current row matches.
+
+        Adds a ``status = ?`` clause to the WHERE so two concurrent
+        retries can never both succeed -- one wins, one returns
+        ``False`` (rowcount 0) and the caller handles the lost-race
+        path. SQLite's per-write_context serialization gives the
+        ordering guarantee; the WHERE clause supplies the predicate.
+        """
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "UPDATE webhook_receipts SET "
+                    "status = ?, processed_at = ?, error = ? "
+                    "WHERE id = ? AND status = ?",
+                    (
+                        status,
+                        format_iso_utc(processed_at) if processed_at else None,
+                        error,
+                        str(receipt_id),
+                        expected_status,
+                    ),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to CAS webhook receipt {receipt_id!r}"
+                logger.warning(
+                    PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
+                    receipt_id=str(receipt_id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            else:
+                return cursor.rowcount > 0
+
     async def get_by_connection(
         self,
         connection_name: NotBlankStr,

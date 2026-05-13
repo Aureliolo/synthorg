@@ -500,11 +500,12 @@ def _receipt(
     connection_name: str = "github-bot",
     received_at: datetime | None = None,
     payload_json: str = '{"event":"push"}',
+    status: str = "received",
 ) -> WebhookReceipt:
     kwargs: dict[str, object] = {
         "connection_name": NotBlankStr(connection_name),
         "event_type": "push",
-        "status": "received",
+        "status": status,
         "received_at": received_at or datetime.now(UTC),
         "payload_json": payload_json,
     }
@@ -626,6 +627,119 @@ class TestWebhookReceiptRepository:
         )
 
         assert rows == ()
+
+    async def test_get_returns_stored_receipt(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.connections.save(_connection("github-bot"))
+        receipt = _receipt(receipt_id="rcpt-target")
+        await backend.webhook_receipts.log(receipt)
+
+        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-target"))
+
+        assert fetched is not None
+        assert fetched.id == "rcpt-target"
+        assert fetched.payload_json == '{"event":"push"}'
+
+    async def test_get_returns_none_when_missing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        result = await backend.webhook_receipts.get(NotBlankStr("does-not-exist"))
+        assert result is None
+
+    async def test_update_status_round_trip(self, backend: PersistenceBackend) -> None:
+        await backend.connections.save(_connection("github-bot"))
+        await backend.webhook_receipts.log(_receipt(receipt_id="rcpt-update"))
+
+        updated_at = datetime.now(UTC)
+        updated = await backend.webhook_receipts.update_status(
+            NotBlankStr("rcpt-update"),
+            status="failed",
+            processed_at=updated_at,
+            error="downstream timeout",
+        )
+
+        assert updated is True
+        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-update"))
+        assert fetched is not None
+        assert fetched.status == "failed"
+        assert fetched.error == "downstream timeout"
+        assert fetched.processed_at is not None
+
+    async def test_update_status_returns_false_when_missing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        updated = await backend.webhook_receipts.update_status(
+            NotBlankStr("nonexistent"),
+            status="failed",
+            processed_at=None,
+            error=None,
+        )
+        assert updated is False
+
+    async def test_update_status_if_current_wins_when_status_matches(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """CAS transitions the row when the current status matches the expected."""
+        await backend.connections.save(_connection("github-bot"))
+        await backend.webhook_receipts.log(
+            _receipt(receipt_id="rcpt-cas-win", status="failed"),
+        )
+
+        updated = await backend.webhook_receipts.update_status_if_current(
+            NotBlankStr("rcpt-cas-win"),
+            expected_status="failed",
+            status="retrying",
+            processed_at=None,
+            error=None,
+        )
+
+        assert updated is True
+        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-cas-win"))
+        assert fetched is not None
+        assert fetched.status == "retrying"
+
+    async def test_update_status_if_current_loses_when_status_drifted(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """CAS returns False when the row's current status no longer matches.
+
+        Models the TOCTOU race the retry endpoint protects against: a
+        first retry already flipped the row from ``failed`` to
+        ``retrying``; a second concurrent retry passes the stale
+        ``expected_status='failed'`` and must NOT mutate the row.
+        """
+        await backend.connections.save(_connection("github-bot"))
+        await backend.webhook_receipts.log(
+            _receipt(receipt_id="rcpt-cas-lose", status="retrying"),
+        )
+
+        updated = await backend.webhook_receipts.update_status_if_current(
+            NotBlankStr("rcpt-cas-lose"),
+            expected_status="failed",
+            status="retrying",
+            processed_at=None,
+            error=None,
+        )
+
+        assert updated is False
+        # Row untouched: the loser must not flip the status nor clear
+        # any other fields.
+        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-cas-lose"))
+        assert fetched is not None
+        assert fetched.status == "retrying"
+
+    async def test_update_status_if_current_returns_false_when_row_missing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        updated = await backend.webhook_receipts.update_status_if_current(
+            NotBlankStr("nonexistent-cas"),
+            expected_status="failed",
+            status="retrying",
+            processed_at=None,
+            error=None,
+        )
+        assert updated is False
 
     async def test_cleanup_old_zero_or_negative_is_noop(
         self, backend: PersistenceBackend

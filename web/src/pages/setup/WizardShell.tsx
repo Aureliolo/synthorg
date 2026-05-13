@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
@@ -44,6 +44,37 @@ export function WizardShell() {
   const stepsCompleted = useSetupWizardStore((s) => s.stepsCompleted)
   const setStep = useSetupWizardStore((s) => s.setStep)
   const canNavigateTo = useSetupWizardStore((s) => s.canNavigateTo)
+  const companyResponse = useSetupWizardStore((s) => s.companyResponse)
+
+  // E4 re-entry guidance: if the user reloads mid-wizard AFTER the
+  // company was created but BEFORE setup was fully marked complete,
+  // surface a one-shot toast pointing them at the Complete step so
+  // they understand the partial state and can resume. Without this
+  // they land on whatever step the merge() clamped them to and the
+  // only signal that "the company exists" is implicit in the form
+  // already-pre-populated state. The toast must NOT fire when the
+  // company is created during the current session -- capturing the
+  // initial mount-time value distinguishes "hydrated from persisted
+  // state" (re-entry) from "set to non-null during this session"
+  // (newly created).
+  const reEntryToastShownRef = useRef(false)
+  const companyExistedAtMountRef = useRef<boolean | null>(null)
+  if (companyExistedAtMountRef.current === null) {
+    companyExistedAtMountRef.current = companyResponse !== null
+  }
+  useEffect(() => {
+    if (reEntryToastShownRef.current) return
+    if (companyExistedAtMountRef.current !== true) return
+    if (companyResponse === null) return
+    if (stepsCompleted.complete) return
+    if (!stepOrder.includes('complete')) return
+    reEntryToastShownRef.current = true
+    useToastStore.getState().add({
+      variant: 'info',
+      title: 'Resume setup',
+      description: 'Your company was created in a previous session. Finish setup from the Complete step.',
+    })
+  }, [companyResponse, stepsCompleted.complete, stepOrder])
 
   // Steps shown in the progress bar (filter out hidden steps)
   const progressSteps = useMemo(

@@ -1,12 +1,13 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSubworkflowsData } from '@/hooks/useSubworkflowsData'
 import { useSubworkflowsStore } from '@/stores/subworkflows'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import type { SubworkflowSummary } from '@/api/types/workflows'
 import { SubworkflowCard } from './subworkflows/SubworkflowCard'
 import { SubworkflowDetailDrawer } from './subworkflows/SubworkflowDetailDrawer'
@@ -16,9 +17,28 @@ export default function SubworkflowsPage() {
   const { filteredSubworkflows, loading, error } = useSubworkflowsData()
   const searchQuery = useSubworkflowsStore((s) => s.searchQuery)
   const setSearchQuery = useSubworkflowsStore((s) => s.setSearchQuery)
-  const hasMore = useSubworkflowsStore((s) => s.hasMore)
-  const loadingMore = useSubworkflowsStore((s) => s.loadingMore)
-  const fetchMoreSubworkflows = useSubworkflowsStore((s) => s.fetchMoreSubworkflows)
+  const subworkflowsTruncated = useSubworkflowsStore((s) => s.subworkflowsTruncated)
+
+  const {
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems: pagedSubworkflows,
+    setPage,
+    setPageSize,
+    resetPage,
+  } = useListPagination({
+    items: filteredSubworkflows,
+    namespace: 'subworkflows',
+    defaultPageSize: 24,
+    pageSizeOptions: [12, 24, 48],
+  })
+
+  // Reset to page 1 whenever the filter changes so the user is not
+  // stranded on a now-empty page after refining their search.
+  useEffect(() => {
+    resetPage()
+  }, [searchQuery, resetPage])
 
   const handleSearch = useCallback(
     (value: string) => {
@@ -30,10 +50,6 @@ export default function SubworkflowsPage() {
   const handleCardClick = useCallback((sub: SubworkflowSummary) => {
     setSelected(sub)
   }, [])
-
-  const handleLoadMore = useCallback(() => {
-    void fetchMoreSubworkflows()
-  }, [fetchMoreSubworkflows])
 
   if (loading && filteredSubworkflows.length === 0) {
     return (
@@ -54,6 +70,14 @@ export default function SubworkflowsPage() {
 
       {error && (
         <ErrorBanner severity="error" title="Could not load subworkflows" description={error} />
+      )}
+
+      {subworkflowsTruncated && (
+        <ErrorBanner
+          severity="warning"
+          title="Subworkflow list truncated"
+          description={`Showing the first ${filteredSubworkflows.length} subworkflows. The registry has more results than the dashboard streams in one pass; refine the search to narrow the visible set.`}
+        />
       )}
 
       <div className="max-w-sm">
@@ -78,7 +102,7 @@ export default function SubworkflowsPage() {
       ) : (
         <>
           <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
-            {filteredSubworkflows.map((sub) => (
+            {pagedSubworkflows.map((sub) => (
               <SubworkflowCard
                 key={sub.subworkflow_id}
                 subworkflow={sub}
@@ -86,20 +110,13 @@ export default function SubworkflowsPage() {
               />
             ))}
           </div>
-          {hasMore && searchQuery.trim() === '' && (
-            // Mirror the store's gate (``searchQuery.trim() !== ''``)
-            // so a whitespace-only query does not hide the Load More
-            // button and strand the user without a way to advance.
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore ? 'Loading...' : 'Load more'}
-              </Button>
-            </div>
-          )}
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </>
       )}
 

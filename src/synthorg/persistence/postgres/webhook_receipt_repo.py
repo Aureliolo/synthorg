@@ -144,6 +144,123 @@ class PostgresWebhookReceiptRepository:
             )
             raise QueryError(msg) from exc
 
+    async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
+        """Fetch a single receipt by ID, or ``None`` when absent."""
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    f"SELECT {_SELECT_COLS} FROM webhook_receipts "  # noqa: S608
+                    "WHERE id = %s",
+                    (str(receipt_id),),
+                )
+                row = await cur.fetchone()
+        except Exception as exc:
+            msg = f"Failed to fetch webhook receipt {receipt_id!r}"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                receipt_id=str(receipt_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        try:
+            return _row_to_receipt(row)
+        except (ValueError, TypeError, KeyError) as exc:
+            msg = f"Failed to deserialize webhook receipt {receipt_id!r}"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                receipt_id=str(receipt_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def update_status(
+        self,
+        receipt_id: NotBlankStr,
+        *,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
+    ) -> bool:
+        """Update the status / processed_at / error of an existing receipt.
+
+        Returns ``True`` when the row existed and was updated, ``False``
+        when no row matched the ID.
+        """
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE webhook_receipts SET "
+                    "status = %s, processed_at = %s, error = %s "
+                    "WHERE id = %s",
+                    (
+                        status,
+                        normalize_utc(processed_at) if processed_at else None,
+                        error,
+                        str(receipt_id),
+                    ),
+                )
+                return cur.rowcount > 0
+        except Exception as exc:
+            msg = f"Failed to update webhook receipt {receipt_id!r}"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
+                receipt_id=str(receipt_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def update_status_if_current(
+        self,
+        receipt_id: NotBlankStr,
+        *,
+        expected_status: str,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
+    ) -> bool:
+        """Compare-and-set ``status`` only when the current row matches.
+
+        Adds ``AND status = %s`` to the WHERE so two concurrent retries
+        cannot both flip the same row from ``received`` to ``retrying``
+        and re-publish the captured payload twice. The UPDATE runs in
+        its own transaction so the row-level lock pgsql acquires for
+        the matching row serialises the racing callers; the loser sees
+        ``rowcount == 0`` and the controller raises ``NotFoundError``
+        instead of re-publishing.
+        """
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE webhook_receipts SET "
+                    "status = %s, processed_at = %s, error = %s "
+                    "WHERE id = %s AND status = %s",
+                    (
+                        status,
+                        normalize_utc(processed_at) if processed_at else None,
+                        error,
+                        str(receipt_id),
+                        expected_status,
+                    ),
+                )
+                return cur.rowcount > 0
+        except Exception as exc:
+            msg = f"Failed to CAS webhook receipt {receipt_id!r}"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
+                receipt_id=str(receipt_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
     async def get_by_connection(
         self,
         connection_name: NotBlankStr,

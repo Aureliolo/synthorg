@@ -1,16 +1,16 @@
 schema_version: 1
-last_generated_utc: '2026-05-13T14:51:15Z'
-generator_revision: 46204b2c5
+last_generated_utc: '2026-05-13T17:20:18Z'
+generator_revision: a6472d5f8
 stats:
   tests:
-    raw: 30056
+    raw: 30090
     rounded: 30000
     display: 30,000+
   version:
-    raw: v0.8.4-dev.6
-    display: v0.8.4-dev.6
+    raw: v0.8.4-dev.7
+    display: v0.8.4-dev.7
   mem0_stars:
-    raw: 55585
+    raw: 55593
     rounded: 55000
     display: 55k+
   providers_curated:
@@ -23,8 +23,8 @@ stats:
     raw: 26
     display: '26'
   convention_gates:
-    raw: 43
-    display: '43'
+    raw: 44
+    display: '44'
 sources:
   tests: uv run python -m pytest --collect-only -q
   version: gh release list --limit 1 --exclude-drafts --json tagName

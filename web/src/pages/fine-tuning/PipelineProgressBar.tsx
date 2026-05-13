@@ -1,42 +1,50 @@
 import type { FineTuneStage } from '@/api/endpoints/fine-tuning'
+import { ProgressIndicator } from '@/components/ui/progress-indicator'
+
+/**
+ * Warning threshold (seconds) for the indeterminate fine-tuning bar.
+ *
+ * Indeterminate stages (data generation, negative mining, evaluation,
+ * deployment) typically finish in <10 minutes on a healthy GPU host;
+ * once 15 minutes elapse without progress moving to a determinate
+ * stage the operator should investigate before the job times out
+ * server-side.
+ */
+const FINE_TUNING_INDETERMINATE_WARNING_SECONDS = 900
 
 interface PipelineProgressBarProps {
   stage: FineTuneStage
   progress: number | null
+  /**
+   * ISO-8601 timestamp from the current run's ``started_at``. Used to
+   * render a live elapsed counter on the indeterminate variant so
+   * operators can see how long the current stage has been running.
+   */
+  startedAt?: string | null
 }
 
-export function PipelineProgressBar({ stage, progress }: PipelineProgressBarProps) {
-  const indeterminate = progress == null
-  const rawPct = indeterminate ? 0 : Math.round(progress * 100)
-  const pct = Math.min(100, Math.max(0, rawPct))
-
+export function PipelineProgressBar({ stage, progress, startedAt }: PipelineProgressBarProps) {
+  const label = `Stage: ${formatStage(stage)}`
+  if (progress == null) {
+    return (
+      <div className="pt-4">
+        <ProgressIndicator
+          variant="indeterminate"
+          label={label}
+          startedAt={startedAt ?? null}
+          warningAfterSeconds={FINE_TUNING_INDETERMINATE_WARNING_SECONDS}
+        />
+      </div>
+    )
+  }
+  const value = Math.round(progress * 100)
   return (
-    <div className="flex flex-col gap-2 pt-4">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">
-          Stage: <span className="font-medium text-foreground">{formatStage(stage)}</span>
-        </span>
-        <span className="font-mono text-foreground">
-          {indeterminate ? '...' : `${pct}%`}
-        </span>
-      </div>
-      <div
-        className="h-2 w-full overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        {...(indeterminate ? {} : { 'aria-valuenow': pct })}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label="Fine-tuning progress"
-      >
-        {indeterminate ? (
-          <div className="h-full w-full animate-pulse rounded-full bg-accent/60" />
-        ) : (
-          <div
-            className="h-full rounded-full bg-accent transition-all duration-300"
-            style={{ width: `${pct}%` }}
-          />
-        )}
-      </div>
+    <div className="pt-4">
+      <ProgressIndicator
+        variant="determinate"
+        value={value}
+        label={label}
+      />
     </div>
   )
 }

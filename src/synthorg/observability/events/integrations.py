@@ -72,6 +72,10 @@ WEBHOOK_EVENT_PUBLISHED: Final[str] = "integrations.webhook.event_published"
 WEBHOOK_EVENT_PUBLISH_FAILED: Final[str] = "integrations.webhook.event_publish_failed"
 WEBHOOK_RATE_LIMITED: Final[str] = "integrations.webhook.rate_limited"
 WEBHOOK_RECEIPT_LOGGED: Final[str] = "integrations.webhook.receipt_logged"
+WEBHOOK_RECEIPT_NOT_FOUND: Final[str] = "integrations.webhook.receipt_not_found"
+WEBHOOK_RECEIPT_STATUS_TRANSITIONED: Final[str] = (
+    "integrations.webhook.receipt_status_transitioned"
+)
 WEBHOOK_VERIFIER_UNSUPPORTED_TYPE: Final[str] = (
     "integrations.webhook.verifier_unsupported_type"
 )

@@ -75,7 +75,7 @@ export function SkipWizardForm() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-border bg-card p-6">
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-border bg-card p-card">
         <InputField
           label="Company Name"
           required
@@ -86,10 +86,23 @@ export function SkipWizardForm() {
         />
 
         {error && (
-          <ErrorBanner variant="section" severity="error" title="Could not skip the wizard" description={error} />
+          <ErrorBanner
+            variant="section"
+            severity="error"
+            title="Could not skip the wizard"
+            description={error}
+            onRetry={() => {
+              setError(null)
+              void handleSubmit()
+            }}
+          />
         )}
 
-        <Button type="submit" disabled={loading} className="w-full">
+        <Button
+          type="submit"
+          disabled={loading || companyName.trim().length === 0}
+          className="w-full"
+        >
           {loading ? 'Setting up...' : 'Complete Setup'}
         </Button>
       </form>

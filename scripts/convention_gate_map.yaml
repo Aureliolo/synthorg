@@ -135,12 +135,7 @@ mandatory_rules:
   - id: web-claude-md::ws-wire-protocol
     file: web/CLAUDE.md
     header: WS wire protocol
-    exempt:
-      reason: |
-        Cross-side contract: web/src/utils/constants.ts must stay in
-        lockstep with src/synthorg/api/ws_models.py. Enforced by
-        integration tests and code review; no AST gate cross-checks
-        the two files yet.
+    gate: scripts/check_ws_protocol_version_in_sync.py
 
   - id: web-claude-md::error-code-constants
     file: web/CLAUDE.md

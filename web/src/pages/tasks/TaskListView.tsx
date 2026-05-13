@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
@@ -58,9 +58,10 @@ export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
     }
   }, [sortKey])
 
-  const sorted = sortKey
-    ? [...tasks].sort((a, b) => compareTasks(a, b, sortKey, sortDir))
-    : tasks
+  const sorted = useMemo(
+    () => (sortKey ? [...tasks].sort((a, b) => compareTasks(a, b, sortKey, sortDir)) : tasks),
+    [tasks, sortKey, sortDir],
+  )
 
   if (tasks.length === 0) {
     return (
@@ -111,7 +112,12 @@ export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
   )
 }
 
-function TaskListRow({ task, onSelectTask }: { task: Task; onSelectTask: (taskId: string) => void }) {
+interface TaskListRowProps {
+  task: Task
+  onSelectTask: (taskId: string) => void
+}
+
+const TaskListRow = memo(function TaskListRow({ task, onSelectTask }: TaskListRowProps) {
   return (
     <div
       role="button"
@@ -156,4 +162,4 @@ function TaskListRow({ task, onSelectTask }: { task: Task; onSelectTask: (taskId
       </span>
     </div>
   )
-}
+})

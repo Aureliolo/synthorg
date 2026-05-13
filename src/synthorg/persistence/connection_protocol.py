@@ -163,6 +163,52 @@ class WebhookReceiptRepository(Protocol):
         """Persist a webhook receipt."""
         ...
 
+    async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
+        """Fetch a single receipt by ID, or ``None`` when absent.
+
+        Used by the retry endpoint to look up a failed receipt before
+        re-publishing its captured payload to the bus.
+        """
+        ...
+
+    async def update_status(
+        self,
+        receipt_id: NotBlankStr,
+        *,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
+    ) -> bool:
+        """Update the receipt's lifecycle fields.
+
+        Returns ``True`` when the row existed and was updated, ``False``
+        when no row matched the ID. Callers can use the boolean to
+        distinguish "not found" from a successful no-op without raising.
+        """
+        ...
+
+    async def update_status_if_current(
+        self,
+        receipt_id: NotBlankStr,
+        *,
+        expected_status: str,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
+    ) -> bool:
+        """Compare-and-set variant of ``update_status``.
+
+        Atomically updates the row only when its current ``status`` column
+        equals ``expected_status``. Returns ``True`` on a successful
+        transition, ``False`` when the row is missing OR the row's
+        current status differs from ``expected_status`` (lost the race).
+        The retry endpoint uses this to close the TOCTOU window where
+        two concurrent operator-triggered retries could both load the
+        same receipt, both transition it to ``retrying``, and both
+        republish the captured payload.
+        """
+        ...
+
     async def get_by_connection(
         self,
         connection_name: NotBlankStr,

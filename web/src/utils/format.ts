@@ -216,6 +216,32 @@ export function formatRelativeTime(
   return rtf.format(-Math.floor(diffSec / SEC_PER_DAY), 'day')
 }
 
+/**
+ * Format a non-negative number of seconds as a compact elapsed string:
+ * `Xs`, `Xm Ys`, `Xh Ym`, or `Xd Yh`. Negative or non-finite inputs
+ * render as `--` so a clock skew or missing value never produces
+ * `NaNs`. The components are written in British English with single-
+ * letter unit suffixes for monospace columns.
+ */
+export function formatElapsed(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '--'
+  const total = Math.floor(seconds)
+  if (total < SEC_PER_MIN) return `${total}s`
+  if (total < SEC_PER_HOUR) {
+    const minutes = Math.floor(total / SEC_PER_MIN)
+    const remainingSeconds = total % SEC_PER_MIN
+    return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`
+  }
+  if (total < SEC_PER_DAY) {
+    const hours = Math.floor(total / SEC_PER_HOUR)
+    const remainingMinutes = Math.floor((total % SEC_PER_HOUR) / SEC_PER_MIN)
+    return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`
+  }
+  const days = Math.floor(total / SEC_PER_DAY)
+  const remainingHours = Math.floor((total % SEC_PER_DAY) / SEC_PER_HOUR)
+  return remainingHours === 0 ? `${days}d` : `${days}d ${remainingHours}h`
+}
+
 /** ISO 4217 currencies that use zero decimal places. */
 const ZERO_DECIMAL_CURRENCIES = new Set(['BIF','CLP','DJF','GNF','HUF','ISK','JPY','KMF','KRW','MGA','PYG','RWF','UGX','VND','VUV','XAF','XOF','XPF'])
 
