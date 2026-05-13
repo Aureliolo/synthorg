@@ -60,7 +60,7 @@ If no definitions are provided at all, ask the user via AskUserQuestion for:
 /worktree setup "improve setup wizard UX"
 ```
 
-Creates a worktree from the description alone: branch name auto-generated (`feat/improve-setup-wizard-ux`), no issue fetching, no prompt generation. Useful for exploratory work, ad-hoc improvements, or tasks without a GitHub issue. All other setup steps (pre-flight, helper detection, settings copy, dependency sync) still apply. Skip steps 6 through 8 (prompt generation, auto-launch, output); just report the worktree path and `cd <path> && claude` command.
+Creates a worktree from the description alone: branch name auto-generated (`feat/improve-setup-wizard-ux`), no issue fetching, no prompt generation. Useful for exploratory work, ad-hoc improvements, or tasks without a GitHub issue. All other setup steps (pre-flight, helper detection, settings copy, dependency sync) still apply. Skip steps 6 through 8 (prompt generation, auto-launch, formatted prompt output); instead report only the worktree path and the `cd <path> && claude` command.
 
 ### Flag: `--no-launch`
 
@@ -135,11 +135,13 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 3. **Detect the `wt-synthorg.ps1` helper** (one-shot, before the per-worktree loop):
 
    ```bash
-   where.exe wt-synthorg.ps1 2>&1 | head -1
+   where.exe wt-synthorg.ps1 2>&1 | grep -q "wt-synthorg\.ps1$" && echo helper || echo inline
    ```
 
-   - Output ends with `wt-synthorg.ps1`: the script is on PATH. Delegate per-worktree mechanical setup to it (path A below).
-   - Output is `INFO: Could not find files...` (or empty): the script is missing. Use the inline path (path B below).
+   `where.exe` exits 0 with a path ending in `wt-synthorg.ps1` on hit, and exits 1 with `INFO: Could not find files for the given pattern(s).` on miss. The end-of-line anchor on the path is the programmatic discriminator: only a successful path output matches, never an error line.
+
+   - `helper`: the script is on PATH. Delegate per-worktree mechanical setup to it (path A below).
+   - `inline`: the script is missing. Use the inline path (path B below).
 
    Stream-only redirects (`2>&1`) are used here instead of `>/dev/null` because some sessions have a hook that blocks any `>` token, even when redirecting to `/dev/null`.
 
@@ -158,13 +160,14 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
    If either fails validation, reject and abort the whole setup; do not interpolate into shell.
 
-   Probe for `pwsh` once before the per-worktree loop (skip if already done):
+   Probe for `pwsh` once before the per-worktree loop (skip if already done). Two checks: `command -v pwsh` confirms PATH resolution; `pwsh -NoProfile -Command "exit 0"` confirms the binary is actually executable (catches broken symlinks, missing runtime deps, or a `.ps1` shim that isn't really `pwsh`):
 
    ```bash
-   command -v pwsh 2>&1 | grep -q . && echo pwsh-found || echo pwsh-missing
+   command -v pwsh 2>&1 | grep -q . || echo pwsh-missing
+   pwsh -NoProfile -Command "exit 0" && echo pwsh-found || echo pwsh-missing
    ```
 
-   `pwsh-missing` means PowerShell 7 isn't on PATH even though the `.ps1` is. Fall through to path B (inline) for every worktree rather than emitting broken commands.
+   Treat as `pwsh-found` ONLY when the second line prints `pwsh-found` (the first line is a fast-fail PATH check that prints `pwsh-missing` if PATH lookup already failed). Otherwise fall through to path B (inline) for every worktree rather than emitting broken commands.
 
    When `pwsh-found`, invoke the helper per worktree:
 
@@ -331,7 +334,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
    **Fence nesting policy:** the prompt body generated in step 6e may itself contain triple-backtick code blocks (e.g. `` ```bash `` examples pulled from an issue body). To avoid the outer fence closing prematurely, choose an outer fence marker that never appears inside the body. In practice:
 
-   - Scan the generated prompt body for the longest run of consecutive backticks (`longest_backticks`). Use an outer fence of `longest_backticks + 1` backticks (minimum 4 backticks). Include the `text` language tag on the outer fence so markdown lints are happy (e.g. ` ````text ... ```` `).
+   - Scan the generated prompt body for the longest run of consecutive backticks (`longest_backticks`). Use an outer fence of `max(longest_backticks + 1, 4)` backticks (so always at least 4 backticks). Include the `text` language tag on the outer fence so markdown lints are happy (e.g. ` ````text ... ```` `).
    - An acceptable fallback is a tilde outer fence (`~~~text ... ~~~`) since the prompt body will not contain tilde fences. Both are valid CommonMark; pick whichever renders cleanly in the chat UI.
    - **Never** use plain ` ```text ` as the outer wrapper; any inner `` ``` `` in the prompt body will close it.
 
