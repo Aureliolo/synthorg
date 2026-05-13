@@ -56,7 +56,11 @@ const AGUI_EVENT_MAP: Readonly<Record<string, AgUiMappedEvent>> = {
 }
 
 interface SseRawEvent {
-  id: string
+  // ``id`` is optional because ``mapAgUiToWsEvent`` never reads it;
+  // making it required would discard otherwise-valid frames whose
+  // server happens to omit ``id`` (or moves it into a different
+  // envelope field on a future schema revision).
+  id?: string
   type: string
   timestamp: string
   payload?: unknown
@@ -84,8 +88,19 @@ interface SseClient {
 export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   const url = SSE_STREAM_PATH
   const source = new EventSource(url, { withCredentials: true })
+  // Dedupe transient reconnect failures. EventSource's built-in
+  // reconnect loop fires ``onerror`` on every transient blip while
+  // it shifts back to ``CONNECTING`` and re-attempts the handshake;
+  // the spec then fires ``onopen`` again on recovery. Reporting each
+  // intermediate ``onerror`` to the caller would flood the operator
+  // with toasts for a single network hiccup. The flag flips to
+  // ``true`` on the first failure of a disconnect cycle and resets
+  // in ``onopen`` so a genuine fresh failure (after a successful
+  // re-open) still surfaces.
+  let reportedDisconnect = false
 
   source.onopen = () => {
+    reportedDisconnect = false
     callbacks.onOpen?.()
   }
 
@@ -109,8 +124,9 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   }
 
   source.onerror = () => {
-    const transportError = new Error('SSE transport error')
-    callbacks.onError(transportError)
+    if (reportedDisconnect) return
+    reportedDisconnect = true
+    callbacks.onError(new Error('SSE transport error'))
   }
 
   return {
@@ -138,12 +154,16 @@ function asSseRaw(value: unknown): SseRawEvent | null {
   // for non-strings, whitespace-only strings, and strings whose
   // post-sanitisation content is empty, so a single ``undefined``
   // check below rejects every malformed shape.
-  const id = sanitizeWsString(record['id'])
   const type = sanitizeWsString(record['type'])
   const timestamp = sanitizeWsString(record['timestamp'])
-  if (id === undefined || type === undefined || timestamp === undefined) {
+  // Only ``type`` and ``timestamp`` are required for the downstream
+  // ``mapAgUiToWsEvent`` projection. ``id`` is preserved when present
+  // (so logs / debug surfaces keep the server-side identifier) but a
+  // frame without one is still mappable.
+  if (type === undefined || timestamp === undefined) {
     return null
   }
+  const id = sanitizeWsString(record['id'])
   return {
     id,
     type,

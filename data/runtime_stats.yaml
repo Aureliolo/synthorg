@@ -1,16 +1,16 @@
 schema_version: 1
-last_generated_utc: '2026-05-13T15:19:33Z'
-generator_revision: fdb65a023
+last_generated_utc: '2026-05-13T17:20:18Z'
+generator_revision: a6472d5f8
 stats:
   tests:
-    raw: 30085
+    raw: 30090
     rounded: 30000
     display: 30,000+
   version:
-    raw: v0.8.4-dev.6
-    display: v0.8.4-dev.6
+    raw: v0.8.4-dev.7
+    display: v0.8.4-dev.7
   mem0_stars:
-    raw: 55585
+    raw: 55593
     rounded: 55000
     display: 55k+
   providers_curated:
