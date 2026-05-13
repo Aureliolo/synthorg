@@ -9,7 +9,7 @@ from colliding on a shared dedup row.
 
 import pytest
 
-from synthorg.api.controllers.webhooks import _build_idem_key
+from synthorg.api.controllers.webhooks import _build_idem_key, _build_idem_scope
 
 pytestmark = pytest.mark.unit
 
@@ -48,14 +48,21 @@ class TestWebhookIdempotencyScope:
     """
 
     def test_scope_format_includes_connection_name(self) -> None:
-        # Inline the format from the controller; the test exists to
-        # catch a future refactor that drops ``connection_name``.
+        # Exercise the controller's own helper so a future refactor
+        # that drops ``connection_name`` from the scope format trips
+        # the assertion. A local f-string would silently keep passing.
         connection_type = "github"
         connection_name = "github-primary"
-        scope = f"webhooks:{connection_type}:{connection_name}"
+        scope = _build_idem_scope(
+            connection_type=connection_type,
+            connection_name=connection_name,
+        )
         assert scope.startswith("webhooks:")
         assert connection_type in scope
         assert connection_name in scope
         # And scopes for sibling connections of the same type must differ.
-        other_scope = f"webhooks:{connection_type}:github-secondary"
-        assert scope != other_scope
+        sibling = _build_idem_scope(
+            connection_type=connection_type,
+            connection_name="github-secondary",
+        )
+        assert scope != sibling

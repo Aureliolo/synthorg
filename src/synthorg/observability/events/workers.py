@@ -21,6 +21,7 @@ WORKERS_DUPLICATE_CLAIM_SUPPRESSED: Final[str] = (
     "workers.worker.duplicate_claim_suppressed"
 )
 WORKERS_DEDUP_LOOKUP_FAILED: Final[str] = "workers.worker.dedup_lookup_failed"
+WORKERS_DEDUP_FORGET_FAILED: Final[str] = "workers.worker.dedup_forget_failed"
 
 # Dispatcher
 WORKERS_DISPATCHER_QUEUE_NOT_RUNNING: Final[str] = (

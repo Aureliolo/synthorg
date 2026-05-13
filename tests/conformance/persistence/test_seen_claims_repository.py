@@ -72,6 +72,42 @@ class TestSeenClaimsMarkSeen:
         assert second is True
 
 
+class TestSeenClaimsForget:
+    async def test_forget_clears_row_so_re_mark_succeeds(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        key = NotBlankStr("idem-forgettable")
+        first = await backend.seen_claims.mark_seen(
+            idempotency_key=key,
+            claim_id=NotBlankStr("task-forget"),
+            now=_now(),
+            ttl_seconds=60.0,
+        )
+        assert first is True
+        removed = await backend.seen_claims.forget(idempotency_key=key)
+        assert removed is True
+        # After forget the row is gone, so the next mark_seen behaves
+        # as a fresh first-write -- this is the property the worker's
+        # RETRY rollback path relies on.
+        second = await backend.seen_claims.mark_seen(
+            idempotency_key=key,
+            claim_id=NotBlankStr("task-forget"),
+            now=_now(),
+            ttl_seconds=60.0,
+        )
+        assert second is True
+
+    async def test_forget_unknown_key_returns_false(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        removed = await backend.seen_claims.forget(
+            idempotency_key=NotBlankStr("idem-never-marked"),
+        )
+        assert removed is False
+
+
 class TestSeenClaimsPruneExpired:
     async def test_prune_removes_expired_rows(
         self,

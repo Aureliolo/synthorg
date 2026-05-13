@@ -52,6 +52,32 @@ class SeenClaimsRepository(Protocol):
         """
         ...
 
+    async def forget(
+        self,
+        *,
+        idempotency_key: NotBlankStr,
+    ) -> bool:
+        """Delete a previously-recorded dedup row.
+
+        Called by the worker after a non-success terminal outcome
+        (today: ``RETRY``) so the speculative row written by
+        :meth:`mark_seen` cannot trap a future redelivery in the
+        "duplicate -> ack -> drop" path. Idempotent: a key with no
+        matching row is a no-op.
+
+        Args:
+            idempotency_key: The key originally passed to
+                :meth:`mark_seen`.
+
+        Returns:
+            ``True`` if a row was removed, ``False`` if no row matched.
+
+        Raises:
+            QueryError: On underlying DB failure (caller decides
+                whether to retry or fail-open).
+        """
+        ...
+
     async def prune_expired(self, now: AwareDatetime) -> int:
         """Delete rows whose TTL has elapsed.
 

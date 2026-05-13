@@ -14,6 +14,7 @@ pins:
    refactor that drops the call surfaces in code review.
 """
 
+import ast
 from pathlib import Path
 from types import MappingProxyType
 
@@ -50,23 +51,32 @@ class TestRecordTaskRunWiredAtCallSite:
     def test_call_sites_present_in_module_source(self) -> None:
         """The module MUST invoke ``record_task_run`` for the recorded outcomes.
 
-        Source-text check (cheap, robust against refactors that move
-        the import). The module also depends on
-        ``_RECORDED_STATUS_OUTCOME`` to bound the outcomes; both must
-        appear together.
+        Parses the module AST and counts real ``Call`` nodes whose
+        callee is ``record_task_run`` (either bare name or attribute
+        access). A raw substring check would happily match a docstring
+        or a comment mentioning the function and miss a silent drop
+        of the real call site.
         """
         assert _APPLY_MODULE_PATH.exists(), (
             f"expected task_engine_apply.py at {_APPLY_MODULE_PATH}"
         )
         source = _APPLY_MODULE_PATH.read_text(encoding="utf-8")
-        # At least one call to record_task_run(...) must appear.
-        assert "record_task_run(" in source, (
-            "task_engine_apply.py must invoke record_task_run() on task completion"
+        module = ast.parse(source)
+        invocations = sum(
+            1
+            for node in ast.walk(module)
+            if isinstance(node, ast.Call)
+            and (
+                (isinstance(node.func, ast.Name) and node.func.id == "record_task_run")
+                or (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "record_task_run"
+                )
+            )
         )
-        # The transition branch (`if mutation.target_status in
-        # _RECORDED_STATUS_OUTCOME`) and the cancel branch are the two
+        # The transition branch (``if mutation.target_status in
+        # _RECORDED_STATUS_OUTCOME``) and the cancel branch are the two
         # invocation sites today. Pin the count to catch a silent drop.
-        invocations = source.count("record_task_run(")
         assert invocations >= 2, (
             "expected at least two record_task_run(...) invocations "
             f"(transition + cancel), found {invocations}"

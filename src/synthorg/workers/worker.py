@@ -26,6 +26,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_CLAIM_RECEIVED,
+    WORKERS_DEDUP_FORGET_FAILED,
     WORKERS_DEDUP_LOOKUP_FAILED,
     WORKERS_DUPLICATE_CLAIM_SUPPRESSED,
     WORKERS_EXECUTOR_FAILED,
@@ -183,6 +184,15 @@ class Worker:
             await self._finalize_claim(raw, TaskClaimStatus.SUCCESS)
             return
         status = await self._execute_claim(claim)
+        if status == TaskClaimStatus.RETRY:
+            # ``_is_duplicate`` wrote a speculative row before the
+            # executor ran (the persistence layer's only atomic
+            # first-write primitive is INSERT-IF-NOT-EXISTS). On a
+            # retry-able outcome we must roll that row back so the
+            # next JetStream redelivery runs the executor again
+            # instead of taking the duplicate-suppress branch and
+            # silently dropping the claim.
+            await self._forget_seen(claim)
         await self._finalize_claim(raw, status)
 
     async def _is_duplicate(self, claim: TaskClaim) -> bool:
@@ -221,6 +231,31 @@ class Worker:
             idempotency_key=claim.idempotency_key,
         )
         return True
+
+    async def _forget_seen(self, claim: TaskClaim) -> None:
+        """Roll back the speculative dedup row recorded in ``_is_duplicate``.
+
+        Fail-open: a transient persistence error here is logged and
+        swallowed. The JetStream redelivery horizon (``ack_wait *
+        max_deliver``) still bounds repeat attempts, and a stuck row
+        only mis-classifies one redelivery as a duplicate rather than
+        stalling the whole worker.
+        """
+        if self._seen_claims is None:
+            return
+        try:
+            await self._seen_claims.forget(
+                idempotency_key=NotBlankStr(claim.idempotency_key),
+            )
+        except QueryError as exc:
+            logger.warning(
+                WORKERS_DEDUP_FORGET_FAILED,
+                worker_id=self._worker_id,
+                task_id=claim.task_id,
+                idempotency_key=claim.idempotency_key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _execute_claim(self, claim: TaskClaim) -> TaskClaimStatus:
         """Invoke the executor, translating exceptions into RETRY."""

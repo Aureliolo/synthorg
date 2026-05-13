@@ -202,3 +202,12 @@ class TestProviderCompleteSpan:
         # record_exception MUST NOT have been called (SEC: traceback
         # frame-locals can leak credentials).
         assert not span.recorded_exceptions
+        # Span status MUST be ERROR. ``set_status_on_exception=False``
+        # opts out of the SDK's auto-status (which would have stamped
+        # an un-scrubbed ``str(exc)``), so the manual ``set_status``
+        # call is the only thing that flips the span from UNSET to
+        # ERROR for observability dashboards.
+        from opentelemetry.trace import StatusCode
+
+        assert span.statuses, "expected span.set_status to be called on error"
+        assert span.statuses[-1].status_code == StatusCode.ERROR

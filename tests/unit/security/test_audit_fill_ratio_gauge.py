@@ -71,6 +71,28 @@ class TestAuditFillRatioGauge:
         log.record(_make_entry("e-5"))
         assert _gauge_value(collector) == pytest.approx(1.0)
 
+    def test_clear_resets_fill_ratio_to_zero(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``clear()`` must reset the gauge so stale ``1.0`` doesn't linger.
+
+        Without this, an operator alert keyed on the gauge would keep
+        firing after a test isolation reset until the next ``record()``
+        rewrote the value.
+        """
+        import synthorg.observability.metrics_hub as _hub
+
+        collector = PrometheusCollector(prefix="synthorg")
+        monkeypatch.setattr(_hub, "_active", lambda: collector)
+
+        log = AuditLog(max_entries=4)
+        log.record(_make_entry("e-1"))
+        log.record(_make_entry("e-2"))
+        assert _gauge_value(collector) == pytest.approx(0.5)
+        log.clear()
+        assert _gauge_value(collector) == pytest.approx(0.0)
+
 
 # Force pytest-asyncio to register the module (not strictly required here
 # since these are sync tests but mirrors the project layout).

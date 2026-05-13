@@ -57,6 +57,9 @@ class AuditLog:
         previous_total = self._total_recorded
         self._entries.clear()
         self._total_recorded = 0
+        # Reset the gauge so a previously near-full audit log doesn't
+        # leave a stale ``1.0`` reading until the next record() call.
+        record_security_audit_fill_ratio(ratio=0.0)
         logger.info(
             SECURITY_AUDIT_CLEARED,
             previous_count=previous_count,

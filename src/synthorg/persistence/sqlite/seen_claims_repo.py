@@ -18,6 +18,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
+    PERSISTENCE_SEEN_CLAIMS_FORGET_FAILED,
     PERSISTENCE_SEEN_CLAIMS_MARK_FAILED,
     PERSISTENCE_SEEN_CLAIMS_PRUNE_FAILED,
     PERSISTENCE_SEEN_CLAIMS_PRUNED,
@@ -95,6 +96,33 @@ class SQLiteSeenClaimsRepository:
                 )
                 raise QueryError(msg) from exc
         return inserted
+
+    async def forget(
+        self,
+        *,
+        idempotency_key: NotBlankStr,
+    ) -> bool:
+        """Delete the dedup row for *idempotency_key* (idempotent)."""
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM seen_claims WHERE idempotency_key = ?",
+                    (str(idempotency_key),),
+                )
+                removed = cursor.rowcount > 0
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to forget claim {idempotency_key!r}"
+                logger.warning(
+                    PERSISTENCE_SEEN_CLAIMS_FORGET_FAILED,
+                    idempotency_key=str(idempotency_key),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return removed
 
     async def prune_expired(self, now: AwareDatetime) -> int:
         """Delete rows past their ``expires_at`` boundary."""

@@ -29,6 +29,7 @@ class _StubSeenClaims:
         outcomes: dict[str, bool] | None = None,
     ) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.forgets: list[str] = []
         self._outcomes = outcomes or {}
 
     async def mark_seen(
@@ -48,6 +49,14 @@ class _StubSeenClaims:
             },
         )
         return self._outcomes.get(str(idempotency_key), True)
+
+    async def forget(
+        self,
+        *,
+        idempotency_key: NotBlankStr,
+    ) -> bool:
+        self.forgets.append(str(idempotency_key))
+        return True
 
     async def prune_expired(self, now: datetime) -> int:
         return 0
@@ -171,6 +180,55 @@ class TestWorkerDedup:
         )
         is_dup = await worker._is_duplicate(claim)
         assert is_dup is False
+
+    async def test_retry_status_rolls_back_dedup_row(
+        self,
+        queue_config: QueueConfig,
+    ) -> None:
+        """RETRY MUST trigger ``forget`` so the next redelivery executes.
+
+        Without this rollback, the speculative ``mark_seen`` row written
+        before the executor ran would trap the JetStream redelivery
+        in the duplicate-suppress path and silently drop the task.
+        """
+        clock = FakeClock(start=datetime(2026, 5, 13, tzinfo=UTC))
+        seen = _StubSeenClaims()
+
+        worker = Worker(
+            queue_config=queue_config,
+            task_queue=_NullTaskQueue(),  # type: ignore[arg-type]
+            executor=_unused_executor,
+            worker_id="test-worker",
+            seen_claims=seen,
+            clock=clock,
+        )
+        claim = TaskClaim(
+            task_id=NotBlankStr("t-retry"),
+            new_status=NotBlankStr("assigned"),
+            idempotency_key=NotBlankStr("idem-retry-key"),
+        )
+        await worker._forget_seen(claim)
+        assert seen.forgets == ["idem-retry-key"]
+
+    async def test_forget_is_a_noop_when_no_repo(
+        self,
+        queue_config: QueueConfig,
+    ) -> None:
+        clock = FakeClock(start=datetime(2026, 5, 13, tzinfo=UTC))
+        worker = Worker(
+            queue_config=queue_config,
+            task_queue=_NullTaskQueue(),  # type: ignore[arg-type]
+            executor=_unused_executor,
+            worker_id="test-worker",
+            seen_claims=None,
+            clock=clock,
+        )
+        claim = TaskClaim(
+            task_id=NotBlankStr("t-no-repo"),
+            new_status=NotBlankStr("assigned"),
+        )
+        # Must not raise.
+        await worker._forget_seen(claim)
 
 
 async def _unused_executor(_claim: TaskClaim) -> TaskClaimStatus:  # pragma: no cover

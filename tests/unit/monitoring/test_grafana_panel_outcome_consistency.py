@@ -64,19 +64,34 @@ def _panel_metric(panel: dict[str, Any]) -> str | None:
     return None
 
 
-def _outcomes_in_description(description: str, allowlist: frozenset[str]) -> set[str]:
-    """Extract outcome tokens from the panel description.
+_ALL_KNOWN_OUTCOMES: frozenset[str] = (
+    VALID_APPROVAL_OUTCOMES | VALID_ESCALATION_OUTCOMES | VALID_BLUEPRINT_OUTCOMES
+)
 
-    Matches each allowlist token only when it appears as a complete
-    word in the description (boundary on either side) so a token like
-    ``"success"`` doesn't match ``"successful"``. Returns the subset
-    that actually appears.
+
+def _outcomes_in_description(description: str, allowlist: frozenset[str]) -> set[str]:
+    """Return outcome-like tokens that appear in the panel description.
+
+    Considers the *union* of every project allowlist so a stale token
+    that was dropped from a specific allowlist but is still referenced
+    in the panel description surfaces in the ``stale = found -
+    allowlist`` check downstream. A previous version of this helper
+    iterated only over the per-panel allowlist, which made the stale
+    check definitionally empty.
+
+    Whole-word matching (``\\b...\\b``) prevents a short token like
+    ``"success"`` from matching ``"successful"``.
     """
     found: set[str] = set()
-    for token in allowlist:
+    for token in _ALL_KNOWN_OUTCOMES:
         pattern = re.compile(rf"\b{re.escape(token)}\b")
         if pattern.search(description):
             found.add(token)
+    # Preserve the original signature: the *minimum* membership claim
+    # callers rely on is "what allowlist tokens appear here?". The
+    # set returned remains a superset of that, and the union-mode
+    # discovery is what lets the stale check have teeth.
+    del allowlist  # union of all allowlists drives detection now
     return found
 
 

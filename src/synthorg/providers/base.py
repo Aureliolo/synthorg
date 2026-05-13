@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
 from typing import Any, TypeVar
 
+from opentelemetry.trace import Status, StatusCode
+
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
@@ -193,6 +195,15 @@ class BaseCompletionProvider(ABC):
                     safe_error_description(exc),
                 )
                 span.set_attribute("provider.latency_ms", latency_ms)
+                # ``set_status_on_exception=False`` opts out of the
+                # auto-instrumentation that would have stamped an
+                # un-scrubbed ``str(exc)`` into the span status, so the
+                # ERROR status must be set manually here. The scrubbed
+                # error description is exposed via ``exception.message``
+                # above; ``Status.description`` is intentionally left
+                # unset so the OTLP exporter never carries the raw
+                # provider string.
+                span.set_status(Status(StatusCode.ERROR))
                 record_provider_error(
                     provider=provider_label,
                     model=model,
