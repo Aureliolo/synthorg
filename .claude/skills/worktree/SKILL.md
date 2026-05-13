@@ -60,7 +60,20 @@ If no definitions are provided at all, ask the user via AskUserQuestion for:
 /worktree setup "improve setup wizard UX"
 ```
 
-Creates a worktree from the description alone: branch name auto-generated (`feat/improve-setup-wizard-ux`), no issue fetching, no prompt generation. Useful for exploratory work, ad-hoc improvements, or tasks without a GitHub issue. All other setup steps (pre-flight, settings copy, dependency sync) still apply. Skip steps 5-6 (prompt generation and output); just report the worktree path and `cd <path> && claude` command.
+Creates a worktree from the description alone: branch name auto-generated (`feat/improve-setup-wizard-ux`), no issue fetching, no prompt generation. Useful for exploratory work, ad-hoc improvements, or tasks without a GitHub issue. All other setup steps (pre-flight, helper detection, settings copy, dependency sync) still apply. Skip steps 6 through 8 (prompt generation, auto-launch, formatted prompt output); instead report only the worktree path and the `cd <path> && claude` command.
+
+### Flag: `--no-launch`
+
+Append `--no-launch` to any of the modes above to suppress post-setup launching:
+
+```text
+/worktree setup --no-launch "improve setup wizard UX"
+/worktree setup --issues #26,#30,#133 --no-launch
+```
+
+When set, the skill creates the worktree(s) and prints the generated prompts (if any), but skips step 7 (`wt.exe` tab opening) entirely and adjusts the step 8 footer accordingly. Useful when you want the worktrees to exist but plan to open them later with `/worktree launch` or by hand.
+
+This flag is independent of the `wt-synthorg.ps1` helper's `-NoLaunch` flag: when the skill delegates to the helper (step 4 path A) it ALWAYS passes `-NoLaunch` so the helper never grabs the user's shell. The skill's own `--no-launch` only controls whether the skill itself opens `wt.exe` tabs after the worktrees exist.
 
 ### Directory naming
 
@@ -100,10 +113,10 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    - **Stash**: `git stash push -m "worktree-setup-autostash"` then `git checkout main`
    - **Abort**: stop setup
 
-   Then pull:
+   Then fetch and fast-forward (refuses to merge if local `main` diverged, surfacing the divergence loudly instead of silently merging). Pass `origin main` explicitly rather than relying on the current branch's upstream:
 
    ```bash
-   git pull
+   git fetch origin main && git pull --ff-only origin main
    ```
 
    d. For each worktree definition, verify:
@@ -119,14 +132,61 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
    If missing, warn: "No .claude/settings.local.json found. Worktrees will prompt for tool permissions." Continue anyway.
 
-3. **For each worktree definition**, run in sequence:
+3. **Detect the `wt-synthorg.ps1` helper** (one-shot, before the per-worktree loop):
+
+   ```bash
+   where.exe wt-synthorg.ps1 2>&1 | grep -q "wt-synthorg\.ps1$" && echo helper || echo inline
+   ```
+
+   `where.exe` exits 0 with a path ending in `wt-synthorg.ps1` on hit, and exits 1 with `INFO: Could not find files for the given pattern(s).` on miss. The end-of-line anchor on the path is the programmatic discriminator: only a successful path output matches, never an error line.
+
+   - `helper`: the script is on PATH. Delegate per-worktree mechanical setup to it (path A below).
+   - `inline`: the script is missing. Use the inline path (path B below).
+
+   Stream-only redirects (`2>&1`) are used here instead of `>/dev/null` because some sessions have a hook that blocks any `>` token, even when redirecting to `/dev/null`.
+
+   Both paths must run **sequentially across worktrees** to avoid uv/npm/go cache-lock contention.
+
+4. **For each worktree definition**, run in sequence:
 
    a. Determine the directory path: `../<repo-name>-wt-<slug>` (e.g. `../synthorg-wt-delegation-loop-prevention`)
 
-   b. Create the worktree. For **new** branches:
+   b. **Path A (helper present)**: one call per worktree.
+
+   Before building the command, re-validate the two interpolated values at the invocation site (defence in depth; the "Directory naming" and "Input validation (CRITICAL)" rules already cover this upstream, but agents may reach step 4 without having read them):
+
+   - `<slug>` must match `^[a-zA-Z0-9._-]+$`.
+   - `<type>` must match `^[a-z]+$` (lowercase prefix like `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`, `ci`).
+
+   If either fails validation, reject and abort the whole setup; do not interpolate into shell.
+
+   Probe for `pwsh` once before the per-worktree loop (skip if already done). Two checks: `command -v pwsh` confirms PATH resolution; `pwsh -NoProfile -Command "exit 0"` confirms the binary is actually executable (catches broken symlinks, missing runtime deps, or a `.ps1` shim that isn't really `pwsh`):
 
    ```bash
-   git worktree add -b <branch-name> <dir-path> main
+   command -v pwsh 2>&1 | grep -q . || echo pwsh-missing
+   pwsh -NoProfile -Command "exit 0" && echo pwsh-found || echo pwsh-missing
+   ```
+
+   Treat as `pwsh-found` ONLY when the second line prints `pwsh-found` (the first line is a fast-fail PATH check that prints `pwsh-missing` if PATH lookup already failed). Otherwise fall through to path B (inline) for every worktree rather than emitting broken commands.
+
+   When `pwsh-found`, invoke the helper per worktree:
+
+   ```bash
+   pwsh -NoProfile -Command "wt-synthorg -Name '<slug>' -BranchType '<type>' -NonInteractive -NoLaunch"
+   ```
+
+   `<slug>` is the bare derived slug (no `wt-` prefix), `<type>` is the branch type prefix (`feat`, `fix`, `refactor`, etc., as derived from issue labels or user input). The helper handles: dirty-tree guard, branch-base from `origin/main`, `.claude/*.local.*` copy, `uv sync`, `npm ci` (web), `go mod download` (cli). It does NOT cd or launch claude (because of `-NoLaunch`).
+
+   Always pass `-NonInteractive -NoLaunch` regardless of any skill flags: the skill keeps full control over post-setup launching.
+
+   **Error handling:** if the `pwsh` command exits non-zero (helper aborted: dirty target dir conflict it could not auto-resolve, network failure during fetch, dep-sync failure, etc.), do not silently continue to the next worktree. Surface the failure to the user via AskUserQuestion with three options: (a) retry the helper, (b) fall back to path B (inline) for this worktree only, (c) abort the whole setup.
+
+   Skip the rest of step 4 (c, d) for this worktree and continue to the next one. After all worktrees are created, continue to step 5.
+
+   c. **Path B (inline fallback)**: create the worktree manually. For **new** branches:
+
+   ```bash
+   git worktree add -b <branch-name> <dir-path> origin/main
    ```
 
    For **reuse** (branch already exists from Step 1d):
@@ -135,21 +195,15 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    git worktree add <dir-path> <branch-name>
    ```
 
-   Note: `-b` creates a new branch and fails if it already exists. The reuse path omits `-b` to attach an existing branch.
+   Note: `-b` creates a new branch and fails if it already exists. The reuse path omits `-b` to attach an existing branch. Branching from `origin/main` (not local `main`) uses the just-fetched remote ref directly.
 
-   c. Copy all `.claude/` local files (settings, hooks, etc.):
-
-   ```bash
-   test -f .claude/settings.local.json && cp .claude/settings.local.json <dir-path>/.claude/settings.local.json
-   ```
-
-   Also copy any other `.claude/*.local.*` files if they exist:
+   Then copy all `.claude/` local files (settings, hooks, etc.):
 
    ```bash
    for f in .claude/*.local.*; do test -f "$f" && cp "$f" "<dir-path>/.claude/$(basename "$f")"; done
    ```
 
-   d. **Pre-sync all dependencies** to prevent cache lock contention when multiple Claude Code instances run concurrently. Run these **sequentially** (one per worktree, not in parallel).
+   d. **Pre-sync all dependencies** (inline path only; the helper already did this in path A).
 
    **Python:**
 
@@ -171,13 +225,13 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
    **IMPORTANT:** Never use `cd` to change into the worktree directory; use `--project`, `--prefix`, or `-C` flags instead. `cd` poisons the shell cwd for all subsequent Bash calls.
 
-4. **Verify all worktrees created:**
+5. **Verify all worktrees created:**
 
    ```bash
    git worktree list
    ```
 
-5. **For each worktree, generate a Claude Code prompt.** The prompt must follow this exact structure:
+6. **For each worktree, generate a Claude Code prompt.** The prompt must follow this exact structure:
 
    a. Fetch each issue's full body from GitHub:
    ```bash
@@ -260,10 +314,10 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
    If there are multiple issues in one worktree that have a natural ordering (from dependency parsing or logical sequence), add an `## Implementation order` section.
 
-6. **Auto-launch tabs if running in Windows Terminal.** Check `$WT_SESSION` and `wt.exe` availability:
+7. **Auto-launch tabs if running in Windows Terminal.** Skip this step entirely if the user passed `--no-launch` (see "Input formats"). Check `$WT_SESSION` and `wt.exe` availability:
 
    ```bash
-   test -n "$WT_SESSION" && which wt.exe >/dev/null 2>&1 && echo "auto-launch-ok" || echo "manual"
+   test -n "$WT_SESSION" && which wt.exe 2>&1 | grep -q "wt\.exe$" && echo "auto-launch-ok" || echo "manual"
    ```
 
    If `auto-launch-ok`, spawn one tab per worktree sequentially (same invocation as the `launch` subcommand, no trailing command so the user's default profile loads normally):
@@ -276,11 +330,11 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
    If not in Windows Terminal or `wt.exe` is missing, skip auto-launch and instead tell the user to run `cd <path> && claude` manually in each target terminal.
 
-7. **Present the output** to the user by printing each worktree's prompt INLINE in chat as a copy-pasteable fenced code block. Do NOT write the prompt to a file; the user copies directly from chat.
+8. **Present the output** to the user by printing each worktree's prompt INLINE in chat as a copy-pasteable fenced code block. Do NOT write the prompt to a file; the user copies directly from chat.
 
-   **Fence nesting policy:** the prompt body generated in step 5e may itself contain triple-backtick code blocks (e.g. `` ```bash `` examples pulled from an issue body). To avoid the outer fence closing prematurely, choose an outer fence marker that never appears inside the body. In practice:
+   **Fence nesting policy:** the prompt body generated in step 6e may itself contain triple-backtick code blocks (e.g. `` ```bash `` examples pulled from an issue body). To avoid the outer fence closing prematurely, choose an outer fence marker that never appears inside the body. In practice:
 
-   - Scan the generated prompt body for the longest run of consecutive backticks (`longest_backticks`). Use an outer fence of `longest_backticks + 1` backticks (minimum 4 backticks). Include the `text` language tag on the outer fence so markdown lints are happy (e.g. ` ````text ... ```` `).
+   - Scan the generated prompt body for the longest run of consecutive backticks (`longest_backticks`). Use an outer fence of `max(longest_backticks + 1, 4)` backticks (so always at least 4 backticks). Include the `text` language tag on the outer fence so markdown lints are happy (e.g. ` ````text ... ```` `).
    - An acceptable fallback is a tilde outer fence (`~~~text ... ~~~`) since the prompt body will not contain tilde fences. Both are valid CommonMark; pick whichever renders cleanly in the chat UI.
    - **Never** use plain ` ```text ` as the outer wrapper; any inner `` ``` `` in the prompt body will close it.
 
@@ -294,7 +348,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    Prompt to paste into the claude REPL (after running `claude` in the tab):
 
    ```text
-   <full prompt body as generated in step 5e; inner ``` blocks are safe because the outer fence is tildes>
+   <full prompt body as generated in step 6e; inner ``` blocks are safe because the outer fence is tildes>
    ```
    ~~~
 
@@ -302,6 +356,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
    - Auto-launched: "N tabs opened in Windows Terminal. In each tab run `claude` and paste the corresponding prompt above."
    - Manual: "N worktrees ready. In each tab run `cd <path> && claude` and paste the corresponding prompt above."
+   - `--no-launch` mode: "N worktrees ready. No tabs opened (--no-launch). Run `cd <path> && claude` when you want to start, then paste the corresponding prompt above."
 
    **Do not save prompts to disk**; the generated content is ephemeral scaffolding the user adapts on paste. Saving to `.claude/initial-prompt.md` creates stale artifacts that drift from what the user actually submitted.
 
@@ -328,7 +383,7 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
 
    ```bash
    test -n "$WT_SESSION" && echo "in-wt" || echo "not-in-wt"
-   which wt.exe >/dev/null 2>&1 || echo "wt-missing"
+   which wt.exe 2>&1 | grep -q "wt\.exe$" || echo "wt-missing"
    ```
 
    - If `wt.exe` is missing: report "Windows Terminal not installed or not on PATH. Cannot launch." and stop.
@@ -657,10 +712,12 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 - If `$ARGUMENTS` is empty or doesn't match a command, show a brief usage guide:
 
   ```text
-  /worktree setup <definitions>   -- Create worktrees with prompts
-  /worktree setup --issues #26,#30  -- Issue-aware setup
-  /worktree cleanup                -- Remove worktrees after merge
-  /worktree status                 -- Show worktree state
-  /worktree tree --issues #26,#30  -- Dependency tree view
-  /worktree rebase                 -- Update worktrees to latest main
+  /worktree setup <definitions>             Create worktrees with prompts
+  /worktree setup --issues #26,#30          Issue-aware setup
+  /worktree setup --no-launch <defs>        Setup without opening WT tabs
+  /worktree cleanup                         Remove worktrees after merge
+  /worktree status                          Show worktree state
+  /worktree tree --issues #26,#30           Dependency tree view
+  /worktree rebase                          Update worktrees to latest main
+  /worktree launch                          Open WT tabs for existing worktrees
   ```
