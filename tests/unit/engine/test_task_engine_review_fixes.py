@@ -456,28 +456,36 @@ class TestTaskMutationResultConsistency:
         assert result.error_code == "internal"
 
 
-# ── _map_task_engine_errors 503 message sanitization ─────────
+# ── 503 message sanitization via default_message ─────────────
 
 
 @pytest.mark.unit
 class TestErrorMessageSanitization:
-    """503 responses don't leak internal error details."""
+    """503 responses use ``default_message`` rather than the raise-site message.
 
-    def test_not_running_sanitizes_message(self) -> None:
-        from synthorg.api.controllers.tasks import _map_task_engine_errors
+    ``handle_domain_error`` (in ``synthorg.api.exception_handlers``)
+    consults the class-level ``default_message`` for any response
+    whose ``status_code`` is in the 5xx range, deliberately ignoring
+    the runtime exception text so caller-supplied internal details
+    cannot leak into the RFC 9457 envelope. These tests verify the
+    ClassVar contract that handler relies on.
+    """
 
+    def test_not_running_has_sanitized_default_message(self) -> None:
         exc = TaskEngineNotRunningError("internal detail about engine state")
-        result = _map_task_engine_errors(exc)
-        assert "internal detail" not in str(result)
-        assert "temporarily unavailable" in str(result).lower()
+        # The runtime str(exc) still carries the raise-site message for
+        # local logging callers, but ``default_message`` (what the API
+        # handler selects on 5xx) must not.
+        assert "internal detail" not in exc.default_message
+        assert "temporarily unavailable" in exc.default_message.lower()
+        assert exc.status_code == 503
 
-    def test_queue_full_sanitizes_message(self) -> None:
-        from synthorg.api.controllers.tasks import _map_task_engine_errors
+    def test_queue_full_has_sanitized_default_message(self) -> None:
         from synthorg.engine.errors import TaskEngineQueueFullError
 
         exc = TaskEngineQueueFullError("queue has 1000 items")
-        result = _map_task_engine_errors(exc)
-        assert "1000" not in str(result)
+        assert "1000" not in exc.default_message
+        assert exc.status_code == 503
 
 
 # ── Defensive guard: task is None after success ──────────────
