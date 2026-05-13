@@ -46,6 +46,7 @@ from synthorg.observability.events.integrations import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
 
     from synthorg.integrations.connections.models import ConnectionType
 
@@ -424,6 +425,116 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
     return cached
 
 
+def _load_payload_from_receipt(receipt: WebhookReceipt) -> dict[str, object]:
+    """Decode the stored ``payload_json`` into a publish-ready dict.
+
+    Falls back to ``{"raw": <bytes>}`` when the stored payload is not
+    valid JSON (the original webhook may have been a binary or
+    non-UTF8 body the verifier accepted but the JSON decoder cannot
+    re-parse) and to ``{"data": <value>}`` when the JSON parses to a
+    non-mapping (lists / scalars). The publish bridge always receives
+    a ``dict[str, object]`` so downstream consumers can rely on the
+    envelope shape.
+    """
+    try:
+        raw_payload = json.loads(receipt.payload_json) if receipt.payload_json else {}
+    except json.JSONDecodeError, UnicodeDecodeError:
+        raw_payload = {"raw": receipt.payload_json}
+    if isinstance(raw_payload, dict):
+        return dict(raw_payload)
+    return {"data": raw_payload}
+
+
+async def _transition_webhook_receipt_status(  # noqa: PLR0913
+    persistence: Any,
+    receipt: WebhookReceipt,
+    *,
+    new_status: str,
+    previous: str | None,
+    processed_at: datetime | None,
+    error: str | None,
+    cas_from: str | None = None,
+) -> None:
+    """Persist a receipt-status transition, logging on success / miss.
+
+    ``cas_from`` enables compare-and-set: when supplied, the UPDATE
+    only fires when the row's current ``status`` column equals
+    ``cas_from`` (two concurrent retries cannot both pass). The
+    ``WEBHOOK_RECEIPT_STATUS_TRANSITIONED`` INFO event lands only on
+    a successful write so the log never claims a transition the DB
+    never accepted; a missing row (or a lost CAS race) raises
+    ``NotFoundError`` so the caller can surface 404 instead of
+    pretending the transition happened.
+    """
+    from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+
+    if cas_from is not None:
+        updated = await persistence.webhook_receipts.update_status_if_current(
+            NotBlankStr(receipt.id),
+            expected_status=cas_from,
+            status=new_status,
+            processed_at=processed_at,
+            error=error,
+        )
+    else:
+        updated = await persistence.webhook_receipts.update_status(
+            NotBlankStr(receipt.id),
+            status=new_status,
+            processed_at=processed_at,
+            error=error,
+        )
+    if not updated:
+        logger.warning(
+            WEBHOOK_RECEIPT_NOT_FOUND,
+            receipt_id=str(receipt.id),
+            connection_name=str(receipt.connection_name),
+            reason=(
+                "cas_lost_or_row_missing"
+                if cas_from is not None
+                else "status_transition_row_missing"
+            ),
+            target_status=new_status,
+            previous_status=previous,
+            expected_status=cas_from,
+        )
+        msg = f"Webhook receipt {receipt.id!r} not found"
+        raise NotFoundError(msg)
+    logger.info(
+        WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
+        receipt_id=str(receipt.id),
+        connection_name=str(receipt.connection_name),
+        previous_status=previous,
+        status=new_status,
+    )
+
+
+def _assert_receipt_retryable(receipt: WebhookReceipt) -> None:
+    """Raise ``ConflictError`` when the receipt is not in ``failed``.
+
+    The retry endpoint exists to re-publish deliveries the downstream
+    consumer failed on. A stale dashboard link must not let an
+    operator replay a ``received`` row (would double-publish a
+    successful delivery) or a ``retrying`` row (would race against
+    an in-flight attempt). Reject up front before any persistence
+    write or bus publish.
+    """
+    if receipt.status == _RECEIPT_STATUS_FAILED:
+        return
+    logger.warning(
+        WEBHOOK_REJECTED,
+        receipt_id=str(receipt.id),
+        connection_name=str(receipt.connection_name),
+        reason="retry_requires_failed_status",
+        current_status=receipt.status,
+    )
+    msg = (
+        f"Webhook receipt {receipt.id!r} is not retryable "
+        f"(current status: {receipt.status!r}); only "
+        f"{_RECEIPT_STATUS_FAILED!r} receipts can be retried"
+    )
+    raise ConflictError(msg)
+
+
 def _get_replay_protector(state: State) -> ReplayProtector:
     """Return (and lazily build) a config-driven ``ReplayProtector``.
 
@@ -610,24 +721,26 @@ class WebhooksController(Controller):
     ) -> ApiResponse[dict[str, object]]:
         """Re-publish a stored webhook payload to the message bus.
 
-        Looks up the persisted :class:`WebhookReceipt` by ID, decodes
-        its stored payload, and re-publishes the bus event so a
-        downstream consumer can re-process it. The receipt's status
-        is updated to ``"retrying"`` while in flight and to
-        ``"received"`` on success, with ``error`` cleared. The bus
+        Looks up the receipt, asserts it is in ``failed`` (only
+        retryable state), claims it via a CAS ``retrying`` transition,
+        re-publishes the captured payload, then flips to ``received``
+        on success or back to ``failed`` on publish error. The bus
         publish bypasses the durable idempotency service because the
-        operator-initiated retry is intentional: a fresh execution
+        operator-triggered retry is intentional: a fresh execution
         chain must run even if the original delivery already
         succeeded once.
+
+        Heavy lifting lives in module-level helpers
+        (``_load_payload_from_receipt``, ``_assert_receipt_retryable``,
+        ``_transition_webhook_receipt_status``) so this orchestrator
+        stays under the repository's 50-line function cap.
         """
         from datetime import UTC, datetime  # noqa: PLC0415
 
         from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
         persistence = state["app_state"].persistence
-        receipt = await persistence.webhook_receipts.get(
-            NotBlankStr(receipt_id),
-        )
+        receipt = await persistence.webhook_receipts.get(NotBlankStr(receipt_id))
         if receipt is None:
             logger.warning(
                 WEBHOOK_RECEIPT_NOT_FOUND,
@@ -637,109 +750,17 @@ class WebhooksController(Controller):
             )
             msg = f"Webhook receipt {receipt_id!r} not found"
             raise NotFoundError(msg)
+        _assert_receipt_retryable(receipt)
 
-        try:
-            raw_payload = (
-                json.loads(receipt.payload_json) if receipt.payload_json else {}
-            )
-        except json.JSONDecodeError, UnicodeDecodeError:
-            raw_payload = {"raw": receipt.payload_json}
-        if isinstance(raw_payload, dict):
-            payload: dict[str, object] = dict(raw_payload)
-        else:
-            payload = {"data": raw_payload}
-
-        async def _transition_status(
-            *,
-            new_status: str,
-            previous: str | None,
-            processed_at: datetime | None,
-            error: str | None,
-            cas_from: str | None = None,
-        ) -> None:
-            # Persist first; only log the transition if the row was
-            # actually updated. The bool result is checked so a log
-            # claim of ``status=retrying`` never appears against a
-            # receipt the DB never wrote.
-            #
-            # ``cas_from`` enables compare-and-set: when supplied, the
-            # UPDATE only fires when the row's current ``status`` column
-            # equals ``cas_from``. The first claim of a contested retry
-            # wins; every loser sees ``False`` and the caller raises
-            # NotFoundError so the duplicate publish never happens.
-            if cas_from is not None:
-                updated = await persistence.webhook_receipts.update_status_if_current(
-                    NotBlankStr(receipt.id),
-                    expected_status=cas_from,
-                    status=new_status,
-                    processed_at=processed_at,
-                    error=error,
-                )
-            else:
-                updated = await persistence.webhook_receipts.update_status(
-                    NotBlankStr(receipt.id),
-                    status=new_status,
-                    processed_at=processed_at,
-                    error=error,
-                )
-            if not updated:
-                logger.warning(
-                    WEBHOOK_RECEIPT_NOT_FOUND,
-                    receipt_id=str(receipt.id),
-                    connection_name=str(receipt.connection_name),
-                    reason=(
-                        "cas_lost_or_row_missing"
-                        if cas_from is not None
-                        else "status_transition_row_missing"
-                    ),
-                    target_status=new_status,
-                    previous_status=previous,
-                    expected_status=cas_from,
-                )
-                msg = f"Webhook receipt {receipt.id!r} not found"
-                raise NotFoundError(msg)
-            logger.info(
-                WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
-                receipt_id=str(receipt.id),
-                connection_name=str(receipt.connection_name),
-                previous_status=previous,
-                status=new_status,
-            )
-
-        previous_status = receipt.status
-        # Retry endpoint contract: only ``failed`` receipts are
-        # retryable. Reject ``received`` / ``retrying`` / anything else
-        # up front -- a stale dashboard link must not let an operator
-        # republish a delivery that already succeeded, and an in-flight
-        # retry must not be double-claimed even if its CAS would win
-        # against a non-failed predecessor (e.g. a self-loop replay).
-        if previous_status != _RECEIPT_STATUS_FAILED:
-            logger.warning(
-                WEBHOOK_REJECTED,
-                receipt_id=str(receipt.id),
-                connection_name=str(receipt.connection_name),
-                reason="retry_requires_failed_status",
-                current_status=previous_status,
-            )
-            msg = (
-                f"Webhook receipt {receipt.id!r} is not retryable "
-                f"(current status: {previous_status!r}); only "
-                f"{_RECEIPT_STATUS_FAILED!r} receipts can be retried"
-            )
-            raise ConflictError(msg)
-
-        # Compare-and-set on the retrying transition: two concurrent
-        # operator-triggered retries against the same receipt cannot
-        # both pass ``status == "failed"`` -- the second loses the
-        # race and surfaces 404 instead of double-publishing. The
-        # ``cas_from`` is ``"failed"`` (not ``previous_status``)
-        # because the guard above already proved the row started in
-        # the failed state; pinning the literal also closes a
-        # theoretical TOCTOU where ``receipt.status`` and the row's
-        # actual status disagree across the look-up + check window.
-        await _transition_status(
+        payload = _load_payload_from_receipt(receipt)
+        # CAS on ``failed`` (not on ``previous_status``) so the DB
+        # predicate matches the guard above; two concurrent retries
+        # cannot both pass.
+        await _transition_webhook_receipt_status(
+            persistence,
+            receipt,
             new_status=_RECEIPT_STATUS_RETRYING,
-            previous=previous_status,
+            previous=receipt.status,
             processed_at=None,
             error=None,
             cas_from=_RECEIPT_STATUS_FAILED,
@@ -757,11 +778,22 @@ class WebhooksController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            # The receipt would otherwise stay pinned to ``retrying``
-            # forever -- failing-fast back to ``failed`` lets a follow-up
-            # operator retry pick the row up again and gives the
-            # status feed an honest signal.
-            await _transition_status(
+            # Log the publish failure BEFORE the fallback status write
+            # so the original cause is preserved even if the status
+            # write also fails. Use ``error_type`` +
+            # ``safe_error_description`` (never raw ``str(exc)``)
+            # because the exception text may carry bus / DSN secrets.
+            logger.error(
+                WEBHOOK_REJECTED,
+                receipt_id=str(receipt.id),
+                connection_name=str(receipt.connection_name),
+                reason="retry_publish_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            await _transition_webhook_receipt_status(
+                persistence,
+                receipt,
                 new_status=_RECEIPT_STATUS_FAILED,
                 previous=_RECEIPT_STATUS_RETRYING,
                 processed_at=datetime.now(UTC),
@@ -769,7 +801,9 @@ class WebhooksController(Controller):
             )
             raise
 
-        await _transition_status(
+        await _transition_webhook_receipt_status(
+            persistence,
+            receipt,
             new_status=_RECEIPT_STATUS_RECEIVED,
             previous=_RECEIPT_STATUS_RETRYING,
             processed_at=datetime.now(UTC),

@@ -148,11 +148,22 @@ function mapAgUiToWsEvent(sse: SseRawEvent): WsEvent | null {
   // rather than fall back because the read-only fallback should
   // never invent task / approval status transitions the server did
   // not actually emit.
-  const mapping = AGUI_EVENT_MAP[sse.type]
-  if (mapping === undefined) {
+  // ``Object.hasOwn`` (not bracket-then-undefined-check) is required
+  // because bracket access against an untrusted key like ``constructor``
+  // / ``__proto__`` / ``toString`` would resolve to the inherited
+  // prototype property instead of ``undefined`` -- those values are
+  // truthy and would slip past the ``=== undefined`` guard, producing
+  // a frame with no event_type / channel.
+  if (!Object.hasOwn(AGUI_EVENT_MAP, sse.type)) {
     log.debug('Unmapped AG-UI event type discarded', sanitizeForLog({ type: sse.type }))
     return null
   }
+  // ``Object.hasOwn`` narrows runtime existence but not the TS
+  // optional-property type; the explicit re-check keeps strict
+  // ``noUncheckedIndexedAccess`` callers honest without changing
+  // observable behaviour.
+  const mapping = AGUI_EVENT_MAP[sse.type]
+  if (mapping === undefined) return null
   // ``typeof null === 'object'`` is excluded above; the extra
   // ``!Array.isArray`` guard rejects array payloads too so the
   // outbound ``WsEvent.payload`` envelope stays a plain

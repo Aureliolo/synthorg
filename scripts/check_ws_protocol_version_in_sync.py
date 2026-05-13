@@ -19,7 +19,11 @@ import sys
 from pathlib import Path
 
 PY_PATTERN = re.compile(
-    r"^WS_PROTOCOL_VERSION\s*:\s*int\s*=\s*(\d+)\s*$",
+    # Accept optional ``: <type>`` annotation so the gate keeps matching
+    # if the declaration ever moves to ``Final[int]``, ``ClassVar[int]``,
+    # or drops the annotation entirely (mirrors the TS pattern's
+    # flexibility below).
+    r"^WS_PROTOCOL_VERSION(?:\s*:\s*[^=]+)?\s*=\s*(\d+)\s*$",
     re.MULTILINE,
 )
 TS_PATTERN = re.compile(

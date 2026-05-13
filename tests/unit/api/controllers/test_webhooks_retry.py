@@ -58,42 +58,36 @@ def _make_receipt(  # noqa: PLR0913 -- kw-only test fixture builder
 def _build_state(
     *,
     receipt: WebhookReceipt | None,
-    update_results: list[bool] | None = None,
-) -> tuple[dict[str, Any], AsyncMock, AsyncMock]:
+    cas_result: bool = True,
+    plain_results: list[bool] | None = None,
+) -> tuple[dict[str, Any], AsyncMock, AsyncMock, AsyncMock]:
     """Build a minimal Litestar State dict with the persistence stubs.
 
-    Returns ``(state, get_mock, update_combined_mock)``. The combined
-    mock counts every status-transition call regardless of whether the
-    handler routed it through ``update_status`` (plain) or
-    ``update_status_if_current`` (CAS for the ``retrying`` transition).
-    ``update_results`` controls the boolean returned by sequential
-    transition calls in order; the default ``[True, True]`` covers the
-    happy retrying -> received flow.
+    Returns ``(state, get_mock, cas_mock, plain_mock)`` so tests can
+    assert that the controller used the CAS write
+    (``update_status_if_current``) for the initial ``failed -> retrying``
+    transition AND used the plain write (``update_status``) for the
+    follow-up ``retrying -> received`` / ``retrying -> failed``
+    transitions. Sharing one mock between the two methods (the prior
+    design) would let a regression silently swap the CAS for a plain
+    update_status on the retrying claim and the double-delivery fix
+    would go unpinned.
+
+    ``cas_result`` controls the single CAS return; ``plain_results``
+    drives the sequential follow-up ``update_status`` returns
+    (default ``[True]`` for the happy ``retrying -> received`` flow).
     """
-    if update_results is None:
-        update_results = [True, True]
+    if plain_results is None:
+        plain_results = [True]
 
     get_mock = AsyncMock(return_value=receipt)
-    # Single underlying counter so tests can keep asserting
-    # ``await_count`` against the conceptual "number of status
-    # transitions" without caring which method the controller called.
-    combined_mock = AsyncMock(side_effect=update_results)
-
-    async def _cas(*_args: Any, **_kwargs: Any) -> bool:
-        result = await combined_mock()
-        return bool(result)
-
-    async def _plain(*_args: Any, **_kwargs: Any) -> bool:
-        result = await combined_mock()
-        return bool(result)
-
-    update_cas_mock = AsyncMock(side_effect=_cas)
-    update_plain_mock = AsyncMock(side_effect=_plain)
+    cas_mock = AsyncMock(return_value=cas_result)
+    plain_mock = AsyncMock(side_effect=plain_results)
 
     class _WebhookReceipts:
         get = get_mock
-        update_status = update_plain_mock
-        update_status_if_current = update_cas_mock
+        update_status = plain_mock
+        update_status_if_current = cas_mock
 
     class _Persistence:
         webhook_receipts = _WebhookReceipts()
@@ -103,7 +97,7 @@ def _build_state(
         message_bus = object()
 
     state: dict[str, Any] = {"app_state": _AppState()}
-    return state, get_mock, combined_mock
+    return state, get_mock, cas_mock, plain_mock
 
 
 def _self_stub() -> Any:
@@ -127,7 +121,7 @@ class TestRetryReceiptHappyPath:
     ) -> None:
         """Two status transitions are logged and the response carries the id."""
         receipt = _make_receipt()
-        state, _, update_mock = _build_state(receipt=receipt)
+        state, _, cas_mock, plain_mock = _build_state(receipt=receipt)
 
         async def fake_publish(**_kwargs: Any) -> dict[str, object]:
             return {"status": "accepted", "event_type": "issues.opened"}
@@ -158,7 +152,15 @@ class TestRetryReceiptHappyPath:
         assert transitions[0]["previous_status"] == "failed"
         assert transitions[1]["status"] == "received"
         assert transitions[1]["previous_status"] == "retrying"
-        assert update_mock.await_count == 2
+        # Retrying claim MUST go through the CAS write (TOCTOU guard);
+        # the follow-up ``received`` write is the plain ``update_status``.
+        # Asserting the two mocks separately pins the contract: a
+        # regression that swapped the claim back to plain
+        # ``update_status`` would still satisfy a combined
+        # ``await_count == 2`` assertion but would leave
+        # ``cas_mock.await_count == 0``, which this catches.
+        cas_mock.assert_awaited_once()
+        plain_mock.assert_awaited_once()
 
     async def test_invalid_payload_json_wraps_raw_bytes(
         self,
@@ -166,7 +168,7 @@ class TestRetryReceiptHappyPath:
     ) -> None:
         """Garbled payload_json is wrapped as ``{"raw": ...}`` for publish."""
         receipt = _make_receipt(payload_json="not-json-{")
-        state, _, _ = _build_state(receipt=receipt)
+        state, _, _, _ = _build_state(receipt=receipt)
         captured: dict[str, Any] = {}
 
         async def fake_publish(**kwargs: Any) -> dict[str, object]:
@@ -192,7 +194,7 @@ class TestRetryReceiptHappyPath:
     ) -> None:
         """A non-mapping JSON payload normalises into ``{"data": ...}``."""
         receipt = _make_receipt(payload_json="[1, 2, 3]")
-        state, _, _ = _build_state(receipt=receipt)
+        state, _, _, _ = _build_state(receipt=receipt)
         captured: dict[str, Any] = {}
 
         async def fake_publish(**kwargs: Any) -> dict[str, object]:
@@ -219,14 +221,15 @@ class TestRetryReceiptErrorPaths:
 
     async def test_missing_receipt_raises_not_found(self) -> None:
         """``get`` returning ``None`` yields ``NotFoundError`` before any write."""
-        state, _, update_mock = _build_state(receipt=None)
+        state, _, cas_mock, plain_mock = _build_state(receipt=None)
         with pytest.raises(NotFoundError):
             await _retry_receipt_fn(
                 _self_stub(),
                 state=state,
                 receipt_id="rcpt-missing",
             )
-        update_mock.assert_not_awaited()
+        cas_mock.assert_not_awaited()
+        plain_mock.assert_not_awaited()
 
     async def test_update_status_returns_false_raises_not_found(
         self,
@@ -241,9 +244,9 @@ class TestRetryReceiptErrorPaths:
         emitting a log claim against a row the DB never wrote.
         """
         receipt = _make_receipt()
-        state, _, update_mock = _build_state(
+        state, _, cas_mock, plain_mock = _build_state(
             receipt=receipt,
-            update_results=[False],
+            cas_result=False,
         )
 
         async def fake_publish(**_kwargs: Any) -> dict[str, object]:  # pragma: no cover
@@ -262,7 +265,9 @@ class TestRetryReceiptErrorPaths:
                 state=state,
                 receipt_id="rcpt-retry",
             )
-        assert update_mock.await_count == 1
+        # CAS fired once and lost; no plain update_status follow-up.
+        cas_mock.assert_awaited_once()
+        plain_mock.assert_not_awaited()
 
     async def test_publish_failure_marks_receipt_failed_and_reraises(
         self,
@@ -275,11 +280,13 @@ class TestRetryReceiptErrorPaths:
         transition + log emission so the regression cannot land.
         """
         receipt = _make_receipt()
-        # update_status is called twice: first to flip to retrying
-        # (True), then to flip to failed in the exception path (True).
-        state, _, update_mock = _build_state(
+        # CAS wins for the retrying claim; plain update_status fires
+        # once more on the exception path to flip the row back to
+        # failed so a future retry can pick it up again.
+        state, _, cas_mock, plain_mock = _build_state(
             receipt=receipt,
-            update_results=[True, True],
+            cas_result=True,
+            plain_results=[True],
         )
         publish_error = RuntimeError("bus is wedged")
 
@@ -309,7 +316,8 @@ class TestRetryReceiptErrorPaths:
         assert transitions[0]["status"] == "retrying"
         assert transitions[1]["status"] == "failed"
         assert transitions[1]["previous_status"] == "retrying"
-        assert update_mock.await_count == 2
+        cas_mock.assert_awaited_once()
+        plain_mock.assert_awaited_once()
 
     async def test_cas_lost_race_raises_not_found_without_publishing(
         self,
@@ -327,11 +335,13 @@ class TestRetryReceiptErrorPaths:
         second time and re-published.
         """
         receipt = _make_receipt()
-        # First (and only) transition call returns False -- the CAS
-        # lost the race. publish must NEVER run after that.
-        state, _, update_mock = _build_state(
+        # CAS returns False -- the late caller lost the race. publish
+        # must NEVER run after that and no plain update_status follow-up
+        # may fire either (otherwise the loser would still flip the
+        # row a second time).
+        state, _, cas_mock, plain_mock = _build_state(
             receipt=receipt,
-            update_results=[False],
+            cas_result=False,
         )
 
         async def fake_publish(**_kwargs: Any) -> dict[str, object]:  # pragma: no cover
@@ -350,9 +360,9 @@ class TestRetryReceiptErrorPaths:
                 state=state,
                 receipt_id="rcpt-retry",
             )
-        # Exactly one transition was attempted (the CAS); no
-        # subsequent ``received`` or ``failed`` write fired.
-        assert update_mock.await_count == 1
+        # Only the CAS write fired; no follow-up plain update_status.
+        cas_mock.assert_awaited_once()
+        plain_mock.assert_not_awaited()
 
     @pytest.mark.parametrize(
         "non_failed_status",
@@ -373,7 +383,7 @@ class TestRetryReceiptErrorPaths:
         circuits both before any persistence write or bus publish.
         """
         receipt = _make_receipt(status=non_failed_status)
-        state, _, update_mock = _build_state(receipt=receipt)
+        state, _, cas_mock, plain_mock = _build_state(receipt=receipt)
 
         async def fake_publish(**_kwargs: Any) -> dict[str, object]:  # pragma: no cover
             msg = "publish must not run when the receipt is not failed"
@@ -391,5 +401,7 @@ class TestRetryReceiptErrorPaths:
                 state=state,
                 receipt_id="rcpt-retry",
             )
-        # No transition write fires on the rejection path.
-        update_mock.assert_not_awaited()
+        # Neither write fires on the rejection path -- the guard
+        # short-circuits before any persistence call.
+        cas_mock.assert_not_awaited()
+        plain_mock.assert_not_awaited()

@@ -175,6 +175,14 @@ export function ErrorBanner({
     // state stuck).
   }, [retryAfterSeconds, seedSignature, isValidCooldown])
   const retryDisabled = remaining !== null && remaining > 0
+  // Normalise once: an empty / whitespace-only ``correlationId`` would
+  // pass the ``!= null`` predicate (rendering the action row with
+  // ``mt-2`` spacing) but fail the truthy guard at the chip render
+  // site, leaving a visible empty row. Treat any blank as "absent" so
+  // the row only appears when there is a real chip to draw.
+  const normalizedCorrelationId =
+    typeof correlationId === 'string' ? correlationId.trim() : null
+  const hasCorrelationId = Boolean(normalizedCorrelationId)
 
   return (
     <div
@@ -204,7 +212,7 @@ export function ErrorBanner({
             </div>
           )
         )}
-        {(onRetry != null || (action != null && action !== false) || correlationId != null) && (
+        {(onRetry != null || (action != null && action !== false) || hasCorrelationId) && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {onRetry && (
               <div className="inline-flex items-center gap-2">
@@ -241,8 +249,8 @@ export function ErrorBanner({
                 {action.label}
               </Button>
             ) : action)}
-            {correlationId && (
-              <CorrelationIdChip correlationId={correlationId} />
+            {hasCorrelationId && normalizedCorrelationId !== null && (
+              <CorrelationIdChip correlationId={normalizedCorrelationId} />
             )}
           </div>
         )}
@@ -263,7 +271,7 @@ export function ErrorBanner({
   )
 }
 
-interface CorrelationIdChipProps {
+export interface CorrelationIdChipProps {
   correlationId: string
 }
 
