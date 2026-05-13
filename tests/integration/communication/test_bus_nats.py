@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
+from typing import Final
 
 import pytest
 
@@ -269,6 +270,15 @@ async def test_receive_not_subscribed_raises(bus: MessageBus) -> None:
         await bus.receive("#general", "agent-a", timeout=0.1)
 
 
+_PARK_POLL_INTERVAL_SECONDS: Final[float] = 0.005
+"""Inter-poll yield while waiting for a receive coroutine to park.
+
+Promoted from a literal so the magic-number gate has a named target.
+The wall-clock 2s deadline above is the load-bearing primitive; this
+constant only controls how quickly the test re-checks ``in_flight_fetches``
+once the receive task is in flight."""
+
+
 async def test_receive_on_stopped_bus_raises(bus: MessageBus) -> None:
     await bus.stop()
     with pytest.raises(MessageBusNotRunningError):
@@ -303,7 +313,7 @@ async def test_receive_returns_none_on_shutdown(bus: MessageBus) -> None:
                 pytest.fail(f"receive() returned before parking (result={early!r})")
             if loop.time() >= deadline:
                 pytest.fail("receive() did not park within 2s")
-            await asyncio.sleep(0.005)
+            await asyncio.sleep(_PARK_POLL_INTERVAL_SECONDS)
         assert not receive_task.done(), "receive() returned before bus.stop() fired"
         await bus.stop()
         assert await receive_task is None

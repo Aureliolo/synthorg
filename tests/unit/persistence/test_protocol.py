@@ -39,6 +39,7 @@ from synthorg.persistence.preset_protocol import (
 )
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
 from synthorg.persistence.task_protocol import TaskRepository
@@ -583,6 +584,33 @@ class _FakeWorkflowExecutionRepository:
         return False
 
 
+class _FakeSeenClaimsRepository:
+    """Minimal SeenClaimsRepository conforming to the protocol shape."""
+
+    async def is_completed(
+        self,
+        *,
+        idempotency_key: NotBlankStr,
+    ) -> bool:
+        del idempotency_key
+        return False
+
+    async def mark_seen(
+        self,
+        *,
+        idempotency_key: NotBlankStr,
+        claim_id: NotBlankStr,
+        now: Any,
+        ttl_seconds: float,
+    ) -> bool:
+        del idempotency_key, claim_id, now, ttl_seconds
+        return True
+
+    async def prune_expired(self, now: Any) -> int:
+        del now
+        return 0
+
+
 class _FakeIdempotencyRepository:
     """Minimal IdempotencyRepository conforming to the protocol shape."""
 
@@ -849,6 +877,13 @@ class _FakeBackend:
         return _FakeIdempotencyRepository()
 
     @property
+    def seen_claims(self) -> _FakeSeenClaimsRepository:
+        # Real backends return a concrete repository. Returning ``None``
+        # here would hide a regression in either backend's wiring of
+        # ``seen_claims`` from the protocol-compliance suite.
+        return _FakeSeenClaimsRepository()
+
+    @property
     def mcp_installations(self) -> Any:
         return None
 
@@ -924,6 +959,14 @@ class TestProtocolCompliance:
         backend = _FakeBackend()
         assert isinstance(backend.idempotency_keys, IdempotencyRepository)
         assert isinstance(_FakeIdempotencyRepository(), IdempotencyRepository)
+
+    def test_fake_seen_claims_repo_is_seen_claims_repository(self) -> None:
+        # Same backend-routed assertion as ``idempotency_keys``:
+        # catches a regression that swaps the property back to
+        # ``None`` (which historically hid backend wiring drift).
+        backend = _FakeBackend()
+        assert isinstance(backend.seen_claims, SeenClaimsRepository)
+        assert isinstance(_FakeSeenClaimsRepository(), SeenClaimsRepository)
 
     def test_fake_lifecycle_repo_is_lifecycle_event_repository(self) -> None:
         assert isinstance(_FakeLifecycleEventRepository(), LifecycleEventRepository)

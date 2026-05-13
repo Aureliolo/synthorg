@@ -285,8 +285,17 @@ class WebhookEventBridge:
                 )
                 if envelope is None:
                     continue
-                consecutive_errors = 0
                 await self._forward(envelope.message)
+                # Ack only after forwarding succeeds; a ``_forward``
+                # exception falls through to the catch-all below and
+                # leaves the JetStream message un-acked so redelivery
+                # picks it back up.
+                await envelope.ack()
+                # Reset the error streak only AFTER both forward and
+                # ack succeed; resetting pre-ack lets a repeating ack
+                # failure quietly bypass ``max_errors`` and keep the
+                # loop running forever against a dead channel.
+                consecutive_errors = 0
             except asyncio.CancelledError:
                 raise
             except MemoryError, RecursionError:
@@ -297,12 +306,22 @@ class WebhookEventBridge:
                 # them would mask the failure for the lifetime of the
                 # bridge.
                 raise
-            except Exception:
+            except Exception as exc:
+                # ``logger.exception`` would attach a traceback whose
+                # frame-locals can leak transport credentials (auth
+                # headers in NATS connect URLs, callback secrets in
+                # event payloads). ``logger.warning`` / ``logger.error``
+                # with ``error_type`` + scrubbed ``error`` keeps the
+                # ack-vs-forward distinction visible during incident
+                # triage without the credential-leak surface.
                 consecutive_errors += 1
                 if consecutive_errors >= max_errors:
-                    logger.exception(
+                    logger.error(
                         WEBHOOK_BRIDGE_POLL_ERROR,
-                        error="too many consecutive errors, stopping",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        consecutive_errors=consecutive_errors,
+                        note="too many consecutive errors, stopping",
                     )
                     # Unsubscribe before clearing the task reference
                     # so a later ``start()`` can register a fresh
@@ -317,12 +336,14 @@ class WebhookEventBridge:
                             WEBHOOK_CHANNEL.name,
                             _SUBSCRIBER_ID,
                         )
-                    except Exception:
+                    except Exception as unsub_exc:
                         logger.warning(
                             WEBHOOK_BRIDGE_STOPPED,
                             subscriber_id=_SUBSCRIBER_ID,
                             channel=WEBHOOK_CHANNEL.name,
-                            error=(
+                            error_type=type(unsub_exc).__name__,
+                            error=safe_error_description(unsub_exc),
+                            note=(
                                 "unsubscribe failed after max "
                                 "consecutive errors; leaving bridge "
                                 "in partial-stop state"
@@ -334,6 +355,8 @@ class WebhookEventBridge:
                 logger.warning(
                     WEBHOOK_BRIDGE_POLL_ERROR,
                     consecutive_errors=consecutive_errors,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 # Back off for one poll interval before retrying so the
                 # loop does not tight-spin on a hot error path.

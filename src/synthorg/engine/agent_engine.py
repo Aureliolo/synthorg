@@ -4,11 +4,11 @@ Ties together prompt construction, execution context, execution loop,
 tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
-import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Literal, TypedDict
 
 from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine._validation import (
     validate_agent,
@@ -186,9 +186,11 @@ class AgentEngine(
         event_stream_hub: EventStreamHub | None = None,
         interrupt_store: InterruptStore | None = None,
         approval_interrupt_timeout_seconds: float | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._agent_middleware_chain = agent_middleware_chain
         self._event_reader = event_reader
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._event_stream_hub = event_stream_hub
         self._interrupt_store = interrupt_store
         if execution_loop is not None and auto_loop_config is not None:
@@ -346,7 +348,7 @@ class AgentEngine(
         validate_task_metadata(task, agent_id, task_id)
 
         with correlation_scope(agent_id=agent_id, task_id=task_id):
-            start = time.monotonic()
+            start = self._clock.monotonic()
             ctx: AgentContext | None = None
             system_prompt: SystemPrompt | None = None
             provider: CompletionProvider = self._provider
@@ -479,7 +481,7 @@ class AgentEngine(
                     task=task,
                     agent_id=agent_id,
                     task_id=task_id,
-                    duration_seconds=time.monotonic() - start,
+                    duration_seconds=self._clock.monotonic() - start,
                     ctx=ctx,
                     system_prompt=system_prompt,
                 )
@@ -490,7 +492,7 @@ class AgentEngine(
                     task=task,
                     agent_id=agent_id,
                     task_id=task_id,
-                    duration_seconds=time.monotonic() - start,
+                    duration_seconds=self._clock.monotonic() - start,
                     ctx=ctx,
                     system_prompt=system_prompt,
                     completion_config=completion_config,

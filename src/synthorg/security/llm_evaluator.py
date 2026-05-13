@@ -22,7 +22,6 @@ Design invariants:
 import asyncio
 import json
 import re
-import time
 
 # ``Mapping``, ``CostTracker``, ``ProviderConfig`` and
 # ``ProviderRegistry`` are part of ``LlmSecurityEvaluator.__init__``'s
@@ -36,6 +35,7 @@ from typing import TYPE_CHECKING, Final
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.config.schema import ProviderConfig  # noqa: TC001
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -88,6 +88,8 @@ _MAX_VALUE_LENGTH: Final[int] = 200
 # prompt injection exfiltration -- the reason flows into audit log
 # and approval queue).
 _MAX_REASON_LENGTH: Final[int] = 300
+
+_MILLISECONDS_PER_SECOND: Final[float] = 1000.0
 
 # Regex to strip control characters from LLM-returned reason.
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -174,11 +176,13 @@ class LlmSecurityEvaluator:
         provider_configs: Mapping[str, ProviderConfig],
         config: LlmFallbackConfig,
         cost_tracker: CostTracker | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._registry = provider_registry
         self._configs = provider_configs
         self._config = config
         self._cost_tracker = cost_tracker
+        self._clock: Clock = clock or SystemClock()
 
     async def evaluate(
         self,
@@ -200,7 +204,7 @@ class LlmSecurityEvaluator:
             ``DENY`` verdict, or an ``ESCALATE`` verdict -- all with
             LOW confidence.
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
         logger.info(
             SECURITY_LLM_EVAL_START,
             tool_name=context.tool_name,
@@ -301,7 +305,7 @@ class LlmSecurityEvaluator:
         start: float,
     ) -> SecurityVerdict:
         """Handle LLM call timeout."""
-        duration_ms = (time.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         logger.warning(
             SECURITY_LLM_EVAL_TIMEOUT,
             tool_name=context.tool_name,
@@ -321,7 +325,7 @@ class LlmSecurityEvaluator:
         exc: Exception,
     ) -> SecurityVerdict:
         """Handle unexpected LLM call errors."""
-        duration_ms = (time.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         # Use ``logger.warning`` + ``safe_error_description``
         # instead of ``logger.exception`` so we don't emit a
         # traceback that could leak credential-bearing locals
@@ -347,7 +351,7 @@ class LlmSecurityEvaluator:
         start: float,
     ) -> None:
         """Log a successful LLM evaluation completion."""
-        duration_ms = (time.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         logger.info(
             SECURITY_LLM_EVAL_COMPLETE,
             tool_name=context.tool_name,
@@ -623,7 +627,7 @@ class LlmSecurityEvaluator:
             )
 
         reason = self._sanitize_reason(raw_reason)
-        duration_ms = (time.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         full_reason = f"LLM security eval: {reason}"
 
         return SecurityVerdict(

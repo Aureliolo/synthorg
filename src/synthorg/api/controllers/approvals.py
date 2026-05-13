@@ -49,7 +49,7 @@ from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_CONFLICT,
     API_APPROVAL_CREATED,
@@ -299,11 +299,13 @@ def _publish_approval_event(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APPROVAL_PUBLISH_FAILED,
             approval_id=item.id,
             event_type=event_type.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 

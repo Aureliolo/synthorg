@@ -13,6 +13,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUDIT_EVICTION,
     SECURITY_AUDIT_RECORDED,
 )
+from synthorg.observability.metrics_hub import record_security_audit_fill_ratio
 from synthorg.security.models import AuditEntry  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -56,6 +57,9 @@ class AuditLog:
         previous_total = self._total_recorded
         self._entries.clear()
         self._total_recorded = 0
+        # Reset the gauge so a previously near-full audit log doesn't
+        # leave a stale ``1.0`` reading until the next record() call.
+        record_security_audit_fill_ratio(ratio=0.0)
         logger.info(
             SECURITY_AUDIT_CLEARED,
             previous_count=previous_count,
@@ -77,6 +81,14 @@ class AuditLog:
             )
         self._entries.append(entry)
         self._total_recorded += 1
+        # Push fill ratio to Prometheus on every record. The append +
+        # length read are O(1) so the cost is negligible; in exchange
+        # operators get a queryable gauge that flips to ``1.0`` as the
+        # eviction horizon approaches, enabling pre-eviction alerts
+        # before evidence is lost.
+        record_security_audit_fill_ratio(
+            ratio=len(self._entries) / self._max_entries,
+        )
         logger.debug(
             SECURITY_AUDIT_RECORDED,
             audit_id=entry.id,

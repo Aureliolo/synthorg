@@ -10,7 +10,10 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType
-from synthorg.communication.errors import ChannelAlreadyExistsError
+from synthorg.communication.errors import (
+    ChannelAlreadyExistsError,
+    CommunicationError,
+)
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -629,13 +632,17 @@ class SettingsChangeDispatcher:
                 )
                 if envelope is None:
                     continue
-                consecutive_errors = 0
                 await self._dispatch(envelope.message)
+                await envelope.ack()
+                # Reset the streak only after both dispatch and ack
+                # succeed; a pre-ack reset lets a repeating ack
+                # failure bypass ``max_errors`` indefinitely.
+                consecutive_errors = 0
             except asyncio.CancelledError:
                 raise
             except MemoryError, RecursionError:
                 raise
-            except (OSError, TimeoutError) as exc:
+            except (CommunicationError, OSError, TimeoutError) as exc:
                 consecutive_errors += 1
                 max_errors = await self._resolve_max_consecutive_errors()
                 if consecutive_errors >= max_errors:

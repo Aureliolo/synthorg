@@ -22,13 +22,13 @@ import asyncio
 import html
 import re
 import secrets
-import time
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 
@@ -109,6 +109,8 @@ _EMAIL_PLACEHOLDER: Final[str] = "[EMAIL]"
 
 # Maximum length for LLM-returned reason string.
 _MAX_REASON_LENGTH: Final[int] = 300
+
+_MILLISECONDS_PER_SECOND: Final[float] = 1000.0
 
 # Regex to strip control and formatting characters from LLM-returned
 # reason.  Best-effort coverage: ASCII control (C0/DEL), Unicode bidi
@@ -358,12 +360,14 @@ class SafetyClassifier:
         provider_configs: Mapping[str, ProviderConfig],
         config: SafetyClassifierConfig,
         cost_tracker: CostTracker | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._registry = provider_registry
         self._configs = provider_configs
         self._config = config
         self._cost_tracker = cost_tracker
         self._stripper = InformationStripper()
+        self._clock: Clock = clock or SystemClock()
 
     def classify_tier(self, action_type: str) -> PermissionTier:
         """Determine the permission tier for an action type.
@@ -407,7 +411,7 @@ class SafetyClassifier:
             A ``SafetyClassifierResult`` with the classification,
             stripped description, and reason.
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
         logger.info(
             SECURITY_SAFETY_CLASSIFY_START,
             tool_name=tool_name,
@@ -430,7 +434,7 @@ class SafetyClassifier:
         except MemoryError, RecursionError:
             raise
         except Exception:
-            duration_ms = (time.monotonic() - start) * 1000
+            duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
             logger.exception(
                 SECURITY_SAFETY_CLASSIFY_ERROR,
                 tool_name=tool_name,
@@ -455,7 +459,7 @@ class SafetyClassifier:
         """Send stripped description to LLM for classification."""
         provider_name, driver = self._select_provider()
         if provider_name is None or driver is None:
-            duration_ms = (time.monotonic() - start) * 1000
+            duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
             logger.warning(
                 SECURITY_SAFETY_CLASSIFY_ERROR,
                 note="No provider available for safety classification",
@@ -607,7 +611,7 @@ class SafetyClassifier:
         start: float,
     ) -> SafetyClassifierResult:
         """Parse LLM response into a SafetyClassifierResult."""
-        duration_ms = (time.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
 
         for tc in response.tool_calls:
             if tc.name == "safety_classification_verdict":

@@ -172,6 +172,19 @@ def record_security_verdict(verdict: str) -> None:
     collector.record_security_verdict(verdict)
 
 
+@_safe_record(METRICS_RECORD_FAILED, "record_security_audit_fill_ratio")
+def record_security_audit_fill_ratio(*, ratio: float) -> None:
+    """Forward to :meth:`PrometheusCollector.record_security_audit_fill_ratio`.
+
+    Bounded ``ratio`` in ``[0.0, 1.0]``; values near ``1.0`` mean the
+    next ``AuditLog.record`` evicts the oldest entry.
+    """
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_security_audit_fill_ratio(ratio=ratio)
+
+
 @_safe_record(METRICS_RECORD_FAILED, "record_provider_error")
 def record_provider_error(
     *,

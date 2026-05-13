@@ -65,9 +65,19 @@ async def _do_backup_as_dict(
     The idempotency service caches a JSON-serialized response. The
     backup service returns a Pydantic model, so we serialize via
     ``model_dump`` for caching and re-validate on cache hit.
+
+    The dumped payload is round-trip validated via
+    ``BackupManifest.model_validate`` BEFORE we hand it to the
+    idempotency service for caching. A corrupt manifest (impossible
+    by construction today but cheap to guard) is rejected before it
+    pollutes the cache; the controller's cache-hit branch already
+    handles the symmetric "row already in cache fails to validate"
+    case, so this closes the loop on both directions.
     """
     manifest = await backup_callable()
-    return manifest.model_dump(mode="json")
+    dumped = manifest.model_dump(mode="json")
+    BackupManifest.model_validate(dumped)
+    return dumped
 
 
 class BackupController(Controller):

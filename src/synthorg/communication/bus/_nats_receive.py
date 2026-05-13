@@ -21,6 +21,7 @@ from synthorg.communication.bus._nats_utils import (
     require_running,
 )
 from synthorg.communication.enums import ChannelType
+from synthorg.communication.errors import CommunicationError
 from synthorg.communication.subscription import DeliveryEnvelope
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
@@ -318,7 +319,15 @@ async def build_envelope(
     channel_name: str,
     subscriber_id: str,
 ) -> DeliveryEnvelope | None:
-    """Ack the fetched message and wrap it in a DeliveryEnvelope."""
+    """Wrap a fetched JetStream message in a deferred-ack envelope.
+
+    The returned envelope's ``ack()`` callable acknowledges the
+    JetStream message; callers MUST invoke it after the subscriber's
+    local queue has accepted delivery so that an ack-then-deliver-
+    failure cannot drop the message. Pre-parse rejection paths
+    (oversized payload, deserialise error) still ack immediately
+    because there is nothing downstream to deliver.
+    """
     if not msgs:
         return None
 
@@ -356,17 +365,30 @@ async def build_envelope(
         )
         return None
 
-    if not await try_ack(
-        msg,
-        channel_name=channel_name,
-        subscriber_id=subscriber_id,
-    ):
-        return None
+    async def deferred_ack() -> None:
+        """Acknowledge the JetStream message after local delivery.
+
+        Raises ``CommunicationError`` when the underlying ``try_ack``
+        reports failure. ``try_ack`` already logs the underlying NATS
+        exception; surfacing a domain error here makes the failure
+        visible to the consumer-side ``await envelope.ack()`` call so
+        a silent ack-drop cannot leave JetStream redelivering the same
+        message into an oblivious downstream loop.
+        """
+        acked = await try_ack(
+            msg,
+            channel_name=channel_name,
+            subscriber_id=subscriber_id,
+        )
+        if not acked:
+            msg_text = "Deferred JetStream ack failed after local delivery"
+            raise CommunicationError(msg_text)
 
     envelope = DeliveryEnvelope(
         message=parsed,
         channel_name=channel_name,
         delivered_at=datetime.now(UTC),
+        ack=deferred_ack,
     )
     logger.debug(
         COMM_MESSAGE_DELIVERED,

@@ -620,10 +620,28 @@ class MessageBusBridge:
                     ws_event.model_dump_json(),
                     channels=[channel_name],
                 )
+                # Ack the NATS JetStream message only AFTER the
+                # websocket publish accepted the payload. Acking before
+                # this point would lose the message on a transient
+                # plugin.publish failure (in-memory backend ships a
+                # no-op ack so this is free for non-NATS deployments).
+                await envelope.ack()
                 consecutive_errors = 0
             except asyncio.CancelledError:
                 break
-            except (OSError, ConnectionError, TimeoutError) as exc:
+            except (
+                CommunicationError,
+                OSError,
+                ConnectionError,
+                TimeoutError,
+            ) as exc:
+                # ``CommunicationError`` covers the deferred JetStream
+                # ack failure surfaced by ``envelope.ack()``. Treat it
+                # as a retriable channel error so a transient ack drop
+                # bumps ``consecutive_errors`` toward ``max_errors``
+                # instead of tripping the fatal ``except Exception``
+                # branch and tearing down the bridge on the first
+                # hiccup.
                 consecutive_errors += 1
                 if consecutive_errors >= max_errors:
                     logger.error(

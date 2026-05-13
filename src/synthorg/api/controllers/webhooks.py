@@ -249,6 +249,21 @@ def _check_replay_or_freshness(
         raise ConflictError(msg)
 
 
+def _build_idem_scope(
+    *,
+    connection_type: str,
+    connection_name: str,
+) -> str:
+    """Compose the durable idempotency scope for a webhook connection.
+
+    Including ``connection_name`` (and not just ``connection_type``) is
+    defence in depth at the persistence row level: a stale dedup row
+    written under one connection can never surface to a different
+    connection that happens to share an event type and nonce.
+    """
+    return f"webhooks:{connection_type}:{connection_name}"
+
+
 def _build_idem_key(
     *,
     connection_name: str,
@@ -332,7 +347,12 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
     """
     from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
-    scope = NotBlankStr(f"webhooks:{connection_type}")
+    scope = NotBlankStr(
+        _build_idem_scope(
+            connection_type=connection_type,
+            connection_name=connection_name,
+        ),
+    )
     idem_key = NotBlankStr(
         _build_idem_key(
             connection_name=connection_name,

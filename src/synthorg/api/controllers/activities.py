@@ -238,11 +238,13 @@ async def _resolve_currency(
             detail="Could not load budget configuration; aborting request.",
         )
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="activities",
             detail="budget config unavailable, using default currency",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         degraded.append(_SRC_BUDGET_CONFIG)
         return DEFAULT_CURRENCY

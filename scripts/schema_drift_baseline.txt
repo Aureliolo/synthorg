@@ -85,9 +85,9 @@ column:mcp_installations:installed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ
 column:messages:attachments:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
 column:messages:metadata:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
 column:messages:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:oauth_states:consumed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:oauth_states:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:oauth_states:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
-column:oauth_states:consumed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:org_facts_operation_log:author_is_human:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
 column:org_facts_operation_log:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:org_facts_snapshot:author_is_human:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
@@ -113,6 +113,8 @@ column:risk_overrides:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; col
 column:risk_overrides:revoked_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:role_versions:saved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:role_versions:snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:seen_claims:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:seen_claims:seen_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:sessions:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:sessions:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:sessions:last_active_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
@@ -180,5 +182,3 @@ index_attr:idx_ftc_single_active:where:is_active = 1:is_active = TRUE:Partial-un
 nullable:cost_records:rowid:N:Y:SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT (NOT NULL); Postgres uses BIGINT GENERATED ALWAYS AS IDENTITY which can be NULL until insert assigns the sequence value (composite PK with timestamp enforces non-null at write time)
 pk:audit_entries:id:id,timestamp:Postgres composite PK includes the timestamp partitioning column for TimescaleDB hypertable conversion; SQLite has no hypertable concept and uses the simpler PK on id alone (see schema header)
 pk:cost_records:rowid:rowid,timestamp:Postgres composite PK includes the timestamp partitioning column for TimescaleDB hypertable conversion; SQLite has no hypertable concept (see schema header)
-migration:add_idx_wfe_definition_revision:postgres_only:Postgres-only migration that backfilled the index; SQLite picked up the same index in a different revision (audit cluster #8 listed this as PG-only-index drift; the index itself is now present on both backends)
-migration:json_check_constraints:sqlite_only:SQLite-only migration tightening json_valid CHECK constraints; Postgres enforces JSON validity natively via the JSONB type

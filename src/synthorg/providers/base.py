@@ -7,12 +7,14 @@ automatic retry, rate limiting, and provides a cost-computation helper.
 
 import asyncio
 import math
-import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
-from typing import Any, TypeVar
+from typing import Any, Final, TypeVar
+
+from opentelemetry.trace import Status, StatusCode
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
@@ -22,6 +24,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_STREAM_START,
 )
 from synthorg.observability.metrics_hub import record_provider_error
+from synthorg.observability.tracing.instrumentation import get_tracer
 
 from .capabilities import ModelCapabilities  # noqa: TC001
 from .cost_recording import current_cost_context, emit_cost_record_from_context
@@ -39,8 +42,11 @@ from .resilience.rate_limiter import RateLimiter  # noqa: TC001
 from .resilience.retry import RetryHandler  # noqa: TC001
 
 logger = get_logger(__name__)
+_tracer = get_tracer(__name__)
 
 _T = TypeVar("_T")
+
+_MILLISECONDS_PER_SECOND: Final[float] = 1000.0
 
 
 class BaseCompletionProvider(ABC):
@@ -61,6 +67,10 @@ class BaseCompletionProvider(ABC):
     Args:
         retry_handler: Optional retry handler for transient errors.
         rate_limiter: Optional client-side rate limiter.
+        clock: Optional injectable :class:`~synthorg.core.clock.Clock`
+            used for latency measurement. Defaults to ``SystemClock``;
+            tests inject ``FakeClock`` to drive virtual time without
+            wall-clock waits.
     """
 
     def __init__(
@@ -68,9 +78,11 @@ class BaseCompletionProvider(ABC):
         *,
         retry_handler: RetryHandler | None = None,
         rate_limiter: RateLimiter | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._retry_handler = retry_handler
         self._rate_limiter = rate_limiter
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     def _provider_label(self) -> str:
         """Return the bounded provider identifier used for metrics / logs.
@@ -135,36 +147,82 @@ class BaseCompletionProvider(ABC):
 
         from .resilience.retry import RetryResult  # noqa: PLC0415, TC001
 
-        t_start = time.monotonic()
-        retry_info: RetryResult[CompletionResponse] | None = None
-        try:
-            if self._retry_handler is not None:
-                retry_info = await self._retry_handler.execute(_attempt)
-                result = retry_info.value
-            else:
-                result = await _attempt()
-        except Exception as exc:
-            # ``logger.exception`` (what TRY400 suggests) would
-            # attach a traceback whose serialized frame-locals can
-            # leak provider credentials (API keys in headers,
-            # connection URLs with user:pass). Use ``logger.error``
-            # with the structured ``error_type`` + scrubbed ``error``
-            # fields instead -- traceback frames never reach any log
-            # sink.
-            logger.error(
-                PROVIDER_CALL_ERROR,
-                model=model,
-                latency_ms=(time.monotonic() - t_start) * 1000.0,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            record_provider_error(
-                provider=self._provider_label(),
-                model=model,
-                error_class=classify_provider_error(exc),
-            )
-            raise
-        latency_ms = (time.monotonic() - t_start) * 1000.0
+        # Per-call child span under whatever parent span the caller
+        # owns (typically ``agent.execution`` from AgentEngine).
+        # ``record_exception=False`` and ``set_status_on_exception=False``
+        # opt out of the auto-instrumentation that would otherwise
+        # stamp the unscrubbed ``str(exc)`` into the span; we set
+        # ``exception.message`` via ``safe_error_description`` instead
+        # so attacker-controlled provider error strings are scrubbed
+        # before reaching the OTLP exporter.
+        provider_label = self._provider_label()
+        span_attributes: dict[str, Any] = {
+            "provider.name": provider_label,
+            "provider.model": model,
+            "provider.message_count": len(messages),
+            "provider.tool_count": len(tools) if tools else 0,
+        }
+        with _tracer.start_as_current_span(
+            "provider.complete",
+            attributes=span_attributes,
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            t_start = self._clock.monotonic()
+            retry_info: RetryResult[CompletionResponse] | None = None
+            try:
+                if self._retry_handler is not None:
+                    retry_info = await self._retry_handler.execute(_attempt)
+                    result = retry_info.value
+                else:
+                    result = await _attempt()
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                latency_ms = (
+                    self._clock.monotonic() - t_start
+                ) * _MILLISECONDS_PER_SECOND
+                # ``logger.exception`` (what TRY400 suggests) would
+                # attach a traceback whose serialized frame-locals can
+                # leak provider credentials (API keys in headers,
+                # connection URLs with user:pass). Use ``logger.error``
+                # with the structured ``error_type`` + scrubbed
+                # ``error`` fields instead.
+                logger.error(
+                    PROVIDER_CALL_ERROR,
+                    model=model,
+                    latency_ms=latency_ms,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                span.set_attribute("exception.type", type(exc).__name__)
+                span.set_attribute(
+                    "exception.message",
+                    safe_error_description(exc),
+                )
+                span.set_attribute("provider.latency_ms", latency_ms)
+                # ``set_status_on_exception=False`` opts out of the
+                # auto-instrumentation that would have stamped an
+                # un-scrubbed ``str(exc)`` into the span status, so the
+                # ERROR status must be set manually here. The scrubbed
+                # error description is exposed via ``exception.message``
+                # above; ``Status.description`` is intentionally left
+                # unset so the OTLP exporter never carries the raw
+                # provider string.
+                span.set_status(Status(StatusCode.ERROR))
+                record_provider_error(
+                    provider=provider_label,
+                    model=model,
+                    error_class=classify_provider_error(exc),
+                )
+                raise
+            latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
+            span.set_attribute("provider.latency_ms", latency_ms)
+            if retry_info is not None:
+                span.set_attribute(
+                    "provider.retry_count",
+                    max(0, retry_info.attempt_count - 1),
+                )
 
         metadata: dict[str, object] = {"_synthorg_latency_ms": latency_ms}
         if retry_info is not None:
@@ -257,6 +315,8 @@ class BaseCompletionProvider(ABC):
 
         try:
             return await self._resilient_execute(_attempt)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # See the ``complete`` sibling handler; ``logger.error``
             # + scrubbed fields instead of ``logger.exception``
@@ -306,6 +366,8 @@ class BaseCompletionProvider(ABC):
 
         try:
             return await self._resilient_execute(_attempt)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # ``logger.exception`` would attach a traceback whose
             # frame-locals can leak provider credentials; use

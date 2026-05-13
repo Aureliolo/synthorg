@@ -1,8 +1,8 @@
 """Rule engine -- evaluates security rules in order."""
 
-import time
 from datetime import UTC, datetime
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -28,6 +28,8 @@ logger = get_logger(__name__)
 
 # Rules whose ALLOW verdict should not short-circuit remaining rules.
 _SOFT_ALLOW_RULES: frozenset[str] = frozenset({_POLICY_VALIDATOR_RULE_NAME})
+
+_MILLISECONDS_PER_SECOND: float = 1000.0
 
 
 class RuleEngine:
@@ -60,6 +62,7 @@ class RuleEngine:
         rules: tuple[SecurityRule, ...],
         risk_classifier: RiskClassifier,
         config: RuleEngineConfig,
+        clock: Clock | None = None,
     ) -> None:
         """Initialize the rule engine.
 
@@ -67,10 +70,13 @@ class RuleEngine:
             rules: Ordered tuple of rules to evaluate.
             risk_classifier: Fallback risk classifier.
             config: Rule engine configuration.
+            clock: Optional clock seam for deterministic latency
+                measurement in tests.
         """
         self._rules = rules
         self._risk_classifier = risk_classifier
         self._config = config
+        self._clock: Clock = clock or SystemClock()
 
     def evaluate(self, context: SecurityContext) -> SecurityVerdict:
         """Run all rules in order, returning the final verdict.
@@ -85,7 +91,7 @@ class RuleEngine:
             A ``SecurityVerdict`` -- DENY/ESCALATE from the first
             matching rule, or ALLOW with risk from the classifier.
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
         soft_allow: SecurityVerdict | None = None
 
         for rule in self._rules:
@@ -93,7 +99,7 @@ class RuleEngine:
             if verdict is None:
                 continue
 
-            duration_ms = (time.monotonic() - start) * 1000
+            duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
 
             # Soft-allow rules (e.g. policy_validator auto-approve)
             # record their verdict but do NOT short-circuit.
@@ -118,7 +124,7 @@ class RuleEngine:
             )
 
         # No rule returned DENY/ESCALATE.
-        duration_ms = (time.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
 
         # If a soft-allow was recorded, use it.
         if soft_allow is not None:

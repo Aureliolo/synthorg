@@ -22,7 +22,7 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import AgentStatus
 from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
 if TYPE_CHECKING:
@@ -121,11 +121,13 @@ async def _resolve_active_count(
         return sum(1 for a in dept_agents if a.status == AgentStatus.ACTIVE)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.health",
-            error="agent_registry_query_failed",
+            detail="agent_registry_query_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return 0
 
@@ -175,10 +177,12 @@ async def _resolve_agent_ids(
         raise
     except ServiceUnavailableError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.health.resolve_id",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return ()
     return tuple(str(i.id) for i in identities if i is not None)

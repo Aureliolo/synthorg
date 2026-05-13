@@ -75,6 +75,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
     from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
+    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
     from synthorg.persistence.settings_protocol import SettingsRepository
     from synthorg.persistence.ssrf_violation_protocol import (
         SsrfViolationRepository,
@@ -153,6 +154,7 @@ class _BackendRepositoryAccessors:
     _sessions: SessionRepository | None
     _refresh_tokens: RefreshTokenRepository | None
     _idempotency_keys: IdempotencyRepository | None
+    _seen_claims: SeenClaimsRepository | None
     _mcp_installations: McpInstallationRepository | None
     _org_facts: OrgFactRepository | None
     _ontology_entities: OntologyEntityRepository | None
@@ -484,6 +486,14 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._idempotency_keys,
             "idempotency_keys",
+        )
+
+    @property
+    def seen_claims(self) -> SeenClaimsRepository:
+        """Repository for worker TaskClaim dedup persistence."""
+        return self._require_connected(
+            self._seen_claims,
+            "seen_claims",
         )
 
     @property

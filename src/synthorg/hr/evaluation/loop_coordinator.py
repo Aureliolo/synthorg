@@ -15,12 +15,12 @@ loop:
 """
 
 import asyncio
-import time
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Final
 from uuid import uuid4
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.trajectory.scorer import TrajectoryScorer  # noqa: TC001
@@ -138,6 +138,7 @@ class EvalLoopCoordinator:
         dataset_builder: DogfoodingDatasetBuilder,
         benchmark_registry: ExternalBenchmarkRegistry,
         config: EvalLoopConfig | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._tracker = performance_tracker
         self._evaluation = evaluation_service
@@ -146,6 +147,7 @@ class EvalLoopCoordinator:
         self._dataset_builder = dataset_builder
         self._benchmarks = benchmark_registry
         self._config = config or EvalLoopConfig()
+        self._clock: Clock = clock or SystemClock()
 
     @property
     def config(self) -> EvalLoopConfig:
@@ -173,7 +175,7 @@ class EvalLoopCoordinator:
         cycle_id = NotBlankStr(str(uuid4()))
         now = datetime.now(UTC)
         window_start = now - window
-        start_time = time.monotonic()
+        start_time = self._clock.monotonic()
 
         logger.info(
             EVAL_LOOP_CYCLE_START,
@@ -199,7 +201,7 @@ class EvalLoopCoordinator:
             if self._config.benchmark_on_cycle:
                 benchmark_results = await self._run_benchmarks()
 
-            duration = time.monotonic() - start_time
+            duration = self._clock.monotonic() - start_time
 
             report = EvalCycleReport(
                 cycle_id=cycle_id,

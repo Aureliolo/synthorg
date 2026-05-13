@@ -129,6 +129,19 @@ class PushMetrics:
             registry=registry,
         )
 
+        # -- Security audit log fill ratio ---------------------------
+        # Bounded gauge in [0.0, 1.0] tracking ``len(_entries) /
+        # _max_entries`` on the in-memory ``AuditLog``. A value near
+        # 1.0 means eviction is imminent (the deque drops the oldest
+        # entry on the next ``record``), which operators want to alert
+        # on so an investigation can preserve evidence before it is
+        # lost.
+        self.security_audit_log_fill_ratio = Gauge(
+            f"{prefix}_security_audit_log_fill_ratio",
+            "Security audit log occupancy as a fraction of max_entries",
+            registry=registry,
+        )
+
         # -- Agent identity change counter ---------------------------
         self.agent_identity_changes = PromCounter(
             f"{prefix}_agent_identity_version_changes_total",
