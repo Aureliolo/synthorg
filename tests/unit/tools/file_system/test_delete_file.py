@@ -41,7 +41,8 @@ class TestDeleteFileExecution:
     async def test_delete_directory_rejected(self, delete_tool: DeleteFileTool) -> None:
         result = await delete_tool.execute(arguments={"path": "subdir"})
         assert result.is_error
-        assert "Cannot delete directory" in result.content
+        assert "is a directory" in result.content
+        assert "use a dedicated tool" in result.content
 
     async def test_path_traversal_blocked(self, delete_tool: DeleteFileTool) -> None:
         result = await delete_tool.execute(arguments={"path": "../../../etc/passwd"})
