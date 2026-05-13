@@ -332,7 +332,14 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
     """
     from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
-    scope = NotBlankStr(f"webhooks:{connection_type}")
+    # Scope includes ``connection_name`` (not just ``connection_type``)
+    # so two distinct connections of the same provider cannot share a
+    # dedup row.  The composed key already carries ``connection_name``,
+    # but pinning it in the scope is defence in depth at the persistence
+    # row level: a stale row written under one connection can never
+    # surface to a different connection that happens to share an event
+    # type and nonce.
+    scope = NotBlankStr(f"webhooks:{connection_type}:{connection_name}")
     idem_key = NotBlankStr(
         _build_idem_key(
             connection_name=connection_name,
