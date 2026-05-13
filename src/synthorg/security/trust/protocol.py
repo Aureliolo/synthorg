@@ -12,8 +12,9 @@ if TYPE_CHECKING:
     from synthorg.security.trust.models import TrustEvaluationResult, TrustState
 
 
-# Pluggable trust subsystem: 4 impls
-# (Weighted/Milestone/PerCategory/Disabled).
+# Pluggable trust subsystem: 3 impls (Weighted / Milestone / PerCategory).
+# DISABLED is a config-only sentinel; build_trust_strategy returns None
+# so the caller skips TrustService construction entirely.
 @runtime_checkable
 class TrustStrategy(Protocol):
     """Protocol for progressive trust evaluation strategies.

@@ -8,7 +8,6 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.enums import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
 from synthorg.security.trust.enums import TrustChangeReason
 from synthorg.security.trust.errors import TrustEvaluationError
 from synthorg.security.trust.models import (
@@ -17,6 +16,7 @@ from synthorg.security.trust.models import (
 )
 from synthorg.security.trust.service import TrustService
 from synthorg.security.trust.weighted_strategy import WeightedTrustStrategy
+from tests._shared.trust import NoOpTrustStrategy
 from tests.unit.security.trust.conftest import make_performance_snapshot
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ class TestInitializeAgent:
     """Tests for TrustService.initialize_agent."""
 
     def test_creates_state(self, trust_config: TrustConfig) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -48,7 +48,7 @@ class TestInitializeAgent:
         self,
         trust_config: TrustConfig,
     ) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -63,7 +63,7 @@ class TestInitializeAgent:
         assert state.agent_id == "agent-001"
 
     def test_multiple_agents(self, trust_config: TrustConfig) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -94,7 +94,7 @@ class TestEvaluateAgent:
         self,
         trust_config: TrustConfig,
     ) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -109,14 +109,14 @@ class TestEvaluateAgent:
             snapshot,
         )
 
-        assert result.strategy_name == "disabled"
+        assert result.strategy_name == "noop"
         assert result.should_change is False
 
     async def test_raises_for_unknown_agent(
         self,
         trust_config: TrustConfig,
     ) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -138,7 +138,7 @@ class TestEvaluateAgent:
         self,
         trust_config: TrustConfig,
     ) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -198,7 +198,7 @@ class TestApplyTrustChange:
         self,
         trust_config: TrustConfig,
     ) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -327,7 +327,7 @@ class TestElevatedGateEnforcement:
         trust_config: TrustConfig,
     ) -> None:
         """If strategy recommends ELEVATED without human approval, override."""
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -355,7 +355,7 @@ class TestElevatedGateEnforcement:
         trust_config: TrustConfig,
     ) -> None:
         """Agent already at ELEVATED should not trigger the gate."""
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -380,7 +380,7 @@ class TestElevatedGateEnforcement:
         trust_config: TrustConfig,
     ) -> None:
         """Gate should not override when approval is already required."""
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -412,7 +412,7 @@ class TestStateAndHistory:
         self,
         trust_config: TrustConfig,
     ) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -426,7 +426,7 @@ class TestStateAndHistory:
         self,
         trust_config: TrustConfig,
     ) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -470,7 +470,7 @@ class TestStateAndHistory:
         self,
         trust_config: TrustConfig,
     ) -> None:
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -494,7 +494,7 @@ class TestCheckDecay:
         trust_config: TrustConfig,
     ) -> None:
         """check_decay updates last_decay_check_at before evaluating."""
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
@@ -512,14 +512,14 @@ class TestCheckDecay:
         state = service.get_trust_state(NotBlankStr("agent-001"))
         assert state is not None
         assert state.last_decay_check_at is not None
-        assert result.strategy_name == "disabled"
+        assert result.strategy_name == "noop"
 
     async def test_check_decay_unknown_agent_raises(
         self,
         trust_config: TrustConfig,
     ) -> None:
         """check_decay raises for unknown agent (via evaluate_agent)."""
-        strategy = DisabledTrustStrategy(
+        strategy = NoOpTrustStrategy(
             initial_level=trust_config.initial_level,
         )
         service = TrustService(
