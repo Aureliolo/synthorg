@@ -21,6 +21,7 @@
 
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import type { WsChannel, WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('sse-client')
@@ -116,10 +117,16 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
 function asSseRaw(value: unknown): SseRawEvent | null {
   if (value === null || typeof value !== 'object') return null
   const record = value as Record<string, unknown>
-  const id = record['id']
-  const type = record['type']
-  const timestamp = record['timestamp']
-  if (typeof id !== 'string' || typeof type !== 'string' || typeof timestamp !== 'string') {
+  // Every WS-supplied string is clamped (C0 controls / bidi
+  // overrides stripped, length capped at MAX_WS_STRING_LEN) before
+  // it leaves the parser. ``sanitizeWsString`` returns ``undefined``
+  // for non-strings, whitespace-only strings, and strings whose
+  // post-sanitisation content is empty, so a single ``undefined``
+  // check below rejects every malformed shape.
+  const id = sanitizeWsString(record['id'])
+  const type = sanitizeWsString(record['type'])
+  const timestamp = sanitizeWsString(record['timestamp'])
+  if (id === undefined || type === undefined || timestamp === undefined) {
     return null
   }
   return {
@@ -131,6 +138,16 @@ function asSseRaw(value: unknown): SseRawEvent | null {
 }
 
 function mapAgUiToWsEvent(sse: SseRawEvent): WsEvent | null {
+  // ``sse.type`` already passed through ``sanitizeWsString`` in
+  // ``asSseRaw``; the ``AGUI_EVENT_MAP`` lookup below is the enum
+  // allowlist. Anything outside the table -- including a value the
+  // server adds before the dashboard learns about it -- is dropped
+  // with a debug log instead of being forwarded as a raw, un-typed
+  // event_type. This is the SSE-side equivalent of the WS store's
+  // ``sanitizeWsEnum`` "fall back to a known value" policy: we drop
+  // rather than fall back because the read-only fallback should
+  // never invent task / approval status transitions the server did
+  // not actually emit.
   const mapping = AGUI_EVENT_MAP[sse.type]
   if (mapping === undefined) {
     log.debug('Unmapped AG-UI event type discarded', sanitizeForLog(sse.type))
