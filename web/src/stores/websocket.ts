@@ -509,7 +509,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
           activateSseFallback()
           return
         }
-      } else if (wasConnected) {
+      } else {
         proxyBlockSuspicion = 0
       }
 

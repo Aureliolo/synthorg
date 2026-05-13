@@ -173,9 +173,8 @@ export default function WebhookReceiptsPage() {
   )
 
   const handleBulkRetry = useCallback(async () => {
-    const ids = [...selection.selectedIds].filter((id) =>
-      entries.some((row) => row.id === id && isRetryable(row)),
-    )
+    const retryableSet = new Set(retryableIds)
+    const ids = [...selection.selectedIds].filter((id) => retryableSet.has(id))
     if (ids.length === 0) return
     setRetrying(true)
     let succeeded = 0
@@ -216,7 +215,7 @@ export default function WebhookReceiptsPage() {
       })
     }
     await reload()
-  }, [entries, reload, selection, toast])
+  }, [retryableIds, reload, selection, toast])
 
   return (
     <div className="space-y-section-gap">
