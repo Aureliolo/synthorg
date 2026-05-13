@@ -299,6 +299,28 @@ class ProviderHealthTracker:
 
         return _aggregate_records(recent)
 
+    async def are_all_reachable(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        """Return True when no tracked provider is currently DOWN.
+
+        Used by the /readyz probe to gate traffic. Providers whose
+        recent call window contains too many failures derive a
+        :attr:`ProviderHealthStatus.DOWN` status; any single one of
+        those flips the reachability bit. ``DEGRADED`` providers stay
+        reachable because partial traffic is preferable to a full
+        outage; ``UNKNOWN`` (no recent calls) is also treated as
+        reachable so a fresh boot never reports unready before the
+        first provider call lands.
+        """
+        summaries = await self.get_all_summaries(now=now)
+        return not any(
+            summary.health_status is ProviderHealthStatus.DOWN
+            for summary in summaries.values()
+        )
+
     async def get_all_summaries(
         self,
         *,

@@ -1,5 +1,6 @@
 """Tests for the liveness (/healthz) and readiness (/readyz) endpoints."""
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,10 @@ from synthorg.api.controllers.health import (
     _resolve_telemetry_status,
 )
 from synthorg.api.state import AppState
+from synthorg.providers.health import (
+    ProviderHealthRecord,
+    ProviderHealthTracker,
+)
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
@@ -261,3 +266,79 @@ class TestReadinessTelemetryField:
         assert response.status_code == 200
         body = response.json()
         assert body["data"]["telemetry"] == "disabled"
+
+
+@pytest.mark.unit
+class TestReadinessProviders:
+    """``/readyz`` reports 503 when any provider is in DOWN state.
+
+    DEGRADED and UNKNOWN providers stay reachable; only DOWN providers
+    flip the gate. Wired through ``ProviderHealthTracker.are_all_reachable``
+    so the readyz probe surfaces the same view operators see in the
+    provider health summary.
+    """
+
+    async def test_empty_tracker_reports_providers_reachable(self) -> None:
+        tracker = ProviderHealthTracker()
+        with TestClient(
+            create_app(provider_health_tracker=tracker),
+        ) as client:
+            response = client.get("/api/v1/readyz")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["providers"] is True
+
+    async def test_down_provider_flips_readiness_to_503(self) -> None:
+        tracker = ProviderHealthTracker()
+        # Record 6 failures, 0 successes for a 100% error rate ->
+        # DOWN ( >= 50% threshold).
+        now = datetime.now(UTC)
+        for i in range(6):
+            await tracker.record(
+                ProviderHealthRecord(
+                    provider_name="example-provider",
+                    timestamp=now,
+                    success=False,
+                    response_time_ms=120.0,
+                    error_message=f"simulated failure {i}",
+                ),
+            )
+        with TestClient(
+            create_app(provider_health_tracker=tracker),
+        ) as client:
+            response = client.get("/api/v1/readyz")
+            assert response.status_code == 503
+            body = response.json()
+            assert body["data"]["status"] == "unavailable"
+            assert body["data"]["providers"] is False
+
+    async def test_degraded_provider_stays_reachable(self) -> None:
+        tracker = ProviderHealthTracker()
+        # 2 failures + 8 successes => 20% error rate => DEGRADED, not DOWN.
+        now = datetime.now(UTC)
+        for i in range(2):
+            await tracker.record(
+                ProviderHealthRecord(
+                    provider_name="example-provider",
+                    timestamp=now,
+                    success=False,
+                    response_time_ms=120.0,
+                    error_message=f"simulated failure {i}",
+                ),
+            )
+        for _ in range(8):
+            await tracker.record(
+                ProviderHealthRecord(
+                    provider_name="example-provider",
+                    timestamp=now,
+                    success=True,
+                    response_time_ms=80.0,
+                ),
+            )
+        with TestClient(
+            create_app(provider_health_tracker=tracker),
+        ) as client:
+            response = client.get("/api/v1/readyz")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["providers"] is True
