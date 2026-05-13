@@ -26,6 +26,11 @@ import { getLocale } from '@/utils/locale'
 
 const log = createLogger('PersonalitiesAdminPage')
 
+// Hoisted out of render so ``navigator.language`` is read once at
+// module init instead of inside ``useMemo`` -- ``@eslint-react/globals``
+// flags in-render reads of ``navigator`` / ``window`` / ``document``.
+const LOCALE = getLocale()
+
 type PresetSortKey = 'name-asc' | 'name-desc'
 
 const SORT_OPTIONS: ReadonlyArray<{ value: PresetSortKey; label: string }> = [
@@ -73,9 +78,8 @@ export default function PersonalitiesAdminPage() {
             preset.description.toLowerCase().includes(q),
         )
       : presets
-    const locale = getLocale()
     return [...matched].sort((a, b) => {
-      const cmp = a.name.localeCompare(b.name, locale)
+      const cmp = a.name.localeCompare(b.name, LOCALE)
       return sortKey === 'name-asc' ? cmp : -cmp
     })
   }, [presets, searchQuery, sortKey])

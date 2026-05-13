@@ -610,6 +610,16 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         const retrySocket = socket
         queueMicrotask(() => {
           if (retrySocket !== socket) return
+          // Re-check the subscription is still live: an ``unsubscribe`` in
+          // the same tick could have removed ``key`` from
+          // ``activeSubscriptions`` after the send failed but before this
+          // microtask runs. Sending ``subscribe`` for a key the caller has
+          // already torn down would re-attach the handler on the server
+          // without a matching client-side handler entry.
+          const stillActive = activeSubscriptions.some(
+            (s) => subscriptionKey(s.channels, s.filters) === key,
+          )
+          if (!stillActive) return
           if (retrySocket.readyState !== WebSocket.OPEN) {
             queueSubscriptionForReconnect(channels, filters, key)
             return

@@ -683,13 +683,13 @@ class WebhooksController(Controller):
                 payload=payload,
                 dedup_source="manual_retry",
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # The receipt would otherwise stay pinned to ``retrying``
             # forever -- failing-fast back to ``failed`` lets a follow-up
             # operator retry pick the row up again and gives the
             # status feed an honest signal.
-            if isinstance(exc, MemoryError | RecursionError):
-                raise
             await _transition_status(
                 new_status=_RECEIPT_STATUS_FAILED,
                 previous=_RECEIPT_STATUS_RETRYING,

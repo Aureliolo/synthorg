@@ -60,7 +60,11 @@ function formatReason(reason: unknown): string {
   if (reason instanceof Error) return reason.message
   if (typeof reason === 'string') return reason
   try {
-    return JSON.stringify(reason)
+    // ``JSON.stringify(undefined)`` returns ``undefined`` (not a string),
+    // which would slip past the declared ``string`` return type and
+    // surface as a runtime ``undefined`` in the operator toast.
+    const serialized = JSON.stringify(reason)
+    return serialized ?? String(reason)
   } catch {
     return String(reason)
   }

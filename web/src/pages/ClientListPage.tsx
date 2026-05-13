@@ -15,6 +15,11 @@ import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { ROUTES } from '@/router/routes'
 import { getLocale } from '@/utils/locale'
 
+// Hoisted out of render so ``navigator.language`` is read once at
+// module init instead of inside ``useMemo`` -- ``@eslint-react/globals``
+// flags in-render reads of ``navigator`` / ``window`` / ``document``.
+const LOCALE = getLocale()
+
 type ClientSortKey = 'name-asc' | 'name-desc' | 'strictness-asc' | 'strictness-desc'
 
 const SORT_OPTIONS: ReadonlyArray<{ value: ClientSortKey; label: string }> = [
@@ -45,13 +50,12 @@ export default function ClientListPage() {
             c.persona.toLowerCase().includes(trimmed),
         )
       : clients
-    const locale = getLocale()
     return [...matches].sort((a, b) => {
       switch (sortKey) {
         case 'name-asc':
-          return a.name.localeCompare(b.name, locale)
+          return a.name.localeCompare(b.name, LOCALE)
         case 'name-desc':
-          return b.name.localeCompare(a.name, locale)
+          return b.name.localeCompare(a.name, LOCALE)
         case 'strictness-asc':
           return a.strictness_level - b.strictness_level
         case 'strictness-desc':

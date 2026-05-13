@@ -19,6 +19,7 @@ function resetStore() {
     listLoading: false,
     listError: null,
     searchQuery: '',
+    subworkflowsTruncated: false,
   })
   useToastStore.getState().dismissAll()
 }
@@ -214,6 +215,29 @@ describe('fetchSubworkflows', () => {
       'sub-c',
     ])
     expect(cursorSeen).toEqual(['first', 'cursor-2'])
+  })
+
+  it('sets subworkflowsTruncated when the eager drain hits MAX_PAGES with more pages remaining', async () => {
+    let pageNum = 0
+    server.use(
+      http.get('/api/v1/subworkflows', () => {
+        pageNum += 1
+        // Always advertise another page so the loop runs the full
+        // MAX_PAGES iterations and the final ``pageIndex === MAX_PAGES - 1``
+        // branch marks the result as truncated.
+        return HttpResponse.json(
+          paginatedFor<typeof listSubworkflows>(
+            pageOf([buildSummary({ subworkflow_id: `sub-${pageNum}` })], `cursor-${pageNum + 1}`),
+          ),
+        )
+      }),
+    )
+
+    await useSubworkflowsStore.getState().fetchSubworkflows()
+
+    const state = useSubworkflowsStore.getState()
+    expect(state.subworkflowsTruncated).toBe(true)
+    expect(state.subworkflows).toHaveLength(20)
   })
 
   it('sets listError on failure without toasting (list-read pattern)', async () => {

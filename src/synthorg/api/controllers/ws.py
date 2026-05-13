@@ -18,7 +18,6 @@ The server pushes ``WsEvent`` JSON on subscribed channels.
 """
 
 import asyncio
-import contextlib
 import json
 import time
 from dataclasses import dataclass
@@ -43,6 +42,7 @@ from synthorg.api.controllers.ws_revalidation import (
 from synthorg.api.guards import _READ_ROLES
 from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.clock import Clock  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_WS_AUTH_OK,
@@ -328,7 +328,7 @@ class _BackpressureTracker:
             self.window_started_at = 0.0
 
 
-async def _on_event(  # noqa: PLR0911, PLR0913
+async def _on_event(  # noqa: PLR0911, PLR0913, C901
     event_data: bytes,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
@@ -336,6 +336,7 @@ async def _on_event(  # noqa: PLR0911, PLR0913
     conn_user: AuthenticatedUser,
     backpressure: _BackpressureTracker | None = None,
     socket: WebSocket[Any, Any, Any] | None = None,
+    clock: Clock | None = None,
 ) -> None:
     """Filter a channel event and enqueue it for the outbound consumer.
 
@@ -401,7 +402,12 @@ async def _on_event(  # noqa: PLR0911, PLR0913
         )
         if backpressure is None or socket is None:
             return
-        tripped = backpressure.note_drop(now=time.monotonic())
+        # Clock seam (CLAUDE.md): tests inject ``FakeClock`` so the
+        # rolling-window rollover in ``_BackpressureTracker.note_drop``
+        # can be exercised deterministically. Production callers omit
+        # ``clock`` and fall through to the system ``time.monotonic``.
+        now = clock.monotonic() if clock is not None else time.monotonic()
+        tripped = backpressure.note_drop(now=now)
         if not tripped:
             return
         logger.warning(
@@ -414,11 +420,25 @@ async def _on_event(  # noqa: PLR0911, PLR0913
             drop_threshold=_WS_BACKPRESSURE_DROP_THRESHOLD,
             window_seconds=_WS_BACKPRESSURE_WINDOW_SECONDS,
         )
-        with contextlib.suppress(Exception):
+        # PEP 758: ``MemoryError`` / ``RecursionError`` must propagate
+        # (CLAUDE.md async-helper rule); ``contextlib.suppress(Exception)``
+        # would have swallowed them. Ordinary close failures (the socket
+        # is already gone, the peer beat us to the disconnect) are still
+        # ignored because the breaker has already taken the slow consumer
+        # off the broadcast path.
+        try:
             await socket.close(
                 code=_WS_CLOSE_BACKPRESSURE,
                 reason="Slow consumer; reconnect after catching up.",
             )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:  # noqa: S110
+            # Intentional suppression: see comment above. Logging the
+            # close-time failure here would just add noise -- the
+            # breaker-tripped warning two log lines up already told the
+            # operator the consumer was slow.
+            pass
 
 
 async def _outbound_consumer(
