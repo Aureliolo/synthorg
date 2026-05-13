@@ -47,12 +47,21 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: .
 
+    # GHCR's token endpoint occasionally exceeds the docker client's default
+    # 30s deadline. Drive `docker login` through nick-fields/retry so the
+    # login is re-attempted on `context deadline exceeded`. Token via env +
+    # stdin so it never lands on a command line.
     - name: Log in to GHCR
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+      env:
+        GHCR_TOKEN: ${{ inputs.ghcr-token }}
+        GHCR_USER: ${{ github.actor }}
       with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ inputs.ghcr-token }}
+        timeout_minutes: 2
+        max_attempts: 4
+        retry_wait_seconds: 15
+        command: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
     - name: Load image from tarball
       shell: bash

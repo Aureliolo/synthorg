@@ -642,9 +642,21 @@ jobs:
       - name: Export OpenAPI schema (required by frontend codegen)
         run: uv run python scripts/export_openapi.py
 
-      - name: Install frontend deps and build SPA
+      # `npm ci` hits the npm registry for every transitive dep -- a single
+      # registry blip drops the whole frontend build. Retry the install so a
+      # 5xx burst on registry.npmjs.org doesn't fail the workflow. The build
+      # step is local and stays unwrapped.
+      - name: Install frontend deps
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: cd web && npm ci --ignore-scripts
+
+      - name: Build SPA
         working-directory: web
-        run: npm ci --ignore-scripts && npm run build
+        run: npm run build
 
       # D2 does not publish checksums or signatures in its releases;
       # integrity relies on HTTPS transport from GitHub. Accepted tradeoff:
@@ -682,26 +694,48 @@ jobs:
       - name: Generate melange signing key
         run: melange keygen
 
-      - name: Build web-assets apk
+      # Each `melange build` pulls Wolfi apks from packages.wolfi.dev for
+      # build/runtime deps; a single 5xx on that mirror fails the whole arch
+      # leg. Retry per-arch so a transient mirror blip doesn't kill the run.
+      # Build arches sequentially -- melange v0.49.0 bubblewrap runner has a
+      # bind-mount race when building multiple arches in parallel, causing
+      # web/dist/ to be invisible in one guest. TODO: revisit once
+      # setup-melange pin advances past v1.6.15 / melange > 0.49.0 (upstream
+      # has a bind-mount concurrency fix in flight). Parallel arch builds
+      # would cut this step from ~6m to ~3m on the critical path.
+      - name: Build web-assets apk (x86_64)
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
         env:
           APP_VERSION: ${{ needs.version.outputs.app_version }}
-        run: |
-          printf 'version: %s\n' "$APP_VERSION" > /tmp/melange-vars.yaml
-          # Build arches sequentially -- melange v0.49.0 bubblewrap
-          # runner has a bind-mount race when building multiple arches
-          # in parallel, causing web/dist/ to be invisible in one guest.
-          # TODO: revisit once setup-melange pin advances past
-          # v1.6.15 / melange > 0.49.0 (upstream has a bind-mount
-          # concurrency fix in flight). Parallel arch builds would
-          # cut this step from ~6m to ~3m on the critical path.
-          for arch in x86_64 aarch64; do
+        with:
+          timeout_minutes: 15
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: |
+            printf 'version: %s\n' "$APP_VERSION" > /tmp/melange-vars.yaml
             melange build docker/web/melange.yaml \
-              --arch "$arch" \
+              --arch x86_64 \
               --source-dir . \
               --signing-key melange.rsa \
               --out-dir packages/ \
               --vars-file /tmp/melange-vars.yaml
-          done
+
+      - name: Build web-assets apk (aarch64)
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+        env:
+          APP_VERSION: ${{ needs.version.outputs.app_version }}
+        with:
+          timeout_minutes: 15
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: |
+            printf 'version: %s\n' "$APP_VERSION" > /tmp/melange-vars.yaml
+            melange build docker/web/melange.yaml \
+              --arch aarch64 \
+              --source-dir . \
+              --signing-key melange.rsa \
+              --out-dir packages/ \
+              --vars-file /tmp/melange-vars.yaml
 
       - name: Upload packages artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -744,11 +778,18 @@ jobs:
         with:
           version: ${{ env.APKO_VERSION }}
 
+      # `apko build` pulls every package from the Wolfi mirror. Retry so a
+      # mirror 5xx doesn't tank the whole web build.
       - name: Build web image
-        run: |
-          apko build docker/web/apko.yaml \
-            ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7} \
-            web.tar
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+        with:
+          timeout_minutes: 20
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: |
+            apko build docker/web/apko.yaml \
+              ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7} \
+              web.tar
 
       - name: Load image for scanning
         run: |
