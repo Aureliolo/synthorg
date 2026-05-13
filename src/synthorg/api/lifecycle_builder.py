@@ -778,6 +778,11 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         nonlocal _webhook_cleanup_task
         nonlocal _auto_wired_dispatcher
         nonlocal _health_prober, _training_memory_backend
+        # Emit the shutdown event before any teardown step so the
+        # gate-crossing is observable even if a downstream stop hangs
+        # or raises. Mirrors the ``on_startup`` emission at the top of
+        # that function.
+        logger.info(API_APP_SHUTDOWN, version=__version__)
         # Disconnect training memory backend if auto-wired.
         if _training_memory_backend is not None:
             # If this backend was published to ``app_state.memory_backend``
@@ -822,15 +827,12 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 timeout=_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS,
             )
             _webhook_cleanup_task = None
-        # Stop the EventStreamHub janitor before logging shutdown so
-        # the event-loop shutdown sequence does not race the cancel.
         if app_state.event_stream_hub is not None:
             await _try_stop(
                 app_state.event_stream_hub.stop(),
                 API_APP_SHUTDOWN,
                 "Failed to stop event stream hub",
             )
-        logger.info(API_APP_SHUTDOWN, version=__version__)
         if _health_prober is not None:
             await _try_stop(
                 _health_prober.stop(),
