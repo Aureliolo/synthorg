@@ -35,6 +35,7 @@ from synthorg.client.report.summary import SummaryReport
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
+from synthorg.core.validation import require_non_blank
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
     CLIENT_FACTORY_UNKNOWN_STRATEGY,
@@ -99,11 +100,14 @@ def _require_non_blank(
 ) -> str:
     """Return ``value`` as a non-blank string or raise ``UnknownStrategyError``.
 
-    ``None`` and empty / whitespace-only strings both fail: the factory
-    must refuse to hand out a strategy that would later blow up on a
-    missing or useless path / identifier.
+    Thin wrapper around :func:`synthorg.core.validation.require_non_blank`
+    that surfaces a domain-specific error (``UnknownStrategyError``) and
+    emits the ``CLIENT_FACTORY_UNKNOWN_STRATEGY`` event with the contextual
+    factory / strategy / field labels before failing.
     """
-    if value is None or not str(value).strip():
+    try:
+        return require_non_blank(value, name=field)
+    except ValueError as exc:
         logger.warning(
             CLIENT_FACTORY_UNKNOWN_STRATEGY,
             factory=factory,
@@ -111,8 +115,7 @@ def _require_non_blank(
             missing=field,
         )
         msg = f"{strategy} strategy requires {field}"
-        raise UnknownStrategyError(msg)
-    return str(value)
+        raise UnknownStrategyError(msg) from exc
 
 
 _REQ_GEN_FACTORY = "requirement_generator"

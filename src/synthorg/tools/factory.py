@@ -11,6 +11,7 @@ import math
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import ToolCategory
+from synthorg.core.validation import require_non_blank
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_FACTORY_BUILT,
@@ -241,8 +242,8 @@ def _build_async_task_tools(
     """
     if service is None:
         return ()
-    _require_non_blank(supervisor_id, name="async_task_supervisor_id")
-    _require_non_blank(supervisor_task_id, name="async_task_supervisor_task_id")
+    require_non_blank(supervisor_id, name="async_task_supervisor_id")
+    require_non_blank(supervisor_task_id, name="async_task_supervisor_task_id")
     from synthorg.tools.communication import (  # noqa: PLC0415
         CancelAsyncTaskTool,
         CheckAsyncTaskTool,
@@ -265,13 +266,6 @@ def _build_async_task_tools(
             supervisor_task_id=supervisor_task_id,
         ),
     )
-
-
-def _require_non_blank(value: str, *, name: str) -> None:
-    """Raise ``ValueError`` if *value* is empty or whitespace-only."""
-    if not value or not value.strip():
-        msg = f"{name} must be a non-empty, non-whitespace string, got {value!r}"
-        raise ValueError(msg)
 
 
 def _build_code_execution_tools(

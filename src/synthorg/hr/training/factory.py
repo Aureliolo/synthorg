@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.validation import coerce_positive_int
 from synthorg.hr.training.models import ContentType
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import HR_TRAINING_CONFIG_INVALID
@@ -31,61 +32,26 @@ def _coerce_positive_int(
     field_name: str,
     default: int,
 ) -> int:
-    """Coerce a config value to a positive int, falling back on invalid input.
+    """HR-training wrapper that adds ``HR_TRAINING_CONFIG_INVALID`` logging.
 
-    Args:
-        value: The raw value from ``TrainingConfig.*_config``.
-        field_name: Name of the field (for error messages).
-        default: Default value when ``value`` is missing or invalid.
-
-    Returns:
-        The coerced positive integer, or ``default`` on invalid input.
+    Delegates the parsing rules (bool rejection, int / int-string acceptance,
+    non-positive rejection) to
+    :func:`synthorg.core.validation.coerce_positive_int`. On failure emits
+    ``HR_TRAINING_CONFIG_INVALID`` with the original exception type before
+    re-raising the underlying ``TypeError`` / ``ValueError``.
     """
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        msg = f"{field_name} must be a positive integer, got bool"
-        logger.warning(
-            HR_TRAINING_CONFIG_INVALID,
-            field=field_name,
-            expected="positive_int",
-            value_type="bool",
-        )
-        raise TypeError(msg)
-    if isinstance(value, int):
-        coerced = value
-    elif isinstance(value, str):
-        try:
-            coerced = int(value)
-        except ValueError as exc:
-            msg = f"{field_name} must be a positive integer, got {value!r}"
-            logger.warning(
-                HR_TRAINING_CONFIG_INVALID,
-                field=field_name,
-                expected="positive_int",
-                value_type="str",
-                value_repr=repr(value),
-            )
-            raise ValueError(msg) from exc
-    else:
-        msg = f"{field_name} must be a positive integer, got {type(value).__name__}"
+    try:
+        return coerce_positive_int(value, name=field_name, default=default)
+    except (TypeError, ValueError) as exc:
         logger.warning(
             HR_TRAINING_CONFIG_INVALID,
             field=field_name,
             expected="positive_int",
             value_type=type(value).__name__,
+            value_repr=repr(value),
+            error_type=type(exc).__name__,
         )
-        raise TypeError(msg)
-    if coerced <= 0:
-        msg = f"{field_name} must be > 0, got {coerced}"
-        logger.warning(
-            HR_TRAINING_CONFIG_INVALID,
-            field=field_name,
-            expected="positive",
-            value=coerced,
-        )
-        raise ValueError(msg)
-    return coerced
+        raise
 
 
 def build_training_service(  # noqa: PLR0913
