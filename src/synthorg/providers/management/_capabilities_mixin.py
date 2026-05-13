@@ -254,13 +254,6 @@ class ProviderCapabilitiesMixin:
             preset_hint=request.preset_hint,
         )
 
-        _reject_destructive_empty_discovery(
-            name=name,
-            request=request,
-            discovered=discovered,
-            pre_discover=pre_discover,
-        )
-
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
             current = providers.get(name)
@@ -270,6 +263,20 @@ class ProviderCapabilitiesMixin:
                 msg = f"Provider {name!r} not found"
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
+
+            # Re-check the destructive-empty guard against the
+            # post-lock snapshot; a concurrent ``add_model()`` that
+            # lands between the pre-lock ``pre_discover`` read and
+            # ``self._lock`` acquisition can flip the persisted set
+            # from empty (guard returns early) to non-empty (guard
+            # MUST refuse the wipe). Using ``current`` closes that
+            # window.
+            _reject_destructive_empty_discovery(
+                name=name,
+                request=request,
+                discovered=discovered,
+                pre_discover=current,
+            )
 
             # If the discovery target was swapped under us (different
             # base_url / auth_type / preset) we must NOT persist the
