@@ -321,6 +321,32 @@ describe('workflow-editor composed store', () => {
       expect(warning!.title).toBe('Version conflict')
     })
 
+    it('createDefinition emits a success toast on the happy path', async () => {
+      await useWorkflowEditorStore
+        .getState()
+        .createDefinition('shiny', 'default')
+
+      const toasts = useToastStore.getState().toasts
+      const success = toasts.find((t) => t.variant === 'success')
+      expect(success).toBeDefined()
+      expect(success!.title).toMatch(/created/i)
+    })
+
+    it('saveDefinition emits a success toast on the happy path', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+        nodes: [],
+        edges: [],
+      })
+
+      await useWorkflowEditorStore.getState().saveDefinition()
+
+      const toasts = useToastStore.getState().toasts
+      const success = toasts.find((t) => t.variant === 'success')
+      expect(success).toBeDefined()
+      expect(success!.title).toMatch(/saved/i)
+    })
+
     it('saveDefinition emits an error toast when the post-conflict reload fails', async () => {
       useWorkflowEditorStore.setState({
         definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),

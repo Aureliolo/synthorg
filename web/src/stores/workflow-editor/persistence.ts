@@ -119,6 +119,10 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
         yamlPreview: yaml,
         validationResult: null,
       })
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Workflow ${def.name} created`,
+      })
     } catch (err) {
       log.warn('Failed to create workflow definition', sanitizeForLog(err))
       useToastStore.getState().add({
@@ -167,6 +171,10 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
         expected_revision: definition.revision,
       })
       set({ definition: updatedDef, saving: false, dirty: false, validationResult: null })
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Workflow ${updatedDef.name} saved`,
+      })
     } catch (err) {
       // Discriminate on the typed RFC 9457 ``error_code`` envelope
       // rather than the raw HTTP status: web/CLAUDE.md "Error-code
