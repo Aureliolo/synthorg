@@ -75,11 +75,11 @@ def build_memory_injection_strategy(  # noqa: PLR0913 -- per-strategy deps surfa
         The concrete strategy matching ``config.strategy``.
 
     Raises:
-        TypeError: ``config.strategy`` is not one of the registered
-            enum values. Raised by ``assert_never``; mypy strict
-            catches this at the type-check boundary, so this is a
-            runtime guard for new variants added without updating the
-            factory.
+        AssertionError: ``config.strategy`` is not one of the registered
+            enum values. Raised by :func:`typing.assert_never`; mypy
+            strict catches this at the type-check boundary, so this is
+            a runtime guard for new variants added without updating
+            the factory.
     """
     match config.strategy:
         case InjectionStrategy.CONTEXT:
