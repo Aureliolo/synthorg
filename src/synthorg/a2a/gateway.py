@@ -42,6 +42,10 @@ from synthorg.a2a.task_mapper import to_a2a
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.normalization import (
+    extract_bearer_token,
+    extract_media_type,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_INBOUND_AUTH_FAILED,
@@ -185,8 +189,8 @@ class A2AGatewayController(Controller):
         a2a_config = app_state.config.a2a
 
         # Validate Content-Type
-        content_type = (
-            request.headers.get("content-type", "").split(";")[0].strip().lower()
+        content_type = extract_media_type(
+            request.headers.get("content-type", ""),
         )
         if content_type != "application/json":
             return Response(
@@ -547,9 +551,9 @@ async def _verify_peer_credentials(  # noqa: PLR0911
         scheme = credentials.get("auth_scheme", "api_key")
         if scheme == "api_key":
             stored_key = credentials.get("api_key", "")
-            request_key = request.headers.get("x-api-key", "") or request.headers.get(
-                "authorization", ""
-            ).removeprefix("Bearer ")
+            request_key = request.headers.get("x-api-key", "") or (
+                extract_bearer_token(request.headers.get("authorization", "")) or ""
+            )
             if stored_key and not request_key:
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
@@ -567,7 +571,7 @@ async def _verify_peer_credentials(  # noqa: PLR0911
         elif scheme in ("bearer", "oauth2"):
             stored_token = credentials.get("access_token", "")
             auth_header = request.headers.get("authorization", "")
-            request_token = auth_header.removeprefix("Bearer ").strip()
+            request_token = extract_bearer_token(auth_header) or ""
             if stored_token and not _credentials_match(stored_token, request_token):
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,

@@ -3,7 +3,7 @@
 import hashlib
 import hmac as _hmac
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 import jwt
 from litestar.enums import ScopeType
@@ -24,7 +24,7 @@ from synthorg.api.auth.system_user import (
 )
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.core.auth.roles import HumanRole
-from synthorg.core.normalization import compare_ci
+from synthorg.core.normalization import extract_bearer_token
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_COOKIE_NAME_FALLBACK,
@@ -45,7 +45,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_BEARER_PARTS: Final[int] = 2
 _DEFAULT_COOKIE_NAME = "session"
 
 
@@ -155,7 +154,7 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
                 detail="Missing authentication",
             )
 
-        token = _extract_bearer_token(auth_header)
+        token = extract_bearer_token(auth_header)
         if token is None:
             logger.warning(
                 SECURITY_AUTH_FAILED,
@@ -186,14 +185,6 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
         if user is not None:
             return AuthenticationResult(user=user, auth=token)
         raise NotAuthorizedException(detail="Invalid credentials")
-
-
-def _extract_bearer_token(header: str) -> str | None:
-    """Extract token from ``Bearer <token>`` header value."""
-    parts = header.split(None, 1)
-    if len(parts) != _BEARER_PARTS or not compare_ci(parts[0], "bearer"):
-        return None
-    return parts[1]
 
 
 async def _try_jwt_auth(

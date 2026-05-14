@@ -2,7 +2,8 @@
 
 Three-phase approach: plan, execute (mini-ReAct per step with
 per-step turn limits), and checkpoint (progress summary + optional
-replanning).  See ``hybrid_helpers`` for extracted helpers.
+replanning). See ``hybrid.step_helpers`` and ``hybrid.replan_helpers``
+for the extracted free-function helpers.
 """
 
 import copy
@@ -26,14 +27,12 @@ from synthorg.providers.models import (
     CompletionResponse,
 )
 
-from .hybrid_helpers import (
-    attempt_replan,
+from .hybrid.replan_helpers import attempt_replan, do_replan, run_progress_summary
+from .hybrid.step_helpers import (
     build_step_message,
     call_planner,
-    do_replan,
     handle_step_completion,
     invoke_checkpoint_callback,
-    run_progress_summary,
     truncate_plan,
     warn_insufficient_budget,
 )

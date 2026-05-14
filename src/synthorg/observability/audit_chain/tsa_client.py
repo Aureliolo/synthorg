@@ -38,6 +38,7 @@ from rfc3161_client import tsp as _rfc_tsp
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+from synthorg.core.normalization import extract_media_type
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_TIMESTAMP_GRANTED,
@@ -365,7 +366,7 @@ class TsaClient:
         # would accept anything that merely contains the canonical
         # name (e.g. ``application/timestamp-reply-extended``), so
         # this guard tightens the wire-format check.
-        content_main = content_type.split(";", 1)[0].strip().lower()
+        content_main = extract_media_type(content_type)
         if content_main != _RESP_CONTENT_TYPE.lower():
             logger.warning(
                 SECURITY_TIMESTAMP_PROTOCOL_ERROR,

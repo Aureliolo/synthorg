@@ -8,7 +8,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.controllers.setup_helpers import AGENT_LOCK as _AGENT_LOCK
+from synthorg.api.controllers.setup.agent_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.controllers.template_packs import _read_setting_list
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access

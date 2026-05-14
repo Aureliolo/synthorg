@@ -14,6 +14,7 @@ import aiodocker
 import aiodocker.containers
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CONTAINER_CREATED,
@@ -404,7 +405,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         Raises:
             ValueError: If the format is invalid.
         """
-        limit_lower = limit.strip().lower()
+        limit_lower = normalize_ascii_lowercase(limit)
         if not limit_lower:
             msg = "Memory limit must not be empty"
             raise ValueError(msg)

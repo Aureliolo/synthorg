@@ -18,10 +18,12 @@ import asyncio
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.lifecycle_helpers import (
+from synthorg.api.lifecycle_helpers.audit_retention import (
     _audit_retention_tick,
     _resolve_audit_retention_days,
     _resolve_audit_retention_loop_enabled,
+)
+from synthorg.api.lifecycle_helpers.config_apply import (
     _validate_approval_urgency_invariant,
 )
 from synthorg.api.state import AppState

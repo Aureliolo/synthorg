@@ -22,6 +22,7 @@ from pydantic import ValidationError
 
 from synthorg.config.errors import ConfigLocation
 from synthorg.core.enums import AutonomyLevel, SkillPattern
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_BUILTIN_DEFECT,
@@ -215,7 +216,7 @@ def load_template(name: str) -> LoadedTemplate:
     Raises:
         TemplateNotFoundError: If no template with *name* exists.
     """
-    name_clean = name.strip().lower()
+    name_clean = normalize_ascii_lowercase(name)
     logger.debug(TEMPLATE_LOAD_START, template_name=name_clean)
 
     # Sanitize to prevent path traversal (OS-independent).

@@ -11,6 +11,7 @@ from typing import Any, ClassVar, Final
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.events.design import (
     DESIGN_ASSET_DELETED,
@@ -331,7 +332,7 @@ class AssetManagerTool(BaseDesignTool):
                 is_error=True,
             )
 
-        query = raw_query.strip().lower()
+        query = normalize_ascii_lowercase(raw_query)
         raw_tags = arguments.get("tags")
         raw_list = raw_tags if isinstance(raw_tags, list) else []
         tags = [t for t in raw_list if isinstance(t, str)]

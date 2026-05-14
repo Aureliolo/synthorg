@@ -107,7 +107,7 @@ class TestHybridLoopReplanPromptContent:
         than step_failed=True, verifying the content differs for
         success vs failure triggers.
         """
-        from synthorg.engine.hybrid_helpers import do_replan
+        from synthorg.engine.hybrid.replan_helpers import do_replan
 
         plan = _make_plan_model()
         step = plan.steps[0]

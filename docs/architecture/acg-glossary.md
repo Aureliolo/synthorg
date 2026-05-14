@@ -30,9 +30,9 @@ design, and agent pruning recommendations, see
 
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
-| Conditional branching | HybridLoop replan decisions, PlanExecuteLoop step completion | `engine/hybrid_loop.py`, `engine/hybrid_helpers.py` | Partial | Branching is embedded in loop logic (replan if step fails), not graph-level conditional edges. No formal "if node X succeeds, take edge Y" representation. |
+| Conditional branching | HybridLoop replan decisions, PlanExecuteLoop step completion | `engine/hybrid_loop.py`, `engine/hybrid/step_helpers.py`, `engine/hybrid/replan_helpers.py` | Partial | Branching is embedded in loop logic (replan if step fails), not graph-level conditional edges. No formal "if node X succeeds, take edge Y" representation. |
 | Parallel composition | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | `engine/parallel.py`, `engine/coordination/models.py` | Strong | Parallel waves in coordination are first-class. `ParallelExecutor` handles concurrent subtask dispatch with `fail_fast` semantics. |
-| Graph mutation | Hybrid replanning (`attempt_replan`), stagnation correction injection | `engine/hybrid_helpers.py`, `engine/stagnation/` | Partial | Replanning mutates the execution plan (new subtask list). Stagnation correction injects a new message. These are graph mutations but are not described in those terms. |
+| Graph mutation | Hybrid replanning (`attempt_replan`), stagnation correction injection | `engine/hybrid/replan_helpers.py`, `engine/stagnation/` | Partial | Replanning mutates the execution plan (new subtask list). Stagnation correction injects a new message. These are graph mutations but are not described in those terms. |
 | Termination conditions | `TerminationReason` enum (7 values: COMPLETED, MAX_TURNS, BUDGET_EXHAUSTED, SHUTDOWN, PARKED, STAGNATION, ERROR) | `engine/loop_protocol.py` | Strong | Richer than typical ACG termination models. 7 named reasons provide precise signal for recovery and routing decisions. |
 
 ### Resource and Cost Concepts

@@ -396,6 +396,51 @@ class CustomRuleDefinition(BaseModel):
         return v
 
 
+# ── CustomRuleResponse ───────────────────────────────────────────
+
+
+class CustomRuleResponse(BaseModel):
+    """Wire-shape DTO for ``GET /meta/list_rules`` responses.
+
+    Pre-validates the response payload at construction time so wire
+    serialisation cannot silently emit a malformed rule (e.g. a non-
+    stringified UUID, a missing severity). The pattern is "build the
+    typed model first, then serialise"; callers dump via
+    ``.model_dump(mode="json")`` to produce the envelope-ready dict.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    id: NotBlankStr
+    name: NotBlankStr
+    description: NotBlankStr
+    metric_path: NotBlankStr
+    comparator: NotBlankStr
+    threshold: float
+    severity: NotBlankStr
+    target_altitudes: tuple[str, ...]
+    enabled: bool
+    created_at: NotBlankStr
+    updated_at: NotBlankStr
+
+    @classmethod
+    def from_definition(cls, rule: CustomRuleDefinition) -> CustomRuleResponse:
+        """Project a ``CustomRuleDefinition`` onto the wire-shape DTO."""
+        return cls(
+            id=str(rule.id),
+            name=rule.name,
+            description=rule.description,
+            metric_path=rule.metric_path,
+            comparator=rule.comparator.value,
+            threshold=rule.threshold,
+            severity=rule.severity.value,
+            target_altitudes=tuple(a.value for a in rule.target_altitudes),
+            enabled=rule.enabled,
+            created_at=rule.created_at.isoformat(),
+            updated_at=rule.updated_at.isoformat(),
+        )
+
+
 # ── DeclarativeRule ──────────────────────────────────────────────
 
 

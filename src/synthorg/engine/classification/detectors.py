@@ -13,6 +13,10 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_config import ErrorCategory
+from synthorg.core.normalization import (
+    normalize_ascii_lowercase,
+    normalize_ascii_lowercase_or_default,
+)
 from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
@@ -111,10 +115,10 @@ def _find_negation_pairs(
 
     for idx, text in texts:
         for match in _ASSERTION_PATTERN.finditer(text):
-            subject = match.group("subject").strip().lower()
+            subject = normalize_ascii_lowercase(match.group("subject"))
             verb = match.group("verb").lower()
             negation = match.group("negation") is not None
-            predicate = match.group("predicate").strip().lower()
+            predicate = normalize_ascii_lowercase(match.group("predicate"))
             key = f"{subject} {verb} {predicate}"
             assertions.append((idx, key, match.group(0).strip(), negation))
 
@@ -143,14 +147,14 @@ def _extract_numbers_with_context(
     """Extract (context_label, number, unit) triples from text."""
     results: list[tuple[str, float, str]] = []
     for match in _NUMBER_PATTERN.finditer(text):
-        context = match.group("context").strip().lower()
+        context = normalize_ascii_lowercase(match.group("context"))
         if not context:
             continue
         try:
             number = float(match.group("number"))
         except ValueError:
             continue
-        unit = (match.group("unit") or "").strip().lower()
+        unit = normalize_ascii_lowercase_or_default(match.group("unit"))
         results.append((context, number, unit))
     return results
 

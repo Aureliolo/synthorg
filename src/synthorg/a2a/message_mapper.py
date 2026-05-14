@@ -16,6 +16,7 @@ from synthorg.a2a.models import (
     A2AMessage,
     A2AMessagePart,
     A2AMessageRole,
+    A2AMetadataKey,
     A2ATextPart,
 )
 from synthorg.communication.enums import MessageType
@@ -94,7 +95,7 @@ def to_a2a(message: Message) -> A2AMessage:
     return A2AMessage(
         role=role,
         parts=parts,
-        metadata={"orig_message_type": message.type.value},
+        metadata={A2AMetadataKey.ORIG_MESSAGE_TYPE: message.type.value},
     )
 
 
@@ -118,7 +119,7 @@ def from_a2a(
     """
     # Restore original MessageType from metadata when available;
     # fall back to role-based heuristic for external messages.
-    orig_type = a2a_msg.metadata.get("orig_message_type", "")
+    orig_type = a2a_msg.metadata.get(A2AMetadataKey.ORIG_MESSAGE_TYPE, "")
     if orig_type:
         try:
             msg_type = MessageType(orig_type)

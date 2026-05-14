@@ -21,6 +21,7 @@ from synthorg.config.rate_limits import (
     PerOpConcurrencyConfig,
     PerOpRateLimitConfig,
 )
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
@@ -216,7 +217,7 @@ class PerOpRateLimitSettingsSubscriber:
         """
         result = await self._settings_service.get(_NAMESPACE, key)
         raw = str(result.value) if result.value is not None else ""
-        normalised = raw.strip().lower()
+        normalised = normalize_ascii_lowercase(raw)
         if normalised == "true":
             return True
         if normalised == "false":

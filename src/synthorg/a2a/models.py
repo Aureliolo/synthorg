@@ -17,10 +17,28 @@ from pydantic import (
     ConfigDict,
     Discriminator,
     Field,
+    JsonValue,
     model_validator,
 )
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+# ── A2A Metadata Keys ──────────────────────────────────────────
+
+
+class A2AMetadataKey(StrEnum):
+    """Well-known keys for the ``metadata`` dict on A2A messages and tasks.
+
+    Constraining the key set with a ``StrEnum`` catches typos at
+    construction time and keeps the schema discoverable for new
+    contributors; the values match what the wire format and internal
+    mappers actually use today. New keys MUST be added here before
+    they can be set on an :class:`A2AMessage` or :class:`A2ATask`.
+    """
+
+    ORIG_MESSAGE_TYPE = "orig_message_type"
+    A2A_PEER = "a2a_peer"
+
 
 # ── JSON-RPC 2.0 Envelope ───────────────────────────────────────
 
@@ -184,7 +202,13 @@ class A2ADataPart(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["data"] = "data"
-    data: dict[str, Any] = Field(description="Structured JSON content")
+    data: dict[str, JsonValue] = Field(
+        description=(
+            "Structured JSON content; typed as ``JsonValue`` so a "
+            "non-JSON value (set, custom class) is rejected at "
+            "construction rather than corrupting wire serialisation."
+        ),
+    )
     mime_type: str | None = Field(
         default=None,
         description="Optional MIME type hint",
@@ -254,9 +278,9 @@ class A2AMessage(BaseModel):
         min_length=1,
         description="Ordered content parts",
     )
-    metadata: dict[str, str] = Field(
+    metadata: dict[A2AMetadataKey, str] = Field(
         default_factory=dict,
-        description="Optional metadata",
+        description="Optional metadata; keys constrained to A2AMetadataKey.",
     )
 
     @model_validator(mode="after")
@@ -293,9 +317,9 @@ class A2ATask(BaseModel):
         default=(),
         description="Conversation messages",
     )
-    metadata: dict[str, str] = Field(
+    metadata: dict[A2AMetadataKey, str] = Field(
         default_factory=dict,
-        description="Task-level metadata",
+        description="Task-level metadata; keys constrained to A2AMetadataKey.",
     )
 
     @model_validator(mode="after")

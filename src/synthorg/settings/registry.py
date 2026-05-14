@@ -2,6 +2,7 @@
 
 from types import MappingProxyType
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_REGISTRY_DUPLICATE
 from synthorg.settings.errors import SettingsRegistryError
@@ -173,7 +174,7 @@ def registered_default_bool(namespace: str, key: str) -> bool:
     :class:`SettingsRegistryError` if the registered default is not
     a recognised boolean string.
     """
-    raw = _registered_default_str(namespace, key).strip().lower()
+    raw = normalize_ascii_lowercase(_registered_default_str(namespace, key))
     if raw == "true":
         return True
     if raw == "false":

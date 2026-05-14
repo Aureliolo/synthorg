@@ -17,6 +17,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import ValidationError
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.engine.workflow.blueprint_errors import (
     BlueprintNotFoundError,
     BlueprintValidationError,
@@ -239,7 +240,7 @@ def _validate_blueprint_name(name: str) -> str:
         BlueprintNotFoundError: If the name does not match the
             allowlist pattern ``[a-z0-9][a-z0-9_-]*``.
     """
-    name_clean = name.strip().lower()
+    name_clean = normalize_ascii_lowercase(name)
     if not _BLUEPRINT_NAME_RE.match(name_clean):
         msg = f"Invalid blueprint name {name!r}: must match [a-z0-9][a-z0-9_-]*"
         logger.warning(BLUEPRINT_LOAD_NOT_FOUND, blueprint_name=name)
@@ -389,7 +390,7 @@ def _collect_user_blueprints() -> dict[str, BlueprintInfo]:
                 action="skip_symlink_escape",
             )
             continue
-        name = path.stem.strip().lower()
+        name = normalize_ascii_lowercase(path.stem)
         if not _BLUEPRINT_NAME_RE.match(name):
             logger.warning(
                 BLUEPRINT_LIST,

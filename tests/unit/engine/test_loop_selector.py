@@ -456,7 +456,12 @@ class TestBuildExecutionLoop:
         assert loop.compaction_callback is compact_cb
 
     def test_unknown_type_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown loop type"):
+        from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+
+        with pytest.raises(
+            StrategyFactoryNotFoundError,
+            match="No execution_loop factory registered",
+        ):
             build_execution_loop("nonexistent")
 
 

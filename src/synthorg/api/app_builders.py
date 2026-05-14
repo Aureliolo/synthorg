@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.observability.events.api import (
@@ -292,7 +293,7 @@ def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
         ValueError: When the env var is set to a value that is neither
             a truthy nor falsy token from the recognised vocabulary.
     """
-    raw = os.environ.get(_TELEMETRY_ENV_VAR, "").strip().lower()
+    raw = normalize_ascii_lowercase(os.environ.get(_TELEMETRY_ENV_VAR, ""))
     if not raw:
         return parsed
     if raw in _TELEMETRY_ENV_TRUE:
