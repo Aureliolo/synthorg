@@ -31,3 +31,8 @@ class TunnelProvider(Protocol):
     async def get_url(self) -> str | None:
         """Return the current public URL, or ``None`` if not running."""
         ...
+
+    @property
+    def has_auth_token(self) -> bool:
+        """Whether the provider has an auth token configured."""
+        ...

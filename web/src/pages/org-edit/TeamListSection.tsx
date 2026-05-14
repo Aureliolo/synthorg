@@ -60,7 +60,7 @@ function SortableTeamCard({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 rounded-md border border-border bg-card p-3"
+      className="flex items-center gap-2 rounded-md border border-border bg-card p-card"
     >
       <button
         type="button"
@@ -162,7 +162,7 @@ export function TeamListSection({
     : []
 
   return (
-    <div className="border-t border-border pt-4 space-y-3">
+    <div className="border-t border-border pt-4 space-y-section-gap">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Users className="size-3.5 text-text-muted" aria-hidden="true" />

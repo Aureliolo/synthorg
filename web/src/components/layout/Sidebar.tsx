@@ -97,7 +97,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
 
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production' && overlayOpen && !onOverlayClose) {
-      log.warn('`onOverlayClose` is required when `overlayOpen` is true -- dismiss actions will be inert.')
+      log.warn('`onOverlayClose` is required when `overlayOpen` is true; dismiss actions will be inert.')
     }
   }, [overlayOpen, onOverlayClose])
 

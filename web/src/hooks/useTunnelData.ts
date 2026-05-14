@@ -7,6 +7,7 @@ export interface UseTunnelDataReturn {
   publicUrl: string | null
   error: string | null
   autoStop: boolean
+  hasAuthToken: boolean | null
 }
 
 export function useTunnelData(): UseTunnelDataReturn {
@@ -14,11 +15,12 @@ export function useTunnelData(): UseTunnelDataReturn {
   const publicUrl = useTunnelStore((s) => s.publicUrl)
   const error = useTunnelStore((s) => s.error)
   const autoStop = useTunnelStore((s) => s.autoStop)
+  const hasAuthToken = useTunnelStore((s) => s.hasAuthToken)
 
   // Fetch once on mount; phase transitions are driven by user actions.
   useEffect(() => {
     void useTunnelStore.getState().fetchStatus()
   }, [])
 
-  return { phase, publicUrl, error, autoStop }
+  return { phase, publicUrl, error, autoStop, hasAuthToken }
 }

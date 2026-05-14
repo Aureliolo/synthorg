@@ -10,7 +10,7 @@ from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
 
 from synthorg.core.persistence_errors import PersistenceConnectionError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
@@ -110,6 +110,34 @@ def _wire_mcp_installations_repo(
     return None
 
 
+def _wire_tunnel_provider(auth_token_env: str) -> TunnelProvider | None:
+    """Wire the tunnel adapter unconditionally (no persistence dep).
+
+    Best-effort: a missing adapter module or constructor failure must
+    not abort app startup. The dashboard's tunnel toggle simply
+    degrades to "unavailable" when this returns ``None``.
+    """
+    try:
+        from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
+            NgrokAdapter,
+        )
+
+        provider = NgrokAdapter(auth_token_env=auth_token_env)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="tunnel_provider",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="tunnel provider auto-wire failed (non-fatal)",
+        )
+        return None
+    logger.info(API_SERVICE_AUTO_WIRED, service="tunnel_provider")
+    return provider
+
+
 def _resolve_secret_db_path(
     persistence: PersistenceBackend,
     *,
@@ -205,6 +233,13 @@ def auto_wire_integrations(  # noqa: PLR0913
         mcp_installations_repo=_wire_mcp_installations_repo(persistence),
     )
 
+    # Wired unconditionally (no persistence / OAuth deps) so the
+    # dashboard toggle works even when the rest of integrations are
+    # disabled.
+    bundle.tunnel_provider = _wire_tunnel_provider(
+        effective_config.integrations.tunnel.auth_token_env,
+    )
+
     if not (effective_config.integrations.enabled and persistence is not None):
         return bundle
 
@@ -218,9 +253,6 @@ def auto_wire_integrations(  # noqa: PLR0913
         )
         from synthorg.integrations.oauth.token_manager import (  # noqa: PLC0415
             OAuthTokenManager,
-        )
-        from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
-            NgrokAdapter,
         )
         from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
             create_secret_backend,
@@ -295,11 +327,6 @@ def auto_wire_integrations(  # noqa: PLR0913
             refresh_threshold_seconds=effective_config.integrations.oauth.auto_refresh_threshold_seconds,
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="oauth_token_manager")
-
-        bundle.tunnel_provider = NgrokAdapter(
-            auth_token_env=effective_config.integrations.tunnel.auth_token_env,
-        )
-        logger.info(API_SERVICE_AUTO_WIRED, service="tunnel_provider")
 
         if message_bus is not None and ceremony_scheduler is not None:
             from synthorg.engine.workflow.webhook_bridge import (  # noqa: PLC0415

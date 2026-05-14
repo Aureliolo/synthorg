@@ -126,9 +126,13 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
           </span>
         </div>
 
-        {/* Budget utilization: percent label + progress bar.  Only
-            when the dept has a budget allocation configured AND the
-            user has the budget bar toggle enabled. */}
+        {/* Budget allocation share + seat utilisation: the left label
+            is the dept's share of the total budget pool, the right
+            label is the fraction of agent seats currently active
+            (active_agent_count / agent_count). The bar visualises the
+            seat-utilisation value, not budget spend. Only shown when
+            the dept has a budget allocation configured AND the user
+            has the budget bar toggle enabled. */}
         {showBudgetBar && budgetPercent !== null && budgetPercent > 0 && (
           <div className="space-y-0.5">
             <div className="flex items-center justify-between font-mono text-micro text-text-secondary">
@@ -140,7 +144,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
                     utilizationPercent >= 75 && utilizationPercent < 90 && 'text-warning',
                   )}
                 >
-                  {utilizationPercent}% used
+                  {utilizationPercent}% active
                 </span>
               )}
             </div>
@@ -151,7 +155,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
                 aria-valuenow={utilizationPercent}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-label={`${displayName} budget utilisation`}
+                aria-label={`${displayName} agent activity`}
               >
                 <div
                   className={cn(

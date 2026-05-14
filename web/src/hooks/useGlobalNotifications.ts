@@ -45,21 +45,15 @@ export function useGlobalNotifications(): void {
       GLOBAL_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
-          // Route all events through the unified notification pipeline
-          try {
-            useNotificationsStore.getState().handleWsEvent(event)
-          } catch (err) {
-            log.warn('handleWsEvent threw -- event dropped', { event_type: sanitizeForLog(event?.event_type) }, err)
-          }
+          // Route all events through the unified notification pipeline.
+          // Store methods log + swallow internally; callers MUST NOT
+          // wrap them in try/catch (the store owns the error UX).
+          useNotificationsStore.getState().handleWsEvent(event)
 
           // Agents channel: also update agent-specific store state
           // (runtime statuses, personality tracking, etc.)
           if (channel === 'agents') {
-            try {
-              useAgentsStore.getState().updateFromWsEvent(event)
-            } catch (err) {
-              log.warn('agents updateFromWsEvent threw', { event_type: sanitizeForLog(event?.event_type) }, err)
-            }
+            useAgentsStore.getState().updateFromWsEvent(event)
           }
         },
       })),

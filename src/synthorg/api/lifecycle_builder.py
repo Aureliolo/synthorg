@@ -138,6 +138,61 @@ async def _cancel_with_timeout(
         )
 
 
+async def _wire_workflow_observer(
+    task_engine: object,
+    persistence: PersistenceBackend,
+    app_state: AppState,
+) -> None:
+    """Register WorkflowExecutionObserver on `task_engine` once.
+
+    Must be called after the SettingsService auto-wire so `config_resolver`
+    drives `max_subworkflow_depth`. Falls back to the seed default (with
+    INFO log) when no resolver is wired, so executions still advance.
+    """
+    if task_engine is None or persistence is None:
+        return
+    if not (
+        hasattr(persistence, "workflow_definitions")
+        and hasattr(persistence, "workflow_executions")
+    ):
+        return
+    from synthorg.engine.workflow.execution_observer import (  # noqa: PLC0415
+        WorkflowExecutionObserver,
+    )
+
+    if any(
+        isinstance(o, WorkflowExecutionObserver)
+        for o in getattr(task_engine, "_observers", ())
+    ):
+        return
+    if app_state.has_config_resolver:
+        engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+        max_depth = engine_bridge.max_subworkflow_depth
+    else:
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            EngineBridgeConfig,
+        )
+
+        max_depth = EngineBridgeConfig().max_subworkflow_depth
+        logger.info(
+            API_APP_STARTUP,
+            component="workflow_execution_observer",
+            note=(
+                "config_resolver not wired; registering observer "
+                "with the EngineBridgeConfig seed default for "
+                "max_subworkflow_depth"
+            ),
+            max_subworkflow_depth=max_depth,
+        )
+    observer = WorkflowExecutionObserver(
+        definition_repo=persistence.workflow_definitions,
+        execution_repo=persistence.workflow_executions,
+        task_engine=task_engine,  # type: ignore[arg-type]
+        max_subworkflow_depth=max_depth,
+    )
+    task_engine.register_observer(observer)  # type: ignore[attr-defined]
+
+
 def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
@@ -320,59 +375,6 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-
-        # Wire workflow execution observer (needs connected persistence).
-        # Idempotent: only register when no WorkflowExecutionObserver is
-        # already present.  Startup may re-enter via the shared-app test
-        # fixture, and ``register_observer`` is append-only.
-        if (
-            task_engine is not None
-            and persistence is not None
-            and hasattr(persistence, "workflow_definitions")
-            and hasattr(persistence, "workflow_executions")
-        ):
-            from synthorg.engine.workflow.execution_observer import (  # noqa: PLC0415
-                WorkflowExecutionObserver,
-            )
-
-            _already_registered = any(
-                isinstance(o, WorkflowExecutionObserver)
-                for o in getattr(task_engine, "_observers", ())
-            )
-            if not _already_registered:
-                # Defer observer registration until ``config_resolver``
-                # is available. Registering with a default
-                # ``EngineBridgeConfig()`` would lock the seed
-                # ``max_subworkflow_depth`` for the observer's
-                # lifetime, ignoring any operator override that lands
-                # later via DB / env / YAML. ``register_observer`` is
-                # append-only and the ``_already_registered`` guard
-                # makes this block idempotent, so the next ``on_startup``
-                # re-entry (test fixture, hot reload, or any startup
-                # phase that auto-wires the resolver) will re-attempt
-                # registration with the resolved bridge config.
-                if not app_state.has_config_resolver:
-                    logger.warning(
-                        API_APP_STARTUP,
-                        component="workflow_execution_observer",
-                        note=(
-                            "config_resolver not yet wired; deferring "
-                            "WorkflowExecutionObserver registration so "
-                            "engine.max_subworkflow_depth is not pinned "
-                            "to its seed default"
-                        ),
-                    )
-                else:
-                    engine_bridge = (
-                        await app_state.config_resolver.get_engine_bridge_config()
-                    )
-                    _wf_observer = WorkflowExecutionObserver(
-                        definition_repo=persistence.workflow_definitions,
-                        execution_repo=persistence.workflow_executions,
-                        task_engine=task_engine,
-                        max_subworkflow_depth=engine_bridge.max_subworkflow_depth,
-                    )
-                    task_engine.register_observer(_wf_observer)
 
         # Wire ``OAuthStateService`` once persistence + the
         # ``oauth_states`` repository are available.  Owns the only
@@ -595,6 +597,36 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     distributed_task_queue=app_state.distributed_task_queue,
                 )
                 raise
+        # AFTER SettingsService auto-wire; resolver drives max_subworkflow_depth.
+        # Mirror the auto_wire_settings failure path so a resolver or
+        # register_observer() raise here still triggers _safe_shutdown
+        # instead of leaving the app half-wired.
+        if persistence is not None:
+            try:
+                await _wire_workflow_observer(task_engine, persistence, app_state)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.error(
+                    API_APP_STARTUP,
+                    detail="workflow_observer_auto_wire_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                await _safe_shutdown(
+                    task_engine,
+                    meeting_scheduler,
+                    backup_service,
+                    approval_timeout_scheduler,
+                    settings_dispatcher,
+                    bridge,
+                    message_bus,
+                    persistence,
+                    performance_tracker=app_state._performance_tracker,  # noqa: SLF001
+                    distributed_task_queue=app_state.distributed_task_queue,
+                )
+                raise
+
         # When an external caller already supplied a
         # ``TrainingService`` to ``create_app()``, we skip the
         # auto-wire below but the injected service still owns a live

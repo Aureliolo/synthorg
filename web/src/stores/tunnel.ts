@@ -22,6 +22,12 @@ export interface TunnelState {
   publicUrl: string | null
   error: string | null
   autoStop: boolean
+  /**
+   * Whether the backend has an ngrok auth token configured. ``null``
+   * until ``fetchStatus`` resolves; the UI uses that to skip the
+   * "free tier" hint during the loading window.
+   */
+  hasAuthToken: boolean | null
 
   fetchStatus: () => Promise<void>
   start: () => Promise<void>
@@ -35,8 +41,10 @@ const INITIAL_STATE = {
   publicUrl: null,
   error: null,
   autoStop: true,
+  hasAuthToken: null,
 }
 
+// Module-scoped (escapes Zustand state) on purpose: each operation reads its own generation on entry and bails on completion if a newer operation has incremented past it; stashing it inside the store would make reset() race with in-flight fetches that already captured the old value.
 let _operationGeneration = 0
 
 export const useTunnelStore = create<TunnelState>()((set) => ({
@@ -51,12 +59,13 @@ export const useTunnelStore = create<TunnelState>()((set) => ({
         publicUrl: status.public_url,
         phase: status.public_url ? 'on' : 'stopped',
         error: null,
+        hasAuthToken: status.has_auth_token,
       })
     } catch (err) {
       if (gen !== _operationGeneration) return
       const message = getErrorMessage(err)
       log.warn('Tunnel status fetch failed:', message)
-      set({ phase: 'error', error: message, publicUrl: null })
+      set({ phase: 'error', error: message, publicUrl: null, hasAuthToken: null })
     }
   },
 

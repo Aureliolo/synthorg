@@ -21,11 +21,11 @@ export function ThresholdAlerts({ zone, budgetConfig, overview }: ThresholdAlert
 
   let message: string
   if (zone === 'amber') {
-    message = `Budget usage at ${usedPct}% -- warning threshold (${budgetConfig.alerts.warn_at}%) reached`
+    message = `Budget usage at ${usedPct}%: warning threshold (${budgetConfig.alerts.warn_at}%) reached`
   } else if (zone === 'red') {
-    message = `Budget usage at ${usedPct}% -- critical threshold (${budgetConfig.alerts.critical_at}%) reached`
+    message = `Budget usage at ${usedPct}%: critical threshold (${budgetConfig.alerts.critical_at}%) reached`
   } else {
-    message = `Budget hard stop at ${budgetConfig.alerts.hard_stop_at}% reached -- spending halted`
+    message = `Budget hard stop at ${budgetConfig.alerts.hard_stop_at}% reached. Spending halted.`
   }
 
   return (

@@ -235,12 +235,12 @@ export function generateInsights(
   if (perf.trend_direction === 'improving') {
     insights.push('Performance trending upward over the recent window.')
   } else if (perf.trend_direction === 'declining') {
-    insights.push('Performance has been declining -- may need attention.')
+    insights.push('Performance has been declining; may need attention.')
   }
 
   // Quality insight
   if (perf.quality_score != null && perf.quality_score >= 8.0) {
-    insights.push(`Quality score of ${perf.quality_score.toFixed(1)}/10 -- consistently high output.`)
+    insights.push(`Quality score of ${perf.quality_score.toFixed(1)}/10: consistently high output.`)
   }
 
   return insights.slice(0, 3)

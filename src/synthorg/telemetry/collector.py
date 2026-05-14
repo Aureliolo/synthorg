@@ -371,6 +371,31 @@ class TelemetryCollector:
             NoopReporter,
         )
 
+    def _log_token_missing(self) -> None:
+        """Log missing-token bail-out at ERROR in prod, INFO elsewhere."""
+        if self._config.environment == "prod":
+            logger.error(
+                TELEMETRY_TOKEN_MISSING,
+                detail=(
+                    "build artifact missing embedded token; rebuild "
+                    "release wheel with LOGFIRE_PROJECT_TOKEN CI secret"
+                ),
+                backend=self._config.backend.value,
+                environment=self._config.environment,
+            )
+        else:
+            logger.info(
+                TELEMETRY_TOKEN_MISSING,
+                detail=(
+                    "telemetry token not embedded in this build; "
+                    "telemetry will stay disabled. To exercise the "
+                    "reporter locally run scripts/embed_logfire_token.py "
+                    "before starting the backend."
+                ),
+                backend=self._config.backend.value,
+                environment=self._config.environment,
+            )
+
     async def start(self) -> None:
         """Load the deployment ID and start the periodic heartbeat.
 
@@ -420,14 +445,7 @@ class TelemetryCollector:
                 and not is_token_embedded()
             ):
                 self._token_missing_at_start = True
-                logger.error(
-                    TELEMETRY_TOKEN_MISSING,
-                    detail=(
-                        "build artifact missing embedded token; rebuild "
-                        "release wheel with LOGFIRE_PROJECT_TOKEN CI secret"
-                    ),
-                    backend=self._config.backend.value,
-                )
+                self._log_token_missing()
                 return
             if self._heartbeat_task is not None and not self._heartbeat_task.done():
                 return

@@ -32,29 +32,35 @@ export interface DetailDataBase {
 export function useDetailData<T>(config: DetailDataConfig<T>): T & DetailDataBase {
   const { id, fetchDetail, clearDetail, channels, selectors } = config
 
+  // Detail teardown / fast-path inactive state. Polling owns the initial
+  // fetch (``polling.start()`` runs the function immediately, then on its
+  // interval); a separate fetchDetail call here would race the polling
+  // tick on the same store token and the loser's "Project not found"
+  // result would land in state, surfacing as a flash of the
+  // not-found banner on every navigation. Keep this effect to the
+  // teardown and the no-id reset path only.
   useEffect(() => {
     if (!id) {
       clearDetail()
       return
     }
-    fetchDetail(id)
     return () => {
       clearDetail()
     }
-  }, [id, fetchDetail, clearDetail])
+  }, [id, clearDetail])
 
   const pollFn = useCallback(async () => {
     if (!id) return
     await fetchDetail(id)
   }, [id, fetchDetail])
   const polling = usePolling(pollFn, DETAIL_POLL_INTERVAL)
+  const { start: pollingStart, stop: pollingStop } = polling
 
   useEffect(() => {
     if (!id) return
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- polling object is stable (memoized by usePolling)
-  }, [id])
+    pollingStart()
+    return () => pollingStop()
+  }, [id, pollingStart, pollingStop])
 
   const wsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idRef = useRef(id)

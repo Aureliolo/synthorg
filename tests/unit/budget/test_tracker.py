@@ -11,9 +11,11 @@ from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.tracker import CostTracker
 from synthorg.observability.events.budget import (
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
+    BUDGET_QUERY_EXCEEDS_RETENTION,
     BUDGET_RECORD_ADDED,
     BUDGET_SUMMARY_BUILT,
 )
+from tests._shared import FakeClock
 
 from .conftest import make_cost_record
 
@@ -454,6 +456,41 @@ class TestCostTrackerAlertLevel:
         )
         assert summary.alert_level == BudgetAlertLevel.NORMAL
         assert summary.budget_used_percent == 0.0
+
+
+@pytest.mark.unit
+class TestRetentionWindowLog:
+    """Retention-window log emits at INFO (not WARNING)."""
+
+    async def test_query_before_retention_cutoff_logs_info(self) -> None:
+        now = datetime(2026, 6, 1, tzinfo=UTC)
+        clock = FakeClock(start=now)
+        tracker = CostTracker(clock=clock)
+        # _COST_WINDOW_HOURS = 24 * 30 = 720h → cutoff is 2026-05-02
+        before_cutoff = now - timedelta(hours=720 + 24)
+
+        with structlog.testing.capture_logs() as captured:
+            await tracker.build_summary(start=before_cutoff, end=now)
+
+        retention_logs = [
+            e for e in captured if e["event"] == BUDGET_QUERY_EXCEEDS_RETENTION
+        ]
+        assert len(retention_logs) == 1
+        assert retention_logs[0]["log_level"] == "info"
+
+    async def test_query_inside_retention_window_does_not_log(self) -> None:
+        now = datetime(2026, 6, 1, tzinfo=UTC)
+        clock = FakeClock(start=now)
+        tracker = CostTracker(clock=clock)
+        inside_window = now - timedelta(hours=24)
+
+        with structlog.testing.capture_logs() as captured:
+            await tracker.build_summary(start=inside_window, end=now)
+
+        retention_logs = [
+            e for e in captured if e["event"] == BUDGET_QUERY_EXCEEDS_RETENTION
+        ]
+        assert retention_logs == []
 
 
 # ── CostTracker: prune_expired ──────────────────────────────

@@ -33,7 +33,7 @@ _MIN_TCP_PORT: Final[int] = 1
 _MAX_TCP_PORT: Final[int] = 65535
 """Legal TCP port range applied to ``NatsConfig.url`` at load time."""
 
-# Default channels from the Communication design page.
+# #settings excluded: SettingsChangeDispatcher._ensure_channel owns its lifecycle.
 _DEFAULT_CHANNELS: tuple[str, ...] = (
     "#all-hands",
     "#engineering",
@@ -41,7 +41,6 @@ _DEFAULT_CHANNELS: tuple[str, ...] = (
     "#design",
     "#incidents",
     "#code-review",
-    "#settings",
     "#watercooler",
 )
 

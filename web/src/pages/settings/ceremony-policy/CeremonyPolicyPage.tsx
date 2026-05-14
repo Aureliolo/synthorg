@@ -246,7 +246,7 @@ export default function CeremonyPolicyPage() {
             variant: 'warning',
             title: 'Department list may be incomplete',
             description:
-              'Pagination cursor cycle detected -- refresh the page to retry.',
+              'Pagination cursor cycle detected. Refresh the page to retry.',
           })
         }
       } catch {

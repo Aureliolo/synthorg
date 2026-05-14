@@ -134,11 +134,18 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
     }
   },
 
-  saveDefinition: async () => {
+  saveDefinition: async (): Promise<boolean> => {
     const { definition, nodes, edges } = get()
     if (!definition) {
-      set({ error: 'Cannot save: no workflow loaded' })
-      return
+      const message = 'Cannot save: no workflow loaded'
+      log.warn('Failed to save workflow definition', sanitizeForLog({ reason: 'no_definition' }))
+      set({ error: message })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to save workflow',
+        description: message,
+      })
+      return false
     }
     const badNodes = nodes.filter((n) => !n.type)
     const badEdges = edges.filter((e) => !readEdgeField(e.data, 'edgeType'))
@@ -146,8 +153,21 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       const parts: string[] = []
       if (badNodes.length > 0) parts.push(`nodes missing type: ${badNodes.map((n) => n.id).join(', ')}`)
       if (badEdges.length > 0) parts.push(`edges missing type: ${badEdges.map((e) => e.id).join(', ')}`)
-      set({ error: `Cannot save -- ${parts.join('; ')}. Remove and re-add the affected items.` })
-      return
+      const message = `Cannot save: ${parts.join('; ')}. Remove and re-add the affected items.`
+      log.warn(
+        'Failed to save workflow definition',
+        sanitizeForLog({
+          badNodeIds: badNodes.map((n) => n.id),
+          badEdgeIds: badEdges.map((e) => e.id),
+        }),
+      )
+      set({ error: message })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to save workflow',
+        description: message,
+      })
+      return false
     }
 
     set({ saving: true, error: null })
@@ -175,6 +195,7 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
         variant: 'success',
         title: `Workflow ${updatedDef.name} saved`,
       })
+      return true
     } catch (err) {
       // Discriminate on the typed RFC 9457 ``error_code`` envelope
       // rather than the raw HTTP status: web/CLAUDE.md "Error-code
@@ -202,15 +223,16 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
               'Could not reload the workflow after a concurrent save. Refresh the page to retry.',
           })
         }
-      } else {
-        log.warn('Failed to save workflow definition', sanitizeForLog(err))
-        useToastStore.getState().add({
-          variant: 'error',
-          ...getCrudErrorTitle(err, 'Failed to save workflow'),
-          description: getErrorMessage(err),
-        })
-        set({ saving: false, error: getErrorMessage(err) })
+        return false
       }
+      log.warn('Failed to save workflow definition', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to save workflow'),
+        description: getErrorMessage(err),
+      })
+      set({ saving: false, error: getErrorMessage(err) })
+      return false
     }
   },
 

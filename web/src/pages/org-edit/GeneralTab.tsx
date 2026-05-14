@@ -35,10 +35,10 @@ const VALID_AUTONOMY_LEVELS: ReadonlySet<string> = new Set(AUTONOMY_OPTIONS.map(
  * in the enum, so the dashboard must only offer known values.
  */
 const COMMUNICATION_PATTERN_OPTIONS = [
-  { value: 'hybrid', label: 'Hybrid -- mix of event-driven, hierarchical, and meeting-based' },
-  { value: 'event_driven', label: 'Event-driven -- async messages on topic channels' },
-  { value: 'hierarchical', label: 'Hierarchical -- chain-of-command routing' },
-  { value: 'meeting_based', label: 'Meeting-based -- scheduled synchronous ceremonies' },
+  { value: 'hybrid', label: 'Hybrid: mix of event-driven, hierarchical, and meeting-based' },
+  { value: 'event_driven', label: 'Event-driven: async messages on topic channels' },
+  { value: 'hierarchical', label: 'Hierarchical: chain-of-command routing' },
+  { value: 'meeting_based', label: 'Meeting-based: scheduled synchronous ceremonies' },
 ] as const
 
 const VALID_COMM_PATTERNS: ReadonlySet<string> = new Set(
@@ -61,10 +61,11 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   })
   const [dirty, setDirty] = useState(false)
 
+  // Sync form to config on identity change (react.dev "Adjusting some state when a prop changes"); skip while dirty so we don't clobber in-progress edits. Only update the prev-ref after a successful sync so a config identity change while dirty is retried on the next render once dirty clears.
   const prevConfigRef = useRef<typeof config | undefined>(undefined)
-  if (config !== prevConfigRef.current) {
+  if (!dirty && config !== prevConfigRef.current) {
     prevConfigRef.current = config
-    if (config && !dirty) {
+    if (config) {
       setForm({
         company_name: config.company_name,
         autonomy_level: (config.autonomy_level && VALID_AUTONOMY_LEVELS.has(config.autonomy_level))

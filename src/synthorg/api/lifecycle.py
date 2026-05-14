@@ -320,6 +320,23 @@ async def _init_persistence(
     if app_state.has_connection_catalog:
         await _rebind_connection_catalog(persistence, app_state)
 
+    await _wire_ontology_service(persistence, app_state)
+
+
+async def _wire_ontology_service(
+    persistence: PersistenceBackend,
+    app_state: AppState,
+) -> None:
+    """Wire ontology after persistence connects; no-op if already wired."""
+    from synthorg.api.auto_wire import auto_wire_ontology  # noqa: PLC0415
+
+    service = await auto_wire_ontology(app_state.config, persistence)
+    if service is not None:
+        try:
+            app_state.set_ontology_service(service)
+        except RuntimeError:
+            return
+
 
 async def _rebind_connection_catalog(
     persistence: PersistenceBackend,

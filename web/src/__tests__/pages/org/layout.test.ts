@@ -101,4 +101,60 @@ describe('applyDagreLayout', () => {
     const result = applyDagreLayout(nodes, edges)
     expect(result).toHaveLength(1)
   })
+
+  it('centres a dept lead horizontally over its reports', () => {
+    // Three-report department with a flagged lead.  After dagre,
+    // dagre tends to put the lead at the leftmost slot of the row;
+    // the post-pass should re-anchor it to the midpoint of the
+    // reports' bounding box so the head -> report connectors form a
+    // clean T-junction.
+    const nodes = [
+      makeNode('dept-eng', { type: 'department' }),
+      makeNode('lead', {
+        parentId: 'dept-eng',
+        data: { isDeptLead: true },
+        width: 200,
+        height: 80,
+      }),
+      makeNode('r1', { parentId: 'dept-eng', width: 200, height: 80 }),
+      makeNode('r2', { parentId: 'dept-eng', width: 200, height: 80 }),
+      makeNode('r3', { parentId: 'dept-eng', width: 200, height: 80 }),
+    ]
+    const edges = [
+      makeEdge('lead', 'r1'),
+      makeEdge('lead', 'r2'),
+      makeEdge('lead', 'r3'),
+    ]
+    const result = applyDagreLayout(nodes, edges)
+
+    const lead = result.find((n) => n.id === 'lead')!
+    const reports = ['r1', 'r2', 'r3'].map(
+      (id) => result.find((n) => n.id === id)!,
+    )
+
+    const reportsXMin = Math.min(...reports.map((r) => r.position.x))
+    const reportsXMax = Math.max(
+      ...reports.map((r) => r.position.x + (r.width as number)),
+    )
+    const reportsMidpoint = (reportsXMin + reportsXMax) / 2
+    const leadMidpoint = lead.position.x + (lead.width as number) / 2
+
+    expect(Math.abs(reportsMidpoint - leadMidpoint)).toBeLessThan(1)
+  })
+
+  it('leaves the lead alone when there are no reports', () => {
+    const nodes = [
+      makeNode('dept-eng', { type: 'department' }),
+      makeNode('solo-lead', {
+        parentId: 'dept-eng',
+        data: { isDeptLead: true },
+        width: 200,
+        height: 80,
+      }),
+    ]
+    const result = applyDagreLayout(nodes, [])
+    const lead = result.find((n) => n.id === 'solo-lead')!
+    expect(typeof lead.position.x).toBe('number')
+    expect(Number.isFinite(lead.position.x)).toBe(true)
+  })
 })
