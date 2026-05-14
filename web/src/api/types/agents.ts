@@ -1,6 +1,7 @@
 /** Agent config, performance, activity and career event types. */
 
 import type { AgentConfig as WireAgentConfig } from './dtos.gen'
+import type { StrategicOutputMode } from './enum-values.gen'
 import type {
   AgentStatus,
   AutonomyLevel,
@@ -56,7 +57,7 @@ export type AgentConfig = Omit<
   level: SeniorityLevel
   personality: Record<string, unknown>
   personality_preset?: string | null
-  strategic_output_mode?: import('./enum-values.gen').StrategicOutputMode | null
+  strategic_output_mode?: StrategicOutputMode | null
   model: Record<string, unknown>
   memory: Record<string, unknown>
   tools: Record<string, unknown>

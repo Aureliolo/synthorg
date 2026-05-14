@@ -52,7 +52,7 @@ async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
   }
 }
 
-export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
+export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => ({
   providers: {},
   presets: [],
   presetsLoading: false,
@@ -89,13 +89,18 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
 
   async createProviderFromPreset(presetName, name, apiKey, baseUrl) {
     set({ providersError: null, providersWarning: null })
+    // Source auth_type from the preset metadata. Hardcoding 'api_key'
+    // silently coerces oauth / subscription / custom_header / none
+    // presets onto the wrong auth path.
+    const preset = get().presets.find((p) => p.name === presetName)
+    const authType = preset?.auth_type ?? 'api_key'
     try {
       const provider = await createFromPreset({
         preset_name: presetName,
         name,
         api_key: apiKey,
         base_url: baseUrl,
-        auth_type: 'api_key',
+        auth_type: authType,
         tos_accepted: false,
       })
       set((s) => ({ providers: { ...s.providers, [name]: provider } }))

@@ -293,7 +293,7 @@ export function ProviderFormModal({
         } else {
           const data: CreateProviderRequest = {
             name: name.trim(),
-            driver: '',
+            driver: 'litellm',
             litellm_provider: litellmProvider || undefined,
             auth_type: authType,
             api_key: authType === 'api_key' && apiKey ? apiKey : undefined,

@@ -75,10 +75,9 @@ jobs:
               - 'uv.lock'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
-              # The async-leak ceiling is consumed by the dashboard-test
-              # job; bumps must re-run the gate so the new ceiling is
-              # validated before merge.
-              - '.github/ci/*.max'
+              - 'web/src/api/types/openapi.gen.ts'
+              - 'web/src/api/types/dtos.gen.ts'
+              - 'web/src/api/types/enum-values.gen.ts'
             docker:
               - 'docker/**'
               - '.dockerignore'

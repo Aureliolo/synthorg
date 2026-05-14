@@ -41,11 +41,14 @@ export type CostRecord = Omit<
   readonly success: boolean | null
 }
 
-export type DailySummary = Required<WireDailySummary>
-export type PeriodSummary = Required<WirePeriodSummary>
-export type BudgetAlertConfig = Required<WireBudgetAlertConfig>
-export type AutoDowngradeConfig = Required<WireAutoDowngradeConfig>
-export type AgentSpending = Required<WireAgentSpending>
+// Each wraps ``Required`` with ``Readonly`` so wire-sourced data has
+// the same readonly guarantee as ``CostRecord`` above; consumer code
+// must not mutate emitted summaries.
+export type DailySummary = Readonly<Required<WireDailySummary>>
+export type PeriodSummary = Readonly<Required<WirePeriodSummary>>
+export type BudgetAlertConfig = Readonly<Required<WireBudgetAlertConfig>>
+export type AutoDowngradeConfig = Readonly<Required<WireAutoDowngradeConfig>>
+export type AgentSpending = Readonly<Required<WireAgentSpending>>
 
 export type BudgetConfig = Omit<
   WireBudgetConfig,

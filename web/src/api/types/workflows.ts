@@ -6,6 +6,7 @@ export type {
   CreateFromBlueprintRequest,
   CreateSubworkflowRequest,
   CreateWorkflowDefinitionRequest,
+  MetadataChange,
   ParentReference,
   RollbackWorkflowRequest,
   SubworkflowSummary,
@@ -35,11 +36,19 @@ export {
   WORKFLOW_VALUE_TYPE_VALUES,
 } from './enum-values.gen'
 
+import type {
+  EdgeChange as WireEdgeChange,
+  NodeChange as WireNodeChange,
+} from './dtos.gen'
 import {
   WORKFLOW_EDGE_TYPE_VALUES,
   WORKFLOW_NODE_TYPE_VALUES,
 } from './enum-values.gen'
-import type { WorkflowEdgeType, WorkflowNodeType } from './enum-values.gen'
+import type {
+  WorkflowEdgeType,
+  WorkflowNodeExecutionStatus,
+  WorkflowNodeType,
+} from './enum-values.gen'
 import type { WorkflowNodeType as WireWorkflowNodeType } from './enum-values.gen'
 
 /** Legacy aliases for the older import paths used by the workflow canvas
@@ -86,7 +95,7 @@ export interface WorkflowEdgeData {
 export interface WorkflowNodeExecution {
   readonly node_id: string
   readonly node_type: WireWorkflowNodeType
-  readonly status: import('./enum-values.gen').WorkflowNodeExecutionStatus
+  readonly status: WorkflowNodeExecutionStatus
   readonly task_id: string | null
   readonly skipped_reason: string | null
 }
@@ -113,33 +122,17 @@ export interface WorkflowDefinitionSnapshot {
 
 export type WorkflowDefinitionVersionSummary = VersionSummary<WorkflowDefinitionSnapshot>
 
-export interface NodeChange {
-  readonly node_id: string
-  readonly change_type:
-    | 'added'
-    | 'removed'
-    | 'moved'
-    | 'config_changed'
-    | 'label_changed'
-    | 'type_changed'
+// NodeChange / EdgeChange overlay the wire shape's optional+nullable
+// ``old_value`` / ``new_value`` fields as required+nullable: the diff
+// renderer always populates them (the optionality on the wire reflects
+// Pydantic's permissive serialiser, not absence semantics). MetadataChange
+// is byte-identical to the wire shape and is re-exported directly above.
+export type NodeChange = Omit<WireNodeChange, 'old_value' | 'new_value'> & {
   readonly old_value: Record<string, unknown> | null
   readonly new_value: Record<string, unknown> | null
 }
 
-export interface EdgeChange {
-  readonly edge_id: string
-  readonly change_type:
-    | 'added'
-    | 'removed'
-    | 'reconnected'
-    | 'type_changed'
-    | 'label_changed'
+export type EdgeChange = Omit<WireEdgeChange, 'old_value' | 'new_value'> & {
   readonly old_value: Record<string, unknown> | null
   readonly new_value: Record<string, unknown> | null
-}
-
-export interface MetadataChange {
-  readonly field: string
-  readonly old_value: string
-  readonly new_value: string
 }

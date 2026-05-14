@@ -120,6 +120,14 @@ export function matchAllowlist(
   return null
 }
 
+/**
+ * Maximum drain iterations the ``afterEach`` hook runs while waiting for
+ * Node's ``async_hooks`` ``destroy`` callbacks to settle. Exported so
+ * tests can pin the value (raising it would silently change the false-
+ * positive boundary for legitimate chained-timer use cases).
+ */
+export const MAX_DRAIN_ITERATIONS = 8
+
 const hook = createHook({
   init(asyncId, type) {
     // Node's async_hooks signature delivers ``type`` as ``string``;
@@ -226,7 +234,6 @@ afterEach(async () => {
   // shrinking, capped at ``MAX_DRAIN_ITERATIONS`` to bound worst-case
   // teardown cost. A genuine forgotten timer (no clear, no firing
   // callback) never shrinks the set and is reported.
-  const MAX_DRAIN_ITERATIONS = 8
   let lastSize = -1
   for (let i = 0; i < MAX_DRAIN_ITERATIONS; i++) {
     const before = liveHandles.size

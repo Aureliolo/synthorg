@@ -1,6 +1,10 @@
 /** Task domain types. */
 
-import type { Task as WireTask } from './dtos.gen'
+import type {
+  AcceptanceCriterion,
+  ExpectedArtifact,
+  Task as WireTask,
+} from './dtos.gen'
 import type {
   Complexity,
   CoordinationTopology,
@@ -55,8 +59,8 @@ export type Task = Omit<
   readonly reviewers: readonly string[]
   readonly dependencies: readonly string[]
   readonly delegation_chain: readonly string[]
-  readonly artifacts_expected: readonly import('./dtos.gen').ExpectedArtifact[]
-  readonly acceptance_criteria: readonly import('./dtos.gen').AcceptanceCriterion[]
+  readonly artifacts_expected: readonly ExpectedArtifact[]
+  readonly acceptance_criteria: readonly AcceptanceCriterion[]
   readonly source?: TaskSource | null
   readonly cost?: number
   readonly version?: number

@@ -43,8 +43,15 @@ from tests.unit.scripts.fixtures.dto_codegen_fixture_schema import (  # noqa: E4
 pytestmark = pytest.mark.unit
 
 
-def _fresh_schema() -> dict[str, Any]:
-    """Return a deep-ish copy so mutating tests don't pollute siblings."""
+@pytest.fixture
+def fresh_schema() -> dict[str, Any]:
+    """Return a fresh deepcopy of the fixture schema.
+
+    Wrapping the deepcopy in a fixture (rather than a module helper)
+    makes the safe access pattern the default: a test that omits the
+    fixture parameter has no path to FIXTURE_SCHEMA at all, so a
+    direct-mutation regression cannot slip in.
+    """
     import copy
 
     return copy.deepcopy(FIXTURE_SCHEMA)
@@ -94,8 +101,11 @@ class TestToScreamingSnake:
 class TestRenderDtos:
     """``render_dtos`` walks ``components.schemas`` and emits aliases."""
 
-    def test_emits_named_alias_for_clean_schema(self) -> None:
-        output = gen.render_dtos(_fresh_schema())
+    def test_emits_named_alias_for_clean_schema(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        output = gen.render_dtos(fresh_schema)
         assert (
             "export type FixtureRequest = components['schemas']['FixtureRequest']"
             in output
@@ -105,50 +115,71 @@ class TestRenderDtos:
             in output
         )
 
-    def test_emits_envelope_alias_for_monomorphised_api_response(self) -> None:
-        output = gen.render_dtos(_fresh_schema())
+    def test_emits_envelope_alias_for_monomorphised_api_response(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        output = gen.render_dtos(fresh_schema)
         assert (
             "export type FixtureResponseEnvelope = "
             "components['schemas']['ApiResponse_FixtureResponse_']" in output
         )
 
-    def test_emits_page_alias_for_monomorphised_paginated_response(self) -> None:
-        output = gen.render_dtos(_fresh_schema())
+    def test_emits_page_alias_for_monomorphised_paginated_response(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        output = gen.render_dtos(fresh_schema)
         assert (
             "export type FixtureResponsePage = "
             "components['schemas']['PaginatedResponse_FixtureResponse_']" in output
         )
 
-    def test_emits_void_envelope_for_none_type(self) -> None:
-        output = gen.render_dtos(_fresh_schema())
+    def test_emits_void_envelope_for_none_type(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        output = gen.render_dtos(fresh_schema)
         assert (
             "export type VoidEnvelope = "
             "components['schemas']['ApiResponse_NoneType_']" in output
         )
 
-    def test_skips_non_pascal_inline_schema(self) -> None:
-        output = gen.render_dtos(_fresh_schema())
+    def test_skips_non_pascal_inline_schema(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        output = gen.render_dtos(fresh_schema)
         # The fixture includes a deliberately lower-cased inline name.
         assert "inline_anon_schema" not in output
 
-    def test_skips_string_enum_schemas(self) -> None:
+    def test_skips_string_enum_schemas(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
         """Enums are owned by ``enum-values.gen.ts``; no duplicate alias here."""
-        output = gen.render_dtos(_fresh_schema())
+        output = gen.render_dtos(fresh_schema)
         assert "export type FixtureEnum =" not in output
 
-    def test_imports_components_from_openapi_gen(self) -> None:
-        output = gen.render_dtos(_fresh_schema())
+    def test_imports_components_from_openapi_gen(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        output = gen.render_dtos(fresh_schema)
         assert "import type { components } from './openapi.gen'" in output
 
-    def test_header_present(self) -> None:
-        output = gen.render_dtos(_fresh_schema())
+    def test_header_present(self, fresh_schema: dict[str, Any]) -> None:
+        output = gen.render_dtos(fresh_schema)
         assert "AUTO-GENERATED: do not edit by hand." in output
         assert "scripts/generate_dto_types_ts.py" in output
 
-    def test_output_is_sorted_deterministically(self) -> None:
+    def test_output_is_sorted_deterministically(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
         """Two runs must produce identical bytes."""
-        first = gen.render_dtos(_fresh_schema())
-        second = gen.render_dtos(_fresh_schema())
+        first = gen.render_dtos(fresh_schema)
+        second = gen.render_dtos(fresh_schema)
         assert first == second
 
     def test_empty_components_yields_header_only(self) -> None:
@@ -163,8 +194,11 @@ class TestRenderDtos:
 class TestRenderEnumValues:
     """``render_enum_values`` emits runtime tuples for string-enum schemas."""
 
-    def test_emits_screaming_snake_tuple(self) -> None:
-        output = gen.render_enum_values(_fresh_schema())
+    def test_emits_screaming_snake_tuple(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        output = gen.render_enum_values(fresh_schema)
         assert (
             "export const FIXTURE_ENUM_VALUES = [\n"
             "    'alpha',\n"
@@ -173,31 +207,43 @@ class TestRenderEnumValues:
             "] as const" in output
         )
 
-    def test_emits_derived_string_union_type(self) -> None:
-        output = gen.render_enum_values(_fresh_schema())
+    def test_emits_derived_string_union_type(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        output = gen.render_enum_values(fresh_schema)
         assert (
             "export type FixtureEnum = (typeof FIXTURE_ENUM_VALUES)[number]" in output
         )
 
-    def test_skips_inline_lowercase_enum(self) -> None:
+    def test_skips_inline_lowercase_enum(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
         """An inline schema lacking a PascalCase name is ignored."""
-        output = gen.render_enum_values(_fresh_schema())
+        output = gen.render_enum_values(fresh_schema)
         assert "INLINE_ANON_SCHEMA_VALUES" not in output
         assert "inline_anon_schema" not in output
 
-    def test_skips_non_enum_object_schemas(self) -> None:
+    def test_skips_non_enum_object_schemas(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
         """Object types must not produce ``*_VALUES`` blocks."""
-        output = gen.render_enum_values(_fresh_schema())
+        output = gen.render_enum_values(fresh_schema)
         assert "FIXTURE_REQUEST_VALUES" not in output
         assert "FIXTURE_RESPONSE_VALUES" not in output
 
-    def test_output_is_deterministic(self) -> None:
-        first = gen.render_enum_values(_fresh_schema())
-        second = gen.render_enum_values(_fresh_schema())
+    def test_output_is_deterministic(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        first = gen.render_enum_values(fresh_schema)
+        second = gen.render_enum_values(fresh_schema)
         assert first == second
 
-    def test_header_present(self) -> None:
-        output = gen.render_enum_values(_fresh_schema())
+    def test_header_present(self, fresh_schema: dict[str, Any]) -> None:
+        output = gen.render_enum_values(fresh_schema)
         assert "AUTO-GENERATED: do not edit by hand." in output
 
 

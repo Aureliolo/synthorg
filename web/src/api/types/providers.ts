@@ -34,15 +34,10 @@ export type { AuthType, ProviderHealthStatus } from './enum-values.gen'
 export { AUTH_TYPE_VALUES, PROVIDER_HEALTH_STATUS_VALUES } from './enum-values.gen'
 
 import type {
-  AddModelRequest as WireAddModelRequest,
   CloudPreset as WireCloudPreset,
   LocalPreset as WireLocalPreset,
-  PresetOverride as WirePresetOverride,
-  ProviderAuditEvent as WireProviderAuditEvent,
-  ProviderHealthSummary as WireProviderHealthSummary,
-  ProviderModelConfig as WireProviderModelConfig,
+  ProviderResponse as WireProviderResponse,
 } from './dtos.gen'
-import type { AuthType } from './enum-values.gen'
 
 /** Frontend-only union mirroring the inline string union on the wire
  *  ProviderAuditEvent.event_type. */
@@ -92,36 +87,31 @@ export interface RateLimitsConfig {
   readonly concurrent_requests: number
 }
 
-/**
- * Provider response DTO (no named OpenAPI schema; the controller
- * returns a hand-built ``dict``). Mirrors the
- * ``synthorg.api.dto_providers.ProviderConfig`` Pydantic model.
- */
-export interface ProviderConfig {
-  name?: string | null
-  driver: string
-  litellm_provider: string | null
-  auth_type: AuthType
-  base_url: string | null
-  readonly models: readonly WireProviderModelConfig[]
-  has_api_key: boolean
-  has_oauth_credentials: boolean
-  has_custom_header: boolean
-  has_subscription_token: boolean
-  tos_accepted_at: string | null
-  oauth_token_url: string | null
-  oauth_client_id: string | null
-  oauth_scope: string | null
-  custom_header_name: string | null
-  preset_name: string | null
-  supports_model_pull: boolean
-  supports_model_delete: boolean
-  supports_model_config: boolean
+// Overlay the wire's ``ProviderResponse`` shape: the dashboard treats
+// every nullable field as always present (the Pydantic serialiser
+// emits them on every response), so we promote the optional-nullable
+// fields to required-nullable. The boolean and required fields stay
+// as-typed by the wire.
+export type ProviderConfig = Omit<
+  WireProviderResponse,
+  | 'base_url'
+  | 'custom_header_name'
+  | 'litellm_provider'
+  | 'oauth_client_id'
+  | 'oauth_scope'
+  | 'oauth_token_url'
+  | 'preset_name'
+  | 'tos_accepted_at'
+> & {
+  readonly base_url: string | null
+  readonly custom_header_name: string | null
+  readonly litellm_provider: string | null
+  readonly oauth_client_id: string | null
+  readonly oauth_scope: string | null
+  readonly oauth_token_url: string | null
+  readonly preset_name: string | null
+  readonly tos_accepted_at: string | null
 }
 
 /** Discriminated union of every preset kind, keyed by ``kind``. */
 export type ProviderPreset = WireCloudPreset | WireLocalPreset
-
-/** Re-exports of internal-only wire types kept here so consumer
- *  imports do not need to reach into ``dtos.gen`` directly. */
-export type { WireAddModelRequest, WirePresetOverride, WireProviderAuditEvent, WireProviderHealthSummary }
