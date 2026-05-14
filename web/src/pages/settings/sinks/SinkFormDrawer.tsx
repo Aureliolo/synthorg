@@ -33,10 +33,10 @@ export interface SinkFormDrawerProps {
 export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: SinkFormDrawerProps) {
   // State initialized from sink prop. Parent uses key={sink?.identifier} to remount on sink change.
   const [filePath, setFilePath] = useState(sink?.identifier === '__console__' ? '' : (sink?.identifier ?? ''))
-  const [level, setLevel] = useState<LogLevel>(sink?.level ?? 'INFO')
+  const [level, setLevel] = useState<LogLevel>((sink?.level as LogLevel | undefined) ?? 'INFO')
   const [enabled, setEnabled] = useState(sink?.enabled ?? true)
   const [jsonFormat, setJsonFormat] = useState(sink?.json_format ?? false)
-  const [rotationStrategy, setRotationStrategy] = useState<'builtin' | 'external' | 'none'>(sink?.rotation?.strategy ?? 'none')
+  const [rotationStrategy, setRotationStrategy] = useState<'builtin' | 'external' | 'none'>((sink?.rotation?.strategy as 'builtin' | 'external' | undefined) ?? 'none')
   const [maxBytes, setMaxBytes] = useState(String(sink?.rotation?.max_bytes ?? 10485760))
   const [backupCount, setBackupCount] = useState(String(sink?.rotation?.backup_count ?? 5))
   const [routingPrefixes, setRoutingPrefixes] = useState<string[]>(sink?.routing_prefixes ? [...sink.routing_prefixes] : [])

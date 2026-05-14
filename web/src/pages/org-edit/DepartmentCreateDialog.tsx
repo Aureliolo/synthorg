@@ -59,6 +59,7 @@ export function DepartmentCreateDialog({ open, onOpenChange, onCreate }: Departm
       await onCreate({
         name: form.name.trim(),
         budget_percent: pct,
+        autonomy_level: null,
       })
       setForm(INITIAL_FORM)
       onOpenChange(false)

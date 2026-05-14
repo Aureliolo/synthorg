@@ -64,7 +64,7 @@ function MeetingCardImpl({ meeting, className }: MeetingCardProps) {
         </span>
         <span className="flex items-center gap-1">
           <Clock className="size-3.5" aria-hidden="true" />
-          {formatMeetingDuration(meeting.meeting_duration_seconds)}
+          {formatMeetingDuration(meeting.meeting_duration_seconds ?? null)}
         </span>
         {meeting.minutes && (
           <span className="font-mono">

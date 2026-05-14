@@ -93,8 +93,8 @@ export default function OrgEditPage() {
         await updateCompany({
           company_name: typeof parsed.company_name === 'string' ? parsed.company_name : undefined,
           autonomy_level: typeof parsed.autonomy_level === 'string'
-            ? (parsed.autonomy_level as UpdateCompanyRequest['autonomy_level'])
-            : undefined,
+            ? (parsed.autonomy_level as Exclude<UpdateCompanyRequest['autonomy_level'], undefined>)
+            : null,
           budget_monthly: typeof parsed.budget_monthly === 'number' ? parsed.budget_monthly : undefined,
           communication_pattern: typeof parsed.communication_pattern === 'string'
             ? parsed.communication_pattern

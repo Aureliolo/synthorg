@@ -36,7 +36,7 @@ export function buildDepartment(
     autonomy_level: 'supervised',
     ceremony_policy: null,
     reporting_lines: [],
-    policies: {},
+    policies: { approval_chains: [] },
     ...overrides,
   }
 }

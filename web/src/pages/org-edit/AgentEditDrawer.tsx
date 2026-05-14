@@ -90,6 +90,7 @@ export function AgentEditDrawer({
         role: form.role.trim() || undefined,
         department: form.department as UpdateAgentOrgRequest['department'],
         level: form.level,
+        autonomy_level: null,
       })
       onClose()
     } catch (err) {

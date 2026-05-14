@@ -316,7 +316,7 @@ function sanitizeMeetingMinutes(
 
 function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
   const tokenUsage: Record<string, number> = {}
-  for (const [participantId, count] of Object.entries(c.token_usage_by_participant)) {
+  for (const [participantId, count] of Object.entries(c.token_usage_by_participant ?? {})) {
     const safeId = sanitizeWsString(participantId, 128)
     if (safeId && safeId.length > 0) {
       tokenUsage[safeId] = count
@@ -337,7 +337,7 @@ function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
       maxLen: 64,
       field: 'meeting.status',
     }),
-    minutes: sanitizeMeetingMinutes(c.minutes),
+    minutes: sanitizeMeetingMinutes(c.minutes ?? null),
     // Preserve the ``string | null`` contract: if sanitization strips
     // a non-null error_message down to empty, report ``null`` rather
     // than an empty string the UI would treat as a real error.

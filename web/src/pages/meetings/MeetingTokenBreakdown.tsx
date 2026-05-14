@@ -58,9 +58,11 @@ export function MeetingTokenBreakdown({ meeting, className }: MeetingTokenBreakd
   const overallPercent = computeTokenUsagePercent(meeting)
   const totalTokens = meeting.minutes?.total_tokens ?? 0
 
-  const segments = meeting.contribution_rank.map((agentId) => ({
+  const tokenUsage = meeting.token_usage_by_participant ?? {}
+  const contributionRank = meeting.contribution_rank ?? []
+  const segments = contributionRank.map((agentId) => ({
     label: agentId,
-    value: meeting.token_usage_by_participant[agentId] ?? 0,
+    value: tokenUsage[agentId] ?? 0,
   }))
 
   return (
@@ -79,11 +81,11 @@ export function MeetingTokenBreakdown({ meeting, className }: MeetingTokenBreakd
         </div>
 
         <div className="space-y-3">
-          {meeting.contribution_rank.map((agentId, i) => (
+          {contributionRank.map((agentId, i) => (
             <ParticipantTokenRow
               key={agentId}
               agentId={agentId}
-              tokens={meeting.token_usage_by_participant[agentId] ?? 0}
+              tokens={tokenUsage[agentId] ?? 0}
               share={getParticipantTokenShare(meeting, agentId)}
               rankLabel={i < RANK_BADGES.length ? RANK_BADGES[i]! : null}
             />

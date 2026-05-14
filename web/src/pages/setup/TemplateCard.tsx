@@ -96,7 +96,7 @@ export function TemplateCard({
         </div>
         <div className="flex items-center gap-1.5" title="Autonomy level">
           <Shield className="size-3.5 text-accent" aria-hidden="true" />
-          <span>{AUTONOMY_LABELS[template.autonomy_level] ?? template.autonomy_level}</span>
+          <span>{(template.autonomy_level && AUTONOMY_LABELS[template.autonomy_level]) ?? template.autonomy_level ?? ''}</span>
         </div>
         <div className="flex items-center gap-1.5" title="Workflow">
           <GitBranch className="size-3.5 text-accent" aria-hidden="true" />

@@ -76,7 +76,7 @@ export interface DepartmentAgentStatusDot {
 }
 
 export interface DepartmentGroupData {
-  departmentName: DepartmentName
+  departmentName: string
   displayName: string
   agentCount: number
   activeCount: number
@@ -96,7 +96,7 @@ export interface DepartmentGroupData {
 
 export interface TeamGroupData {
   teamName: string
-  departmentName: DepartmentName
+  departmentName: string
   leadName: string | undefined
   memberCount: number
   [key: string]: unknown
@@ -232,7 +232,7 @@ export function buildOrgTree(
   }
 
   // Group agents by department
-  const deptAgents = new Map<DepartmentName, AgentConfig[]>()
+  const deptAgents = new Map<string, AgentConfig[]>()
   for (const agent of agents) {
     const list = deptAgents.get(agent.department) ?? []
     list.push(agent)
@@ -247,7 +247,11 @@ export function buildOrgTree(
     if (!configuredDeptNames.has(deptName)) {
       syntheticDepts.push({
         name: deptName,
-        display_name: humanizeDepartmentName(deptName),
+        autonomy_level: null,
+        budget_percent: 0,
+        head: null,
+        head_id: null,
+        reporting_lines: [],
         teams: [],
       })
     }
@@ -290,7 +294,7 @@ export function buildOrgTree(
     }))
     return {
       departmentName: dept.name,
-      displayName: dept.display_name ?? humanizeDepartmentName(dept.name),
+      displayName: humanizeDepartmentName(dept.name),
       agentCount: deptMembers.length,
       activeCount,
       budgetPercent,
@@ -439,7 +443,7 @@ function emitDeptChildren(
   nodes: Node[],
   edges: Edge[],
   dept: Department,
-  deptAgents: Map<DepartmentName, AgentConfig[]>,
+  deptAgents: Map<string, AgentConfig[]>,
   runtimeStatuses: Record<string, AgentRuntimeStatus>,
   ceoId: string | undefined,
 ): void {

@@ -76,7 +76,7 @@ function DepartmentRow({ dept }: { dept: Department }) {
         className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-card/50"
       >
         <Chevron className="size-3.5 text-text-muted" />
-        <span className="flex-1 text-sm font-medium">{dept.display_name ?? dept.name}</span>
+        <span className="flex-1 text-sm font-medium">{dept.name}</span>
         <span className="text-xs text-text-muted">
           {isEditing
             ? CEREMONY_STRATEGY_LABELS[strategy as CeremonyStrategyType]

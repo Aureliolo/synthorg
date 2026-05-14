@@ -90,7 +90,8 @@ export function DepartmentEditDrawer({
     try {
       await onUpdate(department.name, {
         budget_percent: Number.isFinite(pct) ? pct : undefined,
-        ceremony_policy: ceremonyPolicy,
+        ceremony_policy: ceremonyPolicy as Record<string, unknown> | null,
+        autonomy_level: null,
       })
       onClose()
     } catch (err) {
