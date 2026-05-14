@@ -313,9 +313,14 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
       // topics don't bury active threads.
       const result = await messagesApi.listMessages({ limit: CHANNEL_ACTIVITY_LIMIT })
       if (seq !== activityRequestSeq) return
-      const next = new Set<string>()
-      for (const msg of result.data) next.add(msg.channel)
-      set({ channelsWithMessages: next })
+      // Merge into the existing set rather than overwriting it:
+      // ``handleWsEvent`` adds channels live as messages arrive, and
+      // a replace-on-completion would clobber any channel that became
+      // active AFTER the activity probe was issued but BEFORE it
+      // resolved (the probe's REST snapshot lags those WS events).
+      const merged = new Set<string>(get().channelsWithMessages)
+      for (const msg of result.data) merged.add(msg.channel)
+      set({ channelsWithMessages: merged })
     } catch (err) {
       if (seq !== activityRequestSeq) return
       // The activity probe is a best-effort enhancement; on failure
