@@ -69,7 +69,14 @@ export interface TelemetryArtifact {
 export function createTelemetryArtifact(
   records: readonly LeakRecord[],
 ): TelemetryArtifact {
-  const byType: Record<string, number> = {}
+  // ``Object.create(null)`` produces a prototype-less object so an
+  // ``r.type`` of ``__proto__`` (only reachable via a hand-crafted
+  // NDJSON record in ``.test-tmp/`` since the typed write path is
+  // constrained to ``LeakType``) cannot mutate ``Object.prototype``.
+  const byType: Record<string, number> = Object.create(null) as Record<
+    string,
+    number
+  >
   const buckets = new Map<string, LeakRecord[]>()
   for (const r of records) {
     byType[r.type] = (byType[r.type] ?? 0) + 1
