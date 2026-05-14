@@ -125,9 +125,8 @@ class HybridPromptRetrievalBackend:
         Static policies (from ``core_policies`` config) are returned
         first as synthetic ``OrgFact`` objects. Dynamically written
         ``CORE_POLICY`` facts stored in the extended store follow.
-        When ``limit`` is None the full set is returned (back-compat
-        with pre-pagination callers); otherwise the combined sequence
-        is sliced by ``offset`` and ``limit``.
+        When ``limit`` is None the full set is returned; otherwise the
+        combined sequence is sliced by ``offset`` and ``limit``.
 
         Returns:
             Core policy facts with category ``CORE_POLICY`` (full or
@@ -145,7 +144,11 @@ class HybridPromptRetrievalBackend:
             )
             for i, policy in enumerate(self._core_policies)
         )
-        dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
+        try:
+            dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
+        except OrgMemoryQueryError:
+            logger.exception(ORG_MEMORY_QUERY_FAILED)
+            raise
         facts = static + dynamic
         if limit is None and offset == 0:
             logger.debug(ORG_MEMORY_POLICIES_LISTED, count=len(facts))
@@ -159,7 +162,11 @@ class HybridPromptRetrievalBackend:
     async def count_policies(self) -> int:
         """Return the unfiltered count of core policy facts."""
         self._require_connected()
-        dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
+        try:
+            dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
+        except OrgMemoryQueryError:
+            logger.exception(ORG_MEMORY_QUERY_FAILED)
+            raise
         return len(self._core_policies) + len(dynamic)
 
     async def query(self, query: OrgMemoryQuery) -> tuple[OrgFact, ...]:

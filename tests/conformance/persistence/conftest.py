@@ -27,7 +27,6 @@ Postgres arm:
 import asyncio
 import contextlib
 import json
-import shutil
 import sys
 import uuid
 import warnings
@@ -73,12 +72,25 @@ def event_loop_policy() -> Any:
 
 
 def _docker_available() -> bool:
-    """Return ``True`` if the Docker CLI is reachable.
+    """Return ``True`` if the Docker daemon is reachable.
 
-    testcontainers talks to the Docker daemon via the socket; the CLI
-    check is a cheap proxy and avoids importing docker-py up front.
+    testcontainers-python talks to the daemon directly via docker-py
+    (no CLI binary required), so probe the daemon socket / DOCKER_HOST
+    rather than ``shutil.which("docker")`` -- a CLI check would skip
+    daemon-only environments (containerised CI, Docker-in-Docker,
+    socket-mounted runners) where the conformance arm should still run.
     """
-    return shutil.which("docker") is not None
+    try:
+        import docker
+    except ImportError:
+        return False
+    docker_any: Any = docker
+    try:
+        client = docker_any.from_env()
+        client.ping()
+    except Exception:
+        return False
+    return True
 
 
 class _PostgresContainerProxy:
@@ -257,10 +269,12 @@ def postgres_container(
         shared_dir = tmp_path_factory.getbasetemp().parent
     state_file = shared_dir / "postgres_container_state.json"
     lock_path = str(shared_dir / "postgres_container.lock")
-    # 60s lock timeout guards against the pathological case where a
-    # worker dies holding the lock; peers fall through to a fresh
-    # acquire instead of wedging the whole suite.
-    lock_timeout: Final[int] = 60
+    # The starter holds the lock through PostgresContainer.start(),
+    # which blocks on the postgres:18-alpine image pull on cold caches
+    # and on readiness polling once the container is up. 180s gives
+    # peers enough headroom to wait through both without timing out
+    # while still bounding a worker that dies mid-acquire.
+    lock_timeout: Final[int] = 180
 
     with FileLock(lock_path, timeout=lock_timeout):
         data = _acquire_shared_postgres(state_file)
