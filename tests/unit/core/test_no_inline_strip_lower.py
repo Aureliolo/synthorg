@@ -14,7 +14,6 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
-# Acceptance bar from #1888: drop below 5 in src/synthorg/.
 # Current state is zero; this threshold guards against any new
 # consumer-side inline ``.strip().lower()`` leaking back in.
 _MAX_INLINE_HITS: int = 4
