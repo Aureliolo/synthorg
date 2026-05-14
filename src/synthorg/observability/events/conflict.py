@@ -26,6 +26,14 @@ CONFLICT_HYBRID_AUTO_RESOLVED: Final[str] = "conflict.hybrid.auto_resolved"
 CONFLICT_HUMAN_ESCALATION_STUB: Final[str] = "conflict.human.escalation_stub"
 CONFLICT_ESCALATION_QUEUED: Final[str] = "conflict.escalation.queued"
 CONFLICT_ESCALATION_RESOLVED: Final[str] = "conflict.escalation.resolved"
+CONFLICT_ESCALATION_DECISION_FAILED: Final[str] = "conflict.escalation.decision.failed"
+"""Operator-decision validation failure on the escalation path.
+
+Emitted when a decision is rejected before any persistence occurs --
+wrong shape (``reject`` against a winner-only processor) or
+``winning_agent_id`` referencing an agent outside the conflict's
+positions. Distinct from :data:`CONFLICT_ESCALATION_RESOLVED` so error
+attempts do not contaminate the resolved/audit stream."""
 CONFLICT_ESCALATION_CANCELLED: Final[str] = "conflict.escalation.cancelled"
 CONFLICT_ESCALATION_EXPIRED: Final[str] = "conflict.escalation.expired"
 CONFLICT_ESCALATION_STATUS_TRANSITIONED: Final[str] = (

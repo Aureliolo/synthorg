@@ -50,6 +50,34 @@ class MeetingPhase(StrEnum):
     DEVIL_ADVOCATE = "devil_advocate"
 
 
+class ConflictDetectorType(StrEnum):
+    """Selected conflict-detection strategy for the structured-phases protocol.
+
+    Each value maps to a concrete detector class registered in
+    :mod:`synthorg.communication.meeting.factory`.
+
+    Attributes:
+        KEYWORD: Keyword-marker detection (default; fast, deterministic).
+        STRUCTURED: Structured JSON field comparison; zero-cost,
+            deterministic, requires position JSON in responses.
+        LLM_JUDGE: Parse a structured judgment from the leader's
+            response (JSON ``conflicts`` field or ``JUDGE:`` markers).
+        EMBEDDING: Embedding-similarity-based detection (placeholder
+            implementation; raises NotImplementedError until embedding
+            infrastructure is available).
+        HYBRID: Combine embedding similarity with a keyword fallback.
+        AUTO: Pick STRUCTURED when JSON is present, fall back to
+            KEYWORD otherwise.
+    """
+
+    KEYWORD = "keyword"
+    STRUCTURED = "structured"
+    LLM_JUDGE = "llm_judge"
+    EMBEDDING = "embedding"
+    HYBRID = "hybrid"
+    AUTO = "auto"
+
+
 class MeetingStatus(StrEnum):
     """Lifecycle status of a meeting.
 

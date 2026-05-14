@@ -18,6 +18,10 @@ BACKUP_COMPONENT_STARTED: Final[str] = "backup.component.started"
 BACKUP_COMPONENT_COMPLETED: Final[str] = "backup.component.completed"
 BACKUP_COMPONENT_FAILED: Final[str] = "backup.component.failed"
 
+# Handler-registration events (factory dispatch failures, e.g. missing
+# pg_dump binary on Postgres deployments).
+BACKUP_HANDLER_REGISTRATION_FAILED: Final[str] = "backup.handler.registration_failed"
+
 # Manifest events
 BACKUP_MANIFEST_WRITTEN: Final[str] = "backup.manifest.written"
 BACKUP_MANIFEST_INVALID: Final[str] = "backup.manifest.invalid"

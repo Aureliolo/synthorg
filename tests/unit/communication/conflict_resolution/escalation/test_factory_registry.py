@@ -30,7 +30,8 @@ from synthorg.communication.conflict_resolution.escalation.notify import (
     PostgresEscalationNotifySubscriber,
 )
 from synthorg.communication.conflict_resolution.escalation.processors import (
-    HumanDecisionProcessor,
+    HybridDecisionProcessor,
+    WinnerOnlyDecisionProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     CrossInstanceNotifyCapableStore,
@@ -69,42 +70,43 @@ class TestQueueStoreRegistry:
         build_escalation_queue_store(config, backend)
         backend.build_escalations.assert_called_once_with()  # type: ignore[attr-defined]
 
-    def test_postgres_backend_passes_notify_channel_when_enabled(self) -> None:
-        config = EscalationQueueConfig(
-            backend="postgres",
-            cross_instance_notify="on",
-            notify_channel="escalations",
-        )
+    @pytest.mark.parametrize(
+        ("cross_instance_notify", "configured_channel", "expected_kwarg"),
+        [
+            # ``on`` + explicit channel: the channel propagates to
+            # ``build_escalations`` so the Postgres LISTEN/NOTIFY surface
+            # subscribes to the right name.
+            ("on", "escalations", "escalations"),
+            # ``off`` collapses to ``notify_channel=None`` so the store
+            # does not bind a Postgres NOTIFY channel even if one is
+            # configured for some other component.
+            ("off", None, None),
+            # ``auto`` shares the ``on`` factory branch; the explicit
+            # parametrize entry catches regressions that narrow the
+            # equality back to ``== "on"`` and drop ``auto``.
+            ("auto", "escalations", "escalations"),
+        ],
+        ids=("on", "off", "auto"),
+    )
+    def test_postgres_backend_passes_correct_notify_channel(
+        self,
+        cross_instance_notify: str,
+        configured_channel: str | None,
+        expected_kwarg: str | None,
+    ) -> None:
+        config_kwargs: dict[str, object] = {
+            "backend": "postgres",
+            "cross_instance_notify": cross_instance_notify,
+        }
+        if configured_channel is not None:
+            config_kwargs["notify_channel"] = configured_channel
+        config = EscalationQueueConfig(**config_kwargs)  # type: ignore[arg-type]
         backend = _fake_persistence("postgres")
-        build_escalation_queue_store(config, backend)
-        backend.build_escalations.assert_called_once_with(  # type: ignore[attr-defined]
-            notify_channel="escalations",
-        )
 
-    def test_postgres_backend_off_passes_none_channel(self) -> None:
-        config = EscalationQueueConfig(
-            backend="postgres",
-            cross_instance_notify="off",
-        )
-        backend = _fake_persistence("postgres")
         build_escalation_queue_store(config, backend)
-        backend.build_escalations.assert_called_once_with(  # type: ignore[attr-defined]
-            notify_channel=None,
-        )
 
-    def test_postgres_backend_auto_passes_notify_channel(self) -> None:
-        # ``auto`` and ``on`` share the same factory branch; covering
-        # ``auto`` explicitly catches a regression where the equality
-        # check is narrowed back to ``== "on"``.
-        config = EscalationQueueConfig(
-            backend="postgres",
-            cross_instance_notify="auto",
-            notify_channel="escalations",
-        )
-        backend = _fake_persistence("postgres")
-        build_escalation_queue_store(config, backend)
         backend.build_escalations.assert_called_once_with(  # type: ignore[attr-defined]
-            notify_channel="escalations",
+            notify_channel=expected_kwarg,
         )
 
     def test_sqlite_without_persistence_raises(self) -> None:
@@ -296,21 +298,70 @@ class TestNotifySubscriberCapabilityCheck:
         )
         assert isinstance(subscriber, NoopEscalationNotifySubscriber)
 
+    def test_explicit_false_capability_with_auto_returns_noop(self) -> None:
+        # A store that explicitly sets ``supports_cross_instance_notify
+        # = False`` (rather than omitting the attribute) is structurally
+        # distinct from a marker-missing store; the capability gate
+        # still degrades to the no-op when the config is in ``auto``
+        # mode. Closes the gap between "no attribute" and "attribute
+        # present but explicitly False".
+        class _NotCapableFakeStore:
+            supports_cross_instance_notify = False
+
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="auto",
+            notify_channel="escalations",
+        )
+        store = cast(EscalationQueueStore, _NotCapableFakeStore())
+        registry = PendingFuturesRegistry()
+        subscriber = build_escalation_notify_subscriber(
+            config,
+            store,
+            registry,
+            reconnect_delay_seconds=1.0,
+        )
+        assert isinstance(subscriber, NoopEscalationNotifySubscriber)
+
+    def test_explicit_false_capability_with_on_raises(self) -> None:
+        # ``cross_instance_notify="on"`` plus a store whose capability
+        # marker is explicitly ``False`` is operator intent that cannot
+        # be satisfied: the factory must raise so misconfiguration is
+        # surfaced at startup rather than silently degraded.
+        class _NotCapableFakeStore:
+            supports_cross_instance_notify = False
+
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="on",
+            notify_channel="escalations",
+        )
+        store = cast(EscalationQueueStore, _NotCapableFakeStore())
+        registry = PendingFuturesRegistry()
+        with pytest.raises(
+            ValueError,
+            match="CrossInstanceNotifyCapableStore",
+        ):
+            build_escalation_notify_subscriber(
+                config,
+                store,
+                registry,
+                reconnect_delay_seconds=1.0,
+            )
+
 
 class TestDecisionProcessorRegistry:
     """``build_decision_processor`` dispatches via the registry map."""
 
-    def test_winner_strategy_returns_winner_mode(self) -> None:
+    def test_winner_strategy_returns_winner_only_processor(self) -> None:
         config = EscalationQueueConfig(decision_strategy="winner")
         processor = build_decision_processor(config)
-        assert isinstance(processor, HumanDecisionProcessor)
-        assert processor.mode == "winner"
+        assert isinstance(processor, WinnerOnlyDecisionProcessor)
 
-    def test_hybrid_strategy_returns_hybrid_mode(self) -> None:
+    def test_hybrid_strategy_returns_hybrid_processor(self) -> None:
         config = EscalationQueueConfig(decision_strategy="hybrid")
         processor = build_decision_processor(config)
-        assert isinstance(processor, HumanDecisionProcessor)
-        assert processor.mode == "hybrid"
+        assert isinstance(processor, HybridDecisionProcessor)
 
 
 class TestRegistryFallback:

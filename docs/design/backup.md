@@ -13,9 +13,11 @@ The backup system protects persistent data (persistence DB, agent memory, and co
 
 - **BackupService**: Central orchestrator coordinating component handlers, manifests, compression, and scheduling
 - **ComponentHandler protocol**: Pluggable interface for backing up and restoring individual data components
-  - `PersistenceComponentHandler`: SQLite `VACUUM INTO` for consistent point-in-time copies
+  - `SQLitePersistenceComponentHandler`: SQLite `VACUUM INTO` for consistent point-in-time copies
+  - `PostgresPersistenceComponentHandler`: `pg_dump` / `pg_restore` shellouts with `PGPASSWORD` injected via the child environment (never on argv) and a per-invocation timeout
   - `MemoryComponentHandler`: `shutil.copytree` with `symlinks=True` for agent memory data directory
   - `ConfigComponentHandler`: `shutil.copy2` for company YAML configuration
+- **PERSISTENCE_BACKUP_HANDLER_REGISTRY**: `StrategyRegistry` keyed on `config.persistence.backend` ("sqlite" / "postgres"); `_build_persistence_handler` dispatches by backend so swapping SQLite for Postgres at deploy time picks the matching `VACUUM INTO` / `pg_dump` implementation without editing the factory.
 - **BackupScheduler**: Background asyncio task for periodic backups with interruptible sleep via `asyncio.Event`
 - **RetentionManager**: Prunes old backups by count and age; never prunes the most recent backup or `pre_migration`-tagged backups
 

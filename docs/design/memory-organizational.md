@@ -23,7 +23,6 @@ stored in a queryable store and retrieved on demand at task start.
 
 ```yaml
 org_memory:
-  backend: "hybrid_prompt_retrieval"    # hybrid_prompt_retrieval, graph_rag, temporal_kg
   core_policies:                        # always in system prompt
     - "All code must have 80%+ test coverage"
     - "Use Litestar, not Flask"
@@ -36,6 +35,8 @@ org_memory:
     adrs: ["human", "senior", "lead", "c_suite"]
     procedures: ["human", "senior", "lead", "c_suite"]
 ```
+
+`OrgMemoryBackend` stays a Protocol so future backends can substitute structurally, but the configuration discriminator is gone: `HybridPromptRetrievalBackend` is the single shipping implementation and is wired directly. New backends supply their own configuration block when they ship.
 
 **Strengths:** Simple to implement. Core rules are always present. Extended knowledge scales
 with the organization.

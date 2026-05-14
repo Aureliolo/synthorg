@@ -16,7 +16,8 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     WinnerDecision,
 )
 from synthorg.communication.conflict_resolution.escalation.processors import (
-    HumanDecisionProcessor,
+    HybridDecisionProcessor,
+    WinnerOnlyDecisionProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.registry import (
     PendingFuturesRegistry,
@@ -28,6 +29,10 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictResolutionOutcome,
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
+from synthorg.communication.errors import (
+    EscalationDecisionAgentError,
+    EscalationDecisionShapeError,
+)
 
 from .conftest import make_conflict
 
@@ -95,7 +100,7 @@ class TestHumanEscalationFullLoop:
         registry, enqueued = _tracking_registry()
         resolver = HumanEscalationResolver(
             store=store,
-            processor=HumanDecisionProcessor(mode="winner"),
+            processor=WinnerOnlyDecisionProcessor(),
             registry=registry,
             timeout_seconds=5,
         )
@@ -136,7 +141,7 @@ class TestHumanEscalationFullLoop:
         registry, enqueued = _tracking_registry()
         resolver = HumanEscalationResolver(
             store=store,
-            processor=HumanDecisionProcessor(mode="hybrid"),
+            processor=HybridDecisionProcessor(),
             registry=registry,
             timeout_seconds=5,
         )
@@ -160,9 +165,9 @@ class TestHumanEscalationFullLoop:
         assert resolution.decided_by == "human:op-2"
 
     async def test_winner_mode_rejects_reject_decision(self) -> None:
-        processor = HumanDecisionProcessor(mode="winner")
+        processor = WinnerOnlyDecisionProcessor()
         conflict = make_conflict()
-        with pytest.raises(ValueError, match="only accepts 'winner'"):
+        with pytest.raises(EscalationDecisionShapeError, match="only accepts 'winner'"):
             processor.process(
                 conflict,
                 RejectDecision(reasoning="no"),
@@ -170,9 +175,9 @@ class TestHumanEscalationFullLoop:
             )
 
     async def test_winner_mode_rejects_unknown_agent(self) -> None:
-        processor = HumanDecisionProcessor(mode="winner")
+        processor = WinnerOnlyDecisionProcessor()
         conflict = make_conflict()
-        with pytest.raises(ValueError, match="does not match"):
+        with pytest.raises(EscalationDecisionAgentError, match="does not match"):
             processor.process(
                 conflict,
                 WinnerDecision(
@@ -182,10 +187,18 @@ class TestHumanEscalationFullLoop:
                 decided_by="human:op-x",
             )
 
-    def test_invalid_mode_raises_value_error(self) -> None:
-        """Constructor rejects unknown mode + logs WARNING before raising."""
-        with pytest.raises(ValueError, match="mode must be"):
-            HumanDecisionProcessor(mode="bogus")  # type: ignore[arg-type]
+    async def test_hybrid_mode_rejects_unknown_agent(self) -> None:
+        processor = HybridDecisionProcessor()
+        conflict = make_conflict()
+        with pytest.raises(EscalationDecisionAgentError, match="does not match"):
+            processor.process(
+                conflict,
+                WinnerDecision(
+                    winning_agent_id="agent-zzz",
+                    reasoning="bad pick",
+                ),
+                decided_by="human:op-x",
+            )
 
     async def test_timeout_returns_escalated_outcome(self) -> None:
         # ``timeout_seconds=0`` triggers the TimeoutError branch
@@ -215,7 +228,7 @@ class TestHumanEscalationFullLoop:
         resolver = HumanEscalationResolver(
             store=store,
             registry=registry,
-            processor=HumanDecisionProcessor(mode="winner"),
+            processor=WinnerOnlyDecisionProcessor(),
             timeout_seconds=0,
         )
         conflict = make_conflict()

@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
     from synthorg.providers.registry import ProviderRegistry
+    from synthorg.security.trust.config import TrustConfig
     from synthorg.security.trust.service import TrustService
 
 logger = get_logger(__name__)
@@ -176,18 +177,22 @@ def build_chief_of_staff_chat(
     )
 
 
-def _build_default_trust_service() -> TrustService:
-    """Build a default no-op TrustService for agent health queries."""
-    from synthorg.security.trust.config import TrustConfig  # noqa: PLC0415
-    from synthorg.security.trust.disabled_strategy import (  # noqa: PLC0415
-        DisabledTrustStrategy,
-    )
+def _build_configured_trust_service(
+    trust_config: TrustConfig,
+) -> TrustService | None:
+    """Construct a TrustService when trust is enabled, else return None.
+
+    Returns ``None`` for the DISABLED strategy so callers skip the
+    orchestrator entirely; controllers already treat
+    ``trust_service`` as optional via ``AppState.has_trust_service``.
+    """
+    from synthorg.security.trust.factory import build_trust_strategy  # noqa: PLC0415
     from synthorg.security.trust.service import TrustService  # noqa: PLC0415
 
-    return TrustService(
-        strategy=DisabledTrustStrategy(),
-        config=TrustConfig(),
-    )
+    strategy = build_trust_strategy(trust_config)
+    if strategy is None:
+        return None
+    return TrustService(strategy=strategy, config=trust_config)
 
 
 def _allowed_memory_dir_roots() -> tuple[str, ...]:

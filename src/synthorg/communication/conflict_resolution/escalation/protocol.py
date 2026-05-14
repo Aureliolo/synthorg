@@ -12,6 +12,7 @@ from synthorg.communication.conflict_resolution.models import (  # noqa: TC001
     ConflictResolution,
     DissentRecord,
 )
+from synthorg.core.clock import Clock  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -178,11 +179,13 @@ class DecisionProcessor(Protocol):
     Concrete implementations differ in which decision shapes they
     accept:
 
-    - :class:`HumanDecisionProcessor` (the bundled implementation)
-      carries a ``mode`` discriminator: ``"winner"`` accepts only
-      :class:`WinnerDecision` (safest surface, the default); ``"hybrid"``
-      additionally accepts :class:`RejectDecision` and produces a
-      ``REJECTED_BY_HUMAN`` outcome.
+    - :class:`WinnerOnlyDecisionProcessor` (safest surface, the
+      default) accepts only :class:`WinnerDecision`. Receiving a
+      :class:`RejectDecision` raises
+      :class:`EscalationDecisionShapeError`.
+    - :class:`HybridDecisionProcessor` additionally accepts
+      :class:`RejectDecision` and produces a ``REJECTED_BY_HUMAN``
+      outcome so callers can fall back to a different strategy.
     """
 
     def process(
@@ -191,13 +194,23 @@ class DecisionProcessor(Protocol):
         decision: EscalationDecision,
         *,
         decided_by: NotBlankStr,
+        clock: Clock | None = None,
     ) -> ConflictResolution:
         """Build a :class:`ConflictResolution` from a decision.
 
+        Args:
+            conflict: The conflict being resolved.
+            decision: The operator's decision shape.
+            decided_by: Operator id (audit field).
+            clock: Optional injectable clock; tests inject
+                :class:`FakeClock` so the ``resolved_at`` timestamp is
+                deterministic. Defaults to :class:`SystemClock`.
+
         Raises:
-            ValueError: the decision shape is not accepted by this
-                strategy, or the decision references an agent outside
-                the conflict.
+            EscalationDecisionShapeError: the decision shape is not
+                accepted by this strategy.
+            EscalationDecisionAgentError: the decision references an
+                agent outside the conflict.
         """
         ...
 
@@ -205,6 +218,12 @@ class DecisionProcessor(Protocol):
         self,
         conflict: Conflict,
         resolution: ConflictResolution,
+        *,
+        clock: Clock | None = None,
     ) -> tuple[DissentRecord, ...]:
-        """Build dissent records for overruled positions."""
+        """Build dissent records for overruled positions.
+
+        ``clock`` is injectable for deterministic dissent timestamps in
+        tests; defaults to :class:`SystemClock`.
+        """
         ...

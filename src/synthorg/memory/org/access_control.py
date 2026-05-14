@@ -4,6 +4,7 @@ Provides seniority-based and human-based write restriction
 models, configuration, and enforcement functions.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- runtime Pydantic field annotation
 from types import MappingProxyType
 from typing import Self
 
@@ -59,20 +60,25 @@ def _default_rules() -> dict[OrgFactCategory, CategoryWriteRule]:
 class WriteAccessConfig(BaseModel):
     """Write access configuration for all fact categories.
 
+    The runtime type of ``rules`` is :class:`types.MappingProxyType`,
+    expressed in the annotation as :class:`collections.abc.Mapping` so
+    callers see an immutable interface at the type boundary instead of
+    a freely mutable ``dict``.
+
     Attributes:
         rules: Per-category write rules (read-only mapping).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    rules: dict[OrgFactCategory, CategoryWriteRule] = Field(
+    rules: Mapping[OrgFactCategory, CategoryWriteRule] = Field(
         default_factory=_default_rules,
         description="Per-category write rules",
     )
 
     @model_validator(mode="after")
     def _wrap_rules_readonly(self) -> Self:
-        """Wrap the rules dict in a MappingProxyType for immutability."""
+        """Wrap the rules mapping in a MappingProxyType for immutability."""
         object.__setattr__(self, "rules", MappingProxyType(dict(self.rules)))
         return self
 

@@ -12,8 +12,9 @@ if TYPE_CHECKING:
     from synthorg.security.trust.models import TrustEvaluationResult, TrustState
 
 
-# Pluggable trust subsystem: 4 impls
-# (Weighted/Milestone/PerCategory/Disabled).
+# Pluggable trust subsystem: 3 impls (Weighted / Milestone / PerCategory).
+# DISABLED is a config-only sentinel; build_trust_strategy returns None
+# so the caller skips TrustService construction entirely.
 @runtime_checkable
 class TrustStrategy(Protocol):
     """Protocol for progressive trust evaluation strategies.
@@ -24,7 +25,15 @@ class TrustStrategy(Protocol):
 
     @property
     def name(self) -> str:
-        """Strategy name identifier."""
+        """Strategy name identifier.
+
+        Used for log attribution and as
+        :attr:`TrustEvaluationResult.strategy_name`. MUST be a
+        non-empty, lower_snake_case string that is unique across the
+        strategies registered in :mod:`synthorg.security.trust.factory`.
+        Duplicate names would silently merge their attribution; an
+        empty name would emit blank fields downstream.
+        """
         ...
 
     async def evaluate(

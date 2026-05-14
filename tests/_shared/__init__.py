@@ -11,5 +11,6 @@ are not scanned for the bare-mock convention they implement.
 
 from tests._shared.fake_clock import FakeClock
 from tests._shared.mock_of import mock_of
+from tests._shared.trust import NoOpTrustStrategy
 
-__all__ = ["FakeClock", "mock_of"]
+__all__ = ["FakeClock", "NoOpTrustStrategy", "mock_of"]

@@ -70,3 +70,14 @@ class BackupUnrestartableError(BackupError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
     error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
     status_code: ClassVar[int] = 409
+
+
+class BackupConfigurationError(BackupError):
+    """Raised when a backup handler cannot be built from configuration.
+
+    Typical cause: the configured persistence backend implies a handler
+    that needs additional configuration (e.g. ``persistence.backend ==
+    "postgres"`` but ``persistence.postgres`` is unset). Surfaced at
+    build time so the misconfiguration fails fast rather than at the
+    first scheduled backup.
+    """
