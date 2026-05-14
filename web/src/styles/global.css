@@ -203,18 +203,22 @@ html {
    * Lock the document height to the viewport so the AppLayout flex
    * chain can give ``<main>`` (which carries ``overflow-y-auto``) a
    * bounded height; the sidebar and status bar stay anchored even on
-   * pages whose primary content overflows.  ``overscroll-behavior:
-   * contain`` prevents an inner scroll from chaining out to the
-   * document, so a stray box-sizing miscount that nudges body
-   * marginally past ``100%`` no longer drags the whole SPA shell up
-   * on scroll-down -- without disabling browser features that the
-   * old ``overflow: hidden`` blanket banned (Find-in-page, hash-
-   * anchor navigation, mobile pull-to-refresh).
+   * pages whose primary content overflows.
    */
   html,
   body,
   #root {
     height: 100%;
+  }
+  /*
+   * Stop a scroll inside ``#root`` from chaining out to the document.
+   * Keeping this on ``#root`` only (rather than on ``html`` / ``body``
+   * as well) leaves mobile pull-to-refresh free to fire from the
+   * document scroll surface, while still preventing a stray
+   * box-sizing miscount inside the SPA shell from dragging the whole
+   * layout up on scroll-down.
+   */
+  #root {
     overscroll-behavior: contain;
   }
 }
