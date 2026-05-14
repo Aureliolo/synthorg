@@ -1,28 +1,35 @@
-/** Inter-agent message types and channel metadata. */
+/** Inter-agent message types and channel metadata.
+ *
+ * Note: the dashboard's ``Message`` shape is a frontend view that
+ * does not mirror the OpenAPI ``components.schemas.Message``
+ * directly. The wire model uses A2A-style structured ``parts``
+ * (``TextPart`` / ``DataPart`` / ``FilePart`` / ``UriPart``); the
+ * dashboard's adapters flatten that into the simpler shape below
+ * for the messaging UI. ``MessageType``, ``MessagePriority`` and
+ * ``ChannelType`` are wire-facing enums and are re-exported from
+ * the generated module; ``AttachmentType`` is frontend-only
+ * because attachments are encoded as ``DataPart`` / ``FilePart``
+ * / ``UriPart`` on the wire and the dashboard adapter classifies
+ * them into the simpler ``artifact|file|link`` taxonomy below.
+ */
 
-export type MessageType =
-  | 'task_update'
-  | 'question'
-  | 'announcement'
-  | 'review_request'
-  | 'approval'
-  | 'delegation'
-  | 'status_report'
-  | 'escalation'
-  | 'meeting_contribution'
-  | 'hr_notification'
+export type {
+  ChannelType,
+  MessagePriority,
+  MessageType,
+} from './enum-values.gen'
 
-export const MESSAGE_TYPE_VALUES = [
-  'task_update', 'question', 'announcement', 'review_request', 'approval',
-  'delegation', 'status_report', 'escalation', 'meeting_contribution',
-  'hr_notification',
-] as const satisfies readonly MessageType[]
+export {
+  CHANNEL_TYPE_VALUES,
+  MESSAGE_PRIORITY_VALUES,
+  MESSAGE_TYPE_VALUES,
+} from './enum-values.gen'
 
-export type MessagePriority = 'low' | 'normal' | 'high' | 'urgent'
-
-export const MESSAGE_PRIORITY_VALUES = [
-  'low', 'normal', 'high', 'urgent',
-] as const satisfies readonly MessagePriority[]
+import type {
+  ChannelType,
+  MessagePriority,
+  MessageType,
+} from './enum-values.gen'
 
 export type AttachmentType = 'artifact' | 'file' | 'link'
 
@@ -55,8 +62,6 @@ export interface Message {
   readonly attachments: readonly Attachment[]
   metadata: MessageMetadata
 }
-
-export type ChannelType = 'topic' | 'direct' | 'broadcast'
 
 export interface Channel {
   name: string

@@ -15,6 +15,8 @@ const MESSAGE_TYPE_LABELS: Record<MessageType, string> = {
   escalation: 'Escalation',
   meeting_contribution: 'Meeting',
   hr_notification: 'HR Notice',
+  dissent: 'Dissent',
+  context_injection: 'Context',
 }
 
 export function getMessageTypeLabel(type: MessageType): string {
