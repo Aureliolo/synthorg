@@ -136,13 +136,13 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
     try {
       const collected: CheckpointRecord[] = []
       let lastPagination: ListPagination = NO_MORE
-      let offset = 0
+      let cursor: string | null = null
       for (let i = 0; i < DRAIN_PAGE_LIMIT; i++) {
-        const page = await listCheckpoints(LIST_PAGE_SIZE, offset)
+        const page = await listCheckpoints(cursor, LIST_PAGE_SIZE)
         collected.push(...page.data)
         lastPagination = { nextCursor: page.nextCursor, hasMore: page.hasMore }
-        if (!page.hasMore || page.data.length === 0) break
-        offset += page.data.length
+        if (!page.hasMore || !page.nextCursor) break
+        cursor = page.nextCursor
       }
       set((state) => ({
         checkpoints: collected,
@@ -160,13 +160,13 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
     try {
       const collected: FineTuneRun[] = []
       let lastPagination: ListPagination = NO_MORE
-      let offset = 0
+      let cursor: string | null = null
       for (let i = 0; i < DRAIN_PAGE_LIMIT; i++) {
-        const page = await listRuns(LIST_PAGE_SIZE, offset)
+        const page = await listRuns(cursor, LIST_PAGE_SIZE)
         collected.push(...page.data)
         lastPagination = { nextCursor: page.nextCursor, hasMore: page.hasMore }
-        if (!page.hasMore || page.data.length === 0) break
-        offset += page.data.length
+        if (!page.hasMore || !page.nextCursor) break
+        cursor = page.nextCursor
       }
       set((state) => ({
         runs: collected,

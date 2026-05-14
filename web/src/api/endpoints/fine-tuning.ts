@@ -147,12 +147,14 @@ export async function runPreflight(
 }
 
 export async function listCheckpoints(
+  cursor: string | null = null,
   limit = 50,
-  offset = 0,
 ): Promise<PaginatedResult<CheckpointRecord>> {
+  const params: Record<string, string | number> = { limit }
+  if (cursor !== null) params.cursor = cursor
   const response = await apiClient.get<PaginatedResponse<CheckpointRecord>>(
     `${BASE}/checkpoints`,
-    { params: { limit, offset } },
+    { params },
   )
   return unwrapPaginated<CheckpointRecord>(response)
 }
@@ -181,11 +183,13 @@ export async function deleteCheckpoint(checkpointId: string): Promise<void> {
 }
 
 export async function listRuns(
+  cursor: string | null = null,
   limit = 50,
-  offset = 0,
 ): Promise<PaginatedResult<FineTuneRun>> {
+  const params: Record<string, string | number> = { limit }
+  if (cursor !== null) params.cursor = cursor
   const response = await apiClient.get<PaginatedResponse<FineTuneRun>>(`${BASE}/runs`, {
-    params: { limit, offset },
+    params,
   })
   return unwrapPaginated<FineTuneRun>(response)
 }

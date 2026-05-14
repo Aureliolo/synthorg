@@ -11,9 +11,14 @@ from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_roles
-from synthorg.api.pagination import encode_repo_seek_meta
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_repo_seek_meta,
+)
 from synthorg.api.rate_limits import (
     per_op_concurrency_from_policy,
     per_op_rate_limit_from_policy,
@@ -459,20 +464,21 @@ class MemoryAdminController(Controller):
     async def list_checkpoints(
         self,
         state: State,
-        limit: int = DEFAULT_LIMIT,
-        offset: int = 0,
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[CheckpointRecord]:
         """List fine-tuning checkpoints."""
-        limit = min(max(limit, 1), 200)
-        offset = max(offset, 0)
-        service = _build_memory_service(state.app_state)
+        app_state: AppState = state.app_state
+        secret = app_state.cursor_secret
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+        service = _build_memory_service(app_state)
         cps, total = await service.list_checkpoints(limit=limit, offset=offset)
         meta = encode_repo_seek_meta(
             offset=offset,
             page_len=len(cps),
             total=total,
             limit=limit,
-            secret=state.app_state.cursor_secret,
+            secret=secret,
             reject_stale_cursor=False,
         )
         return PaginatedResponse(data=cps, pagination=meta)
@@ -712,13 +718,14 @@ class MemoryAdminController(Controller):
     async def list_runs(
         self,
         state: State,
-        limit: int = DEFAULT_LIMIT,
-        offset: int = 0,
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[FineTuneRun]:
         """List historical pipeline runs with pagination metadata."""
-        limit = min(max(limit, 1), 200)
-        offset = max(offset, 0)
-        service = _build_memory_service(state.app_state)
+        app_state: AppState = state.app_state
+        secret = app_state.cursor_secret
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+        service = _build_memory_service(app_state)
         runs, total = await service.list_runs(limit=limit, offset=offset)
         return PaginatedResponse(
             data=runs,
@@ -727,7 +734,7 @@ class MemoryAdminController(Controller):
                 page_len=len(runs),
                 total=total,
                 limit=limit,
-                secret=state.app_state.cursor_secret,
+                secret=secret,
                 reject_stale_cursor=False,
             ),
         )
