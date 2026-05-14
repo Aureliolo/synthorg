@@ -103,9 +103,15 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
       }
 
       const newDeptName: DepartmentName = newDept
-      const rollback = useCompanyStore.getState().optimisticReassignAgent(agentName, newDeptName)
+      const store = useCompanyStore.getState()
+      const rollback = store.optimisticReassignAgent(agentName, newDeptName)
+      const existingAgent = store.config?.agents.find((a) => a.name === agentName)
 
-      useCompanyStore.getState().updateAgent(agentName, { department: newDeptName, autonomy_level: null, level: null })
+      useCompanyStore.getState().updateAgent(agentName, {
+        department: newDeptName,
+        autonomy_level: existingAgent?.autonomy_level ?? null,
+        level: existingAgent?.level ?? null,
+      })
         .then(() => {
           announce(`Moved ${agentName} to ${newDept}`)
           addToast({ variant: 'success', title: `Moved ${agentName} to ${newDept}` })

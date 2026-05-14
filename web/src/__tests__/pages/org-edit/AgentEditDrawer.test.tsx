@@ -62,7 +62,6 @@ describe('AgentEditDrawer', () => {
         role: 'Lead Developer',
         department: 'engineering',
         level: 'lead',
-        autonomy_level: 'semi',
       })
     })
   })

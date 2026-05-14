@@ -212,8 +212,17 @@ def _flatten_nullable_ref(
     if "enum" not in target or "type" not in target:
         return False
 
+    # ``default`` on the enum component schema reflects a default from
+    # SOME OTHER field that uses the enum non-nullably; inlining it
+    # here would falsely claim the current (nullable) field shares
+    # that default. The field's own default (typically ``null`` for
+    # ``AutonomyLevel | None = Field(default=None)``) does not survive
+    # Litestar's oneOf wrapping, so the correct outcome is "no default"
+    # rather than "the enum's default."
     prop_desc = result.get("description")
-    merged = {k: v for k, v in target.items() if k not in ("title", "description")}
+    merged = {
+        k: v for k, v in target.items() if k not in ("title", "description", "default")
+    }
     merged["type"] = [target["type"], "null"]
     merged["enum"] = [*target["enum"], None]
     del result[keyword]

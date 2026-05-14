@@ -216,6 +216,7 @@ def run_openapi_typescript(schema_path: Path) -> str:
         capture_output=True,
         text=True,
         check=False,
+        timeout=120,
     )
     if result.returncode != 0:
         msg = f"openapi-typescript exited {result.returncode}\nstderr:\n{result.stderr}"

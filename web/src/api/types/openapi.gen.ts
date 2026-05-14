@@ -4255,10 +4255,9 @@ export type components = {
             };
             /**
              * @description Per-agent autonomy level override (D6)
-             * @default semi
              * @enum {string|null}
              */
-            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
+            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
             /** @description Department name */
             readonly department: string;
             readonly level?: components["schemas"]["SeniorityLevel"];
@@ -4320,10 +4319,9 @@ export type components = {
             readonly authority?: components["schemas"]["Authority"];
             /**
              * @description Per-agent autonomy level override (D6)
-             * @default semi
              * @enum {string|null}
              */
-            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
+            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
             /** @description Department name */
             readonly department: string;
             /**
@@ -6589,11 +6587,8 @@ export type components = {
         };
         /** CreateDepartmentRequest */
         readonly CreateDepartmentRequest: {
-            /**
-             * @default semi
-             * @enum {string|null}
-             */
-            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
+            /** @enum {string|null} */
+            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
             /** @default 0 */
             readonly budget_percent: number;
             readonly head?: string | null;
@@ -6641,11 +6636,8 @@ export type components = {
         /** CreateFromPresetRequest */
         readonly CreateFromPresetRequest: {
             readonly api_key?: string | null;
-            /**
-             * @default api_key
-             * @enum {string|null}
-             */
-            readonly auth_type: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;
+            /** @enum {string|null} */
+            readonly auth_type?: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;
             readonly base_url?: string | null;
             readonly models?: readonly components["schemas"]["ProviderModelConfig"][] | null;
             readonly name: string;
@@ -6899,10 +6891,9 @@ export type components = {
         readonly Department: {
             /**
              * @description Per-department autonomy level override (D6)
-             * @default semi
              * @enum {string|null}
              */
-            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
+            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
             /**
              * @description Percentage of company budget allocated
              * @default 0
@@ -10341,11 +10332,8 @@ export type components = {
         /** SetupAgentSummary */
         readonly SetupAgentSummary: {
             readonly department: string;
-            /**
-             * @default mid
-             * @enum {string|null}
-             */
-            readonly level: "junior" | "mid" | "senior" | "lead" | "principal" | "director" | "vp" | "c_suite" | null;
+            /** @enum {string|null} */
+            readonly level?: "junior" | "mid" | "senior" | "lead" | "principal" | "director" | "vp" | "c_suite" | null;
             readonly model_id?: string | null;
             readonly model_provider?: string | null;
             readonly name: string;
@@ -11127,17 +11115,11 @@ export type components = {
         };
         /** UpdateAgentOrgRequest */
         readonly UpdateAgentOrgRequest: {
-            /**
-             * @default semi
-             * @enum {string|null}
-             */
-            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
+            /** @enum {string|null} */
+            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
             readonly department?: string | null;
-            /**
-             * @default mid
-             * @enum {string|null}
-             */
-            readonly level: "junior" | "mid" | "senior" | "lead" | "principal" | "director" | "vp" | "c_suite" | null;
+            /** @enum {string|null} */
+            readonly level?: "junior" | "mid" | "senior" | "lead" | "principal" | "director" | "vp" | "c_suite" | null;
             readonly model_id?: string | null;
             readonly model_provider?: string | null;
             readonly name?: string | null;
@@ -11162,10 +11144,9 @@ export type components = {
         readonly UpdateCompanyRequest: {
             /**
              * @description Org-wide autonomy level (full, semi, supervised, locked).
-             * @default semi
              * @enum {string|null}
              */
-            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
+            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
             /** @description Monthly budget cap for the company in the operator's configured currency; set to 0 to disable enforcement. */
             readonly budget_monthly?: number | null;
             /** @description Communication strategy or pattern identifier. */
@@ -11196,11 +11177,8 @@ export type components = {
         };
         /** UpdateDepartmentRequest */
         readonly UpdateDepartmentRequest: {
-            /**
-             * @default semi
-             * @enum {string|null}
-             */
-            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
+            /** @enum {string|null} */
+            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
             readonly budget_percent?: number | null;
             readonly ceremony_policy?: {
                 readonly [key: string]: unknown;
@@ -11253,11 +11231,8 @@ export type components = {
         /** UpdateProviderRequest */
         readonly UpdateProviderRequest: {
             readonly api_key?: string | null;
-            /**
-             * @default api_key
-             * @enum {string|null}
-             */
-            readonly auth_type: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;
+            /** @enum {string|null} */
+            readonly auth_type?: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;
             readonly base_url?: string | null;
             /** @default false */
             readonly clear_api_key: boolean;
@@ -11287,11 +11262,8 @@ export type components = {
             readonly description?: string | null;
             /** @description Optimistic concurrency version guard */
             readonly expected_version?: number | null;
-            /**
-             * @default medium
-             * @enum {string|null}
-             */
-            readonly priority: "critical" | "high" | "medium" | "low" | null;
+            /** @enum {string|null} */
+            readonly priority?: "critical" | "high" | "medium" | "low" | null;
             readonly title?: string | null;
         };
         /** UpdateTeamRequest */
@@ -11337,11 +11309,8 @@ export type components = {
             readonly outputs?: readonly components["schemas"]["WorkflowIODeclarationRequest"][] | null;
             /** @description Semver string override */
             readonly version?: string | null;
-            /**
-             * @default sequential_pipeline
-             * @enum {string|null}
-             */
-            readonly workflow_type: "sequential_pipeline" | "parallel_execution" | "kanban" | "agile_kanban" | null;
+            /** @enum {string|null} */
+            readonly workflow_type?: "sequential_pipeline" | "parallel_execution" | "kanban" | "agile_kanban" | null;
         };
         /**
          * UrgencyLevel

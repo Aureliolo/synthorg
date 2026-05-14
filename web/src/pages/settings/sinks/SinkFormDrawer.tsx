@@ -188,7 +188,7 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
               label="Rotation strategy"
               options={ROTATION_STRATEGIES}
               value={rotationStrategy}
-              onChange={(v) => setRotationStrategy(v as RotationStrategy)}
+              onChange={(v) => setRotationStrategy(toRotationStrategy(v))}
             />
             {rotationStrategy !== 'none' && (
               <div className="grid grid-cols-2 gap-3">

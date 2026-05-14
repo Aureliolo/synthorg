@@ -225,9 +225,16 @@ function isAcceptanceCriteriaShape(
   })
 }
 
-/** Nullable string -- used for optional identifiers / timestamps. */
+/** Nullable or omitted string -- used for optional identifiers / timestamps.
+ *
+ * Accepting ``undefined`` here matches ``sanitizeTask``'s ``?? null``
+ * fallbacks for the three call sites (``assigned_to``,  ``deadline``,
+ * ``parent_task_id``); without this branch the WS shape guard rejects
+ * a frame that simply omits the key, dropping it before the sanitizer
+ * gets the chance to normalise to ``null``.
+ */
 function isNullableString(value: unknown): boolean {
-  return value === null || typeof value === 'string'
+  return value === undefined || value === null || typeof value === 'string'
 }
 
 /** Either ``undefined`` or a string -- used for the two optional timestamp fields. */
@@ -275,7 +282,7 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     typeof c.type === 'string' &&
     typeof c.project === 'string' &&
     typeof c.created_by === 'string' &&
-    (c.assigned_to === null || typeof c.assigned_to === 'string') &&
+    isNullableString(c.assigned_to) &&
     isStringArray(c.reviewers) &&
     isStringArray(c.dependencies) &&
     isStringArray(c.delegation_chain) &&

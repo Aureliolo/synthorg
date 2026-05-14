@@ -8,7 +8,12 @@ import { useToastStore } from '@/stores/toast'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { isWorkflowEdgeType, isWorkflowNodeType } from '@/api/types/workflows'
-import type { WorkflowEdgeType, WorkflowNodeType } from '@/api/types/workflows'
+import type {
+  WorkflowEdgeType,
+  WorkflowIODeclaration,
+  WorkflowIODeclarationRequest,
+  WorkflowNodeType,
+} from '@/api/types/workflows'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject, isString } from '@/utils/type-guards'
@@ -197,7 +202,9 @@ export function useWorkflowEditorCallbacks(
     // definition) marks it optional. Normalise missing defaults to
     // ``null`` so the duplicated workflow preserves the source's I/O
     // shape instead of dropping it as the old ``inputs: []`` did.
-    const toIORequest = (decl: { default?: unknown; description: string; name: string; required: boolean; type: 'string' | 'boolean' | 'float' | 'json' | 'integer' | 'datetime' | 'task_ref' | 'agent_ref' }) => ({
+    const toIORequest = (
+      decl: WorkflowIODeclaration,
+    ): WorkflowIODeclarationRequest => ({
       default: decl.default ?? null,
       description: decl.description,
       name: decl.name,

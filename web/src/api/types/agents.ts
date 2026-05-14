@@ -32,10 +32,9 @@ export {
   TREND_DIRECTION_VALUES,
 } from './enum-values.gen'
 
-/** Frontend-only inline-union mirror of the wire's
- *  ``tier?: "large" | "medium" | "small"`` field type used on the
- *  setup wizard outputs and the agent-config form. */
-export type AgentTier = 'large' | 'medium' | 'small'
+/** Frontend alias derived from the wire type so the union stays in
+ *  lockstep with the generated ``WireAgentConfig.tier`` field. */
+export type AgentTier = NonNullable<WireAgentConfig['tier']>
 
 /**
  * AgentConfig with the runtime / display fields the dashboard relies
