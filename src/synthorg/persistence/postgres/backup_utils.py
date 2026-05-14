@@ -138,9 +138,17 @@ async def _run_pg_tool(
                 )
             except BaseException:
                 await _terminate_proc(proc)
+                # Close the file handle and remove the partially written
+                # dump before re-raising; timeouts and cancellations
+                # otherwise leave a truncated artifact that downstream
+                # validation cannot distinguish from a valid empty dump.
+                await asyncio.to_thread(fp.close)
+                with contextlib.suppress(OSError):
+                    await asyncio.to_thread(output_path.unlink)
                 raise
         finally:
-            await asyncio.to_thread(fp.close)
+            if not fp.closed:
+                await asyncio.to_thread(fp.close)
         if proc.returncode != 0:
             # A non-zero exit from pg_dump leaves a truncated or empty
             # file behind; remove it so callers cannot mistake a failed

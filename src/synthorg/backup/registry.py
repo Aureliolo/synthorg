@@ -16,11 +16,15 @@ from synthorg.backup.handlers.sqlite_persistence import (
     SQLitePersistenceComponentHandler,
 )
 from synthorg.core.registry.strategy import StrategyRegistry
+from synthorg.observability import get_logger
+from synthorg.observability.events.backup import BACKUP_HANDLER_REGISTRATION_FAILED
 from synthorg.persistence.postgres.backup_utils import ensure_pg_tools_available
 
 if TYPE_CHECKING:
     from synthorg.backup.handlers.protocol import ComponentHandler
     from synthorg.config.schema import RootConfig
+
+logger = get_logger(__name__)
 
 
 def _build_sqlite_handler(
@@ -62,6 +66,12 @@ def _build_postgres_handler(
         msg = (
             "persistence.backend is 'postgres' but persistence.postgres is "
             "None; supply Postgres connection details to enable backup."
+        )
+        logger.error(
+            BACKUP_HANDLER_REGISTRATION_FAILED,
+            backend="postgres",
+            error_type="BackupConfigurationError",
+            error=msg,
         )
         raise BackupConfigurationError(msg)
     ensure_pg_tools_available()
