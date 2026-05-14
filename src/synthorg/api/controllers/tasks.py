@@ -21,32 +21,17 @@ from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.core.domain_errors import (
-    ConflictError,
-    NotFoundError,
-    ServiceUnavailableError,
-    ValidationError,
-)
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.task import Task  # noqa: TC001
-from synthorg.engine.errors import (
-    TaskEngineNotRunningError,
-    TaskEngineQueueFullError,
-    TaskInternalError,
-    TaskMutationError,
-    TaskNotFoundError,
-    TaskVersionConflictError,
-)
 from synthorg.engine.task_engine_models import CreateTaskData
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_FALLBACK,
     API_RESOURCE_NOT_FOUND,
     API_TASK_CANCELLED,
     API_TASK_CREATED_BY_MISMATCH,
     API_TASK_DELETED,
-    API_TASK_MUTATION_FAILED,
     API_TASK_UPDATED,
 )
 from synthorg.observability.events.task import (
@@ -73,86 +58,6 @@ def _extract_requester(state: State) -> str:
         note="No authenticated user found, falling back to 'api'",
     )
     return "api"
-
-
-def _map_task_engine_errors(
-    exc: Exception,
-    *,
-    task_id: str | None = None,
-) -> Exception:
-    """Map a task-engine exception to the appropriate API error.
-
-    Returns the API exception to raise (caller must ``raise`` it).
-
-    Mapping:
-        TaskNotFoundError           -> 404 NotFoundError
-        TaskEngineNotRunningError   -> 503 ServiceUnavailableError
-        TaskEngineQueueFullError    -> 503 ServiceUnavailableError
-        TaskInternalError           -> 503 ServiceUnavailableError
-        TaskVersionConflictError    -> 409 ConflictError
-        TaskMutationError           -> 422 ValidationError
-        Other                       -> 503 ServiceUnavailableError
-
-    Args:
-        exc: The engine exception to map.
-        task_id: Optional task identifier for log context.
-
-    Returns:
-        The API exception to raise.
-    """
-    if isinstance(exc, TaskNotFoundError):
-        if task_id is not None:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="task",
-                id=task_id,
-            )
-        return NotFoundError(str(exc))
-    if isinstance(exc, (TaskEngineNotRunningError, TaskEngineQueueFullError)):
-        logger.error(
-            API_TASK_MUTATION_FAILED,
-            resource="task",
-            task_id=task_id,
-            error=safe_error_description(exc),
-            error_type=type(exc).__name__,
-        )
-        return ServiceUnavailableError("Service temporarily unavailable")
-    if isinstance(exc, TaskInternalError):
-        logger.error(
-            API_TASK_MUTATION_FAILED,
-            resource="task",
-            task_id=task_id,
-            error=safe_error_description(exc),
-            error_type="TaskInternalError",
-        )
-        return ServiceUnavailableError("Internal server error")
-    if isinstance(exc, TaskVersionConflictError):
-        logger.warning(
-            API_TASK_MUTATION_FAILED,
-            resource="task",
-            task_id=task_id,
-            error=safe_error_description(exc),
-            error_type="TaskVersionConflictError",
-        )
-        return ConflictError(str(exc))
-    if isinstance(exc, TaskMutationError):
-        logger.warning(
-            API_TASK_MUTATION_FAILED,
-            resource="task",
-            task_id=task_id,
-            error=safe_error_description(exc),
-            error_type="TaskMutationError",
-        )
-        return ValidationError(str(exc))
-    # Unknown error type -- log and wrap to prevent leaking internals
-    logger.error(
-        API_TASK_MUTATION_FAILED,
-        resource="task",
-        task_id=task_id,
-        error=safe_error_description(exc),
-        error_type=type(exc).__name__,
-    )
-    return ServiceUnavailableError("Unexpected engine error")
 
 
 class TaskController(Controller):
@@ -186,14 +91,11 @@ class TaskController(Controller):
             Paginated task list.
         """
         app_state: AppState = state.app_state
-        try:
-            tasks, total = await app_state.task_engine.list_tasks(
-                status=status,
-                assigned_to=assigned_to,
-                project=project,
-            )
-        except TaskInternalError as exc:
-            raise _map_task_engine_errors(exc) from exc
+        tasks, total = await app_state.task_engine.list_tasks(
+            status=status,
+            assigned_to=assigned_to,
+            project=project,
+        )
         page, meta = paginate_cursor(
             tasks,
             limit=limit,
@@ -225,10 +127,7 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        try:
-            task = await app_state.task_engine.get_task(task_id)
-        except TaskInternalError as exc:
-            raise _map_task_engine_errors(exc, task_id=task_id) from exc
+        task = await app_state.task_engine.get_task(task_id)
         task = require_resource_or_404(
             task,
             resource_type="task",
@@ -280,18 +179,10 @@ class TaskController(Controller):
                 created_by=data.created_by,
                 requester=requester,
             )
-        try:
-            task = await app_state.task_engine.create_task(
-                task_data,
-                requested_by=requester,
-            )
-        except (
-            TaskEngineNotRunningError,
-            TaskEngineQueueFullError,
-            TaskInternalError,
-            TaskMutationError,
-        ) as exc:
-            raise _map_task_engine_errors(exc) from exc
+        task = await app_state.task_engine.create_task(
+            task_data,
+            requested_by=requester,
+        )
         logger.info(
             TASK_CREATED,
             task_id=task.id,
@@ -330,22 +221,12 @@ class TaskController(Controller):
             exclude_none=True,
             exclude={"expected_version"},
         )
-        try:
-            task = await app_state.task_engine.update_task(
-                task_id,
-                updates,
-                requested_by=_extract_requester(state),
-                expected_version=data.expected_version,
-            )
-        except (
-            TaskEngineNotRunningError,
-            TaskEngineQueueFullError,
-            TaskNotFoundError,
-            TaskVersionConflictError,
-            TaskInternalError,
-            TaskMutationError,
-        ) as exc:
-            raise _map_task_engine_errors(exc, task_id=task_id) from exc
+        task = await app_state.task_engine.update_task(
+            task_id,
+            updates,
+            requested_by=_extract_requester(state),
+            expected_version=data.expected_version,
+        )
         logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
         return ApiResponse(data=task)
 
@@ -380,24 +261,14 @@ class TaskController(Controller):
         overrides: dict[str, object] = {}
         if data.assigned_to is not None:
             overrides["assigned_to"] = data.assigned_to
-        try:
-            task, from_status = await app_state.task_engine.transition_task(
-                task_id,
-                data.target_status,
-                requested_by=requester,
-                reason=f"API transition to {data.target_status.value}",
-                expected_version=data.expected_version,
-                **overrides,
-            )
-        except (
-            TaskEngineNotRunningError,
-            TaskEngineQueueFullError,
-            TaskNotFoundError,
-            TaskInternalError,
-            TaskVersionConflictError,
-            TaskMutationError,
-        ) as exc:
-            raise _map_task_engine_errors(exc, task_id=task_id) from exc
+        task, from_status = await app_state.task_engine.transition_task(
+            task_id,
+            data.target_status,
+            requested_by=requester,
+            reason=f"API transition to {data.target_status.value}",
+            expected_version=data.expected_version,
+            **overrides,
+        )
         logger.info(
             TASK_STATUS_CHANGED,
             task_id=task_id,
@@ -429,19 +300,10 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        try:
-            await app_state.task_engine.delete_task(
-                task_id,
-                requested_by=_extract_requester(state),
-            )
-        except (
-            TaskEngineNotRunningError,
-            TaskEngineQueueFullError,
-            TaskNotFoundError,
-            TaskInternalError,
-            TaskMutationError,
-        ) as exc:
-            raise _map_task_engine_errors(exc, task_id=task_id) from exc
+        await app_state.task_engine.delete_task(
+            task_id,
+            requested_by=_extract_requester(state),
+        )
         logger.info(API_TASK_DELETED, task_id=task_id)
 
     @post(
@@ -471,19 +333,10 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        try:
-            task, _prior_status = await app_state.task_engine.cancel_task(
-                task_id,
-                requested_by=_extract_requester(state),
-                reason=data.reason,
-            )
-        except (
-            TaskEngineNotRunningError,
-            TaskEngineQueueFullError,
-            TaskNotFoundError,
-            TaskInternalError,
-            TaskMutationError,
-        ) as exc:
-            raise _map_task_engine_errors(exc, task_id=task_id) from exc
+        task, _prior_status = await app_state.task_engine.cancel_task(
+            task_id,
+            requested_by=_extract_requester(state),
+            reason=data.reason,
+        )
         logger.info(API_TASK_CANCELLED, task_id=task_id)
         return ApiResponse(data=task)

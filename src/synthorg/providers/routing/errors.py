@@ -25,7 +25,15 @@ class NoAvailableModelError(RoutingError):
     is_retryable = False
 
 
-class UnknownStrategyError(RoutingError):
-    """Configured strategy name is not recognized."""
+class UnknownRoutingStrategyError(RoutingError):
+    """Configured routing strategy name is not recognized.
+
+    Distinct from :class:`synthorg.client.factory.UnknownStrategyError`
+    (a validation error raised when a client-factory discriminator does
+    not map to any registered strategy). This error fires at runtime
+    when the router resolves a configured strategy name that is not in
+    :data:`STRATEGY_MAP`; it propagates as a 502 PROVIDER_ERROR because
+    routing is part of the provider surface.
+    """
 
     is_retryable = False

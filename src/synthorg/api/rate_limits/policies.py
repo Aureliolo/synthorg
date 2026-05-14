@@ -89,6 +89,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "collaboration.override": (20, 60),
     # company
     "company.reorder_departments": (10, 60),
+    "company.update": (20, 60),
     # connections
     "connections.create": (20, 60),
     "connections.delete": (10, 60),
@@ -216,7 +217,10 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "workflows.create": (20, 60),
     "workflows.create_from_blueprint": (20, 60),
     "workflows.delete": (10, 60),
+    "workflows.export": (20, 60),
     "workflows.update": (30, 60),
+    "workflows.validate": (30, 60),
+    "workflows.validate_draft": (30, 60),
 }
 
 RATE_LIMIT_POLICIES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(

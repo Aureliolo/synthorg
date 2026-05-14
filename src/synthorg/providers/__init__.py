@@ -69,7 +69,7 @@ from .routing import (
     RoutingRequest,
     RoutingStrategy,
     SmartStrategy,
-    UnknownStrategyError,
+    UnknownRoutingStrategyError,
 )
 
 __all__ = [
@@ -127,7 +127,7 @@ __all__ = [
     "ToolCall",
     "ToolDefinition",
     "ToolResult",
-    "UnknownStrategyError",
+    "UnknownRoutingStrategyError",
     "add_token_usage",
     "cost_recording_scope",
     "current_cost_context",
