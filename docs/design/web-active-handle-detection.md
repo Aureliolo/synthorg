@@ -49,7 +49,7 @@ Tracked types include `Timeout`, `Immediate`, `TCPWRAP`,
 `HTTP2SESSION`, `HTTP2STREAM`, `HTTP2PING`, `HTTP2SETTINGS`, `ZLIB`,
 `CHILDPROCESS`, `SIGNALWRAP`, `STATWATCHER`, `WRITEWRAP`,
 `SHUTDOWNWRAP`, and `MESSAGEPORT`: the full enumeration lives at
-`TRACKED_TYPES_LIST` in `web/test-infra/active-handle-tracker.ts` and
+`TRACKED_TYPES_LIST` in `web/test-infra/active-handle-shared.ts` and
 is the single source of truth. `PROMISE`, `Microtask`, and DNS
 request types are deliberately excluded as non-event-loop-holding
 (they always settle).

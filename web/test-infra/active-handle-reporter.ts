@@ -81,11 +81,14 @@ export function createTelemetryArtifact(
     }
     bucket.push(r)
   }
-  const byTest = [...buckets.entries()].map(([key, bucket]) => {
-    const [testFile, testName] = key.split('::', 2) as [string, string]
+  // Use the first record's ``testFile`` / ``testName`` directly rather
+  // than decomposing the bucket key: vitest test descriptions may
+  // legitimately contain ``::`` and a split would truncate them.
+  const byTest = [...buckets.values()].map(bucket => {
+    const first = bucket[0]!
     return {
-      testName,
-      testFile,
+      testName: first.testName,
+      testFile: first.testFile,
       leakCount: bucket.length,
       types: [...new Set(bucket.map(r => r.type))],
     }
@@ -116,7 +119,12 @@ export default class ActiveHandleReporter implements Reporter {
       options.emitTelemetry ?? process.env.CI === 'true'
   }
 
-  onInit(): void {
+  onTestRunStart(): void {
+    // Fires at the start of every test run, including reruns in
+    // ``vitest watch``. Wiping here (instead of in ``onInit``, which
+    // only fires once per reporter lifecycle) ensures stale leak
+    // records from a prior run cannot be aggregated into the current
+    // run's summary.
     try {
       rmSync(this.logDir, { recursive: true, force: true })
     } catch {

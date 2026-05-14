@@ -506,7 +506,7 @@ jobs:
       - name: Run Vitest (active-handle detection is part of the test run)
         working-directory: web
         env:
-          # Disable color output so the active-handle reporter's summary
+          # Disable colour output so the active-handle reporter's summary
           # lands as plain ASCII in CI logs (helpful for downstream
           # log-scrapers and the on-failure artifact upload).
           NO_COLOR: '1'
