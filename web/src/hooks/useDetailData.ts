@@ -88,7 +88,7 @@ export function useDetailData<T>(config: DetailDataConfig<T>): T & DetailDataBas
               if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
               wsDebounceRef.current = setTimeout(() => {
                 const currentId = idRef.current
-                if (currentId) fetchDetail(currentId)
+                if (currentId) void fetchDetail(currentId)
               }, WS_DEBOUNCE_MS)
             },
           }))

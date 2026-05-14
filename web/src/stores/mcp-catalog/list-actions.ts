@@ -50,20 +50,22 @@ export function createListActions(set: McpCatalogSet) {
       }
       set({ searchLoading: true })
       const generation = ++_searchGeneration
-      _searchDebounceHandle = setTimeout(async () => {
-        if (generation !== _searchGeneration) return
-        try {
-          const page = await searchMcpCatalog(q, { limit: 100 })
+      _searchDebounceHandle = setTimeout(() => {
+        void (async () => {
           if (generation !== _searchGeneration) return
-          set({
-            searchResults: page.data as readonly McpCatalogEntry[],
-            searchLoading: false,
-          })
-        } catch (err) {
-          if (generation !== _searchGeneration) return
-          log.warn('MCP search failed:', getErrorMessage(err))
-          set({ searchResults: [], searchLoading: false })
-        }
+          try {
+            const page = await searchMcpCatalog(q, { limit: 100 })
+            if (generation !== _searchGeneration) return
+            set({
+              searchResults: page.data as readonly McpCatalogEntry[],
+              searchLoading: false,
+            })
+          } catch (err) {
+            if (generation !== _searchGeneration) return
+            log.warn('MCP search failed:', getErrorMessage(err))
+            set({ searchResults: [], searchLoading: false })
+          }
+        })()
       }, 200)
     },
 

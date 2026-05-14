@@ -6,10 +6,11 @@ import type { WsEvent } from '@/api/types/websocket'
  *
  * `notifications.ts` debounces localStorage persistence with a 300ms
  * `setTimeout`. Tests that enqueue notifications but finish before the
- * debounce elapses would otherwise leak the pending timer past the test
- * boundary and trip vitest --detect-async-leaks. `cancelPendingPersist`
- * drops the pending handle without flushing; the global `afterEach` in
- * `test-setup.tsx` calls it unconditionally.
+ * debounce elapses would otherwise leave the pending timer alive past
+ * the test boundary, which the active-handle gate would surface as a
+ * forgotten Timeout. `cancelPendingPersist` drops the pending handle
+ * without flushing; the global `afterEach` in `test-setup.tsx` calls
+ * it unconditionally.
  */
 describe('cancelPendingPersist', () => {
   beforeEach(() => {

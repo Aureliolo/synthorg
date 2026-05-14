@@ -52,7 +52,7 @@ export function useTaskBoardData(): UseTaskBoardDataReturn {
 
   // Initial data fetch -- always fetches all tasks; filtering is client-side
   useEffect(() => {
-    useTasksStore.getState().fetchTasks({ limit: 200 })
+    void useTasksStore.getState().fetchTasks({ limit: 200 })
   }, [])
 
   // Lightweight polling for task refresh

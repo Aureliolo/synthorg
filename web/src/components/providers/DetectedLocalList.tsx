@@ -288,7 +288,7 @@ export function DetectedLocalList({
                   cloudCounterpart && cloudCounterpart in providers,
                 )}
                 adding={rowAdding}
-                onAddLocal={handleAddLocal}
+                onAddLocal={(name, url) => { void handleAddLocal(name, url) }}
                 onAddCloud={onAddCloud ? handleAddCloud : undefined}
               />
             )

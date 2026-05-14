@@ -199,7 +199,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
         {recentItems.length > 0 && (
           <Command.Group heading="Recent" className="mb-1">
             {recentItems.map((cmd) => (
-              <CommandItemRow key={`recent-${cmd.id}`} item={cmd} onSelect={handleSelect} />
+              <CommandItemRow key={`recent-${cmd.id}`} item={cmd} onSelect={(item) => { void handleSelect(item) }} />
             ))}
           </Command.Group>
         )}
@@ -212,7 +212,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
             className="mb-1"
           >
             {items.filter((cmd) => !recentIdSet.has(cmd.id)).map((cmd) => (
-              <CommandItemRow key={cmd.id} item={cmd} onSelect={handleSelect} />
+              <CommandItemRow key={cmd.id} item={cmd} onSelect={(item) => { void handleSelect(item) }} />
             ))}
           </Command.Group>
         ))}

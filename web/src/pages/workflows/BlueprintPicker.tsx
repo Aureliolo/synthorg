@@ -70,7 +70,7 @@ export function BlueprintPicker({
 
   useEffect(() => {
     if (blueprints.length === 0 && !loading && !error) {
-      loadBlueprints()
+      void loadBlueprints()
     }
   }, [blueprints.length, loading, error, loadBlueprints])
 

@@ -45,7 +45,7 @@ export function CompleteStep() {
       // simply won't surface in that case.  Setup completion proceeds.
     }
     setConfirmOpen(false)
-    navigate('/')
+    void navigate('/')
   }, [wizardCompleteSetup, companyResponse, navigate])
 
   if (!companyResponse) {

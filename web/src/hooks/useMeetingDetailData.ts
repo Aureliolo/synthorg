@@ -22,7 +22,7 @@ export function useMeetingDetailData(meetingId: string): UseMeetingDetailDataRet
   // Fetch on mount / when meetingId changes
   useEffect(() => {
     if (meetingId) {
-      useMeetingsStore.getState().fetchMeeting(meetingId)
+      void useMeetingsStore.getState().fetchMeeting(meetingId)
     }
   }, [meetingId])
 

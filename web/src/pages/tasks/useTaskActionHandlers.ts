@@ -50,7 +50,7 @@ export function useTaskActionHandlers(task: Task | null | undefined): TaskAction
     if (!task) return
     const ok = await useTasksStore.getState().deleteTask(task.id)
     if (ok) {
-      navigate(ROUTES.TASKS)
+      void navigate(ROUTES.TASKS)
     }
   }, [task, navigate])
 

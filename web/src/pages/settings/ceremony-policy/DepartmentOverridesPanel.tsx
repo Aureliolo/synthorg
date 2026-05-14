@@ -25,7 +25,7 @@ function DepartmentRow({ dept }: { dept: Department }) {
   const departmentError = useCeremonyPolicyStore((s) => s.departmentErrors.get(dept.name))
 
   useEffect(() => {
-    fetchPolicy(dept.name)
+    void fetchPolicy(dept.name)
   }, [dept.name, fetchPolicy])
 
   const hasOverride = policy != null && Object.keys(policy).length > 0
@@ -39,7 +39,7 @@ function DepartmentRow({ dept }: { dept: Department }) {
     (inherit: boolean) => {
       if (inherit) {
         setLocalDraft(null)
-        clearPolicy(dept.name)
+        void clearPolicy(dept.name)
       } else {
         // Seed from existing policy if available, otherwise empty override
         setLocalDraft(policy ?? {})
@@ -51,7 +51,7 @@ function DepartmentRow({ dept }: { dept: Department }) {
   const handleStrategyChange = useCallback(
     (s: CeremonyStrategyType) => {
       const data = { ...effectivePolicy, strategy: s }
-      updatePolicy(dept.name, data)
+      void updatePolicy(dept.name, data)
       setLocalDraft(null)
     },
     [dept.name, effectivePolicy, updatePolicy],
@@ -59,7 +59,7 @@ function DepartmentRow({ dept }: { dept: Department }) {
 
   const handlePolicyFieldChange = useCallback(
     (field: keyof CeremonyPolicyConfig, value: unknown) => {
-      updatePolicy(dept.name, { ...effectivePolicy, [field]: value })
+      void updatePolicy(dept.name, { ...effectivePolicy, [field]: value })
       setLocalDraft(null)
     },
     [dept.name, effectivePolicy, updatePolicy],

@@ -88,7 +88,7 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
 
   function handleCompare(version: WorkflowDefinitionVersionSummary) {
     if (currentVersion === null) return
-    loadDiff(version.version, currentVersion)
+    void loadDiff(version.version, currentVersion)
   }
 
   function handleRestore(version: number) {

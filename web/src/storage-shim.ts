@@ -7,13 +7,11 @@
  *     ``setTimeout(this._dispatchStorageEvent.bind(this), 0, ...)`` on
  *     every ``setItem`` / ``removeItem`` / ``clear`` call so other
  *     same-origin tabs can react to writes. In a single-tab test
- *     environment those timers are pure overhead AND
- *     ``--detect-async-leaks`` flags every undrained one as a Timeout
- *     leak. The dashboard reaches localStorage from two paths --
- *     Zustand's ``persist`` middleware (setup-wizard, org-chart-prefs)
- *     and direct ``localStorage.setItem`` calls (theme, notifications)
- *     -- so any test that mutates one of those stores contributes to
- *     the count.
+ *     environment those timers are pure overhead. The dashboard
+ *     reaches localStorage from two paths -- Zustand's ``persist``
+ *     middleware (setup-wizard, org-chart-prefs) and direct
+ *     ``localStorage.setItem`` calls (theme, notifications) -- so the
+ *     timer overhead compounds across every store-mutating test.
  *   * No app or test code subscribes to the ``storage`` event
  *     (verified via ``addEventListener('storage')`` grep), so the
  *     dispatch is dead weight in the test runner.
@@ -26,15 +24,20 @@
  *   ``localStorage instanceof Storage === true`` and lets the spies
  *   intercept normally; mockRestore() restores back to the patched
  *   version (which is what we want -- the original would re-introduce
- *   the leak).
+ *   the per-write timer overhead).
  *
  * Storage isolation:
  *   Each ``Storage`` instance (one for ``localStorage``, one for
  *   ``sessionStorage``) gets its own ``Map`` via a module-level
  *   ``WeakMap`` keyed on the instance. Per-test isolation continues
- *   to live in caller hooks (``cancelSetupWizardPersist`` etc.) --
+ *   to live in caller hooks (``cancelSetupWizardPersist`` etc.):
  *   this module does NOT auto-reset between tests, matching jsdom's
  *   existing semantics.
+ *
+ * Prototype-pollution stance: the bucket is a ``Map``, so
+ * prototype-slot keys (``__proto__`` etc.) are stored as ordinary map
+ * entries and cannot mutate the prototype chain. No explicit key
+ * filter is required.
  */
 
 const stores = new WeakMap<Storage, Map<string, string>>()

@@ -234,12 +234,11 @@ function getRequestInterceptor(): (config: Record<string, unknown>) => Record<st
   ) => Record<string, unknown>
 }
 
-// Spy on getCsrfToken rather than setting `document.cookie` -- jsdom's
-// tough-cookie backed `document.cookie` setter creates a Promise via
-// `createPromiseCallback` that leaks past test teardown under
-// --detect-async-leaks. Mocking the reader is a narrower, leak-free path
-// to the interceptor's behavior; the cookie-parsing logic inside
-// `csrf.ts` itself is covered directly by `__tests__/utils/csrf.test.ts`.
+// Spy on getCsrfToken rather than setting `document.cookie` -- the
+// cookie shim covers the synchronous read fast-path, but mocking the
+// reader keeps the test's scope precisely on the interceptor's
+// behaviour. The cookie-parsing logic inside `csrf.ts` itself is
+// covered directly by `__tests__/utils/csrf.test.ts`.
 // Compile-time guard: if `@/utils/csrf` gains new exports, the type
 // import below will error until this mock is extended.
 import type * as CsrfModule from '@/utils/csrf'

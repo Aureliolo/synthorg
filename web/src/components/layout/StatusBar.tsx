@@ -99,7 +99,7 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
   useEffect(() => {
     const state = useAnalyticsStore.getState()
     if (!state.overview && !state.loading) {
-      state.fetchOverview()
+      void state.fetchOverview()
     }
   }, [])
 

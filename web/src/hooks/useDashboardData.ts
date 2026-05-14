@@ -39,7 +39,7 @@ export function useDashboardData(): UseDashboardDataReturn {
 
   // Initial data fetch
   useEffect(() => {
-    useAnalyticsStore.getState().fetchDashboardData()
+    void useAnalyticsStore.getState().fetchDashboardData()
   }, [])
 
   // Lightweight polling for overview refresh

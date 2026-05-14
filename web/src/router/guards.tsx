@@ -54,7 +54,7 @@ export function AuthGuard() {
 
   useEffect(() => {
     if (authStatus === 'unknown') {
-      checkSession()
+      void checkSession()
     }
   }, [authStatus, checkSession])
 
@@ -83,12 +83,12 @@ export function SetupGuard() {
 
   useEffect(() => {
     if (setupComplete === null && !loading && !error) {
-      fetchSetupStatus()
+      void fetchSetupStatus()
     }
   }, [setupComplete, loading, error, fetchSetupStatus])
 
   if (error) {
-    return <FullScreenError onRetry={fetchSetupStatus} />
+    return <FullScreenError onRetry={() => { void fetchSetupStatus() }} />
   }
 
   if (setupComplete === null || loading) {
@@ -112,7 +112,7 @@ export function GuestGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (authStatus === 'unknown') {
-      checkSession()
+      void checkSession()
     }
   }, [authStatus, checkSession])
 
@@ -142,7 +142,7 @@ export function SetupCompleteGuard({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (isAuthenticated && setupComplete === null && !loading && !error) {
-      fetchSetupStatus()
+      void fetchSetupStatus()
     }
   }, [isAuthenticated, setupComplete, loading, error, fetchSetupStatus])
 

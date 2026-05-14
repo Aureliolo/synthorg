@@ -63,13 +63,13 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
 
   // Fetch channels on mount
   useEffect(() => {
-    useMessagesStore.getState().fetchChannels()
+    void useMessagesStore.getState().fetchChannels()
   }, [])
 
   // Fetch messages when active channel changes; reset unread
   useEffect(() => {
     if (!activeChannel) return
-    useMessagesStore.getState().fetchMessages(activeChannel)
+    void useMessagesStore.getState().fetchMessages(activeChannel)
     useMessagesStore.getState().resetUnread(activeChannel)
   }, [activeChannel])
 
@@ -109,7 +109,7 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
 
   const fetchMore = useCallback(() => {
     if (!activeChannel) return
-    useMessagesStore.getState().fetchMoreMessages(activeChannel)
+    void useMessagesStore.getState().fetchMoreMessages(activeChannel)
   }, [activeChannel])
 
   return {

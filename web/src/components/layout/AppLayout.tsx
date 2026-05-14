@@ -218,7 +218,7 @@ export default function AppLayout() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar overlayOpen={sidebarOverlayOpen} onOverlayClose={closeSidebarOverlay} />
         <main className="flex-1 overflow-y-auto p-card">
-          <ErrorBoundary level="page" onReset={() => navigate(ROUTES.DASHBOARD)}>
+          <ErrorBoundary level="page" onReset={() => { void navigate(ROUTES.DASHBOARD) }}>
             <Suspense fallback={<PageLoadingFallback />}>
               <AnimatedPresence routeKey={location.pathname}>
                 <Outlet />

@@ -32,7 +32,7 @@ export function useArtifactsData(): UseArtifactsDataReturn {
   const projectIdFilter = useArtifactsStore((s) => s.projectIdFilter)
 
   useEffect(() => {
-    useArtifactsStore.getState().fetchArtifacts()
+    void useArtifactsStore.getState().fetchArtifacts()
   }, [])
 
   const pollFn = useCallback(async () => {
@@ -58,7 +58,7 @@ export function useArtifactsData(): UseArtifactsDataReturn {
         handler: () => {
           if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
           wsDebounceRef.current = setTimeout(() => {
-            useArtifactsStore.getState().fetchArtifacts()
+            void useArtifactsStore.getState().fetchArtifacts()
           }, WS_DEBOUNCE_MS)
         },
       })),

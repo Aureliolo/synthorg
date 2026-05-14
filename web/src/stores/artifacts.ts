@@ -271,6 +271,6 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   // Event payload ignored -- all events trigger a full refetch.
   // Incremental updates are not worth the complexity given 30s polling.
   updateFromWsEvent: () => {
-    useArtifactsStore.getState().fetchArtifacts()
+    void useArtifactsStore.getState().fetchArtifacts()
   },
 }))

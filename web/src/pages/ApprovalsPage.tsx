@@ -121,7 +121,7 @@ export default function ApprovalsPage() {
   // Fetch approval detail when URL selected param changes
   useEffect(() => {
     if (selectedId) {
-      fetchApproval(selectedId)
+      void fetchApproval(selectedId)
     }
   }, [fetchApproval, selectedId])
 
@@ -367,8 +367,8 @@ export default function ApprovalsPage() {
           onDeselectAll={deselectAllInGroup}
           onToggleSelect={toggleSelection}
           onSelect={handleSelectApproval}
-          onApprove={handleApproveOne}
-          onReject={handleRejectOne}
+          onApprove={(id) => { void handleApproveOne(id) }}
+          onReject={(id) => { void handleRejectOne(id) }}
         />
       ))}
 

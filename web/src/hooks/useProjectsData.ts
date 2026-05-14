@@ -29,7 +29,7 @@ export function useProjectsData(): UseProjectsDataReturn {
   const leadFilter = useProjectsStore((s) => s.leadFilter)
 
   useEffect(() => {
-    useProjectsStore.getState().fetchProjects()
+    void useProjectsStore.getState().fetchProjects()
   }, [])
 
   const pollFn = useCallback(async () => {
@@ -55,7 +55,7 @@ export function useProjectsData(): UseProjectsDataReturn {
         handler: () => {
           if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
           wsDebounceRef.current = setTimeout(() => {
-            useProjectsStore.getState().fetchProjects()
+            void useProjectsStore.getState().fetchProjects()
           }, WS_DEBOUNCE_MS)
         },
       })),

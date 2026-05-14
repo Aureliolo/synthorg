@@ -85,7 +85,7 @@ export function WizardShell() {
   // Sync URL -> store on mount and URL changes
   useEffect(() => {
     if (!urlStep) {
-      navigate(`/setup/${stepOrder[0]}`, { replace: true })
+      void navigate(`/setup/${stepOrder[0]}`, { replace: true })
       return
     }
     if (isWizardStep(urlStep, stepOrder)) {
@@ -99,7 +99,7 @@ export function WizardShell() {
           title: 'Previous steps not complete',
           description: `Finish the earlier steps before jumping to ${urlStep}.`,
         })
-        navigate(`/setup/${target}`, { replace: true })
+        void navigate(`/setup/${target}`, { replace: true })
       }
     } else {
       // Invalid step name in URL -- redirect to first step and tell the user.
@@ -108,14 +108,14 @@ export function WizardShell() {
         title: 'Unknown setup step',
         description: `"${urlStep}" is not a valid step. Returning to ${stepOrder[0]}.`,
       })
-      navigate(`/setup/${stepOrder[0]}`, { replace: true })
+      void navigate(`/setup/${stepOrder[0]}`, { replace: true })
     }
   }, [urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate])
 
   const handleStepClick = useCallback(
     (step: WizardStep) => {
       if (!canNavigateTo(step)) return
-      navigate(`/setup/${step}`)
+      void navigate(`/setup/${step}`)
     },
     [canNavigateTo, navigate],
   )
@@ -123,14 +123,14 @@ export function WizardShell() {
   const handleBack = useCallback(() => {
     const idx = stepOrder.indexOf(currentStep)
     if (idx > 0) {
-      navigate(`/setup/${stepOrder[idx - 1]}`)
+      void navigate(`/setup/${stepOrder[idx - 1]}`)
     }
   }, [currentStep, stepOrder, navigate])
 
   const handleNext = useCallback(() => {
     const idx = stepOrder.indexOf(currentStep)
     if (idx < stepOrder.length - 1) {
-      navigate(`/setup/${stepOrder[idx + 1]}`)
+      void navigate(`/setup/${stepOrder[idx + 1]}`)
     }
   }, [currentStep, stepOrder, navigate])
 

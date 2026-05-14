@@ -39,7 +39,7 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
   const isText = contentPreview !== null
 
   const handleDownload = useCallback(() => {
-    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() || artifact.id)
+    void downloadArtifactFile(artifact.id, artifact.path.split('/').pop() || artifact.id)
   }, [artifact.id, artifact.path])
 
   // Load image as blob URL for image content types

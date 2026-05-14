@@ -337,9 +337,10 @@ describe('Sidebar', () => {
     })
 
     // Each iteration mounts a tablet-sized Sidebar with a Base UI Drawer; the Drawer's
-    // `useTransitionStatus` schedules requestAnimationFrame callbacks (jsdom emulates rAF via
-    // setInterval) that would previously leak past unmount under `--detect-async-leaks`.
-    // The rAF shim in `test-setup.tsx` keeps these tests leak-free.
+    // `useTransitionStatus` schedules requestAnimationFrame callbacks. The microtask-based
+    // rAF shim in `test-setup.tsx` keeps these tests handle-free under the active-handle
+    // gate (each frame is a microtask, draining within the test's await chain rather than
+    // outliving unmount as a setTimeout(0) would).
     //
     // Coverage strategy: `it.each` enumerates every route exactly once (deterministic coverage,
     // stable CI timing), and a low-iteration `fast-check` property test shuffles ordering to
@@ -363,13 +364,13 @@ describe('Sidebar', () => {
     // (toHaveBeenCalledTimes(index + 1)) verify every navigation fires
     // close-on-navigate rather than just the last one.
     //
-    // The subset size is bounded (max 3) because React Router's `navigate`
-    // schedules a setImmediate per call that only drains on unmount;
-    // sweeping every route inside one mount would tip the test over the
-    // --detect-async-leaks threshold. 3 routes per iteration x 10 runs
-    // gives 30 ordered-pair navigations per CI run, which is enough to
-    // exercise cross-render state leaks without reintroducing the leak
-    // this PR is fixing.
+    // The subset size is bounded (max 3) because each `navigate` call
+    // schedules a setImmediate that only drains on unmount; sweeping
+    // every route inside one mount would surface as a transient
+    // tracked-Immediate at afterEach. 3 routes per iteration x 10 runs
+    // gives 30 ordered-pair navigations per CI run, enough to exercise
+    // cross-render state leaks without pressuring the active-handle
+    // drain loop.
     const PERMUTATION_SIZE = Math.min(3, staticRoutes.length)
     it(
       'close-on-navigate is independent of route order (property)',

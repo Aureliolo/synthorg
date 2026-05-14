@@ -179,7 +179,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
           wsConnected={wsConnected}
           wsReconnectExhausted={wsReconnectExhausted}
           user={user}
-          logout={logout}
+          logout={() => { void logout() }}
         />
       </Drawer>
     )
@@ -212,7 +212,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
         wsConnected={wsConnected}
         wsReconnectExhausted={wsReconnectExhausted}
         user={user}
-        logout={logout}
+        logout={() => { void logout() }}
       />
     </aside>
   )

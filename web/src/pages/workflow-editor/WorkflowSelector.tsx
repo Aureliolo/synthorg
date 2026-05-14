@@ -14,7 +14,7 @@ export function WorkflowSelector({ currentId, onChange }: WorkflowSelectorProps)
   const fetchWorkflows = useWorkflowsStore((s) => s.fetchWorkflows)
 
   useEffect(() => {
-    fetchWorkflows()
+    void fetchWorkflows()
   }, [fetchWorkflows])
 
   const options: readonly SelectOption[] = useMemo(

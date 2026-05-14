@@ -35,7 +35,7 @@ export function useAgentsData(): UseAgentsDataReturn {
 
   // Initial fetch
   useEffect(() => {
-    useAgentsStore.getState().fetchAgents()
+    void useAgentsStore.getState().fetchAgents()
   }, [])
 
   // Polling
@@ -65,7 +65,7 @@ export function useAgentsData(): UseAgentsDataReturn {
         handler: () => {
           if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
           wsDebounceRef.current = setTimeout(() => {
-            useAgentsStore.getState().fetchAgents()
+            void useAgentsStore.getState().fetchAgents()
           }, WS_DEBOUNCE_MS)
         },
       })),

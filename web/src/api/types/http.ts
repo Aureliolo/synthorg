@@ -19,7 +19,11 @@ export interface PaginationMeta {
 /** Discriminated paginated response envelope. */
 export type PaginatedResponse<T> =
   | { data: T[]; error: null; error_detail: null; success: true; pagination: PaginationMeta; degraded_sources?: readonly string[] }
-  | { data: null; error: string | null; error_detail: ErrorDetail | null; success: false; pagination: null; degraded_sources?: readonly string[] }
+  // Backend's ``ApiResponse[None]`` does not include a ``pagination``
+  // field on error responses, so the property is optional here; the
+  // ``success: false`` discriminant is what the client checks before
+  // touching pagination.
+  | { data: null; error: string | null; error_detail: ErrorDetail | null; success: false; pagination?: null; degraded_sources?: readonly string[] }
 
 export interface PaginationParams {
   /** Opaque pagination cursor from the previous page response. */

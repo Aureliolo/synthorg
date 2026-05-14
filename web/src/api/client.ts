@@ -55,9 +55,9 @@ export const apiClient = axios.create({
   // Disable axios's built-in XSRF-cookie handling. We implement CSRF
   // ourselves in a request interceptor (reads `csrf_token`, not
   // `XSRF-TOKEN`), so axios's read of `document.cookie` on every
-  // same-origin request is dead code. In jsdom under MSW it's also
-  // the source of the `@mswjs/interceptors` + tough-cookie
-  // "PROMISE leaking" chain flagged by `--detect-async-leaks`.
+  // same-origin request is dead code. In jsdom it also routes
+  // through tough-cookie's Promise wrapper, which the cookie shim
+  // avoids; leaving this disabled keeps the test fast path clean.
   xsrfCookieName: '',
 })
 
@@ -76,18 +76,13 @@ async function sleep(ms: number): Promise<void> {
 // This eliminates the XSS token-theft attack surface that existed with
 // sessionStorage-based JWT management.
 
-// `synchronous: true` tells axios this request interceptor runs
-// synchronously and must not return a Promise (header mutation is fine,
-// the option is about execution mode, not purity). That lets
-// `Axios.prototype._request` skip the `.then(chain[i++], chain[i++])` loop
-// at `node_modules/axios/lib/core/Axios.js:196` and call `dispatchRequest`
-// in-line. That loop creates a tracked Promise per chain entry that Node's
-// `async_hooks` flags under Vitest's `--detect-async-leaks`; skipping it
-// removes the 15 "Axios._request :196" top-frame entries from the leak
-// report, though 14 re-attribute to MSW's XHR interceptor (net -1). The
-// interceptor is synchronous as required: read a cookie, set a header,
-// return the config -- no awaits, no Promise allocation. See
-// `docs/design/web-http-adapter.md`.
+// `synchronous: true` is an axios fast-path: when no async interceptor
+// is registered, `Axios.prototype._request` skips the
+// `.then(chain[i++], chain[i++])` loop at
+// `node_modules/axios/lib/core/Axios.js:196` and calls `dispatchRequest`
+// in-line. The CSRF interceptor is genuinely synchronous (read a
+// cookie, set a header, return the config -- no awaits, no Promise
+// allocation), so the annotation is safe.
 apiClient.interceptors.request.use(
   (config) => {
     const method = (config.method ?? '').toLowerCase()

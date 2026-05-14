@@ -50,7 +50,7 @@ export function useBudgetData(): UseBudgetDataReturn {
 
   // Initial fetch on mount
   useEffect(() => {
-    useBudgetStore.getState().fetchBudgetData()
+    void useBudgetStore.getState().fetchBudgetData()
   }, [])
 
   // Polling for lightweight overview refresh

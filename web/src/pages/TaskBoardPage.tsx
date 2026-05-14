@@ -77,7 +77,7 @@ export default function TaskBoardPage() {
       if (skipNextFetchRef.current) {
         skipNextFetchRef.current = false
       } else {
-        fetchTask(selectedTaskId)
+        void fetchTask(selectedTaskId)
       }
     }
     prevSelectedRef.current = selectedTaskId
@@ -157,7 +157,7 @@ export default function TaskBoardPage() {
       next.set('selected', taskId)
       return next
     })
-    fetchTask(taskId)
+    void fetchTask(taskId)
   }, [setSearchParams, fetchTask])
 
   const handleClosePanel = useCallback(() => {

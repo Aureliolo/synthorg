@@ -51,7 +51,7 @@ export function SkipWizardForm() {
         title: `Welcome to ${trimmed}!`,
         description: 'Setup complete. Configure everything else in Settings.',
       })
-      navigate('/')
+      void navigate('/')
     } catch (err) {
       // The catch path now only runs for wizardCompleteSetup throws
       // (submitCompany never throws -- see above). companyResponse

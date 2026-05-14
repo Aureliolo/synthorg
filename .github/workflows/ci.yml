@@ -503,134 +503,26 @@ jobs:
         run: uv run python scripts/export_openapi.py
       - run: npm ci
         working-directory: web
-      - name: Run Vitest + gate on async-leak baseline
+      - name: Run Vitest (active-handle detection is part of the test run)
         working-directory: web
         env:
-          # Disable color output so the `Leaks N leaks` summary line emitted
-          # by Vitest's BaseReporter is plain ASCII. Without this, the line
-          # carries ANSI escapes (`\x1b[2m Leaks \x1b[22m ...`) that broke
-          # the legacy regex silently -- `grep -oE 'Leaks +[0-9]+ leaks'`
-          # never matched, the `|| echo 0` branch fired, and the gate
-          # always reported 0 leaks regardless of reality. Vitest honors
-          # `NO_COLOR` via chalk.
+          # Disable colour output so the active-handle reporter's summary
+          # lands as plain ASCII in CI logs (helpful for downstream
+          # log-scrapers and the on-failure artifact upload).
           NO_COLOR: '1'
-          # Structural ceiling: post-M4 leak count measured 2026-04-20 is
-          # 49 locally. CI previously measured ~64 on ubuntu-latest against
-          # the 50-leak local floor (platform-level event-loop timing); M4
-          # shaves off one of those so the CI baseline drops to ~63. The
-          # ceiling was 66 -- the expected CI baseline plus a 3-leak
-          # run-to-run variance buffer. The structural 49-leak local
-          # floor comes from MSW 2.x's own CookieStore (tough-cookie),
-          # the MSW XHR interceptor's `queueMicrotask` dispatch, and the
-          # axios response interceptor chain -- none reachable from
-          # `test-setup.tsx`. Further reduction requires replacing MSW's
-          # matching layer (out of scope per PR #1462's typed handlers +
-          # Storybook integration; follow-up tracked by #1468). See
-          # docs/design/web-http-adapter.md for the full investigation
-          # including the 2026-04-20 M1/M4/Option C research round.
-          #
-          # 2026-04-21 (PR #1500, WEB-1): raised 66 -> 72. WEB-1 adds
-          # per-store WS payload sanitizers (``sanitizeApproval`` /
-          # ``sanitizeMeeting`` / ``sanitizeTask``) and strict shape
-          # guards validating enum membership on every incoming WS
-          # payload. The new code paths are purely synchronous (no new
-          # timers, no new fire-and-forget ``create_task`` equivalents,
-          # no new MSW requests) but exercise existing MSW-mocked
-          # fetches through more store callsites, so the structural MSW
-          # interceptor + axios response-chain microtask leaks get hit
-          # ~6-8 more times on ubuntu-latest. Local measurement moved
-          # 53 -> 57 (+4); CI moved 63 -> 69-71 (+6-8). 72 = 69-71
-          # observed CI baseline for this PR + the same 3-leak variance
-          # buffer. Lower again once #1468 replaces MSW's matching
-          # layer; do not raise further without the same kind of
-          # documented per-PR justification.
-          #
-          # 2026-04-22 (PR #1506, WEB-2): raised 72 -> 80. WEB-2 adds
-          # fast-check property tests to nine component/hook suites
-          # (``breadcrumbs`` / ``error-banner`` / ``list-header`` /
-          # ``pagination`` / ``progress-indicator`` / ``search-filter-sort``
-          # / ``use-list-pagination`` / ``use-list-shortcuts`` /
-          # ``use-unsaved-changes-guard``) with numRuns capped at 15-20
-          # per property. Each property mount exercises the same MSW-
-          # intercepted render paths that existed before, so the
-          # structural XHR interceptor + axios response-chain leaks get
-          # hit a few more times. Observed CI: 63 -> 76 (+13 raw
-          # including the now-fixed ShortcutRegistry infinite-loop that
-          # tripped tough-cookie / microtask leaks in the cheatsheet
-          # test worker before it was killed by the CI timeout). Stable
-          # CI baseline for this PR is 76; 80 = 76 + a 4-leak run-to-run
-          # variance buffer (same class of buffer we've used on earlier
-          # raises, rounded up to the next integer boundary given the
-          # wider surface-area change in this PR).
-          # Lower again once #1468 replaces MSW's matching layer.
-          # The ceiling lives in ``.github/ci/web-async-leaks.max`` so
-          # raises show up in PR diffs instead of being buried in the
-          # workflow YAML.  The single-line file is read below.
-        run: |
-          set -o pipefail
-          # The step runs with ``working-directory: web``; the ceiling
-          # file lives at the repo root, so reference it via
-          # ``$GITHUB_WORKSPACE`` instead of a relative path.
-          MAX_ASYNC_LEAKS=$(grep -v '^#' "$GITHUB_WORKSPACE/.github/ci/web-async-leaks.max" | head -1 | tr -d '[:space:]')
-          if ! [[ "$MAX_ASYNC_LEAKS" =~ ^[0-9]+$ ]]; then
-            echo "::error::.github/ci/web-async-leaks.max is not a positive integer: '$MAX_ASYNC_LEAKS'"
-            exit 1
-          fi
-          # Sanity-clamp the ceiling so an accidental extra zero (or a
-          # wholesale wipe to zero) doesn't green-light a regression or
-          # block CI forever.  The 1..1000 range covers every historical
-          # value plus meaningful headroom; anything outside signals a
-          # typo that should be reviewed, not auto-accepted.
-          if (( MAX_ASYNC_LEAKS < 1 || MAX_ASYNC_LEAKS > 1000 )); then
-            echo "::error::Async-leak ceiling '$MAX_ASYNC_LEAKS' is outside the sanity range [1, 1000]. Fix .github/ci/web-async-leaks.max or widen the bounds deliberately in ci.yml."
-            exit 1
-          fi
-          echo "Async-leak ceiling: $MAX_ASYNC_LEAKS (from .github/ci/web-async-leaks.max)"
-          # Disable errexit around the test pipeline so a Vitest failure
-          # doesn't abort the step before we can read ${PIPESTATUS[0]}
-          # (GitHub Actions runs `run:` blocks with `bash -e`).
-          set +e
-          npm run test -- --coverage --detect-async-leaks 2>&1 | tee vitest-output.log
-          tests_exit=${PIPESTATUS[0]}
-          set -e
-          if [ "$tests_exit" -ne 0 ]; then
-            echo "::error::Vitest exited with $tests_exit -- see suite failures above."
-            exit "$tests_exit"
-          fi
-          # Strict parser: fail if Vitest did not emit a `Leaks N leaks`
-          # line at all (format drift or --detect-async-leaks not applied)
-          # rather than silently passing with a default of 0.
-          #
-          # Vitest's `BaseReporter` writes the leak summary line after
-          # the test run finishes but BEFORE the v8 coverage table, and
-          # the coverage table comfortably exceeds 200 lines -- so a
-          # naive `tail -n 200` cuts the summary off. Anchor the match
-          # to the whole line instead: a test's `console.log('Reporter:
-          # Leaks 50 leaks detected')` (or any substring containing the
-          # phrase) will not satisfy the gate, and `tail -1` picks the
-          # final match -- defensive guard against any rare case where
-          # grep returns multiple anchored lines (e.g. Vitest reruns
-          # emitting two summary blocks); the last line is the reporter's
-          # authoritative total. The count is extracted with a bash
-          # regex capture group so extra digits elsewhere on the line
-          # cannot bleed in.
-          leaks_line=$(grep -E '^[[:space:]]*Leaks +[0-9]+ leaks[[:space:]]*$' vitest-output.log | tail -1 || true)
-          if [ -z "$leaks_line" ]; then
-            echo "::error::Could not locate 'Leaks N leaks' line in Vitest output tail."
-            echo "::error::Either --detect-async-leaks was not applied, or Vitest changed its output format."
-            exit 1
-          fi
-          if [[ "$leaks_line" =~ Leaks[[:space:]]+([0-9]+)[[:space:]]+leaks ]]; then
-            leaks="${BASH_REMATCH[1]}"
-          else
-            echo "::error::Failed to extract leak count from line: $leaks_line"
-            exit 1
-          fi
-          echo "Detected $leaks async leaks (ceiling: $MAX_ASYNC_LEAKS)."
-          if [ "$leaks" -gt "$MAX_ASYNC_LEAKS" ]; then
-            echo "::error::Async-leak count $leaks exceeds ceiling $MAX_ASYNC_LEAKS. See issue #1466 and docs/design/web-http-adapter.md."
-            exit 1
-          fi
+          # Pin the active-handle gate's mode explicitly so a shell
+          # default of ACTIVE_HANDLE_MODE=log on the runner cannot
+          # silently downgrade the gate from blocking to advisory.
+          ACTIVE_HANDLE_MODE: 'fail'
+        run: npm run test -- --coverage
+      - name: Upload active-handle telemetry artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-active-handle-telemetry-${{ github.run_id }}-${{ github.run_attempt }}
+          path: web/.test-tmp/handle-telemetry.json
+          if-no-files-found: warn
+          retention-days: 30
 
   # ── Dashboard: Build ──
   dashboard-build:

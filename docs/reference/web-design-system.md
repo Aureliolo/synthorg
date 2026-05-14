@@ -178,6 +178,6 @@ Fix all violations before proceeding; do not suppress or ignore hook output.
 
 - [regional-defaults.md](regional-defaults.md): currency / locale / timezone resolution.
 - [web-base-ui-decisions.md](web-base-ui-decisions.md): adopted-vs-rejected Base UI primitives.
-- [web-zustand-stores.md](web-zustand-stores.md): mutation pattern, MSW handlers, async-leak ceiling, WS protocol.
+- [web-zustand-stores.md](web-zustand-stores.md): mutation pattern, MSW handlers, active-handle gate, WS protocol.
 - [web-package-structure.md](web-package-structure.md): `web/src/` and `web/e2e/` directory layout.
 - [web-post-training.md](web-post-training.md): TypeScript 6 / Storybook 10 facts that post-date the model's training cutoff.

@@ -133,14 +133,14 @@ function WorkflowEditorInner() {
   const { loadDefinition, createDefinition } = state
   useEffect(() => {
     if (defId) {
-      loadDefinition(defId)
+      void loadDefinition(defId)
       return
     }
     // React 19 Strict Mode replays mount effects -- without this guard we
     // would POST two empty draft workflows on the first visit to the editor.
     if (createdInitialDraftRef.current) return
     createdInitialDraftRef.current = true
-    createDefinition('New Workflow', 'sequential_pipeline')
+    void createDefinition('New Workflow', 'sequential_pipeline')
   }, [defId, loadDefinition, createDefinition])
 
   const selectedNodeDetails = getSelectedNodeDetails(state.nodes, state.selectedNodeId)

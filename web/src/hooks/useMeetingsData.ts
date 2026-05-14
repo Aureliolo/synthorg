@@ -29,7 +29,7 @@ export function useMeetingsData(): UseMeetingsDataReturn {
 
   // Initial data fetch
   useEffect(() => {
-    useMeetingsStore.getState().fetchMeetings()
+    void useMeetingsStore.getState().fetchMeetings()
   }, [])
 
   // Lightweight polling for refresh

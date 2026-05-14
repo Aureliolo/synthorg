@@ -248,7 +248,7 @@ export function VersionHistorySection<T>(
             const original = items.find((i) => i.id === item.id)
             if (original !== undefined) handleSelect(original)
           }}
-          onLoadMore={handleLoadMore}
+          onLoadMore={() => { void handleLoadMore() }}
           emptyTitle={emptyTitle}
           emptyDescription={emptyDescription}
         />

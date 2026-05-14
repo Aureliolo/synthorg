@@ -2,11 +2,12 @@
  * Teardown contract for the theme store's matchMedia listener.
  *
  * The theme store subscribes to a ``prefers-reduced-motion`` MediaQueryList
- * on creation and never removes the listener, which leaks under
- * ``--detect-async-leaks`` and survives Vite Fast Refresh cycles in dev.
- * This test pins the contract that ``useThemeStore.getState().teardown()``
- * detaches the listener -- symmetric ``addEventListener`` /
- * ``removeEventListener`` counts prove the subscription is released.
+ * on creation. Without a teardown the listener survives Vite Fast Refresh
+ * cycles in dev and (as a forgotten subscription) the active-handle gate
+ * would fail any test that exercises the store. This test pins the
+ * contract that ``useThemeStore.getState().teardown()`` detaches the
+ * listener: symmetric ``addEventListener`` / ``removeEventListener``
+ * counts prove the subscription is released.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

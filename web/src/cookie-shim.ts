@@ -4,13 +4,21 @@
  *
  * Why this module exists in isolation:
  *   * jsdom's default ``document.cookie`` is backed by tough-cookie's
- *     Promise-based ``CookieJar``. Every read / write schedules a
- *     ``createPromiseCallback`` that vitest's ``--detect-async-leaks``
- *     flags as a leaked Promise. The shim replaces the descriptor on
- *     ``Document.prototype`` with a synchronous in-memory jar so the
- *     leak count stays under the CI ceiling AND so the CSRF
+ *     Promise-based ``CookieJar``; every read / write schedules a
+ *     ``createPromiseCallback``. The shim replaces the prototype
+ *     descriptor with a synchronous in-memory jar so the CSRF
  *     benchmark measures actual parser work instead of jsdom's
- *     async cookie machinery.
+ *     async cookie machinery (and so test runs stay fast under the
+ *     active-handle gate, which would otherwise be bombarded by
+ *     downstream allocations triggered from each cookie read).
+ *   * Hardening side-benefit: writes routed through the
+ *     ``document.cookie`` setter whose parsed key lands on a
+ *     prototype slot (``__proto__``, ``constructor``, ``prototype``)
+ *     are rejected, so cookie parsing can never pollute the jar's
+ *     prototype. Direct assignment on the exported ``cookieJar`` is
+ *     out of scope; tests own that surface and the jar is built with
+ *     ``Object.create(null)`` so a direct write of ``__proto__``
+ *     stores a literal entry instead of mutating the prototype chain.
  *   * The shim has zero runtime dependencies. Importing it from
  *     ``bench-setup.ts`` does NOT pull in MSW, Motion mocks, the
  *     toast store, or anything else that would defeat the

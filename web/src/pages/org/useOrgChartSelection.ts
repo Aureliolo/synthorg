@@ -59,7 +59,7 @@ export function useOrgChartSelection(displayNodes: Node[]): OrgChartSelectionRes
   const handleNodeClick = useCallback(
     (_event: ReactMouseEvent, node: Node) => {
       if (node.type === 'agent' || node.type === 'ceo') {
-        navigate(`/agents/${encodeURIComponent(node.id)}`)
+        void navigate(`/agents/${encodeURIComponent(node.id)}`)
       }
     },
     [navigate],
@@ -70,7 +70,7 @@ export function useOrgChartSelection(displayNodes: Node[]): OrgChartSelectionRes
       const node = displayNodes.find((n) => n.id === nodeId)
       if (!node) return
       if (node.type === 'agent' || node.type === 'ceo') {
-        navigate(`/agents/${encodeURIComponent(node.id)}`)
+        void navigate(`/agents/${encodeURIComponent(node.id)}`)
       }
     },
     [displayNodes, navigate],

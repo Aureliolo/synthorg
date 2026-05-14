@@ -13,7 +13,7 @@ npm --prefix web run build                 # production build
 npm --prefix web run lint                  # ESLint (zero warnings enforced)
 npm --prefix web run type-check            # TypeScript type checking
 npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
-npm --prefix web run test -- --coverage --detect-async-leaks  # Full suite + unhandled-handle detection (matches CI)
+npm --prefix web run test -- --coverage    # Full suite (matches CI; active-handle gate is built into the setupFiles)
 npm --prefix web run bench                 # Vitest performance benchmarks (CodSpeed CPU Simulation; *.bench.ts files under web/src/__tests__/benchmarks/)
 npm --prefix web run size                  # size-limit bundle-size budget check (requires `npm run build` first)
 npm --prefix web run analyze               # bundle size treemap (opens stats.html)
@@ -59,7 +59,7 @@ All store **mutation** actions (create / update / delete) follow the `stores/con
 
 **Test teardown (MANDATORY)**: `web/src/test-setup.tsx` registers a global `afterEach` that calls `useToastStore.getState().dismissAll()`, `cancelPendingPersist()` (notifications store), and `useThemeStore.getState().teardown()`. **Any new store that schedules timers or attaches event listeners must expose an equivalent cleanup hook** and register it in the global `afterEach`. The websocket store is a deliberate exception (file-local `resetStore()` in its test file).
 
-**Async-leak ceiling (MANDATORY)**: CI fails if `vitest --detect-async-leaks` reports more than `MAX_ASYNC_LEAKS` (current value is in `.github/ci/web-async-leaks.max`). Local count runs ~75; CI runs land in a ~90-91 band (~+15 above local, event-loop timing variance under parallel execution). Raise the ceiling only when a new test surface or fixture demonstrates measurable leak growth, and document the reason in the PR body; tighten it whenever a shim or teardown lands that demonstrably lowers the steady-state count. The structural floor is MSW 2.x's XHR interceptor + axios's response-interceptor Promise chain + MSW's own tough-cookie store; zero leaks requires replacing MSW's matching layer.
+**Active-handle gate (MANDATORY)**: every unit test runs under `web/test-infra/active-handle-tracker.ts`, which hooks Node's `async_hooks` and fails any test that leaks an event-loop-holding resource (`Timeout`, `TCPWRAP`, `PIPEWRAP`, `FSEVENTWRAP`, etc.) attributable to a `web/src/` frame. Zero tolerance, no ceiling, no buffer. The allowlist (`web/test-infra/active-handle-allowlist.ts`) is empty and additions are an audit step (see [docs/design/web-active-handle-detection.md](../docs/design/web-active-handle-detection.md)). A new store that schedules timers / attaches listeners MUST expose a teardown hook and register it in the global `afterEach`; otherwise the gate fails the first test that triggers the schedule.
 
 **WS payload sanitization**: `sanitizeWsString()` and `sanitizeWsEnum()` live in `web/src/utils/ws-sanitize.ts` (pure helpers, re-exported from `@/stores/notifications`). `sanitizeWsString()` clamps every WS-supplied string (strips C0 controls + bidi-overrides + caps length). `sanitizeWsEnum<T>(value, allowlist, fallback, { field })` extends that with enum-allowlist validation: on unknown values it emits a structured `ws.enum.unknown` warning and returns the supplied fallback (must be a valid allowlist member), so a backend rolling out a new enum value cannot break UI rendering. Any new WS payload handler that ingests untrusted strings MUST route through one of these; raw `(sanitizeWsString(x, n) ?? '') as EnumType` casts are forbidden.
 
@@ -116,6 +116,8 @@ See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md
 - `@eslint-react/web-api-no-leaked-fetch`: detect `fetch()` in effects without `AbortController` cleanup.
 - `@eslint-react/no-leaked-conditional-rendering`: catch the `{count && <Foo />}` bug where `0` renders verbatim. For `ReactNode | undefined` props use `{value != null && value !== false && <jsx>}`; for compound truthiness use `Boolean(...)`.
 - `@eslint-react/globals`: restrict `window` / `document` / `localStorage` / etc. inside render. Hoist offenders into a `useCallback` event handler, a `useEffect`, or a `useSyncExternalStore`-backed hook.
+- `@typescript-eslint/no-floating-promises`: forbids unawaited promises so async work cannot survive the test that scheduled it and trip the active-handle gate.
+- `@typescript-eslint/no-misused-promises` (with `checksVoidReturn: { attributes: false }`): forbids passing async functions where the callsite ignores the returned promise; React 19 `async` event handlers stay allowed via the `attributes: false` exemption, paired with the global error handler.
 
 Lint runs via `npm --prefix web run lint` with `--max-warnings 0`. To enumerate stale `eslint-disable` directives after a rule reshuffle: `npm --prefix web run lint -- --report-unused-disable-directives-severity=warn`.
 

@@ -31,7 +31,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
 
   const scheduleTick = useCallback((runId: number) => {
     if (!activeRef.current || runId !== runIdRef.current) return
-    timerRef.current = setTimeout(async () => {
+    const tick = async () => {
       if (!activeRef.current || runId !== runIdRef.current) return
       try {
         await fnRef.current()
@@ -41,7 +41,8 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
         log.error('Polling error:', err)
       }
       scheduleTick(runId)
-    }, intervalMs)
+    }
+    timerRef.current = setTimeout(() => { void tick() }, intervalMs)
   }, [intervalMs])
 
   const start = useCallback(() => {

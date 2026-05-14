@@ -35,6 +35,14 @@ coverage.xml
 .coverage.*
 web/coverage/
 
+# Active-handle tracker per-worker NDJSON + aggregated telemetry artifact
+# (written by web/test-infra/active-handle-{tracker,reporter}.ts).
+web/.test-tmp/
+
+# TypeScript build cache for the web/tsconfig.node.json composite project
+# (vite.config.ts + vitest.config.ts + test-infra/).
+web/.tsbuildcache/
+
 # Environment variables
 .env
 .env.local

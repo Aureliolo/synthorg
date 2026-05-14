@@ -141,7 +141,7 @@ export function useWorkflowEditorCallbacks(
 
   const handleSwitchWorkflow = useCallback(
     (id: string) => {
-      navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(id)}`)
+      void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(id)}`)
     },
     [navigate],
   )
@@ -200,7 +200,7 @@ export function useWorkflowEditorCallbacks(
       edges: edgeData,
     })
     if (!created) return
-    navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
+    void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
   }, [navigate])
 
   const handleMoveEnd = useCallback(

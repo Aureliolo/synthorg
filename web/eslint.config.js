@@ -80,6 +80,23 @@ export default tseslint.config(
       // event handler / useEffect / useSyncExternalStore-backed hook
       // (see ``@/hooks/useViewportSize`` for the canonical pattern).
       '@eslint-react/globals': 'error',
+      // Floating-promise + misused-promise hardening, complementary to
+      // the active-handle reporter (``web/test-infra/active-handle-*``).
+      // The reporter catches the runtime symptom (leaked Timeout /
+      // socket); these rules catch the most common syntactic causes at
+      // edit time so the bug never reaches the test run.
+      //
+      // ``checksVoidReturn.attributes: false`` follows the documented
+      // typescript-eslint guidance for React codebases. The remaining
+      // checks still fire on ``Array.forEach(asyncFn)``,
+      // ``setTimeout(asyncFn, 0)``, etc.; React 19's global error
+      // handler covers rejected async event handlers, and the
+      // active-handle gate covers the runtime resource-leak symptom.
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': [
+        'error',
+        { checksVoidReturn: { attributes: false } },
+      ],
     },
   },
   {

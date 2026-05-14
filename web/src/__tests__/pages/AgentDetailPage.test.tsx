@@ -34,8 +34,8 @@ vi.mock('@/pages/agents/ActivityLog', () => ({
   ActivityLog: () => <div data-testid="activity-log" />,
 }))
 // Stub TrainingSection so its useEffect doesn't kick off real HTTP calls
-// into the training store, which leave pending promises that the test
-// harness (`--detect-async-leaks`) flags as unhandled rejections.
+// into the training store; those calls would race the test's
+// assertions and noise the output without adding coverage.
 vi.mock('@/pages/agents/TrainingSection', () => ({
   TrainingSection: () => <div data-testid="training-section" />,
 }))
