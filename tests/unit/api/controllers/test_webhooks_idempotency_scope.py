@@ -1,8 +1,14 @@
 """Regression coverage for webhook idempotency scope + key invariants.
 
 The webhook flow uses the durable ``IdempotencyService`` under a scope
-of the form ``webhooks:{connection_type}:{connection_name}`` and a key
-of the form ``{connection_name}:{event_type}:{nonce_for_key}``. Pinning
+of the form
+``webhooks:{len(connection_type)}:{connection_type}:{len(connection_name)}:{connection_name}``
+and a key of the form
+``{len(connection_name)}:{connection_name}:{len(event_type)}:{event_type}:{len(nonce_for_key)}:{nonce_for_key}``.
+Length-prefixing every segment makes the encoding injective: distinct
+``(connection_type, connection_name)`` (or ``(connection_name,
+event_type, nonce)``) tuples can never produce the same composite
+string, even when one of the parts contains a literal ``":"``. Pinning
 both fields prevents two distinct connections of the same provider
 from colliding on a shared dedup row.
 """
@@ -58,10 +64,17 @@ class TestWebhookIdempotencyScope:
             connection_name=connection_name,
         )
         # Exact-equality pin: any reordering of the token positions
-        # (e.g. ``{connection_name}:{connection_type}``) trips the
-        # assertion immediately. Substring / startswith checks would
-        # silently keep passing under such a refactor.
-        assert scope == f"webhooks:{connection_type}:{connection_name}"
+        # (e.g. swapping connection_type with connection_name) trips
+        # the assertion immediately. Substring / startswith checks
+        # would silently keep passing under such a refactor. The
+        # length-prefix on every segment is what makes the encoding
+        # injective: two different ``(type, name)`` tuples cannot
+        # collapse to the same string even when one part contains
+        # a literal ``":"``.
+        assert scope == (
+            f"webhooks:{len(connection_type)}:{connection_type}"
+            f":{len(connection_name)}:{connection_name}"
+        )
         # And scopes for sibling connections of the same type must differ.
         sibling = _build_idem_scope(
             connection_type=connection_type,

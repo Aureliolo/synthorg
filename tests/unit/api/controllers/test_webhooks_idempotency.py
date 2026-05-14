@@ -307,7 +307,7 @@ class TestReceiveWebhookEndToEnd:
         ) -> Any:
             return None
 
-        def fake_check_replay_or_freshness(
+        async def fake_check_replay_or_freshness(
             *,
             state: Any,
             connection_name: str,

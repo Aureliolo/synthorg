@@ -21,6 +21,7 @@ from synthorg.memory.self_editing import (
     SelfEditingMemoryConfig,
     SelfEditingMemoryStrategy,
 )
+from synthorg.providers.enums import MessageRole
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -198,9 +199,13 @@ class TestSelfEditingMemoryStrategyPrepareMessages:
             token_budget=2048,
         )
 
-        assert len(messages) == 1
-        assert messages[0].content is not None
-        assert "customer support agent" in messages[0].content
+        # Two messages: directive SYSTEM message + core memory message.
+        assert len(messages) == 2
+        directive_message, memory_message = messages
+        assert directive_message.role is MessageRole.SYSTEM
+        memory_content = memory_message.content
+        assert memory_content is not None
+        assert "customer support agent" in memory_content
 
     async def test_respects_token_budget(self) -> None:
         """token_budget=0 must return an empty tuple."""

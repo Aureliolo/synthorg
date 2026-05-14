@@ -32,6 +32,10 @@ from synthorg.observability.events.api import (
     API_USER_SAVE_FAILED,
     API_VALIDATION_FAILED,
 )
+from synthorg.observability.events.security import (
+    SECURITY_PERMISSION_GRANTED,
+    SECURITY_PERMISSION_REVOKED,
+)
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -573,6 +577,12 @@ class UserController(Controller):
                 role=data.role.value,
             )
             raise
+        logger.info(
+            SECURITY_PERMISSION_GRANTED,
+            user_id=user.id,
+            role=data.role.value,
+            scoped_departments=tuple(data.scoped_departments),
+        )
         return ApiResponse(data=_to_response(updated))
 
     @delete(
@@ -653,3 +663,8 @@ class UserController(Controller):
                 role=role,
             )
             raise
+        logger.info(
+            SECURITY_PERMISSION_REVOKED,
+            user_id=user.id,
+            role=role,
+        )

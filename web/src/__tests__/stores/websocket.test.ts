@@ -6,6 +6,7 @@ import { server } from '@/test-setup'
 import type { WsEvent } from '@/api/types/websocket'
 import {
   WS_HEARTBEAT_INTERVAL_MS,
+  WS_MAX_RECONNECT_ATTEMPTS,
   WS_PONG_TIMEOUT_MS,
   WS_RECONNECT_BASE_DELAY,
 } from '@/utils/constants'
@@ -143,6 +144,39 @@ function resetStore() {
   MockWebSocket.clear()
 }
 
+// Pump fake-timer backoff ticks AND real macrotasks until the store
+// reports exhaustion. The naive ``for (i=0; i<20)`` shape races MSW's
+// undici-backed ticket-fetch rejection chain, which settles on REAL
+// microtasks + setImmediate hops (``queueMicrotask`` is intentionally
+// excluded from ``toFake`` so undici can flush). Without a real-
+// macrotask drain between iterations, a fast iteration can advance
+// past the 30s backoff ceiling before the previous rejection has
+// reached ``scheduleReconnect()``, so the loop runs all 20 iterations
+// while ``reconnectAttempts`` lags behind and exhaustion never flips.
+// The cap is derived from ``WS_MAX_RECONNECT_ATTEMPTS`` so a future
+// bump of the store-side limit drags the test budget along with it
+// instead of silently exiting short or capping at a stale literal.
+// Throwing on budget exhaustion turns an actual scheduler bug into a
+// loud test failure rather than a silent hang or a false negative
+// from a downstream assertion.
+const RECONNECT_EXHAUSTION_DRAIN_PASSES = WS_MAX_RECONNECT_ATTEMPTS * 3
+
+async function drainUntilReconnectExhausted(): Promise<void> {
+  for (let i = 0; i < RECONNECT_EXHAUSTION_DRAIN_PASSES; i++) {
+    if (useWebSocketStore.getState().reconnectExhausted) return
+    await vi.advanceTimersByTimeAsync(30_000)
+    await vi.runAllTimersAsync()
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    // Re-check after the async drain: exhaustion can flip during the
+    // final pass, and a check only at the top of the loop would miss it
+    // and throw even though the budget was sufficient.
+    if (useWebSocketStore.getState().reconnectExhausted) return
+  }
+  throw new Error(
+    `reconnectExhausted did not flip after ${RECONNECT_EXHAUSTION_DRAIN_PASSES} drain passes`,
+  )
+}
+
 describe('websocket store', () => {
   beforeEach(() => {
     resetStore()
@@ -178,7 +212,7 @@ describe('websocket store', () => {
 
   describe('connect', () => {
     it('fetches ticket and creates WebSocket connection without ticket in URL', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -228,7 +262,7 @@ const p1 = useWebSocketStore.getState().connect()
 
   describe('disconnect', () => {
     it('closes socket and resets state', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -245,7 +279,7 @@ const connectPromise = useWebSocketStore.getState().connect()
 
   describe('subscribe', () => {
     it('sends subscribe message when connected', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -269,7 +303,7 @@ const connectPromise = useWebSocketStore.getState().connect()
       useWebSocketStore.getState().subscribe(['tasks'])
 
       // Now connect -- the subscription should be replayed
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -289,7 +323,7 @@ const connectPromise = useWebSocketStore.getState().connect()
 
   describe('unsubscribe', () => {
     it('sends unsubscribe message when connected', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -411,7 +445,7 @@ const handler = vi.fn()
 
   describe('reconnection', () => {
     it('schedules reconnect on unexpected close', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -481,7 +515,7 @@ const connectPromise = useWebSocketStore.getState().connect()
     )
 
     it('does not reconnect on intentional disconnect', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -542,9 +576,11 @@ const handler = vi.fn()
         useWebSocketStore.getState().connect(),
       ).rejects.toThrow('connection refused')
 
-      // Each failed ticket exchange triggers scheduleReconnect
-      // Advance through all 20 attempts (exponential backoff capped at 30s)
-      for (let i = 0; i < 20; i++) {
+      // Each failed ticket exchange triggers scheduleReconnect.
+      // Advance through every attempt (exponential backoff capped at 30s).
+      // The loop bound tracks ``WS_MAX_RECONNECT_ATTEMPTS`` so a future
+      // bump of the constant cannot silently exit the loop short.
+      for (let i = 0; i < WS_MAX_RECONNECT_ATTEMPTS; i++) {
         await vi.advanceTimersByTimeAsync(30_000)
         await vi.runAllTimersAsync()
       }
@@ -607,7 +643,7 @@ const handler = vi.fn()
 
   describe('ack messages', () => {
     it('updates subscribedChannels on ack', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -841,10 +877,7 @@ const connectPromise = useWebSocketStore.getState().connect()
       await expect(
         useWebSocketStore.getState().connect(),
       ).rejects.toThrow('connection refused')
-      for (let i = 0; i < 20; i++) {
-        await vi.advanceTimersByTimeAsync(30_000)
-        await vi.runAllTimersAsync()
-      }
+      await drainUntilReconnectExhausted()
       expect(useWebSocketStore.getState().reconnectExhausted).toBe(true)
 
       const callsBefore = ticketState.calls

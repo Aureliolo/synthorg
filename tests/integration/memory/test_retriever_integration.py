@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.core.enums import MemoryCategory
-from synthorg.memory.formatter import MEMORY_BLOCK_END, MEMORY_BLOCK_START
+from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY
 from synthorg.memory.injection import DefaultTokenEstimator
 from synthorg.memory.models import (
     MemoryEntry,
@@ -185,13 +185,21 @@ class TestRetrieverIntegrationEndToEnd:
             token_budget=2000,
         )
 
-        assert len(result) == 1
-        msg = result[0]
-        assert msg.role is MessageRole.SYSTEM
-        content = msg.content
+        # Two messages: directive SYSTEM message + memory message.
+        assert len(result) == 2
+        directive_message, memory_message = result
+        assert directive_message.role is MessageRole.SYSTEM
+        assert memory_message.role is MessageRole.SYSTEM
+        content = memory_message.content
         assert content is not None
-        assert MEMORY_BLOCK_START in content
-        assert MEMORY_BLOCK_END in content
+        # Exact per-entry fence count: one open + one close per
+        # asserted memory. ``>= 1`` would pass under a regression
+        # that wraps the whole block in a single outer fence, hiding
+        # the per-entry isolation contract.
+        open_count = content.count(f"<{TAG_MEMORY_ENTRY}>")
+        close_count = content.count(f"</{TAG_MEMORY_ENTRY}>")
+        assert open_count == close_count
+        assert open_count == 3
         # Most relevant should appear first
         assert "Python best practices" in content
         assert "Last meeting notes" in content
@@ -235,8 +243,8 @@ class TestRetrieverIntegrationEndToEnd:
             token_budget=2000,
         )
 
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        content = result[-1].content
         assert content is not None
         assert "My personal knowledge" in content
         assert "Team shared fact" in content
@@ -292,8 +300,8 @@ class TestRetrieverIntegrationEndToEnd:
             token_budget=2000,
         )
 
-        assert len(result) == 1
-        text = result[0].content
+        assert len(result) == 2
+        text = result[-1].content
         assert text is not None
         # Fresh insight should appear before old knowledge
         assert text.index("fresh insight") < text.index("old knowledge")
@@ -337,10 +345,10 @@ class TestRetrieverIntegrationEndToEnd:
             token_budget=200,
         )
 
-        assert len(large_result) == 1
-        assert len(small_result) == 1
-        small_content = small_result[0].content
-        large_content = large_result[0].content
+        assert len(large_result) == 2
+        assert len(small_result) == 2
+        small_content = small_result[-1].content
+        large_content = large_result[-1].content
         assert small_content is not None
         assert large_content is not None
         # Small budget should have fewer content lines
@@ -377,8 +385,8 @@ class TestRetrieverIntegrationEndToEnd:
             categories=frozenset({MemoryCategory.SEMANTIC}),
         )
 
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        content = result[-1].content
         assert content is not None
         assert "semantic fact" in content
         assert "episodic event" not in content

@@ -8,13 +8,13 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY
 from synthorg.memory.errors import MemoryRetrievalError
 from synthorg.memory.filter import (
     NON_INFERABLE_TAG,
     PassthroughMemoryFilter,
     TagBasedMemoryFilter,
 )
-from synthorg.memory.formatter import MEMORY_BLOCK_START
 from synthorg.memory.injection import (
     DefaultTokenEstimator,
     MemoryInjectionStrategy,
@@ -110,12 +110,15 @@ class TestPrepareMessages:
             query_text="what do I know",
             token_budget=1000,
         )
-        assert len(result) == 1
-        assert result[0].role is MessageRole.SYSTEM
-        content = result[0].content
-        assert content is not None
-        assert "important fact" in content
-        assert MEMORY_BLOCK_START in content
+        # Two messages: directive SYSTEM message + memory message.
+        assert len(result) == 2
+        directive_message, memory_message = result
+        assert directive_message.role is MessageRole.SYSTEM
+        assert memory_message.role is MessageRole.SYSTEM
+        memory_content = memory_message.content
+        assert memory_content is not None
+        assert "important fact" in memory_content
+        assert f"<{TAG_MEMORY_ENTRY}>" in memory_content
 
     async def test_empty_backend_returns_empty(self) -> None:
         strategy = ContextInjectionStrategy(
@@ -182,8 +185,9 @@ class TestSharedStoreMerge:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "personal memory" in content
         assert "shared knowledge" in content
@@ -217,8 +221,9 @@ class TestSharedStoreMerge:
             query_text="query",
             token_budget=1000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "only personal" in content
 
@@ -263,8 +268,9 @@ class TestGracefulDegradation:
             query_text="query",
             token_budget=1000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "personal survives" in content
 
@@ -372,8 +378,9 @@ class TestGracefulDegradation:
             query_text="query",
             token_budget=1000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "personal survives generic" in content
 
@@ -417,7 +424,7 @@ class TestTokenBudget:
             query_text="query",
             token_budget=1000,
         )
-        assert len(result) == 1
+        assert len(result) == 2
 
     async def test_zero_budget_returns_empty(self) -> None:
         entry = _make_entry(content="content")
@@ -465,8 +472,9 @@ class TestMemoryFilterIntegration:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "tagged memory" in content
         assert "untagged memory" not in content
@@ -487,8 +495,9 @@ class TestMemoryFilterIntegration:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "all memories pass" in content
 
@@ -520,8 +529,9 @@ class TestMemoryFilterIntegration:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "passthrough content" in content
 
@@ -552,8 +562,9 @@ class TestMemoryFilterIntegration:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "tagged memory" in content
         assert "untagged memory" not in content

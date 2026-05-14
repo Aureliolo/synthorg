@@ -79,6 +79,14 @@ WEBHOOK_RECEIPT_STATUS_TRANSITIONED: Final[str] = (
 WEBHOOK_VERIFIER_UNSUPPORTED_TYPE: Final[str] = (
     "integrations.webhook.verifier_unsupported_type"
 )
+WEBHOOK_ACTIVITY_LISTED: Final[str] = "integrations.webhook.activity_listed"
+"""Operator listed webhook receipts for a connection via the activity service.
+
+Emitted by ``WebhookActivityService.list_activity`` once per call so the
+audit chain captures every read of the durable webhook-receipt log
+(connection_name + limit + result count). The controller no longer
+reads ``persistence.webhook_receipts`` directly, so this is the canonical
+log for that surface."""
 
 # -- Health checks -------------------------------------------------------
 
