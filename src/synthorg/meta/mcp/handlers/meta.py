@@ -130,6 +130,8 @@ async def _meta_list_rules(
         serialized = [
             CustomRuleResponse.from_definition(r).model_dump(mode="json") for r in page
         ]
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)

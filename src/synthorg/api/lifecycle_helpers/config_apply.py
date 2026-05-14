@@ -218,6 +218,8 @@ async def _apply_ws_ticket_settings(app_state: AppState) -> None:
                 "ws_ticket_max_pending_per_user",
             )
         )
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
@@ -238,6 +240,8 @@ async def _apply_ws_auth_timeout(app_state: AppState) -> None:
                 "ws_auth_timeout_seconds",
             )
         )
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
@@ -269,6 +273,8 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
                 setting_key,
             )
             getattr(app_state, setter_name)(value)
+        except asyncio.CancelledError:
+            raise
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -300,6 +306,8 @@ async def _apply_auth_token_bytes(app_state: AppState) -> None:
                 "auth_token_bytes",
             )
         )
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
@@ -332,6 +340,8 @@ async def _apply_timeout_enforcement(app_state: AppState) -> None:
                 "timeout_enforcement_enabled",
             )
         )
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
@@ -373,6 +383,8 @@ async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
             SettingNamespace.OBSERVABILITY.value,
             "audit_chain_signing_timeout_seconds",
         )
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
     except Exception as exc:

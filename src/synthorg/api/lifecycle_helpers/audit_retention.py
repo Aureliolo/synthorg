@@ -63,12 +63,14 @@ async def _resolve_audit_retention_days(app_state: AppState) -> int:
     """Resolve ``audit_retention_days`` for the retention loop.
 
     Falls back to the registered default when the settings resolver is
-    unavailable or the read fails. The fallback intentionally keeps
-    retention enabled rather than disabling purging on a broken
-    settings backend -- leaving expired audit rows around is a
-    compliance risk, so prefer the built-in default to a silent zero.
-    ``0`` is reserved for an operator explicitly opting out via
-    ``security.audit_retention_days=0``.
+    unavailable, the read fails, or the resolved value is negative.
+    The fallback intentionally keeps retention enabled rather than
+    disabling purging on a broken settings backend -- leaving expired
+    audit rows around is a compliance risk, so prefer the built-in
+    default to a silent zero. ``0`` is reserved for an operator
+    explicitly opting out via ``security.audit_retention_days=0``;
+    a negative resolver value is invalid (not a synonym for the
+    opt-out) and reverts to the fallback.
     """
     fallback = registered_default_int(
         SettingNamespace.SECURITY.value, "audit_retention_days"
@@ -76,7 +78,7 @@ async def _resolve_audit_retention_days(app_state: AppState) -> int:
     if not app_state.has_config_resolver:
         return fallback
     try:
-        return await app_state.config_resolver.get_int(
+        days = await app_state.config_resolver.get_int(
             SettingNamespace.SECURITY.value, "audit_retention_days"
         )
     except asyncio.CancelledError:
@@ -91,6 +93,15 @@ async def _resolve_audit_retention_days(app_state: AppState) -> int:
             fallback_days=fallback,
         )
         return fallback
+    if days < 0:
+        logger.warning(
+            API_AUDIT_RETENTION,
+            note="invalid audit retention days; using fallback",
+            resolved_days=days,
+            fallback_days=fallback,
+        )
+        return fallback
+    return days
 
 
 async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
@@ -140,7 +151,7 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     Extracted from ``_audit_retention_loop`` so the loop body stays
     under the project function-length limit.
     """
-    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+    from datetime import timedelta  # noqa: PLC0415
 
     days = await _resolve_audit_retention_days(app_state)
     if days <= 0:
@@ -148,7 +159,7 @@ async def _audit_retention_tick(app_state: AppState) -> None:
         return
     if not app_state.has_persistence:
         return
-    cutoff = datetime.now(UTC) - timedelta(days=days)
+    cutoff = app_state.clock.now() - timedelta(days=days)
     try:
         deleted = await app_state.persistence.audit_entries.purge_before(cutoff)
     except MemoryError, RecursionError:

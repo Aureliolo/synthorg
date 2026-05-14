@@ -1,7 +1,8 @@
-"""One-time startup bootstraps: owner promotion and agent re-hydration.
+"""Startup bootstraps: owner promotion and agent re-hydration.
 
-``_maybe_promote_first_owner`` is an idempotent migration that fires
-on every boot until at least one user holds ``OrgRole.OWNER``.
+``_maybe_promote_first_owner`` runs on every boot and promotes the
+first user to ``OrgRole.OWNER`` when no owner exists; it is idempotent
+once at least one owner is present.
 
 ``_maybe_bootstrap_agents`` re-hydrates the runtime agent registry
 from persisted config once setup is complete; on first boot setup is
@@ -25,11 +26,9 @@ logger = get_logger(__name__)
 async def _maybe_promote_first_owner(app_state: AppState) -> None:
     """Promote the first user to owner if no owner exists.
 
-    This is a one-time idempotent migration that runs on every boot
-    until at least one user has the ``OrgRole.OWNER`` role.
+    Idempotent: once at least one user holds ``OrgRole.OWNER`` the
+    function returns without modifying state.
     """
-    from datetime import UTC, datetime  # noqa: PLC0415
-
     if not app_state.has_persistence:
         return
     try:
@@ -59,7 +58,7 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
     promoted = first.model_copy(
         update={
             "org_roles": (*first.org_roles, OrgRole.OWNER),
-            "updated_at": datetime.now(UTC),
+            "updated_at": app_state.clock.now(),
         },
     )
     try:

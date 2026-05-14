@@ -230,6 +230,12 @@ def parse_locale_json(raw: str) -> list[str] | None:
             actual_type=type(parsed).__name__,
         )
         return None
+    if any(not isinstance(locale, str) or not locale.strip() for locale in parsed):
+        logger.warning(
+            SETUP_NAME_LOCALES_CORRUPTED,
+            reason="invalid_locale_items",
+        )
+        return None
     return parsed
 
 
@@ -355,12 +361,13 @@ async def persist_company_settings(
     description: str | None,
     departments_json: str,
 ) -> None:
-    """Write company name, description, and departments."""
-    await settings_svc.set(
-        "company",
-        "company_name",
-        company_name,
-    )
+    """Write description and departments, then company name as the setup marker.
+
+    ``check_has_company`` treats ``company_name`` as the setup-complete
+    marker, so write it last; a failure in an earlier ``set`` then
+    leaves the instance reading as un-initialised rather than as
+    half-initialised.
+    """
     await settings_svc.set(
         "company",
         "description",
@@ -370,6 +377,11 @@ async def persist_company_settings(
         "company",
         "departments",
         departments_json or "[]",
+    )
+    await settings_svc.set(
+        "company",
+        "company_name",
+        company_name,
     )
 
 
