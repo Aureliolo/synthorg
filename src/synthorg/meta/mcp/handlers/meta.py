@@ -127,17 +127,15 @@ async def _meta_list_rules(
             offset=offset,
             limit=limit,
         )
+        serialized = [
+            CustomRuleResponse.from_definition(r).model_dump(mode="json") for r in page
+        ]
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     pagination = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(
-        data=[
-            CustomRuleResponse.from_definition(r).model_dump(mode="json") for r in page
-        ],
-        pagination=pagination,
-    )
+    return ok(data=serialized, pagination=pagination)
 
 
 async def _meta_list_mcp_tools(

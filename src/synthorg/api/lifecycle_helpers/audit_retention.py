@@ -9,6 +9,7 @@ is a compliance risk.
 """
 
 import asyncio
+import math
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger, safe_error_description
@@ -96,7 +97,10 @@ async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
     """Resolve the cadence between audit retention purge ticks.
 
     Falls back to the registered default when the resolver is
-    unavailable or the read fails.
+    unavailable, the read fails, or the resolved value is
+    non-finite / non-positive. Skipping the validation would let a
+    tampered setting feed ``asyncio.sleep(-1)`` (tight loop) or
+    ``asyncio.sleep(nan)`` (loop crash) into the purge worker.
     """
     fallback = registered_default_float(
         SettingNamespace.SECURITY.value, "audit_retention_tick_seconds"
@@ -104,7 +108,7 @@ async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
     if not app_state.has_config_resolver:
         return fallback
     try:
-        return await app_state.config_resolver.get_float(
+        seconds = await app_state.config_resolver.get_float(
             SettingNamespace.SECURITY.value, "audit_retention_tick_seconds"
         )
     except asyncio.CancelledError:
@@ -119,6 +123,15 @@ async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
             fallback_seconds=fallback,
         )
         return fallback
+    if not math.isfinite(seconds) or seconds <= 0:
+        logger.warning(
+            API_AUDIT_RETENTION,
+            note="invalid audit retention tick seconds; using fallback",
+            resolved_seconds=seconds,
+            fallback_seconds=fallback,
+        )
+        return fallback
+    return seconds
 
 
 async def _audit_retention_tick(app_state: AppState) -> None:

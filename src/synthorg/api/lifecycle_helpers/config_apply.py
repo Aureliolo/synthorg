@@ -209,22 +209,8 @@ async def _apply_api_bridge_config_snapshot(app_state: AppState) -> None:
     app_state.swap_api_bridge_config(snapshot)
 
 
-async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
-    app_state: AppState,
-    effective_config: RootConfig | None,
-) -> None:
-    """Apply operator-tuned API bridge settings during startup.
-
-    Idempotent via ``app_state.bridge_config_applied`` so a re-entering
-    Litestar lifespan (shared-app test fixtures, multi-lifespan runs)
-    does not churn httpx/SMTP clients or rebuild the OAuth flow.
-    """
-    if not app_state.has_config_resolver or app_state.bridge_config_applied:
-        return
-
-    await _validate_approval_urgency_invariant(app_state)
-    await _apply_api_bridge_config_snapshot(app_state)
-
+async def _apply_ws_ticket_settings(app_state: AppState) -> None:
+    """Apply the ticket-store pending-per-user limit from settings."""
     try:
         app_state.ticket_store.set_max_pending_per_user(
             await app_state.config_resolver.get_int(
@@ -242,6 +228,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             error=safe_error_description(exc),
         )
 
+
+async def _apply_ws_auth_timeout(app_state: AppState) -> None:
+    """Apply the WebSocket auth-timeout seconds from settings."""
     try:
         app_state.set_ws_auth_timeout_seconds(
             await app_state.config_resolver.get_float(
@@ -259,11 +248,16 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             error=safe_error_description(exc),
         )
 
-    # Each WS DoS-prevention setting resolves and applies independently
-    # so a single failed lookup (e.g. settings backend hiccup on one row)
-    # does NOT prevent the other two from being applied. Each falls back
-    # to its built-in default on failure with a structured warning so ops
-    # can see which knob failed.
+
+async def _apply_ws_dos_settings(app_state: AppState) -> None:
+    """Apply the per-frame WS DoS-prevention knobs from settings.
+
+    Each setting resolves and applies independently so a single failed
+    lookup (e.g. settings backend hiccup on one row) does NOT prevent
+    the other two from being applied. Each falls back to its built-in
+    default on failure with a structured warning so ops can see which
+    knob failed.
+    """
     for setting_key, setter_name in (
         ("ws_frame_timeout_seconds", "set_ws_frame_timeout_seconds"),
         ("ws_revalidation_window_seconds", "set_ws_revalidation_window_seconds"),
@@ -285,6 +279,15 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                 error=safe_error_description(exc),
             )
 
+
+async def _apply_auth_token_bytes(app_state: AppState) -> None:
+    """Apply the auth-token entropy width, forcing the default on failure.
+
+    Resolver failures force the cache back to the registered default
+    so a prior successful resolve that left the cache at a non-default
+    value can't persist past this branch -- the operator-facing log
+    must match process state.
+    """
     from synthorg.api.auth.token_size import (  # noqa: PLC0415
         _DEFAULT_AUTH_TOKEN_BYTES,
         set_auth_token_bytes,
@@ -300,12 +303,6 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        # Make the safe default *real*: the warning previously only
-        # logged ``fallback_bytes`` without applying it, so a prior
-        # successful resolve that left the cache at a non-default
-        # value would persist after this branch fired. Force the
-        # cache back to the registered default so the operator-facing
-        # log claim matches process state.
         set_auth_token_bytes(_DEFAULT_AUTH_TOKEN_BYTES)
         logger.warning(
             API_APP_STARTUP,
@@ -315,6 +312,15 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             fallback_bytes=_DEFAULT_AUTH_TOKEN_BYTES,
         )
 
+
+async def _apply_timeout_enforcement(app_state: AppState) -> None:
+    """Apply the engine timeout-enforcement flag, forcing on by default.
+
+    Resolver failures force the cache back to ``True`` so a
+    misconfigured deployment whose resolver had already returned
+    ``False`` on a prior request can't keep enforcement off after
+    this branch fires.
+    """
     from synthorg.engine.timeout_enforcement import (  # noqa: PLC0415
         set_timeout_enforcement_enabled,
     )
@@ -329,13 +335,6 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        # Make the safe default *real*: the warning previously logged
-        # ``fallback_enabled=True`` but did not actually call the
-        # setter, so a misconfigured deployment whose resolver had
-        # already returned False on a prior request would keep
-        # enforcement off even after this branch fires. Force the
-        # cache back to True so the operator-facing log claim
-        # matches process state.
         set_timeout_enforcement_enabled(value=True)
         logger.warning(
             API_APP_STARTUP,
@@ -345,8 +344,9 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             fallback_enabled=True,
         )
 
-    await _apply_sandbox_image_cache(app_state)
 
+def _wire_resolver_dependents(app_state: AppState) -> None:
+    """Push the active ``config_resolver`` into bridge-aware managers."""
     if app_state.oauth_token_manager is not None:
         app_state.oauth_token_manager.set_config_resolver(
             app_state.config_resolver,
@@ -359,12 +359,15 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
         app_state.escalation_notify_subscriber.set_config_resolver(
             app_state.config_resolver,
         )
-    _bus = app_state.message_bus if app_state.has_message_bus else None
-    if _bus is not None:
-        _set_resolver = getattr(_bus, "set_config_resolver", None)
-        if callable(_set_resolver):
-            _set_resolver(app_state.config_resolver)
+    bus = app_state.message_bus if app_state.has_message_bus else None
+    if bus is not None:
+        set_resolver = getattr(bus, "set_config_resolver", None)
+        if callable(set_resolver):
+            set_resolver(app_state.config_resolver)
 
+
+async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
+    """Apply the audit-chain signing timeout to every live sink."""
     try:
         signing_timeout = await app_state.config_resolver.get_float(
             SettingNamespace.OBSERVABILITY.value,
@@ -379,29 +382,55 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-    else:
-        from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
-            AuditChainSink,
-        )
-        from synthorg.observability.startup_wiring import (  # noqa: PLC0415
-            _iter_logging_handlers,
-        )
+        return
 
-        for _handler in _iter_logging_handlers():
-            if isinstance(_handler, AuditChainSink):
-                try:
-                    _handler.set_signing_timeout_seconds(signing_timeout)
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as exc:
-                    logger.warning(
-                        API_APP_STARTUP,
-                        setting=("observability.audit_chain_signing_timeout_seconds"),
-                        phase="apply_to_handler",
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
+    from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
+        AuditChainSink,
+    )
+    from synthorg.observability.startup_wiring import (  # noqa: PLC0415
+        _iter_logging_handlers,
+    )
 
+    for handler in _iter_logging_handlers():
+        if not isinstance(handler, AuditChainSink):
+            continue
+        try:
+            handler.set_signing_timeout_seconds(signing_timeout)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_APP_STARTUP,
+                setting="observability.audit_chain_signing_timeout_seconds",
+                phase="apply_to_handler",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+
+async def _apply_bridge_config(
+    app_state: AppState,
+    effective_config: RootConfig | None,
+) -> None:
+    """Apply operator-tuned API bridge settings during startup.
+
+    Idempotent via ``app_state.bridge_config_applied`` so a re-entering
+    Litestar lifespan (shared-app test fixtures, multi-lifespan runs)
+    does not churn httpx/SMTP clients or rebuild the OAuth flow.
+    """
+    if not app_state.has_config_resolver or app_state.bridge_config_applied:
+        return
+
+    await _validate_approval_urgency_invariant(app_state)
+    await _apply_api_bridge_config_snapshot(app_state)
+    await _apply_ws_ticket_settings(app_state)
+    await _apply_ws_auth_timeout(app_state)
+    await _apply_ws_dos_settings(app_state)
+    await _apply_auth_token_bytes(app_state)
+    await _apply_timeout_enforcement(app_state)
+    await _apply_sandbox_image_cache(app_state)
+    _wire_resolver_dependents(app_state)
+    await _apply_audit_chain_signing_timeout(app_state)
     await _apply_notification_dispatcher_config(app_state, effective_config)
 
     app_state.mark_bridge_config_applied()

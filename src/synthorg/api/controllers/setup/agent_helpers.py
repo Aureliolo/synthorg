@@ -1,7 +1,6 @@
 """Agent-side setup helpers: validation, bootstrap, tier coverage, embedder selection.
 
-Mirrors the responsibilities of the original ``setup_helpers.py``
-that touched agent-array shape, post-setup reload, agent bootstrap,
+Covers agent-array shape, post-setup reload, agent bootstrap,
 template-driven agent creation, provider-tier validation, and
 embedder auto-selection. Company-side helpers (locales, templates,
 password length) live in ``setup.company_helpers``.
@@ -210,13 +209,10 @@ def _validate_tier_coverage(providers: Mapping[str, Any]) -> None:
     """Reject provider sets that cannot satisfy tier classification.
 
     The model matcher tolerates fewer than three models per provider
-    (``_MIN_TIER_SIZE`` in ``model_matcher.py``: it returns all
-    models for every tier in that case), so the gate's job is just
-    to stop the truly empty case: zero models across all
-    registered providers, which is what produces the per-agent
-    ``no_models_available`` warnings the issue called out. Setups
-    with a couple of models continue to work; the matcher just
-    assigns the same model to every tier.
+    by returning all models for every tier in that case, so this gate
+    only blocks the truly empty case: zero models across all
+    registered providers. Setups with a couple of models continue
+    to work; the matcher just assigns the same model to every tier.
 
     Args:
         providers: Provider name -> config mapping resolved from

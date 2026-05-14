@@ -189,21 +189,30 @@ def normalize_ascii_lowercase_or_default(
     *,
     default: str = "",
 ) -> str:
-    """Normalise ``value or default`` via :func:`normalize_ascii_lowercase`.
+    """Normalise ``value`` (or ``default`` if blank) via ASCII lowercase.
 
     Replaces the ``(value or default)``-then-strip-then-lower idiom at
     NULL-coalescing call sites (model-affinity lookup, TLS-flag parse,
     setup boolean parse, classification-detector unit extraction).
+    Whitespace-only inputs fall through to ``default`` so an operator
+    submitting ``"   "`` for a TLS toggle gets the safe fallback rather
+    than a silently empty result.
 
     Args:
-        value: Optional string, possibly ``None`` or empty.
-        default: Fallback used when ``value`` is falsy. Must already be in
-            the desired final form; it is *not* re-normalised.
+        value: Optional string. ``None``, ``""``, and whitespace-only
+            inputs all trigger the fallback.
+        default: Fallback used when ``value`` is blank or None. Must
+            already be in the desired final form; it is *not*
+            re-normalised here (but is run through
+            :func:`normalize_ascii_lowercase` along with the chosen
+            input).
 
     Returns:
-        ``normalize_ascii_lowercase(value or default)``.
+        ``normalize_ascii_lowercase(value)`` when ``value`` has
+        non-whitespace content, else ``normalize_ascii_lowercase(default)``.
     """
-    return normalize_ascii_lowercase(value or default)
+    chosen = value if value and value.strip() else default
+    return normalize_ascii_lowercase(chosen)
 
 
 def extract_media_type(content_type_header: str) -> str:

@@ -1,13 +1,12 @@
 """Company-side setup helpers: locale handling, template loading, password length.
 
-Mirrors the responsibilities of the original ``setup_helpers.py``
-that touched company metadata, template resolution, locale storage,
-and setup-complete checks. Agent-side helpers (bootstrap, model
+Covers company metadata, template resolution, locale storage, and
+setup-complete checks. Agent-side helpers (bootstrap, model
 selection, tier coverage) live in ``setup.agent_helpers``.
 """
 
 import json
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.collections import dedupe_preserving_order
@@ -42,6 +41,11 @@ logger = get_logger(__name__)
 DEFAULT_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields[
     "min_password_length"
 ].default
+
+# Truncate persisted-locale corruption logs so a tampered DB blob
+# can't blow the structured-log payload while still surfacing enough
+# context for triage.
+LOCALE_RAW_PREVIEW_LIMIT: Final[int] = 200
 
 
 async def check_has_company(
@@ -214,7 +218,9 @@ def parse_locale_json(raw: str) -> list[str] | None:
         logger.warning(
             SETUP_NAME_LOCALES_CORRUPTED,
             reason="invalid_json_or_type",
-            raw=raw[:200] if isinstance(raw, str) and raw else None,
+            raw=(
+                raw[:LOCALE_RAW_PREVIEW_LIMIT] if isinstance(raw, str) and raw else None
+            ),
         )
         return None
     if not isinstance(parsed, list):

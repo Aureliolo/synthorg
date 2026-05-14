@@ -11,6 +11,7 @@ incomplete and bootstrap is deferred to ``POST /setup/complete``.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.setup import SETUP_AGENT_BOOTSTRAP_FAILED
@@ -107,7 +108,7 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
             "api",
             "setup_complete",
         )
-        is_complete = setup_entry.value == "true"
+        is_complete = normalize_ascii_lowercase_or_default(setup_entry.value) == "true"
     except asyncio.CancelledError:
         raise
     except MemoryError, RecursionError:

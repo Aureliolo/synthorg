@@ -180,12 +180,10 @@ def _build_trigger(
     Multi-select: ``config.triggers.types`` may list one or more
     discriminators. Each maps to a registered per-type builder; the
     results are composed via ``CompositeTrigger`` when more than one
-    trigger is enabled. An empty list falls back to a default
-    ``BatchedTrigger``.
+    trigger is enabled. An empty list falls back to a config-aware
+    ``BatchedTrigger`` built via ``_build_batched_trigger`` so the
+    operator-tuned ``triggers.batched_interval_seconds`` is honoured.
     """
-    from synthorg.engine.evolution.triggers.batched import (  # noqa: PLC0415
-        BatchedTrigger,
-    )
     from synthorg.engine.evolution.triggers.composite import (  # noqa: PLC0415
         CompositeTrigger,
     )
@@ -195,7 +193,7 @@ def _build_trigger(
         for t in config.triggers.types
     ]
     if not triggers:
-        triggers.append(BatchedTrigger())
+        triggers.append(_build_batched_trigger(config, tracker=tracker))
     if len(triggers) == 1:
         return triggers[0]
     return CompositeTrigger(triggers=tuple(triggers))

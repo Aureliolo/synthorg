@@ -242,8 +242,14 @@ def _build_async_task_tools(
     """
     if service is None:
         return ()
-    require_non_blank(supervisor_id, name="async_task_supervisor_id")
-    require_non_blank(supervisor_task_id, name="async_task_supervisor_task_id")
+    supervisor_id = require_non_blank(
+        supervisor_id,
+        name="async_task_supervisor_id",
+    )
+    supervisor_task_id = require_non_blank(
+        supervisor_task_id,
+        name="async_task_supervisor_task_id",
+    )
     from synthorg.tools.communication import (  # noqa: PLC0415
         CancelAsyncTaskTool,
         CheckAsyncTaskTool,

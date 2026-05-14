@@ -22,25 +22,38 @@ def is_valid_action_type(action_type: str) -> bool:
 def require_non_blank(value: object, *, name: str) -> str:
     """Return ``str(value)`` if non-blank, else raise ``ValueError``.
 
-    ``None`` and empty / whitespace-only strings both fail. Generic
-    helper for the "give me a non-blank string or fail loudly" pattern
-    repeated across factories. Domain wrappers wrap the call to
-    re-raise as their own ``<Domain><Condition>Error`` and to log
-    domain-specific events; this helper is intentionally
-    logging-free so callers retain full control of observability.
+    Accepts ``str | int | float``. ``None``, ``bool``, and any other
+    container or object types are rejected; empty / whitespace-only
+    strings are rejected; numeric values are stringified.
+
+    Bool and collection types stringify to non-empty (``"True"``,
+    ``"[]"``, ...), so a naive ``str(value).strip()`` check would
+    silently pass them and feed bogus identifiers downstream. The
+    explicit type whitelist forces those bugs to surface at the
+    boundary instead.
+
+    Generic helper for the "give me a non-blank string or fail loudly"
+    pattern repeated across factories. Domain wrappers wrap the call
+    to re-raise as their own ``<Domain><Condition>Error`` and to log
+    domain-specific events; this helper is intentionally logging-free
+    so callers retain full control of observability.
 
     Args:
-        value: Any object (most commonly ``str | None``).
+        value: ``str``, ``int``, or ``float`` (most commonly ``str | None``).
         name: Field or argument name surfaced in the error message.
 
     Returns:
         ``str(value)`` after non-blank validation.
 
     Raises:
-        ValueError: If ``value`` is ``None`` or, after ``str()`` and
-            ``.strip()``, is the empty string.
+        ValueError: If ``value`` is rejected by any of the rules above.
     """
-    if value is None or not str(value).strip():
+    if (
+        value is None
+        or isinstance(value, bool)
+        or not isinstance(value, str | int | float)
+        or not str(value).strip()
+    ):
         msg = f"{name} must be a non-blank string, got {value!r}"
         raise ValueError(msg)
     return str(value)
@@ -76,6 +89,9 @@ def coerce_positive_int(
         ValueError: If ``value`` is a string that does not parse to
             ``int``, or if the resulting integer is <= 0.
     """
+    if default <= 0:
+        msg = f"{name} default must be > 0, got {default}"
+        raise ValueError(msg)
     if value is None:
         return default
     if isinstance(value, bool):

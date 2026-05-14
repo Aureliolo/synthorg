@@ -71,7 +71,7 @@ class TestNormalizeAsciiLowercaseOrDefault:
             (None, "TRUE", "true"),
             (None, "", ""),
             ("  Mixed  ", "fallback", "mixed"),
-            (" ", "fallback", ""),
+            (" ", "fallback", "fallback"),
         ],
     )
     def test_basic(self, value: str | None, default: str, expected: str) -> None:
