@@ -121,6 +121,8 @@ from synthorg.security.timeout.policies import WaitForeverPolicy
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.security.timeout.timeout_checker import TimeoutChecker
 from synthorg.security.trust.service import TrustService  # noqa: TC001
+from synthorg.settings.bootstrap_resolver import resolve_init_value
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingsEncryptionError,
@@ -146,6 +148,36 @@ logger = get_logger(__name__)
 # bootstrap value will silently disagree with operator-editable
 # overrides resolved through ``ConfigResolver``.
 _DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS: Final[float] = 60.0
+
+
+def _parse_bool_token(raw: str) -> bool | None:
+    """Parse a boolean env-var token. Returns ``None`` for unknown values.
+
+    Accepts ``true``/``1``/``yes`` and ``false``/``0``/``no`` in any
+    ASCII case. Unknown tokens return ``None`` so the bootstrap
+    resolver falls back to the registered default.
+    """
+    token = normalize_ascii_lowercase(raw)
+    if token in ("true", "1", "yes"):
+        return True
+    if token in ("false", "0", "no"):
+        return False
+    return None
+
+
+def _resolve_rate_limiter_enabled() -> bool:
+    """Resolve ``api.rate_limiter_enabled`` at app construction time.
+
+    Cat-2 (``read_only_post_init=True``): env > default. The
+    ``SettingsService`` rejects runtime mutation, so the value baked
+    here lives for the process lifetime.
+    """
+    resolved = resolve_init_value(
+        SettingNamespace.API,
+        "rate_limiter_enabled",
+        parse=_parse_bool_token,
+    )
+    return bool(resolved.value)
 
 
 def _build_default_approval_timeout_scheduler(
@@ -610,35 +642,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         approval_timeout_scheduler,
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
-    # Resolve api.rate_limiter_enabled at boot.  The flag is
-    # restart_required=True + read_only_post_init=True so the DB
-    # layer is rejected at write time; only env > YAML > registry
-    # default participate.  Initialise from the YAML-baked
-    # ``api_config.rate_limiter_enabled`` and let the env override
-    # only when it provides an explicitly recognized token.  An
-    # unrecognized token (e.g. typo "yse") must NOT silently
-    # override the YAML or default value -- log a warning and keep
-    # the YAML value.
-    rate_limiter_enabled = api_config.rate_limiter_enabled
-    _rate_limit_env = normalize_ascii_lowercase(
-        os.environ.get("SYNTHORG_API_RATE_LIMITER_ENABLED", ""),
-    )
-    if _rate_limit_env == "":
-        pass  # YAML / registry default already applied above.
-    elif _rate_limit_env in ("true", "1", "yes"):
-        rate_limiter_enabled = True
-    elif _rate_limit_env in ("false", "0", "no"):
-        rate_limiter_enabled = False
-    else:
-        logger.warning(
-            API_APP_STARTUP,
-            note=(
-                "Unrecognized SYNTHORG_API_RATE_LIMITER_ENABLED value;"
-                " keeping the YAML / registry value"
-            ),
-            env_value=_rate_limit_env,
-            yaml_value=api_config.rate_limiter_enabled,
-        )
+    rate_limiter_enabled = _resolve_rate_limiter_enabled()
     if not rate_limiter_enabled:
         logger.warning(
             API_APP_STARTUP,

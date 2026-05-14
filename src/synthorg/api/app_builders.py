@@ -17,6 +17,8 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_MEMORY_DIR_TMPROOT_FALLBACK,
 )
+from synthorg.settings.bootstrap_resolver import resolve_init_value
+from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 
 # All four of ``CostTracker`` / ``ChiefOfStaffChat`` / ``ChiefOfStaffConfig``
@@ -50,16 +52,22 @@ _DEFAULT_MEMORY_DIR = Path("/data/memory")
 def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
     """Activate the structured logging pipeline.
 
-    Applies the ``SYNTHORG_LOG_DIR`` env var override (for Docker
-    volume paths) before calling :func:`bootstrap_logging`.
+    Resolves ``observability.log_directory`` via bootstrap_resolver
+    (env > default; DB bypassed for read_only_post_init). When an env
+    override is supplied, path-traversal is rejected before patching
+    the live config.
     """
     from synthorg.config import bootstrap_logging  # noqa: PLC0415
 
-    log_dir = os.environ.get("SYNTHORG_LOG_DIR", "").strip()
-    if not log_dir:
+    resolved = resolve_init_value(
+        SettingNamespace.OBSERVABILITY,
+        "log_directory",
+    )
+    if resolved.source != SettingSource.ENVIRONMENT:
         bootstrap_logging(effective_config)
         return effective_config
 
+    log_dir = str(resolved.value)
     if ".." in PurePath(log_dir).parts:
         msg = f"SYNTHORG_LOG_DIR contains '..' path traversal component: {log_dir!r}"
         raise ValueError(msg)
