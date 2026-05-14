@@ -116,6 +116,8 @@ See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md
 - `@eslint-react/web-api-no-leaked-fetch`: detect `fetch()` in effects without `AbortController` cleanup.
 - `@eslint-react/no-leaked-conditional-rendering`: catch the `{count && <Foo />}` bug where `0` renders verbatim. For `ReactNode | undefined` props use `{value != null && value !== false && <jsx>}`; for compound truthiness use `Boolean(...)`.
 - `@eslint-react/globals`: restrict `window` / `document` / `localStorage` / etc. inside render. Hoist offenders into a `useCallback` event handler, a `useEffect`, or a `useSyncExternalStore`-backed hook.
+- `@typescript-eslint/no-floating-promises`: forbids unawaited promises so async work cannot survive the test that scheduled it and trip the active-handle gate.
+- `@typescript-eslint/no-misused-promises` (with `checksVoidReturn: { attributes: false }`): forbids passing async functions where the callsite ignores the returned promise; React 19 `async` event handlers stay allowed via the `attributes: false` exemption, paired with the global error handler.
 
 Lint runs via `npm --prefix web run lint` with `--max-warnings 0`. To enumerate stale `eslint-disable` directives after a rule reshuffle: `npm --prefix web run lint -- --report-unused-disable-directives-severity=warn`.
 

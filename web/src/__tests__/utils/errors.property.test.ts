@@ -2,6 +2,12 @@ import fc from 'fast-check'
 import { vi } from 'vitest'
 import { getErrorMessage } from '@/utils/errors'
 
+// Honour ``FC_SEED`` so a CI failure can be reproduced locally:
+// ``FC_SEED=<n> npm --prefix web run test -- errors.property``.
+// Unset, fast-check picks its own seed each run (the default).
+const parsedSeed = Number.parseInt(process.env.FC_SEED ?? '', 10)
+const FC_SEED = Number.isFinite(parsedSeed) ? parsedSeed : undefined
+
 // Mock axios so the helper's classification logic is tested in
 // isolation: this property-test file only cares about
 // ``getErrorMessage``'s contract, not axios's adapter detection.
@@ -32,6 +38,7 @@ describe('errors property tests', () => {
         const msg = getErrorMessage(input)
         expect(msg.length).toBeGreaterThan(0)
       }),
+      { seed: FC_SEED },
     )
   })
 
@@ -46,6 +53,7 @@ describe('errors property tests', () => {
         const msg = getErrorMessage(error)
         expect(msg).not.toContain(body)
       }),
+      { seed: FC_SEED },
     )
   })
 })

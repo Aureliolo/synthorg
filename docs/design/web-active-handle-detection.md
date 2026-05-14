@@ -43,12 +43,16 @@ diffs against the snapshot. Survivors are classified:
   jsdom internals, vitest itself). It is ignored.
 
 Tracked types include `Timeout`, `Immediate`, `TCPWRAP`,
-`TCPSERVERWRAP`, `TCPCONNECTWRAP`, `UDPWRAP`, `PIPEWRAP`, `TLSWRAP`,
-`FSEVENTWRAP`, `FSREQCALLBACK`, `HTTPCLIENTREQUEST`,
-`HTTPINCOMINGMESSAGE`, `HTTP2*`, `ZLIB`, `CHILDPROCESS`,
-`SIGNALWRAP`, `STATWATCHER`, `WRITEWRAP`, `SHUTDOWNWRAP`, and
-`MESSAGEPORT`. `PROMISE`, `Microtask`, and DNS request types are
-deliberately excluded as non-event-loop-holding (they always settle).
+`TCPSERVERWRAP`, `TCPCONNECTWRAP`, `UDPWRAP`, `UDPSENDWRAP`,
+`PIPEWRAP`, `PIPECONNECTWRAP`, `TLSWRAP`, `FSEVENTWRAP`,
+`FSREQCALLBACK`, `HTTPCLIENTREQUEST`, `HTTPINCOMINGMESSAGE`,
+`HTTP2SESSION`, `HTTP2STREAM`, `HTTP2PING`, `HTTP2SETTINGS`, `ZLIB`,
+`CHILDPROCESS`, `SIGNALWRAP`, `STATWATCHER`, `WRITEWRAP`,
+`SHUTDOWNWRAP`, and `MESSAGEPORT`: the full enumeration lives at
+`TRACKED_TYPES_LIST` in `web/test-infra/active-handle-tracker.ts` and
+is the single source of truth. `PROMISE`, `Microtask`, and DNS
+request types are deliberately excluded as non-event-loop-holding
+(they always settle).
 
 Typical bug shapes the gate fires on:
 

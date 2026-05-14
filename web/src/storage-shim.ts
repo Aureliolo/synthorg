@@ -30,9 +30,14 @@
  *   Each ``Storage`` instance (one for ``localStorage``, one for
  *   ``sessionStorage``) gets its own ``Map`` via a module-level
  *   ``WeakMap`` keyed on the instance. Per-test isolation continues
- *   to live in caller hooks (``cancelSetupWizardPersist`` etc.) --
+ *   to live in caller hooks (``cancelSetupWizardPersist`` etc.):
  *   this module does NOT auto-reset between tests, matching jsdom's
  *   existing semantics.
+ *
+ * Prototype-pollution stance: the bucket is a ``Map``, so
+ * prototype-slot keys (``__proto__`` etc.) are stored as ordinary map
+ * entries and cannot mutate the prototype chain. No explicit key
+ * filter is required.
  */
 
 const stores = new WeakMap<Storage, Map<string, string>>()

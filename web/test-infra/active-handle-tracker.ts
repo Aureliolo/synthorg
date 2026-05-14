@@ -34,65 +34,33 @@ import { setImmediate as setImmediateP } from 'node:timers/promises'
 import { afterEach, beforeEach } from 'vitest'
 
 import { ALLOWLIST, type AllowlistEntry } from './active-handle-allowlist'
+import {
+  TRACKED_TYPES_LIST,
+  resolveLeakLogDir,
+  type LeakAttribution,
+  type LeakMode,
+  type LeakRecord,
+  type LeakType,
+} from './active-handle-shared'
 
-/**
- * Resource types we treat as event-loop-holding. The set is curated:
- * we intentionally exclude `PROMISE`, `Microtask`, `GETADDRINFOREQWRAP`,
- * `GETNAMEINFOREQWRAP`, `DNSCHANNEL` and similar request-style
- * resources that settle on their own. Keeping the filter tight is
- * what makes the signal precise, and keeps init-time stack capture
- * cheap.
- *
- * If a new bug class turns up that uses a handle type missing here
- * (e.g. `MESSAGEPORT` from `worker_threads`), add it.
- */
-const TRACKED_TYPES: ReadonlySet<string> = new Set([
-  'Timeout',
-  'Immediate',
-  'TCPWRAP',
-  'TCPSERVERWRAP',
-  'TCPCONNECTWRAP',
-  'UDPWRAP',
-  'UDPSENDWRAP',
-  'PIPEWRAP',
-  'PIPECONNECTWRAP',
-  'TLSWRAP',
-  'FSEVENTWRAP',
-  'FSREQCALLBACK',
-  'HTTPCLIENTREQUEST',
-  'HTTPINCOMINGMESSAGE',
-  'HTTP2SESSION',
-  'HTTP2STREAM',
-  'HTTP2PING',
-  'HTTP2SETTINGS',
-  'ZLIB',
-  'CHILDPROCESS',
-  'SIGNALWRAP',
-  'STATWATCHER',
-  'WRITEWRAP',
-  'SHUTDOWNWRAP',
-  'MESSAGEPORT',
-])
+export type {
+  LeakAttribution,
+  LeakMode,
+  LeakRecord,
+  LeakType,
+} from './active-handle-shared'
+export { TRACKED_TYPES_LIST } from './active-handle-shared'
 
-type LeakMode = 'log' | 'fail'
+const TRACKED_TYPES: ReadonlySet<LeakType> = new Set(TRACKED_TYPES_LIST)
 
 interface HandleRecord {
-  type: string
-  stack: string
+  type: LeakType
+  // V8 formats Error.stack lazily on first read; storing the Error
+  // and deferring the .stack access until a leak is actually detected
+  // keeps the async_hooks init callback cheap enough not to perturb
+  // microtask timing in fake-timer-driven test loops.
+  error: Error
   createdAtMs: number
-}
-
-interface LeakRecord {
-  asyncId: number
-  type: string
-  testName: string
-  testFile: string
-  userFrame: string | null
-  allowlisted: boolean
-  allowlistReason: string | null
-  stack: string
-  ageMs: number
-  mode: LeakMode
 }
 
 const liveHandles = new Map<number, HandleRecord>()
@@ -141,7 +109,7 @@ export function findUserFrame(stack: string): string | null {
 }
 
 export function matchAllowlist(
-  type: string,
+  type: LeakType,
   stack: string,
   allowlist: readonly AllowlistEntry[] = ALLOWLIST,
 ): AllowlistEntry | null {
@@ -154,11 +122,19 @@ export function matchAllowlist(
 
 const hook = createHook({
   init(asyncId, type) {
-    if (!TRACKED_TYPES.has(type)) return
-    const stack = new Error().stack ?? ''
+    // Node's async_hooks signature delivers ``type`` as ``string``;
+    // the ``has`` check narrows membership to ``LeakType`` so the
+    // downstream cast is sound. TypeScript cannot narrow through
+    // ``Set.has``, hence the explicit casts on both lines.
+    if (!(TRACKED_TYPES as ReadonlySet<string>).has(type)) return
+    // Construct the Error WITHOUT reading ``.stack``: V8 captures
+    // raw frame pointers eagerly but defers string formatting until
+    // first read, so the hot path stays free of the per-init
+    // formatting cost. ``.stack`` is materialised in ``afterEach``
+    // only for handles that actually leaked.
     liveHandles.set(asyncId, {
-      type,
-      stack,
+      type: type as LeakType,
+      error: new Error(),
       createdAtMs: performance.now(),
     })
   },
@@ -172,10 +148,9 @@ hook.enable()
 // regression test in ``src/__tests__/_infra/active-handle-reporter.test.ts``)
 // redirect a child vitest run's NDJSON output to an isolated dir so
 // the parent's main-process reporter does not slurp the child's leak
-// records. Defaults to ``<cwd>/.test-tmp``, where the bundled
-// reporter looks.
-const LEAK_LOG_DIR =
-  process.env.ACTIVE_HANDLE_LOG_DIR ?? join(process.cwd(), '.test-tmp')
+// records. Validation enforces that the redirect stays inside the
+// project tree.
+const LEAK_LOG_DIR = resolveLeakLogDir(process.env.ACTIVE_HANDLE_LOG_DIR)
 const LEAK_LOG_FILE = join(
   LEAK_LOG_DIR,
   `handle-leaks-${String(process.pid)}.ndjson`,
@@ -266,18 +241,25 @@ afterEach(async () => {
 
   for (const [asyncId, info] of liveHandles) {
     if (snapshot.has(asyncId)) continue
-    const userFrame = findUserFrame(info.stack)
+    // Materialise the deferred stack only for leaked handles. For a
+    // healthy test this loop body never runs, so the formatting cost
+    // is paid once per genuine leak rather than once per tracked
+    // resource init.
+    const stack = info.error.stack ?? ''
+    const userFrame = findUserFrame(stack)
     if (userFrame === null) continue
-    const allow = matchAllowlist(info.type, info.stack)
+    const allow = matchAllowlist(info.type, stack)
+    const attribution: LeakAttribution = allow !== null
+      ? { allowlisted: true, allowlistReason: allow.reason }
+      : { allowlisted: false, allowlistReason: null }
     leaks.push({
+      ...attribution,
       asyncId,
       type: info.type,
       testName: task.name,
       testFile: task.file,
       userFrame,
-      allowlisted: allow !== null,
-      allowlistReason: allow?.reason ?? null,
-      stack: info.stack,
+      stack,
       ageMs: now - info.createdAtMs,
       mode,
     })

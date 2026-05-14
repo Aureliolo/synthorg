@@ -23,13 +23,15 @@
  * here.
  */
 
+import type { LeakType } from './active-handle-shared'
+
 export interface AllowlistEntry {
   /**
-   * Resource type as reported by Node's `async_hooks` init callback,
-   * e.g. `Timeout`, `TCPWRAP`, `PIPEWRAP`, `FSEVENTWRAP`. Match is
-   * exact and case-sensitive.
+   * Resource type as reported by Node's `async_hooks` init callback.
+   * Restricted to the tracker's `LeakType` literal union so entries
+   * cannot reference resource names the tracker would never emit.
    */
-  type: string
+  type: LeakType
 
   /**
    * Regex applied to the captured creation stack. The match is against

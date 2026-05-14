@@ -23,6 +23,7 @@ import { dirname, join, resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import type { AllowlistEntry } from '../../../test-infra/active-handle-allowlist'
 import {
   findUserFrame,
   isUserFrame,
@@ -118,7 +119,7 @@ describe('matchAllowlist', () => {
       type: 'Timeout',
       framePattern: /jsdom-internal/,
       reason: 'structural floor',
-    }
+    } as const satisfies AllowlistEntry
     expect(
       matchAllowlist('Timeout', 'at jsdom-internal-thing', [entry]),
     ).toBe(entry)
@@ -129,7 +130,7 @@ describe('matchAllowlist', () => {
       type: 'Timeout',
       framePattern: /jsdom-internal/,
       reason: 'structural floor',
-    }
+    } as const satisfies AllowlistEntry
     expect(
       matchAllowlist('Timeout', 'at user-code', [entry]),
     ).toBeNull()
@@ -140,7 +141,7 @@ describe('matchAllowlist', () => {
       type: 'TCPWRAP',
       framePattern: /jsdom-internal/,
       reason: 'structural floor',
-    }
+    } as const satisfies AllowlistEntry
     expect(
       matchAllowlist('Timeout', 'at jsdom-internal', [entry]),
     ).toBeNull()

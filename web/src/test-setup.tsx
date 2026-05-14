@@ -274,6 +274,11 @@ beforeEach(() => {
   useThemeStore.getState().reattach()
 })
 
+// Each teardown step below is independent of the others (no
+// inter-store dependency), so the ordering is alphabetical-ish only
+// for human readability. The invariant the active-handle gate
+// requires is that every store that schedules a timer or attaches a
+// listener registers ITS OWN teardown call in this block.
 afterEach(() => {
   useToastStore.getState().dismissAll()
   // Notifications store debounces localStorage persistence with a 300ms

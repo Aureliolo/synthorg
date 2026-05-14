@@ -20,23 +20,19 @@ import { join } from 'node:path'
 
 import type { Reporter } from 'vitest/node'
 
-interface LeakRecord {
-  asyncId: number
-  type: string
-  testName: string
-  testFile: string
-  userFrame: string | null
-  allowlisted: boolean
-  allowlistReason: string | null
-  stack: string
-  ageMs: number
-  mode: 'log' | 'fail'
-}
+import {
+  resolveLeakLogDir,
+  type LeakMode,
+  type LeakRecord,
+} from './active-handle-shared'
 
 export interface ActiveHandleReporterOptions {
   /**
    * Override directory for the per-worker NDJSON files. Defaults to
-   * `<cwd>/.test-tmp`. Must agree with the tracker's `LEAK_LOG_DIR`.
+   * `<project-root>/.test-tmp`, matching the tracker's `LEAK_LOG_DIR`.
+   * The path is resolved against the project root and must not escape
+   * it; the same `resolveLeakLogDir` validator the tracker uses
+   * applies here.
    */
   logDir?: string
 
@@ -48,20 +44,62 @@ export interface ActiveHandleReporterOptions {
   emitTelemetry?: boolean
 }
 
-interface TelemetryArtifact {
+export interface TelemetryArtifact {
   schemaVersion: 1
   generatedAt: string
-  mode: 'log' | 'fail'
+  mode: LeakMode
   totalLeaks: number
   unallowedLeaks: number
   byType: Record<string, number>
-  byTest: Array<{
+  byTest: ReadonlyArray<{
     testName: string
     testFile: string
     leakCount: number
     types: string[]
   }>
-  records: LeakRecord[]
+  records: readonly LeakRecord[]
+}
+
+/**
+ * Build a `TelemetryArtifact` from a flat list of `LeakRecord`s.
+ * Centralises aggregate computation so that `totalLeaks`,
+ * `unallowedLeaks`, `byType`, and `byTest` are derived from the same
+ * input in one place, and cannot drift relative to `records`.
+ */
+export function createTelemetryArtifact(
+  records: readonly LeakRecord[],
+): TelemetryArtifact {
+  const byType: Record<string, number> = {}
+  const buckets = new Map<string, LeakRecord[]>()
+  for (const r of records) {
+    byType[r.type] = (byType[r.type] ?? 0) + 1
+    const key = `${r.testFile}::${r.testName}`
+    let bucket = buckets.get(key)
+    if (bucket === undefined) {
+      bucket = []
+      buckets.set(key, bucket)
+    }
+    bucket.push(r)
+  }
+  const byTest = [...buckets.entries()].map(([key, bucket]) => {
+    const [testFile, testName] = key.split('::', 2) as [string, string]
+    return {
+      testName,
+      testFile,
+      leakCount: bucket.length,
+      types: [...new Set(bucket.map(r => r.type))],
+    }
+  })
+  return {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    mode: records[0]?.mode ?? 'log',
+    totalLeaks: records.length,
+    unallowedLeaks: records.filter(r => !r.allowlisted).length,
+    byType,
+    byTest,
+    records,
+  }
 }
 
 export default class ActiveHandleReporter implements Reporter {
@@ -69,7 +107,11 @@ export default class ActiveHandleReporter implements Reporter {
   private readonly emitTelemetry: boolean
 
   constructor(options: ActiveHandleReporterOptions = {}) {
-    this.logDir = options.logDir ?? join(process.cwd(), '.test-tmp')
+    // Resolve through the same validator the tracker uses so a
+    // hostile ``ACTIVE_HANDLE_LOG_DIR`` (or test-time options bag)
+    // cannot redirect the ``rmSync`` below to a path outside the
+    // project tree.
+    this.logDir = resolveLeakLogDir(options.logDir)
     this.emitTelemetry =
       options.emitTelemetry ?? process.env.CI === 'true'
   }
@@ -186,42 +228,8 @@ export default class ActiveHandleReporter implements Reporter {
     }
   }
 
-  private writeTelemetry(records: LeakRecord[]): void {
-    const byType: Record<string, number> = {}
-    for (const r of records) {
-      byType[r.type] = (byType[r.type] ?? 0) + 1
-    }
-    const buckets = new Map<string, LeakRecord[]>()
-    for (const r of records) {
-      const key = `${r.testFile}::${r.testName}`
-      let bucket = buckets.get(key)
-      if (bucket === undefined) {
-        bucket = []
-        buckets.set(key, bucket)
-      }
-      bucket.push(r)
-    }
-    const byTest = [...buckets.entries()].map(([key, bucket]) => {
-      const [testFile, testName] = key.split('::', 2) as [string, string]
-      return {
-        testName,
-        testFile,
-        leakCount: bucket.length,
-        types: [...new Set(bucket.map(r => r.type))],
-      }
-    })
-
-    const artifact: TelemetryArtifact = {
-      schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
-      mode: records[0]?.mode ?? 'log',
-      totalLeaks: records.length,
-      unallowedLeaks: records.filter(r => !r.allowlisted).length,
-      byType,
-      byTest,
-      records,
-    }
-
+  private writeTelemetry(records: readonly LeakRecord[]): void {
+    const artifact = createTelemetryArtifact(records)
     const path = join(this.logDir, 'handle-telemetry.json')
     try {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- self-managed cache dir

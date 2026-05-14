@@ -510,6 +510,10 @@ jobs:
           # lands as plain ASCII in CI logs (helpful for downstream
           # log-scrapers and the on-failure artifact upload).
           NO_COLOR: '1'
+          # Pin the active-handle gate's mode explicitly so a shell
+          # default of ACTIVE_HANDLE_MODE=log on the runner cannot
+          # silently downgrade the gate from blocking to advisory.
+          ACTIVE_HANDLE_MODE: 'fail'
         run: npm run test -- --coverage
       - name: Upload active-handle telemetry artifact
         if: always()
