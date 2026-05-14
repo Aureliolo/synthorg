@@ -118,7 +118,7 @@ function BudgetBurnChartInner({ trendData, forecast, budgetTotal, budgetRemainin
           {forecast && (
             <>
               <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend, forecast.currency)} />
-              {forecast.days_until_exhausted !== null && (
+              {forecast.days_until_exhausted != null && (
                 <StatPill label="Days left" value={forecast.days_until_exhausted} />
               )}
             </>

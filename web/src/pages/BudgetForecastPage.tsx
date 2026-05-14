@@ -76,7 +76,7 @@ export default function BudgetForecastPage() {
         value: forecast.days_until_exhausted != null
           ? String(forecast.days_until_exhausted)
           : 'N/A',
-        subText: computeExhaustionDate(forecast.days_until_exhausted) ?? undefined,
+        subText: computeExhaustionDate(forecast.days_until_exhausted ?? null) ?? undefined,
       },
       {
         label: 'CONFIDENCE',

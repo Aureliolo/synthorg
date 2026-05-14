@@ -124,7 +124,7 @@ export function SpendBurnChart({
           {forecast && (
             <>
               <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend, currency)} />
-              {forecast.days_until_exhausted !== null && (
+              {forecast.days_until_exhausted != null && (
                 <StatPill label="Days left" value={forecast.days_until_exhausted} />
               )}
               <StatPill label="Confidence" value={Number.isFinite(forecast.confidence) ? `${Math.round(forecast.confidence * 100)}%` : '--'} />
