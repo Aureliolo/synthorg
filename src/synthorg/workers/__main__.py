@@ -61,7 +61,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Number of concurrent workers in this process "
-            f"(default: env SYNTHORG_WORKER_COUNT or {_DEFAULT_WORKER_COUNT})."
+            f"(default: env SYNTHORG_WORKERS or {_DEFAULT_WORKER_COUNT})."
         ),
     )
     parser.add_argument(
@@ -80,14 +80,14 @@ def _build_parser() -> argparse.ArgumentParser:
 def _resolve_worker_count(explicit: int | None) -> int | None:
     """Resolve the effective worker count from flag + env var.
 
-    Precedence: explicit ``--workers`` > ``SYNTHORG_WORKER_COUNT`` env var
+    Precedence: explicit ``--workers`` > ``SYNTHORG_WORKERS`` env var
     > :data:`_DEFAULT_WORKER_COUNT`. Returns ``None`` when the env var
     exists but is not a valid integer so the caller can surface a
     structured usage error instead of crashing in argparse.
     """
     if explicit is not None:
         return explicit
-    env_value = os.environ.get("SYNTHORG_WORKER_COUNT")
+    env_value = os.environ.get("SYNTHORG_WORKERS")
     if env_value is None:
         return _DEFAULT_WORKER_COUNT
     try:
@@ -104,7 +104,7 @@ async def _async_main(argv: list[str]) -> int:
         logger.error(
             WORKERS_MAIN_INVALID_WORKER_COUNT,
             workers=resolved,
-            env_value=os.environ.get("SYNTHORG_WORKER_COUNT"),
+            env_value=os.environ.get("SYNTHORG_WORKERS"),
         )
         return 2
     args.workers = resolved

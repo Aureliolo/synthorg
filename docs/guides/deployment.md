@@ -99,7 +99,7 @@ These environment variables are read by the code but were previously undocumente
 | `SYNTHORG_TRACE_SERVICE_NAME` | `synthorg` | Service name attached to all emitted trace spans. |
 | `SYNTHORG_TRACE_SAMPLING_RATIO` | `1.0` | Trace sampling ratio (0.0 = none, 1.0 = every request). |
 | `SYNTHORG_CONFIG_PATH` | `company.yaml` | Path to the company configuration YAML file. Relative paths resolve against the working directory. |
-| `SYNTHORG_WORKER_COUNT` | from config | Number of concurrent workers for the distributed task queue. Only consulted when the worker process is launched via `python -m synthorg.workers`. |
+| `SYNTHORG_WORKERS` | from config | Number of concurrent workers for the distributed task queue. Only consulted when the worker process is launched via `python -m synthorg.workers`. |
 | `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `15002` | HTTP health check port exposed by the embedding fine-tune sidecar container. Adjust only if the default collides with another service. |
 
 ### Settings-registry env vars
