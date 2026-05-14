@@ -16,9 +16,16 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.settings import (
+    SETTINGS_NOT_FOUND,
+    SETTINGS_VALIDATION_FAILED,
+)
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.registry import get_registry
+
+logger = get_logger(__name__)
 
 
 def _env_var_name(namespace: str, key: str) -> str:
@@ -81,6 +88,12 @@ def resolve_init_value(  # noqa: UP047
     registry = get_registry()
     definition = registry.get(str(namespace), key)
     if definition is None:
+        logger.warning(
+            SETTINGS_NOT_FOUND,
+            namespace=str(namespace),
+            key=key,
+            phase="bootstrap_resolver",
+        )
         msg = f"Unknown setting: {namespace}/{key}"
         raise SettingNotFoundError(msg)
 
@@ -115,6 +128,14 @@ def resolve_init_value(  # noqa: UP047
             # for its setting -- either way the typed contract is
             # broken and callers expecting T must not receive the raw
             # string default.
+            logger.error(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=str(namespace),
+                key=key,
+                default=default,
+                phase="bootstrap_resolver",
+                reason="parser_rejected_registered_default",
+            )
             msg = (
                 f"Invalid registered default for {namespace}/{key}:"
                 f" {default!r} (parser returned None)"
