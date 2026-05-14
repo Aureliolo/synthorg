@@ -153,10 +153,10 @@ describe('useProjectsStore', () => {
 
       const result = await useProjectsStore
         .getState()
-        .createProject({ name: 'New Project' })
+        .createProject({ name: 'New Project', description: '', team: [], budget: 0 })
 
       expect(result).toEqual(project)
-      expect(capturedBody).toEqual({ name: 'New Project' })
+      expect(capturedBody).toEqual({ name: 'New Project', description: '', team: [], budget: 0 })
 
       const state = useProjectsStore.getState()
       expect(state.projects).toContainEqual(project)
@@ -174,7 +174,7 @@ describe('useProjectsStore', () => {
 
       const result = await useProjectsStore
         .getState()
-        .createProject({ name: 'Fail' })
+        .createProject({ name: 'Fail', description: '', team: [], budget: 0 })
 
       expect(result).toBeNull()
       expect(useProjectsStore.getState().projects).toEqual([])

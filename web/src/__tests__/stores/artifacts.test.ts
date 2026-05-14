@@ -156,6 +156,8 @@ describe('useArtifactsStore', () => {
         path: 'src/new.py',
         task_id: 'task-1',
         created_by: 'alice',
+        description: '',
+        content_type: '',
       })
 
       expect(result).toEqual(created)
@@ -184,6 +186,8 @@ describe('useArtifactsStore', () => {
         path: 'src/new.py',
         task_id: 'task-1',
         created_by: 'alice',
+        description: '',
+        content_type: '',
       })
 
       expect(result).toBeNull()
@@ -228,6 +232,8 @@ describe('useArtifactsStore', () => {
         path: 'src/new.py',
         task_id: 'task-1',
         created_by: 'alice',
+        description: '',
+        content_type: '',
       })
 
       // Even before the stale fetch settles, the create has cleared the

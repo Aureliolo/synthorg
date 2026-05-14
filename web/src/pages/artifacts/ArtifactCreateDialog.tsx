@@ -78,8 +78,8 @@ export function ArtifactCreateDialog({ open, onOpenChange, onCreate }: ArtifactC
         path: form.path.trim(),
         task_id: form.task_id.trim(),
         created_by: form.created_by.trim(),
-        ...(form.description.trim() ? { description: form.description.trim() } : {}),
-        ...(form.content_type.trim() ? { content_type: form.content_type.trim() } : {}),
+        description: form.description.trim(),
+        content_type: form.content_type.trim(),
         ...(form.project_id.trim() ? { project_id: form.project_id.trim() } : {}),
       }
       const created = await onCreate(payload)
