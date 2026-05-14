@@ -857,7 +857,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self,
     ) -> VersioningService[EntityDefinition]:
         """Construct the ontology versioning service bound to this backend."""
-        from synthorg.ontology.versioning import (  # noqa: PLC0415
+        from synthorg.persistence.postgres.ontology_versioning import (  # noqa: PLC0415
             create_postgres_ontology_versioning,
         )
 

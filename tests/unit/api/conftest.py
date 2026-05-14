@@ -44,11 +44,11 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.security.audit import AuditLog
 from synthorg.security.trust.config import TrustConfig
-from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
 from synthorg.security.trust.service import TrustService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
+from tests._shared.trust import NoOpTrustStrategy
 from tests.unit.api.fakes import (
     FakeArtifactStorage,
     FakeMessageBus,
@@ -377,7 +377,7 @@ def audit_log() -> AuditLog:
 @pytest.fixture(scope="session")
 def trust_service() -> TrustService:
     return TrustService(
-        strategy=DisabledTrustStrategy(),
+        strategy=NoOpTrustStrategy(),
         config=TrustConfig(),
     )
 

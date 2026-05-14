@@ -22,7 +22,7 @@ from pydantic import ValidationError
 from synthorg import __version__
 from synthorg.api.app_builders import (
     _bootstrap_app_logging,
-    _build_default_trust_service,
+    _build_configured_trust_service,
     _build_performance_tracker,
     _build_telemetry_collector,
     build_chief_of_staff_chat,
@@ -454,7 +454,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if coordination_metrics_store is None:
         coordination_metrics_store = CoordinationMetricsStore()
     if trust_service is None:
-        trust_service = _build_default_trust_service()
+        trust_service = _build_configured_trust_service(effective_config.trust)
 
     app_state = AppState(
         config=effective_config,

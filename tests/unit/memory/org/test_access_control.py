@@ -109,4 +109,7 @@ class TestWriteAccessConfigImmutability:
     def test_rules_immutable(self) -> None:
         config = WriteAccessConfig()
         with pytest.raises(TypeError):
-            config.rules[OrgFactCategory.CORE_POLICY] = CategoryWriteRule()
+            # ``rules`` is annotated ``Mapping`` for the type boundary
+            # but is a ``MappingProxyType`` at runtime; the assignment
+            # below is rejected by the proxy with ``TypeError``.
+            config.rules[OrgFactCategory.CORE_POLICY] = CategoryWriteRule()  # type: ignore[index]

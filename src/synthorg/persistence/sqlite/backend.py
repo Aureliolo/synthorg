@@ -756,7 +756,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self,
     ) -> VersioningService[EntityDefinition]:
         """Construct the ontology versioning service bound to this backend."""
-        from synthorg.ontology.versioning import (  # noqa: PLC0415
+        from synthorg.persistence.sqlite.ontology_versioning import (  # noqa: PLC0415
             create_ontology_versioning,
         )
 

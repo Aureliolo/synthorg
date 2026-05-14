@@ -130,6 +130,16 @@ class BackupService(BackupServiceArchiveMixin):
         compress: bool | None = None,
     ) -> BackupManifest:
         """Create a new backup."""
+        # ``locked()`` is a fast-path observation, not an atomic gate:
+        # if a concurrent caller acquires the lock between the check
+        # and the ``async with`` below, this caller queues rather than
+        # raising. That is intentional. The lock is shared with
+        # ``restore_from_backup`` (which calls ``_do_backup`` for the
+        # safety backup), so a stricter "fail unless we won the race"
+        # primitive would have to special-case the nested-acquire path
+        # used by restore. The current behaviour gives operators fast
+        # 409s in the common case and serialises in the rare race
+        # window without breaking restore's safety backup invariant.
         if self._backup_lock.locked():
             logger.warning(BACKUP_IN_PROGRESS, trigger=trigger.value)
             msg = "A backup is already in progress"
@@ -206,6 +216,14 @@ class BackupService(BackupServiceArchiveMixin):
         await asyncio.to_thread(self._backup_path.mkdir, parents=True, exist_ok=True)
         await asyncio.to_thread(backup_dir.mkdir, parents=True, exist_ok=True)
 
+        # Per-component handlers run sequentially: backups for the
+        # SQLite DB, on-disk memory, and on-disk config can share file
+        # handles or connection pools that do not tolerate concurrent
+        # writers. The manifest is written AFTER the loop, and the
+        # outer ``_do_backup`` wraps this whole method in a try/except
+        # that ``shutil.rmtree``s ``backup_dir`` before re-raising, so
+        # any handler failure leaves no manifest and no partial dir on
+        # disk: the rollback is all-or-nothing at the directory level.
         backed_up_components: list[BackupComponent] = []
         total_size = 0
         for comp in effective_components:

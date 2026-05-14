@@ -623,7 +623,6 @@ class TestEventConstants:
             ("ORG_MEMORY_WRITE_DENIED", "org_memory.write.denied"),
             ("ORG_MEMORY_WRITE_FAILED", "org_memory.write.failed"),
             ("ORG_MEMORY_POLICIES_LISTED", "org_memory.policies.listed"),
-            ("ORG_MEMORY_BACKEND_CREATED", "org_memory.backend.created"),
             ("ORG_MEMORY_CONNECT_FAILED", "org_memory.store.connect_failed"),
             (
                 "ORG_MEMORY_DISCONNECT_FAILED",
@@ -634,7 +633,6 @@ class TestEventConstants:
                 "ORG_MEMORY_ROW_PARSE_FAILED",
                 "org_memory.store.row_parse_failed",
             ),
-            ("ORG_MEMORY_CONFIG_INVALID", "org_memory.config.invalid"),
             ("ORG_MEMORY_MODEL_INVALID", "org_memory.model.invalid"),
         ],
     )

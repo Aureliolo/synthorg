@@ -310,6 +310,31 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # The backup-conformance suite shells out to ``pg_dump`` and
+      # ``pg_restore`` against a postgres:18-alpine testcontainer; both
+      # tools must be the same major version or newer than the server.
+      # The Ubuntu runner image ships an older postgresql-client by
+      # default, and the ``/usr/bin/pg_restore`` shim from
+      # ``postgresql-common`` does not always dispatch to the newest
+      # installed client when reading a dump file (it fell back to v16
+      # and rejected the 1.16 dump format produced by pg_dump 18).
+      # Install postgresql-client-18 from the PGDG apt repo and prepend
+      # ``/usr/lib/postgresql/18/bin`` to ``$GITHUB_PATH`` so the test
+      # step calls v18 binaries directly without going through the
+      # version-dispatch shim.
+      - name: Install PostgreSQL 18 client (pg_dump / pg_restore)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/18/bin/pg_dump --version
+          /usr/lib/postgresql/18/bin/pg_restore --version
+
       - name: Postgres drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 

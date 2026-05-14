@@ -31,7 +31,8 @@ from synthorg.communication.conflict_resolution.escalation.notify import (
     NoopEscalationNotifySubscriber,
 )
 from synthorg.communication.conflict_resolution.escalation.processors import (
-    HumanDecisionProcessor,
+    HybridDecisionProcessor,
+    WinnerOnlyDecisionProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     DecisionProcessor,
@@ -53,12 +54,13 @@ __all__ = [
     "EscalationQueueConfig",
     "EscalationQueueStore",
     "EscalationStatus",
-    "HumanDecisionProcessor",
+    "HybridDecisionProcessor",
     "InMemoryEscalationStore",
     "NoopEscalationNotifySubscriber",
     "PendingFuturesRegistry",
     "RejectDecision",
     "WinnerDecision",
+    "WinnerOnlyDecisionProcessor",
     "build_decision_processor",
     "build_escalation_notify_subscriber",
     "build_escalation_queue_store",

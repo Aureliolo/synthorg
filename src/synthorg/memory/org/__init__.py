@@ -1,4 +1,4 @@
-"""Shared organizational memory -- protocols, models, config, and factory.
+"""Shared organizational memory: protocols, models, config, backend.
 
 Re-exports the public API so consumers can import from
 ``synthorg.memory.org`` directly.
@@ -19,7 +19,6 @@ from synthorg.memory.org.errors import (
     OrgMemoryQueryError,
     OrgMemoryWriteError,
 )
-from synthorg.memory.org.factory import create_org_memory_backend
 from synthorg.memory.org.hybrid_backend import HybridPromptRetrievalBackend
 from synthorg.memory.org.models import (
     OperationLogEntry,
@@ -53,6 +52,5 @@ __all__ = [
     "OrgMemoryWriteError",
     "WriteAccessConfig",
     "check_write_access",
-    "create_org_memory_backend",
     "require_write_access",
 ]
