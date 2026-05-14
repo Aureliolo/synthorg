@@ -143,6 +143,26 @@ function resetStore() {
   MockWebSocket.clear()
 }
 
+// Pump fake-timer backoff ticks AND real macrotasks until the store
+// reports exhaustion. The naive ``for (i=0; i<20)`` shape races MSW's
+// undici-backed ticket-fetch rejection chain, which settles on REAL
+// microtasks + setImmediate hops (``queueMicrotask`` is intentionally
+// excluded from ``toFake`` so undici can flush). Without a real-
+// macrotask drain between iterations, a fast iteration can advance
+// past the 30s backoff ceiling before the previous rejection has
+// reached ``scheduleReconnect()``, so the loop runs all 20 iterations
+// while ``reconnectAttempts`` lags behind and exhaustion never flips.
+// Capped at 60 passes (3x ``WS_MAX_RECONNECT_ATTEMPTS``) so an actual
+// scheduler bug surfaces as a test failure rather than a hang.
+async function drainUntilReconnectExhausted(): Promise<void> {
+  for (let i = 0; i < 60; i++) {
+    if (useWebSocketStore.getState().reconnectExhausted) return
+    await vi.advanceTimersByTimeAsync(30_000)
+    await vi.runAllTimersAsync()
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
+}
+
 describe('websocket store', () => {
   beforeEach(() => {
     resetStore()
@@ -841,10 +861,7 @@ const connectPromise = useWebSocketStore.getState().connect()
       await expect(
         useWebSocketStore.getState().connect(),
       ).rejects.toThrow('connection refused')
-      for (let i = 0; i < 20; i++) {
-        await vi.advanceTimersByTimeAsync(30_000)
-        await vi.runAllTimersAsync()
-      }
+      await drainUntilReconnectExhausted()
       expect(useWebSocketStore.getState().reconnectExhausted).toBe(true)
 
       const callsBefore = ticketState.calls
