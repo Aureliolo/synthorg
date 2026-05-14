@@ -179,6 +179,11 @@ python -c "
 import json, sys, re
 from datetime import datetime, timedelta
 
+# Events excluded from synthorg.log (mirror of SINK_EVENT_EXCLUDES in
+# src/synthorg/observability/sinks.py). Re-read that file if the set
+# has grown since this skill was last edited.
+excluded_events = {'api.request.started', 'api.request.completed'}
+
 # Parse Docker logs (console format)
 docker_entries = []
 with open('logs/docker-stdout.txt') as f:
@@ -219,6 +224,8 @@ missing = []
 for entry in docker_entries:
     key = (entry['event'], entry['logger'])
     if entry['event'] == '?':
+        continue
+    if entry['event'] in excluded_events:
         continue
     if key not in file_events:
         missing.append(entry)

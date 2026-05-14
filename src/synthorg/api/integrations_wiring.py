@@ -110,6 +110,31 @@ def _wire_mcp_installations_repo(
     return None
 
 
+def _wire_tunnel_provider(auth_token_env: str) -> TunnelProvider | None:
+    """Wire the tunnel adapter unconditionally (no persistence dep).
+
+    Best-effort: a missing adapter module or constructor failure must
+    not abort app startup. The dashboard's tunnel toggle simply
+    degrades to "unavailable" when this returns ``None``.
+    """
+    try:
+        from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
+            NgrokAdapter,
+        )
+
+        provider = NgrokAdapter(auth_token_env=auth_token_env)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            note="tunnel provider auto-wire failed (non-fatal)",
+        )
+        return None
+    logger.info(API_SERVICE_AUTO_WIRED, service="tunnel_provider")
+    return provider
+
+
 def _resolve_secret_db_path(
     persistence: PersistenceBackend,
     *,
@@ -205,15 +230,12 @@ def auto_wire_integrations(  # noqa: PLR0913
         mcp_installations_repo=_wire_mcp_installations_repo(persistence),
     )
 
-    # Wired unconditionally (no persistence / OAuth deps) so the dashboard toggle works.
-    from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
-        NgrokAdapter,
+    # Wired unconditionally (no persistence / OAuth deps) so the
+    # dashboard toggle works even when the rest of integrations are
+    # disabled.
+    bundle.tunnel_provider = _wire_tunnel_provider(
+        effective_config.integrations.tunnel.auth_token_env,
     )
-
-    bundle.tunnel_provider = NgrokAdapter(
-        auth_token_env=effective_config.integrations.tunnel.auth_token_env,
-    )
-    logger.info(API_SERVICE_AUTO_WIRED, service="tunnel_provider")
 
     if not (effective_config.integrations.enabled and persistence is not None):
         return bundle

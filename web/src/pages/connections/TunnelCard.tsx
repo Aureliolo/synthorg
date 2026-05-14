@@ -186,9 +186,9 @@ export function TunnelCard() {
           >
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
             <p>
-              No <code className="font-mono">NGROK_AUTHTOKEN</code> detected.
-              The tunnel will run on ngrok&apos;s free tier: random URL on
-              every start, short session window, bandwidth-capped. Sign up at{' '}
+              No tunnel auth token detected. The tunnel will run on
+              ngrok&apos;s free tier: random URL on every start, short
+              session window, bandwidth-capped. Sign up at{' '}
               <a
                 href="https://dashboard.ngrok.com/get-started/your-authtoken"
                 target="_blank"
@@ -197,8 +197,8 @@ export function TunnelCard() {
               >
                 dashboard.ngrok.com
               </a>{' '}
-              and set the env var on the backend to get a stable URL and
-              higher limits.
+              and set the configured tunnel auth-token env var on the
+              backend to get a stable URL and higher limits.
             </p>
           </div>
         )}
@@ -327,10 +327,10 @@ export function TunnelCard() {
           </section>
           {tokenMissing && (
             <section className="rounded-md bg-info/10 p-card text-xs text-info">
-              <strong>Free tier:</strong> no{' '}
-              <code className="font-mono">NGROK_AUTHTOKEN</code> is set, so
-              the URL will rotate on every start and the session is
-              bandwidth-capped. Set the env var on the backend for a stable
+              <strong>Free tier:</strong> no tunnel auth token is
+              configured, so the URL will rotate on every start and
+              the session is bandwidth-capped. Set the configured
+              tunnel auth-token env var on the backend for a stable
               URL and higher limits.
             </section>
           )}

@@ -64,7 +64,7 @@ class SecretBackendSelection:
 
     config: SecretBackendConfig
     reason: str
-    level: str
+    level: SecretBackendLogLevel
 
 
 def _resolve_backend_type(
@@ -78,11 +78,12 @@ def _resolve_backend_type(
     resolved = config.backend_type
     if resolved == "encrypted_sqlite" and postgres_mode:
         if pg_pool_available:
-            # Benign: default config "just works" on Postgres without operator override.
+            # Benign: same alignment whether the operator picked
+            # encrypted_sqlite explicitly or kept the shipped default.
             return _ResolvedBackend(
                 "encrypted_postgres",
                 (
-                    "default encrypted_sqlite aligned to encrypted_postgres "
+                    "encrypted_sqlite aligned to encrypted_postgres "
                     "to match Postgres persistence"
                 ),
                 "info",
@@ -176,9 +177,9 @@ def resolve_secret_backend_config(
 
     Selection rules (checked top to bottom):
 
-    1. Default ``encrypted_sqlite`` + postgres mode + live pool
+    1. ``encrypted_sqlite`` + postgres mode + live pool
        -> align to ``encrypted_postgres`` (benign, INFO).
-    2. Default ``encrypted_sqlite`` + postgres mode + no pool ->
+    2. ``encrypted_sqlite`` + postgres mode + no pool ->
        downgrade to ``env_var`` (ERROR: integrations degraded).
     3. ``encrypted_sqlite`` with no db_path (sqlite mode without
        SYNTHORG_DB_PATH) -> downgrade to ``env_var`` (ERROR).
