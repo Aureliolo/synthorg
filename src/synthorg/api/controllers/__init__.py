@@ -71,7 +71,7 @@ from synthorg.api.controllers.reviews import ReviewController
 from synthorg.api.controllers.role_versions import RoleVersionController
 from synthorg.api.controllers.scaling import ScalingController
 from synthorg.api.controllers.settings import SettingsController
-from synthorg.api.controllers.setup import SetupController
+from synthorg.api.controllers.setup_controller import SetupController
 from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
 )

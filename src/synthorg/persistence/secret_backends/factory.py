@@ -5,8 +5,9 @@ Creates a ``SecretBackend`` instance from configuration.
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.integrations.config import SecretBackendConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
@@ -217,6 +218,63 @@ def resolve_secret_backend_config(
     return SecretBackendSelection(config=resolved_config, reason=reason, level=level)
 
 
+def _build_encrypted_sqlite(
+    config: SecretBackendConfig,
+    *,
+    db_path: str | None = None,
+    **_unused: object,
+) -> SecretBackend:
+    if db_path is None:
+        logger.error(
+            SECRET_BACKEND_UNAVAILABLE,
+            backend="encrypted_sqlite",
+            error="db_path is required for encrypted_sqlite",
+        )
+        msg = "db_path is required for encrypted_sqlite secret backend"
+        raise ValueError(msg)
+    return EncryptedSqliteSecretBackend(
+        db_path=db_path,
+        config=config.encrypted_sqlite,
+    )
+
+
+def _build_encrypted_postgres(
+    config: SecretBackendConfig,
+    *,
+    pg_pool: "AsyncConnectionPool | Callable[[], AsyncConnectionPool] | None" = None,  # noqa: UP037
+    **_unused: object,
+) -> SecretBackend:
+    if pg_pool is None:
+        logger.error(
+            SECRET_BACKEND_UNAVAILABLE,
+            backend="encrypted_postgres",
+            error="pg_pool is required for encrypted_postgres",
+        )
+        msg = "pg_pool is required for encrypted_postgres secret backend"
+        raise ValueError(msg)
+    return EncryptedPostgresSecretBackend(
+        pool=pg_pool,
+        config=config.encrypted_postgres,
+    )
+
+
+def _build_env_var(
+    config: SecretBackendConfig,
+    **_unused: object,
+) -> SecretBackend:
+    return EnvVarSecretBackend(config=config.env_var)
+
+
+_SECRET_BACKEND_REGISTRY: StrategyRegistry[SecretBackend] = StrategyRegistry(
+    {
+        "encrypted_sqlite": _build_encrypted_sqlite,
+        "encrypted_postgres": _build_encrypted_postgres,
+        "env_var": _build_env_var,
+    },
+    kind="secret_backend",
+)
+
+
 def create_secret_backend(
     config: SecretBackendConfig,
     *,
@@ -242,56 +300,13 @@ def create_secret_backend(
         ValueError: If the backend type is misconfigured (missing
             ``db_path`` for ``encrypted_sqlite`` or missing
             ``pg_pool`` for ``encrypted_postgres``).
-        AssertionError: Raised by ``typing.assert_never`` if a
-            ``backend_type`` value outside the exhaustive ``Literal``
-            union somehow reaches the factory (e.g. a call site
-            bypasses the type-check via ``cast`` or raw ``str``).
-            Normally unreachable -- the ``Literal`` union is
-            checked statically at every call site.
+        StrategyFactoryNotFoundError: If ``config.backend_type`` is
+            outside the registered set (normally unreachable thanks
+            to the ``Literal`` union on the config field).
     """
-    backend_type = config.backend_type
-
-    if backend_type == "encrypted_sqlite":
-        if db_path is None:
-            logger.error(
-                SECRET_BACKEND_UNAVAILABLE,
-                backend=backend_type,
-                error="db_path is required for encrypted_sqlite",
-            )
-            msg = "db_path is required for encrypted_sqlite secret backend"
-            raise ValueError(msg)
-        return EncryptedSqliteSecretBackend(
-            db_path=db_path,
-            config=config.encrypted_sqlite,
-        )
-
-    if backend_type == "encrypted_postgres":
-        if pg_pool is None:
-            logger.error(
-                SECRET_BACKEND_UNAVAILABLE,
-                backend=backend_type,
-                error="pg_pool is required for encrypted_postgres",
-            )
-            msg = "pg_pool is required for encrypted_postgres secret backend"
-            raise ValueError(msg)
-        return EncryptedPostgresSecretBackend(
-            pool=pg_pool,
-            config=config.encrypted_postgres,
-        )
-
-    if backend_type == "env_var":
-        return EnvVarSecretBackend(config=config.env_var)
-
-    # The Literal union on ``SecretBackendConfig.backend_type`` is
-    # exhaustive; the ``assert_never`` marks this branch unreachable
-    # so a future backend discriminator added without wiring a
-    # factory path fails type-check at the call site. The ERROR log
-    # below gives operators runtime context if this defensive branch
-    # is ever hit (e.g. a call site bypasses the type-check via
-    # ``cast`` or raw ``str``).
-    logger.error(  # type: ignore[unreachable]
-        SECRET_BACKEND_UNAVAILABLE,
-        backend=str(backend_type),
-        reason="unreachable_backend_type",
+    return _SECRET_BACKEND_REGISTRY.build(
+        config.backend_type,
+        config,
+        db_path=db_path,
+        pg_pool=pg_pool,
     )
-    assert_never(backend_type)

@@ -17,6 +17,7 @@ from types import MappingProxyType
 from typing import Literal
 
 from synthorg.config.errors import ConfigLocation
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_PACK_LIST,
@@ -137,7 +138,7 @@ def _validate_pack_name(name: str) -> str:
         TemplateNotFoundError: If the name does not match the
             allowlist pattern ``[a-z0-9][a-z0-9_-]*``.
     """
-    name_clean = name.strip().lower()
+    name_clean = normalize_ascii_lowercase(name)
     if not _PACK_NAME_RE.match(name_clean):
         msg = f"Invalid pack name {name!r}: must match [a-z0-9][a-z0-9_-]*"
         logger.warning(TEMPLATE_PACK_LOAD_NOT_FOUND, pack_name=name)
@@ -251,7 +252,7 @@ def _collect_user_packs() -> dict[str, PackInfo]:
     if not _USER_PACKS_DIR.is_dir():
         return seen
     for path in sorted(p for p in _USER_PACKS_DIR.glob("*.yaml") if p.is_file()):
-        name = path.stem.strip().lower()
+        name = normalize_ascii_lowercase(path.stem)
         if not _PACK_NAME_RE.match(name):
             logger.warning(
                 TEMPLATE_PACK_LIST,

@@ -14,7 +14,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.lifecycle_helpers import _apply_security_timeout_interval
+from synthorg.api.lifecycle_helpers.config_apply import (
+    _apply_security_timeout_interval,
+)
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler

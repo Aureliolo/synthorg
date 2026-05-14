@@ -112,50 +112,88 @@ def build_evolution_service(  # noqa: PLR0913
     )
 
 
+def _build_batched_trigger(
+    config: EvolutionConfig,
+    *,
+    tracker: PerformanceTracker,
+) -> EvolutionTrigger:
+    del tracker  # batched trigger does not interact with the tracker
+    from synthorg.engine.evolution.triggers.batched import (  # noqa: PLC0415
+        BatchedTrigger,
+    )
+
+    return BatchedTrigger(
+        interval_seconds=config.triggers.batched_interval_seconds,
+    )
+
+
+def _build_inflection_trigger(
+    config: EvolutionConfig,
+    *,
+    tracker: PerformanceTracker,
+) -> EvolutionTrigger:
+    del config  # inflection trigger has no configurable params
+    from synthorg.engine.evolution.triggers.inflection import (  # noqa: PLC0415
+        InflectionTrigger,
+    )
+
+    trigger = InflectionTrigger()
+    # Wire the trigger as the tracker's inflection sink if the
+    # tracker doesn't already have one.
+    if tracker.inflection_sink is None:
+        tracker.inflection_sink = trigger
+    return trigger
+
+
+def _build_per_task_trigger(
+    config: EvolutionConfig,
+    *,
+    tracker: PerformanceTracker,
+) -> EvolutionTrigger:
+    del tracker
+    from synthorg.engine.evolution.triggers.per_task import (  # noqa: PLC0415
+        PerTaskTrigger,
+    )
+
+    return PerTaskTrigger(
+        min_tasks_since_last=config.triggers.per_task_min_tasks,
+    )
+
+
+_TRIGGER_REGISTRY: StrategyRegistry[EvolutionTrigger] = StrategyRegistry(
+    {
+        "batched": _build_batched_trigger,
+        "inflection": _build_inflection_trigger,
+        "per_task": _build_per_task_trigger,
+    },
+    kind="evolution_trigger",
+)
+
+
 def _build_trigger(
     config: EvolutionConfig,
     *,
     tracker: PerformanceTracker,
 ) -> EvolutionTrigger:
-    """Build trigger from config."""
-    from synthorg.engine.evolution.triggers.batched import (  # noqa: PLC0415
-        BatchedTrigger,
-    )
+    """Build trigger from config.
+
+    Multi-select: ``config.triggers.types`` may list one or more
+    discriminators. Each maps to a registered per-type builder; the
+    results are composed via ``CompositeTrigger`` when more than one
+    trigger is enabled. An empty list falls back to a config-aware
+    ``BatchedTrigger`` built via ``_build_batched_trigger`` so the
+    operator-tuned ``triggers.batched_interval_seconds`` is honoured.
+    """
     from synthorg.engine.evolution.triggers.composite import (  # noqa: PLC0415
         CompositeTrigger,
     )
-    from synthorg.engine.evolution.triggers.inflection import (  # noqa: PLC0415
-        InflectionTrigger,
-    )
-    from synthorg.engine.evolution.triggers.per_task import (  # noqa: PLC0415
-        PerTaskTrigger,
-    )
 
-    triggers: list[EvolutionTrigger] = []
-    for trigger_type in config.triggers.types:
-        if trigger_type == "batched":
-            triggers.append(
-                BatchedTrigger(
-                    interval_seconds=config.triggers.batched_interval_seconds,
-                )
-            )
-        elif trigger_type == "inflection":
-            trigger = InflectionTrigger()
-            # Wire the trigger as the tracker's inflection sink
-            # if the tracker doesn't already have one.
-            if tracker.inflection_sink is None:
-                tracker.inflection_sink = trigger
-            triggers.append(trigger)
-        elif trigger_type == "per_task":
-            triggers.append(
-                PerTaskTrigger(
-                    min_tasks_since_last=config.triggers.per_task_min_tasks,
-                )
-            )
-
+    triggers: list[EvolutionTrigger] = [
+        _TRIGGER_REGISTRY.build(t, config, tracker=tracker)
+        for t in config.triggers.types
+    ]
     if not triggers:
-        triggers.append(BatchedTrigger())
-
+        triggers.append(_build_batched_trigger(config, tracker=tracker))
     if len(triggers) == 1:
         return triggers[0]
     return CompositeTrigger(triggers=tuple(triggers))

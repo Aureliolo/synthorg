@@ -14,6 +14,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.agent import PersonalityConfig
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.preset import (
@@ -79,7 +80,7 @@ def _normalize_preset_name(raw: str) -> str:
     Raises:
         ValidationError: If the name is empty or has invalid format.
     """
-    name = raw.strip().lower()
+    name = normalize_ascii_lowercase(raw)
     if not name:
         logger.warning(
             PRESET_VALIDATION_FAILED,
@@ -223,7 +224,7 @@ class PersonalityPresetService:
         Raises:
             NotFoundError: If no preset with this name exists.
         """
-        key = name.strip().lower()
+        key = normalize_ascii_lowercase(name)
         if not key:
             logger.warning(PRESET_NOT_FOUND, preset_name=name, reason="blank")
             msg = f"Personality preset {name!r} not found"
@@ -430,7 +431,7 @@ async def fetch_custom_presets_map(
     rows = await repo.list_all()
     result: dict[str, dict[str, Any]] = {}
     for row in rows:
-        key = str(row.name).strip().lower()
+        key = normalize_ascii_lowercase(str(row.name))
         try:
             decoded = json.loads(row.config_json)
         except json.JSONDecodeError as exc:

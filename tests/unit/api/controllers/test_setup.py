@@ -537,7 +537,7 @@ class TestSetupComplete:
             app_state.swap_provider_registry(fresh_registry)
 
         monkeypatch.setattr(
-            "synthorg.api.controllers.setup._post_setup_reinit",
+            "synthorg.api.controllers.setup_controller._post_setup_reinit",
             _fake_reinit,
         )
 
@@ -620,10 +620,10 @@ class TestExtractTemplateDepartments:
     """Unit tests for the _load_template_safe + _departments_to_json helpers."""
 
     def test_valid_template(self) -> None:
-        from synthorg.api.controllers.setup_agents import departments_to_json
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             load_template_safe as _load_template_safe,
         )
+        from synthorg.api.controllers.setup_agents import departments_to_json
 
         loaded = _load_template_safe("solo_founder")
         result = departments_to_json(loaded.template.departments)
@@ -633,7 +633,7 @@ class TestExtractTemplateDepartments:
         assert departments[0]["name"] in {"executive", "engineering"}
 
     def test_invalid_template(self) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             load_template_safe as _load_template_safe,
         )
         from synthorg.core.domain_errors import NotFoundError
@@ -1211,7 +1211,7 @@ class TestCheckHasNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Code default resolves as non-DATABASE source, returns False."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
@@ -1228,7 +1228,7 @@ class TestCheckHasNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
@@ -1251,7 +1251,7 @@ class TestCheckHasNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns False when get_entry raises a generic exception."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
@@ -1274,7 +1274,7 @@ class TestCheckHasNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns False when get_entry raises SettingNotFoundError."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
         from synthorg.settings.errors import SettingNotFoundError
@@ -1303,7 +1303,7 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """When DB key is absent, code default ["__all__"] resolves to all."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
         from synthorg.templates.locales import ALL_LATIN_LOCALES
@@ -1322,7 +1322,7 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns None when get_entry raises SettingNotFoundError."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
         from synthorg.settings.errors import SettingNotFoundError
@@ -1345,7 +1345,7 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -1367,7 +1367,7 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -1389,7 +1389,7 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -1411,7 +1411,7 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -1434,7 +1434,7 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """With resolve=False, the __all__ sentinel passes through raw."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -1460,7 +1460,7 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """With resolve=False, invalid codes are not filtered out."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 

@@ -651,7 +651,9 @@ class TestAutoWirePhase2:
         """auto_wire_settings creates SettingsService on AppState."""
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
-        from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
+        from synthorg.api.lifecycle_helpers.settings_dispatcher import (
+            _build_settings_dispatcher,
+        )
 
         app_state = AppState(
             config=root_config,
@@ -687,7 +689,9 @@ class TestAutoWirePhase2:
         """auto_wire_settings works without a message bus."""
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
-        from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
+        from synthorg.api.lifecycle_helpers.settings_dispatcher import (
+            _build_settings_dispatcher,
+        )
 
         app_state = AppState(
             config=root_config,
@@ -927,7 +931,9 @@ class TestAutoWirePhase2ErrorPaths:
         """Auto-wired dispatcher is stopped during on_shutdown."""
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
-        from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
+        from synthorg.api.lifecycle_helpers.settings_dispatcher import (
+            _build_settings_dispatcher,
+        )
 
         app_state = AppState(
             config=root_config,

@@ -8,6 +8,7 @@ quality, duplicates, and conflicting evolution modes.
 
 from typing import Final, Protocol, runtime_checkable
 
+from synthorg.core.normalization import collapse_whitespace_lowercase
 from synthorg.meta.models import (
     ApplyResult,
     EvolutionMode,
@@ -238,7 +239,7 @@ def _validate_prompt_change(
         return errors
 
     text = change.principle_text
-    normalized = " ".join(text.strip().lower().split())
+    normalized = collapse_whitespace_lowercase(text)
     # Length bounds run against the normalized content so excessive
     # whitespace cannot slip past ``_PRINCIPLE_MIN_CHARS`` nor shadow the
     # cap while collapsing down to the same canonical form used for

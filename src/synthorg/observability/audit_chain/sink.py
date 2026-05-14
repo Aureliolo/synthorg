@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from synthorg.api.boundary import parse_typed
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
@@ -258,7 +257,9 @@ class AuditChainSink(logging.Handler):
         ts_result = await self._timestamp_provider.get_timestamp(binding_payload)
         return signed, ts_result
 
-    def emit(self, record: logging.LogRecord) -> None:
+    def emit(  # lint-allow: boundary-typed -- AuditChainEventPayload constructor IS the validator  # noqa: E501
+        self, record: logging.LogRecord
+    ) -> None:
         """Process a log record, signing security events.
 
         Non-security events are silently ignored.
@@ -299,39 +300,33 @@ class AuditChainSink(logging.Handler):
             return
 
         try:
-            payload: dict[str, object] = {
-                "event": msg,
-                "level": record.levelname,
-                "timestamp": record.created,
-                "module": record.module,
-            }
-            # Merge structured extras from the log record.
-            for key in (
-                "tool_name",
-                "expected_hash",
-                "actual_hash",
-                "correlation_id",
-                "principal",
-                "resource",
-                "action_type",
-                "error",
-            ):
-                val = getattr(record, key, None)
-                if val is not None:
-                    payload[key] = val
-
-            # Validate the assembled payload through the boundary
-            # helper so a future widening of the iteration above (or
-            # an upstream LogRecord that smuggles in an unrecognised
-            # attribute) cannot silently slip an unknown key into the
-            # signed event. parse_typed only INSPECTS the dict; the
-            # return value is intentionally discarded so the payload
-            # dict itself (not a model dump) feeds json.dumps below.
-            # NEVER rewrite this as ``payload = parse_typed(...)`` --
-            # doing so would replace the dict with a Pydantic model
-            # and break the byte-stable JSON serialisation that the
-            # hash chain depends on (test_golden_json_byte_stable).
-            parse_typed("audit_chain", payload, AuditChainEventPayload)
+            # Construct the typed model FIRST so an unrecognised key or
+            # malformed value fails at the boundary, not downstream
+            # during signing. The dump-then-dumps pipeline preserves
+            # byte stability: ``model_dump(exclude_none=True)`` produces
+            # the dict ``json.dumps(sort_keys=True)`` then sorts back
+            # into the same byte sequence the previous "build dict ->
+            # parse_typed inspector -> json.dumps" path emitted. The
+            # ``test_golden_json_byte_stable`` test pins this contract
+            # across the migration. Do NOT switch to
+            # ``model_dump_json``: it bypasses ``sort_keys`` and key
+            # ordering would become definition order, which would break
+            # the hash chain.
+            payload_model = AuditChainEventPayload(
+                event=msg,
+                level=record.levelname,
+                timestamp=record.created,
+                module=record.module,
+                tool_name=getattr(record, "tool_name", None),
+                expected_hash=getattr(record, "expected_hash", None),
+                actual_hash=getattr(record, "actual_hash", None),
+                correlation_id=getattr(record, "correlation_id", None),
+                principal=getattr(record, "principal", None),
+                resource=getattr(record, "resource", None),
+                action_type=getattr(record, "action_type", None),
+                error=getattr(record, "error", None),
+            )
+            payload = payload_model.model_dump(exclude_none=True)
 
             data = json.dumps(
                 payload,
@@ -386,11 +381,12 @@ class AuditChainSink(logging.Handler):
             # is a Pydantic validation error against
             # ``AuditChainEventPayload`` so a structured log without a
             # traceback is both safer and clearer for operators
-            # triaging audit-chain integrity drops. ``parse_typed``
-            # already emitted ``api.boundary.validation_failed`` with
-            # the field locations; this event is the audit-chain side
-            # of the same incident, distinguishing schema-reject from
-            # signing-timeout from JSON-encode failure.
+            # triaging audit-chain integrity drops. The Pydantic
+            # constructor surfaces the field locations via the
+            # ``error_count`` attached below; this event is the
+            # audit-chain side of the same incident, distinguishing
+            # schema-reject from signing-timeout from JSON-encode
+            # failure.
             logger.error(
                 AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
                 audited_event=msg,

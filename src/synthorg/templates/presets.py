@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 from pydantic import ValidationError
 
 from synthorg.core.agent import PersonalityConfig
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_PERSONALITY_PRESET_INVALID,
@@ -429,7 +430,7 @@ def get_personality_preset(
     Raises:
         KeyError: If the preset name is not found in either source.
     """
-    key = name.strip().lower()
+    key = normalize_ascii_lowercase(name)
     if custom_presets is not None and key in custom_presets:
         return copy.deepcopy(custom_presets[key])
     if key in PERSONALITY_PRESETS:
@@ -524,7 +525,7 @@ def validate_preset_references(
         preset = agent_cfg.personality_preset
         if preset is None:
             continue
-        key = preset.strip().lower()
+        key = normalize_ascii_lowercase(preset)
         if custom_presets is not None and key in custom_presets:
             continue
         if key in PERSONALITY_PRESETS:

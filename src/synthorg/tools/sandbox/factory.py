@@ -10,6 +10,7 @@ import asyncio
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import (
     SANDBOX_FACTORY_BUILD_FAILED,
@@ -32,8 +33,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_KNOWN_BACKENDS: frozenset[str] = frozenset({"subprocess", "docker"})
-
 # Default gVisor overrides for high-risk tool categories.
 # User-supplied runtime_overrides take precedence.
 _DEFAULT_GVISOR_OVERRIDES: MappingProxyType[str, str] = MappingProxyType(
@@ -44,25 +43,31 @@ _DEFAULT_GVISOR_OVERRIDES: MappingProxyType[str, str] = MappingProxyType(
 )
 
 
-def _instantiate_backend(
-    name: str,
+def _build_subprocess_backend(
+    *,
     config: SandboxingConfig,
     workspace: Path,
 ) -> SandboxBackend:
-    """Construct a single sandbox backend by name.
-
-    Logs and re-raises on construction failure.
-    """
-    if name not in _KNOWN_BACKENDS:
-        msg = f"No constructor for backend {name!r}"
-        raise ValueError(msg)
-
     try:
-        if name == "subprocess":
-            return SubprocessSandbox(
-                config=config.subprocess,
-                workspace=workspace,
-            )
+        return SubprocessSandbox(
+            config=config.subprocess,
+            workspace=workspace,
+        )
+    except Exception:
+        logger.error(
+            SANDBOX_FACTORY_BUILD_FAILED,
+            backend="subprocess",
+            workspace=str(workspace),
+        )
+        raise
+
+
+def _build_docker_backend(
+    *,
+    config: SandboxingConfig,
+    workspace: Path,
+) -> SandboxBackend:
+    try:
         return DockerSandbox(
             config=config.docker,
             workspace=workspace,
@@ -70,10 +75,21 @@ def _instantiate_backend(
     except Exception:
         logger.error(
             SANDBOX_FACTORY_BUILD_FAILED,
-            backend=name,
+            backend="docker",
             workspace=str(workspace),
         )
         raise
+
+
+_SANDBOX_BACKEND_REGISTRY: StrategyRegistry[SandboxBackend] = StrategyRegistry(
+    {
+        "subprocess": _build_subprocess_backend,
+        "docker": _build_docker_backend,
+    },
+    kind="sandbox_backend",
+)
+
+_KNOWN_BACKENDS: frozenset[str] = frozenset(_SANDBOX_BACKEND_REGISTRY.names())
 
 
 def build_sandbox_backends(
@@ -112,7 +128,8 @@ def build_sandbox_backends(
         raise ValueError(msg)
 
     backends: dict[str, SandboxBackend] = {
-        name: _instantiate_backend(name, config, workspace) for name in sorted(needed)
+        name: _SANDBOX_BACKEND_REGISTRY.build(name, config=config, workspace=workspace)
+        for name in sorted(needed)
     }
 
     logger.info(

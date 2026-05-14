@@ -7,6 +7,9 @@ for each configured sink.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import normalize_ascii_lowercase_or_default
+from synthorg.core.registry import StrategyRegistry
+from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.notifications.adapters.console import ConsoleNotificationSink
 from synthorg.notifications.config import (
     NotificationConfig,
@@ -78,38 +81,13 @@ def build_notification_dispatcher(
     )
 
 
-def _create_notification_sink(
-    cfg: NotificationSinkConfig,
+def _create_console_sink(
+    params: dict[str, str],
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
 ) -> NotificationSink | None:
-    """Instantiate a notification sink from config.
-
-    Args:
-        cfg: Single sink configuration.
-        bridge_config: Optional operator-tuned bridge settings.
-
-    Returns:
-        Sink instance or ``None`` for unknown or invalid types.
-    """
-    sink_type = cfg.type
-    params = cfg.params
-    if sink_type is NotificationSinkType.CONSOLE:
-        return ConsoleNotificationSink()
-    if sink_type is NotificationSinkType.NTFY:
-        return _create_ntfy_sink(params, bridge_config=bridge_config)
-    if sink_type is NotificationSinkType.SLACK:
-        return _create_slack_sink(params, bridge_config=bridge_config)
-    if sink_type is NotificationSinkType.EMAIL:
-        return _create_email_sink(params, bridge_config=bridge_config)
-    # Defensive fallback for forward compatibility if new sink
-    # types are added to NotificationSinkType before the factory
-    # is updated.
-    logger.warning(  # type: ignore[unreachable]
-        NOTIFICATION_SINK_UNKNOWN_TYPE,
-        sink_type=sink_type,
-    )
-    return None
+    del params, bridge_config  # console sink has no configurable params
+    return ConsoleNotificationSink()
 
 
 def _create_ntfy_sink(
@@ -355,7 +333,10 @@ def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation 
     # silently coerced typos ("yse", "on", "1") to ``False``, which flipped
     # the intended transport without warning. Accept only the literal
     # ``true``/``false`` strings (case-insensitive, trimmed).
-    use_tls_raw = (params.get("use_tls") or "true").strip().lower()
+    use_tls_raw = normalize_ascii_lowercase_or_default(
+        params.get("use_tls"),
+        default="true",
+    )
     if use_tls_raw not in {"true", "false"}:
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,
@@ -384,3 +365,46 @@ def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation 
         use_tls=use_tls,
         smtp_timeout_seconds=bridge_config.email_smtp_timeout_seconds,
     )
+
+
+_NOTIFICATION_SINK_REGISTRY: StrategyRegistry[NotificationSink | None] = (
+    StrategyRegistry(
+        {
+            NotificationSinkType.CONSOLE.value: _create_console_sink,
+            NotificationSinkType.NTFY.value: _create_ntfy_sink,
+            NotificationSinkType.SLACK.value: _create_slack_sink,
+            NotificationSinkType.EMAIL.value: _create_email_sink,
+        },
+        kind="notification_sink",
+    )
+)
+
+
+def _create_notification_sink(
+    cfg: NotificationSinkConfig,
+    *,
+    bridge_config: NotificationsBridgeConfig | None = None,
+) -> NotificationSink | None:
+    """Instantiate a notification sink from config.
+
+    Args:
+        cfg: Single sink configuration.
+        bridge_config: Optional operator-tuned bridge settings.
+
+    Returns:
+        Sink instance, or ``None`` if the adapter declines to build
+        (invalid params) or the sink type is not registered (forward
+        compatibility: emits ``NOTIFICATION_SINK_UNKNOWN_TYPE``).
+    """
+    try:
+        return _NOTIFICATION_SINK_REGISTRY.build(
+            cfg.type.value,
+            cfg.params,
+            bridge_config=bridge_config,
+        )
+    except StrategyFactoryNotFoundError:
+        # Forward compatibility: a new ``NotificationSinkType`` value
+        # added before the factory is updated falls through to None
+        # rather than crashing dispatcher construction.
+        logger.warning(NOTIFICATION_SINK_UNKNOWN_TYPE, sink_type=cfg.type)
+        return None

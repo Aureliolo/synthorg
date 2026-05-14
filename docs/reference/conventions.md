@@ -667,8 +667,10 @@ Every settings registration lives in
 once per setting.
 
 New settings consumed by a service that starts at boot must also be
-wired into `src/synthorg/api/lifecycle_helpers.py` so the value is
-read from the resolver at startup. The
+wired into the `src/synthorg/api/lifecycle_helpers/` package (one of
+`bootstrap.py`, `config_apply.py`, `settings_dispatcher.py`,
+`audit_retention.py`, `ticket_cleanup.py`) so the value is read from
+the resolver at startup. The
 `setting-to-startup-trace` gate enforces this trace; ghost-wired
 settings (defined but never read at startup) fail the gate.
 

@@ -36,7 +36,7 @@ class TestReadHasGpuSetting:
         stored_value: str,
         expected: bool | None,
     ) -> None:
-        from synthorg.api.controllers.setup import _read_has_gpu_setting
+        from synthorg.api.controllers.setup_controller import _read_has_gpu_setting
 
         settings_svc = MagicMock()
         entry = MagicMock()
@@ -48,7 +48,7 @@ class TestReadHasGpuSetting:
 
     async def test_missing_setting_returns_false(self) -> None:
         """An empty entry.value resolves to ``False`` (explicit default)."""
-        from synthorg.api.controllers.setup import _read_has_gpu_setting
+        from synthorg.api.controllers.setup_controller import _read_has_gpu_setting
 
         settings_svc = MagicMock()
         entry = MagicMock()
@@ -60,7 +60,7 @@ class TestReadHasGpuSetting:
 
     async def test_read_failure_returns_none(self) -> None:
         """A raised ``get()`` is swallowed; returns None + logs."""
-        from synthorg.api.controllers.setup import _read_has_gpu_setting
+        from synthorg.api.controllers.setup_controller import _read_has_gpu_setting
 
         settings_svc = MagicMock()
         settings_svc.get = AsyncMock(side_effect=RuntimeError("backend down"))
@@ -70,7 +70,7 @@ class TestReadHasGpuSetting:
 
     async def test_memory_error_propagates(self) -> None:
         """``MemoryError`` is never swallowed -- propagates untouched."""
-        from synthorg.api.controllers.setup import _read_has_gpu_setting
+        from synthorg.api.controllers.setup_controller import _read_has_gpu_setting
 
         settings_svc = MagicMock()
         settings_svc.get = AsyncMock(side_effect=MemoryError())
