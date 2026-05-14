@@ -48,7 +48,11 @@ class TestWebhookEventPayload:
         """Frozen ConfigDict prevents post-construction mutation."""
         payload = WebhookEventPayload.model_validate({"x": 1})
         with pytest.raises(ValueError, match="Instance is frozen"):
-            payload.x = 2  # type: ignore[misc]
+            # ``setattr`` rather than attribute assignment so mypy does
+            # not flag ``x`` as undefined: the field comes in via
+            # ``extra="allow"`` and is not on the class signature, but
+            # the frozen-instance guard runs on every attribute write.
+            setattr(payload, "x", 2)  # noqa: B010 -- testing __setattr__ guard
 
 
 class TestListActivityRoutesThroughService:
@@ -63,7 +67,7 @@ class TestListActivityRoutesThroughService:
         # silently re-introducing the controller-to-repo shortcut.
         # Litestar's ``@get`` decorator wraps the method into a route
         # handler; the original function is accessible via ``.fn``.
-        handler = WebhooksController.list_activity  # type: ignore[attr-defined]
+        handler = WebhooksController.list_activity
         source = inspect.getsource(handler.fn)
         assert "persistence.webhook_receipts" not in source
         assert "persistence" not in source
