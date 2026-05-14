@@ -1,7 +1,7 @@
 """Communication configuration models (see Communication design page)."""
 
 from collections import Counter
-from typing import Final, Literal, Self
+from typing import Any, ClassVar, Final, Literal, Self
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -20,6 +20,12 @@ from synthorg.core.types import (
     validate_unique_strings,
 )
 from synthorg.observability import safe_error_description
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+)
 
 _VALID_NATS_URL_SCHEMES: frozenset[str] = frozenset({"nats", "tls", "nats+tls"})
 """NATS URL schemes accepted at config load.
@@ -340,11 +346,25 @@ class MeetingsConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.COMMUNICATION,
+            key="meetings_enabled",
+            parse=parse_bool,
+        ),
+    )
+
     enabled: bool = Field(default=True, description="Meetings subsystem active")
     types: tuple[MeetingTypeConfig, ...] = Field(
         default=(),
         description="Configured meeting types",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_unique_meeting_names(self) -> Self:
