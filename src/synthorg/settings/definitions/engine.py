@@ -16,7 +16,6 @@ _r.register(
             "Enable token-based personality trimming when section exceeds budget"
         ),
         group="Personality Trimming",
-        yaml_path="engine.personality_trimming_enabled",
     )
 )
 
@@ -33,7 +32,6 @@ _r.register(
         group="Personality Trimming",
         min_value=0,
         max_value=10000,
-        yaml_path="engine.personality_max_tokens_override",
     )
 )
 
@@ -48,7 +46,6 @@ _r.register(
             "when personality trimming activates for an agent"
         ),
         group="Personality Trimming",
-        yaml_path="engine.personality_trimming_notify",
     )
 )
 
@@ -68,7 +65,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=30.0,
         max_value=3600.0,
-        yaml_path="engine.approval_interrupt_timeout_seconds",
     )
 )
 
@@ -90,7 +86,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=64,
-        yaml_path="engine.max_subworkflow_depth",
     )
 )
 
@@ -108,7 +103,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10,
-        yaml_path="engine.health_quality_degradation_threshold",
     )
 )
 
@@ -133,7 +127,6 @@ _r.register(
         ),
         group="Evolution",
         level=SettingLevel.ADVANCED,
-        yaml_path="engine.evolution.enabled",
     )
 )
 
@@ -154,7 +147,6 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.classifier_rule_matched_confidence",
     )
 )
 
@@ -173,7 +165,6 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.classifier_fallback_confidence",
     )
 )
 
@@ -192,7 +183,6 @@ _r.register(
         restart_required=True,
         min_value=1.0,
         max_value=600.0,
-        yaml_path="engine.classification_detector_timeout_seconds",
     )
 )
 
@@ -210,7 +200,6 @@ _r.register(
         ),
         group="Safety",
         level=SettingLevel.ADVANCED,
-        yaml_path="engine.timeout_enforcement_enabled",
     )
 )
 
@@ -228,7 +217,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=600.0,
-        yaml_path="engine.shutdown_tool_timeout_seconds",
     )
 )
 
@@ -252,7 +240,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.routing.weight_primary_skill",
     )
 )
 
@@ -271,7 +258,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.routing.weight_secondary_skill",
     )
 )
 
@@ -289,7 +275,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.routing.weight_tag_match_bonus",
     )
 )
 
@@ -307,7 +292,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.routing.weight_role_match_bonus",
     )
 )
 
@@ -325,7 +309,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.routing.weight_seniority_alignment_bonus",
     )
 )
 
@@ -344,7 +327,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.routing.min_score",
     )
 )
 
@@ -369,7 +351,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.matcher.tier_base_score",
     )
 )
 
@@ -388,7 +369,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.matcher.headroom_max_bonus",
     )
 )
 
@@ -406,7 +386,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.matcher.priority_max_bonus",
     )
 )
 
@@ -426,7 +405,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=100.0,
-        yaml_path="engine.matcher.headroom_ratio_cap",
     )
 )
 
@@ -445,7 +423,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.matcher.balanced_partial_credit",
     )
 )
 
@@ -470,7 +447,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.quality.heuristic.pass_threshold",
     )
 )
 
@@ -489,7 +465,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.quality.heuristic.pass_grade",
     )
 )
 
@@ -507,7 +482,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.quality.heuristic.fail_grade",
     )
 )
 
@@ -526,7 +500,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.quality.heuristic.confidence_ceiling",
     )
 )
 
@@ -544,6 +517,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="engine.quality.heuristic.confidence_bias",
     )
 )

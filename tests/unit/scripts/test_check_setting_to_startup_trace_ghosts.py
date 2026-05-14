@@ -225,7 +225,7 @@ def test_setting_matched_via_factory_gating_namespace(tmp_path: Path) -> None:
         },
     )
     violations = _MODULE.scan_repo(repo, baseline_path=None)  # type: ignore[attr-defined]
-    flagged_keys = {v.yaml_path for v in violations}
+    flagged_keys = {v.setting_key for v in violations}
     assert flagged_keys == {
         "backup.enabled",
         "backup.path",
@@ -280,7 +280,7 @@ def test_setting_matched_via_class_file_containment(tmp_path: Path) -> None:
         },
     )
     violations = _MODULE.scan_repo(repo, baseline_path=None)  # type: ignore[attr-defined]
-    flagged_keys = {v.yaml_path for v in violations}
+    flagged_keys = {v.setting_key for v in violations}
     assert "security.timeout_check_interval_seconds" in flagged_keys
     assert "security.audit_enabled" not in flagged_keys
 
@@ -333,7 +333,7 @@ def test_read_only_post_init_setting_skipped(tmp_path: Path) -> None:
         },
     )
     violations = _MODULE.scan_repo(repo, baseline_path=None)  # type: ignore[attr-defined]
-    flagged_keys = {v.yaml_path for v in violations}
+    flagged_keys = {v.setting_key for v in violations}
     assert "security.auth_token_bytes" not in flagged_keys
     assert "security.timeout_check_interval_seconds" in flagged_keys
 

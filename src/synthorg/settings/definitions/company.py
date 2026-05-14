@@ -37,7 +37,6 @@ _r.register(
         default=None,
         description="Company display name",
         group="General",
-        yaml_path="company_name",
     )
 )
 
@@ -49,7 +48,6 @@ _r.register(
         default=None,
         description="Company description",
         group="General",
-        yaml_path="description",
     )
 )
 
@@ -80,7 +78,6 @@ _r.register(
         ),
         group="General",
         enum_values=tuple(level.value for level in AutonomyLevel),
-        yaml_path="config.autonomy.level",
     )
 )
 
@@ -96,7 +93,6 @@ _r.register(
             'locale codes (e.g. ["en_US", "fr_FR", "de_DE"]).'
         ),
         group="Names",
-        yaml_path="name_locales",
     )
 )
 
@@ -108,7 +104,6 @@ _r.register(
         default=None,
         description="Agent configurations (JSON array of AgentConfig objects)",
         group="Structure",
-        yaml_path="agents",
     )
 )
 
@@ -120,6 +115,5 @@ _r.register(
         default=None,
         description="Department hierarchy (JSON array of Department objects)",
         group="Structure",
-        yaml_path="departments",
     )
 )

@@ -209,7 +209,7 @@ For the full-page list, navigation hierarchy, URL routing map, and WebSocket cha
 
 Settings details:
 
-- *DB-backed persistence*: 17 namespaces total. User-facing: api, company, providers, memory, budget, security, coordination, observability, backup. Bridged / operator-only: engine, communication, a2a, integrations, meta, notifications, tools, settings. Setting types: `STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`. 4-layer resolution: DB > env > YAML > code defaults. Fernet encryption for `sensitive` values.
+- *DB-backed persistence*: 17 namespaces total. User-facing: api, company, providers, memory, budget, security, coordination, observability, backup. Bridged / operator-only: engine, communication, a2a, integrations, meta, notifications, tools, settings. Setting types: `STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`. 3-tier resolution: DB > env > code defaults (Cat-1); env > defaults for `read_only_post_init` (Cat-2); bootstrap secrets are pure env at the boot site (Cat-3). Fernet encryption for `sensitive` values.
 - *`ConfigResolver`*: Typed scalar accessors assemble full Pydantic config models from individually resolved settings (parallel via `asyncio.TaskGroup`). Structural data accessors (`get_agents`, `get_departments`, `get_provider_configs`) resolve JSON-typed settings with Pydantic schema validation and graceful fallback.
 - *Hot-reload*: `SettingsChangeDispatcher` polls the `#settings` bus channel and routes change notifications to registered `SettingsSubscriber` implementations. Settings marked `restart_required=True` are filtered.
 

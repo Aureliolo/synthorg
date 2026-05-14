@@ -116,7 +116,7 @@ def _build_setting_record(
         return None
     default = _extract_string(kwargs.get("default"))
     read_only = _extract_bool(kwargs.get("read_only_post_init")) is True
-    yaml_path = _extract_string(kwargs.get("yaml_path")) or f"{namespace}.{key}"
+    setting_key = f"{namespace}.{key}"
     has_suppression = _detect_register_suppression(
         defn_call,
         file_lines=file_lines,
@@ -124,7 +124,7 @@ def _build_setting_record(
     return SettingRecord(
         namespace=namespace,
         key=key,
-        yaml_path=yaml_path,
+        setting_key=setting_key,
         default=default,
         read_only_post_init=read_only,
         source_file=source_file,

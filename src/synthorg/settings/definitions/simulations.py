@@ -25,7 +25,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=3600.0,
-        yaml_path="simulations.task_timeout_seconds",
     )
 )
 
@@ -43,6 +42,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=3600.0,
-        yaml_path="simulations.review_timeout_seconds",
     )
 )

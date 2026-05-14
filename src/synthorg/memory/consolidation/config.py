@@ -6,7 +6,7 @@ and wiki export settings.
 """
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Final, Literal, Self
+from typing import Any, ClassVar, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -15,6 +15,12 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.models import RetentionRule  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+)
 
 logger = get_logger(__name__)
 
@@ -314,6 +320,15 @@ class ConsolidationConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.MEMORY,
+            key="consolidation_enabled",
+            parse=parse_bool,
+        ),
+    )
+
     enabled: bool = Field(
         default=True,
         description=(
@@ -346,6 +361,11 @@ class ConsolidationConfig(BaseModel):
         default_factory=WikiExportConfig,
         description="Wiki filesystem export settings",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 _MIN_LLM_GROUP_THRESHOLD: Final[int] = 3

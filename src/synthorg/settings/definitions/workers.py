@@ -33,7 +33,6 @@ _r.register(
         env_var_override="SYNTHORG_WORKERS",
         min_value=1,
         max_value=64,
-        yaml_path="server.workers",
     )
 )
 
@@ -58,7 +57,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10,
-        yaml_path="workers.dispatcher.publish_max_attempts",
     )
 )
 
@@ -77,7 +75,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.01,
         max_value=10.0,
-        yaml_path="workers.dispatcher.publish_backoff_base_seconds",
     )
 )
 
@@ -97,6 +94,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.1,
         max_value=60.0,
-        yaml_path="workers.dispatcher.publish_backoff_cap_seconds",
     )
 )

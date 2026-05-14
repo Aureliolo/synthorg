@@ -27,7 +27,6 @@ function makeSetting(
       validator_pattern: null,
       min_value: 1,
       max_value: 65535,
-      yaml_path: 'api.server.port',
       ...defOverrides,
     },
     value,
@@ -54,7 +53,6 @@ const mockEntries: SettingEntry[] = [
     group: 'Limits',
     min_value: 0,
     max_value: null,
-    yaml_path: 'budget.total_monthly',
     value: '100.0',
   }),
 ]

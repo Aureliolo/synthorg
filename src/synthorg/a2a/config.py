@@ -171,16 +171,6 @@ class A2AConfig(BaseModel):
         ge=1024,
         description="Maximum inbound request body size (bytes)",
     )
-    client_timeout_seconds: float = Field(
-        default=30.0,
-        ge=5.0,
-        le=300.0,
-        description=(
-            "HTTP timeout for the outbound A2A client / gateway peer calls"
-            " (mirrors the a2a.client_timeout_seconds setting; restart"
-            " required)"
-        ),
-    )
     agent_card_cache_ttl_seconds: int = Field(
         default=60,
         ge=0,

@@ -227,12 +227,26 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         audit_service: ProviderAuditService | None = None,
         cost_tracker: CostTracker | None = None,
     ) -> None:
+        from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
+            resolve_init_value,
+        )
+        from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
         self._settings_service = settings_service
         self._config_resolver = config_resolver
         self._app_state = app_state
         self._config = config
         self._audit_service = audit_service
         self._cost_tracker = cost_tracker
+        # api.server_port is read_only_post_init; the resolved value
+        # is stable for the process lifetime so we cache it once.
+        self._backend_port = int(
+            resolve_init_value(
+                SettingNamespace.API,
+                "server_port",
+                parse=int,
+            ).value
+        )
         self._lock = asyncio.Lock()
         self._allowlist = DiscoveryAllowlistManager(
             settings_service=settings_service,
@@ -702,7 +716,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
 
     def _is_self_connection(self, base_url: str) -> bool:
         """Check if a URL points at this backend; log warning if so."""
-        backend_port = self._config.api.server.port
+        backend_port = self._backend_port
         if is_self_url(base_url, backend_port=backend_port):
             logger.warning(
                 PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,

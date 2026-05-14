@@ -705,9 +705,6 @@ class TestGetApiConfig:
         mock_settings.get = _api_get_side_effect()
         result = await resolver.get_api_config()
 
-        assert result.cors.allowed_origins == ("https://example.com",)
-        assert result.server.host == "10.0.0.1"
-        assert result.server.port == 9000
         assert result.rate_limit.exclude_paths == ("/health", "/custom")
         assert result.auth.exclude_paths == ("/public",)
         assert result.api_prefix == "/api/v2"

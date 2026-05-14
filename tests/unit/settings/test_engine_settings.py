@@ -41,7 +41,6 @@ class TestEngineSettingDefinitions:
         assert defn is not None
         assert defn.type == SettingType.BOOLEAN
         assert defn.default == "true"
-        assert defn.yaml_path == "engine.personality_trimming_notify"
         assert defn.group == "Personality Trimming"
 
     def test_engine_settings_contain_expected_keys(self) -> None:

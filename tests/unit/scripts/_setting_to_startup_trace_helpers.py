@@ -96,7 +96,7 @@ def setting_registration(  # noqa: PLR0913 -- fixture builder; each kwarg maps t
     setting_type: str = "BOOLEAN",
     default: str | None = '"false"',
     read_only_post_init: bool = False,
-    yaml_path: str | None = None,
+    setting_key: str | None = None,
     extra_kwargs: str = "",
 ) -> str:
     """Render a single ``_r.register(SettingDefinition(...))`` block."""
@@ -112,8 +112,8 @@ def setting_registration(  # noqa: PLR0913 -- fixture builder; each kwarg maps t
     if read_only_post_init:
         parts.append("        restart_required=True,")
         parts.append("        read_only_post_init=True,")
-    if yaml_path is not None:
-        parts.append(f'        yaml_path="{yaml_path}",')
+    if setting_key is not None:
+        parts.append(f'        setting_key="{setting_key}",')
     if extra_kwargs:
         parts.append(f"        {extra_kwargs}")
     body = "\n".join(parts)

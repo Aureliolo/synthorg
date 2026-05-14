@@ -104,7 +104,6 @@ def _build_app(
     settings_service = SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
-        config=root_config,
     )
     stub_provider = MagicMock(spec=BaseCompletionProvider)
     provider_registry = ProviderRegistry({"test-provider": stub_provider})

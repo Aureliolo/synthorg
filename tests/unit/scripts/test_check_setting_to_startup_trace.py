@@ -57,8 +57,8 @@ def test_inventory_extracts_namespace_key_and_metadata(tmp_path: Path) -> None:
     records = _MODULE.load_setting_definitions(  # type: ignore[attr-defined]
         repo / "src" / "synthorg" / "settings" / "definitions"
     )
-    yaml_paths = {r.yaml_path for r in records}
-    assert yaml_paths == {"backup.enabled", "backup.path"}
+    setting_keys = {r.setting_key for r in records}
+    assert setting_keys == {"backup.enabled", "backup.path"}
 
 
 def test_inventory_skips_read_only_post_init(tmp_path: Path) -> None:
@@ -86,8 +86,8 @@ def test_inventory_skips_read_only_post_init(tmp_path: Path) -> None:
     assert by_key["audit_enabled"].read_only_post_init is False
 
 
-def test_inventory_uses_explicit_yaml_path(tmp_path: Path) -> None:
-    """Explicit ``yaml_path=`` overrides the ``namespace.key`` default."""
+def test_inventory_uses_explicit_setting_key(tmp_path: Path) -> None:
+    """Explicit ``setting_key=`` overrides the ``namespace.key`` default."""
     repo = _make_fake_repo(
         tmp_path,
         settings_files={
@@ -95,7 +95,7 @@ def test_inventory_uses_explicit_yaml_path(tmp_path: Path) -> None:
                 _setting_registration(
                     "ENGINE",
                     "timeout_enforcement_enabled",
-                    yaml_path="engine.timeout_enforcement_enabled",
+                    setting_key="engine.timeout_enforcement_enabled",
                 ),
             ),
         },
@@ -103,7 +103,7 @@ def test_inventory_uses_explicit_yaml_path(tmp_path: Path) -> None:
     records = _MODULE.load_setting_definitions(  # type: ignore[attr-defined]
         repo / "src" / "synthorg" / "settings" / "definitions"
     )
-    assert records[0].yaml_path == "engine.timeout_enforcement_enabled"
+    assert records[0].setting_key == "engine.timeout_enforcement_enabled"
 
 
 def test_inventory_records_suppression_marker(tmp_path: Path) -> None:
@@ -186,7 +186,7 @@ def test_real_repo_violations_match_expected() -> None:
         _REPO_ROOT,
         baseline_path=None,
     )
-    flagged = {v.yaml_path for v in violations}
+    flagged = {v.setting_key for v in violations}
 
     must_not_flag = {
         "backup.compression",

@@ -17,8 +17,6 @@ class TestApiConfig:
     def test_defaults(self) -> None:
         config = ApiConfig()
         assert config.api_prefix == "/api/v1"
-        assert config.server.host == "127.0.0.1"
-        assert config.server.port == 3001
 
     def test_cors_defaults(self) -> None:
         # CFG-1 audit flipped the default to an empty tuple so
@@ -84,28 +82,8 @@ class TestApiConfig:
         assert server.ws_ping_interval == 20.0
         assert server.ws_ping_timeout == 20.0
 
-    def test_server_custom_values(self) -> None:
-        server = ServerConfig(host="0.0.0.0", port=9000)  # noqa: S104
-        assert server.host == "0.0.0.0"  # noqa: S104
-        assert server.port == 9000
-
-    def test_custom_cors_origins(self) -> None:
-        cors = CorsConfig(allowed_origins=("https://example.com",))
-        assert cors.allowed_origins == ("https://example.com",)
-
-    def test_cors_wildcard_with_credentials_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="incompatible"):
-            CorsConfig(allowed_origins=("*",), allow_credentials=True)
-
-    def test_cors_wildcard_without_credentials_ok(self) -> None:
-        cors = CorsConfig(allowed_origins=("*",), allow_credentials=False)
-        assert "*" in cors.allowed_origins
-
-    def test_cors_credentials_without_wildcard_ok(self) -> None:
-        cors = CorsConfig(
-            allowed_origins=("https://example.com",),
-            allow_credentials=True,
-        )
+    def test_cors_credentials_default(self) -> None:
+        cors = CorsConfig()
         assert cors.allow_credentials is True
 
     def test_frozen(self) -> None:
@@ -115,88 +93,73 @@ class TestApiConfig:
 
 
 @pytest.mark.unit
-class TestServerConfigTLS:
-    """Tests for TLS and trusted proxy configuration."""
+class TestRateLimitConfigMirrors:
+    """Direct coverage for the settings mirror integration on RateLimitConfig.
 
-    def test_tls_defaults_none(self) -> None:
-        server = ServerConfig()
-        assert server.ssl_certfile is None
-        assert server.ssl_keyfile is None
-        assert server.ssl_ca_certs is None
-        assert server.trusted_proxies == ()
+    The five mirrored fields (unauth_max_requests, auth_max_requests,
+    time_unit, exclude_paths, max_rpm_default) each have their own
+    env-var override path; these tests exercise the three branches that
+    matter (env-set, env-unset, env-invalid) and the caller-wins
+    invariant.
+    """
 
-    def test_valid_tls_pair(self) -> None:
-        server = ServerConfig(
-            ssl_certfile="/etc/tls/cert.pem",
-            ssl_keyfile="/etc/tls/key.pem",
+    def test_env_override_beats_registered_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS", "7")
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_AUTH_MAX_REQUESTS", "1234")
+        monkeypatch.setenv("SYNTHORG_API_MAX_RPM_DEFAULT", "300")
+        rl = RateLimitConfig()
+        assert rl.unauth_max_requests == 7
+        assert rl.auth_max_requests == 1234
+        assert rl.max_rpm_default == 300
+
+    def test_env_override_for_exclude_paths(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_RATE_LIMIT_EXCLUDE_PATHS",
+            '["/internal/metrics"]',
         )
-        assert server.ssl_certfile == "/etc/tls/cert.pem"
-        assert server.ssl_keyfile == "/etc/tls/key.pem"
+        rl = RateLimitConfig()
+        assert rl.exclude_paths == ("/internal/metrics",)
 
-    def test_certfile_without_keyfile_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match=r"ssl_keyfile.*required",
-        ):
-            ServerConfig(ssl_certfile="/etc/tls/cert.pem")
+    def test_env_override_for_time_unit(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_TIME_UNIT", "hour")
+        rl = RateLimitConfig()
+        assert rl.time_unit == RateLimitTimeUnit.HOUR
 
-    def test_keyfile_without_certfile_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match=r"ssl_certfile.*required",
-        ):
-            ServerConfig(ssl_keyfile="/etc/tls/key.pem")
+    def test_caller_kwarg_wins_over_env(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS", "7")
+        rl = RateLimitConfig(unauth_max_requests=50)
+        assert rl.unauth_max_requests == 50
 
-    def test_tls_with_ca_certs(self) -> None:
-        server = ServerConfig(
-            ssl_certfile="/etc/tls/cert.pem",
-            ssl_keyfile="/etc/tls/key.pem",
-            ssl_ca_certs="/etc/tls/ca.pem",
+    def test_invalid_env_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS",
+            "not-a-number",
         )
-        assert server.ssl_ca_certs == "/etc/tls/ca.pem"
+        rl = RateLimitConfig()
+        assert rl.unauth_max_requests == 20
 
-    def test_ca_certs_without_tls_pair_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match=r"ssl_certfile.*required",
-        ):
-            ServerConfig(ssl_ca_certs="/etc/tls/ca.pem")
-
-    def test_trusted_proxies_accepts_ips(self) -> None:
-        server = ServerConfig(
-            trusted_proxies=("10.0.0.1", "172.16.0.0/12"),
+    def test_invalid_exclude_paths_json_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_RATE_LIMIT_EXCLUDE_PATHS",
+            "{not valid json",
         )
-        assert server.trusted_proxies == ("10.0.0.1", "172.16.0.0/12")
-
-    def test_trusted_proxies_empty_by_default(self) -> None:
-        server = ServerConfig()
-        assert server.trusted_proxies == ()
-
-
-@pytest.mark.unit
-class TestServerConfigBeforeValidatorImmutability:
-    """The empty-string TLS normalizer must not mutate caller input."""
-
-    def test_empty_string_normalization_does_not_mutate_input(self) -> None:
-        import copy
-
-        original = {
-            "ssl_certfile": "",
-            "ssl_keyfile": "  ",
-            "ssl_ca_certs": "/etc/tls/ca.pem",
-        }
-        snapshot = copy.deepcopy(original)
-        with pytest.raises(ValidationError):
-            ServerConfig.model_validate(original)
-        assert original == snapshot, "before-validator mutated caller input"
-
-    def test_input_dict_remains_reusable(self) -> None:
-        original = {
-            "ssl_certfile": "",
-            "ssl_keyfile": "",
-        }
-        first = ServerConfig.model_validate(original)
-        second = ServerConfig.model_validate(original)
-        assert first.ssl_certfile is None
-        assert second.ssl_certfile is None
-        assert original == {"ssl_certfile": "", "ssl_keyfile": ""}
+        rl = RateLimitConfig()
+        assert "/api/v1/healthz" in rl.exclude_paths

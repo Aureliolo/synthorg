@@ -5,9 +5,8 @@ authentication, and the top-level ``ApiConfig`` that aggregates
 them all.
 """
 
-import ipaddress
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,8 +15,13 @@ from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import (
-    API_NETWORK_EXPOSURE_WARNING,
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+    parse_int,
+    parse_str_tuple_json,
 )
 
 logger = get_logger(__name__)
@@ -118,6 +122,38 @@ class RateLimitConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="unauth_max_requests",
+            namespace=SettingNamespace.API,
+            key="rate_limit_unauth_max_requests",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="auth_max_requests",
+            namespace=SettingNamespace.API,
+            key="rate_limit_auth_max_requests",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="time_unit",
+            namespace=SettingNamespace.API,
+            key="rate_limit_time_unit",
+        ),
+        MirrorField(
+            field="exclude_paths",
+            namespace=SettingNamespace.API,
+            key="rate_limit_exclude_paths",
+            parse=parse_str_tuple_json,
+        ),
+        MirrorField(
+            field="max_rpm_default",
+            namespace=SettingNamespace.API,
+            key="max_rpm_default",
+            parse=parse_int,
+        ),
+    )
+
     floor_max_requests: int = Field(
         default=10000,
         ge=1,
@@ -197,6 +233,11 @@ class RateLimitConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+
+    @model_validator(mode="before")
+    @classmethod
     def _reject_legacy_max_requests(cls, data: Any) -> Any:
         """Reject the removed ``max_requests`` field with guidance."""
         if isinstance(data, dict) and "max_requests" in data:
@@ -211,46 +252,23 @@ class RateLimitConfig(BaseModel):
 class ServerConfig(BaseModel):
     """Uvicorn server configuration.
 
+    Host, port, TLS paths, trusted-proxy list, and the compression /
+    request-size limits are resolved at boot via
+    :func:`synthorg.settings.bootstrap_resolver.resolve_init_value`
+    against the ``api.*`` registry entries rather than carried on this
+    model. Only the worker-process / auto-reload / WebSocket-ping knobs
+    that uvicorn needs at construction time live here.
+
     Attributes:
-        host: Bind address.
-        port: Bind port.
         reload: Enable auto-reload for development.
         workers: Number of worker processes.
         ws_ping_interval: WebSocket ping interval in seconds
             (0 to disable).
         ws_ping_timeout: WebSocket pong timeout in seconds.
-        ssl_certfile: Path to SSL certificate file (PEM format).
-        ssl_keyfile: Path to SSL private key file (PEM format).
-        ssl_ca_certs: Path to CA bundle for client cert
-            verification.
-        trusted_proxies: IP addresses/CIDRs trusted as reverse
-            proxies for ``X-Forwarded-For``/``X-Forwarded-Proto``
-            header processing.
-        compression_minimum_size_bytes: Minimum response body size
-            in bytes before brotli compression kicks in. Mirrors the
-            ``api.compression_minimum_size_bytes`` setting (restart
-            required); the API startup hook resolves the current
-            value and threads it in here so operator tuning via the
-            settings database takes effect on next boot.
-        request_max_body_size_bytes: Maximum accepted HTTP request
-            body size in bytes. Mirrors the
-            ``api.request_max_body_size_bytes`` setting (restart
-            required); populated the same way as
-            ``compression_minimum_size_bytes``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    host: str = Field(
-        default="127.0.0.1",
-        description="Bind address",
-    )
-    port: int = Field(
-        default=3001,
-        ge=1,
-        le=65535,
-        description="Bind port",
-    )
     reload: bool = Field(
         default=False,
         description="Enable auto-reload for development",
@@ -271,107 +289,6 @@ class ServerConfig(BaseModel):
         ge=0,
         description="WebSocket pong timeout in seconds",
     )
-    ssl_certfile: str | None = Field(
-        default=None,
-        description="Path to SSL certificate file (PEM format)",
-    )
-    ssl_keyfile: str | None = Field(
-        default=None,
-        description="Path to SSL private key file (PEM format)",
-    )
-    ssl_ca_certs: str | None = Field(
-        default=None,
-        description=("Path to CA bundle for client certificate verification"),
-    )
-    trusted_proxies: tuple[str, ...] = Field(
-        default=(),
-        description=(
-            "IP addresses/CIDRs trusted as reverse proxies "
-            "for X-Forwarded-For/Proto header processing"
-        ),
-    )
-    compression_minimum_size_bytes: int = Field(
-        default=1000,
-        ge=100,
-        le=10_000,
-        description=(
-            "Minimum response body size in bytes before brotli compression"
-            " is applied (mirrors the api.compression_minimum_size_bytes"
-            " setting; restart required)"
-        ),
-    )
-    request_max_body_size_bytes: int = Field(
-        default=52_428_800,
-        ge=1_000_000,
-        le=536_870_912,
-        description=(
-            "Maximum accepted HTTP request body size in bytes (mirrors"
-            " the api.request_max_body_size_bytes setting; restart"
-            " required)"
-        ),
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_empty_tls(cls, data: Any) -> Any:
-        """Normalize empty-string TLS paths to ``None``."""
-        if not isinstance(data, dict):
-            return data
-        overrides: dict[str, object] = {}
-        for key in ("ssl_certfile", "ssl_keyfile", "ssl_ca_certs"):
-            val = data.get(key)
-            if isinstance(val, str) and not val.strip():
-                overrides[key] = None
-        if not overrides:
-            return data
-        return {**data, **overrides}
-
-    @model_validator(mode="after")
-    def _validate_tls_pair(self) -> Self:
-        """Require both cert and key when either is set."""
-        has_cert = self.ssl_certfile is not None
-        has_key = self.ssl_keyfile is not None
-        has_ca = self.ssl_ca_certs is not None
-
-        if has_cert and not has_key:
-            msg = "ssl_keyfile is required when ssl_certfile is set"
-            raise ValueError(msg)
-        if has_key and not has_cert:
-            msg = "ssl_certfile is required when ssl_keyfile is set"
-            raise ValueError(msg)
-        if has_ca and not has_cert:
-            msg = "ssl_certfile is required when ssl_ca_certs is set"
-            raise ValueError(msg)
-
-        # Validate trusted_proxies as valid IP/CIDR entries.
-        for entry in self.trusted_proxies:
-            try:
-                network = ipaddress.ip_network(entry, strict=False)
-            except ValueError:
-                msg = (
-                    f"Invalid trusted_proxies entry: {entry!r} "
-                    f"(must be an IP address or CIDR notation)"
-                )
-                raise ValueError(msg) from None
-            if network.prefixlen == 0:
-                msg = (
-                    f"Overly broad trusted_proxies entry: {entry!r} "
-                    f"trusts all addresses -- use specific IPs/CIDRs"
-                )
-                raise ValueError(msg)
-
-        _wildcard_hosts = {"0.0.0.0", "::"}  # noqa: S104
-        if self.host in _wildcard_hosts and not has_cert and not self.trusted_proxies:
-            logger.warning(
-                API_NETWORK_EXPOSURE_WARNING,
-                host=self.host,
-                note=(
-                    "Server binds to all interfaces without TLS "
-                    "or trusted proxy configuration"
-                ),
-            )
-
-        return self
 
 
 class ApiConfig(BaseModel):
@@ -387,8 +304,8 @@ class ApiConfig(BaseModel):
             ``api.rate_limiter_enabled`` registry entry
             (``read_only_post_init=True``): the boot-time resolver in
             ``api/app.py`` reads ``SYNTHORG_API_RATE_LIMITER_ENABLED``
-            first and falls through to this YAML field, then the
-            registry default.
+            and falls through to the registered default (env > code
+            default per the Cat-2 precedence model).
         per_op_rate_limit: Per-operation throttling configuration
             (layered on top of the global three-tier limiter).
         per_op_concurrency: Per-operation inflight concurrency capping
@@ -400,6 +317,20 @@ class ApiConfig(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="api_prefix",
+            namespace=SettingNamespace.API,
+            key="api_prefix",
+        ),
+        MirrorField(
+            field="rate_limiter_enabled",
+            namespace=SettingNamespace.API,
+            key="rate_limiter_enabled",
+            parse=parse_bool,
+        ),
+    )
 
     cors: CorsConfig = Field(
         default_factory=CorsConfig,
@@ -419,8 +350,8 @@ class ApiConfig(BaseModel):
             " Mirrors the ``api.rate_limiter_enabled`` registry entry"
             " (read_only_post_init=True): the boot-time resolver in"
             " ``api/app.py`` reads SYNTHORG_API_RATE_LIMITER_ENABLED"
-            " first and falls through to this YAML field, then the"
-            " registry default."
+            " and falls through to the registered default (env > code"
+            " default per the Cat-2 precedence model)."
         ),
     )
     per_op_rate_limit: PerOpRateLimitConfig = Field(
@@ -447,3 +378,8 @@ class ApiConfig(BaseModel):
         default="/api/v1",
         description="URL prefix for all API routes",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)

@@ -5,7 +5,6 @@ wires structlog processors, stdlib handlers, and per-logger levels.
 """
 
 import logging
-import os
 import sys
 from pathlib import Path
 from types import MappingProxyType
@@ -311,17 +310,9 @@ def _tame_third_party_loggers() -> None:
 def _apply_console_level_override(config: LogConfig) -> LogConfig:
     """Override the console sink level from the configured override.
 
-    Resolves the override through the documented chain for the
-    ``observability.log_level_console`` registry entry, minus the DB
-    leg (the settings service is not yet available at this bootstrap
-    site -- DB-driven runtime updates flow through a future
-    ``SettingsChangeDispatcher`` subscriber, tracked as a follow-up):
-
-    1. ``SYNTHORG_LOG_LEVEL`` env var (operator-facing override)
-    2. ``LogConfig.console_level`` (YAML, ``logging.console_level``)
-    3. unset -- per-sink / root_level default applies
-
-    Invalid values fall back to INFO with a stderr warning.
+    Resolves ``observability.log_level_console`` via bootstrap_resolver
+    (env > default; DB bypassed for read_only_post_init). Invalid
+    values fall back to INFO with a stderr warning.
 
     Args:
         config: Current logging configuration.
@@ -329,10 +320,24 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
     Returns:
         Possibly updated config with the console sink level overridden.
     """
-    env_raw = os.environ.get("SYNTHORG_LOG_LEVEL", "").strip()
-    yaml_raw = config.console_level.strip()
-    raw = env_raw or yaml_raw
-    source = "env" if env_raw else "yaml" if yaml_raw else None
+    # Lazy import to avoid an observability -> settings -> observability
+    # cycle: settings.registry imports observability.get_logger.
+    from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
+        resolve_init_value,
+    )
+    from synthorg.settings.enums import SettingNamespace, SettingSource  # noqa: PLC0415
+
+    resolved = resolve_init_value(
+        SettingNamespace.OBSERVABILITY,
+        "log_level_console",
+    )
+    source: str | None
+    if resolved.source == SettingSource.ENVIRONMENT:
+        raw = str(resolved.value).strip()
+        source = "env"
+    else:
+        raw = config.console_level.strip()
+        source = "yaml" if raw else None
     if not raw:
         return config
 

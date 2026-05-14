@@ -1,7 +1,9 @@
-"""Settings service -- resolution, validation, caching, and notifications.
+"""Settings service: resolution, validation, caching, and notifications.
 
 Provides the central service layer that merges setting values from
-four sources in priority order: DB > env > YAML > code defaults.
+three sources in priority order: DB > env > code default. For settings
+flagged ``read_only_post_init=True`` the DB tier is bypassed and the
+chain collapses to env > default.
 """
 
 import asyncio
@@ -30,7 +32,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_VERSION_CONFLICT,
 )
 from synthorg.observability.metrics_hub import record_settings_mutation
-from synthorg.settings.config_bridge import extract_from_config
 from synthorg.settings.enums import SettingsImportSource, SettingSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
@@ -162,9 +163,12 @@ class SettingsService:
 
     Resolution order (highest priority first):
     1. Database overrides (user-set via API/UI)
-    2. Environment variables (``SYNTHORG_{NAMESPACE}_{KEY}``)
-    3. YAML defaults (from ``RootConfig``)
-    4. Code defaults (from ``SettingDefinition.default``)
+    2. Environment variables (``SYNTHORG_{NAMESPACE}_{KEY}`` or
+       ``env_var_override``)
+    3. Code defaults (from ``SettingDefinition.default``)
+
+    For settings flagged ``read_only_post_init=True`` the DB tier is
+    bypassed and the chain collapses to env > default.
 
     The cache stores only non-sensitive DB values.  Sensitive values
     are decrypted on every read to avoid holding plaintext secrets
@@ -173,7 +177,6 @@ class SettingsService:
     Args:
         repository: Persistence repository for DB settings.
         registry: Setting metadata registry.
-        config: Root company configuration for YAML resolution.
         encryptor: Optional encryptor for sensitive settings.
         message_bus: Optional message bus for change notifications.
     """
@@ -183,13 +186,11 @@ class SettingsService:
         *,
         repository: SettingsRepository,
         registry: SettingsRegistry,
-        config: object,
         encryptor: SettingsEncryptor | None = None,
         message_bus: MessageBus | None = None,
     ) -> None:
         self._repository = repository
         self._registry = registry
-        self._config = config
         self._encryptor = encryptor
         self._message_bus = message_bus
         self._cache: dict[tuple[str, str], SettingValue] = {}
@@ -240,7 +241,6 @@ class SettingsService:
             namespace=definition.namespace,
             key=definition.key,
             source=source,
-            yaml_path=definition.yaml_path,
         )
 
     async def _resolve_db(
@@ -509,7 +509,7 @@ class SettingsService:
         self,
         definition: SettingDefinition,
     ) -> SettingValue:
-        """Resolve via env > YAML > code default (no DB lookup)."""
+        """Resolve via env > code default (no DB lookup)."""
         ns = definition.namespace
         key = definition.key
 
@@ -528,20 +528,9 @@ class SettingsService:
                 source=SettingSource.ENVIRONMENT,
             )
 
-        if definition.yaml_path is not None:
-            yaml_val = extract_from_config(self._config, definition.yaml_path)
-            if yaml_val is not None:
-                await self._emit_resolved(definition, source="yaml")
-                return SettingValue(
-                    namespace=ns,
-                    key=key,
-                    value=yaml_val,
-                    source=SettingSource.YAML,
-                )
-
-        # default=None means "optional -- no built-in default".  Return
+        # default=None means "optional, no built-in default". Return
         # empty string as a sentinel (callers like ConfigResolver.get_int
-        # will raise ValueError on empty, giving a clear error at the
+        # raise ValueError on empty, giving a clear error at the
         # consumer layer rather than here).
         default = definition.default if definition.default is not None else ""
         await self._emit_resolved(definition, source="default")
@@ -612,7 +601,7 @@ class SettingsService:
                 updated_at=updated_at,
             )
 
-        # Fallback: env > YAML > default
+        # Fallback: env > default
         fallback = await self._resolve_fallback(definition)
         display = _SENSITIVE_MASK if definition.sensitive else fallback.value
         return SettingEntry(

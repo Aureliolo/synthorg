@@ -816,7 +816,6 @@ class TestAutoWirePhase2:
         settings_svc = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=root_config,
         )
         app = create_app(
             config=root_config,
@@ -857,7 +856,6 @@ class TestAppStateSetSettingsService:
         settings_svc = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=root_config,
         )
         app_state.set_settings_service(settings_svc)
 
@@ -884,7 +882,6 @@ class TestAppStateSetSettingsService:
         settings_svc = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=root_config,
         )
         app_state.set_settings_service(settings_svc)
 

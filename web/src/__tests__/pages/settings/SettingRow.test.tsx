@@ -10,7 +10,7 @@ function makeEntry(
     source?: SettingEntry['source']
   } = {},
 ): SettingEntry {
-  const { value = '127.0.0.1', source = 'yaml', ...defOverrides } = overrides
+  const { value = '127.0.0.1', source = 'default', ...defOverrides } = overrides
   return {
     definition: {
       namespace: 'api',
@@ -28,7 +28,6 @@ function makeEntry(
       validator_pattern: null,
       min_value: null,
       max_value: null,
-      yaml_path: null,
       ...defOverrides,
     },
     value,

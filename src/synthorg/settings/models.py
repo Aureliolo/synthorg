@@ -49,18 +49,17 @@ class SettingDefinition(BaseModel):
         sensitive: Whether the value should be encrypted at rest.
         restart_required: Whether changes require a restart.
         read_only_post_init: Whether the setting is sourced exclusively
-            from env / YAML at process startup and rejects mutation via
-            ``SettingsService.set()`` and friends.  The registry entry
-            exists for discoverability so operators can introspect the
-            value through the standard /settings API; mutation through
-            that surface raises ``SettingReadOnlyError``.  Always implies
-            ``restart_required=True``; the cross-field validator
-            enforces the implication.
+            from the environment at process startup and rejects mutation
+            via ``SettingsService.set()`` and friends.  The registry
+            entry exists for discoverability so operators can introspect
+            the value through the standard /settings API; mutation
+            through that surface raises ``SettingReadOnlyError``.
+            Always implies ``restart_required=True``; the cross-field
+            validator enforces the implication.
         enum_values: Allowed values when ``type`` is ``ENUM``.
         validator_pattern: Regex pattern for string validation.
         min_value: Minimum for numeric types (inclusive).
         max_value: Maximum for numeric types (inclusive).
-        yaml_path: Dotted path into ``RootConfig`` for YAML resolution.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -89,7 +88,7 @@ class SettingDefinition(BaseModel):
     read_only_post_init: bool = Field(
         default=False,
         description=(
-            "Sourced from env / YAML at startup; mutation via"
+            "Sourced from environment at startup; mutation via"
             " SettingsService is rejected. Implies restart_required=True."
         ),
     )
@@ -121,10 +120,6 @@ class SettingDefinition(BaseModel):
     max_value: float | None = Field(
         default=None,
         description="Maximum value for numeric types",
-    )
-    yaml_path: NotBlankStr | None = Field(
-        default=None,
-        description="Dotted path into RootConfig for YAML resolution",
     )
 
     @model_validator(mode="after")

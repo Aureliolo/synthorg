@@ -5,7 +5,7 @@ Defines frozen Pydantic config models for each pluggable axis
 with safe defaults matching the issue specification.
 """
 
-from typing import Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -22,6 +22,10 @@ from synthorg.memory.procedural.propagation.config import (
 )
 from synthorg.memory.procedural.pruning.config import (
     PruningConfig,
+)
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
 )
 
 
@@ -238,6 +242,14 @@ class EvolutionConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    # ``enabled`` intentionally omits the mirror: the registered
+    # ``engine.evolution_enabled`` default is False (kill-switch
+    # default) while the Pydantic field default is True (runtime-
+    # mutable feature flag).  Service consumers read the registered
+    # value via ConfigResolver at runtime; the Pydantic field is the
+    # internal-default the evolution service initialises with.
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = ()
+
     enabled: bool = True
     triggers: TriggerConfig = Field(default_factory=TriggerConfig)
     proposer: ProposerConfig = Field(default_factory=ProposerConfig)
@@ -249,3 +261,8 @@ class EvolutionConfig(BaseModel):
     identity_store: IdentityStoreConfig = Field(
         default_factory=IdentityStoreConfig,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)

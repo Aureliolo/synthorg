@@ -24,7 +24,6 @@ _r.register(
         restart_required=True,
         min_value=5.0,
         max_value=300.0,
-        yaml_path="a2a.client_timeout_seconds",
     )
 )
 
@@ -42,7 +41,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0,
         max_value=3600,
-        yaml_path="a2a.push_verification_clock_skew_seconds",
     )
 )
 
@@ -61,6 +59,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10000,
-        yaml_path="a2a.max_message_parts",
     )
 )

@@ -17,7 +17,6 @@ _r.register(
         description="Memory backend implementation",
         group="General",
         restart_required=True,
-        yaml_path="memory.backend",
     )
 )
 
@@ -30,7 +29,6 @@ _r.register(
         description="Default memory persistence level for agents",
         group="General",
         enum_values=("none", "session", "project", "persistent"),
-        yaml_path="memory.level",
     )
 )
 
@@ -44,7 +42,6 @@ _r.register(
         group="Maintenance",
         level=SettingLevel.ADVANCED,
         enum_values=("hourly", "daily", "weekly", "never"),
-        yaml_path="memory.consolidation_interval",
     )
 )
 
@@ -59,7 +56,6 @@ _r.register(
         description="Override embedding provider (advanced)",
         group="Embedding",
         level=SettingLevel.ADVANCED,
-        yaml_path="memory.embedder.provider",
     )
 )
 
@@ -72,7 +68,6 @@ _r.register(
         description="Override embedding model (advanced)",
         group="Embedding",
         level=SettingLevel.ADVANCED,
-        yaml_path="memory.embedder.model",
     )
 )
 
@@ -86,7 +81,6 @@ _r.register(
         group="Embedding",
         level=SettingLevel.ADVANCED,
         min_value=1,
-        yaml_path="memory.embedder.dims",
     )
 )
 
@@ -106,7 +100,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=100,
         max_value=10_000,
-        yaml_path="memory.consolidation_enforce_batch_size",
     )
 )
 
@@ -126,7 +119,6 @@ _r.register(
         ),
         group="Maintenance",
         level=SettingLevel.ADVANCED,
-        yaml_path="memory.consolidation.enabled",
     )
 )
 
@@ -152,7 +144,6 @@ _r.register(
         ),
         group="Fine-Tune",
         level=SettingLevel.ADVANCED,
-        yaml_path="memory.fine_tune.vram_batch_table",
     )
 )
 
@@ -171,7 +162,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=64,
         max_value=4096,
-        yaml_path="memory.fine_tune.chunk_size",
     )
 )
 
@@ -206,7 +196,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=1024,
-        yaml_path="memory.fine_tune.default_batch_size",
     )
 )
 
@@ -224,7 +213,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=1_000,
-        yaml_path="memory.fine_tune.min_docs_required",
     )
 )
 
@@ -243,6 +231,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10_000,
-        yaml_path="memory.fine_tune.min_docs_recommended",
     )
 )

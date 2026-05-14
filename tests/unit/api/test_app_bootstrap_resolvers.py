@@ -1,0 +1,131 @@
+"""Direct coverage for the boot-time helpers in ``api/app.py``.
+
+These resolvers wrap ``resolve_init_value`` for the API-namespace
+Cat-2 reads driven from ``create_app`` (rate limiter, compression
+limits, CORS origins, trusted proxies). The wider integration tests
+exercise them through the full app builder, but a typo'd env var or
+a parser regression would otherwise only surface on a real boot.
+"""
+
+import pytest
+
+from synthorg.api.app import (
+    _resolve_api_int,
+    _resolve_api_str,
+    _resolve_api_str_tuple,
+    _resolve_rate_limiter_enabled,
+)
+
+
+@pytest.mark.unit
+class TestResolveRateLimiterEnabled:
+    def test_env_set_true_returns_true(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMITER_ENABLED", "true")
+        assert _resolve_rate_limiter_enabled() is True
+
+    def test_env_set_false_returns_false(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMITER_ENABLED", "false")
+        assert _resolve_rate_limiter_enabled() is False
+
+    def test_env_unset_falls_through_to_registered_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SYNTHORG_API_RATE_LIMITER_ENABLED", raising=False)
+        assert _resolve_rate_limiter_enabled() is True
+
+    def test_invalid_token_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMITER_ENABLED", "maybe")
+        assert _resolve_rate_limiter_enabled() is True
+
+
+@pytest.mark.unit
+class TestResolveApiStrTuple:
+    def test_env_set_to_valid_json_list(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_CORS_ALLOWED_ORIGINS",
+            '["https://a.example", "https://b.example"]',
+        )
+        assert _resolve_api_str_tuple("cors_allowed_origins") == (
+            "https://a.example",
+            "https://b.example",
+        )
+
+    def test_env_set_to_invalid_json_returns_empty_tuple(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_CORS_ALLOWED_ORIGINS", "{broken")
+        # Invalid JSON yields None from the parser; resolver applies the
+        # registered default. The default for cors_allowed_origins is
+        # `[]` which deserialises to an empty tuple.
+        assert _resolve_api_str_tuple("cors_allowed_origins") == ()
+
+    def test_env_unset_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SYNTHORG_API_CORS_ALLOWED_ORIGINS", raising=False)
+        assert _resolve_api_str_tuple("cors_allowed_origins") == ()
+
+
+@pytest.mark.unit
+class TestResolveApiInt:
+    def test_env_set_to_valid_int(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_COMPRESSION_MINIMUM_SIZE_BYTES",
+            "2048",
+        )
+        assert _resolve_api_int("compression_minimum_size_bytes") == 2048
+
+    def test_invalid_int_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv(
+            "SYNTHORG_API_COMPRESSION_MINIMUM_SIZE_BYTES",
+            raising=False,
+        )
+        expected_default = _resolve_api_int("compression_minimum_size_bytes")
+
+        # Regression guard: prior to wiring parse_int, _resolve_api_int
+        # passed bare int() as the parse callback, which raised
+        # ValueError uncaught and crashed app construction on any typo.
+        monkeypatch.setenv(
+            "SYNTHORG_API_COMPRESSION_MINIMUM_SIZE_BYTES",
+            "not-a-number",
+        )
+        # parse_int returns None, resolver falls back to default.
+        assert _resolve_api_int("compression_minimum_size_bytes") == expected_default
+
+
+@pytest.mark.unit
+class TestResolveApiStr:
+    def test_env_set_returns_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_API_PREFIX", "/api/v2")
+        assert _resolve_api_str("api_prefix") == "/api/v2"
+
+    def test_env_unset_returns_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SYNTHORG_API_API_PREFIX", raising=False)
+        assert _resolve_api_str("api_prefix") == "/api/v1"

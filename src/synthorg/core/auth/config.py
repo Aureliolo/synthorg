@@ -1,10 +1,17 @@
 """Authentication configuration."""
 
-from typing import Final, Literal, Self
+from typing import Any, ClassVar, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_int,
+    parse_str_tuple_json,
+)
 
 MIN_SECRET_LENGTH: Final[int] = 32
 DEFAULT_COOKIE_NAME = "session"
@@ -62,6 +69,28 @@ class AuthConfig(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="jwt_expiry_minutes",
+            namespace=SettingNamespace.API,
+            key="jwt_expiry_minutes",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="min_password_length",
+            namespace=SettingNamespace.API,
+            key="min_password_length",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="exclude_paths",
+            namespace=SettingNamespace.API,
+            key="auth_exclude_paths",
+            parse=parse_str_tuple_json,
+            only_if_env_set=True,
+        ),
+    )
 
     jwt_secret: str = Field(
         default="",
@@ -189,6 +218,11 @@ class AuthConfig(BaseModel):
         le=1440,
         description="Auto-unlock duration after lockout",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_secret_length(self) -> Self:

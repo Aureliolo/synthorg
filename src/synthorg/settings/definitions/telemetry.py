@@ -29,7 +29,6 @@ _r.register(
         group="General",
         level=SettingLevel.BASIC,
         env_var_override="SYNTHORG_TELEMETRY_ENABLED",
-        yaml_path="telemetry.enabled",
         # The collector is constructed at app construction time
         # (before SettingsService exists), so a DB edit cannot reach
         # it without a process restart. Mark this explicitly so the

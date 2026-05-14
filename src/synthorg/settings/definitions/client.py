@@ -26,7 +26,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=10.0,
         max_value=3600.0,
-        yaml_path="client.human_response_timeout_seconds",
     )
 )
 
@@ -52,7 +51,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="client.scored_feedback.passing_score",
     )
 )
 
@@ -71,7 +69,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=10.0,
-        yaml_path="client.scored_feedback.strictness_multiplier",
     )
 )
 
@@ -90,6 +87,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
-        yaml_path="client.scored_feedback.strictness_floor",
     )
 )

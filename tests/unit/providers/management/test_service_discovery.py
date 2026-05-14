@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from synthorg.api.config import ServerConfig
 from synthorg.api.dto import CreateFromPresetRequest, UpdateProviderRequest
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.enums import AuthType
@@ -16,8 +15,8 @@ from synthorg.providers.url_utils import redact_url
 from .conftest import make_create_request
 
 pytestmark = pytest.mark.unit
-# Derived from the default ServerConfig so tests track port changes automatically.
-_BACKEND_PORT = ServerConfig().port
+# Mirrors the registered ``api.server_port`` default.
+_BACKEND_PORT = 3001
 
 
 class TestDiscoverModelsForProvider:

@@ -49,7 +49,6 @@ def settings_service(
     return SettingsService(
         repository=persistence.settings,
         registry=get_registry(),
-        config=config,
     )
 
 

@@ -53,7 +53,6 @@ class TestProviderControllerDbOverride:
         settings_service = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=config,
             encryptor=encryptor,
         )
 

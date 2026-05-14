@@ -93,26 +93,30 @@ def _lightweight_argon2_hasher() -> Any:
 
 @pytest.fixture(scope="session", autouse=True)
 def _required_env_vars() -> Iterator[None]:
-    """Set SYNTHORG_JWT_SECRET and SYNTHORG_SETTINGS_KEY for API tests.
+    """Set bootstrap env vars + Cat-2 mirrors for API tests.
 
     Session-scoped with manual env-var management (``monkeypatch`` is
-    function-scoped and cannot be used here).
+    function-scoped and cannot be used here). ``SYNTHORG_COMPANY_*``
+    overrides surface what the ``root_config`` fixture used to provide
+    in tests before the legacy YAML tier was removed; explicit env
+    vars are now the only way to set company identity for tests.
     """
     import os
 
-    old_jwt = os.environ.get("SYNTHORG_JWT_SECRET")
-    old_key = os.environ.get("SYNTHORG_SETTINGS_KEY")
-    os.environ["SYNTHORG_JWT_SECRET"] = _TEST_JWT_SECRET
-    os.environ["SYNTHORG_SETTINGS_KEY"] = _TEST_SETTINGS_KEY
+    _overrides = {
+        "SYNTHORG_JWT_SECRET": _TEST_JWT_SECRET,
+        "SYNTHORG_SETTINGS_KEY": _TEST_SETTINGS_KEY,
+        "SYNTHORG_COMPANY_COMPANY_NAME": "test-company",
+    }
+    _previous = {name: os.environ.get(name) for name in _overrides}
+    for name, value in _overrides.items():
+        os.environ[name] = value
     yield
-    if old_jwt is None:
-        os.environ.pop("SYNTHORG_JWT_SECRET", None)
-    else:
-        os.environ["SYNTHORG_JWT_SECRET"] = old_jwt
-    if old_key is None:
-        os.environ.pop("SYNTHORG_SETTINGS_KEY", None)
-    else:
-        os.environ["SYNTHORG_SETTINGS_KEY"] = old_key
+    for name, prior in _previous.items():
+        if prior is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = prior
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -420,7 +424,6 @@ def _shared_app(  # noqa: PLR0913
     settings_service = SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
-        config=root_config,
     )
 
     return create_app(

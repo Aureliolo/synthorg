@@ -46,6 +46,8 @@ from synthorg.ontology.config import OntologyConfig
 from synthorg.persistence.config import PersistenceConfig
 from synthorg.security.config import SecurityConfig
 from synthorg.security.trust.config import TrustConfig
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
 from synthorg.telemetry.config import TelemetryConfig
 from synthorg.tools.analytics.config import AnalyticsToolsConfig  # noqa: TC001
 from synthorg.tools.communication.config import CommunicationToolsConfig  # noqa: TC001
@@ -134,6 +136,14 @@ class RoutingConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="strategy",
+            namespace=SettingNamespace.PROVIDERS,
+            key="routing_strategy",
+        ),
+    )
+
     strategy: NotBlankStr = Field(
         default="cost_aware",
         description="Routing strategy name",
@@ -146,6 +156,11 @@ class RoutingConfig(BaseModel):
         default=(),
         description="Ordered fallback model aliases or IDs",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class AgentConfig(BaseModel):

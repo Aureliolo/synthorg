@@ -17,6 +17,9 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_MEMORY_DIR_TMPROOT_FALLBACK,
 )
+from synthorg.settings.bootstrap_resolver import resolve_init_value
+from synthorg.settings.enums import SettingNamespace, SettingSource
+from synthorg.settings.mirrors import parse_bool
 from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 
 # All four of ``CostTracker`` / ``ChiefOfStaffChat`` / ``ChiefOfStaffConfig``
@@ -50,16 +53,22 @@ _DEFAULT_MEMORY_DIR = Path("/data/memory")
 def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
     """Activate the structured logging pipeline.
 
-    Applies the ``SYNTHORG_LOG_DIR`` env var override (for Docker
-    volume paths) before calling :func:`bootstrap_logging`.
+    Resolves ``observability.log_directory`` via bootstrap_resolver
+    (env > default; DB bypassed for read_only_post_init). When an env
+    override is supplied, path-traversal is rejected before patching
+    the live config.
     """
     from synthorg.config import bootstrap_logging  # noqa: PLC0415
 
-    log_dir = os.environ.get("SYNTHORG_LOG_DIR", "").strip()
-    if not log_dir:
+    resolved = resolve_init_value(
+        SettingNamespace.OBSERVABILITY,
+        "log_directory",
+    )
+    if resolved.source != SettingSource.ENVIRONMENT:
         bootstrap_logging(effective_config)
         return effective_config
 
+    log_dir = str(resolved.value)
     if ".." in PurePath(log_dir).parts:
         msg = f"SYNTHORG_LOG_DIR contains '..' path traversal component: {log_dir!r}"
         raise ValueError(msg)
@@ -268,29 +277,29 @@ def _resolve_memory_dir() -> Path:
     return path
 
 
-_TELEMETRY_ENV_VAR = "SYNTHORG_TELEMETRY_ENABLED"
-_TELEMETRY_ENV_TRUE = frozenset({"true", "1", "yes"})
-_TELEMETRY_ENV_FALSE = frozenset({"false", "0", "no"})
+_TELEMETRY_ENV_ACCEPTED: tuple[str, ...] = (
+    "0",
+    "1",
+    "false",
+    "no",
+    "true",
+    "yes",
+)
 
 
 def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
     """Apply env-layer precedence for the registered ``telemetry.enabled`` setting.
 
-    Single source of "env wins over YAML / default" for the boot
-    path. ``SYNTHORG_TELEMETRY_ENABLED`` matches the env name registered
-    on the ``telemetry.enabled`` setting (see
-    ``synthorg.settings.definitions.telemetry``); when the value is
-    set, it overrides the parsed ``TelemetryConfig.enabled`` field.
-    The DB layer is consulted by ``SettingsService`` /
-    ``ConfigResolver`` for runtime ``/settings`` reads and edits;
-    those changes apply on the next process restart per the
-    setting's ``restart_required`` semantics. The collector itself
-    no longer re-applies this precedence so the audit trail stays
-    single-sourced.
+    Reads ``telemetry.enabled`` via :func:`bootstrap_resolver.resolve_init_value`,
+    which honours ``env > default`` for the registered env var (see
+    :mod:`synthorg.settings.definitions.telemetry`). The DB layer is
+    consulted by ``SettingsService`` / ``ConfigResolver`` for runtime
+    ``/settings`` reads and edits; those changes apply on the next
+    process restart per the setting's ``restart_required`` semantics.
 
-    Validates the env value at this system boundary -- a typo such as
-    ``SYNTHORG_TELEMETRY_ENABLED=falsee`` would otherwise silently fall
-    through to the parsed value and mask operator intent.
+    Validates the env value at this system boundary so a typo such as
+    ``SYNTHORG_TELEMETRY_ENABLED=falsee`` raises rather than silently
+    masking operator intent.
 
     Returns the (possibly updated) config.
 
@@ -298,19 +307,24 @@ def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
         ValueError: When the env var is set to a value that is neither
             a truthy nor falsy token from the recognised vocabulary.
     """
-    raw = normalize_ascii_lowercase(os.environ.get(_TELEMETRY_ENV_VAR, ""))
-    if not raw:
-        return parsed
-    if raw in _TELEMETRY_ENV_TRUE:
-        return parsed.model_copy(update={"enabled": True})
-    if raw in _TELEMETRY_ENV_FALSE:
-        return parsed.model_copy(update={"enabled": False})
-    accepted = sorted(_TELEMETRY_ENV_TRUE | _TELEMETRY_ENV_FALSE)
-    msg = (
-        f"{_TELEMETRY_ENV_VAR} must be one of {accepted!r}; "
-        f"got {raw!r}. Refusing to silently fall back to the parsed value."
+    resolved = resolve_init_value(
+        SettingNamespace.TELEMETRY,
+        "enabled",
+        parse=parse_bool,
     )
-    raise ValueError(msg)
+    if resolved.source != SettingSource.ENVIRONMENT:
+        env_raw = normalize_ascii_lowercase(
+            os.environ.get("SYNTHORG_TELEMETRY_ENABLED", ""),
+        )
+        if env_raw:
+            msg = (
+                f"SYNTHORG_TELEMETRY_ENABLED must be one of"
+                f" {list(_TELEMETRY_ENV_ACCEPTED)!r}; got {env_raw!r}."
+                f" Refusing to silently fall back to the parsed value."
+            )
+            raise ValueError(msg)
+        return parsed
+    return parsed.model_copy(update={"enabled": bool(resolved.value)})
 
 
 def _build_telemetry_collector(

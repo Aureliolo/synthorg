@@ -50,7 +50,6 @@ def _make_definition(  # noqa: PLR0913
     key: str = "total_monthly",
     setting_type: SettingType = SettingType.FLOAT,
     default: str | None | object = _UNSET,
-    yaml_path: str | None = "budget.total_monthly",
     sensitive: bool = False,
     restart_required: bool = False,
     enum_values: tuple[str, ...] = (),
@@ -73,7 +72,6 @@ def _make_definition(  # noqa: PLR0913
         default=resolved_default,
         description="test",
         group="test",
-        yaml_path=yaml_path,
         sensitive=sensitive,
         restart_required=restart_required,
         enum_values=enum_values,
@@ -116,7 +114,6 @@ def service(
     return SettingsService(
         repository=mock_repo,
         registry=registry,
-        config=config,
     )
 
 
@@ -125,7 +122,7 @@ def service(
 
 @pytest.mark.unit
 class TestResolutionOrder:
-    """Tests for the DB > env > YAML > default resolution chain."""
+    """Tests for the DB > env > default resolution chain."""
 
     async def test_resolves_from_db(
         self, service: SettingsService, mock_repo: AsyncMock
@@ -146,21 +143,21 @@ class TestResolutionOrder:
         assert result.value == "500.0"
         assert result.source == SettingSource.ENVIRONMENT
 
-    async def test_resolves_from_yaml(self, service: SettingsService) -> None:
+    async def test_resolves_from_registered_default(
+        self, service: SettingsService
+    ) -> None:
         result = await service.get("budget", "total_monthly")
         assert result.value == "100.0"
-        assert result.source == SettingSource.YAML
+        assert result.source == SettingSource.DEFAULT
 
-    async def test_resolves_from_default(
+    async def test_resolves_from_default_custom_key(
         self,
         mock_repo: AsyncMock,
         config: _FakeConfig,
     ) -> None:
         registry = SettingsRegistry()
-        registry.register(
-            _make_definition(key="custom_key", yaml_path=None, default="42")
-        )
-        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
+        registry.register(_make_definition(key="custom_key", default="42"))
+        svc = SettingsService(repository=mock_repo, registry=registry)
         result = await svc.get("budget", "custom_key")
         assert result.value == "42"
         assert result.source == SettingSource.DEFAULT
@@ -176,7 +173,7 @@ class TestResolutionOrder:
         result = await service.get("budget", "total_monthly")
         assert result.source == SettingSource.DATABASE
 
-    async def test_env_overrides_yaml(
+    async def test_env_overrides_default(
         self,
         service: SettingsService,
         monkeypatch: pytest.MonkeyPatch,
@@ -225,8 +222,8 @@ class TestCache:
         await service.delete("budget", "total_monthly")
         mock_repo.get.return_value = None
         result = await service.get("budget", "total_monthly")
-        # Falls through to YAML after cache miss
-        assert result.source == SettingSource.YAML
+        # Falls through to default after cache miss
+        assert result.source == SettingSource.DEFAULT
         assert mock_repo.get.call_count == 2
 
 
@@ -248,7 +245,6 @@ class TestValidation:
                 {
                     "setting_type": SettingType.ENUM,
                     "enum_values": ("a", "b"),
-                    "yaml_path": None,
                 },
                 "c",
                 "Invalid enum",
@@ -257,7 +253,6 @@ class TestValidation:
                 "enabled",
                 {
                     "setting_type": SettingType.BOOLEAN,
-                    "yaml_path": None,
                 },
                 "maybe",
                 "Expected boolean",
@@ -279,7 +274,6 @@ class TestValidation:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
         )
         with pytest.raises(SettingValidationError, match=match):
             await svc.set("budget", key, bad_value)
@@ -310,13 +304,11 @@ class TestSensitiveSettings:
                 key="api_key",
                 setting_type=SettingType.STRING,
                 sensitive=True,
-                yaml_path=None,
             )
         )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             encryptor=enc,
         )
         await svc.set("budget", "api_key", "secret123")
@@ -336,13 +328,11 @@ class TestSensitiveSettings:
                 key="api_key",
                 setting_type=SettingType.STRING,
                 sensitive=True,
-                yaml_path=None,
             )
         )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             encryptor=enc,
         )
         ciphertext = enc.encrypt("secret123")
@@ -360,13 +350,11 @@ class TestSensitiveSettings:
                 key="api_key",
                 setting_type=SettingType.STRING,
                 sensitive=True,
-                yaml_path=None,
             )
         )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             encryptor=enc,
         )
         ciphertext = enc.encrypt("secret123")
@@ -383,13 +371,11 @@ class TestSensitiveSettings:
                 key="api_key",
                 setting_type=SettingType.STRING,
                 sensitive=True,
-                yaml_path=None,
             )
         )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             encryptor=None,
         )
         with pytest.raises(SettingsEncryptionError, match="without encryption"):
@@ -413,7 +399,6 @@ class TestNotifications:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             message_bus=bus,
         )
         await svc.set("budget", "total_monthly", "200.0")
@@ -432,7 +417,6 @@ class TestNotifications:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             message_bus=bus,
         )
         await svc.delete("budget", "total_monthly")
@@ -481,7 +465,7 @@ class TestDeleteNamespace:
         # Subsequent get() must re-query the repo (not hit the cache)
         mock_repo.get.return_value = None
         result = await service.get("budget", "total_monthly")
-        assert result.source == SettingSource.YAML
+        assert result.source == SettingSource.DEFAULT
         assert mock_repo.get.call_count == 2
 
     async def test_publishes_only_for_keys_with_overrides_removed(
@@ -497,7 +481,6 @@ class TestDeleteNamespace:
         registry.register(
             _make_definition(
                 key="another_key",
-                yaml_path="budget.another_key",
             )
         )
         bus = mock_of[MessageBus](
@@ -507,7 +490,6 @@ class TestDeleteNamespace:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             message_bus=bus,
         )
         # Only one of the two registered keys has a DB override.
@@ -565,7 +547,6 @@ class TestDeleteNamespace:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             message_bus=bus,
         )
         mock_repo.delete_namespace_returning_keys.return_value = ()
@@ -624,8 +605,8 @@ class TestBulkOperations:
         mock_repo.get_namespace.return_value = ()
         entries = await service.get_namespace("budget")
         assert len(entries) == 1
-        # Falls to YAML since config has budget.total_monthly=100.0
-        assert entries[0].source == SettingSource.YAML
+        # Falls to registered default ("100.0" from _make_definition)
+        assert entries[0].source == SettingSource.DEFAULT
 
     async def test_get_all_returns_entries(
         self, service: SettingsService, mock_repo: AsyncMock
@@ -666,13 +647,11 @@ class TestSensitiveReadWithoutEncryptor:
                 key="api_key",
                 setting_type=SettingType.STRING,
                 sensitive=True,
-                yaml_path=None,
             )
         )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             encryptor=enc,
         )
         ciphertext = enc.encrypt("secret123")
@@ -700,7 +679,6 @@ class TestNotificationExceptionHandling:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             message_bus=bus,
         )
         # Should NOT raise despite bus failure
@@ -717,7 +695,6 @@ class TestNotificationExceptionHandling:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             message_bus=bus,
         )
         await svc.set("budget", "total_monthly", "200.0")
@@ -739,10 +716,9 @@ class TestAdditionalValidation:
             _make_definition(
                 key="count",
                 setting_type=SettingType.INTEGER,
-                yaml_path=None,
             )
         )
-        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
+        svc = SettingsService(repository=mock_repo, registry=registry)
         with pytest.raises(SettingValidationError, match="Expected integer"):
             await svc.set("budget", "count", "3.5")
 
@@ -754,10 +730,9 @@ class TestAdditionalValidation:
             _make_definition(
                 key="data",
                 setting_type=SettingType.JSON,
-                yaml_path=None,
             )
         )
-        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
+        svc = SettingsService(repository=mock_repo, registry=registry)
         with pytest.raises(SettingValidationError, match="Invalid JSON"):
             await svc.set("budget", "data", "not json")
 
@@ -769,10 +744,9 @@ class TestAdditionalValidation:
             _make_definition(
                 key="data",
                 setting_type=SettingType.JSON,
-                yaml_path=None,
             )
         )
-        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
+        svc = SettingsService(repository=mock_repo, registry=registry)
         entry = await svc.set("budget", "data", '{"a": 1}')
         assert entry.value == '{"a": 1}'
 
@@ -785,13 +759,11 @@ class TestAdditionalValidation:
                 key="secret",
                 setting_type=SettingType.INTEGER,
                 sensitive=True,
-                yaml_path=None,
             )
         )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             encryptor=SettingsEncryptor(Fernet.generate_key()),
         )
         with pytest.raises(SettingValidationError) as exc_info:
@@ -817,13 +789,11 @@ class TestCiphertextLeakGuard:
                 key="api_key",
                 setting_type=SettingType.STRING,
                 sensitive=True,
-                yaml_path=None,
             )
         )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             encryptor=None,
         )
         mock_repo.get.return_value = ("ciphertext", "2026-01-01T00:00:00Z")
@@ -840,7 +810,6 @@ class TestCiphertextLeakGuard:
                 key="api_key",
                 setting_type=SettingType.STRING,
                 sensitive=True,
-                yaml_path=None,
             )
         )
         ciphertext = enc.encrypt("secret123")
@@ -851,7 +820,6 @@ class TestCiphertextLeakGuard:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             encryptor=None,
         )
         entries = await svc.get_namespace("budget")
@@ -868,7 +836,6 @@ class TestCiphertextLeakGuard:
                 key="api_key",
                 setting_type=SettingType.STRING,
                 sensitive=True,
-                yaml_path=None,
             )
         )
         # Use a different key's ciphertext -- decrypt will fail
@@ -880,7 +847,6 @@ class TestCiphertextLeakGuard:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
             encryptor=enc,
         )
         entries = await svc.get_namespace("budget")
@@ -904,14 +870,12 @@ class TestValidatorPattern:
                 key="hostname",
                 setting_type=SettingType.STRING,
                 default="localhost",
-                yaml_path=None,
                 validator_pattern=r"^[a-z0-9.-]+$",
             )
         )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
         )
         entry = await svc.set("budget", "hostname", "my-host.local")
         assert entry.value == "my-host.local"
@@ -925,14 +889,12 @@ class TestValidatorPattern:
                 key="hostname",
                 setting_type=SettingType.STRING,
                 default="localhost",
-                yaml_path=None,
                 validator_pattern=r"^[a-z0-9.-]+$",
             )
         )
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
         )
         with pytest.raises(SettingValidationError, match="does not match"):
             await svc.set("budget", "hostname", "INVALID HOST!")
@@ -998,7 +960,6 @@ def _build_audit_registry(*, audited: bool, operation: str) -> SettingsRegistry:
                     key=key,
                     setting_type=SettingType.BOOLEAN,
                     default="false",
-                    yaml_path=None,
                 ),
             )
         return registry
@@ -1009,7 +970,6 @@ def _build_audit_registry(*, audited: bool, operation: str) -> SettingsRegistry:
                 key="opt_in",
                 setting_type=SettingType.BOOLEAN,
                 default="false",
-                yaml_path=None,
             ),
         )
     else:
@@ -1018,7 +978,6 @@ def _build_audit_registry(*, audited: bool, operation: str) -> SettingsRegistry:
                 namespace=ns,
                 key="total_monthly",
                 setting_type=SettingType.FLOAT,
-                yaml_path=None,
             ),
         )
     return registry
@@ -1139,7 +1098,6 @@ class TestSecuritySettingsAuditEmission:
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
         )
         with _logger_info_spy(service_mod) as captured:
             await _invoke_audit_operation(
@@ -1164,14 +1122,12 @@ class TestSecuritySettingsAuditEmission:
                 key="opt_in",
                 setting_type=SettingType.BOOLEAN,
                 default="false",
-                yaml_path=None,
             ),
         )
         mock_repo.delete_namespace_returning_keys.return_value = []
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
-            config=config,
         )
         with _logger_info_spy(service_mod) as captured:
             result = await svc.delete_namespace("security")

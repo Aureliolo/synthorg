@@ -24,7 +24,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=30,
         max_value=600,
-        yaml_path="meta.ci_timeout_seconds",
     )
 )
 
@@ -39,7 +38,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=100,
-        yaml_path="meta.proposal_rate_limit_max",
     )
 )
 
@@ -57,7 +55,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=100,
-        yaml_path="meta.outcome_store.default_limit",
     )
 )
 
@@ -74,6 +71,5 @@ _r.register(
         ),
         group="Self-Improvement",
         level=SettingLevel.ADVANCED,
-        yaml_path="meta.self_improvement",
     )
 )

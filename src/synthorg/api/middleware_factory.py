@@ -24,6 +24,9 @@ from synthorg.api.middleware import RequestLoggingMiddleware
 from synthorg.api.rate_limits import PerOpConcurrencyMiddleware
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_NETWORK_EXPOSURE_WARNING
+from synthorg.settings.bootstrap_resolver import resolve_init_value
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_str_tuple_json
 
 if TYPE_CHECKING:
     from litestar.types import Middleware
@@ -256,17 +259,16 @@ def _build_auth_exclude_paths(
     return exclude_paths
 
 
-def _warn_if_untrusted_proxies(api_config: ApiConfig) -> None:
+def _warn_if_untrusted_proxies(trusted: frozenset[str], host: str) -> None:
     """Warn when no trusted proxies are configured for a non-local host."""
-    trusted = frozenset(api_config.server.trusted_proxies)
-    if not trusted and api_config.server.host not in ("127.0.0.1", "localhost", "::1"):
+    if not trusted and host not in ("127.0.0.1", "localhost", "::1"):
         logger.warning(
             API_NETWORK_EXPOSURE_WARNING,
             note=(
                 "No trusted_proxies configured. If this server is behind "
                 "a reverse proxy or load balancer, all proxied clients "
                 "will share a single unauth rate-limit bucket. Set "
-                "api.server.trusted_proxies to the proxy IPs."
+                "SYNTHORG_API_TRUSTED_PROXIES to the proxy IPs."
             ),
         )
 
@@ -429,8 +431,16 @@ def _build_middleware(
     # PerOpConcurrencyMiddleware and the per-op guard surface still
     # apply since they have their own master switches.
     if rate_limiter_enabled:
-        trusted = frozenset(api_config.server.trusted_proxies)
-        _warn_if_untrusted_proxies(api_config)
+        trusted_resolved = resolve_init_value(
+            SettingNamespace.API,
+            "trusted_proxies",
+            parse=parse_str_tuple_json,
+        )
+        trusted = frozenset(
+            trusted_resolved.value if isinstance(trusted_resolved.value, tuple) else ()
+        )
+        host_resolved = resolve_init_value(SettingNamespace.API, "server_host")
+        _warn_if_untrusted_proxies(trusted, str(host_resolved.value))
         unauth_identifier = _build_unauth_identifier(trusted)
         ip_floor, unauth_rl, auth_rl = _build_rate_limits(
             api_config,

@@ -71,7 +71,6 @@ def settings_service(
     return SettingsService(
         repository=backend.settings,
         registry=get_registry(),
-        config=config,
     )
 
 

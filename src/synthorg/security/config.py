@@ -6,7 +6,7 @@ Defines ``SecurityConfig`` (the top-level security configuration),
 """
 
 from enum import StrEnum
-from typing import Self
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -18,6 +18,14 @@ from synthorg.settings.definitions.security import (
     AUDIT_RETENTION_TICK_DEFAULT_SECONDS,
     AUDIT_RETENTION_TICK_MAX_SECONDS,
     AUDIT_RETENTION_TICK_MIN_SECONDS,
+)
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+    parse_float,
+    parse_int,
 )
 
 
@@ -307,6 +315,50 @@ class SecurityConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.SECURITY,
+            key="enabled",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="audit_enabled",
+            namespace=SettingNamespace.SECURITY,
+            key="audit_enabled",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="post_tool_scanning_enabled",
+            namespace=SettingNamespace.SECURITY,
+            key="post_tool_scanning_enabled",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="output_scan_policy_type",
+            namespace=SettingNamespace.SECURITY,
+            key="output_scan_policy_type",
+        ),
+        MirrorField(
+            field="audit_retention_days",
+            namespace=SettingNamespace.SECURITY,
+            key="audit_retention_days",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="audit_retention_loop_enabled",
+            namespace=SettingNamespace.SECURITY,
+            key="audit_retention_loop_enabled",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="audit_retention_tick_seconds",
+            namespace=SettingNamespace.SECURITY,
+            key="audit_retention_tick_seconds",
+            parse=parse_float,
+        ),
+    )
+
     enabled: bool = True
     enforcement_mode: SecurityEnforcementMode = Field(
         default=SecurityEnforcementMode.ACTIVE,
@@ -367,6 +419,11 @@ class SecurityConfig(BaseModel):
             "Wall-clock interval between audit retention purge ticks. Default 24h."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _check_disjoint_action_types(self) -> SecurityConfig:

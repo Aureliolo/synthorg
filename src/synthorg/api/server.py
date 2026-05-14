@@ -16,6 +16,9 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_TLS_CONFIGURED,
 )
+from synthorg.settings.bootstrap_resolver import resolve_init_value
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_int, parse_str_tuple_json
 
 if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
@@ -37,10 +40,38 @@ def run_server(config: RootConfig) -> None:
     api_config = config.api
     server = api_config.server
 
+    def _str_or_none(key: str) -> str | None:
+        resolved = resolve_init_value(SettingNamespace.API, key)
+        raw = str(resolved.value).strip()
+        return raw or None
+
+    def _str_tuple(key: str) -> tuple[str, ...]:
+        resolved = resolve_init_value(
+            SettingNamespace.API,
+            key,
+            parse=parse_str_tuple_json,
+        )
+        if isinstance(resolved.value, tuple):
+            return resolved.value
+        return ()
+
+    host = str(resolve_init_value(SettingNamespace.API, "server_host").value)
+    port = int(
+        resolve_init_value(
+            SettingNamespace.API,
+            "server_port",
+            parse=parse_int,
+        ).value
+    )
+    ssl_certfile = _str_or_none("ssl_certfile")
+    ssl_keyfile = _str_or_none("ssl_keyfile")
+    ssl_ca_certs = _str_or_none("ssl_ca_certs")
+    trusted_proxies = _str_tuple("trusted_proxies")
+
     logger.info(
         API_APP_STARTUP,
-        host=server.host,
-        port=server.port,
+        host=host,
+        port=port,
         workers=server.workers,
     )
 
@@ -52,21 +83,19 @@ def run_server(config: RootConfig) -> None:
     )
 
     ssl_kwargs: dict[str, Any] = {}
-    if server.ssl_certfile:
-        ssl_kwargs["ssl_certfile"] = server.ssl_certfile
-        ssl_kwargs["ssl_keyfile"] = server.ssl_keyfile
-        if server.ssl_ca_certs:
-            ssl_kwargs["ssl_ca_certs"] = server.ssl_ca_certs
+    if ssl_certfile:
+        ssl_kwargs["ssl_certfile"] = ssl_certfile
+        ssl_kwargs["ssl_keyfile"] = ssl_keyfile
+        if ssl_ca_certs:
+            ssl_kwargs["ssl_ca_certs"] = ssl_ca_certs
         logger.info(
             API_TLS_CONFIGURED,
-            certfile=server.ssl_certfile,
+            certfile=ssl_certfile,
         )
 
     proxy_kwargs: dict[str, Any] = {}
-    if server.trusted_proxies:
-        proxy_kwargs["forwarded_allow_ips"] = ",".join(
-            server.trusted_proxies,
-        )
+    if trusted_proxies:
+        proxy_kwargs["forwarded_allow_ips"] = ",".join(trusted_proxies)
         proxy_kwargs["proxy_headers"] = True
 
     app = create_app(config=config)
@@ -85,8 +114,8 @@ def run_server(config: RootConfig) -> None:
     )
     uvicorn.run(
         drain_app,
-        host=server.host,
-        port=server.port,
+        host=host,
+        port=port,
         workers=server.workers,
         reload=server.reload,
         ws_ping_interval=ws_ping,

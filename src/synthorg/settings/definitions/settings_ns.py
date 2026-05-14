@@ -24,7 +24,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.1,
         max_value=10.0,
-        yaml_path="settings.dispatcher.poll_timeout_seconds",
     )
 )
 
@@ -41,7 +40,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.1,
         max_value=60.0,
-        yaml_path="settings.dispatcher.error_backoff_seconds",
     )
 )
 
@@ -56,7 +54,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5,
         max_value=100,
-        yaml_path="settings.dispatcher.max_consecutive_errors",
     )
 )
 
@@ -77,7 +74,6 @@ _r.register(
         ),
         group="Dispatcher",
         level=SettingLevel.ADVANCED,
-        yaml_path="settings.dispatcher.enabled",
     )
 )
 
@@ -98,6 +94,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=60.0,
-        yaml_path="settings.dispatcher.stop_drain_timeout_seconds",
     )
 )

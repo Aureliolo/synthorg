@@ -4,11 +4,17 @@ All models are frozen Pydantic ``BaseModel`` instances following
 the codebase convention of ``ConfigDict(frozen=True, allow_inf_nan=False)``.
 """
 
-from typing import Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_int,
+)
 
 
 class ConnectionsConfig(BaseModel):
@@ -126,12 +132,26 @@ class OAuthConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="device_flow_poll_interval_seconds",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="oauth_device_flow_poll_interval_seconds",
+            parse=parse_int,
+        ),
+    )
+
     redirect_uri_base: str = ""
     state_expiry_seconds: int = Field(default=3600, gt=0)
     pkce_required: bool = True
     device_flow_poll_interval_seconds: int = Field(default=5, gt=0)
     device_flow_timeout_seconds: int = Field(default=600, gt=0)
     auto_refresh_threshold_seconds: int = Field(default=300, gt=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class WebhooksConfig(BaseModel):
@@ -147,11 +167,25 @@ class WebhooksConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="receipt_retention_days",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="webhook_receipt_retention_days",
+            parse=parse_int,
+        ),
+    )
+
     rate_limit_rpm: int = Field(default=100, ge=0)
     replay_window_seconds: int = Field(default=300, gt=0)
     max_payload_bytes: int = Field(default=1_000_000, gt=0)
     verify_signatures: bool = True
     receipt_retention_days: int = Field(default=7, ge=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class IntegrationHealthConfig(BaseModel):

@@ -32,7 +32,6 @@ def service() -> SettingsService:
     return SettingsService(
         repository=repo,
         registry=get_registry(),
-        config=_FakeConfig(),
     )
 
 

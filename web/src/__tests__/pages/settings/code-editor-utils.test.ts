@@ -27,7 +27,6 @@ function makeEntry(overrides: Partial<SettingEntry['definition']> & { value?: st
       validator_pattern: null,
       min_value: null,
       max_value: null,
-      yaml_path: null,
       ...defOverrides,
     },
     value,

@@ -4,14 +4,12 @@ import type { SettingSource } from '@/api/types/settings'
 const SOURCE_STYLES: Record<SettingSource, string> = {
   db: 'bg-accent/10 text-accent',
   env: 'bg-warning/10 text-warning',
-  yaml: 'bg-success/10 text-success',
   default: 'bg-border text-text-muted',
 }
 
 const SOURCE_LABELS: Record<SettingSource, string | null> = {
   db: 'Modified',
   env: 'ENV',
-  yaml: null,
   default: null,
 }
 

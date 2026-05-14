@@ -52,24 +52,22 @@ class TestRunServerUvicornParams:
         assert "ssl_keyfile" not in kw
         assert "ssl_ca_certs" not in kw
 
-    def test_tls_kwargs_passed_when_configured(self) -> None:
-        server = ServerConfig(
-            ssl_certfile="/etc/tls/cert.pem",
-            ssl_keyfile="/etc/tls/key.pem",
-        )
-        mock_run = _run_with_config(server)
+    def test_tls_kwargs_passed_when_configured(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_SSL_CERTFILE", "/etc/tls/cert.pem")
+        monkeypatch.setenv("SYNTHORG_API_SSL_KEYFILE", "/etc/tls/key.pem")
+        mock_run = _run_with_config()
         kw = mock_run.call_args.kwargs
         assert kw["ssl_certfile"] == "/etc/tls/cert.pem"
         assert kw["ssl_keyfile"] == "/etc/tls/key.pem"
         assert "ssl_ca_certs" not in kw
 
-    def test_tls_with_ca_certs(self) -> None:
-        server = ServerConfig(
-            ssl_certfile="/etc/tls/cert.pem",
-            ssl_keyfile="/etc/tls/key.pem",
-            ssl_ca_certs="/etc/tls/ca.pem",
-        )
-        mock_run = _run_with_config(server)
+    def test_tls_with_ca_certs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SYNTHORG_API_SSL_CERTFILE", "/etc/tls/cert.pem")
+        monkeypatch.setenv("SYNTHORG_API_SSL_KEYFILE", "/etc/tls/key.pem")
+        monkeypatch.setenv("SYNTHORG_API_SSL_CA_CERTS", "/etc/tls/ca.pem")
+        mock_run = _run_with_config()
         kw = mock_run.call_args.kwargs
         assert kw["ssl_ca_certs"] == "/etc/tls/ca.pem"
 
@@ -79,11 +77,14 @@ class TestRunServerUvicornParams:
         assert "forwarded_allow_ips" not in kw
         assert "proxy_headers" not in kw
 
-    def test_proxy_headers_when_trusted_proxies_set(self) -> None:
-        server = ServerConfig(
-            trusted_proxies=("10.0.0.1", "172.16.0.0/12"),
+    def test_proxy_headers_when_trusted_proxies_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_TRUSTED_PROXIES",
+            '["10.0.0.1", "172.16.0.0/12"]',
         )
-        mock_run = _run_with_config(server)
+        mock_run = _run_with_config()
         kw = mock_run.call_args.kwargs
         assert kw["forwarded_allow_ips"] == "10.0.0.1,172.16.0.0/12"
         assert kw["proxy_headers"] is True

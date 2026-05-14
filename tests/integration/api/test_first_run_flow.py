@@ -73,7 +73,6 @@ def integration_client(
     settings_service = SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
-        config=config,
     )
 
     # Provide a provider registry with a test provider so the
