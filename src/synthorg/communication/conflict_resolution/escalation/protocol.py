@@ -12,6 +12,7 @@ from synthorg.communication.conflict_resolution.models import (  # noqa: TC001
     ConflictResolution,
     DissentRecord,
 )
+from synthorg.core.clock import Clock  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -193,8 +194,17 @@ class DecisionProcessor(Protocol):
         decision: EscalationDecision,
         *,
         decided_by: NotBlankStr,
+        clock: Clock | None = None,
     ) -> ConflictResolution:
         """Build a :class:`ConflictResolution` from a decision.
+
+        Args:
+            conflict: The conflict being resolved.
+            decision: The operator's decision shape.
+            decided_by: Operator id (audit field).
+            clock: Optional injectable clock; tests inject
+                :class:`FakeClock` so the ``resolved_at`` timestamp is
+                deterministic. Defaults to :class:`SystemClock`.
 
         Raises:
             EscalationDecisionShapeError: the decision shape is not
@@ -208,6 +218,12 @@ class DecisionProcessor(Protocol):
         self,
         conflict: Conflict,
         resolution: ConflictResolution,
+        *,
+        clock: Clock | None = None,
     ) -> tuple[DissentRecord, ...]:
-        """Build dissent records for overruled positions."""
+        """Build dissent records for overruled positions.
+
+        ``clock`` is injectable for deterministic dissent timestamps in
+        tests; defaults to :class:`SystemClock`.
+        """
         ...

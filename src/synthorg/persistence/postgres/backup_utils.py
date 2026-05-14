@@ -124,13 +124,25 @@ async def _run_pg_tool(
         # offload to a thread to keep the event loop responsive.
         fp = await asyncio.to_thread(output_path.open, "wb")
         try:
-            proc = await asyncio.create_subprocess_exec(
-                binary,
-                *args,
-                env=env,
-                stdout=fp,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    binary,
+                    *args,
+                    env=env,
+                    stdout=fp,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            except BaseException:
+                # Subprocess spawn itself failed (e.g. binary missing on
+                # PATH, ``no permission to execute``, OS-level fork
+                # failure). The file handle is still open and the file
+                # on disk is empty -- close + unlink before re-raising
+                # so we do not leak an empty dump artifact that callers
+                # could later misread as a valid dump.
+                await asyncio.to_thread(fp.close)
+                with contextlib.suppress(OSError):
+                    await asyncio.to_thread(output_path.unlink)
+                raise
             try:
                 _stdout, stderr = await asyncio.wait_for(
                     proc.communicate(),

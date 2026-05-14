@@ -11,8 +11,7 @@ Two concrete strategies satisfy :class:`DecisionProcessor`:
   callers can fall back to a different strategy.
 """
 
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, assert_never
+from typing import assert_never
 from uuid import uuid4
 
 from synthorg.communication.conflict_resolution.escalation.models import (
@@ -31,13 +30,20 @@ from synthorg.communication.errors import (
     EscalationDecisionAgentError,
     EscalationDecisionShapeError,
 )
-from synthorg.observability import get_logger
+from synthorg.core.clock import Clock, SystemClock
 
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
+# ``NotBlankStr`` MUST be imported at runtime (not under TYPE_CHECKING)
+# so PEP 649 lazy annotation evaluation can resolve
+# ``decided_by: NotBlankStr`` when frameworks / ``typing.get_type_hints``
+# introspect the public ``process()`` signature; ruff TC001's
+# "move into type-checking block" hint is incorrect for this symbol.
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import CONFLICT_ESCALATION_RESOLVED
 
 logger = get_logger(__name__)
+
+_SYSTEM_CLOCK: Clock = SystemClock()
 
 _NO_WINNER_OUTCOMES = frozenset(
     {
@@ -50,18 +56,22 @@ _NO_WINNER_OUTCOMES = frozenset(
 def _build_dissent_records_from_resolution(
     conflict: Conflict,
     resolution: ConflictResolution,
+    *,
+    clock: Clock | None = None,
 ) -> tuple[DissentRecord, ...]:
     """Emit one dissent record per non-winning position.
 
     For outcomes without a winner (escalated / rejected), every
     position is recorded so auditors keep the full stance history.
     """
+    effective_clock = clock or _SYSTEM_CLOCK
     if resolution.outcome in _NO_WINNER_OUTCOMES:
         targets = conflict.positions
     else:
         targets = tuple(
             p for p in conflict.positions if p.agent_id != resolution.winning_agent_id
         )
+    timestamp = effective_clock.now()
     return tuple(
         DissentRecord(
             id=f"dissent-{uuid4().hex[:12]}",
@@ -70,7 +80,7 @@ def _build_dissent_records_from_resolution(
             dissenting_agent_id=pos.agent_id,
             dissenting_position=pos.position,
             strategy_used=ConflictResolutionStrategy.HUMAN,
-            timestamp=datetime.now(UTC),
+            timestamp=timestamp,
             metadata=(("escalation_reason", "human_review_required"),),
         )
         for pos in targets
@@ -82,13 +92,19 @@ def _build_winner_resolution(
     decision: WinnerDecision,
     *,
     decided_by: NotBlankStr,
+    clock: Clock | None = None,
 ) -> ConflictResolution:
     """Build a RESOLVED_BY_HUMAN resolution from a winner decision.
+
+    The success path does not emit ``CONFLICT_ESCALATION_RESOLVED`` --
+    callers persist the resolution first and log post-write so the
+    audit trail only records committed transitions.
 
     Raises:
         EscalationDecisionAgentError: ``decision.winning_agent_id`` does
             not match any agent in ``conflict.positions``.
     """
+    effective_clock = clock or _SYSTEM_CLOCK
     winning_position = next(
         (
             p.position
@@ -111,24 +127,15 @@ def _build_winner_resolution(
             note="winner_agent_not_in_conflict",
         )
         raise EscalationDecisionAgentError(msg)
-    resolution = ConflictResolution(
+    return ConflictResolution(
         conflict_id=conflict.id,
         outcome=ConflictResolutionOutcome.RESOLVED_BY_HUMAN,
         winning_agent_id=decision.winning_agent_id,
         winning_position=winning_position,
         decided_by=decided_by,
         reasoning=decision.reasoning,
-        resolved_at=datetime.now(UTC),
+        resolved_at=effective_clock.now(),
     )
-    logger.info(
-        CONFLICT_ESCALATION_RESOLVED,
-        conflict_id=conflict.id,
-        decided_by=decided_by,
-        strategy=ConflictResolutionStrategy.HUMAN.value,
-        outcome=resolution.outcome.value,
-        winning_agent_id=resolution.winning_agent_id,
-    )
-    return resolution
 
 
 def _build_reject_resolution(
@@ -136,26 +143,24 @@ def _build_reject_resolution(
     decision: RejectDecision,
     *,
     decided_by: NotBlankStr,
+    clock: Clock | None = None,
 ) -> ConflictResolution:
-    """Build a REJECTED_BY_HUMAN resolution from a reject decision."""
-    resolution = ConflictResolution(
+    """Build a REJECTED_BY_HUMAN resolution from a reject decision.
+
+    The success path does not emit ``CONFLICT_ESCALATION_RESOLVED`` --
+    callers persist the resolution first and log post-write so the
+    audit trail only records committed transitions.
+    """
+    effective_clock = clock or _SYSTEM_CLOCK
+    return ConflictResolution(
         conflict_id=conflict.id,
         outcome=ConflictResolutionOutcome.REJECTED_BY_HUMAN,
         winning_agent_id=None,
         winning_position=None,
         decided_by=decided_by,
         reasoning=decision.reasoning,
-        resolved_at=datetime.now(UTC),
+        resolved_at=effective_clock.now(),
     )
-    logger.info(
-        CONFLICT_ESCALATION_RESOLVED,
-        conflict_id=conflict.id,
-        decided_by=decided_by,
-        strategy=ConflictResolutionStrategy.HUMAN.value,
-        outcome=resolution.outcome.value,
-        note="hybrid_mode_rejected_decision",
-    )
-    return resolution
 
 
 class WinnerOnlyDecisionProcessor:
@@ -174,6 +179,7 @@ class WinnerOnlyDecisionProcessor:
         decision: EscalationDecision,
         *,
         decided_by: NotBlankStr,
+        clock: Clock | None = None,
     ) -> ConflictResolution:
         """Build a resolution matching the decision.
 
@@ -190,6 +196,7 @@ class WinnerOnlyDecisionProcessor:
                 conflict,
                 decision,
                 decided_by=decided_by,
+                clock=clock,
             )
         # An unknown subclass of ``EscalationDecision`` (e.g. a future
         # variant added alongside ``WinnerDecision`` / ``RejectDecision``)
@@ -220,9 +227,15 @@ class WinnerOnlyDecisionProcessor:
         self,
         conflict: Conflict,
         resolution: ConflictResolution,
+        *,
+        clock: Clock | None = None,
     ) -> tuple[DissentRecord, ...]:
         """Build dissent records covering all non-winning positions."""
-        return _build_dissent_records_from_resolution(conflict, resolution)
+        return _build_dissent_records_from_resolution(
+            conflict,
+            resolution,
+            clock=clock,
+        )
 
 
 class HybridDecisionProcessor:
@@ -241,6 +254,7 @@ class HybridDecisionProcessor:
         decision: EscalationDecision,
         *,
         decided_by: NotBlankStr,
+        clock: Clock | None = None,
     ) -> ConflictResolution:
         """Build a resolution matching the decision.
 
@@ -254,12 +268,14 @@ class HybridDecisionProcessor:
                 conflict,
                 decision,
                 decided_by=decided_by,
+                clock=clock,
             )
         if isinstance(decision, RejectDecision):
             return _build_reject_resolution(
                 conflict,
                 decision,
                 decided_by=decided_by,
+                clock=clock,
             )
         assert_never(decision)
 
@@ -267,6 +283,12 @@ class HybridDecisionProcessor:
         self,
         conflict: Conflict,
         resolution: ConflictResolution,
+        *,
+        clock: Clock | None = None,
     ) -> tuple[DissentRecord, ...]:
         """Build dissent records covering all non-winning positions."""
-        return _build_dissent_records_from_resolution(conflict, resolution)
+        return _build_dissent_records_from_resolution(
+            conflict,
+            resolution,
+            clock=clock,
+        )
