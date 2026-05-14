@@ -1,12 +1,13 @@
 """Dual-backend conformance for persistence backup handlers.
 
-Exercises a real backup -> restore -> read cycle through whichever
+Exercises backup creation and structural validation through whichever
 persistence backend the conformance ``backend`` fixture supplied. The
-SQLite arm goes through ``VACUUM INTO``; the Postgres arm goes through
-``pg_dump`` / ``pg_restore``. The Postgres arm is skipped when the
-``pg_dump`` binary is not on PATH (e.g. a dev workstation without the
-postgres-client package); CI provisions the binary alongside the
-testcontainers postgres image.
+SQLite arm goes through ``VACUUM INTO`` + ``PRAGMA integrity_check``;
+the Postgres arm goes through ``pg_dump`` for backup and
+``pg_restore --list`` for validation. The Postgres arm is skipped when
+``pg_dump`` or ``pg_restore`` is not on PATH (e.g. a dev workstation
+without the postgres-client package); CI provisions the binaries
+alongside the testcontainers postgres image.
 """
 
 import shutil
