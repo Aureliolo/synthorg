@@ -5,7 +5,7 @@ and backend-specific settings.
 """
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import ClassVar, Self
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -22,6 +22,8 @@ from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
 
 logger = get_logger(__name__)
 
@@ -220,6 +222,19 @@ class CompanyMemoryConfig(BaseModel):
         {"mem0", "composite", "inmemory"},
     )
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="backend",
+            namespace=SettingNamespace.MEMORY,
+            key="backend",
+        ),
+        MirrorField(
+            field="level",
+            namespace=SettingNamespace.MEMORY,
+            key="default_level",
+        ),
+    )
+
     backend: NotBlankStr = Field(
         default="mem0",
         description="Memory backend name",
@@ -266,6 +281,11 @@ class CompanyMemoryConfig(BaseModel):
             "Required when backend is ``'composite'``."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_backend_name(self) -> Self:

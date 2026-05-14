@@ -227,7 +227,9 @@ class TestCompanyMemoryConfig:
     def test_defaults(self) -> None:
         c = CompanyMemoryConfig()
         assert c.backend == "mem0"
-        assert c.level is MemoryLevel.SESSION
+        # ``memory.default_level`` is registered with default ``persistent``;
+        # the mirror validator surfaces that value through the Pydantic field.
+        assert c.level is MemoryLevel.PERSISTENT
         assert isinstance(c.storage, MemoryStorageConfig)
         assert isinstance(c.options, MemoryOptionsConfig)
         assert isinstance(c.retrieval, MemoryRetrievalConfig)
