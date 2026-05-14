@@ -136,7 +136,7 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       const parts: string[] = []
       if (badNodes.length > 0) parts.push(`nodes missing type: ${badNodes.map((n) => n.id).join(', ')}`)
       if (badEdges.length > 0) parts.push(`edges missing type: ${badEdges.map((e) => e.id).join(', ')}`)
-      set({ error: `Cannot save -- ${parts.join('; ')}. Remove and re-add the affected items.` })
+      set({ error: `Cannot save: ${parts.join('; ')}. Remove and re-add the affected items.` })
       return false
     }
 

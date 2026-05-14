@@ -254,7 +254,7 @@ export function applyDagreLayout(
     }
   }
 
-  // ── Step 2.5: center each dept lead over its reports ──────
+  // ── Step 2.5: centre each dept lead over its reports ──────
   //
   // Dagre lays out lead + reports as siblings in a row; without a
   // post-pass the lead lands wherever dagre's barycentric ordering

@@ -102,7 +102,7 @@ describe('applyDagreLayout', () => {
     expect(result).toHaveLength(1)
   })
 
-  it('centers a dept lead horizontally over its reports', () => {
+  it('centres a dept lead horizontally over its reports', () => {
     // Three-report department with a flagged lead.  After dagre,
     // dagre tends to put the lead at the leftmost slot of the row;
     // the post-pass should re-anchor it to the midpoint of the

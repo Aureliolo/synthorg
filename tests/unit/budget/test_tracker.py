@@ -15,6 +15,7 @@ from synthorg.observability.events.budget import (
     BUDGET_RECORD_ADDED,
     BUDGET_SUMMARY_BUILT,
 )
+from tests._shared import FakeClock
 
 from .conftest import make_cost_record
 
@@ -462,8 +463,6 @@ class TestRetentionWindowLog:
     """Retention-window log emits at INFO (not WARNING)."""
 
     async def test_query_before_retention_cutoff_logs_info(self) -> None:
-        from tests._shared.fake_clock import FakeClock
-
         now = datetime(2026, 6, 1, tzinfo=UTC)
         clock = FakeClock(start=now)
         tracker = CostTracker(clock=clock)
@@ -480,8 +479,6 @@ class TestRetentionWindowLog:
         assert retention_logs[0]["log_level"] == "info"
 
     async def test_query_inside_retention_window_does_not_log(self) -> None:
-        from tests._shared.fake_clock import FakeClock
-
         now = datetime(2026, 6, 1, tzinfo=UTC)
         clock = FakeClock(start=now)
         tracker = CostTracker(clock=clock)
