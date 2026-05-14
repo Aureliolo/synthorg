@@ -130,7 +130,7 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 		"exec",
 		"-e", "SYNTHORG_NATS_URL",
 		"-e", "SYNTHORG_NATS_STREAM_PREFIX",
-		"-e", "SYNTHORG_WORKER_COUNT",
+		"-e", "SYNTHORG_WORKERS",
 		container,
 		"python", "-m", "synthorg.workers",
 		"--workers", strconv.Itoa(workerStartCount),
@@ -138,7 +138,7 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	env := append(os.Environ(),
 		"SYNTHORG_NATS_URL="+resolvedNATSURL,
 		"SYNTHORG_NATS_STREAM_PREFIX="+resolvedStreamPrefix,
-		"SYNTHORG_WORKER_COUNT="+strconv.Itoa(workerStartCount),
+		"SYNTHORG_WORKERS="+strconv.Itoa(workerStartCount),
 	)
 
 	out.KeyValue("Workers", strconv.Itoa(workerStartCount))

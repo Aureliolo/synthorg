@@ -109,10 +109,6 @@ class CeremonyPolicyConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    # All mirrors use ``only_if_env_set=True``: the ``None`` Pydantic
-    # default carries semantic meaning ("inherit from the next level
-    # up"; the project-level config falls back to framework defaults).
-    # Only an explicit env override should overwrite the None sentinel.
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(
             field="strategy",

@@ -57,10 +57,12 @@ longer honours. The `/settings` UI therefore reflects the actual
 running value, sourced from the env var or registered default at
 first read.
 
-The DB-bypass branch lives in `src/synthorg/settings/service.py:345`
-(the `if not definition.read_only_post_init:` guard around the
-`_resolve_db` call). The mirroring branch in batch reads is at
-`_resolve_with_db_lookup` line 571.
+The DB-bypass branch lives in `src/synthorg/settings/service.py`
+inside `get()` (the `if not definition.read_only_post_init:` guard
+around the `_resolve_db` call) and is mirrored in
+`_resolve_with_db_lookup` for batch reads (the `if
+definition.read_only_post_init: db_hit = None` short-circuit before
+the DB row is consulted).
 
 Examples: `api.server_port`, `api.server_host`, `api.api_prefix`,
 `communication.nats_url`, `workers.count`, `observability.log_directory`,

@@ -31,7 +31,8 @@ export type SettingType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'json'
 
 export type SettingLevel = 'basic' | 'advanced'
 
-export type SettingSource = 'db' | 'env' | 'default'
+export const SETTING_SOURCES = ['db', 'env', 'default'] as const
+export type SettingSource = (typeof SETTING_SOURCES)[number]
 
 export interface SettingDefinition {
   namespace: SettingNamespace
@@ -61,7 +62,6 @@ export interface SettingDefinition {
   validator_pattern: string | null
   min_value: number | null
   max_value: number | null
-  yaml_path: string | null
 }
 
 export interface SettingEntry {

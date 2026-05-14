@@ -1,9 +1,9 @@
 """Bootstrap-resolver-backed defaults for Pydantic settings-mirror fields.
 
 Many Pydantic config classes (``ServerConfig`` style) carry fields that
-mirror registered settings. With YAML eliminated from the precedence
-chain (RFC #1890), the Pydantic-tier default would otherwise drift from
-the env-tier override resolved through ``SettingsService``.
+mirror registered settings. Without an active sync, the Pydantic-tier
+default would drift from the env-tier override resolved through
+``SettingsService``.
 
 This helper centralises the fix: each Pydantic class with mirror fields
 attaches a ``model_validator(mode="before")`` that, for every unset
@@ -35,7 +35,10 @@ _BOOL_FALSE: frozenset[str] = frozenset({"false", "0", "no"})
 
 
 def parse_bool(raw: str) -> bool | None:
-    """Parse a boolean env token (``true``/``false``/``1``/``0``/``yes``/``no``)."""
+    """Parse a boolean env token.
+
+    Accepts ``true``, ``false``, ``1``, ``0``, ``yes``, ``no`` (case-insensitive).
+    """
     token = normalize_ascii_lowercase(raw)
     if token in _BOOL_TRUE:
         return True

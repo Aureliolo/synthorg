@@ -88,8 +88,6 @@ class AuthConfig(BaseModel):
             namespace=SettingNamespace.API,
             key="auth_exclude_paths",
             parse=parse_str_tuple_json,
-            # ``None`` Pydantic default = "auto-derive from the API
-            # prefix"; only an explicit env override overrides it.
             only_if_env_set=True,
         ),
     )

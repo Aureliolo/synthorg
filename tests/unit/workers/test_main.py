@@ -37,8 +37,9 @@ def test_legacy_worker_count_env_is_ignored(monkeypatch: pytest.MonkeyPatch) -> 
     """The legacy ``SYNTHORG_WORKER_COUNT`` name must NOT be consulted.
 
     The registered env-var override for ``workers.count`` is
-    ``SYNTHORG_WORKERS``. Two surfaces accepting two different env-var
-    names was the drift fixed by RFC #1890.
+    ``SYNTHORG_WORKERS``. The legacy name predates the consolidation
+    of every Cat-2 env var onto the auto-derived ``SYNTHORG_<NS>_<KEY>``
+    shape and is intentionally not honoured.
     """
     monkeypatch.delenv("SYNTHORG_WORKERS", raising=False)
     monkeypatch.setenv("SYNTHORG_WORKER_COUNT", "16")

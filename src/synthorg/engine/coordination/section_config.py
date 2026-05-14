@@ -43,8 +43,6 @@ class CoordinationSectionConfig(BaseModel):
             namespace=SettingNamespace.COORDINATION,
             key="max_concurrency_per_wave",
             parse=parse_int,
-            # ``None`` Pydantic default = "unlimited"; only an explicit
-            # env override should overwrite it.
             only_if_env_set=True,
         ),
         MirrorField(

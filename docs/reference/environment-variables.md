@@ -79,7 +79,7 @@ into three categories:
 
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
-| `SYNTHORG_LOG_LEVEL` | unset | `observability/log_level_console` (mutable) | Override the console sink's log level distinct from the root logger.  **Exception to the standard chain:** the registry chain is `DB > env > unset` -- there is no YAML layer for this entry.  Applied at boot via `_apply_console_level_override`; runtime mutation through the registry takes effect on the next subscriber-driven rebuild. |
+| `SYNTHORG_LOG_LEVEL` | unset | `observability/log_level_console` (mutable) | Override the console sink's log level distinct from the root logger.  Standard Cat-1 chain (`DB > env > default`).  Applied at boot via `_apply_console_level_override`; runtime mutation through the registry takes effect on the next subscriber-driven rebuild. |
 
 ## Workers (init-time, registry for discoverability)
 
@@ -110,8 +110,9 @@ name is consulted.  Examples of the auto-derived shape:
 | `engine/evolution_enabled` | `SYNTHORG_ENGINE_EVOLUTION_ENABLED` |
 | `coordination/department_policy_cas_retry_attempts` | `SYNTHORG_COORDINATION_DEPARTMENT_POLICY_CAS_RETRY_ATTEMPTS` |
 
-The override sits between the DB and YAML layers in the precedence
-chain (see [configuration-precedence.md](configuration-precedence.md)).
+The override sits below the DB and above the registered default in
+the precedence chain (see
+[configuration-precedence.md](configuration-precedence.md)).
 For a complete inventory of registered settings see the schema endpoint
 `GET /api/v1/settings/schema` or the `src/synthorg/settings/definitions/`
 directory.

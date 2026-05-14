@@ -90,3 +90,76 @@ class TestApiConfig:
         config = ApiConfig()
         with pytest.raises(ValidationError):
             config.api_prefix = "/other"  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestRateLimitConfigMirrors:
+    """Direct coverage for the settings mirror integration on RateLimitConfig.
+
+    The five mirrored fields (unauth_max_requests, auth_max_requests,
+    time_unit, exclude_paths, max_rpm_default) each have their own
+    env-var override path; these tests exercise the three branches that
+    matter (env-set, env-unset, env-invalid) and the caller-wins
+    invariant.
+    """
+
+    def test_env_override_beats_registered_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS", "7")
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_AUTH_MAX_REQUESTS", "1234")
+        monkeypatch.setenv("SYNTHORG_API_MAX_RPM_DEFAULT", "300")
+        rl = RateLimitConfig()
+        assert rl.unauth_max_requests == 7
+        assert rl.auth_max_requests == 1234
+        assert rl.max_rpm_default == 300
+
+    def test_env_override_for_exclude_paths(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_RATE_LIMIT_EXCLUDE_PATHS",
+            '["/internal/metrics"]',
+        )
+        rl = RateLimitConfig()
+        assert rl.exclude_paths == ("/internal/metrics",)
+
+    def test_env_override_for_time_unit(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_TIME_UNIT", "hour")
+        rl = RateLimitConfig()
+        assert rl.time_unit == RateLimitTimeUnit.HOUR
+
+    def test_caller_kwarg_wins_over_env(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS", "7")
+        rl = RateLimitConfig(unauth_max_requests=50)
+        assert rl.unauth_max_requests == 50
+
+    def test_invalid_env_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS",
+            "not-a-number",
+        )
+        rl = RateLimitConfig()
+        assert rl.unauth_max_requests == 20
+
+    def test_invalid_exclude_paths_json_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_RATE_LIMIT_EXCLUDE_PATHS",
+            "{not valid json",
+        )
+        rl = RateLimitConfig()
+        assert "/api/v1/healthz" in rl.exclude_paths

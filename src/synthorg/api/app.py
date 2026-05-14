@@ -88,7 +88,6 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig
 from synthorg.core.error_taxonomy import set_error_docs_base_url
-from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
@@ -127,6 +126,12 @@ from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingsEncryptionError,
 )
+from synthorg.settings.mirrors import (
+    parse_bool,
+    parse_float,
+    parse_int,
+    parse_str_tuple_json,
+)
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -150,21 +155,6 @@ logger = get_logger(__name__)
 _DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS: Final[float] = 60.0
 
 
-def _parse_bool_token(raw: str) -> bool | None:
-    """Parse a boolean env-var token. Returns ``None`` for unknown values.
-
-    Accepts ``true``/``1``/``yes`` and ``false``/``0``/``no`` in any
-    ASCII case. Unknown tokens return ``None`` so the bootstrap
-    resolver falls back to the registered default.
-    """
-    token = normalize_ascii_lowercase(raw)
-    if token in ("true", "1", "yes"):
-        return True
-    if token in ("false", "0", "no"):
-        return False
-    return None
-
-
 def _resolve_rate_limiter_enabled() -> bool:
     """Resolve ``api.rate_limiter_enabled`` at app construction time.
 
@@ -175,32 +165,22 @@ def _resolve_rate_limiter_enabled() -> bool:
     resolved = resolve_init_value(
         SettingNamespace.API,
         "rate_limiter_enabled",
-        parse=_parse_bool_token,
+        parse=parse_bool,
     )
     return bool(resolved.value)
 
 
-def _parse_str_tuple_json(raw: str) -> tuple[str, ...] | None:
-    """Parse a JSON-encoded list of strings into a tuple."""
-    import json  # noqa: PLC0415
-
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, list):
-        return None
-    if not all(isinstance(item, str) for item in parsed):
-        return None
-    return tuple(parsed)
-
-
 def _resolve_api_str_tuple(key: str) -> tuple[str, ...]:
-    """Resolve a JSON-tuple-typed api.* setting at boot."""
+    """Resolve a JSON-tuple-typed api.* setting at boot.
+
+    When the parsed value is not a tuple (e.g. invalid JSON returns None
+    from the parser), the resolver applies the registered default, which
+    is always a valid tuple, so this function always returns a tuple.
+    """
     resolved = resolve_init_value(
         SettingNamespace.API,
         key,
-        parse=_parse_str_tuple_json,
+        parse=parse_str_tuple_json,
     )
     if isinstance(resolved.value, tuple):
         return resolved.value
@@ -208,8 +188,12 @@ def _resolve_api_str_tuple(key: str) -> tuple[str, ...]:
 
 
 def _resolve_api_int(key: str) -> int:
-    """Resolve an integer-typed api.* setting at boot."""
-    resolved = resolve_init_value(SettingNamespace.API, key, parse=int)
+    """Resolve an integer-typed api.* setting at boot.
+
+    Uses ``parse_int`` so a non-integer env value falls through to the
+    registered default rather than raising at app construction time.
+    """
+    resolved = resolve_init_value(SettingNamespace.API, key, parse=parse_int)
     return int(resolved.value)
 
 
@@ -830,7 +814,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     resolve_init_value(
                         SettingNamespace.A2A,
                         "client_timeout_seconds",
-                        parse=float,
+                        parse=parse_float,
                     ).value
                 )
                 a2a_http_client = httpx.AsyncClient(timeout=a2a_client_timeout)
