@@ -10,6 +10,7 @@ the child's environment so the secret never appears on argv.
 """
 
 import asyncio
+import contextlib
 import os
 import shutil
 from pathlib import Path
@@ -38,6 +39,21 @@ class PgToolUnavailableError(DomainError):
 
 class PgToolFailedError(DomainError):
     """A ``pg_dump`` / ``pg_restore`` invocation exited non-zero."""
+
+
+def ensure_pg_tools_available() -> None:
+    """Verify ``pg_dump`` and ``pg_restore`` are on PATH.
+
+    Resolves both binaries at the caller's location so missing tooling
+    surfaces during factory dispatch with a
+    :data:`BACKUP_HANDLER_REGISTRATION_FAILED` event, instead of the
+    first scheduled backup attempt.
+
+    Raises:
+        PgToolUnavailableError: Either binary is missing from PATH.
+    """
+    _resolve_binary(_PG_DUMP_BINARY)
+    _resolve_binary(_PG_RESTORE_BINARY)
 
 
 def _resolve_binary(name: str) -> str:
@@ -104,7 +120,10 @@ async def _run_pg_tool(
             ``timeout_seconds``.
     """
     if output_path is not None:
-        with output_path.open("wb") as fp:
+        # ``open()`` can block on slow / network-attached storage, so
+        # offload to a thread to keep the event loop responsive.
+        fp = await asyncio.to_thread(output_path.open, "wb")
+        try:
             proc = await asyncio.create_subprocess_exec(
                 binary,
                 *args,
@@ -120,6 +139,27 @@ async def _run_pg_tool(
             except BaseException:
                 await _terminate_proc(proc)
                 raise
+        finally:
+            await asyncio.to_thread(fp.close)
+        if proc.returncode != 0:
+            # A non-zero exit from pg_dump leaves a truncated or empty
+            # file behind; remove it so callers cannot mistake a failed
+            # dump for an empty-but-valid one (a 0-byte ``.pgdump`` is
+            # silently invalid otherwise).
+            with contextlib.suppress(OSError):
+                await asyncio.to_thread(output_path.unlink)
+            msg = (
+                f"{binary} exited with code {proc.returncode}: "
+                f"{(stderr or b'').decode('utf-8', errors='replace').strip()}"
+            )
+            logger.warning(
+                BACKUP_COMPONENT_FAILED,
+                component=f"postgres_{Path(binary).stem}",
+                returncode=proc.returncode,
+                error_type="PgToolFailedError",
+                error=msg,
+            )
+            raise PgToolFailedError(msg)
         return b"", stderr or b""
     proc = await asyncio.create_subprocess_exec(
         binary,

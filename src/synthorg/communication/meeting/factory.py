@@ -1,10 +1,9 @@
 """Meeting protocol factories.
 
-Backend for the structured-phases conflict detector dispatch.
-Replaces the hardcoded ``conflict_detector or KeywordConflictDetector()``
-fallback at ``structured_phases.py:184`` with a config-driven choice
-backed by :class:`StrategyRegistry`. The six concrete detector classes
-live in :mod:`synthorg.communication.meeting.conflict_detection`.
+Config-driven conflict-detector dispatch for the structured-phases
+protocol, backed by :class:`StrategyRegistry`. The six concrete
+detector classes live in
+:mod:`synthorg.communication.meeting.conflict_detection`.
 """
 
 from synthorg.communication.meeting.config import StructuredPhasesConfig  # noqa: TC001

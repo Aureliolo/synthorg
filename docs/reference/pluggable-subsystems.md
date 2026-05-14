@@ -117,7 +117,8 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 
 ### Conflict detector
 
-- `communication/meeting/conflict_detection.py`: `ConflictDetector` Protocol with six implementations (`KeywordConflictDetector`, `StructuredComparisonDetector`, `LlmJudgeDetector`, `EmbeddingSimilarityDetector`, `HybridDetector`, `AutoDetector`).
+- `communication/meeting/protocol.py`: `ConflictDetector` Protocol.
+- `communication/meeting/conflict_detection.py`: six concrete implementations (`KeywordConflictDetector`, `StructuredComparisonDetector`, `LlmJudgeDetector`, `EmbeddingSimilarityDetector`, `HybridDetector`, `AutoDetector`).
 - `communication/meeting/enums.py::ConflictDetectorType`: discriminator.
 - `communication/meeting/factory.py::build_conflict_detector()`: `StrategyRegistry` dispatch.
 

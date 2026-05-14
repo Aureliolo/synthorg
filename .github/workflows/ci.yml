@@ -310,6 +310,22 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # The backup-conformance suite shells out to ``pg_dump`` against
+      # a postgres:18-alpine testcontainer; pg_dump must be the same
+      # major version or newer than the server. The Ubuntu runner image
+      # ships an older client by default, so install postgresql-client-18
+      # from the PGDG apt repo to keep pg_dump and the server in sync.
+      - name: Install PostgreSQL 18 client (pg_dump)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          pg_dump --version
+
       - name: Postgres drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 

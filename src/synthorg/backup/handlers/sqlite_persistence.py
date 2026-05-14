@@ -218,9 +218,9 @@ class SQLitePersistenceComponentHandler:
         touching ``db_path`` between steps. Restore MUST run only when
         the application owns the database exclusively (the BackupService
         lock guarantees this for in-process callers; deployments that
-        attach external pg_dump-style tools or share the SQLite file
-        across processes need their own file-lock around the restore
-        window before invoking this helper).
+        attach external backup tooling or share the SQLite file across
+        processes need their own file-lock around the restore window
+        before invoking this helper).
         """
         # Move current to .bak (including sidecars)
         if db_path.exists():

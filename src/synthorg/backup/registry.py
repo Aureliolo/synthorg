@@ -1,10 +1,8 @@
 """Backup handler registry for backend-pluggable persistence backups.
 
-Replaces the hardcoded ``PersistenceComponentHandler(db_path=...)`` call
-in ``backup/factory.py`` with a ``StrategyRegistry`` keyed on the
-persistence backend discriminator. Adding a new backend means
-registering its handler factory here rather than editing the dispatch
-site.
+``StrategyRegistry`` keyed on the persistence backend discriminator;
+adding a new backend means registering its handler factory here rather
+than editing the dispatch site.
 """
 
 from collections.abc import Callable
@@ -18,6 +16,7 @@ from synthorg.backup.handlers.sqlite_persistence import (
     SQLitePersistenceComponentHandler,
 )
 from synthorg.core.registry.strategy import StrategyRegistry
+from synthorg.persistence.postgres.backup_utils import ensure_pg_tools_available
 
 if TYPE_CHECKING:
     from synthorg.backup.handlers.protocol import ComponentHandler
@@ -29,7 +28,15 @@ def _build_sqlite_handler(
     *,
     resolved_db_path: object,
 ) -> ComponentHandler:
-    """Construct a SQLite persistence backup handler from RootConfig."""
+    """Construct a SQLite persistence backup handler from RootConfig.
+
+    No ``None`` guard on ``config.persistence.sqlite`` because the
+    schema declares ``sqlite: SQLiteConfig`` with
+    ``default_factory=SQLiteConfig`` (see
+    :class:`synthorg.persistence.config.PersistenceConfig`), so
+    Pydantic always materialises a value even when the YAML omits the
+    block.
+    """
     from pathlib import Path  # noqa: PLC0415
 
     db_path = resolved_db_path or Path(config.persistence.sqlite.path)
@@ -43,7 +50,13 @@ def _build_postgres_handler(
     *,
     resolved_db_path: object,  # noqa: ARG001 -- unused, parity with sqlite signature
 ) -> ComponentHandler:
-    """Construct a Postgres persistence backup handler from RootConfig."""
+    """Construct a Postgres persistence backup handler from RootConfig.
+
+    Verifies ``pg_dump`` and ``pg_restore`` are on PATH before
+    constructing the handler so missing tooling surfaces at factory
+    dispatch (the ``BACKUP_HANDLER_REGISTRATION_FAILED`` event) rather
+    than the first scheduled backup attempt.
+    """
     pg_config = config.persistence.postgres
     if pg_config is None:
         msg = (
@@ -51,6 +64,7 @@ def _build_postgres_handler(
             "None; supply Postgres connection details to enable backup."
         )
         raise BackupConfigurationError(msg)
+    ensure_pg_tools_available()
     return PostgresPersistenceComponentHandler(config=pg_config)
 
 

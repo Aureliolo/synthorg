@@ -15,6 +15,8 @@ from synthorg.engine.recovery_config import (
     EngineRecoveryConfig,
     RecoveryStrategyType,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.execution import EXECUTION_RECOVERY_FAILED
 
 if TYPE_CHECKING:
     from synthorg.engine.checkpoint.models import CheckpointConfig
@@ -23,6 +25,8 @@ if TYPE_CHECKING:
         CheckpointRepository,
         HeartbeatRepository,
     )
+
+logger = get_logger(__name__)
 
 
 def build_recovery_strategy(
@@ -64,6 +68,15 @@ def build_recovery_strategy(
                     "checkpoint_repo and checkpoint_config to be wired "
                     "through build_recovery_strategy (typically via the "
                     "lifecycle helpers from the active PersistenceBackend)."
+                )
+                logger.error(
+                    EXECUTION_RECOVERY_FAILED,
+                    phase="config_validation",
+                    recovery_strategy=RecoveryStrategyType.CHECKPOINT.value,
+                    checkpoint_repo_supplied=checkpoint_repo is not None,
+                    checkpoint_config_supplied=checkpoint_config is not None,
+                    error_type="RecoveryConfigError",
+                    error=msg,
                 )
                 raise RecoveryConfigError(msg)
             from synthorg.engine.checkpoint.strategy import (  # noqa: PLC0415

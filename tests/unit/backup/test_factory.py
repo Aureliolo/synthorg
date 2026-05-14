@@ -117,7 +117,16 @@ class TestBackendPluggableHandlers:
         )
         backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
 
-        handlers = build_backup_handlers(config, backup_config)
+        # The factory dispatch verifies ``pg_dump`` / ``pg_restore`` are
+        # on PATH so missing tooling surfaces during registration
+        # instead of the first backup attempt; unit tests run on
+        # workstations / CI workers without the postgres-client package
+        # installed, so the binary check is patched to a no-op here.
+        with patch(
+            "synthorg.backup.registry.ensure_pg_tools_available",
+            return_value=None,
+        ):
+            handlers = build_backup_handlers(config, backup_config)
 
         assert isinstance(
             handlers[BackupComponent.PERSISTENCE],

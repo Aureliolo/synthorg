@@ -114,8 +114,10 @@ def build_backup_service(
 
     Returns:
         Configured backup service, or ``None`` if handler construction
-        fails (e.g. invalid component path, missing pg_dump binary on
-        a Postgres deployment).
+        fails. Construction failures include invalid component paths
+        and, for Postgres deployments, the ``pg_dump`` / ``pg_restore``
+        binaries being absent from PATH (verified by the registry's
+        factory dispatch before the handler is instantiated).
     """
     backup_config = config.backup
     try:
