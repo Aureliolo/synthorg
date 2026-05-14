@@ -213,6 +213,8 @@ def run_openapi_typescript(schema_path: Path) -> str:
             "--immutable",
             "--export-type",
             "--enum=false",
+            "--default-non-nullable=false",
+            "--alphabetize",
         ],
         cwd=str(REPO_ROOT),
         capture_output=True,

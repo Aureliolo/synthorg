@@ -26,7 +26,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
       </div>
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{artifact.size_bytes > 0 ? formatFileSize(artifact.size_bytes) : 'No content'}</span>
+        <span>{(artifact.size_bytes ?? 0) > 0 ? formatFileSize(artifact.size_bytes ?? 0) : 'No content'}</span>
         <span>{formatRelativeTime(artifact.created_at)}</span>
       </div>
 
