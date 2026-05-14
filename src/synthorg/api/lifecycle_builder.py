@@ -138,6 +138,61 @@ async def _cancel_with_timeout(
         )
 
 
+async def _wire_workflow_observer(
+    task_engine: object,
+    persistence: PersistenceBackend,
+    app_state: AppState,
+) -> None:
+    """Register WorkflowExecutionObserver on `task_engine` once.
+
+    Must be called after the SettingsService auto-wire so `config_resolver`
+    drives `max_subworkflow_depth`. Falls back to the seed default (with
+    INFO log) when no resolver is wired, so executions still advance.
+    """
+    if task_engine is None or persistence is None:
+        return
+    if not (
+        hasattr(persistence, "workflow_definitions")
+        and hasattr(persistence, "workflow_executions")
+    ):
+        return
+    from synthorg.engine.workflow.execution_observer import (  # noqa: PLC0415
+        WorkflowExecutionObserver,
+    )
+
+    if any(
+        isinstance(o, WorkflowExecutionObserver)
+        for o in getattr(task_engine, "_observers", ())
+    ):
+        return
+    if app_state.has_config_resolver:
+        engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+        max_depth = engine_bridge.max_subworkflow_depth
+    else:
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            EngineBridgeConfig,
+        )
+
+        max_depth = EngineBridgeConfig().max_subworkflow_depth
+        logger.info(
+            API_APP_STARTUP,
+            component="workflow_execution_observer",
+            note=(
+                "config_resolver not wired; registering observer "
+                "with the EngineBridgeConfig seed default for "
+                "max_subworkflow_depth"
+            ),
+            max_subworkflow_depth=max_depth,
+        )
+    observer = WorkflowExecutionObserver(
+        definition_repo=persistence.workflow_definitions,
+        execution_repo=persistence.workflow_executions,
+        task_engine=task_engine,  # type: ignore[arg-type]
+        max_subworkflow_depth=max_depth,
+    )
+    task_engine.register_observer(observer)  # type: ignore[attr-defined]
+
+
 def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
@@ -542,64 +597,9 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     distributed_task_queue=app_state.distributed_task_queue,
                 )
                 raise
-        # Wire workflow execution observer (needs connected persistence
-        # AND config_resolver). Registered AFTER the SettingsService
-        # auto-wire above so config_resolver is in place and the
-        # observer pulls ``max_subworkflow_depth`` from
-        # ``EngineBridgeConfig`` instead of being pinned to the seed
-        # default. ``register_observer`` is append-only and the
-        # idempotency guard makes this block re-entrant against the
-        # shared-app test fixture's startup cycles.
-        if (
-            task_engine is not None
-            and persistence is not None
-            and hasattr(persistence, "workflow_definitions")
-            and hasattr(persistence, "workflow_executions")
-        ):
-            from synthorg.engine.workflow.execution_observer import (  # noqa: PLC0415
-                WorkflowExecutionObserver,
-            )
-
-            _already_registered = any(
-                isinstance(o, WorkflowExecutionObserver)
-                for o in getattr(task_engine, "_observers", ())
-            )
-            if not _already_registered:
-                if app_state.has_config_resolver:
-                    engine_bridge = (
-                        await app_state.config_resolver.get_engine_bridge_config()
-                    )
-                    max_depth = engine_bridge.max_subworkflow_depth
-                else:
-                    # No resolver: fall back to the EngineBridgeConfig
-                    # seed default so the observer registers and
-                    # workflow executions advance, instead of being
-                    # silently dropped. Logged at INFO so operators
-                    # know they will not pick up DB / env overrides
-                    # for max_subworkflow_depth until a resolver is
-                    # wired.
-                    from synthorg.settings.bridge_configs import (  # noqa: PLC0415
-                        EngineBridgeConfig,
-                    )
-
-                    max_depth = EngineBridgeConfig().max_subworkflow_depth
-                    logger.info(
-                        API_APP_STARTUP,
-                        component="workflow_execution_observer",
-                        note=(
-                            "config_resolver not wired; registering observer "
-                            "with the EngineBridgeConfig seed default for "
-                            "max_subworkflow_depth"
-                        ),
-                        max_subworkflow_depth=max_depth,
-                    )
-                _wf_observer = WorkflowExecutionObserver(
-                    definition_repo=persistence.workflow_definitions,
-                    execution_repo=persistence.workflow_executions,
-                    task_engine=task_engine,
-                    max_subworkflow_depth=max_depth,
-                )
-                task_engine.register_observer(_wf_observer)
+        # AFTER SettingsService auto-wire; resolver drives max_subworkflow_depth.
+        if persistence is not None:
+            await _wire_workflow_observer(task_engine, persistence, app_state)
 
         # When an external caller already supplied a
         # ``TrainingService`` to ``create_app()``, we skip the

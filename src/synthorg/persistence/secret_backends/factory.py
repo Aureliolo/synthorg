@@ -5,7 +5,7 @@ Creates a ``SecretBackend`` instance from configuration.
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.integrations.config import SecretBackendConfig  # noqa: TC001
@@ -35,6 +35,17 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+SecretBackendLogLevel = Literal["info", "error"]
+
+
+class _ResolvedBackend(NamedTuple):
+    """Internal result of `_resolve_backend_type`."""
+
+    backend_type: str
+    reason: str
+    log_level: SecretBackendLogLevel
+
+
 @dataclass(frozen=True)
 class SecretBackendSelection:
     """Result of :func:`resolve_secret_backend_config`.
@@ -45,10 +56,9 @@ class SecretBackendSelection:
         reason: Human-readable explanation of any auto-selection or
             downgrade that happened, or empty string if the config
             was honoured as-is.
-        level: Log level appropriate for ``reason`` -- ``"info"`` for
-            silent honour-as-is, ``"warning"`` for a benign promotion
-            (sqlite -> postgres in postgres mode), ``"error"`` for a
-            security-relevant downgrade (missing master key, missing
+        level: Log level for ``reason``: ``"info"`` for honour-as-is
+            or a benign sqlite-to-postgres alignment; ``"error"`` for
+            a security-relevant downgrade (missing master key, missing
             store). Callers log the reason at this level.
     """
 
@@ -63,18 +73,13 @@ def _resolve_backend_type(
     postgres_mode: bool,
     pg_pool_available: bool,
     sqlite_db_path: str | None,
-) -> tuple[str, str, str]:
+) -> _ResolvedBackend:
     """Pick the backend type, reason, and log level for this environment."""
     resolved = config.backend_type
     if resolved == "encrypted_sqlite" and postgres_mode:
         if pg_pool_available:
-            # Benign auto-correction: the config default
-            # ``encrypted_sqlite`` is automatically aligned to
-            # ``encrypted_postgres`` so a Postgres deployment with the
-            # default secret backend "just works". Logged at INFO
-            # because it is the expected behaviour for the default
-            # config, not an operator misconfiguration to escalate.
-            return (
+            # Benign: default config "just works" on Postgres without operator override.
+            return _ResolvedBackend(
                 "encrypted_postgres",
                 (
                     "default encrypted_sqlite aligned to encrypted_postgres "
@@ -82,7 +87,7 @@ def _resolve_backend_type(
                 ),
                 "info",
             )
-        return (
+        return _ResolvedBackend(
             "env_var",
             (
                 "encrypted secret backend requested in postgres mode but "
@@ -91,13 +96,13 @@ def _resolve_backend_type(
             "error",
         )
     if resolved == "encrypted_sqlite" and sqlite_db_path is None:
-        return (
+        return _ResolvedBackend(
             "env_var",
             "encrypted_sqlite secret backend has no db_path; falling back to env_var",
             "error",
         )
     if resolved == "encrypted_postgres" and not pg_pool_available:
-        return (
+        return _ResolvedBackend(
             "env_var",
             (
                 "encrypted_postgres secret backend has no pg_pool; "
@@ -105,18 +110,18 @@ def _resolve_backend_type(
             ),
             "error",
         )
-    return resolved, "", "info"
+    return _ResolvedBackend(resolved, "", "info")
 
 
 def _check_master_key(
     resolved: str,
     config: SecretBackendConfig,
-) -> tuple[str, str, str] | None:
+) -> _ResolvedBackend | None:
     """Verify the master-key env var is set for encrypted backends.
 
-    Returns a ``(resolved, reason, level)`` override if the key is
-    missing (forcing a downgrade to ``env_var``); returns ``None`` when
-    the backend is not encrypted or the key is present.
+    Returns a `_ResolvedBackend` override if the key is missing
+    (forcing a downgrade to ``env_var``); returns ``None`` when the
+    backend is not encrypted or the key is present.
     """
     if resolved not in ("encrypted_sqlite", "encrypted_postgres"):
         return None
@@ -127,7 +132,7 @@ def _check_master_key(
     )
     if os.environ.get(master_key_env, "").strip():
         return None
-    return (
+    return _ResolvedBackend(
         "env_var",
         (
             f"{master_key_env} is not set; encrypted secret backend "
@@ -172,7 +177,7 @@ def resolve_secret_backend_config(
     Selection rules (checked top to bottom):
 
     1. Default ``encrypted_sqlite`` + postgres mode + live pool
-       -> promote to ``encrypted_postgres`` (benign, WARNING).
+       -> align to ``encrypted_postgres`` (benign, INFO).
     2. Default ``encrypted_sqlite`` + postgres mode + no pool ->
        downgrade to ``env_var`` (ERROR: integrations degraded).
     3. ``encrypted_sqlite`` with no db_path (sqlite mode without

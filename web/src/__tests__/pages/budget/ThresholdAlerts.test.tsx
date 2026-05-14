@@ -57,7 +57,7 @@ describe('ThresholdAlerts', () => {
       <ThresholdAlerts zone="amber" budgetConfig={mockBudgetConfig} overview={mockOverview} />,
     )
     expect(
-      screen.getByText(/Budget usage at 80% -- warning threshold \(75%\) reached/),
+      screen.getByText(/Budget usage at 80%: warning threshold \(75%\) reached/),
     ).toBeInTheDocument()
   })
 
@@ -67,7 +67,7 @@ describe('ThresholdAlerts', () => {
       <ThresholdAlerts zone="red" budgetConfig={mockBudgetConfig} overview={overview} />,
     )
     expect(
-      screen.getByText(/Budget usage at 92% -- critical threshold \(90%\) reached/),
+      screen.getByText(/Budget usage at 92%: critical threshold \(90%\) reached/),
     ).toBeInTheDocument()
   })
 
@@ -77,7 +77,7 @@ describe('ThresholdAlerts', () => {
       <ThresholdAlerts zone="critical" budgetConfig={mockBudgetConfig} overview={overview} />,
     )
     expect(
-      screen.getByText(/Budget hard stop at 100% reached -- spending halted/),
+      screen.getByText(/Budget hard stop at 100% reached\. Spending halted\./),
     ).toBeInTheDocument()
   })
 
@@ -120,7 +120,7 @@ describe('ThresholdAlerts', () => {
       <ThresholdAlerts zone="amber" budgetConfig={mockBudgetConfig} overview={overview} />,
     )
     expect(
-      screen.getByText(/Budget usage at 89\.6% -- warning threshold \(75%\) reached/),
+      screen.getByText(/Budget usage at 89\.6%: warning threshold \(75%\) reached/),
     ).toBeInTheDocument()
   })
 

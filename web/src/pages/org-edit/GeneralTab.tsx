@@ -61,6 +61,7 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   })
   const [dirty, setDirty] = useState(false)
 
+  // Sync form to config on identity change (react.dev "Adjusting some state when a prop changes"); skip while dirty so we don't clobber in-progress edits.
   const prevConfigRef = useRef<typeof config | undefined>(undefined)
   if (config !== prevConfigRef.current) {
     prevConfigRef.current = config

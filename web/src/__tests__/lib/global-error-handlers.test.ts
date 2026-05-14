@@ -22,6 +22,15 @@ describe('isBenignError', () => {
     expect(isBenignError({ message: 'shaped like an Error but not one' })).toBe(false)
   })
 
+  it.each([
+    'ResizeObserver loop completed and now the server is on fire',
+    'ResizeObserver loop in the order service crashed during checkout',
+    'Loading chunk 5 failed because the auth service refused our token',
+    'Failed to fetch dynamically imported module and also the database',
+  ])('does not match backend errors that just happen to share a prefix: %j', (message) => {
+    expect(isBenignError(message)).toBe(false)
+  })
+
   it('returns false for non-string non-Error inputs', () => {
     expect(isBenignError(null)).toBe(false)
     expect(isBenignError(undefined)).toBe(false)

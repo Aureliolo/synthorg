@@ -179,7 +179,9 @@ they survive restarts without rewriting the config file.
 
 ## Tunnel
 
-ngrok adapter for local webhook development.  Off by default.
+ngrok adapter for local webhook development. The adapter is a standalone wrapper around pyngrok with no persistence, connections, or OAuth dependencies, so it is wired **unconditionally** (not gated by `integrations.enabled`) so the dashboard tunnel toggle is always functional. The adapter only starts a tunnel when the operator explicitly calls `/integrations/tunnel/start`; configuring an auth token via `NGROK_AUTHTOKEN` (or the env var named in `integrations.tunnel.auth_token_env`) unlocks paid-tier behaviour (stable URLs, higher rate caps).
+
+The `GET /integrations/tunnel/status` response includes `has_auth_token: bool` so the dashboard can show free-tier vs paid-tier hints without ever transmitting the token itself.
 
 ### API Endpoints
 
@@ -187,7 +189,7 @@ ngrok adapter for local webhook development.  Off by default.
 |--------|------|-------------|
 | `POST` | `/api/v1/integrations/tunnel/start` | Start tunnel |
 | `POST` | `/api/v1/integrations/tunnel/stop` | Stop tunnel |
-| `GET` | `/api/v1/integrations/tunnel/status` | Get tunnel URL |
+| `GET` | `/api/v1/integrations/tunnel/status` | Get tunnel URL and `has_auth_token` |
 
 ---
 
@@ -213,10 +215,13 @@ integrations:
     check_interval_seconds: 300
     unhealthy_threshold: 3
   tunnel:
-    enabled: false
+    auth_token_env: "NGROK_AUTHTOKEN"
   mcp_catalog:
     enabled: true
 ```
+
+`integrations.tunnel.auth_token_env` names the environment variable the adapter reads its auth token from. The default is `NGROK_AUTHTOKEN`; override only if you keep the token in a differently-named var.
+
 
 ---
 

@@ -54,13 +54,13 @@ export function useDetailData<T>(config: DetailDataConfig<T>): T & DetailDataBas
     await fetchDetail(id)
   }, [id, fetchDetail])
   const polling = usePolling(pollFn, DETAIL_POLL_INTERVAL)
+  const { start: pollingStart, stop: pollingStop } = polling
 
   useEffect(() => {
     if (!id) return
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- polling object is stable (memoized by usePolling)
-  }, [id])
+    pollingStart()
+    return () => pollingStop()
+  }, [id, pollingStart, pollingStop])
 
   const wsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idRef = useRef(id)

@@ -154,16 +154,7 @@ class CostTrackerSummaryMixin:
         return summary
 
     def _log_retention_window(self, start: datetime) -> None:
-        """Log INFO if *start* predates the rolling retention cutoff.
-
-        Reads ``now`` through the injected :class:`Clock` so tests can
-        pin the cutoff with ``FakeClock`` and the log line's emission
-        timing stays deterministic. INFO not WARNING: the backend
-        returns a best-effort answer over the available window and the
-        dashboard date pickers should clamp to the retention window
-        before submission anyway, so a query landing here is operator
-        signal (range was truncated) rather than a bug.
-        """
+        """Log INFO when *start* predates the retention cutoff."""
         retention_cutoff = self._clock.now() - timedelta(
             hours=_COST_WINDOW_HOURS,
         )

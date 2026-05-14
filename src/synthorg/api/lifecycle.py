@@ -327,21 +327,15 @@ async def _wire_ontology_service(
     persistence: PersistenceBackend,
     app_state: AppState,
 ) -> None:
-    """Wire the ontology service onto a connected persistence backend.
-
-    Ontology requires a connected backend (entity repo + versioning
-    service both pull from ``persistence.get_db()``), so wiring runs
-    here in the on-startup phase rather than at app construction. The
-    helper is a no-op when the ontology service is already wired (e.g.,
-    in tests that inject one explicitly).
-    """
-    if app_state.has_ontology_service:
-        return
+    """Wire ontology after persistence connects; no-op if already wired."""
     from synthorg.api.auto_wire import auto_wire_ontology  # noqa: PLC0415
 
     service = await auto_wire_ontology(app_state.config, persistence)
     if service is not None:
-        app_state.set_ontology_service(service)
+        try:
+            app_state.set_ontology_service(service)
+        except RuntimeError:
+            return
 
 
 async def _rebind_connection_catalog(

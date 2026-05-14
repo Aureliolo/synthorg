@@ -72,6 +72,40 @@ class TestCreateApp:
         response = test_client.get("/api/v1/healthz")
         assert response.headers.get(header) == expected
 
+    def test_agent_registry_built_before_auto_wire_meetings(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_persistence: Any,
+        fake_message_bus: Any,
+        cost_tracker: Any,
+        root_config: Any,
+    ) -> None:
+        """Regression: the registry must exist when auto_wire_meetings runs.
+
+        Moving the registry build after auto_wire_meetings made the meeting
+        orchestrator receive `None`, which then 500s on the first request.
+        """
+        import synthorg.api.app as app_module
+        from synthorg.api.auto_wire import auto_wire_meetings as _original_auto_wire
+
+        captured: dict[str, Any] = {}
+
+        def _capturing(**kwargs: Any) -> Any:
+            captured["agent_registry"] = kwargs.get("agent_registry")
+            return _original_auto_wire(**kwargs)
+
+        monkeypatch.setattr(app_module, "auto_wire_meetings", _capturing)
+
+        create_app(
+            config=root_config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            cost_tracker=cost_tracker,
+        )
+
+        assert "agent_registry" in captured
+        assert captured["agent_registry"] is not None
+
 
 @pytest.mark.unit
 class TestCreateAppEnvAutoWire:

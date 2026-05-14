@@ -6,20 +6,16 @@ const log = createLogger('global-error')
 
 const TOAST_TITLE = 'Unexpected client error'
 
-// Patterns the W3C / browsers fire as warnings that are NOT actionable
-// failures. ResizeObserver loop is benign per the spec: it reports that
-// a callback mutated layout, triggering another resize before the next
-// paint, and is the browser's way of asking the page to defer the
-// follow-up resize, not a crash. Hydration / chunk-load patterns are
-// the React + Vite equivalents: extremely common in dev, recoverable
-// by a reload, and not worth waking the operator over.
+// Anchored to the exact browser / React / Vite warning shapes so a backend
+// error message that incidentally starts with similar wording cannot be
+// silenced by accident.
 const BENIGN_ERROR_PATTERNS: readonly RegExp[] = [
-  /^ResizeObserver loop /,
-  /^Hydration failed because /,
-  /^Text content does not match server-rendered HTML/,
-  /^Hydration completed but contains mismatches/,
-  /Loading chunk \d+ failed/,
-  /Failed to fetch dynamically imported module/,
+  /^ResizeObserver loop (limit exceeded|completed with undelivered notifications)\.?$/,
+  /^Hydration failed because the initial UI does not match /,
+  /^Text content does not match server-rendered HTML\.?$/,
+  /^Hydration completed but contains mismatches\.?$/,
+  /^Loading chunk \d+ failed\.?$/,
+  /^Failed to fetch dynamically imported module: /,
 ]
 
 export function isBenignError(reason: unknown): boolean {

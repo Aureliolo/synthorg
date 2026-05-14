@@ -78,12 +78,7 @@ class NgrokAdapter:
 
     @property
     def has_auth_token(self) -> bool:
-        """Whether NGROK_AUTHTOKEN (or the configured env var) is set.
-
-        Surfaced through the tunnel status endpoint so the dashboard
-        can tell the operator whether they are on the free tier
-        (random URLs, low rate cap) or paid tier.
-        """
+        """Whether the configured auth-token env var is set."""
         return bool(self._auth_token)
 
     async def start(self) -> str:

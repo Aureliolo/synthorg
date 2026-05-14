@@ -49,6 +49,7 @@ const STORAGE_KEY_PREFS = 'so_notification_prefs'
 // Module-scoped state
 // ---------------------------------------------------------------------------
 
+// Module-scoped (escapes Zustand state) on purpose: the persist debounce timer must survive the store's set() boundary; cleanup is wired through cancelPendingPersist() from test-setup.tsx.
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 
 // ---------------------------------------------------------------------------

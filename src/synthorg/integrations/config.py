@@ -186,13 +186,11 @@ class TunnelConfig(BaseModel):
     """Tunnel configuration for local webhook development.
 
     Attributes:
-        enabled: Whether the tunnel is available.
         auth_token_env: Env var holding the ngrok auth token.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    enabled: bool = False
     auth_token_env: NotBlankStr = "NGROK_AUTHTOKEN"  # noqa: S105
 
 

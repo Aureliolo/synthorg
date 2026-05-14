@@ -205,12 +205,7 @@ def auto_wire_integrations(  # noqa: PLR0913
         mcp_installations_repo=_wire_mcp_installations_repo(persistence),
     )
 
-    # Tunnel adapter has no dependency on persistence, connections,
-    # OAuth, or the webhook bridge: it is a standalone wrapper around
-    # pyngrok that reads only its auth-token env var. Wire it
-    # unconditionally so the dashboard's tunnel toggle works on stock
-    # config (where ``integrations.enabled`` defaults to False) instead
-    # of 503-ing with the generic ``ServiceUnavailableError``.
+    # Wired unconditionally (no persistence / OAuth deps) so the dashboard toggle works.
     from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
         NgrokAdapter,
     )

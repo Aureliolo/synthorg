@@ -372,16 +372,7 @@ class TelemetryCollector:
         )
 
     def _log_token_missing(self) -> None:
-        """Log the missing-token bail-out at the right severity.
-
-        Only a production release wheel is expected to carry an
-        embedded token; in dev / pre-release / CI the operator routinely
-        enables telemetry against a source install whose build pipeline
-        never ran the embedder. ERROR every boot there buries real
-        production-only failures. Keep ERROR for
-        ``environment == "prod"`` and downgrade everything else to INFO
-        with an actionable detail message.
-        """
+        """Log missing-token bail-out at ERROR in prod, INFO elsewhere."""
         if self._config.environment == "prod":
             logger.error(
                 TELEMETRY_TOKEN_MISSING,

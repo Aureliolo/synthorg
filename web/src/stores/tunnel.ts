@@ -44,6 +44,7 @@ const INITIAL_STATE = {
   hasAuthToken: null,
 }
 
+// Module-scoped (escapes Zustand state) on purpose: each operation reads its own generation on entry and bails on completion if a newer operation has incremented past it; stashing it inside the store would make reset() race with in-flight fetches that already captured the old value.
 let _operationGeneration = 0
 
 export const useTunnelStore = create<TunnelState>()((set) => ({

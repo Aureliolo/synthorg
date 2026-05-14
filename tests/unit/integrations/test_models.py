@@ -78,7 +78,7 @@ class TestIntegrationsConfig:
         assert config.webhooks.replay_window_seconds == 300
         assert config.health.check_interval_seconds == 300
         assert config.secret_backend.backend_type == "encrypted_sqlite"
-        assert config.tunnel.enabled is False
+        assert config.tunnel.auth_token_env == "NGROK_AUTHTOKEN"
         assert config.mcp_catalog.enabled is True
 
     def test_frozen(self) -> None:

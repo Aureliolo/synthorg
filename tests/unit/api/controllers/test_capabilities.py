@@ -40,17 +40,7 @@ class TestCapabilitiesController:
         assert set(data.keys()) == expected_flags
         for key in expected_flags:
             assert isinstance(data[key], bool), key
-        # Exact-value assertions against the test conftest's wiring.
-        # The test fixture does NOT wire the optional subsystems
-        # (client simulation state, telemetry collector) and ships
-        # with ``integrations.enabled=False``, so each flag has a known
-        # value. A regression where the controller hardcodes a flag
-        # to True (e.g. via a copy-paste mistake) is caught here.
-        # ``ontology`` is wired automatically in the on-startup phase
-        # whenever persistence is connected (the test fixture connects
-        # an in-memory backend). ``tunnel`` (NgrokAdapter) is wired
-        # unconditionally so the dashboard's tunnel toggle works on
-        # stock config without an integrations override.
+        # Each flag matches the fixture: ontology + tunnel are auto-wired on startup.
         assert data["simulations"] is False
         assert data["requests"] is False
         assert data["ontology"] is True
