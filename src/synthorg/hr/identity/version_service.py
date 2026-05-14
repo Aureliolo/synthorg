@@ -17,12 +17,15 @@ second surface without improving security.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.observability import get_logger
 from synthorg.observability.events.agent_identity_version import (
     AGENT_IDENTITY_INVALID_REQUEST,
     AGENT_IDENTITY_VERSION_FETCHED,
     AGENT_IDENTITY_VERSION_LISTED,
+    AGENT_IDENTITY_VERSION_NOT_FOUND,
+    AGENT_IDENTITY_VERSION_OWNER_MISMATCH,
 )
 
 if TYPE_CHECKING:
@@ -152,6 +155,98 @@ class AgentVersionService:
                 version=version,
             )
         return snapshot
+
+    async def get_for_rollback(
+        self,
+        agent_id: NotBlankStr,
+        version: int,
+    ) -> VersionSnapshot[AgentIdentity]:
+        """Fetch a version snapshot with the rollback-time owner check applied.
+
+        Combines :meth:`get_version` with the same defence-in-depth
+        owner-mismatch validation the controller used to apply inline.
+        The check guards against corrupted / cross-entity rows that
+        could otherwise let a rollback mutate the wrong agent. Raises
+        :class:`NotFoundError` when the version row is absent and
+        :class:`ValidationError` when the snapshot's encoded owner
+        does not match ``agent_id``.
+        """
+        target = await self.get_version(agent_id, version)
+        if target is None:
+            logger.warning(
+                AGENT_IDENTITY_VERSION_NOT_FOUND,
+                agent_id=agent_id,
+                version=version,
+            )
+            msg = f"Target version {version} not found"
+            raise NotFoundError(msg)
+        if str(target.snapshot.id) != agent_id:
+            logger.warning(
+                AGENT_IDENTITY_VERSION_OWNER_MISMATCH,
+                agent_id=agent_id,
+                error="target snapshot id does not match path agent_id",
+                snapshot_id=str(target.snapshot.id),
+            )
+            msg = "Target version belongs to a different agent"
+            raise ValidationError(msg)
+        return target
+
+    async def get_version_pair_for_diff(
+        self,
+        agent_id: NotBlankStr,
+        from_version: int,
+        to_version: int,
+    ) -> tuple[
+        VersionSnapshot[AgentIdentity],
+        VersionSnapshot[AgentIdentity],
+    ]:
+        """Concurrently fetch two snapshots with owner validation.
+
+        Centralises the cross-snapshot loading for diff endpoints so
+        the controller no longer reaches past the service boundary.
+
+        Version arguments are validated **before** the TaskGroup so a
+        ``ValueError`` from ``get_version`` cannot be rewrapped in
+        ``BaseExceptionGroup``; the controller's exception handler
+        would otherwise see a group and route the request through the
+        500 fallback instead of the 400 validation path.
+        """
+        for version in (from_version, to_version):
+            if version < 1:
+                logger.warning(
+                    AGENT_IDENTITY_INVALID_REQUEST,
+                    param="version",
+                    value=version,
+                    agent_id=agent_id,
+                )
+                msg = f"version must be >= 1, got {version}"
+                raise ValueError(msg)
+        async with asyncio.TaskGroup() as tg:
+            old_task = tg.create_task(self.get_version(agent_id, from_version))
+            new_task = tg.create_task(self.get_version(agent_id, to_version))
+        old = old_task.result()
+        new = new_task.result()
+        for snapshot, version in ((old, from_version), (new, to_version)):
+            if snapshot is None:
+                logger.warning(
+                    AGENT_IDENTITY_VERSION_NOT_FOUND,
+                    agent_id=agent_id,
+                    version=version,
+                )
+                msg = f"Version {version} not found"
+                raise NotFoundError(msg)
+            if str(snapshot.snapshot.id) != agent_id:
+                logger.warning(
+                    AGENT_IDENTITY_VERSION_OWNER_MISMATCH,
+                    agent_id=agent_id,
+                    version=version,
+                    snapshot_id=str(snapshot.snapshot.id),
+                )
+                msg = f"Version {version} belongs to a different agent"
+                raise ValidationError(msg)
+        assert old is not None  # noqa: S101 -- narrowed by loop above
+        assert new is not None  # noqa: S101 -- narrowed by loop above
+        return old, new
 
 
 __all__ = ["AgentVersionService"]

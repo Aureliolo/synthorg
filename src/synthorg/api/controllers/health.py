@@ -78,6 +78,9 @@ class ReadinessStatus(BaseModel):
         persistence: Persistence backend healthy (``None`` if not
             configured).
         message_bus: Message bus running (``None`` if not configured).
+        providers: All tracked LLM providers reachable (no ``DOWN``
+            status). ``None`` when no provider health tracker is
+            wired (dev stacks without provider configuration).
         telemetry: Project telemetry delivery state.
         version: Application version.
         uptime_seconds: Seconds since startup.
@@ -91,6 +94,10 @@ class ReadinessStatus(BaseModel):
     )
     message_bus: bool | None = Field(
         description="Message bus running (None if not configured)",
+    )
+    providers: bool | None = Field(
+        default=None,
+        description="All tracked providers reachable (None if not configured)",
     )
     telemetry: TelemetryStatus = Field(
         description="Project telemetry delivery state",
@@ -153,6 +160,7 @@ def _unavailable_response(
                 status=ReadinessOutcome.UNAVAILABLE,
                 persistence=None,
                 message_bus=None,
+                providers=None,
                 telemetry=_resolve_telemetry_status(app_state),
                 version=__version__,
                 uptime_seconds=uptime,
@@ -232,6 +240,17 @@ class ReadinessController(Controller):
                         component="message_bus",
                     ),
                 )
+
+                async def _probe_providers() -> bool:
+                    return await app_state.provider_health_tracker.are_all_reachable()
+
+                providers_task = tg.create_task(
+                    _probe_service(
+                        configured=app_state.has_provider_health_tracker,
+                        probe=_probe_providers,
+                        component="providers",
+                    ),
+                )
         except BaseExceptionGroup as group:
             # Preserve fatal signals (MemoryError / RecursionError /
             # CancelledError) so the process supervisor still sees them;
@@ -259,12 +278,15 @@ class ReadinessController(Controller):
             return _unavailable_response(app_state)
         persistence_ok = persistence_task.result()
         bus_ok = bus_task.result()
+        providers_ok = providers_task.result()
         telemetry_status = _resolve_telemetry_status(app_state)
 
         # Readiness is a pass/fail: every *configured* dependency must
         # report healthy. Unconfigured (None) is treated as not
         # blocking -- dev stacks without a bus still report ready.
-        configured_checks = [v for v in (persistence_ok, bus_ok) if v is not None]
+        configured_checks = [
+            v for v in (persistence_ok, bus_ok, providers_ok) if v is not None
+        ]
         ready = bool(configured_checks) and all(configured_checks)
         outcome = (
             ReadinessOutcome.OK
@@ -280,6 +302,7 @@ class ReadinessController(Controller):
             status=outcome.value,
             persistence=persistence_ok,
             message_bus=bus_ok,
+            providers=providers_ok,
             telemetry=telemetry_status.value,
         )
 
@@ -289,6 +312,7 @@ class ReadinessController(Controller):
                     status=outcome,
                     persistence=persistence_ok,
                     message_bus=bus_ok,
+                    providers=providers_ok,
                     telemetry=telemetry_status,
                     version=__version__,
                     uptime_seconds=uptime,

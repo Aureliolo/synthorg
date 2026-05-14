@@ -1,16 +1,21 @@
 """Workflow version service layer.
 
 Wraps the generic :class:`VersionRepository` for workflow definitions
-behind a domain-specific facade. The MCP write surface and any future
-controller route through this service so the persistence boundary stays
-honored (handlers never reach into ``app_state.persistence`` directly).
+behind a domain-specific facade. The MCP write surface and the HTTP
+version-history controller both route through this service so the
+persistence boundary stays honored (handlers never reach into
+``app_state.persistence`` directly).
 """
 
 import asyncio
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.observability import get_logger
+from synthorg.observability.events.workflow_definition import (
+    WORKFLOW_DEF_NOT_FOUND,
+)
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_INVALID_REQUEST,
 )
@@ -99,6 +104,57 @@ class WorkflowVersionService:
             msg = f"revision must be >= 1, got {revision}"
             raise ValueError(msg)
         return await self._repo.get_version(definition_id, revision)
+
+    async def get_version_pair_or_404(
+        self,
+        definition_id: NotBlankStr,
+        from_revision: int,
+        to_revision: int,
+    ) -> tuple[
+        VersionSnapshot[WorkflowDefinition],
+        VersionSnapshot[WorkflowDefinition],
+    ]:
+        """Fetch two snapshots concurrently for diff/rollback orchestration.
+
+        Both snapshots are fetched via :class:`asyncio.TaskGroup` so the
+        round-trip matches the slower of the two repository calls. The
+        helper centralises the missing-version logging + 404 raise that
+        every diff endpoint would otherwise reimplement at the
+        controller layer.
+
+        Revision arguments are validated **before** the TaskGroup so a
+        ``ValueError`` from ``get_version`` cannot be rewrapped in
+        ``BaseExceptionGroup``; the controller's exception handler
+        would otherwise see a group and route the request through the
+        500 fallback instead of the 400 validation path.
+        """
+        for revision in (from_revision, to_revision):
+            if revision < 1:
+                logger.warning(
+                    WORKFLOW_VERSION_INVALID_REQUEST,
+                    definition_id=str(definition_id),
+                    param="revision",
+                    value=revision,
+                )
+                msg = f"revision must be >= 1, got {revision}"
+                raise ValueError(msg)
+        async with asyncio.TaskGroup() as tg:
+            old_task = tg.create_task(self.get_version(definition_id, from_revision))
+            new_task = tg.create_task(self.get_version(definition_id, to_revision))
+        old = old_task.result()
+        new = new_task.result()
+        for snapshot, revision in ((old, from_revision), (new, to_revision)):
+            if snapshot is None:
+                logger.warning(
+                    WORKFLOW_DEF_NOT_FOUND,
+                    definition_id=str(definition_id),
+                    version=revision,
+                )
+                msg = f"Version {revision} not found"
+                raise NotFoundError(msg)
+        assert old is not None  # noqa: S101 -- narrowed by loop above
+        assert new is not None  # noqa: S101 -- narrowed by loop above
+        return old, new
 
 
 __all__ = ["WorkflowVersionService"]

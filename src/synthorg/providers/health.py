@@ -299,15 +299,43 @@ class ProviderHealthTracker:
 
         return _aggregate_records(recent)
 
+    async def are_all_reachable(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        """Return True when no tracked provider is currently DOWN.
+
+        Used by the /readyz probe to gate traffic. Providers whose
+        recent call window contains too many failures derive a
+        :attr:`ProviderHealthStatus.DOWN` status; any single one of
+        those flips the reachability bit. ``DEGRADED`` providers stay
+        reachable because partial traffic is preferable to a full
+        outage; ``UNKNOWN`` (no recent calls) is also treated as
+        reachable so a fresh boot never reports unready before the
+        first provider call lands.
+        """
+        summaries = await self.get_all_summaries(now=now)
+        return not any(
+            summary.health_status is ProviderHealthStatus.DOWN
+            for summary in summaries.values()
+        )
+
     async def get_all_summaries(
         self,
         *,
         now: datetime | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> Mapping[str, ProviderHealthSummary]:
-        """Build summaries for all known providers.
+        """Build summaries for all known providers, optionally paginated.
 
         Args:
             now: Reference time for the 24h window.
+            limit: Maximum providers to include (``None`` for unbounded;
+                preserves the historical contract used by callers that
+                need every provider's status, e.g. the readiness probe).
+            offset: Page offset honoured only when ``limit`` is set.
 
         Returns:
             Immutable mapping of provider name to health summary,
@@ -323,12 +351,30 @@ class ProviderHealthTracker:
             if cutoff <= r.timestamp <= ref:
                 by_provider[r.provider_name].append(r)
 
+        items = sorted(by_provider.items())
+        if limit is not None:
+            offset = max(0, offset)
+            end = offset + max(0, limit)
+            items = items[offset:end]
         return MappingProxyType(
-            {
-                name: _aggregate_records(records)
-                for name, records in sorted(by_provider.items())
-            }
+            {name: _aggregate_records(records) for name, records in items}
         )
+
+    async def count_all_summaries(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        """Return the count of providers with records inside the 24h window.
+
+        Companion to :meth:`get_all_summaries` for paginated controllers
+        that need a total alongside the page.
+        """
+        ref = now or datetime.now(UTC)
+        cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
+        snapshot = await self._snapshot(now=ref)
+        names = {r.provider_name for r in snapshot if cutoff <= r.timestamp <= ref}
+        return len(names)
 
     async def _snapshot(
         self,

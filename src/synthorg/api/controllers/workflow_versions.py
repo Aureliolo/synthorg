@@ -1,7 +1,5 @@
 """Workflow version history controller -- list, get, diff, rollback."""
 
-import asyncio
-from datetime import UTC, datetime
 from typing import Annotated, Final
 
 from litestar import Controller, Response, get, post
@@ -41,146 +39,12 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_VERSION_CONFLICT,
     WORKFLOW_DEF_VERSION_LISTED,
 )
-from synthorg.persistence.version_protocol import VersionRepository  # noqa: TC001
-from synthorg.persistence.workflow_definition_protocol import (
-    WorkflowDefinitionRepository,  # noqa: TC001
-)
 from synthorg.versioning import VersionSnapshot
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 20
 
 SnapshotT = VersionSnapshot[WorkflowDefinition]
-
-
-async def _fetch_version_pair(
-    version_repo: VersionRepository[WorkflowDefinition],
-    workflow_id: str,
-    from_version: int,
-    to_version: int,
-) -> tuple[SnapshotT, SnapshotT]:
-    """Fetch two version snapshots, raising :class:`NotFoundError` if absent.
-
-    Args:
-        version_repo: The workflow version repository.
-        workflow_id: The workflow definition ID.
-        from_version: Source version number.
-        to_version: Target version number.
-
-    Returns:
-        A tuple ``(old, new)`` with both snapshots.
-
-    Raises:
-        NotFoundError: If either version snapshot is absent.
-    """
-    old = await version_repo.get_version(workflow_id, from_version)
-    if old is None:
-        logger.warning(
-            WORKFLOW_DEF_NOT_FOUND,
-            definition_id=workflow_id,
-            version=from_version,
-        )
-        msg = f"Version {from_version} not found"
-        raise NotFoundError(msg)
-    new = await version_repo.get_version(workflow_id, to_version)
-    if new is None:
-        logger.warning(
-            WORKFLOW_DEF_NOT_FOUND,
-            definition_id=workflow_id,
-            version=to_version,
-        )
-        msg = f"Version {to_version} not found"
-        raise NotFoundError(msg)
-    return old, new
-
-
-async def _fetch_rollback_target(
-    repo: WorkflowDefinitionRepository,
-    version_repo: VersionRepository[WorkflowDefinition],
-    workflow_id: str,
-    data: RollbackWorkflowRequest,
-) -> tuple[WorkflowDefinition, SnapshotT]:
-    """Look up the definition and target version for a rollback.
-
-    Validates that the definition exists, the expected version matches,
-    and the target version snapshot exists.
-
-    Args:
-        repo: The workflow definition repository.
-        version_repo: The workflow version repository.
-        workflow_id: The workflow definition ID.
-        data: The rollback request payload.
-
-    Returns:
-        A tuple ``(existing, target)`` on success.
-
-    Raises:
-        NotFoundError: If the definition or the target version is absent.
-        VersionConflictError: If ``data.expected_revision`` does not match
-            the current persisted revision.
-    """
-    existing = await repo.get(workflow_id)
-    if existing is None:
-        logger.warning(
-            WORKFLOW_DEF_NOT_FOUND,
-            definition_id=workflow_id,
-        )
-        msg = "Workflow definition not found"
-        raise NotFoundError(msg)
-
-    if data.expected_revision != existing.revision:
-        logger.warning(
-            WORKFLOW_DEF_VERSION_CONFLICT,
-            definition_id=workflow_id,
-            expected=data.expected_revision,
-            actual=existing.revision,
-        )
-        msg = "Version conflict: the workflow was modified. Reload and retry."
-        raise VersionConflictError(msg)
-
-    target = await version_repo.get_version(
-        workflow_id,
-        data.target_version,
-    )
-    if target is None:
-        logger.warning(
-            WORKFLOW_DEF_NOT_FOUND,
-            definition_id=workflow_id,
-            version=data.target_version,
-        )
-        msg = f"Target version {data.target_version} not found"
-        raise NotFoundError(msg)
-
-    return existing, target
-
-
-def _build_rolled_back_definition(
-    existing: WorkflowDefinition,
-    target: SnapshotT,
-    now: datetime,
-) -> WorkflowDefinition:
-    """Build a new definition that restores a target version's content.
-
-    Args:
-        existing: The current persisted definition.
-        target: The version snapshot to restore.
-        now: Current UTC timestamp.
-
-    Returns:
-        A ``WorkflowDefinition`` with version bumped and content
-        restored from *target*.
-    """
-    return target.snapshot.model_copy(
-        update={
-            "id": existing.id,
-            "version": existing.version,
-            "created_by": existing.created_by,
-            "created_at": existing.created_at,
-            "updated_at": now,
-            "revision": existing.revision + 1,
-        },
-        deep=True,
-    )
 
 
 class WorkflowVersionController(Controller):
@@ -200,20 +64,11 @@ class WorkflowVersionController(Controller):
         """List version history for a workflow definition."""
         secret = state.app_state.cursor_secret
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
-        version_repo = state.app_state.persistence.workflow_versions
-        async with asyncio.TaskGroup() as tg:
-            list_task = tg.create_task(
-                version_repo.list_versions(
-                    workflow_id,
-                    limit=limit,
-                    offset=offset,
-                ),
-            )
-            count_task = tg.create_task(
-                version_repo.count_versions(workflow_id),
-            )
-        versions = list_task.result()
-        total = count_task.result()
+        versions, total = await state.app_state.workflow_version_service.list_versions(
+            workflow_id,
+            limit=limit,
+            offset=offset,
+        )
         logger.debug(
             WORKFLOW_DEF_VERSION_LISTED,
             definition_id=workflow_id,
@@ -244,8 +99,7 @@ class WorkflowVersionController(Controller):
         version_num: Annotated[int, Parameter(ge=1)],
     ) -> Response[ApiResponse[SnapshotT]]:
         """Get a specific version snapshot."""
-        version_repo = state.app_state.persistence.workflow_versions
-        version = await version_repo.get_version(
+        version = await state.app_state.workflow_version_service.get_version(
             workflow_id,
             version_num,
         )
@@ -293,14 +147,12 @@ class WorkflowVersionController(Controller):
             msg = "from_version and to_version must differ"
             raise ValidationError(msg)
 
-        version_repo = state.app_state.persistence.workflow_versions
-        old, new = await _fetch_version_pair(
-            version_repo,
+        version_service = state.app_state.workflow_version_service
+        old, new = await version_service.get_version_pair_or_404(
             workflow_id,
             from_version,
             to_version,
         )
-
         diff = compute_diff(old, new)
         logger.debug(
             WORKFLOW_DEF_DIFF_COMPUTED,
@@ -324,39 +176,22 @@ class WorkflowVersionController(Controller):
         data: RollbackWorkflowRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Rollback a workflow to a previous version."""
-        repo = state.app_state.persistence.workflow_definitions
-        version_repo = state.app_state.persistence.workflow_versions
-
-        existing, target = await _fetch_rollback_target(
-            repo,
-            version_repo,
-            workflow_id,
-            data,
-        )
-        updater = get_authenticated_user_id()
-        rolled_back = _build_rolled_back_definition(
-            existing,
-            target,
-            datetime.now(UTC),
-        )
-
         rollback_service = state.app_state.workflow_rollback_service
         try:
-            await rollback_service.rollback(
-                rolled_back,
-                target_version=data.target_version,
-                saved_by=updater,
+            rolled_back = await rollback_service.prepare_rollback(
+                workflow_id,
+                data,
+                saved_by=get_authenticated_user_id(),
             )
         except PersistenceVersionConflictError as exc:
             # Translate the persistence-layer name to the API-aware
             # ``VersionConflictError`` so the centralised handler emits
             # the user-facing message rather than the lower-level
-            # "Optimistic concurrency conflict" default. Log the
+            # "Optimistic concurrency conflict" default. The
             # rollback-specific context (``definition_id`` /
-            # ``target_version``) before raising; the centralised
-            # handler logs the exception attributes via
-            # ``_safe_log_attrs``, but those don't carry the call-site
-            # context that's only in scope here.
+            # ``target_version``) only lives in scope at the controller
+            # boundary; the centralised handler captures exception
+            # attributes but not call-site context.
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,
                 definition_id=workflow_id,

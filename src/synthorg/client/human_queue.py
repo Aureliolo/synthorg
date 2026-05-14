@@ -119,12 +119,39 @@ class HumanInputQueue(Protocol):
 
     async def list_pending_requirements(
         self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[PendingRequirement, ...]:
-        """Return all unresolved requirement tickets."""
+        """Return unresolved requirement tickets, optionally paginated.
+
+        ``limit=None`` (the default) preserves the historical "return
+        everything" behaviour callers relied on before pagination was
+        added. When ``limit`` is set, the implementation MUST honour
+        ``offset`` and slice the snapshot consistently with the queue's
+        intrinsic ordering (insertion order in the reference impl).
+        """
         ...
 
-    async def list_pending_reviews(self) -> tuple[PendingReview, ...]:
-        """Return all unresolved review tickets."""
+    async def list_pending_reviews(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[PendingReview, ...]:
+        """Return unresolved review tickets, optionally paginated.
+
+        See :meth:`list_pending_requirements` for the limit/offset
+        contract.
+        """
+        ...
+
+    async def count_pending_requirements(self) -> int:
+        """Return the unfiltered count of pending requirement tickets."""
+        ...
+
+    async def count_pending_reviews(self) -> int:
+        """Return the unfiltered count of pending review tickets."""
         ...
 
 
@@ -272,12 +299,40 @@ class InMemoryHumanInputQueue:
 
     async def list_pending_requirements(
         self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[PendingRequirement, ...]:
         """Return a snapshot tuple of pending requirement tickets."""
         async with self._lock:
-            return tuple(self._pending_requirements.values())
+            snapshot = tuple(self._pending_requirements.values())
+        if limit is None and offset == 0:
+            return snapshot
+        offset = max(0, offset)
+        end = None if limit is None else offset + max(0, limit)
+        return snapshot[offset:end]
 
-    async def list_pending_reviews(self) -> tuple[PendingReview, ...]:
+    async def list_pending_reviews(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[PendingReview, ...]:
         """Return a snapshot tuple of pending review tickets."""
         async with self._lock:
-            return tuple(self._pending_reviews.values())
+            snapshot = tuple(self._pending_reviews.values())
+        if limit is None and offset == 0:
+            return snapshot
+        offset = max(0, offset)
+        end = None if limit is None else offset + max(0, limit)
+        return snapshot[offset:end]
+
+    async def count_pending_requirements(self) -> int:
+        """Return the unfiltered count of pending requirement tickets."""
+        async with self._lock:
+            return len(self._pending_requirements)
+
+    async def count_pending_reviews(self) -> int:
+        """Return the unfiltered count of pending review tickets."""
+        async with self._lock:
+            return len(self._pending_reviews)

@@ -8,7 +8,7 @@ from .errors import (
     ModelResolutionError,
     NoAvailableModelError,
     RoutingError,
-    UnknownStrategyError,
+    UnknownRoutingStrategyError,
 )
 from .models import ResolvedModel, RoutingDecision, RoutingRequest
 from .resolver import ModelResolver
@@ -59,5 +59,5 @@ __all__ = [
     "RoutingRequest",
     "RoutingStrategy",
     "SmartStrategy",
-    "UnknownStrategyError",
+    "UnknownRoutingStrategyError",
 ]
