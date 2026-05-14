@@ -248,7 +248,7 @@ describe('useCompanyStore', () => {
       )
       useCompanyStore.setState({ config: mockConfig })
 
-      await useCompanyStore.getState().updateCompany({ company_name: 'New Name' })
+      await useCompanyStore.getState().updateCompany({ company_name: 'New Name', autonomy_level: null })
       expect(useCompanyStore.getState().config?.company_name).toBe('New Name')
       expect(useCompanyStore.getState().savingCount).toBe(0)
       expect(configFetched).toBe(true)
@@ -266,7 +266,7 @@ describe('useCompanyStore', () => {
 
       const result = await useCompanyStore
         .getState()
-        .updateCompany({ company_name: 'X' })
+        .updateCompany({ company_name: 'X', autonomy_level: null })
 
       expect(result).toBe(false)
       expect(useCompanyStore.getState().saveError).toContain('Forbidden')
@@ -290,7 +290,7 @@ describe('useCompanyStore', () => {
 
       const result = await useCompanyStore
         .getState()
-        .createDepartment({ name: 'design' })
+        .createDepartment({ name: 'design', autonomy_level: null, budget_percent: 0 })
       expect(result).toEqual(newDept)
       expect(useCompanyStore.getState().config!.departments).toHaveLength(2)
     })
@@ -304,7 +304,7 @@ describe('useCompanyStore', () => {
       useCompanyStore.setState({ config: mockConfig })
 
       await expect(
-        useCompanyStore.getState().createDepartment({ name: 'x' }),
+        useCompanyStore.getState().createDepartment({ name: 'x', autonomy_level: null, budget_percent: 0 }),
       ).rejects.toThrow('Conflict')
       expect(useCompanyStore.getState().config!.departments).toHaveLength(1)
     })
@@ -325,7 +325,7 @@ describe('useCompanyStore', () => {
 
       const result = await useCompanyStore
         .getState()
-        .updateDepartment('engineering', { budget_percent: 50 })
+        .updateDepartment('engineering', { budget_percent: 50, autonomy_level: null })
       expect(result.name).toBe('engineering')
       expect(result.budget_percent).toBe(50)
       expect(useCompanyStore.getState().config!.departments[0]!.name).toBe(
@@ -423,7 +423,7 @@ describe('useCompanyStore', () => {
 
       const result = await useCompanyStore
         .getState()
-        .updateAgent('alice', { role: 'Senior Dev' })
+        .updateAgent('alice', { role: 'Senior Dev', autonomy_level: null, level: null })
       expect(result.role).toBe('Senior Dev')
     })
   })

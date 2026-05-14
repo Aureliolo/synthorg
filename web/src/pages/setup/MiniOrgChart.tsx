@@ -74,7 +74,7 @@ function pickHead(agents: readonly SetupAgentSummary[]): SetupAgentSummary | nul
   if (agents.length === 0) return null
   let head = agents[0]!
   for (const agent of agents) {
-    if (seniorityRank(agent.level) > seniorityRank(head.level)) head = agent
+    if (seniorityRank(agent.level ?? null) > seniorityRank(head.level ?? null)) head = agent
   }
   return head
 }
@@ -93,7 +93,7 @@ interface AgentNodeProps {
 function AgentNode({
   agent, agentX, agentY, deptX, deptY, radius, deptHalfHeight, isHead,
 }: AgentNodeProps) {
-  const isLeader = agent.level !== null && LEADER_LEVELS.has(agent.level)
+  const isLeader = agent.level != null && LEADER_LEVELS.has(agent.level)
   const effectiveRadius = isHead ? radius + 2 : radius
   const strokeClass = isHead
     ? 'stroke-accent'

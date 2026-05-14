@@ -1,34 +1,12 @@
 /** Artifact metadata and filter types. */
 
-import type { ArtifactType } from './enums'
+export type { Artifact, CreateArtifactRequest } from './dtos.gen'
 
-export interface Artifact {
-  id: string
-  type: ArtifactType
-  path: string
-  task_id: string
-  created_by: string
-  description: string
-  project_id: string | null
-  content_type: string
-  size_bytes: number
-  created_at: string | null
-}
-
-export interface CreateArtifactRequest {
-  type: ArtifactType
-  path: string
-  task_id: string
-  created_by: string
-  description?: string
-  content_type?: string
-  project_id?: string | null
-}
-
+/** Frontend-only query filter (not on the wire as a Pydantic DTO). */
 export interface ArtifactFilters {
   task_id?: string
   created_by?: string
-  type?: ArtifactType
+  type?: import('./enums').ArtifactType
   project_id?: string
   offset?: number
   limit?: number

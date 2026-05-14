@@ -720,6 +720,8 @@ describe('setup wizard store', () => {
           preset_name: 'test-preset',
           name: 'my-provider',
           api_key: 'sk-test',
+          auth_type: 'api_key',
+          tos_accepted: false,
         })
 
       expect(result).toEqual(mockProvider)
@@ -777,6 +779,8 @@ describe('setup wizard store', () => {
         .createProviderFromPresetFull({
           preset_name: 'test-local',
           name: 'local-provider',
+          auth_type: 'none',
+          tos_accepted: false,
         })
 
       expect(discoverCalls).toBeGreaterThan(0)
@@ -799,6 +803,8 @@ describe('setup wizard store', () => {
         .createProviderFromPresetFull({
           preset_name: 'test-preset',
           name: 'my-provider',
+          auth_type: 'api_key',
+          tos_accepted: false,
         })
 
       expect(result).toBeNull()
@@ -919,8 +925,11 @@ describe('setup wizard store', () => {
         .getState()
         .createProviderCustom({
           name: 'custom-provider',
+          driver: 'litellm',
           auth_type: 'none',
           base_url: 'http://localhost:8000',
+          tos_accepted: false,
+          models: [],
         })
 
       expect(result).toEqual(customProvider)
@@ -940,7 +949,10 @@ describe('setup wizard store', () => {
         .getState()
         .createProviderCustom({
           name: 'bad-provider',
+          driver: 'litellm',
           auth_type: 'none',
+          tos_accepted: false,
+          models: [],
         })
 
       expect(result).toBeNull()

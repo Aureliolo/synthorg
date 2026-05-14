@@ -38,6 +38,12 @@ const WORKFLOW_TYPE_OPTIONS = WORKFLOW_TYPES.map((t) => ({
   label: formatLabel(t),
 }))
 
+type WorkflowType = (typeof WORKFLOW_TYPES)[number]
+
+function isWorkflowType(value: string): value is WorkflowType {
+  return (WORKFLOW_TYPES as readonly string[]).includes(value)
+}
+
 export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProps) {
   const [mode, setMode] = useState<CreateMode>('blank')
   const [selectedBlueprint, setSelectedBlueprint] = useState<string | null>(null)
@@ -77,10 +83,17 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
 
     const next: Partial<Record<keyof FormState, string>> = {}
     if (!form.name.trim()) next.name = 'Name is required'
+    if (!isWorkflowType(form.workflowType)) {
+      next.workflowType = 'Select a valid workflow type'
+    }
     setErrors(next)
     if (Object.keys(next).length > 0) return
 
     setSubmitting(true)
+    // ``isWorkflowType`` above narrowed ``form.workflowType``; re-check
+    // here so the type assertion is at least once-validated rather than
+    // a blind cast on user input.
+    if (!isWorkflowType(form.workflowType)) return
     const created = mode === 'blueprint'
       ? await useWorkflowsStore.getState().createFromBlueprint({
           blueprint_name: selectedBlueprint!,
@@ -89,8 +102,12 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
         })
       : await useWorkflowsStore.getState().createWorkflow({
           name: form.name.trim(),
-          description: form.description.trim() || undefined,
+          description: form.description.trim() ?? '',
+          version: '1.0.0',
           workflow_type: form.workflowType,
+          inputs: [],
+          outputs: [],
+          is_subworkflow: false,
           nodes: [],
           edges: [],
         })

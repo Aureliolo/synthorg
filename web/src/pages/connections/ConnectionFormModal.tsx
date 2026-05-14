@@ -283,6 +283,7 @@ export function ConnectionFormModal({
         auth_method: spec.defaultAuthMethod,
         credentials,
         base_url: form.topLevel.base_url?.trim() || null,
+        health_check_enabled: true,
         ...(supportsWebhookRetention
           ? { webhook_receipt_retention_days: retentionValue }
           : {}),

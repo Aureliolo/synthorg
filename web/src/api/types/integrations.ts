@@ -1,32 +1,25 @@
 /** External integrations: connections, OAuth apps, MCP catalog, tunnel. */
 
-export type ConnectionType =
-  | 'github'
-  | 'slack'
-  | 'smtp'
-  | 'database'
-  | 'generic_http'
-  | 'oauth_app'
-  | 'a2a_peer'
+export type {
+  Connection,
+  CreateConnectionRequest,
+  HealthReport,
+  UpdateConnectionRequest,
+} from './dtos.gen'
 
-export const CONNECTION_TYPE_VALUES = [
-  'github',
-  'slack',
-  'smtp',
-  'database',
-  'generic_http',
-  'oauth_app',
-  'a2a_peer',
-] as const satisfies readonly ConnectionType[]
+export type { ConnectionType } from './enum-values.gen'
+export { CONNECTION_TYPE_VALUES } from './enum-values.gen'
+
+import type { ConnectionType } from './enum-values.gen'
 
 /**
  * Connection types that emit webhook receipts the retention sweep cleans up.
- * The `webhook_receipt_retention_days` column exists on every connection
- * row, but configuring it for a non-webhook type (smtp, database, a2a_peer)
- * is meaningless: those connections never produce receipts. The dashboard
- * only surfaces the field for the types below; backend validation accepts
- * the field on any type so a future webhook-emitting type only needs
- * adding to this list.
+ * The `webhook_receipt_retention_days` column exists on every connection row,
+ * but configuring it for a non-webhook type (smtp, database, a2a_peer) is
+ * meaningless: those connections never produce receipts. The dashboard only
+ * surfaces the field for the types below; backend validation accepts the
+ * field on any type so a future webhook-emitting type only needs adding to
+ * this list.
  */
 export const WEBHOOK_RECEIPT_CONNECTION_TYPES = [
   'github',
@@ -41,6 +34,9 @@ export function connectionTypeUsesWebhookReceipts(
   return (WEBHOOK_RECEIPT_CONNECTION_TYPES as readonly ConnectionType[]).includes(type)
 }
 
+/** Inline string unions on Connection / Connection responses. The
+ *  values are not surfaced as named enum schemas by Pydantic, so the
+ *  unions stay hand-maintained until the backend promotes them. */
 export type ConnectionAuthMethod =
   | 'api_key'
   | 'oauth2'
@@ -54,54 +50,8 @@ export type ConnectionHealthStatus =
   | 'unhealthy'
   | 'unknown'
 
-export interface Connection {
-  readonly id: string
-  readonly name: string
-  readonly connection_type: ConnectionType
-  readonly auth_method: ConnectionAuthMethod
-  readonly base_url: string | null
-  readonly health_check_enabled: boolean
-  readonly health_status: ConnectionHealthStatus
-  readonly last_health_check_at: string | null
-  readonly metadata: Record<string, string>
-  /**
-   * Per-connection override for the webhook-receipt retention window
-   * (days). `null` falls back to the global
-   * `integrations.webhooks.receipt_retention_days` setting; `0` opts
-   * this connection out of the cleanup sweep entirely.
-   */
-  readonly webhook_receipt_retention_days: number | null
-  readonly created_at: string
-  readonly updated_at: string
-}
-
-export interface CreateConnectionRequest {
-  readonly name: string
-  readonly connection_type: ConnectionType
-  readonly auth_method?: ConnectionAuthMethod
-  readonly credentials: Record<string, string>
-  readonly base_url?: string | null
-  readonly metadata?: Record<string, string>
-  readonly health_check_enabled?: boolean
-  readonly webhook_receipt_retention_days?: number | null
-}
-
-export interface UpdateConnectionRequest {
-  readonly base_url?: string | null
-  readonly metadata?: Record<string, string>
-  readonly health_check_enabled?: boolean
-  readonly webhook_receipt_retention_days?: number | null
-}
-
-export interface HealthReport {
-  readonly connection_name: string
-  readonly status: ConnectionHealthStatus
-  readonly latency_ms: number | null
-  readonly error_detail: string | null
-  readonly checked_at: string
-  readonly consecutive_failures: number
-}
-
+/** Endpoint-only shapes that the controller layer uses but Pydantic
+ *  models surface inline (no top-level ``components.schemas`` entry). */
 export interface RevealSecretResponse {
   readonly field: string
   readonly value: string

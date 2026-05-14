@@ -74,12 +74,12 @@ export default function ProvidersPage() {
       // detected-list UI.  Dropping ``response.errors`` would silently
       // hide unreachable local providers from the operator.
       const results = Object.fromEntries(
-        Object.entries(response.results).filter(
+        Object.entries(response.results ?? {}).filter(
           (entry): entry is [string, ProbePresetResponse] => entry[1] !== undefined,
         ),
       )
       const errors = Object.fromEntries(
-        Object.entries(response.errors).filter(
+        Object.entries(response.errors ?? {}).filter(
           (entry): entry is [string, string] => entry[1] !== undefined,
         ),
       )
@@ -113,6 +113,8 @@ export default function ProvidersPage() {
         preset_name: presetName,
         name: presetName,
         base_url: detectedUrl,
+        auth_type: 'none',
+        tos_accepted: false,
       })
       if (created) {
         await fetchProviders()

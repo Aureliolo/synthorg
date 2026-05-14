@@ -14,7 +14,7 @@ const mockTask: Task = {
   assigned_to: 'agent-eng-lead',
   reviewers: ['agent-qa'],
   dependencies: ['task-0', 'task-2'],
-  artifacts_expected: [{ name: 'auth-module', type: 'code' }],
+  artifacts_expected: [{ path: 'auth-module', type: 'code' as const }],
   acceptance_criteria: [
     { description: 'Login works with valid credentials', met: true },
     { description: 'Password reset sends email', met: false },

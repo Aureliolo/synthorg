@@ -51,9 +51,9 @@ vi.mock('motion/react', async () => {
 function makeHandlers() {
   return {
     onClose: vi.fn(),
-    onApprove: vi.fn<(id: string, data?: { comment?: string }) => Promise<boolean>>()
+    onApprove: vi.fn<(id: string, data?: { readonly comment?: string | null }) => Promise<boolean>>()
       .mockResolvedValue(true),
-    onReject: vi.fn<(id: string, data: { reason: string }) => Promise<boolean>>()
+    onReject: vi.fn<(id: string, data: { readonly reason: string }) => Promise<boolean>>()
       .mockResolvedValue(true),
   }
 }

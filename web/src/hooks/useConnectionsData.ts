@@ -40,10 +40,10 @@ function sortConnections(
       case 'type':
         return a.connection_type.localeCompare(b.connection_type) * multiplier
       case 'created_at':
-        return a.created_at.localeCompare(b.created_at) * multiplier
+        return (a.created_at ?? '').localeCompare(b.created_at ?? '') * multiplier
       case 'health': {
-        const aHealth = healthMap[a.name]?.status ?? a.health_status
-        const bHealth = healthMap[b.name]?.status ?? b.health_status
+        const aHealth = healthMap[a.name]?.status ?? a.health_status ?? 'unknown'
+        const bHealth = healthMap[b.name]?.status ?? b.health_status ?? 'unknown'
         return (healthOrder[aHealth] - healthOrder[bHealth]) * multiplier
       }
       default:
@@ -83,7 +83,7 @@ export function useConnectionsData(): UseConnectionsDataReturn {
         return false
       }
       if (healthFilter !== null) {
-        const effectiveHealth = healthMap[conn.name]?.status ?? conn.health_status
+        const effectiveHealth = healthMap[conn.name]?.status ?? conn.health_status ?? 'unknown'
         if (effectiveHealth !== healthFilter) return false
       }
       if (normalizedQuery.length > 0) {

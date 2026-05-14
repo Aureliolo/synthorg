@@ -21,6 +21,21 @@ const ROTATION_STRATEGIES = [
   { value: 'none', label: 'None' },
 ]
 
+type RotationStrategy = 'builtin' | 'external' | 'none'
+
+const LOG_LEVEL_VALUES: readonly LogLevel[] = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+const ROTATION_STRATEGY_VALUES: readonly RotationStrategy[] = ['builtin', 'external', 'none']
+
+function toLogLevel(value: string | null | undefined): LogLevel {
+  return LOG_LEVEL_VALUES.includes(value as LogLevel) ? (value as LogLevel) : 'INFO'
+}
+
+function toRotationStrategy(value: string | null | undefined): RotationStrategy {
+  return ROTATION_STRATEGY_VALUES.includes(value as RotationStrategy)
+    ? (value as RotationStrategy)
+    : 'none'
+}
+
 export interface SinkFormDrawerProps {
   open: boolean
   onClose: () => void
@@ -33,10 +48,12 @@ export interface SinkFormDrawerProps {
 export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: SinkFormDrawerProps) {
   // State initialized from sink prop. Parent uses key={sink?.identifier} to remount on sink change.
   const [filePath, setFilePath] = useState(sink?.identifier === '__console__' ? '' : (sink?.identifier ?? ''))
-  const [level, setLevel] = useState<LogLevel>(sink?.level ?? 'INFO')
+  const [level, setLevel] = useState<LogLevel>(() => toLogLevel(sink?.level))
   const [enabled, setEnabled] = useState(sink?.enabled ?? true)
   const [jsonFormat, setJsonFormat] = useState(sink?.json_format ?? false)
-  const [rotationStrategy, setRotationStrategy] = useState<'builtin' | 'external' | 'none'>(sink?.rotation?.strategy ?? 'none')
+  const [rotationStrategy, setRotationStrategy] = useState<RotationStrategy>(() =>
+    toRotationStrategy(sink?.rotation?.strategy),
+  )
   const [maxBytes, setMaxBytes] = useState(String(sink?.rotation?.max_bytes ?? 10485760))
   const [backupCount, setBackupCount] = useState(String(sink?.rotation?.backup_count ?? 5))
   const [routingPrefixes, setRoutingPrefixes] = useState<string[]>(sink?.routing_prefixes ? [...sink.routing_prefixes] : [])
@@ -171,7 +188,7 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
               label="Rotation strategy"
               options={ROTATION_STRATEGIES}
               value={rotationStrategy}
-              onChange={(v) => setRotationStrategy(v as 'builtin' | 'external' | 'none')}
+              onChange={(v) => setRotationStrategy(toRotationStrategy(v))}
             />
             {rotationStrategy !== 'none' && (
               <div className="grid grid-cols-2 gap-3">

@@ -65,17 +65,19 @@ jobs:
               - 'web/src/utils/constants.ts'
             dashboard:
               - 'web/**'
-              - 'src/synthorg/api/schemas/**'
+              - 'src/synthorg/api/**'
+              - 'src/synthorg/core/**'
               - 'scripts/export_openapi.py'
+              - 'scripts/generate_dto_types_ts.py'
+              - 'scripts/check_dto_types_ts_in_sync.py'
               - 'docs/openapi/openapi.json'
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
-              # The async-leak ceiling is consumed by the dashboard-test
-              # job; bumps must re-run the gate so the new ceiling is
-              # validated before merge.
-              - '.github/ci/*.max'
+              - 'web/src/api/types/openapi.gen.ts'
+              - 'web/src/api/types/dtos.gen.ts'
+              - 'web/src/api/types/enum-values.gen.ts'
             docker:
               - 'docker/**'
               - '.dockerignore'
@@ -555,6 +557,8 @@ jobs:
         run: uv run python scripts/export_openapi.py
       - run: npm ci
         working-directory: web
+      - name: DTO TypeScript drift gate (#1889)
+        run: uv run python scripts/check_dto_types_ts_in_sync.py
       - name: Production build
         run: npm run build
         working-directory: web

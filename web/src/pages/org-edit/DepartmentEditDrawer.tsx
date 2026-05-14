@@ -88,9 +88,13 @@ export function DepartmentEditDrawer({
       return
     }
     try {
+      // ``autonomy_level`` is intentionally omitted: this drawer only
+      // edits budget and ceremony policy, so sending ``null`` would
+      // wipe a value managed elsewhere (the dedicated agent autonomy
+      // editor) on every save.
       await onUpdate(department.name, {
         budget_percent: Number.isFinite(pct) ? pct : undefined,
-        ceremony_policy: ceremonyPolicy,
+        ceremony_policy: ceremonyPolicy as Record<string, unknown> | null,
       })
       onClose()
     } catch (err) {

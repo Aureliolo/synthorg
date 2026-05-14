@@ -23,6 +23,9 @@ export function TaskDetailHeader({ task }: TaskDetailHeaderProps) {
             // is null is how InlineEdit is told to keep the input
             // open and surface its error state; the store already
             // owns the toast UX so we don't add another one here.
+            // Title-only edit: omit ``priority`` so the persisted value is
+            // preserved. Sending ``priority: null`` here would clear the
+            // task's priority on every title rename.
             const updated = await useTasksStore.getState().updateTask(task.id, {
               title: value,
               expected_version: task.version,

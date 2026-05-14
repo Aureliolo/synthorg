@@ -30,7 +30,7 @@ export function ProviderHealthMetrics({ health }: ProviderHealthMetricsProps) {
       />
       <MetricCard
         label="Avg Response Time"
-        value={formatLatency(health.avg_response_time_ms)}
+        value={formatLatency(health.avg_response_time_ms ?? null)}
       />
       <MetricCard
         label="Error Rate (24h)"

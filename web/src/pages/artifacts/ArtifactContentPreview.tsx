@@ -102,7 +102,7 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
         <LazyCodeMirrorEditor
           value={contentPreview}
           onChange={NOOP}
-          language={getLanguage(artifact.content_type)}
+          language={getLanguage(artifact.content_type ?? '')}
           readOnly
         />
       </SectionCard>

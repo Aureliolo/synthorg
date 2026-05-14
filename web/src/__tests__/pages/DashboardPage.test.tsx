@@ -39,6 +39,7 @@ const mockBudgetConfig: BudgetConfig = {
   auto_downgrade: { enabled: false, threshold: 90, downgrade_map: [], boundary: 'task_assignment' },
   reset_day: 1,
   currency: 'EUR',
+  pte_tracking_enabled: false,
 }
 
 const defaultHookReturn: UseDashboardDataReturn = {

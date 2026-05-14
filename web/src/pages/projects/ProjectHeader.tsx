@@ -12,7 +12,7 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
   const metadataItems = [
     {
       label: 'Status',
-      value: <ProjectStatusBadge status={project.status} showLabel />,
+      value: <ProjectStatusBadge status={project.status ?? 'planning'} showLabel />,
     },
     {
       label: 'Budget',
@@ -25,12 +25,12 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
     },
     {
       label: 'Tasks',
-      value: String(project.task_ids.length),
+      value: String(project.task_ids?.length ?? 0),
       valueClassName: 'font-mono text-xs',
     },
     {
       label: 'Team Size',
-      value: String(project.team.length),
+      value: String(project.team?.length ?? 0),
       valueClassName: 'font-mono text-xs',
     },
     {

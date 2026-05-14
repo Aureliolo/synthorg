@@ -24,10 +24,13 @@ import { dirname, join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import type { AllowlistEntry } from '../../../test-infra/active-handle-allowlist'
+import { createTelemetryArtifact } from '../../../test-infra/active-handle-reporter'
+import type { LeakRecord } from '../../../test-infra/active-handle-shared'
 import {
   findUserFrame,
   isUserFrame,
   matchAllowlist,
+  MAX_DRAIN_ITERATIONS,
 } from '../../../test-infra/active-handle-tracker'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -106,6 +109,60 @@ describe('findUserFrame', () => {
       '    at handle (C:/repo/web/src/pages/foo/FooPage.tsx:5:1)',
     ].join('\n')
     expect(findUserFrame(stack)).toContain('FooPage.tsx:5:1')
+  })
+})
+
+describe('createTelemetryArtifact', () => {
+  function makeLeak(
+    overrides: Partial<LeakRecord> & Pick<LeakRecord, 'allowlisted' | 'allowlistReason'>,
+  ): LeakRecord {
+    return {
+      asyncId: 1,
+      type: 'Timeout',
+      testName: 'sample',
+      testFile: 'sample.test.ts',
+      userFrame: 'at handler (C:/repo/web/src/sample.ts:1:1)',
+      stack: 'stack',
+      ageMs: 5,
+      mode: 'fail',
+      ...overrides,
+    } as LeakRecord
+  }
+
+  it('counts every record in totalLeaks but excludes allowlisted ones from unallowedLeaks', () => {
+    const records: readonly LeakRecord[] = [
+      makeLeak({
+        asyncId: 1,
+        allowlisted: true,
+        allowlistReason: 'structural floor (jsdom internal)',
+      }),
+      makeLeak({ asyncId: 2, allowlisted: false, allowlistReason: null }),
+      makeLeak({ asyncId: 3, allowlisted: false, allowlistReason: null }),
+    ]
+    const artifact = createTelemetryArtifact(records)
+    expect(artifact.totalLeaks).toBe(3)
+    expect(artifact.unallowedLeaks).toBe(2)
+  })
+
+  it('reports zero unallowed leaks when every record is allowlisted', () => {
+    const records: readonly LeakRecord[] = [
+      makeLeak({ asyncId: 1, allowlisted: true, allowlistReason: 'r1' }),
+      makeLeak({ asyncId: 2, allowlisted: true, allowlistReason: 'r2' }),
+    ]
+    const artifact = createTelemetryArtifact(records)
+    expect(artifact.totalLeaks).toBe(2)
+    expect(artifact.unallowedLeaks).toBe(0)
+  })
+})
+
+describe('MAX_DRAIN_ITERATIONS', () => {
+  // Pin the iteration ceiling. Raising it lets longer chained-timer
+  // patterns (recharts / d3-timer / nested setTimeout sequences) clear
+  // before they look like leaks; lowering it tightens the false-
+  // positive boundary. A silent change to either is a behavioural
+  // shift across the entire suite, so the value gets a sentinel test.
+  it('matches the documented teardown budget (8 yields)', () => {
+    expect(MAX_DRAIN_ITERATIONS).toBe(8)
   })
 })
 

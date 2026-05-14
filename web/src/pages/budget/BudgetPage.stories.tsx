@@ -39,6 +39,7 @@ const mockBudgetConfig: BudgetConfig = {
   auto_downgrade: { enabled: true, threshold: 85, downgrade_map: [], boundary: 'task_assignment' },
   reset_day: 1,
   currency: DEFAULT_CURRENCY,
+  pte_tracking_enabled: false,
 }
 
 const mockForecast: ForecastResponse = {
@@ -57,6 +58,7 @@ const mockForecast: ForecastResponse = {
 function makeCostRecord(fields: Partial<CostRecord> & Pick<CostRecord, 'agent_id' | 'task_id' | 'provider' | 'model' | 'input_tokens' | 'output_tokens' | 'cost' | 'timestamp' | 'call_category'>): CostRecord {
   return {
     project_id: null,
+    currency: DEFAULT_CURRENCY,
     accuracy_effort_ratio: null,
     latency_ms: null,
     cache_hit: null,

@@ -6,6 +6,7 @@ import { createLogger } from '@/lib/logger'
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { useToastStore } from '@/stores/toast'
 import {
+  ARTIFACT_TYPE_VALUES,
   PRIORITY_VALUES,
   TASK_SOURCE_VALUES,
   TASK_STATUS_VALUES as TASK_STATUS_VALUES_TUPLE,
@@ -151,23 +152,26 @@ function sanitizeTask(c: Task): Task {
     }),
     project: sanitizeWsString(c.project, 128) ?? '',
     created_by: sanitizeWsString(c.created_by, 128) ?? '',
-    assigned_to: sanitizeNullable(c.assigned_to, 128),
+    assigned_to: sanitizeNullable(c.assigned_to ?? null, 128),
     reviewers: sanitizeIds(c.reviewers),
     dependencies: sanitizeIds(c.dependencies),
     artifacts_expected: c.artifacts_expected.map((a) => ({
-      name: sanitizeWsString(a.name, 256) ?? '',
-      type: sanitizeWsString(a.type, 64) ?? '',
+      path: sanitizeWsString(a.path, 256) ?? '',
+      type: sanitizeWsEnum(a.type, ARTIFACT_TYPE_VALUES, 'code', {
+        maxLen: 64,
+        field: 'task.artifacts_expected.type',
+      }),
     })),
     acceptance_criteria: c.acceptance_criteria.map((ac) => ({
       description: sanitizeWsString(ac.description, 512) ?? '',
-      met: ac.met,
+      met: ac.met ?? false,
     })),
     estimated_complexity: c.estimated_complexity,
     budget_limit: c.budget_limit,
     cost: c.cost,
-    deadline: sanitizeNullable(c.deadline, 64),
+    deadline: sanitizeNullable(c.deadline ?? null, 64),
     max_retries: c.max_retries,
-    parent_task_id: sanitizeNullable(c.parent_task_id, 128),
+    parent_task_id: sanitizeNullable(c.parent_task_id ?? null, 128),
     delegation_chain: sanitizeIds(c.delegation_chain),
     task_structure: c.task_structure,
     coordination_topology: c.coordination_topology,
@@ -189,40 +193,48 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((dep) => typeof dep === 'string')
 }
 
-/** Each ``artifacts_expected`` entry must have string ``name`` + ``type``. */
+/** Each ``artifacts_expected`` entry must have string ``path`` + ``type``. */
 function isArtifactsExpectedShape(
   value: unknown,
-): value is Array<{ name: string; type: string }> {
+): value is Array<{ path: string; type: string }> {
   if (!Array.isArray(value)) return false
   return value.every((entry) => {
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return false
-    const e = entry as { name?: unknown; type?: unknown }
-    return typeof e.name === 'string' && typeof e.type === 'string'
+    const e = entry as { path?: unknown; type?: unknown }
+    return typeof e.path === 'string' && typeof e.type === 'string'
   })
 }
 
 /**
  * Each ``acceptance_criteria`` entry must be a non-null object with a
- * string ``description`` AND a boolean ``met`` flag. Both fields are
- * part of the declared ``Task.acceptance_criteria`` shape; asserting
- * only ``description`` would let a malformed payload build a ``Task``
- * with ``criterion.met`` typed as something other than ``boolean``
- * and break every downstream consumer that branches on it.
+ * string ``description``. ``met`` is optional/nullable on the wire
+ * (sanitizeTask defaults to ``false`` when absent); accept boolean,
+ * null, or undefined here so valid frames are not dropped.
  */
 function isAcceptanceCriteriaShape(
   value: unknown,
-): value is Array<{ description: string; met: boolean }> {
+): value is Array<{ description: string; met?: boolean | null }> {
   if (!Array.isArray(value)) return false
   return value.every((ac) => {
     if (typeof ac !== 'object' || ac === null || Array.isArray(ac)) return false
     const entry = ac as { description?: unknown; met?: unknown }
-    return typeof entry.description === 'string' && typeof entry.met === 'boolean'
+    return (
+      typeof entry.description === 'string' &&
+      (entry.met === undefined || entry.met === null || typeof entry.met === 'boolean')
+    )
   })
 }
 
-/** Nullable string -- used for optional identifiers / timestamps. */
+/** Nullable or omitted string -- used for optional identifiers / timestamps.
+ *
+ * Accepting ``undefined`` here matches ``sanitizeTask``'s ``?? null``
+ * fallbacks for the three call sites (``assigned_to``,  ``deadline``,
+ * ``parent_task_id``); without this branch the WS shape guard rejects
+ * a frame that simply omits the key, dropping it before the sanitizer
+ * gets the chance to normalise to ``null``.
+ */
 function isNullableString(value: unknown): boolean {
-  return value === null || typeof value === 'string'
+  return value === undefined || value === null || typeof value === 'string'
 }
 
 /** Either ``undefined`` or a string -- used for the two optional timestamp fields. */
@@ -248,6 +260,25 @@ function arraysEqual(
 }
 
 /**
+ * Equality for an optional / nullable id field after sanitization.
+ *
+ * ``sanitizeTask`` routes ``assigned_to`` / ``parent_task_id`` through
+ * ``sanitizeNullable(c.field ?? null, ...)``, which normalises an
+ * omitted (``undefined``) wire field to ``null``. Comparing the
+ * sanitized value against the raw candidate with strict ``!==`` would
+ * then flag every absence-of-id frame as a "mutation" (``null`` vs
+ * ``undefined``) and drop legitimate updates.
+ *
+ * The gate exists to catch *meaningful* mutation -- a string id whose
+ * control / bidi characters were stripped during sanitization. Treat
+ * ``null`` and ``undefined`` as equivalent ("no value") and only flag
+ * a real string-vs-string divergence.
+ */
+function nullableIdEqual(sanitized: string | null | undefined, original: unknown): boolean {
+  return (sanitized ?? null) === (original ?? null)
+}
+
+/**
  * Minimum structural check for a ``Task``-shaped WS payload. Validates
  * the required identifier + enum-typed fields (``status``, ``priority``,
  * ``type``, ``estimated_complexity``, ``coordination_topology`` -- each
@@ -270,7 +301,7 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     typeof c.type === 'string' &&
     typeof c.project === 'string' &&
     typeof c.created_by === 'string' &&
-    (c.assigned_to === null || typeof c.assigned_to === 'string') &&
+    isNullableString(c.assigned_to) &&
     isStringArray(c.reviewers) &&
     isStringArray(c.dependencies) &&
     isStringArray(c.delegation_chain) &&
@@ -477,8 +508,8 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
           sanitized.id !== candidate.id ||
           sanitized.project !== candidate.project ||
           sanitized.created_by !== candidate.created_by
-        const assignedMutated = sanitized.assigned_to !== candidate.assigned_to
-        const parentMutated = sanitized.parent_task_id !== candidate.parent_task_id
+        const assignedMutated = !nullableIdEqual(sanitized.assigned_to, candidate.assigned_to)
+        const parentMutated = !nullableIdEqual(sanitized.parent_task_id, candidate.parent_task_id)
         const stringArraysMutated =
           !arraysEqual(sanitized.reviewers, candidate.reviewers) ||
           !arraysEqual(sanitized.dependencies, candidate.dependencies) ||

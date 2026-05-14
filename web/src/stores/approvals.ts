@@ -190,7 +190,7 @@ function sanitizeEvidencePackage(
   // ``value`` below is guaranteed to be a string -- no non-string
   // branch required.
   const pkgMetadata: Record<string, string> = {}
-  for (const [key, value] of Object.entries(pkg.metadata)) {
+  for (const [key, value] of Object.entries(pkg.metadata ?? {})) {
     const safeKey = sanitizeWsString(key, 64) ?? ''
     if (!safeKey) continue
     pkgMetadata[safeKey] = sanitizeWsString(value, 512) ?? ''

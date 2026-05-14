@@ -1,86 +1,63 @@
 /** Budget, cost tracking and spending types. */
 
-/** Mirrors `synthorg.core.enums.FinishReason`. */
-export type FinishReason =
-  | 'stop'
-  | 'max_tokens'
-  | 'tool_use'
-  | 'content_filter'
-  | 'error'
+import type {
+  AgentSpending as WireAgentSpending,
+  AutoDowngradeConfig as WireAutoDowngradeConfig,
+  BudgetAlertConfig as WireBudgetAlertConfig,
+  BudgetConfig as WireBudgetConfig,
+  CostRecord as WireCostRecord,
+  DailySummary as WireDailySummary,
+  PeriodSummary as WirePeriodSummary,
+} from './dtos.gen'
 
-export interface CostRecord {
-  agent_id: string
-  task_id: string
-  project_id: string | null
-  provider: string
-  model: string
-  input_tokens: number
-  output_tokens: number
-  cost: number
-  timestamp: string
-  call_category: 'productive' | 'coordination' | 'system' | 'embedding' | null
-  /** Quality-vs-cost ratio for the call, when measurable. */
-  accuracy_effort_ratio: number | null
-  /** Observed provider latency in milliseconds. */
-  latency_ms: number | null
-  /** Whether the response was served from a cache layer. */
-  cache_hit: boolean | null
-  /**
-   * Number of automatic retries performed before success / failure.
-   * Implies `retry_reason` is populated when > 0.
-   */
-  retry_count: number | null
-  /** Retry trigger (e.g. `rate_limit`, `timeout`). */
-  retry_reason: string | null
-  /** Provider finish reason (mirrors backend `FinishReason` enum). */
-  finish_reason: FinishReason | null
-  /** Whether the call completed without error. */
-  success: boolean | null
+export type { FinishReason, LLMCallCategory } from './enum-values.gen'
+export { FINISH_REASON_VALUES, LLM_CALL_CATEGORY_VALUES } from './enum-values.gen'
+
+import type { FinishReason, LLMCallCategory } from './enum-values.gen'
+
+/** Promote Pydantic-defaulted fields to required. The wire emits
+ *  each of them on every response (defaults are serialised), so
+ *  consumer code can rely on the value being present. */
+export type CostRecord = Omit<
+  WireCostRecord,
+  | 'call_category'
+  | 'accuracy_effort_ratio'
+  | 'latency_ms'
+  | 'cache_hit'
+  | 'retry_count'
+  | 'retry_reason'
+  | 'finish_reason'
+  | 'success'
+  | 'project_id'
+> & {
+  readonly project_id: string | null
+  readonly call_category: LLMCallCategory | null
+  readonly accuracy_effort_ratio: number | null
+  readonly latency_ms: number | null
+  readonly cache_hit: boolean | null
+  readonly retry_count: number | null
+  readonly retry_reason: string | null
+  readonly finish_reason: FinishReason | null
+  readonly success: boolean | null
 }
 
-export interface DailySummary {
-  date: string
-  total_cost: number
-  total_input_tokens: number
-  total_output_tokens: number
-  record_count: number
-  currency: string
-}
+// Each wraps ``Required`` with ``Readonly`` so wire-sourced data has
+// the same readonly guarantee as ``CostRecord`` above; consumer code
+// must not mutate emitted summaries.
+export type DailySummary = Readonly<Required<WireDailySummary>>
+export type PeriodSummary = Readonly<Required<WirePeriodSummary>>
+export type BudgetAlertConfig = Readonly<Required<WireBudgetAlertConfig>>
+export type AutoDowngradeConfig = Readonly<Required<WireAutoDowngradeConfig>>
+export type AgentSpending = Readonly<Required<WireAgentSpending>>
 
-export interface PeriodSummary {
-  avg_cost: number
-  total_cost: number
-  total_input_tokens: number
-  total_output_tokens: number
-  record_count: number
-  currency: string
-}
-
-export interface BudgetAlertConfig {
-  warn_at: number
-  critical_at: number
-  hard_stop_at: number
-}
-
-export interface AutoDowngradeConfig {
-  enabled: boolean
-  threshold: number
-  readonly downgrade_map: readonly [string, string][]
-  boundary: 'task_assignment'
-}
-
-export interface BudgetConfig {
-  total_monthly: number
-  alerts: BudgetAlertConfig
-  per_task_limit: number
-  per_agent_daily_limit: number
-  auto_downgrade: AutoDowngradeConfig
-  reset_day: number
-  currency: string
-}
-
-export interface AgentSpending {
-  agent_id: string
-  total_cost: number
-  currency: string
+export type BudgetConfig = Omit<
+  WireBudgetConfig,
+  'alerts' | 'auto_downgrade' | 'per_task_limit' | 'per_agent_daily_limit' | 'reset_day' | 'currency'
+> & {
+  readonly alerts: BudgetAlertConfig
+  readonly auto_downgrade: AutoDowngradeConfig
+  readonly per_task_limit: number
+  readonly per_agent_daily_limit: number
+  readonly reset_day: number
+  readonly currency: string
 }

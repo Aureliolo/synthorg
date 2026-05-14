@@ -1,64 +1,77 @@
-/** Enum types and their runtime VALUES arrays shared across the dashboard.
+/** Re-exports of generated enum tuples + frontend-side helpers.
  *
- * Each runtime ``*_VALUES`` tuple is the single source of truth; the
- * matching type is derived as ``(typeof FOO_VALUES)[number]`` so type
- * and value stay in lockstep with one edit.  The shapes mirror the
- * Pydantic ``StrEnum`` / ``Literal`` types in the Python backend; new
- * enum members must be added to both sides together.
+ * The runtime ``*_VALUES`` tuples and their derived string-union
+ * types live in ``enum-values.gen.ts`` (regenerated from the
+ * OpenAPI schema by ``scripts/generate_dto_types_ts.py``). This
+ * file is the stable import surface for dashboard consumers and
+ * the home of any frontend-only helpers (type guards, sets, etc.)
+ * that compose with the generated tuples.
+ *
+ * Adding a new enum to the wire contract: land it on the Pydantic
+ * side, regenerate, then surface it here in the re-export block
+ * below. Frontend-only enums (UI state, never seen by the
+ * backend) belong further down, in the "Frontend-only enums"
+ * section.
  */
 
-export const SENIORITY_LEVEL_VALUES = [
-  'junior', 'mid', 'senior', 'lead', 'principal', 'director', 'vp', 'c_suite',
-] as const satisfies readonly string[]
-export type SeniorityLevel = (typeof SENIORITY_LEVEL_VALUES)[number]
+export {
+  ACTIVITY_EVENT_TYPE_VALUES,
+  AGENT_STATUS_VALUES,
+  APPROVAL_RISK_LEVEL_VALUES,
+  APPROVAL_STATUS_VALUES,
+  ARTIFACT_TYPE_VALUES,
+  AUTONOMY_LEVEL_VALUES,
+  COLLABORATION_PREFERENCE_VALUES,
+  COMMUNICATION_VERBOSITY_VALUES,
+  COMPLEXITY_VALUES,
+  CONFLICT_APPROACH_VALUES,
+  COORDINATION_TOPOLOGY_VALUES,
+  CREATIVITY_LEVEL_VALUES,
+  DECISION_MAKING_STYLE_VALUES,
+  DEPARTMENT_NAME_VALUES,
+  HUMAN_ROLE_VALUES,
+  MEMORY_LEVEL_VALUES,
+  ORG_ROLE_VALUES,
+  PRIORITY_VALUES,
+  PROJECT_STATUS_VALUES,
+  RISK_TOLERANCE_VALUES,
+  SENIORITY_LEVEL_VALUES,
+  TASK_SOURCE_VALUES,
+  TASK_STATUS_VALUES,
+  TASK_STRUCTURE_VALUES,
+  TASK_TYPE_VALUES,
+  TOOL_ACCESS_LEVEL_VALUES,
+  URGENCY_LEVEL_VALUES,
+  type ActivityEventType,
+  type AgentStatus,
+  type ApprovalRiskLevel,
+  type ApprovalStatus,
+  type ArtifactType,
+  type AutonomyLevel,
+  type CollaborationPreference,
+  type CommunicationVerbosity,
+  type Complexity,
+  type ConflictApproach,
+  type CoordinationTopology,
+  type CreativityLevel,
+  type DecisionMakingStyle,
+  type DepartmentName,
+  type HumanRole,
+  type MemoryLevel,
+  type OrgRole,
+  type Priority,
+  type ProjectStatus,
+  type RiskTolerance,
+  type SeniorityLevel,
+  type TaskSource,
+  type TaskStatus,
+  type TaskStructure,
+  type TaskType,
+  type ToolAccessLevel,
+  type UrgencyLevel,
+} from './enum-values.gen'
 
-export const AGENT_STATUS_VALUES = [
-  'active', 'onboarding', 'on_leave', 'terminated',
-] as const satisfies readonly string[]
-export type AgentStatus = (typeof AGENT_STATUS_VALUES)[number]
-
-export const TASK_STATUS_VALUES = [
-  'created', 'assigned', 'in_progress', 'in_review', 'completed',
-  'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
-  'rejected', 'auth_required',
-] as const satisfies readonly string[]
-export type TaskStatus = (typeof TASK_STATUS_VALUES)[number]
-
-export const TASK_TYPE_VALUES = [
-  'development', 'design', 'research', 'review', 'meeting', 'admin',
-] as const satisfies readonly string[]
-export type TaskType = (typeof TASK_TYPE_VALUES)[number]
-
-export const PRIORITY_VALUES = [
-  'critical', 'high', 'medium', 'low',
-] as const satisfies readonly string[]
-export type Priority = (typeof PRIORITY_VALUES)[number]
-
-export const APPROVAL_STATUS_VALUES = [
-  'pending', 'approved', 'rejected', 'expired',
-] as const satisfies readonly string[]
-export type ApprovalStatus = (typeof APPROVAL_STATUS_VALUES)[number]
-
-export const APPROVAL_RISK_LEVEL_VALUES = [
-  'low', 'medium', 'high', 'critical',
-] as const satisfies readonly string[]
-export type ApprovalRiskLevel = (typeof APPROVAL_RISK_LEVEL_VALUES)[number]
-
-export const URGENCY_LEVEL_VALUES = [
-  'critical', 'high', 'normal', 'no_expiry',
-] as const satisfies readonly string[]
-export type UrgencyLevel = (typeof URGENCY_LEVEL_VALUES)[number]
-
-export const TASK_SOURCE_VALUES = [
-  'internal', 'client', 'simulation',
-] as const satisfies readonly string[]
-export type TaskSource = (typeof TASK_SOURCE_VALUES)[number]
-
-export const DEPARTMENT_NAME_VALUES = [
-  'executive', 'product', 'design', 'engineering', 'quality_assurance',
-  'data_analytics', 'operations', 'creative_marketing', 'security',
-] as const satisfies readonly string[]
-export type DepartmentName = (typeof DEPARTMENT_NAME_VALUES)[number]
+import { DEPARTMENT_NAME_VALUES, type DepartmentName } from './enum-values.gen'
 
 const DEPARTMENT_NAME_SET: ReadonlySet<string> = new Set(DEPARTMENT_NAME_VALUES)
 
@@ -70,47 +83,3 @@ const DEPARTMENT_NAME_SET: ReadonlySet<string> = new Set(DEPARTMENT_NAME_VALUES)
 export function isDepartmentName(value: string): value is DepartmentName {
   return DEPARTMENT_NAME_SET.has(value)
 }
-
-export const PROJECT_STATUS_VALUES = [
-  'planning', 'active', 'on_hold', 'completed', 'cancelled',
-] as const satisfies readonly string[]
-export type ProjectStatus = (typeof PROJECT_STATUS_VALUES)[number]
-
-export const ARTIFACT_TYPE_VALUES = [
-  'code', 'tests', 'documentation',
-] as const satisfies readonly string[]
-export type ArtifactType = (typeof ARTIFACT_TYPE_VALUES)[number]
-
-export const COMPLEXITY_VALUES = [
-  'simple', 'medium', 'complex', 'epic',
-] as const satisfies readonly string[]
-export type Complexity = (typeof COMPLEXITY_VALUES)[number]
-
-export const AUTONOMY_LEVEL_VALUES = [
-  'full', 'semi', 'supervised', 'locked',
-] as const satisfies readonly string[]
-export type AutonomyLevel = (typeof AUTONOMY_LEVEL_VALUES)[number]
-
-export const ORG_ROLE_VALUES = [
-  'owner', 'department_admin', 'editor', 'viewer',
-] as const satisfies readonly string[]
-export type OrgRole = (typeof ORG_ROLE_VALUES)[number]
-
-export const HUMAN_ROLE_VALUES = [
-  'ceo', 'manager', 'board_member', 'pair_programmer', 'observer', 'system',
-] as const satisfies readonly string[]
-export type HumanRole = (typeof HUMAN_ROLE_VALUES)[number]
-
-// The following types are not yet exposed in the OpenAPI surface;
-// they remain hand-maintained until the backend enums land in the
-// schema.
-export type RiskTolerance = 'low' | 'medium' | 'high'
-export type CreativityLevel = 'low' | 'medium' | 'high'
-export type DecisionMakingStyle = 'analytical' | 'intuitive' | 'consultative' | 'directive'
-export type CollaborationPreference = 'independent' | 'pair' | 'team'
-export type CommunicationVerbosity = 'terse' | 'balanced' | 'verbose'
-export type ConflictApproach = 'avoid' | 'accommodate' | 'compete' | 'compromise' | 'collaborate'
-export type TaskStructure = 'sequential' | 'parallel' | 'mixed'
-export type CoordinationTopology = 'sas' | 'centralized' | 'decentralized' | 'context_dependent' | 'auto'
-export type ToolAccessLevel = 'sandboxed' | 'restricted' | 'standard' | 'elevated' | 'custom'
-export type MemoryLevel = 'persistent' | 'project' | 'session' | 'none'

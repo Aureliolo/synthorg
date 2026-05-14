@@ -45,6 +45,7 @@ const sampleConnection: Connection = {
   health_status: 'healthy',
   last_health_check_at: '2026-04-12T08:00:00Z',
   metadata: {},
+  secret_refs: [],
   webhook_receipt_retention_days: null,
   created_at: '2026-04-01T09:00:00Z',
   updated_at: '2026-04-12T08:00:00Z',
@@ -114,14 +115,18 @@ describe('useConnectionsStore', () => {
     const result = await useConnectionsStore.getState().createConnection({
       name: 'primary-github',
       connection_type: 'github',
+      auth_method: 'bearer_token',
       credentials: { token: 'abc' },
+      health_check_enabled: true,
     })
 
     expect(result).toEqual(sampleConnection)
     expect(capturedBody).toEqual({
       name: 'primary-github',
       connection_type: 'github',
+      auth_method: 'bearer_token',
       credentials: { token: 'abc' },
+      health_check_enabled: true,
     })
     expect(useConnectionsStore.getState().connections).toHaveLength(1)
   })

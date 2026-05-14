@@ -194,8 +194,8 @@ export function resolveAgentModels(
       unresolved.push({
         index,
         name: agent.name,
-        provider,
-        modelId,
+        provider: provider ?? null,
+        modelId: modelId ?? null,
         reason: 'unassigned',
       })
       continue

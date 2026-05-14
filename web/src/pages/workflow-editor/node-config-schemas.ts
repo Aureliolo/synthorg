@@ -114,4 +114,7 @@ export const NODE_CONFIG_SCHEMAS: Record<WorkflowNodeType, readonly ConfigField[
       placeholder: '{"report": "@child.closing_report"}',
     },
   ],
+  verification: [
+    { key: 'label', label: 'Label', type: 'text', placeholder: 'Verify' },
+  ],
 }

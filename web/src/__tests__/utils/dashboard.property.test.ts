@@ -65,6 +65,7 @@ const arbBudgetConfig: fc.Arbitrary<BudgetConfig> = fc.record({
   }),
   reset_day: fc.integer({ min: 1, max: 28 }),
   currency: fc.constant('EUR'),
+  pte_tracking_enabled: fc.boolean(),
 })
 
 describe('computeMetricCards (properties)', () => {

@@ -24,6 +24,7 @@ export function buildBudgetConfig(
     },
     reset_day: 1,
     currency: DEFAULT_CURRENCY,
+    pte_tracking_enabled: false,
     ...overrides,
   }
 }

@@ -53,11 +53,11 @@ export function ProjectCreateDrawer({ open, onClose }: ProjectCreateDrawerProps)
     setSubmitting(true)
     const result = await useProjectsStore.getState().createProject({
       name: form.name.trim(),
-      description: form.description.trim() || undefined,
-      team: form.team.length > 0 ? form.team : undefined,
-      lead: form.lead.trim() || undefined,
-      deadline: form.deadline || undefined,
-      budget: form.budget ? Number(form.budget) : undefined,
+      description: form.description.trim(),
+      team: form.team,
+      lead: form.lead.trim() || null,
+      deadline: form.deadline || null,
+      budget: form.budget ? Number(form.budget) : 0,
     })
     setSubmitting(false)
     if (result) {

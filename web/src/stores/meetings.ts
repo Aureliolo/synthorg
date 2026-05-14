@@ -121,7 +121,7 @@ function isActionItemShape(value: unknown): boolean {
  * ``.description`` on the missing element.
  */
 function isMeetingMinutesShape(value: unknown): boolean {
-  if (value === null) return true
+  if (value === null || value === undefined) return true
   if (typeof value !== 'object' || Array.isArray(value)) return false
   const m = value as Record<string, unknown>
   if (typeof m.meeting_id !== 'string') return false
@@ -201,15 +201,17 @@ function isMeetingShape(
     c.token_budget >= 0 &&
     Array.isArray(c.contribution_rank) &&
     c.contribution_rank.every((entry) => typeof entry === 'string') &&
-    isTokenUsageMap(c.token_usage_by_participant) &&
+    (c.token_usage_by_participant === undefined ||
+      isTokenUsageMap(c.token_usage_by_participant)) &&
     // Remaining non-optional ``MeetingResponse`` fields. ``minutes``
     // and ``error_message`` are nullable on the wire (completed
     // meetings fill in ``minutes``; failed meetings fill in
     // ``error_message``). ``meeting_duration_seconds`` is null while
     // in-progress and becomes a finite non-negative number once
-    // ended. Accepting null for all three matches the declared types
-    // and keeps the guard aligned with the asserted ``MeetingResponse``
-    // shape.
+    // ended. Accepting null/undefined for ``minutes`` and accepting
+    // null for the other two matches the declared types and the
+    // ``sanitizeMeeting`` nullish defaults (which return early on
+    // missing ``minutes``).
     isMeetingMinutesShape(c.minutes) &&
     (c.error_message === null || typeof c.error_message === 'string') &&
     (c.meeting_duration_seconds === null ||
@@ -316,7 +318,7 @@ function sanitizeMeetingMinutes(
 
 function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
   const tokenUsage: Record<string, number> = {}
-  for (const [participantId, count] of Object.entries(c.token_usage_by_participant)) {
+  for (const [participantId, count] of Object.entries(c.token_usage_by_participant ?? {})) {
     const safeId = sanitizeWsString(participantId, 128)
     if (safeId && safeId.length > 0) {
       tokenUsage[safeId] = count
@@ -337,7 +339,7 @@ function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
       maxLen: 64,
       field: 'meeting.status',
     }),
-    minutes: sanitizeMeetingMinutes(c.minutes),
+    minutes: sanitizeMeetingMinutes(c.minutes ?? null),
     // Preserve the ``string | null`` contract: if sanitization strips
     // a non-null error_message down to empty, report ``null`` rather
     // than an empty string the UI would treat as a real error.

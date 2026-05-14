@@ -59,7 +59,7 @@ export function MeetingDetailHeader({ meeting, className }: MeetingDetailHeaderP
       <div className="flex flex-wrap items-center gap-3">
         <StatPill
           label="Duration"
-          value={formatMeetingDuration(meeting.meeting_duration_seconds)}
+          value={formatMeetingDuration(meeting.meeting_duration_seconds ?? null)}
         />
         <StatPill label="Participants" value={participantCount} />
         {meeting.minutes && (

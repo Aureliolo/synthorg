@@ -31,8 +31,8 @@ export function ConnectionCard({
   onDelete,
   className,
 }: ConnectionCardProps) {
-  const effectiveStatus = report?.status ?? connection.health_status
-  const lastChecked = report?.checked_at ?? connection.last_health_check_at
+  const effectiveStatus = report?.status ?? connection.health_status ?? 'unknown'
+  const lastChecked = report?.checked_at ?? connection.last_health_check_at ?? null
 
   return (
     <div

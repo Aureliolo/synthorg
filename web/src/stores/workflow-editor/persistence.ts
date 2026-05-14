@@ -95,7 +95,12 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       const endId = generateNodeId()
       const def = await createWorkflow({
         name,
-        workflow_type: workflowType,
+        description: '',
+        version: '1.0.0',
+        workflow_type: workflowType as 'sequential_pipeline' | 'parallel_execution' | 'kanban' | 'agile_kanban',
+        inputs: [],
+        outputs: [],
+        is_subworkflow: false,
         nodes: [
           { id: startId, type: 'start', label: 'Start', position_x: 250, position_y: 50, config: {} },
           { id: endId, type: 'end', label: 'End', position_x: 250, position_y: 400, config: {} },
@@ -173,6 +178,7 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
     set({ saving: true, error: null })
     try {
       const updatedDef = await updateWorkflow(definition.id, {
+        workflow_type: (definition.workflow_type ?? 'sequential_pipeline') as 'sequential_pipeline' | 'parallel_execution' | 'kanban' | 'agile_kanban',
         nodes: nodes.map((n) => ({
           id: n.id,
           type: n.type!,
@@ -180,14 +186,14 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
           position_x: n.position.x,
           position_y: n.position.y,
           config: readNodeConfig(n.data) ?? {},
-        })),
+        })) as readonly Record<string, unknown>[],
         edges: edges.map((e) => ({
           id: e.id,
           source_node_id: e.source,
           target_node_id: e.target,
           type: readEdgeField(e.data, 'edgeType') ?? 'sequential',
           label: isString(e.label) ? e.label : null,
-        })),
+        })) as readonly Record<string, unknown>[],
         expected_revision: definition.revision,
       })
       set({ definition: updatedDef, saving: false, dirty: false, validationResult: null })

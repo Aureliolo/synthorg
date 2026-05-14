@@ -12,6 +12,7 @@ import {
   filterCfoEvents,
   getThresholdZone,
 } from '@/utils/budget'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 // ── Helpers ────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ function makeRecord(overrides: Partial<CostRecord> = {}): CostRecord {
     input_tokens: 100,
     output_tokens: 50,
     cost: 1.0,
+    currency: DEFAULT_CURRENCY,
     timestamp: '2026-03-20T10:00:00Z',
     call_category: 'productive',
     accuracy_effort_ratio: null,
@@ -472,6 +474,7 @@ describe('computeBudgetMetricCards', () => {
       auto_downgrade: { enabled: false, threshold: 85, downgrade_map: [], boundary: 'task_assignment' },
       reset_day: 1,
       currency: 'EUR',
+      pte_tracking_enabled: false,
     }
     const cards = computeBudgetMetricCards(overview, budgetConfig, null)
     expect(cards[0]!.progress).toBeDefined()

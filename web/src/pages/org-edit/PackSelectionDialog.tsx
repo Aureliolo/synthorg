@@ -157,7 +157,7 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
         })
         let title = `Added ${result.agents_added} agent(s) and ${result.departments_added} department(s).`
         title += ` Budget: ${result.budget_before.toFixed(1)}% -> ${result.budget_after.toFixed(1)}%`
-        if (result.scale_factor !== null && result.scale_factor < 1) {
+        if (result.scale_factor != null && result.scale_factor < 1) {
           title += ` (existing scaled to ${(result.scale_factor * 100).toFixed(0)}%)`
         }
         addToast({ variant: 'success', title })

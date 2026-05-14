@@ -23,7 +23,7 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
 
   const metadataItems = [
     { label: 'Type', value: formatLabel(artifact.type) },
-    { label: 'Size', value: formatFileSize(artifact.size_bytes), valueClassName: 'font-mono text-xs' },
+    { label: 'Size', value: formatFileSize(artifact.size_bytes ?? 0), valueClassName: 'font-mono text-xs' },
     {
       label: 'Content Type',
       value: artifact.content_type
@@ -63,7 +63,7 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
       title={artifact.path}
       action={
         <div className="flex gap-2">
-          {artifact.size_bytes > 0 && (
+          {(artifact.size_bytes ?? 0) > 0 && (
             <Button variant="outline" size="sm" onClick={handleDownload}>
               <Download className="mr-1 size-4" />
               Download

@@ -27,12 +27,12 @@ async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
     const response = await probeLocal()
     // Filter out undefined entries from the envelope
     const results = Object.fromEntries(
-      Object.entries(response.results).filter(
+      Object.entries(response.results ?? {}).filter(
         (entry): entry is [string, ProbePresetResponse] => entry[1] !== undefined,
       ),
     )
     const errors = Object.fromEntries(
-      Object.entries(response.errors).filter(
+      Object.entries(response.errors ?? {}).filter(
         (entry): entry is [string, string] => entry[1] !== undefined,
       ),
     )
@@ -52,7 +52,7 @@ async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
   }
 }
 
-export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
+export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => ({
   providers: {},
   presets: [],
   presetsLoading: false,
@@ -89,12 +89,41 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
 
   async createProviderFromPreset(presetName, name, apiKey, baseUrl) {
     set({ providersError: null, providersWarning: null })
+    // Source auth_type from the preset metadata. Hardcoding 'api_key'
+    // silently coerces oauth / subscription / custom_header / none
+    // presets onto the wrong auth path.
+    const preset = get().presets.find((p) => p.name === presetName)
+    const authType = preset?.auth_type ?? 'api_key'
+    // This shortcut only carries api_key + base_url; non-api_key auth
+    // (subscription, custom_header, oauth) needs richer credentials
+    // that this signature cannot supply. Reject with a clear message
+    // pointing the caller at createProviderFromPresetFull rather than
+    // letting the server-side validation fail with a confusing error.
+    if (authType !== 'api_key' && authType !== 'none') {
+      const msg =
+        `Preset '${presetName}' uses ${authType} authentication, which requires more than an API key. ` +
+        `Use the full provider creation flow to supply the required credentials.`
+      set({ providersError: msg })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Preset requires extra credentials',
+        description: msg,
+      })
+      return { ok: false, error: msg }
+    }
     try {
+      // Only attach ``api_key`` when this preset actually authenticates
+      // with one. ``auth_type: 'none'`` (local providers like Ollama)
+      // would otherwise carry the api_key field through to the backend,
+      // and a non-empty string there is rejected by ``_check_api_key``
+      // (CreateFromPresetRequest validator).
       const provider = await createFromPreset({
         preset_name: presetName,
         name,
-        api_key: apiKey,
+        ...(authType === 'api_key' ? { api_key: apiKey } : {}),
         base_url: baseUrl,
+        auth_type: authType,
+        tos_accepted: false,
       })
       set((s) => ({ providers: { ...s.providers, [name]: provider } }))
 
@@ -110,6 +139,11 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
             const warning =
               `Provider '${name}' was created, but no models were discovered. Ensure the provider is running with models available, then refresh the providers list.`
             set({ providersWarning: warning })
+            useToastStore.getState().add({
+              variant: 'success',
+              title: `Provider '${name}' created`,
+              description: warning,
+            })
             return { ok: true, warning }
           }
         } catch (discoveryErr) {
@@ -121,14 +155,28 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
           const warning =
             `Provider '${name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh the providers list.`
           set({ providersWarning: warning })
+          useToastStore.getState().add({
+            variant: 'success',
+            title: `Provider '${name}' created`,
+            description: warning,
+          })
           return { ok: true, warning }
         }
       }
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Provider '${name}' created`,
+      })
       return { ok: true }
     } catch (err) {
       const msg = getErrorMessage(err)
       log.error('createProviderFromPreset failed:', msg)
       set({ providersError: msg })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to create provider',
+        description: msg,
+      })
       return { ok: false, error: msg }
     }
   },

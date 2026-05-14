@@ -28,7 +28,8 @@ function TeamMemberRow({ agentId, isLead }: { agentId: string; isLead: boolean }
 }
 
 export function ProjectTeamSection({ project }: ProjectTeamSectionProps) {
-  if (project.team.length === 0) {
+  const team = project.team ?? []
+  if (team.length === 0) {
     return (
       <SectionCard title="Team" icon={Users}>
         <EmptyState
@@ -43,7 +44,7 @@ export function ProjectTeamSection({ project }: ProjectTeamSectionProps) {
   return (
     <SectionCard title="Team" icon={Users}>
       <div className="flex flex-col gap-2">
-        {project.team.map((agentId) => (
+        {team.map((agentId) => (
           <TeamMemberRow key={agentId} agentId={agentId} isLead={agentId === project.lead} />
         ))}
       </div>

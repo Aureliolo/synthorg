@@ -8,7 +8,12 @@ import { useToastStore } from '@/stores/toast'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { isWorkflowEdgeType, isWorkflowNodeType } from '@/api/types/workflows'
-import type { WorkflowEdgeType, WorkflowNodeType } from '@/api/types/workflows'
+import type {
+  WorkflowEdgeType,
+  WorkflowIODeclaration,
+  WorkflowIODeclarationRequest,
+  WorkflowNodeType,
+} from '@/api/types/workflows'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject, isString } from '@/utils/type-guards'
@@ -192,12 +197,30 @@ export function useWorkflowEditorCallbacks(
         label,
       }
     })
+    // ``WorkflowIODeclarationRequest`` requires ``default`` (no ``?``)
+    // while ``WorkflowIODeclaration`` (source shape on the loaded
+    // definition) marks it optional. Normalise missing defaults to
+    // ``null`` so the duplicated workflow preserves the source's I/O
+    // shape instead of dropping it as the old ``inputs: []`` did.
+    const toIORequest = (
+      decl: WorkflowIODeclaration,
+    ): WorkflowIODeclarationRequest => ({
+      default: decl.default ?? null,
+      description: decl.description,
+      name: decl.name,
+      required: decl.required,
+      type: decl.type,
+    })
     const created = await useWorkflowsStore.getState().createWorkflow({
       name: `${state.definition.name} (Copy)`,
-      description: state.definition.description || undefined,
-      workflow_type: state.definition.workflow_type,
-      nodes: nodeData,
-      edges: edgeData,
+      description: state.definition.description ?? '',
+      version: '1.0.0',
+      workflow_type: state.definition.workflow_type ?? 'sequential_pipeline',
+      inputs: (state.definition.inputs ?? []).map(toIORequest),
+      outputs: (state.definition.outputs ?? []).map(toIORequest),
+      is_subworkflow: false,
+      nodes: nodeData as readonly Record<string, unknown>[],
+      edges: edgeData as readonly Record<string, unknown>[],
     })
     if (!created) return
     void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)

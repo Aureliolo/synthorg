@@ -34,7 +34,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -475,6 +475,20 @@ repos:
         # backend code without regenerating (or weakens the gate by
         # editing the script) cannot bypass the check.
         files: ^(src/synthorg/core/error_taxonomy\.py|scripts/generate_error_codes_ts\.py|scripts/check_error_codes_ts_in_sync\.py|web/src/api/types/error-codes\.gen\.ts|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      - id: dto-types-ts-in-sync
+        name: dto-types-ts-in-sync gate (web/src/api/types/*.gen.ts matches Pydantic DTOs via OpenAPI)
+        entry: uv run python scripts/check_dto_types_ts_in_sync.py
+        language: system
+        # Trigger on every Pydantic source the OpenAPI schema reads
+        # from (api DTOs, core enums and shared types), the generator
+        # and gate themselves, the schema export script, the RFC 9457
+        # enricher, every committed output, npm lock files, and this
+        # config. A backend DTO edit that does not regenerate the
+        # mirrors fails the gate before the diff ships.
+        files: ^(src/synthorg/api/.*\.py|src/synthorg/core/.*\.py|scripts/(generate_dto_types_ts|check_dto_types_ts_in_sync|export_openapi)\.py|src/synthorg/api/openapi\.py|web/src/api/types/(openapi|dtos|enum-values)\.gen\.ts|web/package\.json|web/package-lock\.json|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

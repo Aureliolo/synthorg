@@ -74,14 +74,14 @@ export function useArtifactsData(): UseArtifactsDataReturn {
       result = result.filter(
         (a) =>
           a.path.toLowerCase().includes(q) ||
-          a.description.toLowerCase().includes(q) ||
+          (a.description ?? '').toLowerCase().includes(q) ||
           a.id.toLowerCase().includes(q),
       )
     }
     if (typeFilter) result = result.filter((a) => a.type === typeFilter)
     if (createdByFilter) result = result.filter((a) => a.created_by === createdByFilter)
     if (taskIdFilter) result = result.filter((a) => a.task_id === taskIdFilter)
-    if (contentTypeFilter) result = result.filter((a) => a.content_type.startsWith(contentTypeFilter))
+    if (contentTypeFilter) result = result.filter((a) => (a.content_type ?? '').startsWith(contentTypeFilter))
     if (projectIdFilter) result = result.filter((a) => a.project_id === projectIdFilter)
     return result
   }, [artifacts, searchQuery, typeFilter, createdByFilter, taskIdFilter, contentTypeFilter, projectIdFilter])

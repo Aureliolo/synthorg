@@ -18,7 +18,9 @@
     "e2e:update": "playwright test --update-snapshots",
     "lighthouse": "lhci autorun",
     "storybook": "storybook dev -p 6006",
-    "storybook:build": "storybook build -o storybook-static"
+    "storybook:build": "storybook build -o storybook-static",
+    "generate:api-types": "uv run python ../scripts/generate_dto_types_ts.py",
+    "check:api-types": "uv run python ../scripts/check_dto_types_ts_in_sync.py"
   },
   "dependencies": {
     "@base-ui/react": "1.4.1",
@@ -93,6 +95,7 @@
     "jsdom": "29.1.1",
     "msw": "2.14.5",
     "msw-storybook-addon": "2.0.7",
+    "openapi-typescript": "7.13.0",
     "rollup-plugin-visualizer": "7.0.1",
     "size-limit": "12.1.0",
     "storybook": "10.3.6",

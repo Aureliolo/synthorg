@@ -38,6 +38,7 @@ export function TaskDetailMetadata({ task }: TaskDetailMetadataProps) {
             const updated = await useTasksStore.getState().updateTask(task.id, {
               description: value,
               expected_version: task.version,
+              priority: null,
             })
             if (!updated) {
               throw new Error('Failed to save description')
