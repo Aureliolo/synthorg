@@ -41,8 +41,8 @@ async def test_backup_handler_round_trip(
             SQLitePersistenceComponentHandler | PostgresPersistenceComponentHandler
         ) = SQLitePersistenceComponentHandler(db_path=db_path)
     elif isinstance(backend, PostgresPersistenceBackend):
-        if shutil.which("pg_dump") is None:
-            pytest.skip("pg_dump binary is not available on PATH")
+        if shutil.which("pg_dump") is None or shutil.which("pg_restore") is None:
+            pytest.skip("pg_dump / pg_restore binaries are not available on PATH")
         handler = PostgresPersistenceComponentHandler(
             config=backend._config,
         )

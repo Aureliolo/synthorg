@@ -276,7 +276,7 @@ class EscalationsController(Controller):
                 escalation_id=escalation_id,
                 operator=operator,
                 decision_type=data.decision.type,
-                error_type="invalid_decision_shape",
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise ValidationError(str(exc)) from exc

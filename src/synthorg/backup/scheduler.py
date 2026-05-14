@@ -226,13 +226,19 @@ class BackupScheduler:
                     timeout_seconds=self._stop_drain_timeout_seconds,
                 )
                 raise
-            except BaseException:
+            except BaseException as exc:
                 # If ``stop()`` itself is cancelled (e.g. process is
                 # shutting down hard and the surrounding ``TaskGroup``
                 # cancels us), the shielded ``drain_task`` would
                 # otherwise be left running on a closed event loop.
                 # Cancel and reap it before propagating so callers
                 # never observe a half-cleaned-up scheduler.
+                logger.warning(
+                    BACKUP_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="shutdown_interrupted",
+                )
                 drain_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await drain_task
