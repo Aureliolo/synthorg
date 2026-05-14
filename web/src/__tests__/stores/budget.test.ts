@@ -34,6 +34,7 @@ const mockBudgetConfig: BudgetConfig = {
   },
   reset_day: 1,
   currency: DEFAULT_CURRENCY,
+  pte_tracking_enabled: false,
 }
 
 const mockForecast: ForecastResponse = {
@@ -62,6 +63,7 @@ const mockCostRecord: CostRecord = {
   input_tokens: 100,
   output_tokens: 50,
   cost: 1.0,
+  currency: 'USD',
   timestamp: '2026-03-20T10:00:00Z',
   call_category: 'productive',
   accuracy_effort_ratio: null,

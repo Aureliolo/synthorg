@@ -60,6 +60,7 @@ function makeBudgetConfig(overrides: Partial<BudgetConfig> = {}): BudgetConfig {
     },
     reset_day: 1,
     currency: 'EUR',
+    pte_tracking_enabled: false,
     ...overrides,
   }
 }

@@ -36,6 +36,7 @@ const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   input_tokens: fc.nat({ max: 10000 }),
   output_tokens: fc.nat({ max: 10000 }),
   cost: fc.double({ min: 0, max: 100, noNaN: true }),
+  currency: fc.constant('USD'),
   timestamp: fc.constant('2026-03-20T10:00:00Z'),
   call_category: callCategoryArb,
   accuracy_effort_ratio: fc.oneof(fc.double({ min: 0, max: 1, noNaN: true }), fc.constant(null)),
