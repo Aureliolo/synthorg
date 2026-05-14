@@ -10214,7 +10214,7 @@ export type components = {
             readonly min_value?: number | null;
             readonly namespace: components["schemas"]["SettingNamespace"];
             /**
-             * @description Sourced from env / YAML at startup; mutation via SettingsService is rejected. Implies restart_required=True.
+             * @description Sourced from environment at startup; mutation via SettingsService is rejected. Implies restart_required=True.
              * @default false
              */
             readonly read_only_post_init: boolean;
@@ -10231,8 +10231,6 @@ export type components = {
             readonly type: components["schemas"]["SettingType"];
             /** @description Regex pattern for string validation */
             readonly validator_pattern?: string | null;
-            /** @description Dotted path into RootConfig for YAML resolution */
-            readonly yaml_path?: string | null;
         };
         /** SettingEntry */
         readonly SettingEntry: {
@@ -10266,12 +10264,13 @@ export type components = {
          * SettingSource
          * @description Origin of a resolved setting value.
          *
-         *     Listed in descending priority order: database overrides
-         *     take precedence over environment variables, which override
-         *     YAML defaults, which override code defaults.
+         *     Listed in descending priority order: database overrides take
+         *     precedence over environment variables, which override code
+         *     defaults. ``read_only_post_init=True`` settings collapse the chain
+         *     to ``ENVIRONMENT > DEFAULT`` by bypassing the database tier.
          * @enum {string}
          */
-        readonly SettingSource: "db" | "env" | "yaml" | "default";
+        readonly SettingSource: "db" | "env" | "default";
         /**
          * SettingType
          * @description Data type of a setting value.

@@ -597,7 +597,6 @@ export type SettingNamespace = (typeof SETTING_NAMESPACE_VALUES)[number]
 export const SETTING_SOURCE_VALUES = [
     'db',
     'env',
-    'yaml',
     'default',
 ] as const
 export type SettingSource = (typeof SETTING_SOURCE_VALUES)[number]

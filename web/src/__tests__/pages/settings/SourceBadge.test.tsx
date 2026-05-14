@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { SETTING_SOURCES } from '@/api/types/settings'
+import { SETTING_SOURCE_VALUES } from '@/api/types/settings'
 import { SourceBadge } from '@/pages/settings/SourceBadge'
 
 describe('SourceBadge', () => {
@@ -37,9 +37,9 @@ describe('SourceBadge', () => {
   })
 
   it('covers all SettingSource values', () => {
-    // Drives the loop from SETTING_SOURCES so adding a new source forces
-    // either a new case here or an explicit cast.
-    for (const source of SETTING_SOURCES) {
+    // Drives the loop from the generated tuple so adding a new source
+    // forces either a new case here or an explicit cast.
+    for (const source of SETTING_SOURCE_VALUES) {
       const { unmount } = render(<SourceBadge source={source} />)
       unmount()
     }
