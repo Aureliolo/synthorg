@@ -3,11 +3,19 @@
  *
  * Captured gzipped sizes on 2026-04-26 against ``main`` with the
  * existing Vite + Rollup config. Per-vendor budgets carry ~10-15%
- * headroom; the total-app-JS budget carries ~7% headroom (current
- * ~882 KB gzipped, ceiling 950 KB). Headroom absorbs routine
- * dependency-update churn without flapping CI -- raise a budget
- * intentionally only when a feature legitimately requires more
- * shipping JS, never just to silence a CI red. To re-baseline:
+ * headroom; the total-app-JS budget carries ~5% headroom (current
+ * ~950 KB gzipped, ceiling 1000 KB). Re-baselined 2026-05-15 for
+ * the pydantic-to-typescript codegen pipeline (PR #1909): the
+ * generated ``enum-values.gen.ts`` ships runtime ``*_VALUES`` tuples
+ * for ~90 backend StrEnums that the dashboard relies on for select
+ * options and type guards (where many were previously inline literal
+ * arrays); the migration trades ~50 KB of code-duplicated literals
+ * for ~70 KB of generated tuples, net ~20 KB growth absorbed by the
+ * fresh ceiling plus ~5% headroom for ongoing codegen additions.
+ * Headroom absorbs routine dependency-update churn without flapping
+ * CI -- raise a budget intentionally only when a feature legitimately
+ * requires more shipping JS, never just to silence a CI red.
+ * To re-baseline:
  *   npm --prefix web run build
  *   npm --prefix web run size
  *   # then update each ``limit:`` to (current-size * 1.10) and document
@@ -27,7 +35,7 @@ module.exports = [
   {
     name: 'Total app JS (gzipped)',
     path: 'dist/assets/*.js',
-    limit: '950 KB',
+    limit: '1000 KB',
     gzip: true,
   },
   // Initial entry chunk -- everything that blocks first paint.
