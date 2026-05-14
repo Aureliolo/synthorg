@@ -13,11 +13,6 @@ describe('SourceBadge', () => {
     expect(screen.getByText('ENV')).toBeInTheDocument()
   })
 
-  it('renders null for yaml source', () => {
-    const { container } = render(<SourceBadge source="yaml" />)
-    expect(container.firstChild).toBeNull()
-  })
-
   it('renders null for default source', () => {
     const { container } = render(<SourceBadge source="default" />)
     expect(container.firstChild).toBeNull()
@@ -43,7 +38,7 @@ describe('SourceBadge', () => {
 
   it('covers all SettingSource values', () => {
     // Exhaustive check that every SettingSource is handled
-    const sources: SettingSource[] = ['db', 'env', 'yaml', 'default']
+    const sources: SettingSource[] = ['db', 'env', 'default']
     for (const source of sources) {
       const { unmount } = render(<SourceBadge source={source} />)
       unmount()

@@ -12,7 +12,6 @@ type Story = StoryObj<typeof meta>
 
 export const Database: Story = { args: { source: 'db' } }
 export const Environment: Story = { args: { source: 'env' } }
-export const YamlRendersNull: Story = { args: { source: 'yaml' } }
 export const DefaultRendersNull: Story = { args: { source: 'default' } }
 
 export const AllSources: Story = {
@@ -21,8 +20,7 @@ export const AllSources: Story = {
     <div className="flex items-center gap-2">
       <SourceBadge source="db" />
       <SourceBadge source="env" />
-      <SourceBadge source="yaml" />
-      {/* default and yaml render nothing */}
+      {/* default renders nothing */}
       <SourceBadge source="default" />
     </div>
   ),

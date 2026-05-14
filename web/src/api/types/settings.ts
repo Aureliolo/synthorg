@@ -31,7 +31,7 @@ export type SettingType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'json'
 
 export type SettingLevel = 'basic' | 'advanced'
 
-export type SettingSource = 'db' | 'env' | 'yaml' | 'default'
+export type SettingSource = 'db' | 'env' | 'default'
 
 export interface SettingDefinition {
   namespace: SettingNamespace

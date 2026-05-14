@@ -13,7 +13,7 @@ type Story = StoryObj<typeof SettingRow>
 function makeSetting(
   overrides: Partial<SettingEntry['definition']> & { value?: string; source?: SettingEntry['source'] } = {},
 ): SettingEntry {
-  const { value = 'test', source = 'yaml', ...defOverrides } = overrides
+  const { value = 'test', source = 'default', ...defOverrides } = overrides
   return {
     value,
     source,
