@@ -160,6 +160,16 @@ SECURITY_CSRF_REJECTED: Final[str] = "security.csrf.rejected"
 SECURITY_USER_CREATED: Final[str] = "security.user.created"
 SECURITY_USER_UPDATED: Final[str] = "security.user.updated"
 SECURITY_USER_DELETED: Final[str] = "security.user.deleted"
+
+# ── Permission grants (signed) ─────────────────────────────────
+# Dedicated events for org-role grant/revoke so forensic readers can
+# filter every permission change by event constant alone. They are
+# emitted in *addition* to SECURITY_USER_UPDATED: the existing event
+# captures the full user-row change (org_roles + scoped_departments +
+# updated_at) while these dedicated events capture the permission
+# delta. Audit chains correlate the two by ``user_id`` + timestamp.
+SECURITY_PERMISSION_GRANTED: Final[str] = "security.permission.granted"
+SECURITY_PERMISSION_REVOKED: Final[str] = "security.permission.revoked"
 # Aborted-delete decision: refresh-token cascade failed (or another
 # pre-delete dependency) so the user row was NOT removed. Distinct
 # from SECURITY_USER_DELETED so a forensic reader cannot mistake the
