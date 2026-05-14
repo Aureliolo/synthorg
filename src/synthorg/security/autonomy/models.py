@@ -1,12 +1,14 @@
 """Autonomy data models -- presets, config, effective resolution, overrides."""
 
 from types import MappingProxyType
-from typing import Final, Self
+from typing import Any, ClassVar, Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
 
 # Minimum length (after whitespace strip) required for an autonomy
 # change reason.  Pulled into a module constant so the validator below
@@ -135,6 +137,14 @@ class AutonomyConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="level",
+            namespace=SettingNamespace.COMPANY,
+            key="autonomy_level",
+        ),
+    )
+
     level: AutonomyLevel = Field(
         default=AutonomyLevel.SUPERVISED,
         description=(
@@ -149,6 +159,11 @@ class AutonomyConfig(BaseModel):
         default_factory=lambda: dict(BUILTIN_PRESETS),
         description="Available autonomy presets",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_level_in_presets(self) -> Self:
