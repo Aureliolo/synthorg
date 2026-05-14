@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import {
   Area,
   AreaChart,
@@ -101,7 +101,7 @@ function ChartTooltipContent({ active, payload, label, currency }: {
   )
 }
 
-export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemaining, currency }: BudgetBurnChartProps) {
+function BudgetBurnChartInner({ trendData, forecast, budgetTotal, budgetRemaining, currency }: BudgetBurnChartProps) {
   const chartData = useMemo(() => buildChartData(trendData, forecast), [trendData, forecast])
   const hasData = trendData.length > 0
   const todayLabel = getTodayLabel()
@@ -234,3 +234,5 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
     </SectionCard>
   )
 }
+
+export const BudgetBurnChart = memo(BudgetBurnChartInner)

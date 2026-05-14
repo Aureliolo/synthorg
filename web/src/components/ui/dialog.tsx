@@ -38,7 +38,7 @@ export function DialogContent({ className, children }: DialogContentProps) {
           // losing the tidy desktop width. Routing the gutter through
           // the token keeps overlay spacing centrally governed (no
           // hard-coded pixel literal in a shared UI primitive).
-          'w-[calc(100%-var(--so-space-8))] sm:w-full sm:max-w-2xl',
+          'w-[calc(100%-var(--so-space-8))] sm:w-full sm:max-w-dialog',
           'rounded-xl border border-border bg-background shadow-[var(--so-shadow-card-hover)]',
           // Responsive max-height: tighter on narrow viewports so the
           // body never pushes the dialog past the viewport bottom on

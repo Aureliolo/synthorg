@@ -28,6 +28,8 @@ function makeSetting(
       level: 'basic',
       sensitive: false,
       restart_required: false,
+      read_only_post_init: false,
+      env_var_override: null,
       enum_values: [],
       validator_pattern: null,
       min_value: null,
@@ -76,5 +78,13 @@ export const Disabled: Story = {
     onChange: () => {},
     saving: false,
     controllerDisabled: true,
+  },
+}
+
+export const ReadOnlyPostInit: Story = {
+  args: {
+    entry: makeSetting({ read_only_post_init: true, restart_required: true }),
+    onChange: () => {},
+    saving: false,
   },
 }

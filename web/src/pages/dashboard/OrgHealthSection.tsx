@@ -34,7 +34,7 @@ const DepartmentRow = memo(function DepartmentRow({ dept }: DepartmentRowProps) 
   )
 })
 
-export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectionProps) {
+function OrgHealthSectionInner({ departments, overallHealth }: OrgHealthSectionProps) {
   return (
     <SectionCard title="Org Health" icon={Building2}>
       {departments.length === 0 ? (
@@ -62,3 +62,5 @@ export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectio
     </SectionCard>
   )
 }
+
+export const OrgHealthSection = memo(OrgHealthSectionInner)

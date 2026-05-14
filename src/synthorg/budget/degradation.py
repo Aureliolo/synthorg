@@ -59,7 +59,7 @@ class DegradationResult(BaseModel):
             FALLBACK/ALERT).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     original_provider: NotBlankStr = Field(
         description="Provider that was quota-exhausted",

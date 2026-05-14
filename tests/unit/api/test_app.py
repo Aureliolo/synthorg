@@ -257,6 +257,49 @@ class TestAppLifecycle:
         # Should not raise even when disconnect fails
         await _safe_shutdown(None, None, None, None, None, None, None, persistence)
 
+    async def test_shutdown_event_logged_before_teardown(
+        self,
+        root_config: Any,
+    ) -> None:
+        """``API_APP_SHUTDOWN`` fires as the first action of on_shutdown.
+
+        Without this guarantee, a downstream stop that hangs or raises
+        would leave operators without an observable gate-crossing.
+        """
+        import structlog.testing
+
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.lifecycle_builder import _build_lifecycle
+        from tests.unit.api.conftest import FakePersistenceBackend
+
+        persistence = FakePersistenceBackend()
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=persistence,
+        )
+        _startup, shutdown = _build_lifecycle(
+            persistence,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            app_state,
+        )
+
+        with structlog.testing.capture_logs() as events:
+            await shutdown[0]()
+
+        info_events = [e for e in events if e.get("log_level") == "info"]
+        assert info_events, f"expected at least one info log; got {events}"
+        assert info_events[0].get("event") == "api.app.shutdown", (
+            f"expected api.app.shutdown to be the first info log; "
+            f"got {info_events[0].get('event')!r}"
+        )
+
     async def test_task_engine_failure_cleans_up(
         self,
         root_config: Any,

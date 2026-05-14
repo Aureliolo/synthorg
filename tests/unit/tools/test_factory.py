@@ -698,3 +698,90 @@ class TestEchoTool:
         result = await echo.execute(arguments={"message": "hi"})
         assert result.content == "hi"
         assert not result.is_error
+
+
+_KNOWLEDGE_ARCHITECT_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "memory.guide",
+        "memory.search",
+        "memory.read",
+        "memory.write",
+        "memory.delete",
+        "memory.browse_wiki",
+    },
+)
+
+
+@pytest.mark.unit
+class TestBuildKnowledgeArchitectTools:
+    """Conditional wiring of the six KnowledgeArchitect tools."""
+
+    def test_not_registered_when_collaborators_missing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Without org backend / store / exporter, none of the 6 register."""
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
+        names = {t.name for t in tools}
+        assert names.isdisjoint(_KNOWLEDGE_ARCHITECT_TOOL_NAMES)
+
+    def test_partial_collaborators_register_nothing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Providing only some collaborators still registers nothing.
+
+        All three of org_memory_backend, org_fact_store, and
+        wiki_exporter must be wired together or the architect surface
+        stays inert; the tools depend on each collaborator at construction.
+        """
+        from synthorg.memory.consolidation.wiki_export import WikiExporter
+        from synthorg.memory.org.protocol import OrgMemoryBackend
+        from synthorg.memory.org.store import OrgFactStore
+
+        backend = MagicMock(spec=OrgMemoryBackend)
+        store = MagicMock(spec=OrgFactStore)
+        exporter = MagicMock(spec=WikiExporter)
+
+        # Only backend + store, no exporter
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            org_memory_backend=backend,
+            org_fact_store=store,
+        )
+        assert {t.name for t in tools}.isdisjoint(_KNOWLEDGE_ARCHITECT_TOOL_NAMES)
+
+        # Only exporter, no backend / store
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            wiki_exporter=exporter,
+        )
+        assert {t.name for t in tools}.isdisjoint(_KNOWLEDGE_ARCHITECT_TOOL_NAMES)
+
+    def test_all_six_register_when_collaborators_provided(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """All three collaborators wired -> all 6 tools appear."""
+        from synthorg.memory.consolidation.wiki_export import WikiExporter
+        from synthorg.memory.org.protocol import OrgMemoryBackend
+        from synthorg.memory.org.store import OrgFactStore
+
+        backend = MagicMock(spec=OrgMemoryBackend)
+        store = MagicMock(spec=OrgFactStore)
+        exporter = MagicMock(spec=WikiExporter)
+
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            org_memory_backend=backend,
+            org_fact_store=store,
+            wiki_exporter=exporter,
+        )
+        names = {t.name for t in tools}
+        assert names >= _KNOWLEDGE_ARCHITECT_TOOL_NAMES

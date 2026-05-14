@@ -1353,3 +1353,16 @@ CREATE TABLE seen_claims (
     CHECK(expires_at > seen_at)
 );
 CREATE INDEX idx_seen_claims_expires_at ON seen_claims(expires_at);
+
+-- Principle-override table for the rollback executor's PromptMutator.
+-- Overlays the read-only YAML principle packs loaded by
+-- engine/strategy/principles.py so a rollback operation can restore
+-- previous principle text at runtime without rewriting the packs.
+CREATE TABLE principle_overrides (
+    scope TEXT NOT NULL PRIMARY KEY
+        CHECK(length(trim(scope)) > 0),
+    text TEXT NOT NULL CHECK(length(trim(text)) > 0),
+    restored_from TEXT NOT NULL CHECK(length(trim(restored_from)) > 0),
+    created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
+    updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0)
+);

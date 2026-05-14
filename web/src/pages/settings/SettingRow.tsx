@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useId } from 'react'
 import { cn } from '@/lib/utils'
 import type { SettingEntry } from '@/api/types/settings'
 import { useFlash } from '@/hooks/useFlash'
@@ -59,14 +59,30 @@ export function SettingRow({
   const { definition, source } = entry
   const compositeKey = `${definition.namespace}/${definition.key}`
   const { flashStyle, triggerFlash } = useFlash()
+  const noticeRootId = useId()
 
   useEffect(() => {
     if (flash) triggerFlash()
   }, [flash, triggerFlash])
   const displayValue = dirtyValue ?? entry.value
   const isEnvLocked = source === 'env'
-  const isDisabled = isEnvLocked || saving || controllerDisabled === true
+  const isReadOnlyPostInit = definition.read_only_post_init
+  const isDisabled =
+    isEnvLocked || saving || controllerDisabled === true || isReadOnlyPostInit
   const isSecuritySensitive = SECURITY_SENSITIVE_SETTINGS.has(compositeKey)
+  // Stable per-row IDs so the warning paragraphs can be referenced by
+  // the field's accessible description (screen readers announce the
+  // explanation alongside the disabled control).
+  const envLockedNoticeId = `${noticeRootId}-env`
+  const readOnlyNoticeId = `${noticeRootId}-readonly`
+  const securityNoticeId = `${noticeRootId}-security`
+  const describedByIds = [
+    isEnvLocked ? envLockedNoticeId : null,
+    isReadOnlyPostInit && !isEnvLocked ? readOnlyNoticeId : null,
+    isSecuritySensitive ? securityNoticeId : null,
+  ]
+    .filter((id): id is string => id !== null)
+    .join(' ')
 
   return (
     <div
@@ -90,17 +106,31 @@ export function SettingRow({
         </div>
         <p className="text-xs text-text-secondary">{highlightText(definition.description, highlightQuery)}</p>
         {isEnvLocked && (
-          <p className="text-[10px] text-warning">Value set by environment variable (read-only)</p>
+          <p id={envLockedNoticeId} className="text-micro text-warning">
+            Value set by environment variable (read-only)
+          </p>
+        )}
+        {isReadOnlyPostInit && !isEnvLocked && (
+          <p id={readOnlyNoticeId} className="text-micro text-warning">
+            Read-only after startup. Configure via environment variable or YAML before launch.
+          </p>
         )}
         {isSecuritySensitive && (
-          <p className="text-[10px] text-danger">
-            Security-sensitive setting -- misconfiguration may expose the system
+          <p id={securityNoticeId} className="text-micro text-danger">
+            Security-sensitive setting: misconfiguration may expose the system
           </p>
         )}
       </div>
 
-      {/* Right: field control */}
-      <div className="w-56 shrink-0">
+      {/* Right: field control. Wrapper carries aria-describedby so the
+          warning paragraphs above are announced together with the
+          control by assistive tech, even on disabled states. */}
+      <div
+        className="w-56 shrink-0"
+        role="group"
+        aria-label={formatKey(definition.key, definition.namespace)}
+        aria-describedby={describedByIds || undefined}
+      >
         <SettingField
           definition={definition}
           value={displayValue}

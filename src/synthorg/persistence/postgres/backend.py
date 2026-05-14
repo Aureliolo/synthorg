@@ -104,6 +104,9 @@ from synthorg.persistence.postgres.preset_override_repo import (
 from synthorg.persistence.postgres.preset_repo import (
     PostgresPersonalityPresetRepository,
 )
+from synthorg.persistence.postgres.principle_override_repo import (
+    PostgresPrincipleOverrideRepository,
+)
 from synthorg.persistence.postgres.project_cost_aggregate_repo import (
     PostgresProjectCostAggregateRepository,
 )
@@ -204,6 +207,9 @@ if TYPE_CHECKING:
     )
     from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
     from synthorg.persistence.preset_protocol import PersonalityPresetRepository
+    from synthorg.persistence.principle_override_protocol import (
+        PrincipleOverrideRepository,
+    )
     from synthorg.persistence.project_cost_aggregate_protocol import (
         ProjectCostAggregateRepository,
     )
@@ -294,6 +300,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._refresh_tokens: PostgresRefreshTokenRepository | None = None
         self._idempotency_keys: PostgresIdempotencyRepository | None = None
         self._seen_claims: PostgresSeenClaimsRepository | None = None
+        self._principle_overrides: PostgresPrincipleOverrideRepository | None = None
         self._mcp_installations: PostgresMcpInstallationRepository | None = None
         self._custom_rules: PostgresCustomRuleRepository | None = None
         self._org_facts: PostgresOrgFactRepository | None = None
@@ -351,6 +358,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._refresh_tokens = None
         self._idempotency_keys = None
         self._seen_claims = None
+        self._principle_overrides = None
         self._mcp_installations = None
         self._custom_rules = None
         self._org_facts = None
@@ -439,6 +447,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._refresh_tokens = PostgresRefreshTokenRepository(pool)
         self._idempotency_keys = PostgresIdempotencyRepository(pool)
         self._seen_claims = PostgresSeenClaimsRepository(pool)
+        self._principle_overrides = PostgresPrincipleOverrideRepository(pool)
         self._mcp_installations = PostgresMcpInstallationRepository(pool)
         self._custom_rules = PostgresCustomRuleRepository(pool)
         self._org_facts = PostgresOrgFactRepository(pool)
@@ -783,6 +792,14 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         return self._require_connected(
             self._seen_claims,
             "seen_claims",
+        )
+
+    @property
+    def principle_overrides(self) -> PrincipleOverrideRepository:
+        """Repository for rollback-restored principle overrides."""
+        return self._require_connected(
+            self._principle_overrides,
+            "principle_overrides",
         )
 
     @property

@@ -37,6 +37,9 @@ from synthorg.persistence.preset_protocol import (
     PresetListRow,
     PresetRow,
 )
+from synthorg.persistence.principle_override_protocol import (
+    PrincipleOverrideRepository,
+)
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
@@ -664,6 +667,37 @@ class _FakeIdempotencyRepository:
         return 0
 
 
+class _FakePrincipleOverrideRepository:
+    """Minimal PrincipleOverrideRepository conforming to the protocol shape."""
+
+    async def save(
+        self,
+        scope: NotBlankStr,
+        text: NotBlankStr,
+        *,
+        restored_from: NotBlankStr,
+        now: Any = None,
+    ) -> None:
+        del scope, text, restored_from, now
+
+    async def get(self, scope: NotBlankStr) -> Any:
+        del scope
+        return None
+
+    async def delete(self, scope: NotBlankStr) -> bool:
+        del scope
+        return False
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
+        return ()
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -884,6 +918,10 @@ class _FakeBackend:
         return _FakeSeenClaimsRepository()
 
     @property
+    def principle_overrides(self) -> _FakePrincipleOverrideRepository:
+        return _FakePrincipleOverrideRepository()
+
+    @property
     def mcp_installations(self) -> Any:
         return None
 
@@ -967,6 +1005,18 @@ class TestProtocolCompliance:
         backend = _FakeBackend()
         assert isinstance(backend.seen_claims, SeenClaimsRepository)
         assert isinstance(_FakeSeenClaimsRepository(), SeenClaimsRepository)
+
+    def test_fake_principle_overrides_repo_is_principle_override_repository(
+        self,
+    ) -> None:
+        # Same backend-routed assertion: catches a regression that
+        # swaps the property back to ``None`` or removes it.
+        backend = _FakeBackend()
+        assert isinstance(backend.principle_overrides, PrincipleOverrideRepository)
+        assert isinstance(
+            _FakePrincipleOverrideRepository(),
+            PrincipleOverrideRepository,
+        )
 
     def test_fake_lifecycle_repo_is_lifecycle_event_repository(self) -> None:
         assert isinstance(_FakeLifecycleEventRepository(), LifecycleEventRepository)

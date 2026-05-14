@@ -45,7 +45,7 @@ function compareTasks(a: Task, b: Task, key: SortKey, dir: SortDirection): numbe
   return dir === 'desc' ? -cmp : cmp
 }
 
-export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
+function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDirection>('asc')
 
@@ -111,6 +111,8 @@ export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
     </div>
   )
 }
+
+export const TaskListView = memo(TaskListViewInner)
 
 interface TaskListRowProps {
   task: Task

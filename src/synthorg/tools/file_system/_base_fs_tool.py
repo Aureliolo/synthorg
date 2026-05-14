@@ -16,7 +16,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _map_os_error(exc: OSError, user_path: str, verb: str) -> tuple[str, str]:
+def _map_os_error(
+    exc: OSError,
+    user_path: str,
+    verb: str,
+    *,
+    dedicated_tool_hint: str | None = None,
+) -> tuple[str, str]:
     """Map an OS error to ``(log_key, user_message)`` for FS operations.
 
     Args:
@@ -24,6 +30,10 @@ def _map_os_error(exc: OSError, user_path: str, verb: str) -> tuple[str, str]:
         user_path: The original user-supplied path string.
         verb: Action verb for the fallback message
             (e.g. ``"reading"``, ``"editing"``).
+        dedicated_tool_hint: When supplied and ``exc`` is an
+            ``IsADirectoryError``, the hint is appended to the message
+            in parentheses so callers can point the user at a
+            verb-specific alternative tool (e.g. directory deletion).
 
     Returns:
         A two-tuple of (structured log key, human-readable message).
@@ -31,7 +41,10 @@ def _map_os_error(exc: OSError, user_path: str, verb: str) -> tuple[str, str]:
     if isinstance(exc, FileNotFoundError):
         return "not_found", f"File not found: {user_path}"
     if isinstance(exc, IsADirectoryError):
-        return "is_directory", f"Path is a directory, not a file: {user_path}"
+        msg = f"Path is a directory, not a file: {user_path}"
+        if dedicated_tool_hint is not None:
+            msg = f"{msg} ({dedicated_tool_hint})"
+        return "is_directory", msg
     if isinstance(exc, PermissionError):
         return "permission_denied", f"Permission denied: {user_path}"
     return (

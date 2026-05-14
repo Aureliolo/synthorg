@@ -53,6 +53,17 @@ Each subsystem still owns its config discriminator; the registries replace only 
 - `meta/factory.py::build_rollout_strategies()` + `build_rollback_executor()`.
 - All plumbed through frozen `SelfImprovementConfig`, with safe defaults (`SystemClock` from `synthorg.core.clock`, `NoOpOrgRoster`, null aggregator) so the behaviour is opt-in.
 
+### Rollback mutators
+
+Concrete implementations of the four mutator protocols live under `meta/rollout/mutators/`:
+
+- `SettingsServiceConfigMutator` (`mutators/config_mutator.py`): backs `ConfigMutator` with `SettingsService.set`. Dotted target (`"<namespace>.<key>"`); `read_only_post_init` settings surface as `RollbackMutationDeniedError`.
+- `PrincipleOverridePromptMutator` (`mutators/prompt_mutator.py`): backs `PromptMutator` with `PrincipleOverrideRepository`. Persists override rows that `engine/strategy/principles.py::load_pack` consults on principle resolution. Schema: `persistence/sqlite/revisions/20260513000002_principle_overrides.sql` (and Postgres twin).
+- `RoutedArchitectureMutator` (`mutators/architecture_mutator.py`): backs `ArchitectureMutator` with a per-target-type adapter registry. Target format `"<type>:<id>"` (or `"<type>:<id>:<sub_id>"`); operators register adapters per type (`role`, `department`, `workflow`, etc.) without touching the executor. Unknown prefixes raise `UnknownArchitectureTargetError`.
+- `WorkspaceCodeMutator` (`mutators/code_mutator.py`): backs `CodeMutator` with atomic filesystem writes (`tempfile.mkstemp` + `Path.replace`) inside a workspace bounded by `PathValidator` so `revert_code` cannot escape via traversal.
+
+Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `UnknownArchitectureTargetError`. Wire-up assembles via `meta/factory.py::build_rollback_executor(config_mutator=..., prompt_mutator=..., architecture_mutator=..., code_mutator=...)` and stays opt-in: operators construct the executor in their own startup path when they want the self-improvement loop active.
+
 ### API rate limits
 
 - `api/rate_limits/protocol.py`: `SlidingWindowStore`.

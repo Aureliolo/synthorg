@@ -1,6 +1,12 @@
+import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import type { WorkflowDiff } from '@/api/types/workflows'
+import { ErrorCategory, ErrorCode } from '@/api/types/errors'
+import { apiError } from '@/mocks/handlers'
+import { buildWorkflow } from '@/mocks/handlers/workflows'
+import { useToastStore } from '@/stores/toast'
+import { server } from '@/test-setup'
 
 function resetStore() {
   useWorkflowEditorStore.getState().reset()
@@ -238,6 +244,156 @@ describe('workflow-editor composed store', () => {
       expect(state.versions).toEqual([])
       expect(state.versionsLoading).toBe(false)
       expect(state.versionsHasMore).toBe(false)
+    })
+  })
+
+  describe('error toasts (store mutation contract)', () => {
+    beforeEach(() => {
+      useToastStore.getState().dismissAll()
+    })
+
+    it('createDefinition emits an error toast when the API rejects', async () => {
+      server.use(
+        http.post('/api/v1/workflows', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+
+      await useWorkflowEditorStore
+        .getState()
+        .createDefinition('broken', 'default')
+
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toContain('create')
+      // Description is what surfaces the underlying API error to the
+      // operator; without this assertion a future change that drops the
+      // `description` field would pass the variant/title checks silently.
+      expect(toasts[0]!.description).toBeDefined()
+    })
+
+    it('saveDefinition emits an error toast on a non-409 failure', async () => {
+      // Seed a definition so saveDefinition reaches the network call.
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+        nodes: [],
+        edges: [],
+      })
+      server.use(
+        http.patch('/api/v1/workflows/:id', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+
+      await useWorkflowEditorStore.getState().saveDefinition()
+
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toContain('save')
+      expect(toasts[0]!.description).toBeDefined()
+    })
+
+    it('saveDefinition emits a warning toast on VERSION_CONFLICT', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+        nodes: [],
+        edges: [],
+      })
+      server.use(
+        http.patch('/api/v1/workflows/:id', () =>
+          HttpResponse.json(
+            apiError('conflict', {
+              error_code: ErrorCode.VERSION_CONFLICT,
+              error_category: ErrorCategory.CONFLICT,
+            }),
+            { status: 409 },
+          ),
+        ),
+      )
+
+      await useWorkflowEditorStore.getState().saveDefinition()
+
+      const toasts = useToastStore.getState().toasts
+      const warning = toasts.find((t) => t.variant === 'warning')
+      expect(warning).toBeDefined()
+      expect(warning!.title).toBe('Version conflict')
+    })
+
+    it('createDefinition emits a success toast on the happy path', async () => {
+      await useWorkflowEditorStore
+        .getState()
+        .createDefinition('shiny', 'default')
+
+      const toasts = useToastStore.getState().toasts
+      const success = toasts.find((t) => t.variant === 'success')
+      expect(success).toBeDefined()
+      expect(success!.title).toMatch(/created/i)
+    })
+
+    it('saveDefinition emits a success toast on the happy path', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+        nodes: [],
+        edges: [],
+      })
+
+      await useWorkflowEditorStore.getState().saveDefinition()
+
+      const toasts = useToastStore.getState().toasts
+      const success = toasts.find((t) => t.variant === 'success')
+      expect(success).toBeDefined()
+      expect(success!.title).toMatch(/saved/i)
+    })
+
+    it('saveDefinition emits an error toast when the post-conflict reload fails', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+        nodes: [],
+        edges: [],
+      })
+      server.use(
+        http.patch('/api/v1/workflows/:id', () =>
+          HttpResponse.json(
+            apiError('conflict', {
+              error_code: ErrorCode.VERSION_CONFLICT,
+              error_category: ErrorCategory.CONFLICT,
+            }),
+            { status: 409 },
+          ),
+        ),
+        http.get('/api/v1/workflows/:id', () =>
+          HttpResponse.json(apiError('reload failed'), { status: 500 }),
+        ),
+      )
+
+      await useWorkflowEditorStore.getState().saveDefinition()
+
+      const toasts = useToastStore.getState().toasts
+      const error = toasts.find((t) => t.variant === 'error')
+      expect(error).toBeDefined()
+      expect(error!.title).toBe('Reload failed after version conflict')
+      expect(toasts.some((t) => t.variant === 'warning')).toBe(false)
+    })
+
+    it('rollback emits an error toast on failure', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+      })
+      server.use(
+        http.post('/api/v1/workflows/:id/rollback', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+
+      await useWorkflowEditorStore.getState().rollback(1)
+
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title.toLowerCase()).toContain('roll back')
+      expect(toasts[0]!.description).toBeDefined()
     })
   })
 })

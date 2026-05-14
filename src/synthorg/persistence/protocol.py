@@ -91,6 +91,9 @@ from synthorg.persistence.preset_override_protocol import (  # noqa: TC001
 from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,  # noqa: TC001
 )
+from synthorg.persistence.principle_override_protocol import (
+    PrincipleOverrideRepository,  # noqa: TC001
+)
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,  # noqa: TC001
 )
@@ -479,6 +482,11 @@ class PersistenceBackend(Protocol):
     @property
     def seen_claims(self) -> SeenClaimsRepository:
         """Repository for worker TaskClaim dedup persistence."""
+        ...
+
+    @property
+    def principle_overrides(self) -> PrincipleOverrideRepository:
+        """Repository for rollback-restored principle overrides."""
         ...
 
     @property

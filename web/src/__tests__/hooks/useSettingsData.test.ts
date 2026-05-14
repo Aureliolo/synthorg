@@ -80,6 +80,8 @@ describe('useSettingsData', () => {
           level: 'basic' as const,
           sensitive: false,
           restart_required: true,
+          read_only_post_init: false,
+          env_var_override: null,
           enum_values: [],
           validator_pattern: null,
           min_value: 1,

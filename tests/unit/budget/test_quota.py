@@ -539,3 +539,12 @@ class TestQuotaCheckResultValidation:
                 provider_name="test-provider",
                 exhausted_windows=(QuotaWindow.PER_MINUTE,),
             )
+
+    def test_extra_field_rejected(self) -> None:
+        """Unknown fields are rejected (extra='forbid')."""
+        with pytest.raises(ValidationError, match="extra"):
+            QuotaCheckResult(
+                allowed=True,
+                provider_name="test-provider",
+                unknown_field="surprise",  # type: ignore[call-arg]
+            )
