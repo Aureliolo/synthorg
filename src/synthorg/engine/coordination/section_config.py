@@ -17,7 +17,6 @@ from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
     parse_bool,
-    parse_int,
 )
 
 
@@ -37,13 +36,13 @@ class CoordinationSectionConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
+    # ``max_concurrency_per_wave`` intentionally omits the mirror:
+    # its ``None`` Pydantic default means "unlimited", whereas the
+    # registered ``coordination.max_concurrency_per_wave`` default is
+    # the operator-tunable cap (5) used by the registered-setting
+    # consumers.  Runtime code reads the registered value via
+    # ``ConfigResolver``; the Pydantic field stays None-as-unlimited.
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
-        MirrorField(
-            field="max_concurrency_per_wave",
-            namespace=SettingNamespace.COORDINATION,
-            key="max_concurrency_per_wave",
-            parse=parse_int,
-        ),
         MirrorField(
             field="fail_fast",
             namespace=SettingNamespace.COORDINATION,
