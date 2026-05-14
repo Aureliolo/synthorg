@@ -23,9 +23,11 @@ from synthorg.memory.procedural.propagation.config import (
 from synthorg.memory.procedural.pruning.config import (
     PruningConfig,
 )
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
+    parse_bool,
 )
 
 
@@ -242,15 +244,16 @@ class EvolutionConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    # ``enabled`` intentionally omits the mirror: the registered
-    # ``engine.evolution_enabled`` default is False (kill-switch
-    # default) while the Pydantic field default is True (runtime-
-    # mutable feature flag).  Service consumers read the registered
-    # value via ConfigResolver at runtime; the Pydantic field is the
-    # internal-default the evolution service initialises with.
-    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = ()
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.ENGINE,
+            key="evolution_enabled",
+            parse=parse_bool,
+        ),
+    )
 
-    enabled: bool = True
+    enabled: bool = False
     triggers: TriggerConfig = Field(default_factory=TriggerConfig)
     proposer: ProposerConfig = Field(default_factory=ProposerConfig)
     adapters: AdapterConfig = Field(default_factory=AdapterConfig)

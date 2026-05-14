@@ -17,7 +17,9 @@ class TestEvolutionConfigDefaults:
     @pytest.mark.unit
     def test_defaults(self) -> None:
         config = EvolutionConfig()
-        assert config.enabled is True
+        # ``enabled`` defaults to False (kill-switch convention; matches
+        # the registered ``engine.evolution_enabled`` default).
+        assert config.enabled is False
         assert config.triggers.types == ("batched", "inflection")
         assert config.proposer.type == "composite"
         assert config.adapters.identity is False
@@ -33,7 +35,28 @@ class TestEvolutionConfigDefaults:
     def test_frozen(self) -> None:
         config = EvolutionConfig()
         with pytest.raises(ValueError, match="frozen"):
-            config.enabled = False  # type: ignore[misc]
+            config.enabled = True  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_env_override_enables(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SYNTHORG_ENGINE_EVOLUTION_ENABLED=true flips the mirror to True."""
+        monkeypatch.setenv("SYNTHORG_ENGINE_EVOLUTION_ENABLED", "true")
+        config = EvolutionConfig()
+        assert config.enabled is True
+
+    @pytest.mark.unit
+    def test_env_override_explicit_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SYNTHORG_ENGINE_EVOLUTION_ENABLED=false keeps the kill-switch off."""
+        monkeypatch.setenv("SYNTHORG_ENGINE_EVOLUTION_ENABLED", "false")
+        config = EvolutionConfig()
+        assert config.enabled is False
+
+    @pytest.mark.unit
+    def test_caller_kwarg_wins_over_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An explicit ``enabled=True`` kwarg beats the env override."""
+        monkeypatch.setenv("SYNTHORG_ENGINE_EVOLUTION_ENABLED", "false")
+        config = EvolutionConfig(enabled=True)
+        assert config.enabled is True
 
 
 class TestTriggerConfig:

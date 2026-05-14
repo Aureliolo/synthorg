@@ -84,7 +84,11 @@ def _make_service(
 ) -> EvolutionService:
     """Build an EvolutionService with mocked dependencies."""
     if config is None:
-        config = EvolutionConfig()
+        # Tests in this module exercise the full pipeline by default;
+        # the kill-switch ``enabled`` defaults to False on a fresh
+        # install, so opt in explicitly here. Tests that want the
+        # disabled-no-op path pass ``EvolutionConfig(enabled=False)``.
+        config = EvolutionConfig(enabled=True)
 
     store = identity_store or AsyncMock()
     if identity_store is None:
@@ -187,6 +191,7 @@ class TestEvolutionServiceEvolve:
 
         proposal = _make_proposal(axis=AdaptationAxis.IDENTITY)
         config = EvolutionConfig(
+            enabled=True,
             adapters=AdapterConfig(identity=True),
         )
         identity = _make_identity()
