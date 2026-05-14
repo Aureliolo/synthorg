@@ -167,6 +167,10 @@ async function drainUntilReconnectExhausted(): Promise<void> {
     await vi.advanceTimersByTimeAsync(30_000)
     await vi.runAllTimersAsync()
     await new Promise<void>((resolve) => setImmediate(resolve))
+    // Re-check after the async drain: exhaustion can flip during the
+    // final pass, and a check only at the top of the loop would miss it
+    // and throw even though the budget was sufficient.
+    if (useWebSocketStore.getState().reconnectExhausted) return
   }
   throw new Error(
     `reconnectExhausted did not flip after ${RECONNECT_EXHAUSTION_DRAIN_PASSES} drain passes`,
