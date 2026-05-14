@@ -56,7 +56,7 @@ export interface PersistenceSlice {
   error: string | null
   loadDefinition: (id: string) => Promise<void>
   createDefinition: (name: string, workflowType: string) => Promise<void>
-  saveDefinition: () => Promise<void>
+  saveDefinition: () => Promise<boolean>
   exportYaml: () => Promise<string>
   reset: () => void
 }

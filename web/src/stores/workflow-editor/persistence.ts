@@ -124,11 +124,11 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
     }
   },
 
-  saveDefinition: async () => {
+  saveDefinition: async (): Promise<boolean> => {
     const { definition, nodes, edges } = get()
     if (!definition) {
       set({ error: 'Cannot save: no workflow loaded' })
-      return
+      return false
     }
     const badNodes = nodes.filter((n) => !n.type)
     const badEdges = edges.filter((e) => !readEdgeField(e.data, 'edgeType'))
@@ -137,7 +137,7 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       if (badNodes.length > 0) parts.push(`nodes missing type: ${badNodes.map((n) => n.id).join(', ')}`)
       if (badEdges.length > 0) parts.push(`edges missing type: ${badEdges.map((e) => e.id).join(', ')}`)
       set({ error: `Cannot save -- ${parts.join('; ')}. Remove and re-add the affected items.` })
-      return
+      return false
     }
 
     set({ saving: true, error: null })
@@ -165,6 +165,7 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
         variant: 'success',
         title: 'Workflow saved',
       })
+      return true
     } catch (err) {
       // ``isAxiosError`` lets us read response.status without an
       // unsafe ``as`` cast through a hand-rolled shape.
@@ -176,20 +177,21 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
         // ``error`` to null before the UI can render it.
         set({ saving: false })
         useToastStore.getState().add({
-          variant: 'warning',
+          variant: 'error',
           title: 'Version conflict',
           description: 'Another save occurred. Reloading the latest definition.',
         })
         await get().loadDefinition(definition.id)
-      } else {
-        log.warn('Failed to save workflow definition', sanitizeForLog(err))
-        set({ saving: false, error: getErrorMessage(err) })
-        useToastStore.getState().add({
-          variant: 'error',
-          title: 'Failed to save workflow',
-          description: getErrorMessage(err),
-        })
+        return false
       }
+      log.warn('Failed to save workflow definition', sanitizeForLog(err))
+      set({ saving: false, error: getErrorMessage(err) })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to save workflow',
+        description: getErrorMessage(err),
+      })
+      return false
     }
   },
 

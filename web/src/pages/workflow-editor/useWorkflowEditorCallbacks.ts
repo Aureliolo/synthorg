@@ -49,7 +49,7 @@ interface UseWorkflowEditorCallbacksArgs {
   selectNode: (id: string | null) => void
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void
   exportYaml: () => Promise<string>
-  saveDefinition: () => Promise<void>
+  saveDefinition: () => Promise<boolean>
   validate: () => Promise<void>
   saveViewport: (viewport: { x: number; y: number; zoom: number }) => void
 }
@@ -110,11 +110,7 @@ export function useWorkflowEditorCallbacks(
 
   const handleSave = useCallback(async () => {
     await saveDefinition()
-    const storeError = useWorkflowEditorStore.getState().error
-    if (!storeError) {
-      addToast({ variant: 'success', title: 'Workflow saved' })
-    }
-  }, [saveDefinition, addToast])
+  }, [saveDefinition])
 
   const handleValidate = useCallback(async () => {
     await validate()
