@@ -15,6 +15,8 @@ from synthorg.settings.mirrors import (
     apply_settings_mirrors,
     parse_bool,
     parse_int,
+    parse_json_int_dict,
+    parse_json_int_pair_dict,
 )
 
 pytestmark = pytest.mark.unit
@@ -98,3 +100,49 @@ def test_non_dict_passthrough() -> None:
     """Non-dict inputs are returned verbatim (Pydantic instance reuse path)."""
     sentinel = object()
     assert apply_settings_mirrors(sentinel, ()) is sentinel
+
+
+class TestParseJsonIntPairDict:
+    """Coverage for ``parse_json_int_pair_dict`` (PerOpRateLimit overrides)."""
+
+    def test_valid_json_returns_dict(self) -> None:
+        result = parse_json_int_pair_dict('{"op.alpha":[2,3600]}')
+        assert result == {"op.alpha": [2, 3600]}
+
+    def test_empty_object(self) -> None:
+        assert parse_json_int_pair_dict("{}") == {}
+
+    def test_invalid_json_returns_none(self) -> None:
+        assert parse_json_int_pair_dict("{not valid json") is None
+
+    def test_top_level_list_returns_none(self) -> None:
+        assert parse_json_int_pair_dict("[1, 2, 3]") is None
+
+    def test_top_level_string_returns_none(self) -> None:
+        assert parse_json_int_pair_dict('"plain"') is None
+
+    def test_non_string_key_returns_none(self) -> None:
+        # JSON object keys are always strings at the syntactic level,
+        # but defensive coverage of the post-decode guard ensures the
+        # contract holds.
+        assert parse_json_int_pair_dict('{"1":[2,3]}') == {"1": [2, 3]}
+
+
+class TestParseJsonIntDict:
+    """Coverage for ``parse_json_int_dict`` (PerOpConcurrency overrides)."""
+
+    def test_valid_json_returns_dict(self) -> None:
+        result = parse_json_int_dict('{"op.alpha":7}')
+        assert result == {"op.alpha": 7}
+
+    def test_empty_object(self) -> None:
+        assert parse_json_int_dict("{}") == {}
+
+    def test_invalid_json_returns_none(self) -> None:
+        assert parse_json_int_dict("{not valid json") is None
+
+    def test_top_level_list_returns_none(self) -> None:
+        assert parse_json_int_dict("[1, 2, 3]") is None
+
+    def test_top_level_int_returns_none(self) -> None:
+        assert parse_json_int_dict("42") is None

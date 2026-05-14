@@ -19,6 +19,8 @@ from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
     parse_bool,
+    parse_json_int_dict,
+    parse_json_int_pair_dict,
 )
 
 logger = get_logger(__name__)
@@ -78,16 +80,17 @@ class PerOpRateLimitConfig(BaseModel):
             key="per_op_rate_limit_enabled",
             parse=parse_bool,
         ),
+        MirrorField(
+            field="overrides",
+            namespace=SettingNamespace.API,
+            key="per_op_rate_limit_overrides",
+            parse=parse_json_int_pair_dict,
+        ),
     )
 
     enabled: bool = True
     backend: Literal["memory"] = "memory"
     overrides: dict[NotBlankStr, tuple[int, int]] = Field(default_factory=dict)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="before")
     @classmethod
@@ -101,6 +104,11 @@ class PerOpRateLimitConfig(BaseModel):
         and our log line would never fire.  Zero is allowed and means
         "disable this operation" -- the guard short-circuits when
         either component is ``0``.
+
+        Declared BEFORE ``_apply_mirrors`` in source order. Pydantic v2
+        runs ``mode="before"`` validators in REVERSE declaration order,
+        so this runs LAST -- after the mirror has populated ``overrides``
+        from env -- which is what we want.
         """
         if not isinstance(data, dict):
             return data
@@ -149,6 +157,11 @@ class PerOpRateLimitConfig(BaseModel):
                 _warn_and_raise(msg, operation=operation, override=str(pair))
         return data
 
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+
 
 class PerOpConcurrencyConfig(BaseModel):
     """Configuration for the per-operation inflight limiter.
@@ -175,6 +188,12 @@ class PerOpConcurrencyConfig(BaseModel):
             key="per_op_concurrency_enabled",
             parse=parse_bool,
         ),
+        MirrorField(
+            field="overrides",
+            namespace=SettingNamespace.API,
+            key="per_op_concurrency_overrides",
+            parse=parse_json_int_dict,
+        ),
     )
 
     enabled: bool = True
@@ -188,11 +207,6 @@ class PerOpConcurrencyConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
-
-    @model_validator(mode="before")
-    @classmethod
     def _validate_override_values(cls, data: Any) -> Any:
         """Reject malformed-shape and negative override values.
 
@@ -202,6 +216,11 @@ class PerOpConcurrencyConfig(BaseModel):
         already have rejected mis-shaped inputs with a generic
         ``ValidationError`` and our log line would never fire.  Zero
         is allowed and means "disable this operation".
+
+        Declared BEFORE ``_apply_mirrors`` in source order. Pydantic v2
+        runs ``mode="before"`` validators in REVERSE declaration order,
+        so this runs LAST -- after the mirror has populated ``overrides``
+        from env -- which is what we want.
         """
         if not isinstance(data, dict):
             return data
@@ -225,3 +244,8 @@ class PerOpConcurrencyConfig(BaseModel):
                 )
                 _warn_and_raise(msg, operation=operation, override=str(value))
         return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
