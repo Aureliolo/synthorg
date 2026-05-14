@@ -7,12 +7,11 @@ import pytest
 import respx
 
 from synthorg.a2a.client import A2AClient, A2AClientError
-from synthorg.a2a.config import A2AConfig
 from synthorg.a2a.models import A2ATaskState
 
-# Share the shipped default so the tests never diverge from the config
-# contract if the A2AConfig default is ever re-tuned.
-_A2A_DEFAULT_TIMEOUT = A2AConfig().client_timeout_seconds
+# Share the registered default so the tests never diverge from the
+# precedence contract if the registry default is ever re-tuned.
+_A2A_DEFAULT_TIMEOUT = 30.0
 
 
 def _mock_catalog(
@@ -426,9 +425,9 @@ class TestA2AClientTimeoutContract:
 
     @pytest.mark.unit
     def test_construct_without_timeout_raises(self) -> None:
-        # Pre-alpha contract: callers must thread the value from
-        # A2AConfig.client_timeout_seconds so the constructor cannot
-        # drift from the config default.
+        # Pre-alpha contract: callers must thread the value from the
+        # registered ``a2a.client_timeout_seconds`` setting so the
+        # constructor cannot drift from the precedence default.
         with pytest.raises(TypeError, match=r"timeout_seconds"):
             A2AClient(_mock_catalog())  # type: ignore[call-arg]
 

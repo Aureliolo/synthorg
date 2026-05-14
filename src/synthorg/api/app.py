@@ -787,9 +787,14 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 )
 
                 a2a_peer_registry = PeerRegistry()
-                a2a_http_client = httpx.AsyncClient(
-                    timeout=effective_config.a2a.client_timeout_seconds
+                a2a_client_timeout = float(
+                    resolve_init_value(
+                        SettingNamespace.A2A,
+                        "client_timeout_seconds",
+                        parse=float,
+                    ).value
                 )
+                a2a_http_client = httpx.AsyncClient(timeout=a2a_client_timeout)
                 from synthorg.tools.network_validator import (  # noqa: PLC0415
                     NetworkPolicy,
                 )
@@ -799,7 +804,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     connection_catalog,
                     network_validator=a2a_network_policy,
                     http_client=a2a_http_client,
-                    timeout_seconds=effective_config.a2a.client_timeout_seconds,
+                    timeout_seconds=a2a_client_timeout,
                 )
                 a2a_pending = (A2AGatewayController,)
         except MemoryError, RecursionError:
