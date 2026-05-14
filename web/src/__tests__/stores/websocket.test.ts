@@ -6,6 +6,7 @@ import { server } from '@/test-setup'
 import type { WsEvent } from '@/api/types/websocket'
 import {
   WS_HEARTBEAT_INTERVAL_MS,
+  WS_MAX_RECONNECT_ATTEMPTS,
   WS_PONG_TIMEOUT_MS,
   WS_RECONNECT_BASE_DELAY,
 } from '@/utils/constants'
@@ -198,7 +199,7 @@ describe('websocket store', () => {
 
   describe('connect', () => {
     it('fetches ticket and creates WebSocket connection without ticket in URL', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -248,7 +249,7 @@ const p1 = useWebSocketStore.getState().connect()
 
   describe('disconnect', () => {
     it('closes socket and resets state', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -265,7 +266,7 @@ const connectPromise = useWebSocketStore.getState().connect()
 
   describe('subscribe', () => {
     it('sends subscribe message when connected', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -289,7 +290,7 @@ const connectPromise = useWebSocketStore.getState().connect()
       useWebSocketStore.getState().subscribe(['tasks'])
 
       // Now connect -- the subscription should be replayed
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -309,7 +310,7 @@ const connectPromise = useWebSocketStore.getState().connect()
 
   describe('unsubscribe', () => {
     it('sends unsubscribe message when connected', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -431,7 +432,7 @@ const handler = vi.fn()
 
   describe('reconnection', () => {
     it('schedules reconnect on unexpected close', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -501,7 +502,7 @@ const connectPromise = useWebSocketStore.getState().connect()
     )
 
     it('does not reconnect on intentional disconnect', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -562,9 +563,11 @@ const handler = vi.fn()
         useWebSocketStore.getState().connect(),
       ).rejects.toThrow('connection refused')
 
-      // Each failed ticket exchange triggers scheduleReconnect
-      // Advance through all 20 attempts (exponential backoff capped at 30s)
-      for (let i = 0; i < 20; i++) {
+      // Each failed ticket exchange triggers scheduleReconnect.
+      // Advance through every attempt (exponential backoff capped at 30s).
+      // The loop bound tracks ``WS_MAX_RECONNECT_ATTEMPTS`` so a future
+      // bump of the constant cannot silently exit the loop short.
+      for (let i = 0; i < WS_MAX_RECONNECT_ATTEMPTS; i++) {
         await vi.advanceTimersByTimeAsync(30_000)
         await vi.runAllTimersAsync()
       }
@@ -627,7 +630,7 @@ const handler = vi.fn()
 
   describe('ack messages', () => {
     it('updates subscribedChannels on ack', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 

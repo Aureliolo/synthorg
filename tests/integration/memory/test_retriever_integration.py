@@ -192,8 +192,13 @@ class TestRetrieverIntegrationEndToEnd:
         assert memory_message.role is MessageRole.SYSTEM
         content = memory_message.content
         assert content is not None
-        assert f"<{TAG_MEMORY_ENTRY}>" in content
-        assert f"</{TAG_MEMORY_ENTRY}>" in content
+        # Balanced fence counts: one open per close, per memory entry.
+        # A malformed wrapper would otherwise satisfy the bare-presence
+        # assertions while leaving the prompt-safety contract broken.
+        open_count = content.count(f"<{TAG_MEMORY_ENTRY}>")
+        close_count = content.count(f"</{TAG_MEMORY_ENTRY}>")
+        assert open_count == close_count
+        assert open_count >= 1
         # Most relevant should appear first
         assert "Python best practices" in content
         assert "Last meeting notes" in content

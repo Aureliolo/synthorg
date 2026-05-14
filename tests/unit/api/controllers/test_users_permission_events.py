@@ -1,9 +1,8 @@
 """Permission grant/revoke emit dedicated audit-chain events.
 
-Work package #1883 adds ``SECURITY_PERMISSION_GRANTED`` and
-``SECURITY_PERMISSION_REVOKED`` so forensic readers can filter every
-permission change by event constant alone. The existing
-``SECURITY_USER_UPDATED`` event still fires (it carries the full user
+``SECURITY_PERMISSION_GRANTED`` and ``SECURITY_PERMISSION_REVOKED`` let
+forensic readers filter every permission change by event constant alone.
+``SECURITY_USER_UPDATED`` still fires alongside (it carries the full user
 row); the dedicated events are additive coverage for permission deltas.
 """
 
@@ -46,7 +45,7 @@ def _seed_target_user(  # noqa: PLR0913 -- six fixture kwargs are all defaults
         created_at=now,
         updated_at=now,
     )
-    fake_persistence._users._users[user.id] = user
+    fake_persistence._users.seed(user)
     return user
 
 

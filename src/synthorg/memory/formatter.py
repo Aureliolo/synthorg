@@ -62,7 +62,7 @@ def _format_entry(memory: ScoredMemory) -> str:
     return wrap_untrusted(TAG_MEMORY_ENTRY, inner)
 
 
-def format_memory_context(
+def _format_memory_context(
     memories: tuple[ScoredMemory, ...],
     *,
     estimator: TokenEstimator,
@@ -75,11 +75,12 @@ def format_memory_context(
     each one if it fits within the remaining budget. Each included
     entry is individually wrapped under ``TAG_MEMORY_ENTRY``.
 
-    Consumers that inject the result into an LLM call must also append
-    :func:`untrusted_content_directive` for ``TAG_MEMORY_ENTRY`` to
-    their system prompt. Prefer :func:`format_memory_context_with_directive`
-    which bundles both steps and forces the directive into the prompt
-    stream.
+    Private helper: callers MUST go through
+    :func:`format_memory_context_with_directive`, which bundles the
+    untrusted-content directive that tells the model the memory
+    blocks are data, not instructions. Exposing the bare formatter
+    here would let a caller forget the directive and reintroduce a
+    prompt-injection surface this module is hardened to close.
 
     Args:
         memories: Pre-ranked memories (highest score first).
@@ -160,14 +161,14 @@ def format_memory_context_with_directive(
 ) -> tuple[ChatMessage, ...]:
     """Format memories with the untrusted-content directive prepended.
 
-    Wraps :func:`format_memory_context` and prepends a SYSTEM-role
-    :class:`ChatMessage` carrying the untrusted-content directive for
-    ``TAG_MEMORY_ENTRY``. Returns an empty tuple when no memories fit.
+    Calls the private :func:`_format_memory_context` and prepends a
+    SYSTEM-role :class:`ChatMessage` carrying the untrusted-content
+    directive for ``TAG_MEMORY_ENTRY``. Returns an empty tuple when
+    no memories fit.
 
-    Use this helper instead of :func:`format_memory_context` at every
-    LLM call site that ingests stored memory: the directive is the
-    contract that tells the model the memory blocks are data, not
-    instructions.
+    This is the only public memory-formatter entry point: the
+    directive is the contract that tells the model the memory
+    blocks are data, not instructions.
 
     Args:
         memories: Pre-ranked memories (highest score first).
@@ -180,7 +181,7 @@ def format_memory_context_with_directive(
         tuple when no memories fit (so the directive does not appear
         on its own).
     """
-    memory_messages = format_memory_context(
+    memory_messages = _format_memory_context(
         memories,
         estimator=estimator,
         token_budget=token_budget,

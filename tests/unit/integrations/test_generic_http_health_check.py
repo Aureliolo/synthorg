@@ -30,12 +30,12 @@ from synthorg.tools.network_validator import NetworkPolicy
 
 pytestmark = pytest.mark.unit
 
-_BLOCKED_URLS: Final[tuple[str, ...]] = (
-    "http://127.0.0.1/health",
-    "http://10.0.0.1/health",
-    "http://169.254.169.254/latest/meta-data/",
-    "http://[::1]/health",
-    "http://localhost/health",
+_BLOCKED_URLS: Final[tuple[tuple[str, str], ...]] = (
+    ("loopback_ipv4", "http://127.0.0.1/health"),
+    ("private_10", "http://10.0.0.1/health"),
+    ("link_local_metadata", "http://169.254.169.254/latest/meta-data/"),
+    ("loopback_ipv6", "http://[::1]/health"),
+    ("localhost", "http://localhost/health"),
 )
 
 
@@ -51,7 +51,11 @@ def _make_connection(base_url: str) -> Connection:
 class TestNetworkPolicyEnforcement:
     """NetworkPolicy rejects internal hosts before the HTTP call."""
 
-    @pytest.mark.parametrize("url", _BLOCKED_URLS)
+    @pytest.mark.parametrize(
+        "url",
+        [url for _, url in _BLOCKED_URLS],
+        ids=[name for name, _ in _BLOCKED_URLS],
+    )
     async def test_blocked_url_returns_unhealthy_without_http_call(
         self,
         url: str,
@@ -63,6 +67,9 @@ class TestNetworkPolicyEnforcement:
         report = await check.check(_make_connection(url))
         assert report.status is ConnectionStatus.UNHEALTHY
         assert report.error_detail is not None
+        # SSRF rejections carry the ``ssrf_policy_rejected:`` prefix so
+        # dashboards can distinguish them from generic network failures.
+        assert report.error_detail.startswith("ssrf_policy_rejected:")
         # No HTTP call should have been made; respx_mock records zero calls.
         assert len(respx_mock.calls) == 0  # type: ignore[attr-defined]
 
@@ -116,6 +123,42 @@ class TestNetworkPolicyEnforcement:
         ):
             report = await check.check(_make_connection("https://example.com/"))
         assert report.status is ConnectionStatus.HEALTHY
+
+    async def test_redirect_to_internal_ip_not_followed(
+        self,
+        respx_mock: object,
+    ) -> None:
+        """A 302 redirect to ``127.0.0.1`` is not followed.
+
+        The SSRF pre-flight validates only the initial ``base_url``;
+        following redirects would bypass the gate. This pins the
+        ``follow_redirects=False`` contract so a refactor that flips
+        the default cannot silently regress the SSRF surface.
+        """
+        # The transport returns a 302 pointing at loopback. With
+        # ``follow_redirects=False`` httpx surfaces the 302 as the
+        # final response and the health check treats it as UNHEALTHY
+        # (status >= 400 is not the gate; the < 400 check passes
+        # for 3xx, so this path actually returns HEALTHY today). What
+        # we pin here is the *absence* of a second call to the
+        # redirect target; the bypass would manifest as a follow-up
+        # request to ``127.0.0.1`` which the test asserts never fires.
+        respx_mock.head("https://example.com/health").mock(  # type: ignore[attr-defined]
+            return_value=httpx.Response(
+                302,
+                headers={"Location": "http://127.0.0.1/health"},
+            ),
+        )
+        check = GenericHttpHealthCheck()
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            await check.check(_make_connection("https://example.com/health"))
+        # Exactly one call: the HEAD to example.com. No follow-up to loopback.
+        calls = respx_mock.calls  # type: ignore[attr-defined]
+        assert len(calls) == 1
+        assert "127.0.0.1" not in str(calls[0].request.url)
 
 
 class TestSecretLeakScrubbing:

@@ -36,6 +36,16 @@ class FakeUserRepository:
     def __init__(self) -> None:
         self._users: dict[str, User] = {}
 
+    def seed(self, user: User) -> None:
+        """Insert a user bypassing async ``save`` constraints.
+
+        Tests sometimes need to pre-populate a target user from sync
+        fixture helpers (where ``await`` is not available). Routing
+        through this method keeps the internal storage encapsulated:
+        callers do not poke at the underlying dict.
+        """
+        self._users[user.id] = user
+
     async def save(self, user: User) -> None:
         existing = self._users.get(user.id)
         # Username uniqueness

@@ -11,9 +11,16 @@ from typing import TYPE_CHECKING, Any, Final
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
-from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.boundary import parse_typed
+from synthorg.api.controllers._webhooks_wiring import (
+    _IDEMPOTENCY_KEY_MAX_LEN,
+    WebhookEventPayload,
+    _build_idem_key,
+    _build_idem_scope,
+    _get_activity_service,
+    _get_replay_protector,
+)
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
@@ -28,14 +35,10 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.integrations.connections.models import WebhookReceipt  # noqa: TC001
-from synthorg.integrations.webhooks.activity_service import WebhookActivityService
 from synthorg.integrations.webhooks.event_bus_bridge import (
     publish_webhook_event,
 )
-from synthorg.integrations.webhooks.replay_protection import (
-    MAX_NONCE_CHARS,
-    ReplayProtector,
-)
+from synthorg.integrations.webhooks.replay_protection import MAX_NONCE_CHARS
 from synthorg.integrations.webhooks.verifiers.factory import get_verifier
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_VALIDATION_FAILED
@@ -48,23 +51,6 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_REJECTED,
 )
 
-
-class WebhookEventPayload(BaseModel):
-    """Typed boundary for an incoming webhook event payload.
-
-    The wire shape is provider-defined (each external service sends
-    arbitrary keys), so the model uses ``extra="allow"`` to accept the
-    full key set unchanged. The contract this model enforces is the
-    *envelope shape*: the payload MUST be a JSON object (not an array,
-    scalar, or non-JSON body). That envelope check is the gate that
-    closes the silent ``{"raw": ...}`` fallback the controller used
-    before. Do not flip this to ``extra="forbid"``: it would break
-    every external provider integration.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="allow")
-
-
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import datetime
@@ -73,18 +59,21 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# DB CHECK constraint on ``idempotency_keys.key`` caps the column at
-# 255 chars. The composed key from connection_name + event_type +
-# attacker-controlled nonce can exceed that; we collapse to a fixed
-# SHA-256 digest when oversized so the DB insert never fails on
-# length while operator-visible logs still carry the route prefix.
-_IDEMPOTENCY_KEY_MAX_LEN: int = 255
-
 # Receipt-status strings shared between the persistence-write and the
 # status-transition log so the wire value stays in one place.
 _RECEIPT_STATUS_RETRYING: Final[str] = "retrying"
 _RECEIPT_STATUS_RECEIVED: Final[str] = "received"
 _RECEIPT_STATUS_FAILED: Final[str] = "failed"
+
+__all__ = [
+    "_IDEMPOTENCY_KEY_MAX_LEN",
+    "WebhookEventPayload",
+    "WebhooksController",
+    "_build_idem_key",
+    "_build_idem_scope",
+    "_get_activity_service",
+    "_get_replay_protector",
+]
 
 
 async def _get_connection_or_404(state: State, connection_name: str) -> Any:
@@ -229,7 +218,7 @@ def _parse_timestamp(
         raise ValidationError(msg) from None
 
 
-def _check_replay_or_freshness(
+async def _check_replay_or_freshness(
     *,
     state: State,
     connection_name: str,
@@ -258,7 +247,7 @@ def _check_replay_or_freshness(
         )
         msg = "Nonce exceeds maximum size"
         raise ConflictError(msg)
-    replay_protector = _get_replay_protector(state)
+    replay_protector = await _get_replay_protector(state)
     if nonce:
         if replay_protector.check_freshness(timestamp):
             return
@@ -277,54 +266,6 @@ def _check_replay_or_freshness(
         )
         msg = "Replay detected (duplicate nonce or stale timestamp)"
         raise ConflictError(msg)
-
-
-def _build_idem_scope(
-    *,
-    connection_type: str,
-    connection_name: str,
-) -> str:
-    """Compose the durable idempotency scope for a webhook connection.
-
-    Including ``connection_name`` (and not just ``connection_type``) is
-    defence in depth at the persistence row level: a stale dedup row
-    written under one connection can never surface to a different
-    connection that happens to share an event type and nonce.
-    """
-    return f"webhooks:{connection_type}:{connection_name}"
-
-
-def _build_idem_key(
-    *,
-    connection_name: str,
-    event_type: str,
-    nonce: str,
-) -> str:
-    """Compose the durable idempotency key with bounded length.
-
-    Two-step bounding: (1) fingerprint the nonce up front when it
-    exceeds ``MAX_NONCE_CHARS`` so an attacker cannot force
-    unbounded string copies into the f-string; (2) collapse the
-    composed key via SHA-256 if it still exceeds the DB column's
-    255-char CHECK constraint, preserving the (connection, event)
-    prefix for operator visibility when possible.
-    """
-    nonce_for_key = (
-        nonce
-        if len(nonce) <= MAX_NONCE_CHARS
-        else hashlib.sha256(
-            nonce.encode("utf-8", errors="replace"),
-        ).hexdigest()
-    )
-    raw_key = f"{connection_name}:{event_type}:{nonce_for_key}"
-    if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
-        nonce_digest = hashlib.sha256(
-            nonce_for_key.encode("utf-8", errors="replace"),
-        ).hexdigest()
-        raw_key = f"{connection_name}:{event_type}:sha256:{nonce_digest}"
-        if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
-            raw_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
-    return raw_key
 
 
 async def _publish_webhook_event_and_log(
@@ -562,45 +503,6 @@ def _assert_receipt_retryable(receipt: WebhookReceipt) -> None:
     raise ConflictError(msg)
 
 
-def _get_activity_service(state: State) -> WebhookActivityService:
-    """Return (and lazily build) the read-only webhook activity service.
-
-    The service holds a reference to the persistence-backed
-    :class:`WebhookReceiptRepository` so the controller body never
-    touches ``persistence.webhook_receipts`` directly. The cache lives
-    on ``app_state`` so a single instance survives across requests.
-    """
-    app_state = state["app_state"]
-    cached = getattr(app_state, "_webhook_activity_service", None)
-    if cached is None:
-        cached = WebhookActivityService(
-            receipts_repo=app_state.persistence.webhook_receipts,
-        )
-        app_state._webhook_activity_service = cached  # noqa: SLF001
-    return cached
-
-
-def _get_replay_protector(state: State) -> ReplayProtector:
-    """Return (and lazily build) a config-driven ``ReplayProtector``.
-
-    The protector instance is cached on ``app_state`` so the nonce
-    cache persists across requests, but is constructed from
-    ``integrations.webhooks.replay_window_seconds`` at first use
-    instead of being frozen at module-import time. That way runtime
-    config overrides actually change receiver behaviour.
-    """
-    app_state = state["app_state"]
-    cached = getattr(app_state, "_webhook_replay_protector", None)
-    if cached is None:
-        cfg = app_state.config.integrations.webhooks
-        cached = ReplayProtector(
-            window_seconds=cfg.replay_window_seconds,
-            max_entries=10_000,
-        )
-        app_state._webhook_replay_protector = cached  # noqa: SLF001
-    return cached
-
-
 class WebhooksController(Controller):
     """Webhook receiver and activity log endpoints."""
 
@@ -679,7 +581,7 @@ class WebhooksController(Controller):
             None,
         )
         timestamp = _parse_timestamp(headers, connection_name=connection_name)
-        _check_replay_or_freshness(
+        await _check_replay_or_freshness(
             state=state,
             connection_name=connection_name,
             nonce=nonce,
@@ -756,7 +658,7 @@ class WebhooksController(Controller):
         ),
     ) -> ApiResponse[tuple[WebhookReceipt, ...]]:
         """List recent webhook receipts for a connection."""
-        service = _get_activity_service(state)
+        service = await _get_activity_service(state)
         receipts = await service.list_activity(
             connection_name=connection_name,
             limit=limit,

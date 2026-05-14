@@ -111,7 +111,9 @@ apiClient.interceptors.response.use(
       import('@/stores/auth').then(({ useAuthStore }) => {
         useAuthStore.getState().handleUnauthorized()
       }).catch((importErr: unknown) => {
-        log.error('Auth store cleanup failed during 401 handling:', importErr)
+        log.error('auth.cleanup_failed', {
+          error: importErr instanceof Error ? importErr.message : String(importErr),
+        })
         // Fallback if store import fails: redirect directly
         if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
           window.location.href = '/login'

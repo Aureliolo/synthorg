@@ -186,7 +186,8 @@ class TestSharedStoreMerge:
             token_budget=5000,
         )
         assert len(result) == 2
-        content = result[-1].content
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "personal memory" in content
         assert "shared knowledge" in content
@@ -221,7 +222,8 @@ class TestSharedStoreMerge:
             token_budget=1000,
         )
         assert len(result) == 2
-        content = result[-1].content
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "only personal" in content
 
@@ -267,7 +269,8 @@ class TestGracefulDegradation:
             token_budget=1000,
         )
         assert len(result) == 2
-        content = result[-1].content
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "personal survives" in content
 
@@ -376,7 +379,8 @@ class TestGracefulDegradation:
             token_budget=1000,
         )
         assert len(result) == 2
-        content = result[-1].content
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "personal survives generic" in content
 
@@ -469,7 +473,8 @@ class TestMemoryFilterIntegration:
             token_budget=5000,
         )
         assert len(result) == 2
-        content = result[-1].content
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "tagged memory" in content
         assert "untagged memory" not in content
@@ -491,7 +496,8 @@ class TestMemoryFilterIntegration:
             token_budget=5000,
         )
         assert len(result) == 2
-        content = result[-1].content
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "all memories pass" in content
 
@@ -524,7 +530,8 @@ class TestMemoryFilterIntegration:
             token_budget=5000,
         )
         assert len(result) == 2
-        content = result[-1].content
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "passthrough content" in content
 
@@ -556,7 +563,8 @@ class TestMemoryFilterIntegration:
             token_budget=5000,
         )
         assert len(result) == 2
-        content = result[-1].content
+        _, memory_message = result
+        content = memory_message.content
         assert content is not None
         assert "tagged memory" in content
         assert "untagged memory" not in content

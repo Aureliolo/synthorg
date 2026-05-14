@@ -21,6 +21,7 @@ from synthorg.memory.self_editing import (
     SelfEditingMemoryConfig,
     SelfEditingMemoryStrategy,
 )
+from synthorg.providers.enums import MessageRole
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -200,7 +201,9 @@ class TestSelfEditingMemoryStrategyPrepareMessages:
 
         # Two messages: directive SYSTEM message + core memory message.
         assert len(messages) == 2
-        memory_content = messages[-1].content
+        directive_message, memory_message = messages
+        assert directive_message.role is MessageRole.SYSTEM
+        memory_content = memory_message.content
         assert memory_content is not None
         assert "customer support agent" in memory_content
 

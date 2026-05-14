@@ -10,7 +10,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
 )
 from synthorg.memory.formatter import (
-    format_memory_context,
+    _format_memory_context,
     format_memory_context_with_directive,
 )
 from synthorg.memory.injection import (
@@ -52,7 +52,7 @@ def _make_scored(
 @pytest.mark.unit
 class TestFormatMemoryContext:
     def test_empty_memories_returns_empty(self) -> None:
-        result = format_memory_context(
+        result = _format_memory_context(
             (),
             estimator=DefaultTokenEstimator(),
             token_budget=1000,
@@ -61,7 +61,7 @@ class TestFormatMemoryContext:
 
     def test_single_memory_produces_one_message(self) -> None:
         memories = (_make_scored(content="Remember this"),)
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=1000,
@@ -81,7 +81,7 @@ class TestFormatMemoryContext:
                 category=MemoryCategory.SEMANTIC,
             ),
         )
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=1000,
@@ -92,7 +92,7 @@ class TestFormatMemoryContext:
 
     def test_score_label_present(self) -> None:
         memories = (_make_scored(combined_score=0.85),)
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=1000,
@@ -103,7 +103,7 @@ class TestFormatMemoryContext:
 
     def test_shared_prefix_present(self) -> None:
         memories = (_make_scored(is_shared=True),)
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=1000,
@@ -114,7 +114,7 @@ class TestFormatMemoryContext:
 
     def test_non_shared_no_prefix(self) -> None:
         memories = (_make_scored(is_shared=False),)
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=1000,
@@ -126,7 +126,7 @@ class TestFormatMemoryContext:
     def test_multiple_memories_in_order(self) -> None:
         m1 = _make_scored(content="first memory", combined_score=0.9)
         m2 = _make_scored(content="second memory", combined_score=0.7)
-        result = format_memory_context(
+        result = _format_memory_context(
             (m1, m2),
             estimator=DefaultTokenEstimator(),
             token_budget=5000,
@@ -144,7 +144,7 @@ class TestFormatMemoryContext:
             _make_scored(content="alpha", combined_score=0.9),
             _make_scored(content="beta", combined_score=0.7),
         )
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=5000,
@@ -160,7 +160,7 @@ class TestFormatMemoryContext:
             _make_scored(content="x" * 100, combined_score=0.9 - i * 0.01)
             for i in range(10)
         )
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=80,
@@ -175,7 +175,7 @@ class TestFormatMemoryContext:
 
     def test_zero_budget_returns_empty(self) -> None:
         memories = (_make_scored(content="some content"),)
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=0,
@@ -185,7 +185,7 @@ class TestFormatMemoryContext:
     def test_budget_too_small_for_any_returns_empty(self) -> None:
         """When budget cannot fit even one wrapped memory entry."""
         memories = (_make_scored(content="x" * 200),)
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=1,
@@ -194,7 +194,7 @@ class TestFormatMemoryContext:
 
     def test_injection_point_user(self) -> None:
         memories = (_make_scored(content="user memory"),)
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=1000,
@@ -205,7 +205,7 @@ class TestFormatMemoryContext:
 
     def test_injection_point_default_system(self) -> None:
         memories = (_make_scored(content="sys memory"),)
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=1000,
@@ -214,7 +214,7 @@ class TestFormatMemoryContext:
 
     def test_negative_budget_returns_empty(self) -> None:
         memories = (_make_scored(content="some content"),)
-        result = format_memory_context(
+        result = _format_memory_context(
             memories,
             estimator=DefaultTokenEstimator(),
             token_budget=-1,
@@ -226,7 +226,7 @@ class TestFormatMemoryContext:
         large = _make_scored(content="x" * 400, combined_score=0.95)
         small = _make_scored(content="short", combined_score=0.50)
         # Budget enough for one wrapped small entry but not the large one.
-        result = format_memory_context(
+        result = _format_memory_context(
             (large, small),
             estimator=DefaultTokenEstimator(),
             token_budget=30,
@@ -241,7 +241,7 @@ class TestFormatMemoryContext:
         """Unsupported InjectionPoint raises ValueError."""
         memories = (_make_scored(content="test"),)
         with pytest.raises(ValueError, match="Unsupported injection point"):
-            format_memory_context(
+            _format_memory_context(
                 memories,
                 estimator=DefaultTokenEstimator(),
                 token_budget=1000,

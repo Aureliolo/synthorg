@@ -73,15 +73,25 @@ class GenericHttpHealthCheck:
                 connection_name=connection.name,
                 reason="ssrf_policy_rejected_base_url",
             )
+            # Prefix the consumer-facing detail so dashboards can
+            # distinguish a security rejection from a generic network
+            # failure (both currently surface as UNHEALTHY).
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
-                error_detail=validation,
+                error_detail=f"ssrf_policy_rejected: {validation}",
                 checked_at=datetime.now(UTC),
             )
         start = time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            # ``follow_redirects=False`` is the httpx default but pinned
+            # explicitly: the SSRF pre-flight only validates the initial
+            # ``base_url``, so a 3xx redirect to an internal address
+            # would otherwise bypass the gate.
+            async with httpx.AsyncClient(
+                timeout=_TIMEOUT,
+                follow_redirects=False,
+            ) as client:
                 resp = await client.head(connection.base_url)
                 if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
                     resp = await client.get(connection.base_url)

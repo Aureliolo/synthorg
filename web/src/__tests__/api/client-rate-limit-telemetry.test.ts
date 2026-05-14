@@ -1,10 +1,10 @@
 /**
  * 429 retry interceptor emits structured ``http.rate_limited`` log.
  *
- * Work package #1883 (Phase 6): every 429-triggered retry must surface a
- * structured ``log.warn('http.rate_limited', ...)`` event so dashboards and
- * operators can track client-side rate-limit pressure instead of having
- * the retries absorbed silently.
+ * Every 429-triggered retry must surface a structured
+ * ``log.warn('http.rate_limited', ...)`` event so dashboards and operators
+ * can track client-side rate-limit pressure instead of having the retries
+ * absorbed silently.
  */
 import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { vi } from 'vitest'
@@ -37,13 +37,23 @@ function _build429Error(
   )
 }
 
-function _rateLimitedCalls(
+/**
+ * Extract the structured payloads of every ``http.rate_limited`` log call.
+ *
+ * Filters the spy's call history by the logger prefix and event name, then
+ * returns the payload object. This keeps the test focused on behaviour (the
+ * payload shape) rather than the spy's argument positions; if the logger's
+ * call signature changes, only this helper needs to adapt.
+ */
+function _rateLimitedPayloads(
   warnSpy: ReturnType<typeof vi.spyOn>,
-): unknown[][] {
-  return warnSpy.mock.calls.filter(
-    (call: unknown[]) =>
-      call[0] === '[api-client]' && call[1] === 'http.rate_limited',
-  )
+): Array<Record<string, unknown>> {
+  return warnSpy.mock.calls
+    .filter(
+      (call: unknown[]) =>
+        call[0] === '[api-client]' && call[1] === 'http.rate_limited',
+    )
+    .map((call: unknown[]) => call[2] as Record<string, unknown>)
 }
 
 describe('apiClient 429 retry telemetry', () => {
@@ -70,10 +80,9 @@ describe('apiClient 429 retry telemetry', () => {
     const error = _build429Error('get')
     await apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)
 
-    const rateLimitedCalls = _rateLimitedCalls(warnSpy)
-    expect(rateLimitedCalls).toHaveLength(1)
-    const payload = rateLimitedCalls[0]?.[2] as Record<string, unknown>
-    expect(payload).toMatchObject({
+    const payloads = _rateLimitedPayloads(warnSpy)
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]).toMatchObject({
       retry_count: 1,
       method: 'get',
       status: 429,
@@ -86,16 +95,16 @@ describe('apiClient 429 retry telemetry', () => {
       apiClient.interceptors.response.handlers?.[0]?.rejected?.(error),
     ).rejects.toBeDefined()
 
-    expect(_rateLimitedCalls(warnSpy)).toHaveLength(0)
+    expect(_rateLimitedPayloads(warnSpy)).toHaveLength(0)
   })
 
   it('retries POST with non-empty Idempotency-Key and emits the log', async () => {
     const error = _build429Error('post', { 'idempotency-key': 'idem-1' })
     await apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)
 
-    const rateLimitedCalls = _rateLimitedCalls(warnSpy)
-    expect(rateLimitedCalls).toHaveLength(1)
-    expect(rateLimitedCalls[0]?.[2]).toMatchObject({
+    const payloads = _rateLimitedPayloads(warnSpy)
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]).toMatchObject({
       retry_count: 1,
       method: 'post',
       status: 429,
