@@ -20,7 +20,6 @@ Example::
 import json
 import re
 import sqlite3
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -36,6 +35,10 @@ from synthorg.observability.events.versioning import (
     VERSION_LIST_FAILED,
     VERSION_LISTED,
     VERSION_SAVE_FAILED,
+)
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
 )
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 from synthorg.persistence.version_protocol import _DEFAULT_LIST_LIMIT_50
@@ -123,16 +126,13 @@ class SQLiteVersionRepository[T: BaseModel]:
         """Reconstruct a VersionSnapshot from a database row."""
         data = dict(row)
         try:
-            dt = datetime.fromisoformat(str(data["saved_at"]))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=UTC)
             return VersionSnapshot(
                 entity_id=data["entity_id"],
                 version=int(data["version"]),
                 content_hash=data["content_hash"],
                 snapshot=self._deserialize(data["snapshot"]),
                 saved_by=data["saved_by"],
-                saved_at=dt,
+                saved_at=coerce_row_timestamp(data["saved_at"]),
             )
         except json.JSONDecodeError as exc:
             context = f"{data.get('entity_id', '?')}@v{data.get('version', '?')}"
@@ -228,7 +228,7 @@ class SQLiteVersionRepository[T: BaseModel]:
                         version.content_hash,
                         serialized,
                         version.saved_by,
-                        version.saved_at.isoformat(),
+                        format_iso_utc(version.saved_at),
                     ),
                 )
                 await self._db.commit()

@@ -14,7 +14,7 @@ Constructor shapes diverge across the three impls (e.g. only
 than passing a uniform deps tuple where most fields would be ignored.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from synthorg.memory.injection import InjectionStrategy
 from synthorg.memory.retriever import ContextInjectionStrategy
@@ -48,29 +48,38 @@ def build_memory_injection_strategy(  # noqa: PLR0913 -- per-strategy deps surfa
 ) -> MemoryInjectionStrategy:
     """Build the strategy selected by ``config.strategy``.
 
+    Per-strategy deps below are accepted for every dispatch path; deps
+    that the selected strategy does not consume are silently ignored
+    (e.g. passing ``reformulator`` while building ``CONTEXT`` is not a
+    misconfiguration but also is not used). Each per-strategy entry in
+    the Args list below names the strategies that actually consume it.
+
     Args:
         config: Retrieval pipeline configuration. The ``strategy``
             field is the dispatch discriminator.
         backend: Memory backend shared by all three strategies.
         shared_store: Optional shared knowledge store
-            (context / tool-based only).
+            (context / tool-based only; ignored by self-editing).
         token_estimator: Token estimator for budget-fit
-            (context / self-editing only).
-        memory_filter: Post-ranking filter (context-only; ignored by
-            the other two impls).
+            (context / self-editing only; ignored by tool-based).
+        memory_filter: Post-ranking filter (context-only).
         hierarchical_retriever: Hierarchical retriever (context-only).
         reranker: Query-specific reranker (context-only).
         reformulator: Query reformulator (tool-based only; required
             when ``config.query_reformulation_enabled`` is True).
         sufficiency_checker: Pairs with ``reformulator`` (tool-based).
-        self_editing_config: Optional self-editing configuration.
+        self_editing_config: Self-editing configuration (self-editing
+            only).
 
     Returns:
         The concrete strategy matching ``config.strategy``.
 
     Raises:
-        ValueError: ``config.strategy`` is not one of the three
-            registered enum values.
+        TypeError: ``config.strategy`` is not one of the registered
+            enum values. Raised by ``assert_never``; mypy strict
+            catches this at the type-check boundary, so this is a
+            runtime guard for new variants added without updating the
+            factory.
     """
     match config.strategy:
         case InjectionStrategy.CONTEXT:
@@ -97,3 +106,5 @@ def build_memory_injection_strategy(  # noqa: PLR0913 -- per-strategy deps surfa
                 config=self_editing_config,
                 token_estimator=token_estimator,
             )
+        case _:  # pragma: no cover
+            assert_never(config.strategy)

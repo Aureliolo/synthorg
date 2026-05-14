@@ -25,7 +25,15 @@ class TrustStrategy(Protocol):
 
     @property
     def name(self) -> str:
-        """Strategy name identifier."""
+        """Strategy name identifier.
+
+        Used for log attribution and as
+        :attr:`TrustEvaluationResult.strategy_name`. MUST be a
+        non-empty, lower_snake_case string that is unique across the
+        strategies registered in :mod:`synthorg.security.trust.factory`.
+        Duplicate names would silently merge their attribution; an
+        empty name would emit blank fields downstream.
+        """
         ...
 
     async def evaluate(

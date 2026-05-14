@@ -10,6 +10,7 @@ site.
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from synthorg.backup.errors import BackupConfigurationError
 from synthorg.backup.handlers.postgres_persistence import (
     PostgresPersistenceComponentHandler,
 )
@@ -49,7 +50,7 @@ def _build_postgres_handler(
             "persistence.backend is 'postgres' but persistence.postgres is "
             "None; supply Postgres connection details to enable backup."
         )
-        raise ValueError(msg)
+        raise BackupConfigurationError(msg)
     return PostgresPersistenceComponentHandler(config=pg_config)
 
 

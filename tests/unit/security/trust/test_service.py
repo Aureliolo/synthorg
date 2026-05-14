@@ -29,16 +29,8 @@ if TYPE_CHECKING:
 class TestInitializeAgent:
     """Tests for TrustService.initialize_agent."""
 
-    def test_creates_state(self, trust_config: TrustConfig) -> None:
-        strategy = NoOpTrustStrategy(
-            initial_level=trust_config.initial_level,
-        )
-        service = TrustService(
-            strategy=strategy,
-            config=trust_config,
-        )
-
-        state = service.initialize_agent(NotBlankStr("agent-001"))
+    def test_creates_state(self, noop_trust_service: TrustService) -> None:
+        state = noop_trust_service.initialize_agent(NotBlankStr("agent-001"))
 
         assert isinstance(state, TrustState)
         assert state.agent_id == "agent-001"
@@ -46,36 +38,20 @@ class TestInitializeAgent:
 
     def test_state_retrievable_after_init(
         self,
-        trust_config: TrustConfig,
+        noop_trust_service: TrustService,
     ) -> None:
-        strategy = NoOpTrustStrategy(
-            initial_level=trust_config.initial_level,
-        )
-        service = TrustService(
-            strategy=strategy,
-            config=trust_config,
-        )
-
-        service.initialize_agent(NotBlankStr("agent-001"))
-        state = service.get_trust_state(NotBlankStr("agent-001"))
+        noop_trust_service.initialize_agent(NotBlankStr("agent-001"))
+        state = noop_trust_service.get_trust_state(NotBlankStr("agent-001"))
 
         assert state is not None
         assert state.agent_id == "agent-001"
 
-    def test_multiple_agents(self, trust_config: TrustConfig) -> None:
-        strategy = NoOpTrustStrategy(
-            initial_level=trust_config.initial_level,
-        )
-        service = TrustService(
-            strategy=strategy,
-            config=trust_config,
-        )
+    def test_multiple_agents(self, noop_trust_service: TrustService) -> None:
+        noop_trust_service.initialize_agent(NotBlankStr("agent-001"))
+        noop_trust_service.initialize_agent(NotBlankStr("agent-002"))
 
-        service.initialize_agent(NotBlankStr("agent-001"))
-        service.initialize_agent(NotBlankStr("agent-002"))
-
-        s1 = service.get_trust_state(NotBlankStr("agent-001"))
-        s2 = service.get_trust_state(NotBlankStr("agent-002"))
+        s1 = noop_trust_service.get_trust_state(NotBlankStr("agent-001"))
+        s2 = noop_trust_service.get_trust_state(NotBlankStr("agent-002"))
 
         assert s1 is not None
         assert s2 is not None

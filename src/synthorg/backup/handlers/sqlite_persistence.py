@@ -212,6 +212,15 @@ class SQLitePersistenceComponentHandler:
 
         Removes WAL/SHM sidecar files before opening the restored
         database to prevent stale WAL replay corruption.
+
+        Single-process precondition: the move / copy / integrity-check
+        sequence is not protected against a concurrent OS-level writer
+        touching ``db_path`` between steps. Restore MUST run only when
+        the application owns the database exclusively (the BackupService
+        lock guarantees this for in-process callers; deployments that
+        attach external pg_dump-style tools or share the SQLite file
+        across processes need their own file-lock around the restore
+        window before invoking this helper).
         """
         # Move current to .bak (including sidecars)
         if db_path.exists():

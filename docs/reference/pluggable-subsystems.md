@@ -101,6 +101,47 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `hr/evaluation/configurable_scorer.py::ConfigurablePillarScorer`: composes `(pillar, extractor)` to satisfy `PillarScoringStrategy`. Owns the shared "redistribute weights -> weighted-average -> clamp -> confidence -> log -> `PillarScore`" pipeline so the per-pillar extractors stay focused on data extraction.
 - `hr/evaluation/evaluator.py::EvaluationService`: factory + orchestrator. Each pillar has a `_default_<pillar>()` method that returns `ConfigurablePillarScorer(pillar, <Pillar>MetricExtractor())`. Callers can substitute any compatible `PillarScoringStrategy` per pillar via the constructor's `<pillar>_strategy` keyword arguments.
 
+### Memory injection strategy
+
+- `memory/injection.py`: `MemoryInjectionStrategy` Protocol + `InjectionStrategy` discriminator (`CONTEXT`, `TOOL_BASED`, `SELF_EDITING`).
+- Concrete implementations: `memory/context_injection.py::ContextInjectionStrategy`, `memory/tool_based.py::ToolBasedInjectionStrategy`, `memory/self_editing.py::SelfEditingMemoryStrategy`.
+- `memory/retrieval_config.py::MemoryRetrievalConfig.strategy`: discriminator.
+- `memory/injection_factory.py::build_memory_injection_strategy()`: match-based dispatch with `assert_never` exhaustiveness.
+
+### Engine recovery strategy
+
+- `engine/recovery.py`: `RecoveryStrategy` Protocol + `FailAndReassignStrategy`.
+- `engine/checkpoint/strategy.py::CheckpointRecoveryStrategy`: resume-from-checkpoint sibling.
+- `engine/recovery_config.py::EngineRecoveryConfig.strategy` (`RecoveryStrategyType`): discriminator.
+- `engine/recovery_factory.py::build_recovery_strategy()`: match-based dispatch; `RecoveryConfigError` surfaces missing `checkpoint_repo` / `checkpoint_config` at boot rather than at recovery time.
+
+### Conflict detector
+
+- `communication/meeting/conflict_detection.py`: `ConflictDetector` Protocol with six implementations (`KeywordConflictDetector`, `StructuredComparisonDetector`, `LlmJudgeDetector`, `EmbeddingSimilarityDetector`, `HybridDetector`, `AutoDetector`).
+- `communication/meeting/enums.py::ConflictDetectorType`: discriminator.
+- `communication/meeting/factory.py::build_conflict_detector()`: `StrategyRegistry` dispatch.
+
+### Trust strategy (conditional instantiation)
+
+- `security/trust/protocol.py`: `TrustStrategy` Protocol.
+- `security/trust/{weighted,per_category,milestone}_strategy.py`: three real implementations.
+- `security/trust/config.py::TrustConfig.strategy` (`TrustStrategyType` with a `DISABLED` value): discriminator.
+- `security/trust/factory.py::build_trust_strategy()`: registry dispatch that returns `None` for `DISABLED` so callers skip `TrustService` construction entirely (instead of wiring a no-op strategy).
+
+### Ontology versioning (inverted backend dependency)
+
+- `ontology/versioning.py`: pure `EntityDefinition` snapshot deserializers; carries no backend imports.
+- `persistence/sqlite/ontology_versioning.py::create_ontology_versioning()`: SQLite-side factory.
+- `persistence/postgres/ontology_versioning.py::create_postgres_ontology_versioning()`: Postgres-side factory.
+- Each backend's lifecycle helper composes the matching factory at startup, so the dependency arrow points `persistence -> ontology`, never the reverse.
+
+### Backup handler registry (backend-pluggable)
+
+- `backup/handlers/protocol.py`: `ComponentHandler` Protocol.
+- `backup/handlers/sqlite_persistence.py::SQLitePersistenceComponentHandler`, `backup/handlers/postgres_persistence.py::PostgresPersistenceComponentHandler`, `backup/handlers/memory.py::MemoryComponentHandler`, `backup/handlers/config_handler.py::ConfigComponentHandler`.
+- `backup/registry.py::PERSISTENCE_BACKUP_HANDLER_REGISTRY`: `StrategyRegistry` keyed on `config.persistence.backend` ("sqlite" / "postgres").
+- `backup/factory.py::build_backup_handlers()`: dispatches per `BackupComponent` and uses the registry for the persistence handler.
+
 ## Services are a distinct pattern (not pluggable subsystems)
 
 A **service** wraps one or more repositories to keep controllers thin and centralise audit logging, and MAY orchestrate multiple repositories (e.g. `WorkflowService` spans `workflow_definitions` + `workflow_versions`; `MemoryService` spans fine-tune checkpoints + runs + settings).

@@ -17,6 +17,8 @@ from synthorg.security.trust.config import (
     WeightedTrustWeights,
 )
 from synthorg.security.trust.enums import TrustStrategyType
+from synthorg.security.trust.service import TrustService
+from tests._shared.trust import NoOpTrustStrategy
 
 
 def make_performance_snapshot(
@@ -95,6 +97,20 @@ def weighted_config() -> TrustConfig:
                 requires_human_approval=True,
             ),
         },
+    )
+
+
+@pytest.fixture
+def noop_trust_service(trust_config: TrustConfig) -> TrustService:
+    """Pre-built :class:`TrustService` wired with :class:`NoOpTrustStrategy`.
+
+    Shared setup for tests that do not exercise a real strategy; lets
+    the assertion bodies focus on orchestration behaviour rather than
+    the construction boilerplate.
+    """
+    return TrustService(
+        strategy=NoOpTrustStrategy(initial_level=trust_config.initial_level),
+        config=trust_config,
     )
 
 

@@ -1,11 +1,11 @@
 """Test-only no-op trust strategy.
 
-Replaces the production ``DisabledTrustStrategy`` that was deleted by
-#1891 candidate 6. Production now skips ``TrustService`` construction
-entirely when trust is disabled (``build_trust_strategy`` returns
-``None``), but tests that exercise ``TrustService`` orchestration logic
-still need a strategy that satisfies the protocol without doing real
-evaluation work.
+Production code skips ``TrustService`` construction when trust is
+disabled (``build_trust_strategy`` returns ``None``), so there is no
+production ``TrustStrategy`` implementation safe for use as a test
+double. ``NoOpTrustStrategy`` satisfies the protocol with deterministic
+no-op behaviour for tests that exercise ``TrustService`` orchestration
+without driving real trust evaluation.
 """
 
 from synthorg.core.enums import ToolAccessLevel

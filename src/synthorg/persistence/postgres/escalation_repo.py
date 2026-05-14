@@ -34,6 +34,9 @@ from synthorg.communication.conflict_resolution.models import Conflict
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.observability.events.conflict import (
+    CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+)
 from synthorg.persistence._shared import parse_iso_utc
 
 if TYPE_CHECKING:
@@ -357,6 +360,13 @@ INSERT INTO conflict_escalations (
             )
             raise QueryError(msg) from exc
         ids = tuple(str(r[0]) for r in rows)
+        for escalation_id in ids:
+            logger.info(
+                CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+                escalation_id=escalation_id,
+                from_status=EscalationStatus.PENDING.value,
+                to_status=EscalationStatus.EXPIRED.value,
+            )
         await self._publish_notifies(ids, "expired")
         return ids
 
@@ -425,6 +435,12 @@ INSERT INTO conflict_escalations (
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+        logger.info(
+            CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+            escalation_id=escalation_id,
+            from_status=EscalationStatus.PENDING.value,
+            to_status=new_status.value,
+        )
         await self._publish_notify(escalation_id, new_status.value)
         return _row_to_escalation(updated_row)
 

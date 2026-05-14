@@ -7,7 +7,7 @@ connected :class:`CheckpointRepository`; absence raises
 rather than at recovery time.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from synthorg.engine.errors import RecoveryConfigError
 from synthorg.engine.recovery import FailAndReassignStrategy
@@ -75,3 +75,5 @@ def build_recovery_strategy(
                 heartbeat_repo=heartbeat_repo,
                 config=checkpoint_config,
             )
+        case _:  # pragma: no cover
+            assert_never(config.strategy)

@@ -117,7 +117,15 @@ class MeetingProtocolConfig(BaseModel):
     """Top-level meeting protocol configuration.
 
     Selects which protocol strategy to use and carries the
-    per-protocol settings.
+    per-protocol settings. The three sub-config fields below are all
+    materialised eagerly with sensible defaults; the factory consumes
+    ONLY the sub-config matching :attr:`protocol`. Setting fields on a
+    sub-config that does not match the active protocol (for example
+    ``position_papers.synthesizer = "alice"`` while ``protocol`` is
+    ``ROUND_ROBIN``) is silently ignored. Pydantic discriminated
+    unions would express this invariant in the type system but were
+    deferred so the YAML config can serialise every sub-config slot
+    independently without a discriminator wrapper.
 
     Attributes:
         protocol: Which protocol strategy to use.
@@ -125,9 +133,12 @@ class MeetingProtocolConfig(BaseModel):
             extracted during any protocol execution.
         max_tasks_per_meeting: Optional cap on how many tasks to create
             from a single meeting's action items.
-        round_robin: Round-robin protocol settings.
-        position_papers: Position-papers protocol settings.
-        structured_phases: Structured-phases protocol settings.
+        round_robin: Round-robin protocol settings (used only when
+            ``protocol == ROUND_ROBIN``).
+        position_papers: Position-papers protocol settings (used only
+            when ``protocol == POSITION_PAPERS``).
+        structured_phases: Structured-phases protocol settings (used
+            only when ``protocol == STRUCTURED_PHASES``).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

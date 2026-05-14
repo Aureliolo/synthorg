@@ -15,6 +15,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_FAILED,
@@ -31,15 +32,11 @@ _PG_DUMP_BINARY: Final[str] = "pg_dump"
 _PG_RESTORE_BINARY: Final[str] = "pg_restore"
 
 
-class PgToolUnavailableError(
-    RuntimeError
-):  # lint-allow: domain-error-hierarchy -- not HTTP-exposed
+class PgToolUnavailableError(DomainError):
     """The ``pg_dump`` or ``pg_restore`` binary is not on PATH."""
 
 
-class PgToolFailedError(
-    RuntimeError
-):  # lint-allow: domain-error-hierarchy -- not HTTP-exposed
+class PgToolFailedError(DomainError):
     """A ``pg_dump`` / ``pg_restore`` invocation exited non-zero."""
 
 
@@ -76,6 +73,13 @@ def _child_env(config: PostgresConfig) -> dict[str, str]:
     return env
 
 
+async def _terminate_proc(proc: asyncio.subprocess.Process) -> None:
+    """Kill *proc* and reap it. Safe to call after natural exit."""
+    if proc.returncode is None:
+        proc.kill()
+    await proc.wait()
+
+
 async def _run_pg_tool(
     binary: str,
     args: list[str],
@@ -88,6 +92,11 @@ async def _run_pg_tool(
 
     When ``output_path`` is provided, stdout is streamed to that file
     instead of buffered in memory (used by ``pg_dump`` -> file).
+
+    On any exception (``TimeoutError``, ``asyncio.CancelledError``, or
+    anything raised by the spawned process), the subprocess is killed
+    and reaped before propagating, so no zombie processes or orphaned
+    output files are left behind.
 
     Raises:
         PgToolFailedError: Non-zero exit.
@@ -108,9 +117,8 @@ async def _run_pg_tool(
                     proc.communicate(),
                     timeout=timeout_seconds,
                 )
-            except TimeoutError:
-                proc.kill()
-                await proc.wait()
+            except BaseException:
+                await _terminate_proc(proc)
                 raise
         return b"", stderr or b""
     proc = await asyncio.create_subprocess_exec(
@@ -125,9 +133,8 @@ async def _run_pg_tool(
             proc.communicate(),
             timeout=timeout_seconds,
         )
-    except TimeoutError:
-        proc.kill()
-        await proc.wait()
+    except BaseException:
+        await _terminate_proc(proc)
         raise
     if proc.returncode != 0:
         msg = (
@@ -243,6 +250,12 @@ async def pg_restore_list(
     A non-empty TOC indicates the dump file is structurally readable.
     Returns ``0`` if the listing succeeds but contains no entries (which
     callers treat as an invalid backup).
+
+    Validation is performed against the local dump file only;
+    ``pg_restore --list`` does not connect to a database, so no
+    ``PostgresConfig`` is required and ``PGPASSWORD`` is intentionally
+    not injected. Validating a dump that lives on a remote host would
+    require fetching it locally first.
 
     Raises:
         PgToolUnavailableError: ``pg_restore`` is not on PATH.

@@ -27,6 +27,18 @@ class RecoveryStrategyType(StrEnum):
 class EngineRecoveryConfig(BaseModel):
     """Configuration block for engine recovery strategy selection.
 
+    The CHECKPOINT strategy requires two runtime collaborators that
+    are not part of the config (``CheckpointRepository`` and
+    ``CheckpointConfig``); they are supplied by the active
+    ``PersistenceBackend`` lifecycle. Selecting CHECKPOINT here and
+    failing to wire those collaborators raises
+    :class:`synthorg.engine.errors.RecoveryConfigError` at the moment
+    :func:`synthorg.engine.recovery_factory.build_recovery_strategy`
+    runs at boot, not at first recovery. The dependency cannot be
+    expressed as a Pydantic validator because the collaborators live
+    outside this config model; treat the factory call as the parse-time
+    boundary for this invariant.
+
     Attributes:
         strategy: Which strategy to instantiate at boot. Defaults to
             ``FAIL_REASSIGN`` so existing deployments keep their

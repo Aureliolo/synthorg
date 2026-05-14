@@ -31,6 +31,9 @@ from synthorg.communication.conflict_resolution.models import Conflict
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.observability.events.conflict import (
+    CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+)
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
@@ -296,7 +299,15 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 )
                 await self._db.rollback()
                 raise QueryError(msg) from exc
-        return tuple(str(r["id"]) for r in rows)
+        expired_ids = tuple(str(r["id"]) for r in rows)
+        for escalation_id in expired_ids:
+            logger.info(
+                CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+                escalation_id=escalation_id,
+                from_status=EscalationStatus.PENDING.value,
+                to_status=EscalationStatus.EXPIRED.value,
+            )
+        return expired_ids
 
     async def close(self) -> None:
         """No-op: the connection is owned by the persistence backend."""
@@ -408,4 +419,10 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         if updated is None:
             msg = f"Escalation {escalation_id!r} vanished after update"
             raise QueryError(msg)
+        logger.info(
+            CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+            escalation_id=escalation_id,
+            from_status=EscalationStatus.PENDING.value,
+            to_status=new_status.value,
+        )
         return updated

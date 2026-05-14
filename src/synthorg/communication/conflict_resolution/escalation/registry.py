@@ -55,6 +55,12 @@ class PendingFuturesRegistry:
             loop = asyncio.get_running_loop()
             future: asyncio.Future[EscalationDecision] = loop.create_future()
             self._futures[escalation_id] = future
+        # Log + return AFTER releasing the lock so the structured-log
+        # I/O does not extend the critical section. The Future is
+        # already published into ``self._futures`` under the lock, so a
+        # ``resolve()`` racing this return point sees the entry and
+        # completes the Future correctly -- the lock orders the map
+        # mutation, not the bookkeeping log line.
         logger.info(
             CONFLICT_ESCALATION_QUEUED,
             escalation_id=escalation_id,

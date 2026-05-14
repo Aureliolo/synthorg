@@ -24,7 +24,6 @@ Example::
 """
 
 import re
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import psycopg
@@ -43,6 +42,7 @@ from synthorg.observability.events.versioning import (
     VERSION_LISTED,
     VERSION_SAVE_FAILED,
 )
+from synthorg.persistence._shared.datetime_marshaller import coerce_row_timestamp
 from synthorg.persistence.version_protocol import _DEFAULT_LIST_LIMIT_50
 from synthorg.versioning.models import VersionSnapshot
 
@@ -120,15 +120,6 @@ class PostgresVersionRepository[T: BaseModel]:
     def _deserialize_row(self, row: dict[str, object]) -> VersionSnapshot[T]:
         """Reconstruct a VersionSnapshot from a database row."""
         try:
-            dt = row["saved_at"]
-            if isinstance(dt, str):
-                # Shouldn't happen with TIMESTAMPTZ, but be defensive
-                dt_parsed = datetime.fromisoformat(dt)
-                if dt_parsed.tzinfo is None:
-                    dt_parsed = dt_parsed.replace(tzinfo=UTC)
-            else:
-                # TIMESTAMPTZ comes as datetime
-                dt_parsed = dt  # type: ignore[assignment]
             entity_id_str: str = str(row["entity_id"])
             version_int: int = int(row["version"])  # type: ignore[call-overload]
             content_hash_str: str = str(row["content_hash"])
@@ -139,7 +130,7 @@ class PostgresVersionRepository[T: BaseModel]:
                 content_hash=content_hash_str,
                 snapshot=self._deserialize(row["snapshot"]),
                 saved_by=saved_by_str,
-                saved_at=dt_parsed,
+                saved_at=coerce_row_timestamp(row["saved_at"]),
             )
         except ValidationError as exc:
             context = f"{row.get('entity_id', '?')}@v{row.get('version', '?')}"
