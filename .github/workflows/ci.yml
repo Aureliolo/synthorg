@@ -59,6 +59,10 @@ jobs:
               - 'uv.lock'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
+              # WS_PROTOCOL_VERSION parity gate runs in Lint; it must
+              # also fire on TS-only bumps so an out-of-sync constant
+              # cannot land without the gate noticing.
+              - 'web/src/utils/constants.ts'
             dashboard:
               - 'web/**'
               - 'src/synthorg/api/schemas/**'
@@ -139,6 +143,9 @@ jobs:
 
       - name: Typed-boundary contract gate (RFC #1711)
         run: uv run python scripts/check_boundary_typed.py
+
+      - name: WS_PROTOCOL_VERSION parity gate (Python <-> TypeScript)
+        run: uv run python scripts/check_ws_protocol_version_in_sync.py
 
       - name: Dead API endpoints gate (frontend ↔ backend route parity)
         run: >-
