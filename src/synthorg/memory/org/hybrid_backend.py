@@ -147,12 +147,14 @@ class HybridPromptRetrievalBackend:
         )
         dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
         facts = static + dynamic
-        logger.debug(ORG_MEMORY_POLICIES_LISTED, count=len(facts))
         if limit is None and offset == 0:
+            logger.debug(ORG_MEMORY_POLICIES_LISTED, count=len(facts))
             return facts
         offset = max(0, offset)
         end = None if limit is None else offset + max(0, limit)
-        return facts[offset:end]
+        page = facts[offset:end]
+        logger.debug(ORG_MEMORY_POLICIES_LISTED, count=len(page))
+        return page
 
     async def count_policies(self) -> int:
         """Return the unfiltered count of core policy facts."""

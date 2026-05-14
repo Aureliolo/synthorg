@@ -164,12 +164,16 @@ def _acquire_shared_postgres(state_file: Path) -> dict[str, Any]:
     from testcontainers.postgres import PostgresContainer
 
     if state_file.exists():
-        data: dict[str, Any] = json.loads(state_file.read_text())
-        if data.get("skip_reason"):
-            pytest.skip(data["skip_reason"])
-        data["refcount"] = int(data.get("refcount", 0)) + 1
-        state_file.write_text(json.dumps(data))
-        return data
+        try:
+            data: dict[str, Any] = json.loads(state_file.read_text())
+        except json.JSONDecodeError:
+            state_file.unlink(missing_ok=True)
+        else:
+            if data.get("skip_reason"):
+                pytest.skip(data["skip_reason"])
+            data["refcount"] = int(data.get("refcount", 0)) + 1
+            state_file.write_text(json.dumps(data))
+            return data
     try:
         container = PostgresContainer("postgres:18-alpine")
         container.start()

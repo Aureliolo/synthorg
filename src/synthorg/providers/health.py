@@ -352,9 +352,9 @@ class ProviderHealthTracker:
                 by_provider[r.provider_name].append(r)
 
         items = sorted(by_provider.items())
-        if limit is not None or offset:
+        if limit is not None:
             offset = max(0, offset)
-            end = None if limit is None else offset + max(0, limit)
+            end = offset + max(0, limit)
             items = items[offset:end]
         return MappingProxyType(
             {name: _aggregate_records(records) for name, records in items}
