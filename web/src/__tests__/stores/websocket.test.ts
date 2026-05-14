@@ -153,15 +153,24 @@ function resetStore() {
 // past the 30s backoff ceiling before the previous rejection has
 // reached ``scheduleReconnect()``, so the loop runs all 20 iterations
 // while ``reconnectAttempts`` lags behind and exhaustion never flips.
-// Capped at 60 passes (3x ``WS_MAX_RECONNECT_ATTEMPTS``) so an actual
-// scheduler bug surfaces as a test failure rather than a hang.
+// The cap is derived from ``WS_MAX_RECONNECT_ATTEMPTS`` so a future
+// bump of the store-side limit drags the test budget along with it
+// instead of silently exiting short or capping at a stale literal.
+// Throwing on budget exhaustion turns an actual scheduler bug into a
+// loud test failure rather than a silent hang or a false negative
+// from a downstream assertion.
+const RECONNECT_EXHAUSTION_DRAIN_PASSES = WS_MAX_RECONNECT_ATTEMPTS * 3
+
 async function drainUntilReconnectExhausted(): Promise<void> {
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < RECONNECT_EXHAUSTION_DRAIN_PASSES; i++) {
     if (useWebSocketStore.getState().reconnectExhausted) return
     await vi.advanceTimersByTimeAsync(30_000)
     await vi.runAllTimersAsync()
     await new Promise<void>((resolve) => setImmediate(resolve))
   }
+  throw new Error(
+    `reconnectExhausted did not flip after ${RECONNECT_EXHAUSTION_DRAIN_PASSES} drain passes`,
+  )
 }
 
 describe('websocket store', () => {

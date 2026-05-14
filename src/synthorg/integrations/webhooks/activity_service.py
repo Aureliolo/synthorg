@@ -63,6 +63,14 @@ class WebhookActivityService:
             ValidationError: If ``limit`` is outside ``[1, 500]``.
         """
         if limit < _MIN_LIMIT or limit > _MAX_LIMIT:
+            logger.warning(
+                WEBHOOK_ACTIVITY_LISTED,
+                connection_name=str(connection_name),
+                limit=limit,
+                reason="limit_out_of_range",
+                min_limit=_MIN_LIMIT,
+                max_limit=_MAX_LIMIT,
+            )
             msg = f"limit must be between {_MIN_LIMIT} and {_MAX_LIMIT}; got {limit}"
             raise ValidationError(msg)
         receipts = await self._receipts_repo.get_by_connection(
