@@ -394,9 +394,14 @@ class SelfEditingMemoryStrategy:
             token_budget: Maximum tokens for the core memory block.
 
         Returns:
-            Tuple with a single SYSTEM ``ChatMessage``, or ``()`` if
-            the core is empty, the budget is zero, or the backend is
-            unavailable.
+            ``(directive_message, core_memory_message)`` when at least
+            one core memory entry fits the token budget. Both elements
+            are :class:`ChatMessage` with ``MessageRole.SYSTEM``; the
+            directive message comes from
+            :func:`format_memory_context_with_directive` and pins the
+            untrusted-content directive ahead of the fenced memory
+            block. Returns ``()`` when the core is empty, the budget
+            is zero, or the backend is unavailable.
         """
         try:
             entries = await self._backend.retrieve(agent_id, self._core_query())

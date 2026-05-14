@@ -10,15 +10,20 @@ on request handling:
   that compose the durable idempotency-key for a webhook delivery.
 * :func:`_get_activity_service` / :func:`_get_replay_protector`: lazy
   accessors cached on ``app_state``. Both serialise the construct-and-
-  store step through an :class:`asyncio.Lock` so two concurrent first
+  store step through a :class:`threading.Lock` so two concurrent first
   requests cannot both build an instance and have the second silently
   overwrite the first. The lost-write is especially harmful for the
   replay protector, whose in-process nonce cache is the source of
-  truth between durable-idempotency reads.
+  truth between durable-idempotency reads. A thread lock (not an
+  ``asyncio.Lock``) is used here because the critical section is
+  purely synchronous (one getattr, one constructor call, one setattr)
+  and a thread lock has no event-loop affinity, so the same module
+  remains usable when a test fixture tears down its loop between
+  cases.
 """
 
-import asyncio
 import hashlib
+import threading
 from typing import Final
 
 from litestar.datastructures import State  # noqa: TC002
@@ -104,10 +109,14 @@ def _build_idem_key(
 
 
 # Module-level locks serialise the construct-and-store half of the
-# lazy-init helpers below. They are created without a running event
-# loop and bind to one on first use, which is safe under Python 3.10+.
-_activity_service_lock: Final[asyncio.Lock] = asyncio.Lock()
-_replay_protector_lock: Final[asyncio.Lock] = asyncio.Lock()
+# lazy-init helpers below. ``threading.Lock`` (not ``asyncio.Lock``)
+# is used so the lock has no event-loop affinity: a test fixture that
+# tears down its loop between cases cannot leave these locks bound to
+# a closed loop, and the critical sections held under each lock are
+# purely synchronous (one getattr, one constructor call, one setattr)
+# so there is no need for cooperative-scheduling semantics.
+_activity_service_lock: Final[threading.Lock] = threading.Lock()
+_replay_protector_lock: Final[threading.Lock] = threading.Lock()
 
 
 async def _get_activity_service(state: State) -> WebhookActivityService:
@@ -127,7 +136,7 @@ async def _get_activity_service(state: State) -> WebhookActivityService:
     )
     if cached is not None:
         return cached
-    async with _activity_service_lock:
+    with _activity_service_lock:
         cached = getattr(app_state, "_webhook_activity_service", None)
         if cached is None:
             cached = WebhookActivityService(
@@ -157,7 +166,7 @@ async def _get_replay_protector(state: State) -> ReplayProtector:
     )
     if cached is not None:
         return cached
-    async with _replay_protector_lock:
+    with _replay_protector_lock:
         cached = getattr(app_state, "_webhook_replay_protector", None)
         if cached is None:
             cfg = app_state.config.integrations.webhooks

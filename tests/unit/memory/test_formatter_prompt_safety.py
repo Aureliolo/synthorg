@@ -66,7 +66,7 @@ class TestMemoryFormatterFence:
         assert content.count(f"</{TAG_MEMORY_ENTRY}>") == 3
 
     def test_no_outer_fence(self) -> None:
-        """The pre-fix outer ``--- AGENT MEMORY ---`` delimiter is gone."""
+        """Plaintext ``--- AGENT MEMORY ---`` delimiters must never appear."""
         memories = (_make_scored("content"),)
         result = _format_memory_context(
             memories,
@@ -78,8 +78,8 @@ class TestMemoryFormatterFence:
         assert "--- AGENT MEMORY ---" not in content
         assert "--- END MEMORY ---" not in content
 
-    def test_prior_marker_inside_content_passes_through(self) -> None:
-        """The ``--- AGENT MEMORY ---`` text carries no special meaning anymore."""
+    def test_marker_text_inside_content_passes_through(self) -> None:
+        """Plain ``--- AGENT MEMORY ---`` text inside content is inert payload."""
         marker = "step 1: --- AGENT MEMORY --- (note above) --- END MEMORY ---"
         result = _format_memory_context(
             (_make_scored(marker),),
@@ -88,10 +88,10 @@ class TestMemoryFormatterFence:
         )
         content = result[0].content
         assert content is not None
-        # The text survives verbatim inside the fence: under the
-        # tag-based contract it is just data.
+        # The marker text is payload, not structure, and passes
+        # through the fence verbatim.
         assert marker in content
-        # Exactly one fence (the wrapper's).
+        # Exactly one wrapper fence per entry.
         assert content.count(f"<{TAG_MEMORY_ENTRY}>") == 1
         assert content.count(f"</{TAG_MEMORY_ENTRY}>") == 1
 
@@ -135,12 +135,9 @@ class TestMemoryFormatterBreakoutEscape:
         )
         content = result[0].content
         assert content is not None
-        # The wrapper does NOT escape the open tag (only the close
-        # tag is the structural boundary). The opening tag inside the
-        # body is benign because there is no matching unescaped close
-        # tag inside the body (the inner close was escaped via the
-        # break-out rule, so the outer close remains the only valid
-        # boundary).
+        # Only closing tags are structural boundaries; the wrapper
+        # leaves opening tags unmolested because an open without an
+        # unescaped matching close cannot terminate the fence.
         assert content.count(f"</{TAG_MEMORY_ENTRY}>") == 1
 
 

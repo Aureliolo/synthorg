@@ -42,9 +42,12 @@ class FakeUserRepository:
         Tests sometimes need to pre-populate a target user from sync
         fixture helpers (where ``await`` is not available). Routing
         through this method keeps the internal storage encapsulated:
-        callers do not poke at the underlying dict.
+        callers do not poke at the underlying dict. The defensive
+        deepcopy matches ``save()`` / ``get()`` so a later mutation of
+        the caller's ``user`` object cannot bleed into repository
+        state.
         """
-        self._users[user.id] = user
+        self._users[user.id] = copy.deepcopy(user)
 
     async def save(self, user: User) -> None:
         existing = self._users.get(user.id)
