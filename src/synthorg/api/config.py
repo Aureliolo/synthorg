@@ -5,7 +5,6 @@ authentication, and the top-level ``ApiConfig`` that aggregates
 them all.
 """
 
-import ipaddress
 from enum import StrEnum
 from typing import Any, Self
 
@@ -16,9 +15,6 @@ from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import (
-    API_NETWORK_EXPOSURE_WARNING,
-)
 
 logger = get_logger(__name__)
 
@@ -241,16 +237,6 @@ class ServerConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    host: str = Field(
-        default="127.0.0.1",
-        description="Bind address",
-    )
-    port: int = Field(
-        default=3001,
-        ge=1,
-        le=65535,
-        description="Bind port",
-    )
     reload: bool = Field(
         default=False,
         description="Enable auto-reload for development",
@@ -271,107 +257,6 @@ class ServerConfig(BaseModel):
         ge=0,
         description="WebSocket pong timeout in seconds",
     )
-    ssl_certfile: str | None = Field(
-        default=None,
-        description="Path to SSL certificate file (PEM format)",
-    )
-    ssl_keyfile: str | None = Field(
-        default=None,
-        description="Path to SSL private key file (PEM format)",
-    )
-    ssl_ca_certs: str | None = Field(
-        default=None,
-        description=("Path to CA bundle for client certificate verification"),
-    )
-    trusted_proxies: tuple[str, ...] = Field(
-        default=(),
-        description=(
-            "IP addresses/CIDRs trusted as reverse proxies "
-            "for X-Forwarded-For/Proto header processing"
-        ),
-    )
-    compression_minimum_size_bytes: int = Field(
-        default=1000,
-        ge=100,
-        le=10_000,
-        description=(
-            "Minimum response body size in bytes before brotli compression"
-            " is applied (mirrors the api.compression_minimum_size_bytes"
-            " setting; restart required)"
-        ),
-    )
-    request_max_body_size_bytes: int = Field(
-        default=52_428_800,
-        ge=1_000_000,
-        le=536_870_912,
-        description=(
-            "Maximum accepted HTTP request body size in bytes (mirrors"
-            " the api.request_max_body_size_bytes setting; restart"
-            " required)"
-        ),
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_empty_tls(cls, data: Any) -> Any:
-        """Normalize empty-string TLS paths to ``None``."""
-        if not isinstance(data, dict):
-            return data
-        overrides: dict[str, object] = {}
-        for key in ("ssl_certfile", "ssl_keyfile", "ssl_ca_certs"):
-            val = data.get(key)
-            if isinstance(val, str) and not val.strip():
-                overrides[key] = None
-        if not overrides:
-            return data
-        return {**data, **overrides}
-
-    @model_validator(mode="after")
-    def _validate_tls_pair(self) -> Self:
-        """Require both cert and key when either is set."""
-        has_cert = self.ssl_certfile is not None
-        has_key = self.ssl_keyfile is not None
-        has_ca = self.ssl_ca_certs is not None
-
-        if has_cert and not has_key:
-            msg = "ssl_keyfile is required when ssl_certfile is set"
-            raise ValueError(msg)
-        if has_key and not has_cert:
-            msg = "ssl_certfile is required when ssl_keyfile is set"
-            raise ValueError(msg)
-        if has_ca and not has_cert:
-            msg = "ssl_certfile is required when ssl_ca_certs is set"
-            raise ValueError(msg)
-
-        # Validate trusted_proxies as valid IP/CIDR entries.
-        for entry in self.trusted_proxies:
-            try:
-                network = ipaddress.ip_network(entry, strict=False)
-            except ValueError:
-                msg = (
-                    f"Invalid trusted_proxies entry: {entry!r} "
-                    f"(must be an IP address or CIDR notation)"
-                )
-                raise ValueError(msg) from None
-            if network.prefixlen == 0:
-                msg = (
-                    f"Overly broad trusted_proxies entry: {entry!r} "
-                    f"trusts all addresses -- use specific IPs/CIDRs"
-                )
-                raise ValueError(msg)
-
-        _wildcard_hosts = {"0.0.0.0", "::"}  # noqa: S104
-        if self.host in _wildcard_hosts and not has_cert and not self.trusted_proxies:
-            logger.warning(
-                API_NETWORK_EXPOSURE_WARNING,
-                host=self.host,
-                note=(
-                    "Server binds to all interfaces without TLS "
-                    "or trusted proxy configuration"
-                ),
-            )
-
-        return self
 
 
 class ApiConfig(BaseModel):

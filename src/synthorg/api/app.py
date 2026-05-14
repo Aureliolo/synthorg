@@ -180,6 +180,45 @@ def _resolve_rate_limiter_enabled() -> bool:
     return bool(resolved.value)
 
 
+def _parse_str_tuple_json(raw: str) -> tuple[str, ...] | None:
+    """Parse a JSON-encoded list of strings into a tuple."""
+    import json  # noqa: PLC0415
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, list):
+        return None
+    if not all(isinstance(item, str) for item in parsed):
+        return None
+    return tuple(parsed)
+
+
+def _resolve_api_str_tuple(key: str) -> tuple[str, ...]:
+    """Resolve a JSON-tuple-typed api.* setting at boot."""
+    resolved = resolve_init_value(
+        SettingNamespace.API,
+        key,
+        parse=_parse_str_tuple_json,
+    )
+    if isinstance(resolved.value, tuple):
+        return resolved.value
+    return ()
+
+
+def _resolve_api_int(key: str) -> int:
+    """Resolve an integer-typed api.* setting at boot."""
+    resolved = resolve_init_value(SettingNamespace.API, key, parse=int)
+    return int(resolved.value)
+
+
+def _resolve_api_str(key: str) -> str:
+    """Resolve a string-typed api.* setting at boot."""
+    resolved = resolve_init_value(SettingNamespace.API, key)
+    return str(resolved.value)
+
+
 def _build_default_approval_timeout_scheduler(
     *,
     approval_store: ApprovalStoreProtocol,
@@ -1131,6 +1170,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if not _skip_lifecycle_shutdown:
         shutdown = [*shutdown, per_op_inflight_store.close]
 
+    _trusted_proxies = _resolve_api_str_tuple("trusted_proxies")
+
     return Litestar(
         route_handlers=[api_router, *a2a_root_controllers],
         # Disable Litestar's built-in logging config to preserve the
@@ -1157,27 +1198,25 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 # the proxy's IP.  The raw frozenset is kept for
                 # diagnostic reads; the parsed tuple beside it is what
                 # the guards consult per-request.
-                "per_op_trusted_proxies": frozenset(
-                    api_config.server.trusted_proxies,
-                ),
+                "per_op_trusted_proxies": frozenset(_trusted_proxies),
                 "per_op_trusted_networks": parse_trusted_networks(
-                    frozenset(api_config.server.trusted_proxies),
+                    frozenset(_trusted_proxies),
                 ),
             },
         ),
         cors_config=CORSConfig(
-            allow_origins=list(api_config.cors.allowed_origins),
+            allow_origins=list(_resolve_api_str_tuple("cors_allowed_origins")),
             allow_methods=list(api_config.cors.allow_methods),  # type: ignore[arg-type]
             allow_headers=list(api_config.cors.allow_headers),
             allow_credentials=api_config.cors.allow_credentials,
         ),
         compression_config=CompressionConfig(
             backend="brotli",
-            minimum_size=api_config.server.compression_minimum_size_bytes,
+            minimum_size=_resolve_api_int("compression_minimum_size_bytes"),
         ),
         # Must be >= artifact API max payload (50 MB) so endpoint-level
         # validation can enforce exact storage limits.
-        request_max_body_size=api_config.server.request_max_body_size_bytes,
+        request_max_body_size=_resolve_api_int("request_max_body_size_bytes"),
         before_send=[security_headers_hook],
         middleware=middleware,
         plugins=plugins,
