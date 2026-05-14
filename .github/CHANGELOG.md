@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.8.4](https://github.com/Aureliolo/synthorg/compare/v0.8.3...v0.8.4) (2026-05-14)
+
+
+### Features
+
+* API hardening work package ([#1884](https://github.com/Aureliolo/synthorg/issues/1884)) ([#1899](https://github.com/Aureliolo/synthorg/issues/1899)) ([a58723a](https://github.com/Aureliolo/synthorg/commit/a58723a139ffe2c75d6d11cedd44db8b0a35cc2c))
+* async safety + observability work package ([#1885](https://github.com/Aureliolo/synthorg/issues/1885)) ([#1896](https://github.com/Aureliolo/synthorg/issues/1896)) ([f938cfb](https://github.com/Aureliolo/synthorg/commit/f938cfbb33637446dc2a46182f46fcfa46d13630))
+* delegate worktree setup to wt-synthorg.ps1 helper when on PATH ([#1892](https://github.com/Aureliolo/synthorg/issues/1892)) ([0a23cd8](https://github.com/Aureliolo/synthorg/commit/0a23cd81c280467494afcbb84105e6c14b0af6d8))
+* frontend UX + E2E coverage work package ([#1886](https://github.com/Aureliolo/synthorg/issues/1886)) ([#1894](https://github.com/Aureliolo/synthorg/issues/1894)) ([4b85fce](https://github.com/Aureliolo/synthorg/commit/4b85fce84d879e1ee85f0e3507839a6519bc24e8))
+
+
+### Bug Fixes
+
+* dashboard broken flows + provider sync safety ([#1897](https://github.com/Aureliolo/synthorg/issues/1897)) ([0daff6c](https://github.com/Aureliolo/synthorg/commit/0daff6c39ad0a105ea3437e06b84d798f918bf07))
+* log-level audit, startup-ordering fixes, and web UI polish ([#1902](https://github.com/Aureliolo/synthorg/issues/1902)) ([e03e11e](https://github.com/Aureliolo/synthorg/commit/e03e11ed7ef11ecced998303ce6ce8a5cbe8aba8))
+* symmetric SynthOrg/DHI image verification cache ([#1878](https://github.com/Aureliolo/synthorg/issues/1878)) ([1e1764e](https://github.com/Aureliolo/synthorg/commit/1e1764ea9cea6fe81a759dbd16a775e843125ce4))
+* **web/setup:** tighten validator, docs, tokens, and a11y from pre-PR review ([#1879](https://github.com/Aureliolo/synthorg/issues/1879)) ([3e172df](https://github.com/Aureliolo/synthorg/commit/3e172df691e3a17376e16103181194184987cae0))
+* **web:** replace async-leak ceiling with per-test active-handle detection ([#1905](https://github.com/Aureliolo/synthorg/issues/1905)) ([222f1a1](https://github.com/Aureliolo/synthorg/commit/222f1a19d44440c22d7db9885086c574fab6819a))
+
+
+### Refactoring
+
+* centralization sweep (factories, normalization, typed boundaries, utility splits) ([#1900](https://github.com/Aureliolo/synthorg/issues/1900)) ([8c052a3](https://github.com/Aureliolo/synthorg/commit/8c052a36dc68c4ddc1c6538bdda3fbb955756b26)), closes [#1888](https://github.com/Aureliolo/synthorg/issues/1888)
+* **persistence:** encapsulate SQLite write lock behind backend.write_context ([#1895](https://github.com/Aureliolo/synthorg/issues/1895)) ([e553020](https://github.com/Aureliolo/synthorg/commit/e55302045f0418458b6d238072c1629a59a0d1a3)), closes [#1887](https://github.com/Aureliolo/synthorg/issues/1887)
+* pluggable subsystem cleanup ([#1891](https://github.com/Aureliolo/synthorg/issues/1891)) ([#1901](https://github.com/Aureliolo/synthorg/issues/1901)) ([e5ff800](https://github.com/Aureliolo/synthorg/commit/e5ff800897230b7477c907df1f33df170ef1c0c5))
+
+
+### Documentation
+
+* documentation accuracy + stats hygiene ([#1893](https://github.com/Aureliolo/synthorg/issues/1893)) ([f4f07e4](https://github.com/Aureliolo/synthorg/commit/f4f07e4b7791a6e54dee9493e105e93babb52656))
+
+
+### CI/CD
+
+* retry timeout-prone steps with nick-fields/retry@v4.0.0 ([#1898](https://github.com/Aureliolo/synthorg/issues/1898)) ([ded5bd6](https://github.com/Aureliolo/synthorg/commit/ded5bd6c00939aacf82f6a8debed44927f69f139))
+
 ## [0.8.3](https://github.com/Aureliolo/synthorg/compare/v0.8.2...v0.8.3) (2026-05-12)
 
 
