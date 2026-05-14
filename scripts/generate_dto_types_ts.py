@@ -36,6 +36,7 @@ Usage::
 """
 
 import argparse
+import inspect
 import json
 import os
 import re
@@ -43,6 +44,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final
 
@@ -102,9 +104,6 @@ def _collect_strenum_classes() -> dict[str, type]:
     up automatically. Conflicts (two distinct classes sharing a name)
     drop the entry to avoid a silent wrong mapping.
     """
-    import sys
-    from enum import StrEnum
-
     name_to_class: dict[str, type] = {}
     conflicts: set[str] = set()
     for module in list(sys.modules.values()):
@@ -142,8 +141,6 @@ def _normalise_enum_descriptions(schema: dict[str, Any]) -> dict[str, Any]:
     with the class's own docstring (or removing it when the class has
     none) makes the export byte-stable.
     """
-    import inspect
-
     name_to_class = _collect_strenum_classes()
     schemas = schema.get("components", {}).get("schemas", {})
     for schema_name, defn in schemas.items():
@@ -156,7 +153,7 @@ def _normalise_enum_descriptions(schema: dict[str, Any]) -> dict[str, Any]:
             continue
         docstring = inspect.getdoc(cls)
         if docstring:
-            defn["description"] = f"{docstring}\n"
+            defn["description"] = docstring
         else:
             defn.pop("description", None)
     return schema

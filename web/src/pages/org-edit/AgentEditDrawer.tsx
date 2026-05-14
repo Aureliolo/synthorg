@@ -90,7 +90,11 @@ export function AgentEditDrawer({
         role: form.role.trim() || undefined,
         department: form.department as UpdateAgentOrgRequest['department'],
         level: form.level,
-        autonomy_level: null,
+        // UpdateAgentOrgRequest.autonomy_level is required on the
+        // wire; preserve the existing value so non-autonomy edits
+        // don't silently reset it (the previous explicit ``null``
+        // wiped the field on every save).
+        autonomy_level: agent.autonomy_level,
       })
       onClose()
     } catch (err) {

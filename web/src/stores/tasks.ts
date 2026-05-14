@@ -6,6 +6,7 @@ import { createLogger } from '@/lib/logger'
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { useToastStore } from '@/stores/toast'
 import {
+  ARTIFACT_TYPE_VALUES,
   PRIORITY_VALUES,
   TASK_SOURCE_VALUES,
   TASK_STATUS_VALUES as TASK_STATUS_VALUES_TUPLE,
@@ -156,7 +157,10 @@ function sanitizeTask(c: Task): Task {
     dependencies: sanitizeIds(c.dependencies),
     artifacts_expected: c.artifacts_expected.map((a) => ({
       path: sanitizeWsString(a.path, 256) ?? '',
-      type: a.type,
+      type: sanitizeWsEnum(a.type, ARTIFACT_TYPE_VALUES, 'code', {
+        maxLen: 64,
+        field: 'task.artifacts_expected.type',
+      }),
     })),
     acceptance_criteria: c.acceptance_criteria.map((ac) => ({
       description: sanitizeWsString(ac.description, 512) ?? '',
@@ -189,34 +193,35 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((dep) => typeof dep === 'string')
 }
 
-/** Each ``artifacts_expected`` entry must have string ``name`` + ``type``. */
+/** Each ``artifacts_expected`` entry must have string ``path`` + ``type``. */
 function isArtifactsExpectedShape(
   value: unknown,
-): value is Array<{ name: string; type: string }> {
+): value is Array<{ path: string; type: string }> {
   if (!Array.isArray(value)) return false
   return value.every((entry) => {
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return false
-    const e = entry as { name?: unknown; type?: unknown }
-    return typeof e.name === 'string' && typeof e.type === 'string'
+    const e = entry as { path?: unknown; type?: unknown }
+    return typeof e.path === 'string' && typeof e.type === 'string'
   })
 }
 
 /**
  * Each ``acceptance_criteria`` entry must be a non-null object with a
- * string ``description`` AND a boolean ``met`` flag. Both fields are
- * part of the declared ``Task.acceptance_criteria`` shape; asserting
- * only ``description`` would let a malformed payload build a ``Task``
- * with ``criterion.met`` typed as something other than ``boolean``
- * and break every downstream consumer that branches on it.
+ * string ``description``. ``met`` is optional/nullable on the wire
+ * (sanitizeTask defaults to ``false`` when absent); accept boolean,
+ * null, or undefined here so valid frames are not dropped.
  */
 function isAcceptanceCriteriaShape(
   value: unknown,
-): value is Array<{ description: string; met: boolean }> {
+): value is Array<{ description: string; met?: boolean | null }> {
   if (!Array.isArray(value)) return false
   return value.every((ac) => {
     if (typeof ac !== 'object' || ac === null || Array.isArray(ac)) return false
     const entry = ac as { description?: unknown; met?: unknown }
-    return typeof entry.description === 'string' && typeof entry.met === 'boolean'
+    return (
+      typeof entry.description === 'string' &&
+      (entry.met === undefined || entry.met === null || typeof entry.met === 'boolean')
+    )
   })
 }
 

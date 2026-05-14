@@ -143,7 +143,11 @@ export function TaskDetailPanel({
               <InlineEdit
                 value={task.title}
                 onSave={async (value) => {
-                  await onUpdate(task.id, { title: value, expected_version: task.version, priority: null })
+                  // UpdateTaskRequest.priority is required on the wire
+                  // (no ``?``); pass the current task.priority so the
+                  // title edit doesn't reset it. The original ``null``
+                  // here was clearing priority on every title save.
+                  await onUpdate(task.id, { title: value, expected_version: task.version, priority: task.priority })
                 }}
                 validate={(v) => v.trim().length === 0 ? 'Title is required' : null}
                 className="text-lg font-semibold"
@@ -155,7 +159,7 @@ export function TaskDetailPanel({
                 <InlineEdit
                   value={task.description}
                   onSave={async (value) => {
-                    await onUpdate(task.id, { description: value, expected_version: task.version, priority: null })
+                    await onUpdate(task.id, { description: value, expected_version: task.version, priority: task.priority })
                   }}
                   className="mt-1 text-sm text-text-secondary"
                 />
@@ -192,7 +196,7 @@ export function TaskDetailPanel({
                   <InlineEdit
                     value={task.assigned_to ?? ''}
                     onSave={async (value) => {
-                      await onUpdate(task.id, { assigned_to: value.trim() || undefined, expected_version: task.version, priority: null })
+                      await onUpdate(task.id, { assigned_to: value.trim() || undefined, expected_version: task.version, priority: task.priority })
                     }}
                     className="text-sm"
                     placeholder="Unassigned"

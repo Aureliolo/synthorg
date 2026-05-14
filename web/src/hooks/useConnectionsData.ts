@@ -83,7 +83,7 @@ export function useConnectionsData(): UseConnectionsDataReturn {
         return false
       }
       if (healthFilter !== null) {
-        const effectiveHealth = healthMap[conn.name]?.status ?? conn.health_status
+        const effectiveHealth = healthMap[conn.name]?.status ?? conn.health_status ?? 'unknown'
         if (effectiveHealth !== healthFilter) return false
       }
       if (normalizedQuery.length > 0) {

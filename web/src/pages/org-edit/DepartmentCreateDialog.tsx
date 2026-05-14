@@ -59,6 +59,9 @@ export function DepartmentCreateDialog({ open, onOpenChange, onCreate }: Departm
       await onCreate({
         name: form.name.trim(),
         budget_percent: pct,
+        // CreateDepartmentRequest.autonomy_level is required on the
+        // wire; the dialog has no UI to set it, so pass ``null`` and
+        // rely on the backend ``@default semi`` to apply.
         autonomy_level: null,
       })
       setForm(INITIAL_FORM)

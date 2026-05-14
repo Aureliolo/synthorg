@@ -925,7 +925,7 @@ describe('setup wizard store', () => {
         .getState()
         .createProviderCustom({
           name: 'custom-provider',
-          driver: '',
+          driver: 'litellm',
           auth_type: 'none',
           base_url: 'http://localhost:8000',
           tos_accepted: false,
@@ -949,7 +949,7 @@ describe('setup wizard store', () => {
         .getState()
         .createProviderCustom({
           name: 'bad-provider',
-          driver: '',
+          driver: 'litellm',
           auth_type: 'none',
           tos_accepted: false,
           models: [],

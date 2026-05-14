@@ -117,6 +117,11 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
             const warning =
               `Provider '${name}' was created, but no models were discovered. Ensure the provider is running with models available, then refresh the providers list.`
             set({ providersWarning: warning })
+            useToastStore.getState().add({
+              variant: 'success',
+              title: `Provider '${name}' created`,
+              description: warning,
+            })
             return { ok: true, warning }
           }
         } catch (discoveryErr) {
@@ -128,14 +133,28 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
           const warning =
             `Provider '${name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh the providers list.`
           set({ providersWarning: warning })
+          useToastStore.getState().add({
+            variant: 'success',
+            title: `Provider '${name}' created`,
+            description: warning,
+          })
           return { ok: true, warning }
         }
       }
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Provider '${name}' created`,
+      })
       return { ok: true }
     } catch (err) {
       const msg = getErrorMessage(err)
       log.error('createProviderFromPreset failed:', msg)
       set({ providersError: msg })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to create provider',
+        description: msg,
+      })
       return { ok: false, error: msg }
     }
   },

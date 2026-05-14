@@ -92,6 +92,11 @@ export default function OrgEditPage() {
       try {
         await updateCompany({
           company_name: typeof parsed.company_name === 'string' ? parsed.company_name : undefined,
+          // UpdateCompanyRequest.autonomy_level is required on the wire
+          // (no ``?``), so we cannot pass undefined to preserve the
+          // existing value. Fall back to ``null`` when the YAML omits
+          // or non-string-types the key; the backend ``@default semi``
+          // applies on null, so the server-side row keeps the default.
           autonomy_level: typeof parsed.autonomy_level === 'string'
             ? (parsed.autonomy_level as Exclude<UpdateCompanyRequest['autonomy_level'], undefined>)
             : null,

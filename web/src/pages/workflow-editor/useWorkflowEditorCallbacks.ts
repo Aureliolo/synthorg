@@ -192,13 +192,25 @@ export function useWorkflowEditorCallbacks(
         label,
       }
     })
+    // ``WorkflowIODeclarationRequest`` requires ``default`` (no ``?``)
+    // while ``WorkflowIODeclaration`` (source shape on the loaded
+    // definition) marks it optional. Normalise missing defaults to
+    // ``null`` so the duplicated workflow preserves the source's I/O
+    // shape instead of dropping it as the old ``inputs: []`` did.
+    const toIORequest = (decl: { default?: unknown; description: string; name: string; required: boolean; type: 'string' | 'boolean' | 'float' | 'json' | 'integer' | 'datetime' | 'task_ref' | 'agent_ref' }) => ({
+      default: decl.default ?? null,
+      description: decl.description,
+      name: decl.name,
+      required: decl.required,
+      type: decl.type,
+    })
     const created = await useWorkflowsStore.getState().createWorkflow({
       name: `${state.definition.name} (Copy)`,
       description: state.definition.description ?? '',
       version: '1.0.0',
       workflow_type: state.definition.workflow_type ?? 'sequential_pipeline',
-      inputs: [],
-      outputs: [],
+      inputs: (state.definition.inputs ?? []).map(toIORequest),
+      outputs: (state.definition.outputs ?? []).map(toIORequest),
       is_subworkflow: false,
       nodes: nodeData as readonly Record<string, unknown>[],
       edges: edgeData as readonly Record<string, unknown>[],

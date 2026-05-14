@@ -49,7 +49,7 @@ export type AgentTier = 'large' | 'medium' | 'small'
  */
 export type AgentConfig = Omit<
   WireAgentConfig,
-  'department' | 'level' | 'personality' | 'model' | 'memory' | 'tools' | 'authority' | 'autonomy_level'
+  'department' | 'level' | 'personality' | 'model' | 'memory' | 'tools' | 'authority' | 'autonomy_level' | 'strategic_output_mode' | 'personality_preset' | 'tier'
 > & {
   id?: string
   status?: AgentStatus

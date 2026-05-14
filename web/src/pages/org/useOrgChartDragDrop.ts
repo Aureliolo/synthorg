@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { Node } from '@xyflow/react'
 import { useCompanyStore } from '@/stores/company'
 import { useToastStore } from '@/stores/toast'
-import type { DepartmentName } from '@/api/types/enums'
+import { isDepartmentName, type DepartmentName } from '@/api/types/enums'
 import type { AgentNodeData } from './build-org-tree'
 import { findDropTarget, type DepartmentBounds } from './drop-target'
 import type { ViewMode } from './OrgChartToolbar'
@@ -96,9 +96,16 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
         return
       }
 
-      const rollback = useCompanyStore.getState().optimisticReassignAgent(agentName, newDept as DepartmentName)
+      if (!isDepartmentName(newDept)) {
+        announce(`Failed to move ${agentName}`)
+        addToast({ variant: 'error', title: 'Reassignment failed', description: 'Invalid department target' })
+        return
+      }
 
-      useCompanyStore.getState().updateAgent(agentName, { department: newDept, autonomy_level: null, level: null })
+      const newDeptName: DepartmentName = newDept
+      const rollback = useCompanyStore.getState().optimisticReassignAgent(agentName, newDeptName)
+
+      useCompanyStore.getState().updateAgent(agentName, { department: newDeptName, autonomy_level: null, level: null })
         .then(() => {
           announce(`Moved ${agentName} to ${newDept}`)
           addToast({ variant: 'success', title: `Moved ${agentName} to ${newDept}` })
