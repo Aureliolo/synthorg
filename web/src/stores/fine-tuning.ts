@@ -107,9 +107,9 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
 
   fetchCheckpoints: async () => {
     try {
-      const checkpoints = await listCheckpoints()
+      const page = await listCheckpoints()
       set((state) => ({
-        checkpoints,
+        checkpoints: page.data,
         errors: { ...state.errors, checkpoints: null },
       }))
     } catch (err) {
@@ -121,8 +121,8 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
 
   fetchRuns: async () => {
     try {
-      const runs = await listRuns()
-      set((state) => ({ runs, errors: { ...state.errors, runs: null } }))
+      const page = await listRuns()
+      set((state) => ({ runs: page.data, errors: { ...state.errors, runs: null } }))
     } catch (err) {
       log.error('Failed to fetch runs', sanitizeForLog(err))
       const message = getErrorMessage(err)

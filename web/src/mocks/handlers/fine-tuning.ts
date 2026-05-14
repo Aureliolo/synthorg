@@ -12,7 +12,7 @@ import type {
   runPreflight,
   startFineTune,
 } from '@/api/endpoints/fine-tuning'
-import { successFor, voidSuccess } from './helpers'
+import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
 
@@ -72,7 +72,7 @@ export const fineTuningHandlers = [
     ),
   ),
   http.get('/api/v1/admin/memory/fine-tune/checkpoints', () =>
-    HttpResponse.json(successFor<typeof listCheckpoints>([])),
+    HttpResponse.json(paginatedFor<typeof listCheckpoints>(emptyPage<CheckpointRecord>())),
   ),
   http.post(
     '/api/v1/admin/memory/fine-tune/checkpoints/:id/deploy',
@@ -96,6 +96,6 @@ export const fineTuningHandlers = [
     HttpResponse.json(voidSuccess()),
   ),
   http.get('/api/v1/admin/memory/fine-tune/runs', () =>
-    HttpResponse.json(successFor<typeof listRuns>([])),
+    HttpResponse.json(paginatedFor<typeof listRuns>(emptyPage())),
   ),
 ]

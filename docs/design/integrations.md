@@ -164,6 +164,7 @@ GitHub, Slack, Filesystem, PostgreSQL, SQLite, Brave Search, Puppeteer, Memory.
 |--------|------|-------------|
 | `GET` | `/api/v1/integrations/mcp/catalog` | Browse all entries |
 | `GET` | `/api/v1/integrations/mcp/catalog/search?q=` | Search entries |
+| `GET` | `/api/v1/integrations/mcp/catalog/installed` | List installed catalog entries (paginated; powers dashboard hydration on refresh) |
 | `GET` | `/api/v1/integrations/mcp/catalog/{entry_id}` | Get single entry |
 | `POST` | `/api/v1/integrations/mcp/catalog/install` | Install a catalog entry (dashboard-driven, idempotent) |
 | `DELETE` | `/api/v1/integrations/mcp/catalog/install/{entry_id}` | Uninstall a catalog entry (idempotent) |

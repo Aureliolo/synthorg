@@ -47,6 +47,7 @@ export function buildResult(
     items_after_guards: [],
     items_stored: [],
     approval_item_id: null,
+    pending_approvals: [],
     review_pending: false,
     errors: [],
     started_at: NOW,

@@ -95,8 +95,12 @@ describe('AgentDetailPage', () => {
     expect(screen.getByTestId('agent-detail-skeleton')).toBeInTheDocument()
   })
 
-  it('renders not-found message when no agent and not loading', () => {
-    hookReturn = { ...defaultHookReturn, agent: null }
+  it('renders not-found message when no agent and error is set', () => {
+    hookReturn = {
+      ...defaultHookReturn,
+      agent: null,
+      error: 'Agent missing',
+    }
     renderDetail()
     expect(screen.getByText('Agent not found')).toBeInTheDocument()
   })

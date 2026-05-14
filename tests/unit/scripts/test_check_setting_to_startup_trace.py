@@ -176,7 +176,7 @@ def test_real_repo_violations_match_expected() -> None:
 
     Also asserts zero false positives on the negative ``security.*``
     settings (audit_enabled, post_tool_scanning_enabled, ...) and on
-    ``engine.timeout_enforcement_enabled`` and the WS DoS settings.
+    ``engine.timeout_enforcement_enabled``.
 
     This test is the load-bearing assertion that the lint logic is
     correct against real-world wiring. If it fails, the lint logic is

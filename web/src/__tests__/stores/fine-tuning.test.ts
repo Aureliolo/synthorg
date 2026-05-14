@@ -4,12 +4,14 @@ import {
   useFineTuningStore,
 } from '@/stores/fine-tuning'
 import { useToastStore } from '@/stores/toast'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedEnvelopeFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type {
   CheckpointRecord,
   FineTuneRun,
   FineTuneStatus,
+  listCheckpoints,
+  listRuns,
   PreflightResult,
 } from '@/api/endpoints/fine-tuning'
 
@@ -108,7 +110,7 @@ describe('useFineTuningStore', () => {
     it('fetchCheckpoints populates checkpoints on success', async () => {
       server.use(
         http.get('/api/v1/admin/memory/fine-tune/checkpoints', () =>
-          HttpResponse.json(apiSuccess([BASE_CHECKPOINT])),
+          HttpResponse.json(paginatedEnvelopeFor<typeof listCheckpoints>([BASE_CHECKPOINT])),
         ),
       )
 
@@ -141,10 +143,10 @@ describe('useFineTuningStore', () => {
           HttpResponse.json(apiError('Backend offline'), { status: 503 }),
         ),
         http.get('/api/v1/admin/memory/fine-tune/checkpoints', () =>
-          HttpResponse.json(apiSuccess([BASE_CHECKPOINT])),
+          HttpResponse.json(paginatedEnvelopeFor<typeof listCheckpoints>([BASE_CHECKPOINT])),
         ),
         http.get('/api/v1/admin/memory/fine-tune/runs', () =>
-          HttpResponse.json(apiSuccess([BASE_RUN])),
+          HttpResponse.json(paginatedEnvelopeFor<typeof listRuns>([BASE_RUN])),
         ),
       )
 
@@ -168,7 +170,7 @@ describe('useFineTuningStore', () => {
     it('fetchRuns populates runs on success', async () => {
       server.use(
         http.get('/api/v1/admin/memory/fine-tune/runs', () =>
-          HttpResponse.json(apiSuccess([BASE_RUN])),
+          HttpResponse.json(paginatedEnvelopeFor<typeof listRuns>([BASE_RUN])),
         ),
       )
 

@@ -205,7 +205,7 @@ function OrgChartInner() {
     // ``requestAnimationFrame`` lets ReactFlow commit the new node
     // positions to its internal store before we ask it to fit them.
     const id = requestAnimationFrame(() => {
-      fitView({ padding: 0.2, duration: 400 })
+      void fitView({ padding: 0.2, duration: 400 })
     })
     return () => cancelAnimationFrame(id)
   }, [viewMode, view.transitioning, view.displayNodes.length, fitView])

@@ -352,7 +352,7 @@ describe('buildOrgTree', () => {
     expect(types).toEqual(['agent', 'agent', 'department', 'department', 'owner'])
   })
 
-  it('returns null runtime metrics when no health data provided', () => {
+  it('returns null cost / currency when no health data provided', () => {
     const agents = [
       makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid' }),
     ]
@@ -362,7 +362,10 @@ describe('buildOrgTree', () => {
     const data = deptNode!.data as DepartmentGroupData
     expect(data.cost7d).toBeNull()
     expect(data.currency).toBeNull()
-    expect(data.utilizationPercent).toBeNull()
+    // utilizationPercent is runtime-status-based (idle count / total) and
+    // no longer derived from health data, so it has a value even with an
+    // empty runtimeStatuses list (every agent falls back to its HR status).
+    expect(data.utilizationPercent).not.toBeNull()
   })
 
   it('all edges have type "hierarchy"', () => {

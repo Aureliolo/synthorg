@@ -18,6 +18,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
+from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
@@ -153,7 +154,7 @@ class MCPCatalogController(Controller):
         cursor: CursorParam = None,
     ) -> PaginatedResponse[CatalogEntry]:
         """List all curated MCP server entries (cursor-paginated)."""
-        app_state = state["app_state"]
+        app_state: AppState = state.app_state
         entries = await app_state.mcp_catalog_service.browse()
         page, meta = paginate_cursor(
             entries,
@@ -179,7 +180,7 @@ class MCPCatalogController(Controller):
         cursor: CursorParam = None,
     ) -> PaginatedResponse[CatalogEntry]:
         """Search catalog by name, description, or tags (cursor-paginated)."""
-        app_state = state["app_state"]
+        app_state: AppState = state.app_state
         entries = await app_state.mcp_catalog_service.search(q)
         page, meta = paginate_cursor(
             entries,
@@ -208,8 +209,8 @@ class MCPCatalogController(Controller):
         into the generic ``NotFoundError`` and lost the discriminating
         envelope.
         """
-        service = state["app_state"].mcp_catalog_service
-        entry = await service.get_entry(entry_id)
+        app_state: AppState = state.app_state
+        entry = await app_state.mcp_catalog_service.get_entry(entry_id)
         return ApiResponse(data=entry)
 
     @get(
@@ -230,7 +231,7 @@ class MCPCatalogController(Controller):
         write-only, so a successful install would persist server-side
         but appear "uninstalled" again on the next page load.
         """
-        app_state = state["app_state"]
+        app_state: AppState = state.app_state
         installations_repo = app_state.mcp_installations_repo
         # Walk all rows once; the installed list is bounded by the
         # bundled catalog size (~20-50 entries) so a single read with
@@ -272,7 +273,7 @@ class MCPCatalogController(Controller):
         entry_id = data.catalog_entry_id
         connection_name = data.connection_name
 
-        app_state = state["app_state"]
+        app_state: AppState = state.app_state
         service = app_state.mcp_catalog_service
         installations_repo = app_state.mcp_installations_repo
         connection_catalog = (
@@ -331,7 +332,7 @@ class MCPCatalogController(Controller):
         Missing entries are a silent no-op so the endpoint is
         idempotent and callers can always treat 200 as success.
         """
-        app_state = state["app_state"]
+        app_state: AppState = state.app_state
         service = app_state.mcp_catalog_service
         installations_repo = app_state.mcp_installations_repo
         removed = await service.uninstall(
