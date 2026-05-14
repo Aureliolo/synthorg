@@ -63,14 +63,14 @@ class SettingLevel(StrEnum):
 class SettingSource(StrEnum):
     """Origin of a resolved setting value.
 
-    Listed in descending priority order: database overrides
-    take precedence over environment variables, which override
-    YAML defaults, which override code defaults.
+    Listed in descending priority order: database overrides take
+    precedence over environment variables, which override code
+    defaults. ``read_only_post_init=True`` settings collapse the chain
+    to ``ENVIRONMENT > DEFAULT`` by bypassing the database tier.
     """
 
     DATABASE = "db"
     ENVIRONMENT = "env"
-    YAML = "yaml"
     DEFAULT = "default"
 
 

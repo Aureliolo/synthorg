@@ -125,7 +125,7 @@ def service(
 
 @pytest.mark.unit
 class TestResolutionOrder:
-    """Tests for the DB > env > YAML > default resolution chain."""
+    """Tests for the DB > env > default resolution chain."""
 
     async def test_resolves_from_db(
         self, service: SettingsService, mock_repo: AsyncMock
@@ -146,12 +146,14 @@ class TestResolutionOrder:
         assert result.value == "500.0"
         assert result.source == SettingSource.ENVIRONMENT
 
-    async def test_resolves_from_yaml(self, service: SettingsService) -> None:
+    async def test_resolves_from_registered_default(
+        self, service: SettingsService
+    ) -> None:
         result = await service.get("budget", "total_monthly")
         assert result.value == "100.0"
-        assert result.source == SettingSource.YAML
+        assert result.source == SettingSource.DEFAULT
 
-    async def test_resolves_from_default(
+    async def test_resolves_from_default_custom_key(
         self,
         mock_repo: AsyncMock,
         config: _FakeConfig,
@@ -176,7 +178,7 @@ class TestResolutionOrder:
         result = await service.get("budget", "total_monthly")
         assert result.source == SettingSource.DATABASE
 
-    async def test_env_overrides_yaml(
+    async def test_env_overrides_default(
         self,
         service: SettingsService,
         monkeypatch: pytest.MonkeyPatch,
@@ -225,8 +227,8 @@ class TestCache:
         await service.delete("budget", "total_monthly")
         mock_repo.get.return_value = None
         result = await service.get("budget", "total_monthly")
-        # Falls through to YAML after cache miss
-        assert result.source == SettingSource.YAML
+        # Falls through to default after cache miss
+        assert result.source == SettingSource.DEFAULT
         assert mock_repo.get.call_count == 2
 
 
@@ -481,7 +483,7 @@ class TestDeleteNamespace:
         # Subsequent get() must re-query the repo (not hit the cache)
         mock_repo.get.return_value = None
         result = await service.get("budget", "total_monthly")
-        assert result.source == SettingSource.YAML
+        assert result.source == SettingSource.DEFAULT
         assert mock_repo.get.call_count == 2
 
     async def test_publishes_only_for_keys_with_overrides_removed(
@@ -624,8 +626,8 @@ class TestBulkOperations:
         mock_repo.get_namespace.return_value = ()
         entries = await service.get_namespace("budget")
         assert len(entries) == 1
-        # Falls to YAML since config has budget.total_monthly=100.0
-        assert entries[0].source == SettingSource.YAML
+        # Falls to registered default ("100.0" from _make_definition)
+        assert entries[0].source == SettingSource.DEFAULT
 
     async def test_get_all_returns_entries(
         self, service: SettingsService, mock_repo: AsyncMock
