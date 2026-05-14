@@ -389,6 +389,6 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
   setWorkflowTypeFilter: (t) => set({ workflowTypeFilter: t }),
 
   updateFromWsEvent: () => {
-    useWorkflowsStore.getState().fetchWorkflows()
+    void useWorkflowsStore.getState().fetchWorkflows()
   },
 }))

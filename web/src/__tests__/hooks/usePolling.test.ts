@@ -148,9 +148,9 @@ describe('usePolling', () => {
     expect(maxConcurrent).toBeLessThanOrEqual(1)
 
     // Stop polling and let any in-flight fn() settle so its internal
-    // setTimeout(r, 2000) Promise resolves before teardown.  Without
-    // this, the pending fake-timer-backed promise leaks past the test
-    // boundary under `--detect-async-leaks`.
+    // setTimeout(r, 2000) Promise resolves before teardown. Without
+    // this, the pending fake-timer-backed Timeout outlives the test
+    // boundary and the active-handle gate fails the test.
     await act(async () => {
       result.current.stop()
       await vi.advanceTimersByTimeAsync(5000)

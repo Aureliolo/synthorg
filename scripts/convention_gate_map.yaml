@@ -127,10 +127,10 @@ mandatory_rules:
     header: Test teardown
     gate: web/src/test-setup.tsx
 
-  - id: web-claude-md::async-leak-ceiling
+  - id: web-claude-md::active-handle-gate
     file: web/CLAUDE.md
-    header: Async-leak ceiling
-    gate: .github/ci/web-async-leaks.max
+    header: Active-handle gate
+    gate: web/test-infra/active-handle-tracker.ts
 
   - id: web-claude-md::ws-wire-protocol
     file: web/CLAUDE.md
@@ -203,14 +203,14 @@ mandatory_rules:
         (MANDATORY)". Same enforcement (web/src/test-setup.tsx
         global afterEach).
 
-  - id: docs-reference-web-zustand-stores-md::async-leak-ceiling
+  - id: docs-reference-web-zustand-stores-md::active-handle-gate
     file: docs/reference/web-zustand-stores.md
-    header: Async-Leak Ceiling
+    header: Active-Handle Gate
     exempt:
       reason: |
-        Detailed expansion of web/CLAUDE.md "Async-leak ceiling
-        (MANDATORY)". Same enforcement (.github/ci/web-async-leaks.max
-        + vitest --detect-async-leaks).
+        Detailed expansion of web/CLAUDE.md "Active-handle gate
+        (MANDATORY)". Same enforcement (web/test-infra/active-handle-tracker.ts
+        loaded as a unit-project setupFile).
 
   - id: docs-reference-web-zustand-stores-md::ws-wire-protocol
     file: docs/reference/web-zustand-stores.md

@@ -40,7 +40,8 @@ The design specification has been split into focused documentation pages for bet
 | [Notifications](design/notifications.md) | NotificationSink protocol, dispatcher, adapters | Console / ntfy / Slack / email adapters, severity filtering |
 | [Backup & Restore](design/backup.md) | Component handlers, manifests, scheduler, retention | SQLite VACUUM INTO snapshots, validated restore with safety backup |
 | [Deployment](design/deployment.md) | Container runtime, image verification, sandbox resolution | apko-composed Wolfi bases, cosign + SLSA L3, Caddy web server |
-| [Web HTTP Adapter](design/web-http-adapter.md) | HTTP Transport, Async Leaks, CI Gate | Axios XHR vs fetch, MSW interceptor async-leak investigation, test teardown contract, CI leak-gate ceiling |
+| [Web HTTP Adapter](design/web-http-adapter.md) | HTTP Transport | Axios XHR vs fetch, MSW interceptor, test teardown contract |
+| [Web Active-Handle Detection](design/web-active-handle-detection.md) | Per-Test Resource-Leak Gate | `async_hooks` snapshot + diff per test, fail-mode default, telemetry artifact, ESLint companion rules |
 | [Brand Identity & UX](design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |
 | [Page Structure & IA](design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
 | [UX Design Guidelines](design/ux-guidelines.md) | Color System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for the web dashboard |

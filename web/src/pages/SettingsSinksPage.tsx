@@ -32,14 +32,14 @@ export default function SettingsSinksPage() {
   const editSink = editSinkId ? sinks.find((s) => s.identifier === editSinkId) ?? null : null
 
   useEffect(() => {
-    fetchSinks()
+    void fetchSinks()
   }, [fetchSinks])
 
   // Subscribe to WS system channel for setting updates -- auto-refresh on sink config changes
   const sinkHandler = useCallback((event: WsEvent) => {
     const key = (event.payload as Record<string, unknown> | undefined)?.key as string | undefined
     if (key === 'observability/sink_overrides' || key === 'observability/custom_sinks') {
-      fetchSinks()
+      void fetchSinks()
     }
   }, [fetchSinks])
 

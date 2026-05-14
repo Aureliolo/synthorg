@@ -27,7 +27,7 @@ export const createVersionsSlice: SliceCreator<VersionsSlice> = (set, get) => ({
     const open = !get().versionHistoryOpen
     set({ versionHistoryOpen: open })
     if (open) {
-      get().loadVersions()
+      void get().loadVersions()
     }
   },
 

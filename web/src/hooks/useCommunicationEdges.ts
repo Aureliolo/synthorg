@@ -100,7 +100,7 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
       }
     }
 
-    fetchAll()
+    void fetchAll()
     return () => { controller.abort() }
   }, [enabled])
 

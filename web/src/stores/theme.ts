@@ -34,11 +34,11 @@ export interface ThemeState extends ThemePreferences {
   reset: () => void
   /**
    * Detach the matchMedia listener installed at store creation.
-   * Called from the global afterEach in test-setup.tsx so
-   * `--detect-async-leaks` does not count the listener against the
-   * per-test leak budget. Also invoked from Vite's `import.meta.hot`
-   * dispose hook to avoid leaking listeners across Fast Refresh
-   * cycles in dev. Idempotent.
+   * Called from the global afterEach in test-setup.tsx so the
+   * active-handle gate does not fail the test on a forgotten
+   * listener. Also invoked from Vite's `import.meta.hot` dispose
+   * hook to avoid leaking listeners across Fast Refresh cycles in
+   * dev. Idempotent.
    */
   teardown: () => void
   /**
@@ -206,8 +206,9 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
   // Install the listener against the current `window.matchMedia`.
   // Factored out so both the initial store creation AND `reattach()`
   // drive the same code path. Idempotent: a second call while the
-  // listener is still attached is a no-op, which keeps the
-  // `--detect-async-leaks` per-test add/remove count symmetric.
+  // listener is still attached is a no-op, so per-test
+  // reattach/teardown remains symmetric under the active-handle
+  // gate.
   //
   // The handler CANNOT be invoked synchronously here because this
   // function runs inside the Zustand creator before the store's

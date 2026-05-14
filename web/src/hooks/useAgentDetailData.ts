@@ -67,7 +67,7 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
       useAgentsStore.getState().clearDetail()
       return
     }
-    useAgentsStore.getState().fetchAgentDetail(agentName)
+    void useAgentsStore.getState().fetchAgentDetail(agentName)
     return () => {
       useAgentsStore.getState().clearDetail()
     }
@@ -115,7 +115,7 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
             handler: () => {
               if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
               wsDebounceRef.current = setTimeout(() => {
-                useAgentsStore.getState().fetchAgentDetail(agentNameRef.current)
+                void useAgentsStore.getState().fetchAgentDetail(agentNameRef.current)
               }, WS_DEBOUNCE_MS)
             },
           }))
@@ -142,7 +142,7 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
   // invoked by the UI.
   const fetchMoreActivity = useCallback(() => {
     if (!agentName) return
-    useAgentsStore.getState().fetchMoreActivity(agentName)
+    void useAgentsStore.getState().fetchMoreActivity(agentName)
   }, [agentName])
 
   if (!agentName) return EMPTY_RETURN

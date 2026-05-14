@@ -67,7 +67,7 @@ export function WizardModeStep() {
     const order = useSetupWizardStore.getState().stepOrder
     const modeIdx = order.indexOf('mode')
     if (modeIdx >= 0 && modeIdx < order.length - 1) {
-      navigate(`/setup/${order[modeIdx + 1]}`)
+      void navigate(`/setup/${order[modeIdx + 1]}`)
     }
   }, [setWizardMode, markStepComplete, navigate])
 

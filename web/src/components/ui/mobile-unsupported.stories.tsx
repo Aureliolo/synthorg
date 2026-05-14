@@ -53,7 +53,7 @@ export const Mobile767: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await waitFor(() => {
-      expect(canvas.queryByRole('alert')).toBeInTheDocument()
+      void expect(canvas.queryByRole('alert')).toBeInTheDocument()
     })
   },
 }
@@ -78,7 +78,7 @@ export const Tablet768NotTriggered: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
+    void expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
   },
 }
 
@@ -102,7 +102,7 @@ export const Tablet1023NotTriggered: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
+    void expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
   },
 }
 

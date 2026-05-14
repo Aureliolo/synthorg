@@ -38,12 +38,13 @@ import { cancelOrgChartPrefsPersist } from '@/stores/org-chart-prefs-teardown'
 
 // jsdom's `document.cookie` is backed by `tough-cookie`'s Promise-based
 // `CookieJar`, which schedules a `createPromiseCallback` for every
-// get/set and inflates `--detect-async-leaks`. The shim shared with
-// `bench-setup.ts` lives in `@/cookie-shim` and replaces the
-// `Document.prototype` descriptor with a synchronous in-memory jar.
-// Behaviour is documented in that module; the jar is exported so the
+// get/set. The shim shared with `bench-setup.ts` lives in
+// `@/cookie-shim` and replaces the `Document.prototype` descriptor
+// with a synchronous in-memory jar. Test-speed optimisation;
+// prototype-pollution defence is the primary security purpose (see
+// the cookie-shim module header). The jar is exported so the
 // per-test teardown below can reset cookie state without re-touching
-// the DOM (avoiding jsdom's tough-cookie cost).
+// the DOM.
 const CSRF_SEED_VALUE = 'test-csrf-token'
 installCookieShim()
 
@@ -52,9 +53,9 @@ installCookieShim()
 // dashboard touches localStorage from two paths: Zustand `persist`
 // middleware (setup-wizard, org-chart-prefs) and direct
 // `localStorage.setItem` calls (theme, notifications), so any test
-// that mutates one of those stores contributed Timeout leaks. The
-// shim in `@/storage-shim` patches `Storage.prototype` so writes go
-// through a Map-backed in-memory store; no app or test code
+// that mutates one of those stores adds dispatch overhead per write.
+// The shim in `@/storage-shim` patches `Storage.prototype` so writes
+// go through a Map-backed in-memory store; no app or test code
 // subscribes to the `storage` event, so the dispatch is dead weight
 // in the test runner.
 installStorageShim()
@@ -78,11 +79,10 @@ beforeAll(() => {
   // The axios client attaches X-CSRF-Token on mutating requests by reading
   // the `csrf_token` cookie. Seed it here so every POST/PUT/PATCH/DELETE
   // test sends the header without having to log in first. Seeding in
-  // `beforeAll` (not `beforeEach`) is deliberate: every `document.cookie`
-  // assignment in jsdom flows through tough-cookie's Promise-based API,
-  // and doing it 2574 times inflates `--detect-async-leaks` counts (this
-  // was the cause of the round-2 14-leak regression). The test dispatcher
-  // does not validate the value.
+  // `beforeAll` (not `beforeEach`) is deliberate: even with the
+  // cookie shim, redoing the assignment for every test is wasted
+  // work the test dispatcher does not require, and `beforeAll`
+  // matches the contract (CSRF seed is one-time per worker).
   document.cookie = `csrf_token=${CSRF_SEED_VALUE}; path=/`
   server.listen({ onUnhandledRequest: 'error' })
 })
@@ -92,8 +92,8 @@ afterEach(() => {
   // Clear any cookies a test wrote to the jar so state cannot leak across
   // tests in the same Vitest worker, then restore the global CSRF seed so
   // mutating-request tests still send `X-CSRF-Token` without re-seeding
-  // through `document.cookie` (which would re-introduce the leak that the
-  // shim was introduced to fix).
+  // through `document.cookie` (which would route through tough-cookie's
+  // Promise wrapper, slowing the test).
   for (const name of Object.keys(cookieJar)) {
     delete cookieJar[name]
   }
@@ -111,12 +111,13 @@ afterAll(() => {
 MotionGlobalConfig.skipAnimations = true
 
 // Even with `skipAnimations`, framer-motion still creates a Promise in
-// `MotionValue.start` and schedules its resolution through the next frame
-// (rAF, polyfilled by jsdom as setInterval). Under vitest with
-// `--detect-async-leaks` those promises are flagged. Replacing `motion.*`
-// with plain host elements and `AnimatePresence` with a passthrough removes
-// the animation code path entirely. Tests that assert on motion-specific
-// behavior can still opt out via their own `vi.mock('motion/react', ...)`.
+// `MotionValue.start` and schedules its resolution through the next
+// frame (rAF, polyfilled below as a queueMicrotask). Replacing
+// `motion.*` with plain host elements and `AnimatePresence` with a
+// passthrough removes the animation code path entirely, keeping
+// per-test work minimal. Tests that assert on motion-specific
+// behaviour can still opt out via their own
+// `vi.mock('motion/react', ...)`.
 vi.mock('motion/react', async () => {
   const actual = await vi.importActual<typeof import('motion/react')>('motion/react')
 
@@ -175,38 +176,46 @@ vi.mock('motion/react', async () => {
   }
 })
 
-// jsdom polyfills `requestAnimationFrame` with a shared `setInterval` that
-// only clears when every registered callback has fired. Recharts's
-// `ZIndexPortal` registers rAF callbacks via @reduxjs/toolkit that keep
-// getting re-scheduled, so the interval outlives the test and
-// --detect-async-leaks flags it as a Timeout leak. Replace rAF with
-// `setTimeout(cb, 0)` so each frame is a discrete macrotask that drains
-// cleanly between tests.
+// jsdom polyfills ``requestAnimationFrame`` with a shared ``setInterval``
+// that only clears when every registered callback has fired; recharts's
+// ``ZIndexPortal`` schedules rAF callbacks that keep re-scheduling, so
+// the interval outlives the test. We replace rAF with a microtask-based
+// shim: each callback queues a microtask, so an N-deep rAF chain
+// (recharts animation, ~93 frames at 60Hz) unwinds entirely within the
+// current test's await chain and never produces an event-loop-holding
+// handle. ``cancelAnimationFrame`` flips a cancelled-flag the wrapper
+// checks before invoking the callback, preserving the cancellation
+// contract without a clearable handle.
 //
-// We intentionally do NOT drain pending rAF callbacks in the global
-// afterEach: d3-timer (used by d3-force in `pages/org/force-layout.ts`)
-// binds `setFrame` to our shim at module load time and relies on its
-// wake() callback firing to clear its internal `setInterval(poke)` after
-// `simulation.stop()`. Clearing the shim's setTimeout handles before
-// wake() can run strands that interval and reintroduces a leak.
+// Why microtasks (not ``setTimeout(0)``): with macrotask scheduling,
+// each frame in a recharts chain is a separate event-loop tick, so
+// the active-handle detector observed Timeouts still in flight at
+// ``afterEach`` time. Microtasks drain before any macrotask boundary
+// (including ``await``), so the chain is guaranteed to complete in
+// the same test phase that scheduled it.
+//
+// d3-timer (used by d3-force in ``pages/org/force-layout.ts``) binds
+// ``setFrame`` to this shim at module load and relies on its wake()
+// callback firing to clear its internal ``setInterval(poke)`` after
+// ``simulation.stop()``. Microtask delivery is no slower than
+// ``setTimeout(0)`` from d3's perspective; both fire on the next
+// event-loop boundary the test awaits.
 if (typeof window !== 'undefined') {
-  const timers = new Set<ReturnType<typeof setTimeout>>()
+  const cancelled = new Set<number>()
+  let nextRafId = 0
   window.requestAnimationFrame = (callback: FrameRequestCallback): number => {
-    const handle = setTimeout(() => {
-      timers.delete(handle)
+    const id = ++nextRafId
+    queueMicrotask(() => {
+      if (cancelled.has(id)) {
+        cancelled.delete(id)
+        return
+      }
       callback(performance.now())
-    }, 0)
-    timers.add(handle)
-    // type-cast: cross-env timer ID -- @types/node says setTimeout returns
-    // Timeout, the DOM rAF contract says it returns number. There is no
-    // shared base type, and jsdom's setTimeout produces a number at
-    // runtime, so the cast is the bridge.
-    return handle as unknown as number
+    })
+    return id
   }
-  window.cancelAnimationFrame = (handle: number) => {
-    // type-cast: cross-env timer ID (see requestAnimationFrame above).
-    clearTimeout(handle as unknown as ReturnType<typeof setTimeout>)
-    timers.delete(handle as unknown as ReturnType<typeof setTimeout>)
+  window.cancelAnimationFrame = (id: number): void => {
+    cancelled.add(id)
   }
 }
 
@@ -236,10 +245,10 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 
 // Toast store schedules a `setTimeout` per auto-dismiss (success / info toasts
 // with a real timer). Without a global teardown hook these timers survive the
-// test boundary and vitest flags them as leaked. `dismissAll()` clears both
-// the pending handles and the toasts array in one idiomatic call; tests that
-// need to inspect the toasts list after pending timers drain can instead call
-// `cancelAllPending()` directly in their own teardown.
+// test boundary and the active-handle gate fails the test. `dismissAll()`
+// clears both the pending handles and the toasts array in one idiomatic call;
+// tests that need to inspect the toasts list after pending timers drain can
+// instead call `cancelAllPending()` directly in their own teardown.
 //
 // We run this in `afterEach` (not `beforeEach`) deliberately: the test body's
 // assertions on toast state complete *before* the afterEach fires, so
@@ -281,8 +290,8 @@ afterEach(() => {
   // the same Vitest worker.
   cancelOrgChartPrefsPersist()
   // Theme store subscribes to a `prefers-reduced-motion` MediaQueryList
-  // at factory time; detach the listener here so
-  // `--detect-async-leaks` does not count it per-test. Paired with
+  // at factory time; detach the listener here so the active-handle
+  // gate does not flag a forgotten subscription per test. Paired with
   // the ``reattach()`` in the ``beforeEach`` above.
   useThemeStore.getState().teardown()
 })

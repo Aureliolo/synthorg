@@ -74,7 +74,7 @@ export function CompanyStep() {
   }, [submitCompany])
 
   const goToProvidersStep = useCallback(() => {
-    navigate('/setup/providers')
+    void navigate('/setup/providers')
   }, [navigate])
 
   // The Apply button is the affordance that moves `templateApplied` from

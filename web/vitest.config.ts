@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import codspeedPlugin from '@codspeed/vitest-plugin'
 import { fileURLToPath, URL } from 'node:url'
 
+import ActiveHandleReporter from './test-infra/active-handle-reporter'
+
 // Two-project workspace:
 //
 //   * ``unit``  -- runs ``vitest run`` over ``*.test.ts(x)``, loads
@@ -44,6 +46,12 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.d.ts', 'src/main.tsx', 'src/__tests__/**'],
     },
+    // Reporters are global, not per-project. ``ActiveHandleReporter``
+    // wipes ``./.test-tmp`` at run start and reads the per-worker
+    // NDJSON files at run end; the worker-side hooks are installed
+    // by ``./test-infra/active-handle-tracker.ts`` as a setupFile on
+    // the unit project below.
+    reporters: ['default', new ActiveHandleReporter()],
     projects: [
       {
         extends: true,
@@ -51,7 +59,17 @@ export default defineConfig({
           name: 'unit',
           globals: true,
           environment: 'jsdom',
-          setupFiles: ['./src/test-setup.tsx'],
+          // The active-handle tracker MUST load before ``./src/test-setup.tsx``
+          // so its ``async_hooks`` hook is enabled before the MSW server,
+          // motion mock, jsdom shims, and global ``beforeEach``/``afterEach``
+          // hooks register. Its own snapshot/diff hooks then nest OUTSIDE the
+          // test-setup hooks (outer-beforeEach-first / outer-afterEach-last),
+          // so handles created in test-setup's ``beforeEach`` and torn down
+          // in its ``afterEach`` are net-zero in the diff.
+          setupFiles: [
+            './test-infra/active-handle-tracker.ts',
+            './src/test-setup.tsx',
+          ],
           include: ['src/**/*.test.{ts,tsx}'],
           exclude: [...configDefaults.exclude, '**/e2e/**', '**/*.bench.ts'],
         },

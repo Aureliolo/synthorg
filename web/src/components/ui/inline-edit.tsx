@@ -107,7 +107,7 @@ export function InlineEdit({
       if (e.nativeEvent.isComposing) return
       if (e.key === 'Enter') {
         e.preventDefault()
-        save()
+        void save()
       } else if (e.key === 'Escape') {
         e.preventDefault()
         cancel()
@@ -119,7 +119,7 @@ export function InlineEdit({
   const handleBlur = useCallback(() => {
     // Skip if save is already in progress (Enter key) or not in editing state
     if (saveInProgressRef.current || state !== 'editing') return
-    save()
+    void save()
   }, [save, state])
 
   if (state === 'display') {

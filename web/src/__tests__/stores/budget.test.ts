@@ -191,7 +191,7 @@ beforeEach(() => {
 describe('fetchBudgetData', () => {
   it('sets loading to true at the start of fetch', () => {
     installDefaults()
-    useBudgetStore.getState().fetchBudgetData()
+    void useBudgetStore.getState().fetchBudgetData()
     expect(useBudgetStore.getState().loading).toBe(true)
   })
 

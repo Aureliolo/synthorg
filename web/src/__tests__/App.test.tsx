@@ -17,10 +17,10 @@ vi.mock('@/hooks/useGlobalNotifications', () => ({
 
 // AppLayout + LoginPage are React.lazy() imports that transitively pull in
 // motion, cmdk, Base UI, and every lazy route module. Under vitest with
-// --coverage and --detect-async-leaks, that import chain can take 5-9s and
-// race vitest's worker teardown. This test only asserts the router-guard
-// routing behavior, so we stub the lazy modules with minimal shells that
-// render the landmarks the assertions check (nav + main, sign-in heading).
+// --coverage, that import chain can take 5-9s and race vitest's worker
+// teardown. This test only asserts the router-guard routing behaviour,
+// so we stub the lazy modules with minimal shells that render the
+// landmarks the assertions check (nav + main, sign-in heading).
 vi.mock('@/components/layout/AppLayout', () => ({
   default: () => (
     <>

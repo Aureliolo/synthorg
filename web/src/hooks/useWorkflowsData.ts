@@ -22,7 +22,7 @@ export function useWorkflowsData(): UseWorkflowsDataReturn {
   const workflowTypeFilter = useWorkflowsStore((s) => s.workflowTypeFilter)
 
   useEffect(() => {
-    useWorkflowsStore.getState().fetchWorkflows()
+    void useWorkflowsStore.getState().fetchWorkflows()
   }, [])
 
   const pollFn = useCallback(async () => {

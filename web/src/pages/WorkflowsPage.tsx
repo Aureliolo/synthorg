@@ -107,7 +107,7 @@ export default function WorkflowsPage() {
         edges: source.edges.map((e) => ({ ...e })),
       })
       if (!created) return
-      navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
+      void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
     },
     [navigate],
   )

@@ -39,7 +39,7 @@ export function useScalingData(): UseScalingDataReturn {
 
   // Initial fetch.
   useEffect(() => {
-    useScalingStore.getState().fetchAll()
+    void useScalingStore.getState().fetchAll()
   }, [])
 
   // Polling for lightweight refresh.

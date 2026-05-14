@@ -66,6 +66,6 @@ web/e2e/
 ## See also
 
 - [web-design-system.md](web-design-system.md): the `components/ui/` inventory.
-- [web-zustand-stores.md](web-zustand-stores.md): the `stores/` mutation pattern, MSW handler contract, async-leak ceiling.
+- [web-zustand-stores.md](web-zustand-stores.md): the `stores/` mutation pattern, MSW handler contract, active-handle gate.
 - [web-base-ui-decisions.md](web-base-ui-decisions.md): which Base UI primitives the dashboard uses.
 - [web-post-training.md](web-post-training.md): TypeScript 6 / Storybook 10 facts.

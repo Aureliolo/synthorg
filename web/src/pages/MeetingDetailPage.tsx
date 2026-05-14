@@ -60,7 +60,7 @@ export default function MeetingDetailPage() {
         icon={Video}
         title="Meeting not found"
         description="No meeting ID was provided."
-        action={{ label: 'Back to meetings', onClick: () => navigate(ROUTES.MEETINGS) }}
+        action={{ label: 'Back to meetings', onClick: () => { void navigate(ROUTES.MEETINGS) } }}
       />
     )
   }

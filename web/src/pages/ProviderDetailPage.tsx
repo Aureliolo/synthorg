@@ -131,11 +131,11 @@ export default function ProviderDetailPage() {
           onEdit={() => setEditOpen(true)}
           onDelete={() => setDeleteOpen(true)}
           onTestConnection={() => {
-            useProvidersStore.getState().testConnection(decodedName)
+            void useProvidersStore.getState().testConnection(decodedName)
           }}
           testingConnection={testingConnection}
           onRefresh={() => {
-            useProvidersStore.getState().discoverModels(
+            void useProvidersStore.getState().discoverModels(
               decodedName,
               provider.preset_name ?? undefined,
             )
@@ -207,7 +207,7 @@ export default function ProviderDetailPage() {
         onConfirm={async () => {
           const success = await useProvidersStore.getState().deleteProvider(decodedName)
           if (success) {
-            navigate(ROUTES.PROVIDERS)
+            void navigate(ROUTES.PROVIDERS)
           }
           setDeleteOpen(false)
         }}

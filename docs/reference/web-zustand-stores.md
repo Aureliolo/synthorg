@@ -1,11 +1,11 @@
 ---
 title: Web Zustand Stores
-description: Mutation error-handling pattern, cursor pagination, MSW handler contract, test teardown, async-leak ceiling, and the WebSocket wire protocol for the React 19 dashboard.
+description: Mutation error-handling pattern, cursor pagination, MSW handler contract, test teardown, active-handle gate, and the WebSocket wire protocol for the React 19 dashboard.
 ---
 
 # Web Zustand Stores
 
-On-demand reference. The short rules in `web/CLAUDE.md` are: store mutations own the error UX (callers do not `try`/`catch` around them); list reads use opaque cursor pagination; every endpoint has a happy-path MSW handler; new stores that hold timers or DOM listeners expose a teardown hook so the async-leak ceiling stays under control.
+On-demand reference. The short rules in `web/CLAUDE.md` are: store mutations own the error UX (callers do not `try`/`catch` around them); list reads use opaque cursor pagination; every endpoint has a happy-path MSW handler; new stores that hold timers or DOM listeners expose a teardown hook so the active-handle gate does not fail their tests.
 
 ## Mutation Action Pattern (MANDATORY)
 
@@ -53,7 +53,7 @@ Tests override defaults per-case via `server.use(http.get(...))` inside the test
 
 Tests that need to inspect the toasts list *after* timers drain can call `useToastStore.getState().cancelAllPending()` directly in their own teardown; it clears timers without mutating `toasts`.
 
-This contract is required for `npm run test -- --detect-async-leaks` to stay under the CI ceiling. **Any new store that schedules timers or attaches event listeners** (e.g. `matchMedia`, `document.addEventListener`, `IntersectionObserver`) **must expose an equivalent cleanup hook** and register it in the global `afterEach`.
+This contract is required for the active-handle gate to pass. **Any new store that schedules timers or attaches event listeners** (e.g. `matchMedia`, `document.addEventListener`, `IntersectionObserver`) **must expose an equivalent cleanup hook** and register it in the global `afterEach`; otherwise the first test that triggers the schedule will fail with a `Timeout` / listener leak attributed to the store.
 
 The theme store also calls `teardown()` from its `import.meta.hot?.dispose(...)` block so Vite Fast Refresh does not layer duplicate listeners in dev. It additionally exposes `reattach()` (the companion to `teardown()`) so tests that exercise runtime reduced-motion reactivity can re-install the listener against a per-test `window.matchMedia` mock (call it in the test body after the mock is installed; it is idempotent if the listener is already attached).
 
@@ -61,24 +61,20 @@ The theme store also calls `teardown()` from its `import.meta.hot?.dispose(...)`
 
 `useWebSocketStore` exposes its own `teardown()` action (clears heartbeat / pong / reconnect timers, detaches socket event handlers, bumps `connectGeneration` to invalidate stale `doConnect` chains, resets observable state including `reconnectExhausted`) but is invoked from the file-local `resetStore()` in `web/src/__tests__/stores/websocket.test.ts`, NOT from the global `afterEach`. Wiring it into the global hook would eagerly import the apiClient chain in test-setup, which captures the unmocked `getCsrfToken` reference before tests that `vi.mock('@/utils/csrf')` can hoist; see PR #1603 commit `fcfddf30` for the diagnostic. The heartbeat tests pair this with `retry: 3` on three structurally-racy cases (matching the existing `first-message auth` precedent) to absorb the residual MSW-vs-fake-timer microtask race.
 
-## Async-Leak Ceiling (MANDATORY)
+## Active-Handle Gate (MANDATORY)
 
-CI's `Dashboard Test` job runs `vitest run --coverage --detect-async-leaks` under `NO_COLOR=1` and fails if the `Leaks N leaks` summary line reports more than `MAX_ASYNC_LEAKS` (single source of truth: `.github/ci/web-async-leaks.max`) OR if the anchored summary line is missing entirely.
-
-Local count runs ~75; CI runs land in a ~90-91 band (~+15 above local) because event-loop timing differs under parallel execution, so the CI ceiling carries a small run-to-run variance buffer.
-
-### Structural floor
-
-The structural floor is MSW 2.x's own `CookieStore` (tough-cookie), the MSW XHR interceptor's `queueMicrotask` dispatch, and axios's response-interceptor `promise.then` chain; none reachable from `test-setup.tsx`. Zero leaks requires replacing MSW's matching layer.
-
-Raise the ceiling only with documented justification (a new test surface or hook fixture rather than a regression); lower it whenever a shim or teardown lands that demonstrably moves the steady-state count down. Full investigation + options matrix lives in `docs/design/web-http-adapter.md`.
+The unit project loads `web/test-infra/active-handle-tracker.ts` as a setupFile. The tracker hooks Node's `async_hooks` and fails any test that leaves an event-loop-holding resource attributable to a `web/src/` frame live past `afterEach`. Zero tolerance, no ceiling, no allowlist (`web/test-infra/active-handle-allowlist.ts` is empty by design). See [docs/design/web-active-handle-detection.md](../design/web-active-handle-detection.md) for the full design, telemetry shape, and how to add an allowlist entry (you almost never should).
 
 ### Test-environment shims
 
-`test-setup.tsx` installs two shims that bypass jsdom asynchronous primitives whose Promise / Timeout allocation otherwise inflates the leak count:
+`test-setup.tsx` installs two shims that bypass jsdom asynchronous primitives whose per-call work would otherwise slow tests down. The shims are speed optimisations; the active-handle gate would tolerate the original jsdom paths if they did not also schedule per-write `setTimeout(0)` dispatches that compound across thousands of tests.
 
-- **Cookie shim** (`@/cookie-shim`): replaces `Document.prototype.cookie` with a synchronous in-memory jar so jsdom's tough-cookie Promise-based accessor is bypassed. The jar is exported so tests can wipe per-test state without touching the DOM. The global `afterEach` clears the jar and re-seeds `csrf_token=test-csrf-token`. Tests that need different cookie behavior override `Document.prototype.cookie` at the test level (see `__tests__/utils/csrf.test.ts`) and restore the shim in their own `afterEach`.
+- **Cookie shim** (`@/cookie-shim`): replaces `Document.prototype.cookie` with a synchronous in-memory jar so jsdom's tough-cookie Promise-based accessor is bypassed. The jar is exported so tests can wipe per-test state without touching the DOM. The global `afterEach` clears the jar and re-seeds `csrf_token=test-csrf-token`. Tests that need different cookie behaviour override `Document.prototype.cookie` at the test level (see `__tests__/utils/csrf.test.ts`) and restore the shim in their own `afterEach`. Prototype-pollution defence is the primary security purpose; speed is a side-benefit.
 - **Storage shim** (`@/storage-shim`): patches `Storage.prototype` methods to bypass jsdom's `_dispatchStorageEvent` `setTimeout(0)` path. `localStorage instanceof Storage` stays true and `vi.spyOn(Storage.prototype, 'setItem' | 'getItem' | ...)` continues to intercept. State is held in an instance-keyed `WeakMap`; per-test isolation is the caller's responsibility (see `cancelSetupWizardPersist`, `cancelOrgChartPrefsPersist`, `cancelPendingPersist`).
+
+### Companion ESLint rules
+
+`@typescript-eslint/no-floating-promises` and `@typescript-eslint/no-misused-promises` (with `checksVoidReturn: { attributes: false }` for the React event-handler pattern) are enabled at error level. They catch the most common syntactic shapes that lead to forgotten async work at edit time; the active-handle gate catches anything that actually allocates a handle at runtime.
 
 ## WS Payload Sanitization
 

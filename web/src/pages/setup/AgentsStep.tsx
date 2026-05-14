@@ -156,7 +156,7 @@ export function AgentsStep() {
               ))}
             </ul>
           }
-          action={{ label: 'Open Providers step', onClick: goToProvidersStep }}
+          action={{ label: 'Open Providers step', onClick: () => { void goToProvidersStep() } }}
         />
       )}
 

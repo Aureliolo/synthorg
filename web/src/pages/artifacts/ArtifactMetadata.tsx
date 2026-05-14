@@ -38,7 +38,7 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
   ]
 
   function handleDownload() {
-    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() || artifact.id)
+    void downloadArtifactFile(artifact.id, artifact.path.split('/').pop() || artifact.id)
   }
 
   async function handleDelete(): Promise<boolean> {
@@ -47,7 +47,7 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
       const ok = await useArtifactsStore.getState().deleteArtifact(artifact.id)
       if (ok) {
         setDeleteOpen(false)
-        navigate(ROUTES.ARTIFACTS)
+        void navigate(ROUTES.ARTIFACTS)
       }
       return ok
     } finally {

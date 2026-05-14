@@ -206,8 +206,8 @@ export default function CeremonyPolicyPage() {
 
   // Fetch resolved policy and active strategy on mount
   useEffect(() => {
-    fetchResolvedPolicy()
-    fetchActiveStrategy()
+    void fetchResolvedPolicy()
+    void fetchActiveStrategy()
   }, [fetchResolvedPolicy, fetchActiveStrategy])
 
   // Fetch all departments (paginated) with error handling.
@@ -261,7 +261,7 @@ export default function CeremonyPolicyPage() {
         }
       }
     }
-    load()
+    void load()
     return () => { cancelled = true }
   }, [addToast])
 
@@ -302,7 +302,7 @@ export default function CeremonyPolicyPage() {
       // No aggregate success toast here: the store emits one per
       // mutation per the CRUD contract, so an aggregate at this
       // level would double up.
-      fetchResolvedPolicy()
+      void fetchResolvedPolicy()
     } finally {
       setSaving(false)
     }

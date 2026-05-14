@@ -85,7 +85,7 @@ data/             # Shared data files (competitors.yaml for comparison page)
 ## CI
 
 - **Path filtering**: `dorny/paths-filter`; jobs only run when their domain is affected. CLI has its own workflow (`cli.yml`).
-- **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard (lint/type-check/test with `--detect-async-leaks`/build/storybook-build/audit) run in parallel -> ci-pass gate
+- **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard (lint/type-check/test under the active-handle gate/build/storybook-build/audit) run in parallel -> ci-pass gate
 - **Pages**: `pages.yml`: version extraction from `pyproject.toml`, OpenAPI export, comparison page generation, Astro + Zensical docs build, GitHub Pages deploy on push to main
 - **PR Preview**: `pages-preview.yml`: Cloudflare Pages deploy per PR (`pr-<number>.synthorg-pr-preview.pages.dev`), cleanup on PR close
 - **Docker**: `docker.yml`: build + Trivy scan + CIS benchmark run on every PR; push to GHCR + cosign sign + SLSA L3 provenance gated by the `image-push` deployment environment (branch policy `main,v*`). Build and publish are split into separate jobs per image (`build-X` + `build-X-publish`); only the publish half carries `packages: write` / `id-token: write` / `attestations: write`. Shared logic lives in composite actions (`build-scan-image`, `publish-image`). CVE triage: `.github/.trivyignore.yaml`

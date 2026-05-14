@@ -250,7 +250,7 @@ function OrgChartInner() {
     if (!target) return
     // Fit before snapshot so the PNG captures the full graph rather than
     // whatever pan/zoom the user happens to have.
-    fitView({ padding: 0.2, duration: 0 })
+    void fitView({ padding: 0.2, duration: 0 })
     setExporting(true)
     let dataUrl: string | null
     try {
@@ -310,7 +310,7 @@ function OrgChartInner() {
   const handlePrint = useCallback(() => {
     // Fit-to-view before print so the user sees the full chart in the
     // print preview rather than whatever viewport they had zoomed to.
-    fitView({ padding: 0.2, duration: 0 })
+    void fitView({ padding: 0.2, duration: 0 })
     // fitView runs instantly (duration: 0) -- the single-frame delay is
     // to let the browser commit the resulting layout/repaint before
     // window.print() freezes the page.
@@ -373,7 +373,7 @@ function OrgChartInner() {
         icon={GitBranch}
         title="No organization configured"
         description="Set up your company and agents to see the org chart"
-        action={{ label: 'Edit Organization', onClick: () => navigate(ROUTES.ORG_EDIT) }}
+        action={{ label: 'Edit Organization', onClick: () => { void navigate(ROUTES.ORG_EDIT) } }}
       />
     )
   }

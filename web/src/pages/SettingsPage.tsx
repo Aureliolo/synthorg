@@ -151,7 +151,7 @@ export default function SettingsPage() {
   }, [baseSave, dirtyValues, entries])
 
   useSettingsKeyboard({
-    onSave: handleSave,
+    onSave: () => { void handleSave() },
     onSearchFocus: () => searchRef.current?.focus(),
     canSave: dirtyValues.size > 0 && !saving,
   })

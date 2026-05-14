@@ -215,7 +215,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
       const item = wsEventToActivityItem(event)
       get().pushActivity(item)
       if (event.event_type === 'budget.record_added') {
-        get().fetchOverview()
+        void get().fetchOverview()
       }
     } catch (err) {
       log.error('Failed to process WS event:', {

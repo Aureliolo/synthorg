@@ -37,7 +37,7 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     if (taskId) {
-      useTasksStore.getState().fetchTask(taskId)
+      void useTasksStore.getState().fetchTask(taskId)
     }
   }, [taskId])
 

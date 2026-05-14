@@ -2,8 +2,9 @@ import fc from 'fast-check'
 import { vi } from 'vitest'
 import { getErrorMessage } from '@/utils/errors'
 
-// Mock axios to prevent fetch adapter capability detection (creates unresolved
-// ReadableStream promises that trigger --detect-async-leaks)
+// Mock axios so the helper's classification logic is tested in
+// isolation: this property-test file only cares about
+// ``getErrorMessage``'s contract, not axios's adapter detection.
 vi.mock('axios', () => ({
   default: {
     isAxiosError: (err: unknown) =>
