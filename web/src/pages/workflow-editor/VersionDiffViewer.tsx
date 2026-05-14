@@ -154,7 +154,15 @@ export function VersionDiffViewer() {
                   </h3>
                   <div className="flex flex-col gap-1">
                     {diffResult.node_changes.map((nc) => (
-                      <NodeChangeRow key={`${nc.node_id}-${nc.change_type}`} change={nc} />
+                      <NodeChangeRow
+                        key={`${nc.node_id}-${nc.change_type}`}
+                        change={{
+                          node_id: nc.node_id,
+                          change_type: nc.change_type,
+                          old_value: nc.old_value ?? null,
+                          new_value: nc.new_value ?? null,
+                        }}
+                      />
                     ))}
                   </div>
                 </section>
@@ -168,7 +176,15 @@ export function VersionDiffViewer() {
                   </h3>
                   <div className="flex flex-col gap-1">
                     {diffResult.edge_changes.map((ec) => (
-                      <EdgeChangeRow key={`${ec.edge_id}-${ec.change_type}`} change={ec} />
+                      <EdgeChangeRow
+                        key={`${ec.edge_id}-${ec.change_type}`}
+                        change={{
+                          edge_id: ec.edge_id,
+                          change_type: ec.change_type,
+                          old_value: ec.old_value ?? null,
+                          new_value: ec.new_value ?? null,
+                        }}
+                      />
                     ))}
                   </div>
                 </section>

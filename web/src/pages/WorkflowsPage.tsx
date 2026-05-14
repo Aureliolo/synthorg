@@ -101,10 +101,14 @@ export default function WorkflowsPage() {
       if (!source) return
       const created = await useWorkflowsStore.getState().createWorkflow({
         name: `${source.name} (Copy)`,
-        description: source.description || undefined,
-        workflow_type: source.workflow_type,
-        nodes: source.nodes.map((n) => ({ ...n })),
-        edges: source.edges.map((e) => ({ ...e })),
+        description: source.description ?? '',
+        version: '1.0.0',
+        workflow_type: source.workflow_type ?? 'sequential_pipeline',
+        inputs: [],
+        outputs: [],
+        is_subworkflow: false,
+        nodes: source.nodes.map((n) => ({ ...n })) as readonly Record<string, unknown>[],
+        edges: source.edges.map((e) => ({ ...e })) as readonly Record<string, unknown>[],
       })
       if (!created) return
       void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)

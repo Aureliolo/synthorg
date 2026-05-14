@@ -73,7 +73,12 @@ describe('createWorkflow', () => {
 
     const result = await useWorkflowsStore.getState().createWorkflow({
       name: 'Alpha',
+      description: '',
+      version: '1.0',
       workflow_type: 'sequential_pipeline',
+      inputs: [],
+      outputs: [],
+      is_subworkflow: false,
       nodes: [],
       edges: [],
     })
@@ -95,7 +100,12 @@ describe('createWorkflow', () => {
 
     const result = await useWorkflowsStore.getState().createWorkflow({
       name: 'Alpha',
+      description: '',
+      version: '1.0',
       workflow_type: 'sequential_pipeline',
+      inputs: [],
+      outputs: [],
+      is_subworkflow: false,
       nodes: [],
       edges: [],
     })

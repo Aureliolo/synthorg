@@ -59,7 +59,7 @@ export function WorkflowCard({
                 the StatPill instances below for Nodes/Edges and with
                 ArtifactCard's type label) instead of a hand-rolled
                 inline pill that drifts from the design tokens. */}
-            <StatPill value={formatLabel(workflow.workflow_type)} />
+            <StatPill value={formatLabel(workflow.workflow_type ?? '')} />
           </div>
 
           {workflow.description && (

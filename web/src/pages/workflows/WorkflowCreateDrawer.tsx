@@ -89,8 +89,12 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
         })
       : await useWorkflowsStore.getState().createWorkflow({
           name: form.name.trim(),
-          description: form.description.trim() || undefined,
-          workflow_type: form.workflowType,
+          description: form.description.trim() ?? '',
+          version: '1.0.0',
+          workflow_type: form.workflowType as 'sequential_pipeline' | 'parallel_execution' | 'kanban' | 'agile_kanban',
+          inputs: [],
+          outputs: [],
+          is_subworkflow: false,
           nodes: [],
           edges: [],
         })

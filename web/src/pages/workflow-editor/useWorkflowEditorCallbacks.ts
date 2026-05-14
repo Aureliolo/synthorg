@@ -194,10 +194,14 @@ export function useWorkflowEditorCallbacks(
     })
     const created = await useWorkflowsStore.getState().createWorkflow({
       name: `${state.definition.name} (Copy)`,
-      description: state.definition.description || undefined,
-      workflow_type: state.definition.workflow_type,
-      nodes: nodeData,
-      edges: edgeData,
+      description: state.definition.description ?? '',
+      version: '1.0.0',
+      workflow_type: state.definition.workflow_type ?? 'sequential_pipeline',
+      inputs: [],
+      outputs: [],
+      is_subworkflow: false,
+      nodes: nodeData as readonly Record<string, unknown>[],
+      edges: edgeData as readonly Record<string, unknown>[],
     })
     if (!created) return
     void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
