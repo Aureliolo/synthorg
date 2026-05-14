@@ -20,6 +20,8 @@ from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
     parse_bool,
+    parse_int,
+    parse_str_tuple_json,
 )
 
 logger = get_logger(__name__)
@@ -120,6 +122,38 @@ class RateLimitConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="unauth_max_requests",
+            namespace=SettingNamespace.API,
+            key="rate_limit_unauth_max_requests",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="auth_max_requests",
+            namespace=SettingNamespace.API,
+            key="rate_limit_auth_max_requests",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="time_unit",
+            namespace=SettingNamespace.API,
+            key="rate_limit_time_unit",
+        ),
+        MirrorField(
+            field="exclude_paths",
+            namespace=SettingNamespace.API,
+            key="rate_limit_exclude_paths",
+            parse=parse_str_tuple_json,
+        ),
+        MirrorField(
+            field="max_rpm_default",
+            namespace=SettingNamespace.API,
+            key="max_rpm_default",
+            parse=parse_int,
+        ),
+    )
+
     floor_max_requests: int = Field(
         default=10000,
         ge=1,
@@ -196,6 +230,11 @@ class RateLimitConfig(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="before")
     @classmethod
