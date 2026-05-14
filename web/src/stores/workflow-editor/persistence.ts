@@ -4,9 +4,10 @@ import {
   getWorkflow,
   updateWorkflow,
 } from '@/api/endpoints/workflows'
+import { ErrorCode } from '@/api/types/errors'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getCrudErrorTitle, getErrorMessage, isAxiosError } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorCode, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject, isString } from '@/utils/type-guards'
 import type { PersistenceSlice, SliceCreator } from './types'
@@ -167,10 +168,11 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       })
       set({ definition: updatedDef, saving: false, dirty: false, validationResult: null })
     } catch (err) {
-      // ``isAxiosError`` lets us read response.status without an
-      // unsafe ``as`` cast through a hand-rolled shape.
-      const status = isAxiosError(err) ? err.response?.status : undefined
-      if (status === 409 && definition) {
+      // Discriminate on the typed RFC 9457 ``error_code`` envelope
+      // rather than the raw HTTP status: web/CLAUDE.md "Error-code
+      // constants (MANDATORY)" forbids raw integer-literal status
+      // checks in store code.
+      if (getErrorCode(err) === ErrorCode.VERSION_CONFLICT && definition) {
         log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
         useToastStore.getState().add({
           variant: 'warning',

@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import type { WorkflowDiff } from '@/api/types/workflows'
+import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import { apiError } from '@/mocks/handlers'
 import { buildWorkflow } from '@/mocks/handlers/workflows'
 import { useToastStore } from '@/stores/toast'
@@ -294,7 +295,7 @@ describe('workflow-editor composed store', () => {
       expect(toasts[0]!.description).toBeDefined()
     })
 
-    it('saveDefinition emits a warning toast on 409 conflict', async () => {
+    it('saveDefinition emits a warning toast on VERSION_CONFLICT', async () => {
       useWorkflowEditorStore.setState({
         definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
         nodes: [],
@@ -302,7 +303,13 @@ describe('workflow-editor composed store', () => {
       })
       server.use(
         http.patch('/api/v1/workflows/:id', () =>
-          HttpResponse.json(apiError('conflict'), { status: 409 }),
+          HttpResponse.json(
+            apiError('conflict', {
+              error_code: ErrorCode.VERSION_CONFLICT,
+              error_category: ErrorCategory.CONFLICT,
+            }),
+            { status: 409 },
+          ),
         ),
       )
 
