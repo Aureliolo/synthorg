@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, Any, Final
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from pydantic import BaseModel, ConfigDict
 
+from synthorg.api.boundary import parse_typed
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
@@ -26,6 +28,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.integrations.connections.models import WebhookReceipt  # noqa: TC001
+from synthorg.integrations.webhooks.activity_service import WebhookActivityService
 from synthorg.integrations.webhooks.event_bus_bridge import (
     publish_webhook_event,
 )
@@ -35,6 +38,7 @@ from synthorg.integrations.webhooks.replay_protection import (
 )
 from synthorg.integrations.webhooks.verifiers.factory import get_verifier
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import (
     WEBHOOK_ACCEPTED,
@@ -43,6 +47,23 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIVED,
     WEBHOOK_REJECTED,
 )
+
+
+class WebhookEventPayload(BaseModel):
+    """Typed boundary for an incoming webhook event payload.
+
+    The wire shape is provider-defined (each external service sends
+    arbitrary keys), so the model uses ``extra="allow"`` to accept the
+    full key set unchanged. The contract this model enforces is the
+    *envelope shape*: the payload MUST be a JSON object (not an array,
+    scalar, or non-JSON body). That envelope check is the gate that
+    closes the silent ``{"raw": ...}`` fallback the controller used
+    before. Do not flip this to ``extra="forbid"``: it would break
+    every external provider integration.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -541,6 +562,24 @@ def _assert_receipt_retryable(receipt: WebhookReceipt) -> None:
     raise ConflictError(msg)
 
 
+def _get_activity_service(state: State) -> WebhookActivityService:
+    """Return (and lazily build) the read-only webhook activity service.
+
+    The service holds a reference to the persistence-backed
+    :class:`WebhookReceiptRepository` so the controller body never
+    touches ``persistence.webhook_receipts`` directly. The cache lives
+    on ``app_state`` so a single instance survives across requests.
+    """
+    app_state = state["app_state"]
+    cached = getattr(app_state, "_webhook_activity_service", None)
+    if cached is None:
+        cached = WebhookActivityService(
+            receipts_repo=app_state.persistence.webhook_receipts,
+        )
+        app_state._webhook_activity_service = cached  # noqa: SLF001
+    return cached
+
+
 def _get_replay_protector(state: State) -> ReplayProtector:
     """Return (and lazily build) a config-driven ``ReplayProtector``.
 
@@ -648,15 +687,29 @@ class WebhooksController(Controller):
         )
 
         try:
-            payload = json.loads(body)
-        except json.JSONDecodeError, UnicodeDecodeError:
-            payload = {"raw": body.decode("utf-8", errors="replace")}
+            decoded = json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                connection_name=connection_name,
+                reason="webhook_body_not_json",
+                error_type=type(exc).__name__,
+            )
+            msg = "webhook body is not valid JSON"
+            raise ValidationError(msg) from None
+        if not isinstance(decoded, dict):
+            logger.warning(
+                API_VALIDATION_FAILED,
+                connection_name=connection_name,
+                reason="webhook_body_not_object",
+                wire_type=type(decoded).__name__,
+            )
+            msg = "webhook body must be a JSON object"
+            raise ValidationError(msg)
+        typed_payload = parse_typed("webhook.payload", decoded, WebhookEventPayload)
+        normalized_payload: dict[str, object] = typed_payload.model_dump()
 
         bus = state["app_state"].message_bus
-        if isinstance(payload, dict):
-            normalized_payload: dict[str, object] = dict(payload)
-        else:
-            normalized_payload = {"data": payload}
 
         # Both branches below publish through the durable
         # idempotency service so JetStream redelivery / retried POSTs
@@ -703,9 +756,9 @@ class WebhooksController(Controller):
         ),
     ) -> ApiResponse[tuple[WebhookReceipt, ...]]:
         """List recent webhook receipts for a connection."""
-        persistence = state["app_state"].persistence
-        receipts = await persistence.webhook_receipts.get_by_connection(
-            connection_name,
+        service = _get_activity_service(state)
+        receipts = await service.list_activity(
+            connection_name=connection_name,
             limit=limit,
         )
         return ApiResponse(data=receipts)
