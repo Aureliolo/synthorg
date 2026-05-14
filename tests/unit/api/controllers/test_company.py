@@ -38,7 +38,6 @@ async def db_override_app(
     settings_service = SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
-        config=config,
     )
     app = create_app(
         config=config,

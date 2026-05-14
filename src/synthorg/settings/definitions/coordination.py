@@ -17,7 +17,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=50,
-        yaml_path="coordination.max_concurrency_per_wave",
     )
 )
 
@@ -29,7 +28,6 @@ _r.register(
         default="false",
         description="Stop on first wave failure instead of continuing",
         group="General",
-        yaml_path="coordination.fail_fast",
     )
 )
 
@@ -41,7 +39,6 @@ _r.register(
         default="true",
         description="Create isolated workspaces for multi-agent execution",
         group="General",
-        yaml_path="coordination.enable_workspace_isolation",
     )
 )
 
@@ -53,7 +50,6 @@ _r.register(
         default="main",
         description="Git branch for workspace isolation",
         group="General",
-        yaml_path="coordination.base_branch",
     )
 )
 
@@ -75,7 +71,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10,
-        yaml_path="coordination.department_policy_cas_retry_attempts",
     )
 )
 
@@ -101,7 +96,6 @@ _r.register(
             "external_trigger",
             "milestone_driven",
         ),
-        yaml_path="workflow.sprint.ceremony_policy.strategy",
     )
 )
 
@@ -114,7 +108,6 @@ _r.register(
         description="Strategy-specific configuration as JSON",
         group="Ceremony Policy",
         level=SettingLevel.ADVANCED,
-        yaml_path="workflow.sprint.ceremony_policy.strategy_config",
     )
 )
 
@@ -135,7 +128,6 @@ _r.register(
             "budget",
             "points_per_sprint",
         ),
-        yaml_path="workflow.sprint.ceremony_policy.velocity_calculator",
     )
 )
 
@@ -147,7 +139,6 @@ _r.register(
         default="true",
         description="Automatically transition sprints when strategy conditions are met",
         group="Ceremony Policy",
-        yaml_path="workflow.sprint.ceremony_policy.auto_transition",
     )
 )
 
@@ -164,15 +155,11 @@ _r.register(
         group="Ceremony Policy",
         min_value=0.01,
         max_value=1.0,
-        yaml_path="workflow.sprint.ceremony_policy.transition_threshold",
     )
 )
 
 # The next two settings are aggregate JSON blobs managed entirely through the
-# settings service (keyed by department or ceremony name).  They intentionally
-# omit yaml_path because they do not map to a single YAML config path -- the
-# YAML company config stores per-department ceremony_policy inline on each
-# department object, not as a separate top-level blob.
+# settings service (keyed by department or ceremony name).
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
@@ -211,6 +198,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10,
-        yaml_path="coordination.cas.max_attempts",
     )
 )

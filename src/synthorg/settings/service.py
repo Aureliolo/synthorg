@@ -177,10 +177,6 @@ class SettingsService:
     Args:
         repository: Persistence repository for DB settings.
         registry: Setting metadata registry.
-        config: Unused. Retained for caller compatibility through the
-            yaml_path-removal sweep; the constructor argument and all
-            its callers are dropped together when ``yaml_path`` is
-            deleted from ``SettingDefinition``.
         encryptor: Optional encryptor for sensitive settings.
         message_bus: Optional message bus for change notifications.
     """
@@ -190,11 +186,9 @@ class SettingsService:
         *,
         repository: SettingsRepository,
         registry: SettingsRegistry,
-        config: object | None = None,
         encryptor: SettingsEncryptor | None = None,
         message_bus: MessageBus | None = None,
     ) -> None:
-        del config
         self._repository = repository
         self._registry = registry
         self._encryptor = encryptor

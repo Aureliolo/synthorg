@@ -16,7 +16,6 @@ _r.register(
         description="Monthly budget limit",
         group="Limits",
         min_value=0.0,
-        yaml_path="budget.total_monthly",
     )
 )
 
@@ -29,7 +28,6 @@ _r.register(
         description="Maximum cost per task",
         group="Limits",
         min_value=0.0,
-        yaml_path="budget.per_task_limit",
     )
 )
 
@@ -42,7 +40,6 @@ _r.register(
         description="Maximum cost per agent per day",
         group="Limits",
         min_value=0.0,
-        yaml_path="budget.per_agent_daily_limit",
     )
 )
 
@@ -55,7 +52,6 @@ _r.register(
         description="Enable automatic model downgrade when budget is low",
         group="Auto-Downgrade",
         level=SettingLevel.ADVANCED,
-        yaml_path="budget.auto_downgrade.enabled",
     )
 )
 
@@ -70,7 +66,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0,
         max_value=100,
-        yaml_path="budget.auto_downgrade.threshold",
     )
 )
 
@@ -85,7 +80,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=28,
-        yaml_path="budget.reset_day",
     )
 )
 
@@ -100,7 +94,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0,
         max_value=100,
-        yaml_path="budget.alerts.warn_at",
     )
 )
 
@@ -115,7 +108,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0,
         max_value=100,
-        yaml_path="budget.alerts.critical_at",
     )
 )
 
@@ -130,7 +122,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0,
         max_value=100,
-        yaml_path="budget.alerts.hard_stop_at",
     )
 )
 
@@ -152,6 +143,5 @@ _r.register(
         ),
         group="Display",
         validator_pattern=r"^[A-Z]{3}$",
-        yaml_path="budget.currency",
     )
 )

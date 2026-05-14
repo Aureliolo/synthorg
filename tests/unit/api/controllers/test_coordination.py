@@ -122,7 +122,6 @@ def coordination_client(
     settings_service = SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
-        config=root_config,
     )
 
     app = create_app(

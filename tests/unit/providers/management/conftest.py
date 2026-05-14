@@ -59,7 +59,6 @@ def settings_service(
     return SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
-        config=root_config,
         encryptor=encryptor,
     )
 

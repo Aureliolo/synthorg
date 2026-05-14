@@ -93,7 +93,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
-        yaml_path="api.server.host",
     )
 )
 
@@ -114,7 +113,6 @@ _r.register(
         read_only_post_init=True,
         min_value=1,
         max_value=65535,
-        yaml_path="api.server.port",
     )
 )
 
@@ -133,7 +131,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
-        yaml_path="api.api_prefix",
     )
 )
 
@@ -154,7 +151,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
-        yaml_path="api.server.ssl_certfile",
     )
 )
 
@@ -174,7 +170,6 @@ _r.register(
         restart_required=True,
         read_only_post_init=True,
         sensitive=True,
-        yaml_path="api.server.ssl_keyfile",
     )
 )
 
@@ -193,7 +188,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
-        yaml_path="api.server.ssl_ca_certs",
     )
 )
 
@@ -213,7 +207,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
-        yaml_path="api.server.trusted_proxies",
     )
 )
 
@@ -243,7 +236,6 @@ _r.register(
         group="Security Headers",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        yaml_path="api.csp.docs_external_origins",
     )
 )
 
@@ -270,7 +262,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=(r"^https://[A-Za-z0-9.\-]+(?::\d{1,5})?(?:/[^\s?#]*)?$"),
-        yaml_path="api.error_docs_base_url",
     )
 )
 
@@ -294,7 +285,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
-        yaml_path="api.cors.allowed_origins",
     )
 )
 
@@ -312,7 +302,6 @@ _r.register(
         restart_required=True,
         min_value=1,
         max_value=10000,
-        yaml_path="api.rate_limit.unauth_max_requests",
     )
 )
 
@@ -328,7 +317,6 @@ _r.register(
         restart_required=True,
         min_value=1,
         max_value=100000,
-        yaml_path="api.rate_limit.auth_max_requests",
     )
 )
 
@@ -342,7 +330,6 @@ _r.register(
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         enum_values=("second", "minute", "hour", "day"),
-        yaml_path="api.rate_limit.time_unit",
         restart_required=True,
     )
 )
@@ -357,7 +344,6 @@ _r.register(
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        yaml_path="api.rate_limit.exclude_paths",
     )
 )
 
@@ -374,7 +360,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10080,
-        yaml_path="api.auth.jwt_expiry_minutes",
     )
 )
 
@@ -388,7 +373,6 @@ _r.register(
         group="Authentication",
         min_value=12,
         max_value=128,
-        yaml_path="api.auth.min_password_length",
     )
 )
 
@@ -402,7 +386,6 @@ _r.register(
         group="Authentication",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        yaml_path="api.auth.exclude_paths",
     )
 )
 
@@ -435,7 +418,6 @@ _r.register(
         ),
         group="Setup",
         level=SettingLevel.ADVANCED,
-        yaml_path="api.setup.has_gpu",
     )
 )
 
@@ -452,7 +434,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=3600.0,
-        yaml_path="api.ticket_cleanup_interval_seconds",
     )
 )
 
@@ -468,7 +449,6 @@ _r.register(
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        yaml_path="api.per_op_rate_limit.enabled",
     )
 )
 
@@ -488,7 +468,6 @@ _r.register(
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        yaml_path="api.per_op_rate_limit.overrides",
     )
 )
 
@@ -505,7 +484,6 @@ _r.register(
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        yaml_path="api.per_op_concurrency.enabled",
     )
 )
 
@@ -524,7 +502,6 @@ _r.register(
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        yaml_path="api.per_op_concurrency.overrides",
     )
 )
 
@@ -543,7 +520,6 @@ _r.register(
         restart_required=True,
         min_value=1,
         max_value=100_000,
-        yaml_path="api.rate_limit.max_rpm_default",
     )
 )
 
@@ -561,7 +537,6 @@ _r.register(
         restart_required=True,
         min_value=100,
         max_value=10_000,
-        yaml_path="api.server.compression_minimum_size_bytes",
     )
 )
 
@@ -577,7 +552,6 @@ _r.register(
         restart_required=True,
         min_value=1_000_000,
         max_value=536_870_912,
-        yaml_path="api.server.request_max_body_size_bytes",
     )
 )
 
@@ -592,7 +566,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=50,
-        yaml_path="api.ws_ticket_max_pending_per_user",
     )
 )
 
@@ -612,7 +585,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=600.0,
-        yaml_path="api.sse_keepalive_seconds",
     )
 )
 
@@ -632,7 +604,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=100,
         max_value=1_000_000,
-        yaml_path="api.query_limits.max_lifecycle_events",
     )
 )
 
@@ -649,7 +620,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=100,
         max_value=1_000_000,
-        yaml_path="api.query_limits.max_audit_records",
     )
 )
 
@@ -667,7 +637,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=100,
         max_value=1_000_000,
-        yaml_path="api.query_limits.max_metrics",
     )
 )
 
@@ -686,7 +655,6 @@ _r.register(
         restart_required=True,
         min_value=5,
         max_value=100,
-        yaml_path="api.query_limits.max_meeting_context_keys",
     )
 )
 
@@ -794,7 +762,6 @@ _r.register(
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,
-        yaml_path="api.lifecycle_cleanup_enabled",
     )
 )
 
@@ -814,7 +781,6 @@ _r.register(
         ),
         group="Providers",
         level=SettingLevel.ADVANCED,
-        yaml_path="api.health_prober_enabled",
     )
 )
 
@@ -835,7 +801,6 @@ _r.register(
         ),
         group="Webhooks",
         level=SettingLevel.ADVANCED,
-        yaml_path="api.webhook_receipt_cleanup_enabled",
     )
 )
 
@@ -858,7 +823,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
-        yaml_path="api.rate_limiter_enabled",
     )
 )
 
@@ -878,7 +842,6 @@ _r.register(
         restart_required=True,
         min_value=60.0,
         max_value=86_400.0,
-        yaml_path="api.approval_urgency_critical_seconds",
     )
 )
 
@@ -897,7 +860,6 @@ _r.register(
         restart_required=True,
         min_value=300.0,
         max_value=604_800.0,
-        yaml_path="api.approval_urgency_high_seconds",
     )
 )
 
@@ -922,7 +884,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=64,
         max_value=65_536,
-        yaml_path="api.rate_limit.gc_every_n_acquires",
     )
 )
 
@@ -941,7 +902,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=3600,
-        yaml_path="api.rate_limit.gc_min_horizon_seconds",
     )
 )
 
@@ -959,7 +919,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=64,
         max_value=65_536,
-        yaml_path="api.rate_limit.inflight_gc_every_n_acquires",
     )
 )
 
@@ -977,7 +936,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=300,
-        yaml_path="api.rate_limit.inflight_min_retry_after_seconds",
     )
 )
 
@@ -999,7 +957,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=120.0,
-        yaml_path="api.lifecycle.task_engine_shutdown_seconds",
     )
 )
 
@@ -1016,7 +973,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=60.0,
-        yaml_path="api.lifecycle.meeting_scheduler_shutdown_seconds",
     )
 )
 
@@ -1033,7 +989,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=60.0,
-        yaml_path="api.lifecycle.performance_tracker_shutdown_seconds",
     )
 )
 
@@ -1051,7 +1006,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=60.0,
-        yaml_path="api.lifecycle.backup_shutdown_seconds",
     )
 )
 
@@ -1068,7 +1022,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=60.0,
-        yaml_path="api.lifecycle.settings_dispatcher_shutdown_seconds",
     )
 )
 
@@ -1086,7 +1039,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=60.0,
-        yaml_path="api.lifecycle.bridge_shutdown_seconds",
     )
 )
 
@@ -1103,7 +1055,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=60.0,
-        yaml_path="api.lifecycle.distributed_queue_shutdown_seconds",
     )
 )
 
@@ -1121,7 +1072,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=60.0,
-        yaml_path="api.lifecycle.message_bus_shutdown_seconds",
     )
 )
 
@@ -1139,7 +1089,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=120.0,
-        yaml_path="api.lifecycle.persistence_shutdown_seconds",
     )
 )
 
@@ -1157,7 +1106,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=60.0,
-        yaml_path="api.lifecycle.approval_timeout_shutdown_seconds",
     )
 )
 
@@ -1179,6 +1127,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=300.0,
-        yaml_path="api.lifecycle.drain_timeout_seconds",
     )
 )

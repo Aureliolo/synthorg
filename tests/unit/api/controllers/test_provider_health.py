@@ -73,7 +73,6 @@ def _build_provider_client(
     settings_service = SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
-        config=config,
     )
     app = create_app(
         config=config,

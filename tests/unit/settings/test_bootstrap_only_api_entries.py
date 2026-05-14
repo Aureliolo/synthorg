@@ -58,7 +58,6 @@ def service(monkeypatch: pytest.MonkeyPatch) -> SettingsService:
     return SettingsService(
         repository=repo,
         registry=get_registry(),
-        config=_FakeConfig(),
     )
 
 

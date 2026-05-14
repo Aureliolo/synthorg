@@ -38,7 +38,6 @@ def _read_only_definition() -> SettingDefinition:
         group="Logging",
         read_only_post_init=True,
         restart_required=True,
-        yaml_path="logging.log_dir",
     )
 
 
@@ -51,7 +50,6 @@ def _writable_definition() -> SettingDefinition:
         description="Root logger level",
         group="Logging",
         enum_values=("debug", "info", "warning", "error", "critical"),
-        yaml_path="logging.root_level",
     )
 
 
@@ -85,7 +83,6 @@ def service(repo: AsyncMock, registry: SettingsRegistry) -> SettingsService:
     return SettingsService(
         repository=repo,
         registry=registry,
-        config=_FakeConfig(),
     )
 
 

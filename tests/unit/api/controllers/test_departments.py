@@ -57,7 +57,6 @@ class TestDepartmentControllerDbOverride:
         settings_service = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=config,
         )
 
         db_depts = [
@@ -108,11 +107,9 @@ class TestDepartmentCeremonyPolicyCas:
             _mutate_dept_policies_with_retry,
         )
 
-        config = RootConfig(company_name="test")
         settings_service = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=config,
         )
         app_state = SimpleNamespace(
             has_settings_service=True,
@@ -153,11 +150,9 @@ class TestDepartmentCeremonyPolicyCas:
         )
         from synthorg.core.domain_errors import VersionConflictError
 
-        config = RootConfig(company_name="test")
         settings_service = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=config,
         )
         app_state = SimpleNamespace(
             has_settings_service=True,
@@ -214,11 +209,9 @@ class TestDepartmentCeremonyPolicyCas:
         )
         from synthorg.core.domain_errors import VersionConflictError
 
-        config = RootConfig(company_name="test")
         settings_service = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=config,
         )
         # Force every set() to raise VersionConflictError so the retry
         # loop runs to exhaustion.
@@ -263,11 +256,9 @@ class TestDepartmentCeremonyPolicyCas:
         )
         from synthorg.core.domain_errors import VersionConflictError
 
-        config = RootConfig(company_name="test")
         settings_service = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=config,
         )
         set_mock = AsyncMock(side_effect=VersionConflictError("forced conflict"))
         settings_service.set = set_mock  # type: ignore[method-assign]

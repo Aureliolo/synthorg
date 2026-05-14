@@ -423,7 +423,6 @@ def _shared_app(  # noqa: PLR0913
     settings_service = SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
-        config=root_config,
     )
 
     return create_app(

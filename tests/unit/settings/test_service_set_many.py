@@ -36,7 +36,6 @@ def _plain_def() -> SettingDefinition:
         default=None,
         description="test",
         group="test",
-        yaml_path=None,
         sensitive=False,
         restart_required=False,
         enum_values=(),
@@ -54,7 +53,6 @@ def _sensitive_def() -> SettingDefinition:
         default=None,
         description="test",
         group="test",
-        yaml_path=None,
         sensitive=True,
         restart_required=False,
         enum_values=(),
@@ -94,7 +92,6 @@ def service(
     return SettingsService(
         repository=mock_repo,
         registry=registry,
-        config=_FakeConfig(),
         encryptor=encryptor,
     )
 
@@ -107,7 +104,6 @@ def service_no_encryptor(
     return SettingsService(
         repository=mock_repo,
         registry=registry,
-        config=_FakeConfig(),
         encryptor=None,
     )
 

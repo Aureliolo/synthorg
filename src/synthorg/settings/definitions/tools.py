@@ -26,7 +26,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=60.0,
-        yaml_path="tools.git.kill_grace_timeout_seconds",
     )
 )
 
@@ -44,7 +43,6 @@ _r.register(
         restart_required=True,
         min_value=0.05,
         max_value=5.0,
-        yaml_path="tools.docker.sidecar_health_poll_interval_seconds",
     )
 )
 
@@ -63,7 +61,6 @@ _r.register(
         restart_required=True,
         min_value=1.0,
         max_value=300.0,
-        yaml_path="tools.docker.sidecar_health_timeout_seconds",
     )
 )
 
@@ -83,7 +80,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=r"^[1-9]\d*[bkmgBKMG]?$",
-        yaml_path="tools.docker.sidecar_memory_limit",
     )
 )
 
@@ -99,7 +95,6 @@ _r.register(
         restart_required=True,
         min_value=0.1,
         max_value=16.0,
-        yaml_path="tools.docker.sidecar_cpu_limit",
     )
 )
 
@@ -118,7 +113,6 @@ _r.register(
         restart_required=True,
         min_value=1,
         max_value=4096,
-        yaml_path="tools.docker.sidecar_max_pids",
     )
 )
 
@@ -137,7 +131,6 @@ _r.register(
         restart_required=True,
         min_value=1,
         max_value=300,
-        yaml_path="tools.docker.stop_grace_timeout_seconds",
     )
 )
 
@@ -155,7 +148,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=60.0,
-        yaml_path="tools.subprocess.kill_grace_timeout_seconds",
     )
 )
 
@@ -175,7 +167,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=300.0,
-        yaml_path="tools.web_request_timeout_seconds",
     )
 )
 
@@ -210,7 +201,6 @@ _r.register(
         restart_required=True,
         read_only_post_init=True,
         env_var_override="SYNTHORG_SANDBOX_IMAGE",
-        yaml_path="tools.sandbox.docker.image",
     )
 )
 
@@ -237,7 +227,6 @@ _r.register(
         restart_required=True,
         read_only_post_init=True,
         env_var_override="SYNTHORG_SIDECAR_IMAGE",
-        yaml_path="tools.sandbox.docker.sidecar_image",
     )
 )
 
@@ -259,6 +248,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=10.0,
         max_value=3600.0,
-        yaml_path="tools.git_command_timeout_seconds",
     )
 )

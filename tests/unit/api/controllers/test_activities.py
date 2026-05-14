@@ -118,7 +118,6 @@ async def _make_app_with_broken_tracker(
     settings_service = SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
-        config=config,
     )
     return create_app(
         config=config,

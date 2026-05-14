@@ -36,7 +36,6 @@ class TestSettingDefinition:
         assert defn.validator_pattern is None
         assert defn.min_value is None
         assert defn.max_value is None
-        assert defn.yaml_path is None
 
     def test_full_construction(self) -> None:
         defn = SettingDefinition(
@@ -53,7 +52,6 @@ class TestSettingDefinition:
             validator_pattern=None,
             min_value=None,
             max_value=None,
-            yaml_path="security.output_scan_policy_type",
         )
         assert defn.enum_values == (
             "redact",
@@ -62,7 +60,6 @@ class TestSettingDefinition:
             "autonomy_tiered",
         )
         assert defn.restart_required is True
-        assert defn.yaml_path == "security.output_scan_policy_type"
 
     def test_frozen(self) -> None:
         defn = SettingDefinition(

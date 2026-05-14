@@ -22,7 +22,6 @@ _r.register(
         restart_required=True,
         min_value=1.0,
         max_value=60.0,
-        yaml_path="notifications.slack.webhook_timeout_seconds",
     )
 )
 
@@ -38,7 +37,6 @@ _r.register(
         restart_required=True,
         min_value=1.0,
         max_value=60.0,
-        yaml_path="notifications.ntfy.webhook_timeout_seconds",
     )
 )
 
@@ -54,7 +52,6 @@ _r.register(
         restart_required=True,
         min_value=1.0,
         max_value=60.0,
-        yaml_path="notifications.email.smtp_timeout_seconds",
     )
 )
 
@@ -78,7 +75,6 @@ _r.register(
             r"^(?:|https://hooks\.slack\.com/services/"
             r"[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+)$"
         ),
-        yaml_path="notifications.slack.default_webhook_url",
     )
 )
 
@@ -98,7 +94,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
-        yaml_path="notifications.ntfy.default_url",
     )
 )
 
@@ -118,6 +113,5 @@ _r.register(
         ),
         group="Dispatcher",
         level=SettingLevel.ADVANCED,
-        yaml_path="notifications.dispatcher_enabled",
     )
 )

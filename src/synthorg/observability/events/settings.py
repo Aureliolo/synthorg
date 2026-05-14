@@ -16,7 +16,6 @@ SETTINGS_DELETE_FAILED: Final[str] = "settings.delete.failed"
 SETTINGS_NOT_FOUND: Final[str] = "settings.not_found"
 SETTINGS_VERSION_CONFLICT: Final[str] = "settings.version_conflict"
 SETTINGS_REGISTRY_DUPLICATE: Final[str] = "settings.registry.duplicate"
-SETTINGS_CONFIG_PATH_MISS: Final[str] = "settings.config_bridge.path_miss"
 SETTINGS_DEFAULT_DRIFT: Final[str] = "settings.default.drift"
 
 # ── Dispatcher & subscriber events ────────────────────────────────

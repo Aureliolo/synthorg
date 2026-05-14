@@ -115,11 +115,6 @@ class TestCeremonySettingsRegistered:
         assert defn is not None
         assert defn.default == "task_driven"
 
-    def test_ceremony_strategy_yaml_path(self, registry: SettingsRegistry) -> None:
-        defn = registry.get("coordination", "ceremony_strategy")
-        assert defn is not None
-        assert defn.yaml_path == "workflow.sprint.ceremony_policy.strategy"
-
     def test_ceremony_strategy_enum_values_match_strenum(
         self, registry: SettingsRegistry
     ) -> None:

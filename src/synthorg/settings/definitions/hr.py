@@ -24,7 +24,6 @@ _r.register(
         ),
         group="Training",
         level=SettingLevel.ADVANCED,
-        yaml_path="hr.training.enabled",
     )
 )
 
@@ -39,7 +38,6 @@ _r.register(
         description="Record quality metrics during evaluation",
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        yaml_path="hr.evaluation.quality_enabled",
     )
 )
 
@@ -52,7 +50,6 @@ _r.register(
         description="Record cost metrics during evaluation",
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        yaml_path="hr.evaluation.cost_enabled",
     )
 )
 
@@ -65,7 +62,6 @@ _r.register(
         description="Record latency metrics during evaluation",
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        yaml_path="hr.evaluation.latency_enabled",
     )
 )
 
@@ -78,6 +74,5 @@ _r.register(
         description="Record task-count metrics during evaluation",
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        yaml_path="hr.evaluation.task_count_enabled",
     )
 )

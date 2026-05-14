@@ -16,7 +16,6 @@ _r.register(
         description="Model routing strategy",
         group="Routing",
         enum_values=tuple(sorted(STRATEGY_MAP.keys())),
-        yaml_path="routing.strategy",
     )
 )
 
@@ -42,7 +41,6 @@ _r.register(
         default=None,
         description="LLM provider configurations (JSON object keyed by name)",
         group="General",
-        yaml_path="providers",
         sensitive=True,
     )
 )
@@ -78,6 +76,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=65535,
-        yaml_path="providers.ollama_default_port",
     )
 )

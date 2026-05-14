@@ -26,7 +26,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.1,
         max_value=10.0,
-        yaml_path="communication.bus_bridge.poll_timeout_seconds",
     )
 )
 
@@ -41,7 +40,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5,
         max_value=100,
-        yaml_path="communication.bus_bridge.max_consecutive_errors",
     )
 )
 
@@ -60,7 +58,6 @@ _r.register(
         ),
         group="Bus Bridge",
         level=SettingLevel.ADVANCED,
-        yaml_path="communication.bus_bridge.enabled",
     )
 )
 
@@ -80,7 +77,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=300.0,
-        yaml_path="communication.bus_bridge.drain_timeout_seconds",
     )
 )
 
@@ -109,7 +105,6 @@ _r.register(
         # honouring it here preserves the existing operator surface
         # while still routing the value through the registry.
         env_var_override="SYNTHORG_NATS_URL",
-        yaml_path="communication.nats.url",
     )
 )
 
@@ -124,7 +119,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.1,
         max_value=10.0,
-        yaml_path="communication.webhook_bridge.poll_timeout_seconds",
     )
 )
 
@@ -139,7 +133,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5,
         max_value=100,
-        yaml_path="communication.webhook_bridge.max_consecutive_errors",
     )
 )
 
@@ -157,7 +150,6 @@ _r.register(
         ),
         group="Bus Bridge",
         level=SettingLevel.ADVANCED,
-        yaml_path="communication.webhook_bridge.enabled",
     )
 )
 
@@ -177,7 +169,6 @@ _r.register(
         ),
         group="Escalation",
         level=SettingLevel.ADVANCED,
-        yaml_path="communication.escalation_notify_subscriber_enabled",
     )
 )
 
@@ -194,7 +185,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=10,
         max_value=1000,
-        yaml_path="communication.nats.history_batch_size",
     )
 )
 
@@ -209,7 +199,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.1,
         max_value=5.0,
-        yaml_path="communication.nats.history_fetch_timeout_seconds",
     )
 )
 
@@ -235,7 +224,6 @@ _r.register(
         restart_required=True,
         min_value=100,
         max_value=1_000_000,
-        yaml_path="communication.delegation.record_store_max_size",
     )
 )
 
@@ -260,7 +248,6 @@ _r.register(
         restart_required=True,
         min_value=16,
         max_value=10000,
-        yaml_path="communication.event_stream.max_queue_size",
     )
 )
 
@@ -285,7 +272,6 @@ _r.register(
         restart_required=True,
         min_value=30.0,
         max_value=86400.0,
-        yaml_path="communication.event_stream.subscriber_idle_ttl_seconds",
     )
 )
 
@@ -306,7 +292,6 @@ _r.register(
         restart_required=True,
         min_value=5.0,
         max_value=3600.0,
-        yaml_path="communication.event_stream.janitor_interval_seconds",
     )
 )
 
@@ -324,7 +309,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=600.0,
-        yaml_path="communication.loop_prevention.window_seconds",
     )
 )
 
@@ -348,7 +332,6 @@ _r.register(
             " meetings without removing meeting types from config."
         ),
         group="Meetings",
-        yaml_path="communication.meetings.enabled",
     )
 )
 
@@ -367,7 +350,6 @@ _r.register(
         ),
         group="Escalation",
         level=SettingLevel.ADVANCED,
-        yaml_path="communication.escalation_sweeper_paused",
     )
 )
 
@@ -389,6 +371,5 @@ _r.register(
         read_only_post_init=True,
         min_value=0.1,
         max_value=60.0,
-        yaml_path="communication.escalation_subscriber_reconnect_delay_seconds",
     )
 )

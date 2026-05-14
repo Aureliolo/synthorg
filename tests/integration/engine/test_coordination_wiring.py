@@ -280,7 +280,6 @@ class TestCoordinationWiring:
         settings_service = SettingsService(
             repository=backend.settings,
             registry=get_registry(),
-            config=config,
         )
 
         app = create_app(

@@ -732,7 +732,6 @@ async def auto_wire_settings(  # noqa: PLR0913
         settings_svc = SettingsService(
             repository=persistence.settings,
             registry=get_registry(),
-            config=effective_config,
             encryptor=encryptor,
             message_bus=message_bus,
         )

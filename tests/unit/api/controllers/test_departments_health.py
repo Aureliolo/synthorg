@@ -119,7 +119,6 @@ def _build_dept_client(
     settings_service = SettingsService(
         repository=fake_persistence.settings,  # type: ignore[arg-type]
         registry=get_registry(),
-        config=config,
     )
     app = create_app(
         config=config,

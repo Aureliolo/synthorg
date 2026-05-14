@@ -25,7 +25,6 @@ _r.register(
         default="true",
         description="Master switch for the security subsystem",
         group="General",
-        yaml_path="security.enabled",
     )
 )
 
@@ -37,7 +36,6 @@ _r.register(
         default="true",
         description="Whether to record security audit entries",
         group="General",
-        yaml_path="security.audit_enabled",
     )
 )
 
@@ -50,7 +48,6 @@ _r.register(
         description="Scan tool output for secrets and sensitive data",
         group="Output Scanning",
         level=SettingLevel.ADVANCED,
-        yaml_path="security.post_tool_scanning_enabled",
     )
 )
 
@@ -64,7 +61,6 @@ _r.register(
         group="Output Scanning",
         level=SettingLevel.ADVANCED,
         enum_values=("redact", "withhold", "log_only", "autonomy_tiered"),
-        yaml_path="security.output_scan_policy_type",
     )
 )
 
@@ -86,7 +82,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0,
         max_value=36_500,
-        yaml_path="security.audit_retention_days",
     )
 )
 
@@ -106,7 +101,6 @@ _r.register(
         ),
         group="Retention",
         level=SettingLevel.ADVANCED,
-        yaml_path="security.audit_retention_loop_enabled",
     )
 )
 
@@ -128,7 +122,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=AUDIT_RETENTION_TICK_MIN_SECONDS,
         max_value=AUDIT_RETENTION_TICK_MAX_SECONDS,
-        yaml_path="security.audit_retention_tick_seconds",
     )
 )
 
@@ -159,7 +152,6 @@ _r.register(
         read_only_post_init=True,
         min_value=16,
         max_value=64,
-        yaml_path="security.auth_token_bytes",
     )
 )
 
@@ -180,6 +172,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=600.0,
-        yaml_path="security.timeout_check_interval_seconds",
     )
 )

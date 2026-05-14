@@ -59,7 +59,6 @@ class TestAgentController:
         settings_service = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=config,
         )
         app = create_app(
             config=config,
@@ -109,7 +108,6 @@ class TestAgentControllerDbOverride:
         settings_service = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
-            config=config,
         )
 
         db_agents = [

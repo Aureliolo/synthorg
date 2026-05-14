@@ -60,7 +60,6 @@ class SettingDefinition(BaseModel):
         validator_pattern: Regex pattern for string validation.
         min_value: Minimum for numeric types (inclusive).
         max_value: Maximum for numeric types (inclusive).
-        yaml_path: Dotted path into ``RootConfig`` for YAML resolution.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -121,10 +120,6 @@ class SettingDefinition(BaseModel):
     max_value: float | None = Field(
         default=None,
         description="Maximum value for numeric types",
-    )
-    yaml_path: NotBlankStr | None = Field(
-        default=None,
-        description="Dotted path into RootConfig for YAML resolution",
     )
 
     @model_validator(mode="after")

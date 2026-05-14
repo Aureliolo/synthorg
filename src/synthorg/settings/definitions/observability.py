@@ -21,7 +21,6 @@ _r.register(
         description="Root logger level",
         group="Logging",
         enum_values=("debug", "info", "warning", "error", "critical"),
-        yaml_path="logging.root_level",
     )
 )
 
@@ -34,7 +33,6 @@ _r.register(
         description="Enable correlation ID tracking across agent calls",
         group="Logging",
         level=SettingLevel.ADVANCED,
-        yaml_path="logging.enable_correlation",
     )
 )
 
@@ -54,7 +52,6 @@ _r.register(
         ),
         group="Sinks",
         level=SettingLevel.ADVANCED,
-        yaml_path="logging.sink_overrides",
     )
 )
 
@@ -77,7 +74,6 @@ _r.register(
         ),
         group="Sinks",
         level=SettingLevel.ADVANCED,
-        yaml_path="logging.custom_sinks",
     )
 )
 
@@ -95,7 +91,6 @@ _r.register(
         restart_required=True,
         min_value=10,
         max_value=1000,
-        yaml_path="logging.http_sink.batch_size",
     )
 )
 
@@ -111,7 +106,6 @@ _r.register(
         restart_required=True,
         min_value=0.5,
         max_value=60.0,
-        yaml_path="logging.http_sink.flush_interval_seconds",
     )
 )
 
@@ -127,7 +121,6 @@ _r.register(
         restart_required=True,
         min_value=1.0,
         max_value=60.0,
-        yaml_path="logging.http_sink.timeout_seconds",
     )
 )
 
@@ -143,7 +136,6 @@ _r.register(
         restart_required=True,
         min_value=0,
         max_value=10,
-        yaml_path="logging.http_sink.max_retries",
     )
 )
 
@@ -166,7 +158,6 @@ _r.register(
         restart_required=True,
         min_value=1.0,
         max_value=60.0,
-        yaml_path="logging.audit_chain.signing_timeout_seconds",
     )
 )
 
@@ -190,7 +181,6 @@ _r.register(
         restart_required=True,
         read_only_post_init=True,
         env_var_override="SYNTHORG_LOG_DIR",
-        yaml_path="logging.log_dir",
     )
 )
 
@@ -217,7 +207,6 @@ _r.register(
         # case-insensitivity, the validator must honour it.
         validator_pattern=r"^(?:|(?i:debug|info|warning|error|critical))$",
         env_var_override="SYNTHORG_LOG_LEVEL",
-        yaml_path="logging.console_level",
     )
 )
 
@@ -242,7 +231,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
-        yaml_path="logging.audit_chain.tsa_endpoint_freetsa",
     )
 )
 
@@ -260,7 +248,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
-        yaml_path="logging.audit_chain.tsa_endpoint_digicert",
     )
 )
 
@@ -278,6 +265,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
-        yaml_path="logging.audit_chain.tsa_endpoint_sectigo",
     )
 )
