@@ -5,10 +5,13 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.engine.prompt_safety import (
+    TAG_MEMORY_ENTRY,
+    untrusted_content_directive,
+)
 from synthorg.memory.formatter import (
-    MEMORY_BLOCK_END,
-    MEMORY_BLOCK_START,
     format_memory_context,
+    format_memory_context_with_directive,
 )
 from synthorg.memory.injection import (
     DefaultTokenEstimator,
@@ -67,8 +70,8 @@ class TestFormatMemoryContext:
         assert result[0].role is MessageRole.SYSTEM
         content = result[0].content
         assert content is not None
-        assert MEMORY_BLOCK_START in content
-        assert MEMORY_BLOCK_END in content
+        assert f"<{TAG_MEMORY_ENTRY}>" in content
+        assert f"</{TAG_MEMORY_ENTRY}>" in content
         assert "Remember this" in content
 
     def test_category_label_present(self) -> None:
@@ -135,6 +138,22 @@ class TestFormatMemoryContext:
         idx2 = content.index("second memory")
         assert idx1 < idx2
 
+    def test_each_memory_individually_fenced(self) -> None:
+        """Each included memory gets its own ``<memory-entry>`` fence."""
+        memories = (
+            _make_scored(content="alpha", combined_score=0.9),
+            _make_scored(content="beta", combined_score=0.7),
+        )
+        result = format_memory_context(
+            memories,
+            estimator=DefaultTokenEstimator(),
+            token_budget=5000,
+        )
+        content = result[0].content
+        assert content is not None
+        assert content.count(f"<{TAG_MEMORY_ENTRY}>") == 2
+        assert content.count(f"</{TAG_MEMORY_ENTRY}>") == 2
+
     def test_token_budget_limits_memories(self) -> None:
         """Only memories that fit within the budget are included."""
         memories = tuple(
@@ -149,14 +168,10 @@ class TestFormatMemoryContext:
         assert len(result) == 1, "Expected at least some memories to fit"
         content = result[0].content
         assert content is not None
-        lines = [
-            ln
-            for ln in content.split("\n")
-            if ln.strip()
-            and ln.strip() != MEMORY_BLOCK_START
-            and ln.strip() != MEMORY_BLOCK_END
-        ]
-        assert 0 < len(lines) < 10
+        # Each surviving entry contributes exactly one open + one close
+        # fence; counting the close tag gives us the included count.
+        included = content.count(f"</{TAG_MEMORY_ENTRY}>")
+        assert 0 < included < 10
 
     def test_zero_budget_returns_empty(self) -> None:
         memories = (_make_scored(content="some content"),)
@@ -168,7 +183,7 @@ class TestFormatMemoryContext:
         assert result == ()
 
     def test_budget_too_small_for_any_returns_empty(self) -> None:
-        """When budget can't fit even one memory + delimiters."""
+        """When budget cannot fit even one wrapped memory entry."""
         memories = (_make_scored(content="x" * 200),)
         result = format_memory_context(
             memories,
@@ -210,7 +225,7 @@ class TestFormatMemoryContext:
         """Greedy packing skips entries too large but includes smaller ones."""
         large = _make_scored(content="x" * 400, combined_score=0.95)
         small = _make_scored(content="short", combined_score=0.50)
-        # Budget enough for delimiters + small but not large
+        # Budget enough for one wrapped small entry but not the large one.
         result = format_memory_context(
             (large, small),
             estimator=DefaultTokenEstimator(),
@@ -222,18 +237,6 @@ class TestFormatMemoryContext:
         assert "short" in content
         assert "x" * 400 not in content
 
-    def test_delimiters_wrap_content(self) -> None:
-        memories = (_make_scored(content="wrapped content"),)
-        result = format_memory_context(
-            memories,
-            estimator=DefaultTokenEstimator(),
-            token_budget=1000,
-        )
-        content = result[0].content
-        assert content is not None
-        assert content.startswith(MEMORY_BLOCK_START)
-        assert content.endswith(MEMORY_BLOCK_END)
-
     def test_unsupported_injection_point_raises_value_error(self) -> None:
         """Unsupported InjectionPoint raises ValueError."""
         memories = (_make_scored(content="test"),)
@@ -244,3 +247,57 @@ class TestFormatMemoryContext:
                 token_budget=1000,
                 injection_point="bogus",  # type: ignore[arg-type]
             )
+
+
+@pytest.mark.unit
+class TestFormatMemoryContextWithDirective:
+    """The directive-bundling helper that consumers should use."""
+
+    def test_empty_memories_returns_empty(self) -> None:
+        """No memories means no directive either; directive alone wastes tokens."""
+        result = format_memory_context_with_directive(
+            (),
+            estimator=DefaultTokenEstimator(),
+            token_budget=1000,
+        )
+        assert result == ()
+
+    def test_budget_too_small_returns_empty(self) -> None:
+        """Same fail-closed behaviour as the underlying helper."""
+        result = format_memory_context_with_directive(
+            (_make_scored(content="x" * 200),),
+            estimator=DefaultTokenEstimator(),
+            token_budget=1,
+        )
+        assert result == ()
+
+    def test_prepends_directive_system_message(self) -> None:
+        """The first message is a SYSTEM directive for ``TAG_MEMORY_ENTRY``."""
+        result = format_memory_context_with_directive(
+            (_make_scored(content="hello"),),
+            estimator=DefaultTokenEstimator(),
+            token_budget=1000,
+        )
+        assert len(result) == 2
+        directive_message, memory_message = result
+        assert directive_message.role is MessageRole.SYSTEM
+        directive_text = directive_message.content
+        assert directive_text is not None
+        assert directive_text == untrusted_content_directive((TAG_MEMORY_ENTRY,))
+        memory_content = memory_message.content
+        assert memory_content is not None
+        assert "hello" in memory_content
+
+    def test_preserves_memory_role_under_user_injection(self) -> None:
+        """``injection_point=USER`` keeps the memory message at USER role."""
+        result = format_memory_context_with_directive(
+            (_make_scored(content="user-side"),),
+            estimator=DefaultTokenEstimator(),
+            token_budget=1000,
+            injection_point=InjectionPoint.USER,
+        )
+        assert len(result) == 2
+        directive_message, memory_message = result
+        # Directive always SYSTEM; memory message follows the requested role.
+        assert directive_message.role is MessageRole.SYSTEM
+        assert memory_message.role is MessageRole.USER

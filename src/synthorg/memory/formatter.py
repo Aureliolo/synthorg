@@ -1,10 +1,23 @@
-"""Memory context formatter -- converts ranked memories to ChatMessages.
+"""Memory context formatter: converts ranked memories to ChatMessages.
 
 Handles token budget enforcement via greedy packing: iterates by rank,
 skips entries that exceed the remaining budget, and continues with
 smaller entries to maximise context within the token limit.
+
+Each memory entry is wrapped under ``TAG_MEMORY_ENTRY`` via
+:func:`wrap_untrusted` so an attacker who plants a stored memory cannot
+break out of the fence and inject system-prompt-level instructions.
+Consumers that splice the formatted messages into an LLM call must
+append :func:`untrusted_content_directive` for ``TAG_MEMORY_ENTRY`` to
+their system prompt: :func:`format_memory_context_with_directive` is
+the canonical helper that bundles both steps.
 """
 
+from synthorg.engine.prompt_safety import (
+    TAG_MEMORY_ENTRY,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.memory.injection import (
     InjectionPoint,
     TokenEstimator,
@@ -21,37 +34,32 @@ from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)
 
-MEMORY_BLOCK_START = "--- AGENT MEMORY ---"
-"""Delimiter marking the start of memory context."""
-
-MEMORY_BLOCK_END = "--- END MEMORY ---"
-"""Delimiter marking the end of memory context."""
-
 _INJECTION_POINT_TO_ROLE: dict[InjectionPoint, MessageRole] = {
     InjectionPoint.SYSTEM: MessageRole.SYSTEM,
     InjectionPoint.USER: MessageRole.USER,
 }
 
 
-def _format_line(memory: ScoredMemory) -> str:
-    """Format a single memory entry as a display line.
+def _format_entry(memory: ScoredMemory) -> str:
+    """Format and fence a single memory entry under ``TAG_MEMORY_ENTRY``.
 
-    Format: ``[{category} | score: {score:.2f}] {content}``
-    Shared entries are prefixed with ``[shared]``.
+    Format of the inner line: ``[{category} | score: {score:.2f}] {content}``.
+    Shared entries are prefixed with ``[shared]``. The inner line is
+    then wrapped via :func:`wrap_untrusted` so any literal
+    ``</memory-entry>`` inside the stored content (in any case variant)
+    cannot break out of the fence.
 
     Args:
         memory: Scored memory entry.
 
     Returns:
-        Formatted line string.
+        Fenced ``<memory-entry>...</memory-entry>`` block.
     """
     shared_prefix = "[shared] " if memory.is_shared else ""
     category = memory.entry.category.value
     score = memory.combined_score
-    # Sanitise content to prevent delimiter injection -- replace end
-    # delimiter inside memory content so it cannot break the block.
-    content = memory.entry.content.replace(MEMORY_BLOCK_END, "[DELIMITER_REDACTED]")
-    return f"{shared_prefix}[{category} | score: {score:.2f}] {content}"
+    inner = f"{shared_prefix}[{category} | score: {score:.2f}] {memory.entry.content}"
+    return wrap_untrusted(TAG_MEMORY_ENTRY, inner)
 
 
 def format_memory_context(
@@ -64,7 +72,14 @@ def format_memory_context(
     """Format ranked memories into ChatMessage(s), respecting token budget.
 
     Uses greedy packing: iterates memories by rank order and includes
-    each one if it fits within the remaining budget.
+    each one if it fits within the remaining budget. Each included
+    entry is individually wrapped under ``TAG_MEMORY_ENTRY``.
+
+    Consumers that inject the result into an LLM call must also append
+    :func:`untrusted_content_directive` for ``TAG_MEMORY_ENTRY`` to
+    their system prompt. Prefer :func:`format_memory_context_with_directive`
+    which bundles both steps and forces the directive into the prompt
+    stream.
 
     Args:
         memories: Pre-ranked memories (highest score first).
@@ -79,44 +94,30 @@ def format_memory_context(
     if not memories or token_budget <= 0:
         return ()
 
-    # Account for both newlines in the final block format:
-    # "{START}\n{body}\n{END}"
-    delimiter_text = f"{MEMORY_BLOCK_START}\n\n{MEMORY_BLOCK_END}"
-    delimiter_tokens = estimator.estimate_tokens(delimiter_text)
-
-    remaining = token_budget - delimiter_tokens
-    if remaining <= 0:
-        logger.debug(
-            MEMORY_TOKEN_BUDGET_EXCEEDED,
-            budget=token_budget,
-            delimiter_tokens=delimiter_tokens,
-            reason="budget exhausted by delimiters",
-        )
-        return ()
-
     # Greedy packing: iterate by rank, include memories that fit.
     # Entries too large for the remaining budget are skipped (not
     # stopping), allowing shorter lower-ranked entries to fill the
-    # remaining space.
-    included_lines: list[str] = []
+    # remaining space. The wrap fence is counted as part of each
+    # entry's token cost via ``_format_entry``.
+    remaining = token_budget
+    included_blocks: list[str] = []
     for memory in memories:
-        line = _format_line(memory)
-        line_tokens = estimator.estimate_tokens(line)
-        # Account for the newline separator added by "\n".join()
-        separator_cost = estimator.estimate_tokens("\n") if included_lines else 0
-        if line_tokens + separator_cost <= remaining:
-            included_lines.append(line)
-            remaining -= line_tokens + separator_cost
+        block = _format_entry(memory)
+        block_tokens = estimator.estimate_tokens(block)
+        separator_cost = estimator.estimate_tokens("\n") if included_blocks else 0
+        if block_tokens + separator_cost <= remaining:
+            included_blocks.append(block)
+            remaining -= block_tokens + separator_cost
         else:
             logger.debug(
                 MEMORY_TOKEN_BUDGET_EXCEEDED,
                 budget=token_budget,
                 remaining=remaining,
-                line_tokens=line_tokens,
+                line_tokens=block_tokens,
                 skipped_memory_id=memory.entry.id,
             )
 
-    if not included_lines:
+    if not included_blocks:
         logger.debug(
             MEMORY_TOKEN_BUDGET_EXCEEDED,
             budget=token_budget,
@@ -125,8 +126,7 @@ def format_memory_context(
         )
         return ()
 
-    body = "\n".join(included_lines)
-    block = f"{MEMORY_BLOCK_START}\n{body}\n{MEMORY_BLOCK_END}"
+    content = "\n".join(included_blocks)
 
     try:
         role = _INJECTION_POINT_TO_ROLE[injection_point]
@@ -138,14 +138,58 @@ def format_memory_context(
             reason=msg,
         )
         raise ValueError(msg) from None
-    message = ChatMessage(role=role, content=block)
+    message = ChatMessage(role=role, content=content)
 
     logger.debug(
         MEMORY_FORMAT_COMPLETE,
-        included_count=len(included_lines),
+        included_count=len(included_blocks),
         total_candidates=len(memories),
         token_budget=token_budget,
         injection_point=injection_point.value,
     )
 
     return (message,)
+
+
+def format_memory_context_with_directive(
+    memories: tuple[ScoredMemory, ...],
+    *,
+    estimator: TokenEstimator,
+    token_budget: int,
+    injection_point: InjectionPoint = InjectionPoint.SYSTEM,
+) -> tuple[ChatMessage, ...]:
+    """Format memories with the untrusted-content directive prepended.
+
+    Wraps :func:`format_memory_context` and prepends a SYSTEM-role
+    :class:`ChatMessage` carrying the untrusted-content directive for
+    ``TAG_MEMORY_ENTRY``. Returns an empty tuple when no memories fit.
+
+    Use this helper instead of :func:`format_memory_context` at every
+    LLM call site that ingests stored memory: the directive is the
+    contract that tells the model the memory blocks are data, not
+    instructions.
+
+    Args:
+        memories: Pre-ranked memories (highest score first).
+        estimator: Token estimation implementation.
+        token_budget: Maximum tokens for the memory block.
+        injection_point: Role for the memory message.
+
+    Returns:
+        ``(directive_message, memory_message)`` on success, or empty
+        tuple when no memories fit (so the directive does not appear
+        on its own).
+    """
+    memory_messages = format_memory_context(
+        memories,
+        estimator=estimator,
+        token_budget=token_budget,
+        injection_point=injection_point,
+    )
+    if not memory_messages:
+        return ()
+    directive = ChatMessage(
+        role=MessageRole.SYSTEM,
+        content=untrusted_content_directive((TAG_MEMORY_ENTRY,)),
+    )
+    return (directive, *memory_messages)

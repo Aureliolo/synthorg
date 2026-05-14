@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.memory import errors as memory_errors
 from synthorg.memory.filter import TagBasedMemoryFilter
-from synthorg.memory.formatter import format_memory_context
+from synthorg.memory.formatter import format_memory_context_with_directive
 from synthorg.memory.injection import (
     DefaultTokenEstimator,
     TokenEstimator,
@@ -338,7 +338,7 @@ class ContextInjectionStrategy:
                 diversity_lambda=self._config.diversity_lambda,
             )
             ranked = ranked[: self._config.max_memories]
-        result = format_memory_context(
+        result = format_memory_context_with_directive(
             ranked,
             estimator=self._estimator,
             token_budget=token_budget,

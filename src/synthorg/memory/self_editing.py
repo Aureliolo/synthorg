@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.formatter import format_memory_context
+from synthorg.memory.formatter import format_memory_context_with_directive
 from synthorg.memory.injection import (
     DefaultTokenEstimator,
     InjectionStrategy,
@@ -411,7 +411,7 @@ class SelfEditingMemoryStrategy:
                 )
                 for e in entries
             )
-            return format_memory_context(
+            return format_memory_context_with_directive(
                 scored,
                 estimator=self._token_estimator,
                 token_budget=token_budget,

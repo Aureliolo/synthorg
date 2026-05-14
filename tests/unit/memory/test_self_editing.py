@@ -198,9 +198,11 @@ class TestSelfEditingMemoryStrategyPrepareMessages:
             token_budget=2048,
         )
 
-        assert len(messages) == 1
-        assert messages[0].content is not None
-        assert "customer support agent" in messages[0].content
+        # Two messages: directive SYSTEM message + core memory message.
+        assert len(messages) == 2
+        memory_content = messages[-1].content
+        assert memory_content is not None
+        assert "customer support agent" in memory_content
 
     async def test_respects_token_budget(self) -> None:
         """token_budget=0 must return an empty tuple."""

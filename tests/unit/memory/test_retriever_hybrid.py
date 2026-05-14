@@ -88,8 +88,8 @@ class TestHybridSearchPipeline:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        content = result[-1].content
         assert content is not None
         assert "dense result" in content
         assert "sparse result" in content
@@ -112,8 +112,8 @@ class TestHybridSearchPipeline:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        content = result[-1].content
         assert content is not None
         assert "dense only" in content
 
@@ -147,8 +147,8 @@ class TestHybridSearchPipeline:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        content = result[-1].content
         assert content is not None
         assert "high score" in content
         assert "low score" not in content
@@ -173,8 +173,8 @@ class TestHybridSearchPipeline:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        content = result[-1].content
         assert content is not None
         assert "dense survives" in content
 
@@ -195,8 +195,8 @@ class TestHybridSearchPipeline:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        content = result[-1].content
         assert content is not None
         assert "linear path" in content
 
@@ -224,8 +224,8 @@ class TestHybridSearchPipeline:
             query_text="query",
             token_budget=5000,
         )
-        assert len(result) == 1
-        content = result[0].content
+        assert len(result) == 2
+        content = result[-1].content
         assert content is not None
         # Should appear only once (deduplicated)
         assert content.count("appears twice") == 1
