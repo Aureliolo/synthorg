@@ -22,7 +22,7 @@ from synthorg.memory.org.models import (
     OrgMemoryQuery,
 )
 from synthorg.memory.org.store import OrgFactStore  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.org_memory import (
     ORG_MEMORY_BACKEND_CONNECTED,
     ORG_MEMORY_BACKEND_DISCONNECTED,
@@ -146,8 +146,14 @@ class HybridPromptRetrievalBackend:
         )
         try:
             dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
-        except OrgMemoryQueryError:
-            logger.exception(ORG_MEMORY_QUERY_FAILED)
+        except OrgMemoryQueryError as exc:
+            logger.error(
+                ORG_MEMORY_QUERY_FAILED,
+                operation="list_policies",
+                category=OrgFactCategory.CORE_POLICY.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise
         facts = static + dynamic
         if limit is None and offset == 0:
@@ -164,8 +170,14 @@ class HybridPromptRetrievalBackend:
         self._require_connected()
         try:
             dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
-        except OrgMemoryQueryError:
-            logger.exception(ORG_MEMORY_QUERY_FAILED)
+        except OrgMemoryQueryError as exc:
+            logger.error(
+                ORG_MEMORY_QUERY_FAILED,
+                operation="count_policies",
+                category=OrgFactCategory.CORE_POLICY.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise
         return len(self._core_policies) + len(dynamic)
 
