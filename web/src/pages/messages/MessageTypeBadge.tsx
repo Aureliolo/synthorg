@@ -12,7 +12,7 @@ export function MessageTypeBadge({ type, className }: MessageTypeBadgeProps) {
     <span
       className={cn(
         'inline-flex items-center rounded border border-border bg-surface px-1.5 py-0.5',
-        'font-mono text-[10px] text-secondary',
+        'font-mono text-[10px] text-text-secondary',
         className,
       )}
     >

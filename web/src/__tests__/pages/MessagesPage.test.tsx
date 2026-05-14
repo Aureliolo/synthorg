@@ -9,6 +9,7 @@ const defaultReturn: UseMessagesDataReturn = {
   channelsLoading: false,
   channelsError: null,
   unreadCounts: {},
+  channelsWithMessages: new Set<string>(),
   messages: [],
   total: 0,
   loading: false,

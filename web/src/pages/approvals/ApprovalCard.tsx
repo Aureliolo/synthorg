@@ -153,7 +153,7 @@ function ApprovalCardImpl({
           >
             {approval.title}
           </button>
-          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-secondary">
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
             <span className="font-mono">{approval.action_type}</span>
             <span aria-hidden="true">--</span>
             <span>{approval.requested_by}</span>

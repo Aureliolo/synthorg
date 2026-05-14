@@ -199,6 +199,24 @@ html {
   html {
     @apply font-sans;
   }
+  /*
+   * Viewport-lock the document so the only scroll container is the
+   * AppLayout ``<main>`` element.  Without this, when content
+   * marginally exceeds ``100vh`` (e.g. ``h-screen`` + a stray box-
+   * sizing miscount, or a child positioned just past the visible
+   * area), the BODY itself scrolls -- which drags the entire SPA
+   * shell, including the fixed sidebar, up off the viewport on
+   * scroll-down.  Locking ``html`` / ``body`` / ``#root`` to a fixed
+   * ``100%`` height with ``overflow: hidden`` makes ``<main>``'s
+   * ``overflow-y-auto`` the only scroll container; the sidebar and
+   * status bar stay anchored regardless of page length.
+   */
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
 }
 
 /* Print styles.

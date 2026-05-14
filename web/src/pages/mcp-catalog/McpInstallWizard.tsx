@@ -66,7 +66,7 @@ export function McpInstallWizard({ onRequestCreateConnection }: McpInstallWizard
   if (entry === null && flow === 'error') {
     return (
       <Dialog open={isOpen} onOpenChange={(next) => !next && handleClose()}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-dialog-compact">
           <DialogHeader>
             <DialogTitle>Install failed</DialogTitle>
             <DialogCloseButton />
@@ -89,7 +89,7 @@ export function McpInstallWizard({ onRequestCreateConnection }: McpInstallWizard
 
   return (
     <Dialog open={isOpen} onOpenChange={(next) => !next && handleClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-dialog-compact">
         <DialogHeader>
           <DialogTitle>Install {entry.name}</DialogTitle>
           <DialogCloseButton />

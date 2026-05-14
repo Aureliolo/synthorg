@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   MiniMap,
@@ -191,6 +191,24 @@ function OrgChartInner() {
   const handleViewModeChange = useCallback((mode: 'hierarchy' | 'force') => {
     setViewMode(mode)
   }, [])
+
+  // Re-fit the viewport whenever the view mode flips OR the layout
+  // animation finishes. The hierarchy layout produces coordinates in the
+  // thousands of pixels; the force layout centres around (~400, ~300).
+  // Without a re-fit, the saved viewport from the previous layout makes
+  // nodes appear scattered far apart or vanishingly small in the corner.
+  // We wait for ``transitioning`` to flip back to false so we fit the
+  // FINAL positions, not the in-flight interpolated ones.
+  useEffect(() => {
+    if (view.transitioning) return
+    if (view.displayNodes.length === 0) return
+    // ``requestAnimationFrame`` lets ReactFlow commit the new node
+    // positions to its internal store before we ask it to fit them.
+    const id = requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 400 })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [viewMode, view.transitioning, view.displayNodes.length, fitView])
 
   // Pre-render source list: transition reducer publishes `displayNodes` only
   // after the first animation frame, so before any layout change settles we

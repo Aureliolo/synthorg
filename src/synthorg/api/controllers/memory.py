@@ -857,8 +857,57 @@ def _check_documents(
     )
 
 
+_FINE_TUNE_SIDECAR_HEALTH_URL: Final[str] = "http://fine-tune:15002/health"
+_FINE_TUNE_SIDECAR_HEALTH_TIMEOUT_S: Final[float] = 1.5
+_HTTP_STATUS_OK_MIN: Final[int] = 200
+_HTTP_STATUS_OK_MAX_EXCLUSIVE: Final[int] = 300
+
+
+def _check_fine_tune_sidecar_health() -> bool:
+    """Best-effort probe of the fine-tune sidecar's HTTP health endpoint.
+
+    In a Docker-orchestrated install the heavy ML deps (torch +
+    sentence-transformers) live exclusively inside the
+    ``synthorg-fine-tune-{gpu,cpu}`` sidecar container; the main backend
+    container intentionally does NOT bundle them.  Pip-only deployments
+    install the extras directly into the same process.  This helper
+    covers the Docker case: when the sidecar answers its health probe,
+    the deps are reachable even though ``import torch`` would fail
+    locally.  Any error (DNS miss, refused connection, non-200, timeout)
+    is swallowed so the caller falls back to the in-process import.
+    """
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    try:
+        req = urllib.request.Request(_FINE_TUNE_SIDECAR_HEALTH_URL)  # noqa: S310
+        with urllib.request.urlopen(  # noqa: S310
+            req,
+            timeout=_FINE_TUNE_SIDECAR_HEALTH_TIMEOUT_S,
+        ) as resp:
+            status: int = resp.status
+            return _HTTP_STATUS_OK_MIN <= status < _HTTP_STATUS_OK_MAX_EXCLUSIVE
+    except urllib.error.URLError, TimeoutError, OSError:
+        return False
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        return False
+
+
 def _check_dependencies() -> PreflightCheck:
-    """Check if fine-tuning ML dependencies are installed."""
+    """Check whether fine-tuning ML dependencies are reachable.
+
+    Two-stage check: an in-process import covers pip installs that
+    bundle the extras locally; an HTTP probe of the fine-tune sidecar
+    container covers the Docker orchestration case where torch +
+    sentence-transformers live exclusively in the sidecar image.
+    Either path succeeding is enough to call the dependencies
+    available.  Previously, only the in-process import was attempted,
+    so every Docker-orchestrated install reported "Fine-tuning not
+    enabled" regardless of whether the user had set ``fine_tuning=true``
+    in the CLI config and started the sidecar.
+    """
     try:
         from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
             _import_sentence_transformers,
@@ -868,6 +917,15 @@ def _check_dependencies() -> PreflightCheck:
         _import_torch()
         _import_sentence_transformers()
     except (ImportError, FineTuneDependencyError) as exc:
+        # In-process imports failed; this is the expected path for the
+        # Docker orchestration where ML deps live in a sidecar.  Probe
+        # the sidecar's HTTP health endpoint before declaring failure.
+        if _check_fine_tune_sidecar_health():
+            return PreflightCheck(
+                name="dependencies",
+                status="pass",
+                message="ML dependencies available via fine-tune sidecar",
+            )
         return PreflightCheck(
             name="dependencies",
             status="fail",

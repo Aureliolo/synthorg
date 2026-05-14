@@ -85,10 +85,15 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     try {
       const result = await listProjects({ limit: 200 })
       if (isStaleListRequest(token)) return
-      set({ projects: result.data, totalProjects: result.data.length, listLoading: false })
+      set({ projects: result.data, totalProjects: result.data.length })
     } catch (err) {
       if (isStaleListRequest(token)) return
-      set({ listLoading: false, listError: getErrorMessage(err) })
+      set({ listError: getErrorMessage(err) })
+    } finally {
+      // Always clear ``listLoading`` for the latest request -- including
+      // the stale-return paths -- so an overlapping fetch can't leave
+      // the skeleton stuck on.
+      if (!isStaleListRequest(token)) set({ listLoading: false })
     }
   },
 
@@ -96,31 +101,34 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     const token = ++_detailRequestToken
     set({ detailLoading: true, detailError: null, selectedProject: null, projectTasks: [] })
 
-    const [projectResult, tasksResult] = await Promise.allSettled([
-      getProject(id),
-      listTasks({ project: id, limit: 50 }),
-    ])
+    try {
+      const [projectResult, tasksResult] = await Promise.allSettled([
+        getProject(id),
+        listTasks({ project: id, limit: 50 }),
+      ])
 
-    if (isStaleDetailRequest(token)) return
+      if (isStaleDetailRequest(token)) return
 
-    const project = projectResult.status === 'fulfilled' ? projectResult.value : null
-    if (!project) {
-      const reason = projectResult.status === 'rejected' ? projectResult.reason : null
-      set({ detailLoading: false, detailError: getErrorMessage(reason ?? 'Project not found'), selectedProject: null })
-      return
+      const project = projectResult.status === 'fulfilled' ? projectResult.value : null
+      if (!project) {
+        const reason = projectResult.status === 'rejected' ? projectResult.reason : null
+        set({ detailError: getErrorMessage(reason ?? 'Project not found'), selectedProject: null })
+        return
+      }
+
+      const partialErrors: string[] = []
+      if (tasksResult.status === 'rejected') partialErrors.push(`tasks: ${getErrorMessage(tasksResult.reason)}`)
+
+      set({
+        selectedProject: project,
+        projectTasks: tasksResult.status === 'fulfilled' ? tasksResult.value.data : [],
+        detailError: partialErrors.length > 0
+          ? `Some data failed to load: ${partialErrors.join(', ')}. Displayed data may be incomplete.`
+          : null,
+      })
+    } finally {
+      if (!isStaleDetailRequest(token)) set({ detailLoading: false })
     }
-
-    const partialErrors: string[] = []
-    if (tasksResult.status === 'rejected') partialErrors.push(`tasks: ${getErrorMessage(tasksResult.reason)}`)
-
-    set({
-      selectedProject: project,
-      projectTasks: tasksResult.status === 'fulfilled' ? tasksResult.value.data : [],
-      detailLoading: false,
-      detailError: partialErrors.length > 0
-        ? `Some data failed to load: ${partialErrors.join(', ')}. Displayed data may be incomplete.`
-        : null,
-    })
   },
 
   createProject: async (data: CreateProjectRequest) => {

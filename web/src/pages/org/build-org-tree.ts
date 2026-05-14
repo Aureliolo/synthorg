@@ -274,11 +274,16 @@ export function buildOrgTree(
     ).length
     const budgetPercent = typeof dept.budget_percent === 'number' ? dept.budget_percent : null
     const cost7d = health?.department_cost_7d ?? null
-    // Prefer the backend-computed utilization_percent which uses a
-    // consistent time window (active_agent_count / agent_count * 100).
-    // The previous client-side calculation divided 7-day cost by
-    // monthly budget, mixing incompatible windows.
-    const utilizationPercent = health?.utilization_percent ?? null
+    // % currently working = runtime-active members / total members.
+    // The backend's ``utilization_percent`` divides HR-status="active"
+    // count by total -- which is 100% in a fresh install (every hired
+    // agent has HR status "active" by default), so it reads as "all
+    // departments at 100%" before any task has actually executed.
+    // The runtime status is WS-driven (idle until a task starts) and
+    // matches operator intuition for "active right now".
+    const utilizationPercent = deptMembers.length === 0
+      ? null
+      : Math.round((activeCount / deptMembers.length) * 100)
     const statusDots: DepartmentAgentStatusDot[] = deptMembers.map((a) => ({
       agentId: a.id ?? a.name,
       runtimeStatus: resolveRuntimeStatus(a.id ?? a.name, a.status ?? 'active', runtimeStatuses),

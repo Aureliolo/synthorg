@@ -18,9 +18,10 @@ export function createListActions(set: ProvidersSet) {
     fetchProviders: async () => {
       const requestId = ++_listRequestId
       set({ listLoading: true, listError: null })
+      const isLatest = () => requestId === _listRequestId
       try {
         const record = await listProviders()
-        if (requestId !== _listRequestId) return
+        if (!isLatest()) return
         const providers = normalizeProviders(record)
         set({ providers })
 
@@ -29,7 +30,7 @@ export function createListActions(set: ProvidersSet) {
         const healthResults = await Promise.allSettled(
           names.map((name) => getProviderHealth(name)),
         )
-        if (requestId !== _listRequestId) return
+        if (!isLatest()) return
         const healthMap: Record<string, ProviderHealthSummary> = {}
         for (let i = 0; i < names.length; i++) {
           const result = healthResults[i]!
@@ -44,11 +45,17 @@ export function createListActions(set: ProvidersSet) {
             )
           }
         }
-        set({ healthMap, listLoading: false })
+        set({ healthMap })
       } catch (err) {
-        if (requestId !== _listRequestId) return
+        if (!isLatest()) return
         log.error('Failed to fetch providers:', getErrorMessage(err))
-        set({ listLoading: false, listError: getErrorMessage(err) })
+        set({ listError: getErrorMessage(err) })
+      } finally {
+        // Clear ``listLoading`` for the LATEST request even on the
+        // stale-return paths so an overlapping fetch can't leave the
+        // skeleton stuck on.  The newer request flips it back to true
+        // at its own start, so there is no flicker.
+        if (isLatest()) set({ listLoading: false })
       }
     },
 

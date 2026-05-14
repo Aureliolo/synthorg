@@ -92,24 +92,26 @@ export default function AgentDetailPage() {
   })
   const { goPrev, goNext } = useDetailNavigationCallbacks(nav)
 
-  if (loading && !agent) {
-    return <AgentDetailSkeleton />
-  }
-
-  const allowedTools = agent
-    ? (Array.isArray(agent.tools['allowed'])
-        ? (agent.tools['allowed'] as unknown[]).filter((t): t is string => typeof t === 'string')
-        : [])
-    : []
-
-  if (!agent) {
+  // Error banner only when the fetch returned a definitive negative;
+  // skeleton covers both the "loading" path and the pre-fetch render
+  // window where ``loading`` hasn't flipped to ``true`` yet (the
+  // polling effect runs after first paint).
+  if (error && !agent) {
     return (
       <div className="space-y-section-gap">
         <Breadcrumbs items={[{ label: 'Agents', to: ROUTES.AGENTS }, { label: resolvedAgentName || 'Unknown agent' }]} />
-        <ErrorBanner severity="error" title="Agent not found" description={error ?? undefined} />
+        <ErrorBanner severity="error" title="Agent not found" description={error} />
       </div>
     )
   }
+
+  if (!agent) {
+    return <AgentDetailSkeleton />
+  }
+
+  const allowedTools = Array.isArray(agent.tools['allowed'])
+    ? (agent.tools['allowed'] as unknown[]).filter((t): t is string => typeof t === 'string')
+    : []
 
   return (
     <div className="space-y-section-gap">

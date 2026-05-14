@@ -42,17 +42,22 @@ export default function ProjectDetailPage() {
   })
   const { goPrev, goNext } = useDetailNavigationCallbacks(nav)
 
-  if (loading && !project) {
-    return <ProjectDetailSkeleton />
-  }
-
-  if (!project) {
+  // Error state: a definitive negative answer from the backend always
+  // sets ``error`` -- show the not-found banner only when the fetch
+  // failed, never on the pre-fetch render window where ``loading``
+  // hasn't flipped to ``true`` yet (the polling effect runs after
+  // first paint).
+  if (error && !project) {
     return (
       <div className="space-y-section-gap">
         <Breadcrumbs items={[{ label: 'Projects', to: ROUTES.PROJECTS }, { label: 'Unknown project' }]} />
-        <ErrorBanner severity="error" title="Project not found" description={error ?? undefined} />
+        <ErrorBanner severity="error" title="Project not found" description={error} />
       </div>
     )
+  }
+
+  if (!project) {
+    return <ProjectDetailSkeleton />
   }
 
   return (

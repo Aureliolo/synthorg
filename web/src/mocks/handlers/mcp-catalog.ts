@@ -4,8 +4,10 @@ import type {
   getMcpCatalogEntry,
   installMcpServer,
   searchMcpCatalog,
+  InstalledMcpEntry,
 } from '@/api/endpoints/mcp-catalog'
 import type { McpCatalogEntry } from '@/api/types/integrations'
+import type { PaginatedResponse } from '@/api/types/http'
 import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 export function buildMcpCatalogEntry(
@@ -70,7 +72,26 @@ function _catalogPage(
   }
 }
 
+function _installedPage(
+  rows: readonly InstalledMcpEntry[],
+): PaginatedResponse<InstalledMcpEntry> {
+  return {
+    success: true,
+    error: null,
+    error_detail: null,
+    data: [...rows],
+    pagination: {
+      limit: rows.length || 1,
+      next_cursor: null,
+      has_more: false,
+    },
+  }
+}
+
 export const mcpCatalogHandlers = [
+  http.get('/api/v1/integrations/mcp/catalog/installed', () =>
+    HttpResponse.json(_installedPage([])),
+  ),
   http.get('/api/v1/integrations/mcp/catalog', () =>
     HttpResponse.json(paginatedFor<typeof browseMcpCatalog>(_catalogPage(mockCatalogEntries))),
   ),
@@ -116,6 +137,9 @@ export const mcpCatalogHandlers = [
 // ── Default test handlers: empty catalog + minimal entry lookups. ──
 
 export const mcpCatalogDefaultHandlers = [
+  http.get('/api/v1/integrations/mcp/catalog/installed', () =>
+    HttpResponse.json(_installedPage([])),
+  ),
   http.get('/api/v1/integrations/mcp/catalog', () =>
     HttpResponse.json(paginatedFor<typeof browseMcpCatalog>(emptyPage<McpCatalogEntry>())),
   ),

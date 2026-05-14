@@ -112,11 +112,15 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
     try {
       const data = await listBlueprints()
       if (isStaleBlueprintRequest(token)) return
-      set({ blueprints: data, blueprintsLoading: false })
+      set({ blueprints: data })
     } catch (err) {
       if (isStaleBlueprintRequest(token)) return
       log.warn('Failed to load blueprints', sanitizeForLog(err))
-      set({ blueprintsLoading: false, blueprintsError: getErrorMessage(err) })
+      set({ blueprintsError: getErrorMessage(err) })
+    } finally {
+      // Always clear ``blueprintsLoading`` for the latest request so an
+      // overlapping fetch can't strand the skeleton on.
+      if (!isStaleBlueprintRequest(token)) set({ blueprintsLoading: false })
     }
   },
 
@@ -146,17 +150,17 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
         totalWorkflows: result.data.length,
         nextCursor: result.nextCursor,
         hasMore: result.hasMore,
-        listLoading: false,
       })
     } catch (err) {
       if (isStaleListRequest(token)) return
       log.warn('Failed to fetch workflows', sanitizeForLog(err))
       set({
-        listLoading: false,
         listError: getErrorMessage(err),
         nextCursor: previousNextCursor,
         hasMore: previousHasMore,
       })
+    } finally {
+      if (!isStaleListRequest(token)) set({ listLoading: false })
     }
   },
 
@@ -185,13 +189,14 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
           totalWorkflows: merged.length,
           nextCursor: result.nextCursor,
           hasMore: result.hasMore,
-          listLoadingMore: false,
         }
       })
     } catch (err) {
       if (isStaleListRequest(token)) return
       log.warn('Failed to fetch more workflows', sanitizeForLog(err))
-      set({ listLoadingMore: false, listError: getErrorMessage(err) })
+      set({ listError: getErrorMessage(err) })
+    } finally {
+      if (!isStaleListRequest(token)) set({ listLoadingMore: false })
     }
   },
 

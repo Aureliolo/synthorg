@@ -50,7 +50,7 @@ export function MessageThread({
         onClick={onToggle}
         className={cn(
           'ml-9 flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5',
-          'font-mono text-[10px] text-secondary transition-colors',
+          'font-mono text-[10px] text-text-secondary transition-colors',
           'hover:bg-card-hover hover:text-foreground',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         )}

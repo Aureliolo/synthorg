@@ -40,6 +40,12 @@ export interface McpCatalogState {
 
   // Actions
   fetchCatalog: () => Promise<void>
+  /**
+   * Hydrate ``installedEntryIds`` from the backend.  Without this,
+   * the catalog forgets every install on refresh because the local
+   * Set starts empty and the install endpoint is write-only.
+   */
+  fetchInstalled: () => Promise<void>
   setSearchQuery: (q: string) => Promise<void>
   selectEntry: (entry: McpCatalogEntry | null) => void
   startInstall: (entryId: string) => void

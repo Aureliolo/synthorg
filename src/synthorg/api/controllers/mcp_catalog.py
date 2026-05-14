@@ -64,6 +64,19 @@ class InstallEntryResponse(BaseModel):
     )
 
 
+class InstalledEntry(BaseModel):
+    """One row of the installed-MCP-entries listing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    catalog_entry_id: NotBlankStr = Field(description="Installed catalog entry id")
+    connection_name: NotBlankStr | None = Field(
+        default=None,
+        description="Bound connection name (when applicable)",
+    )
+    installed_at: str = Field(description="ISO-8601 UTC timestamp of installation")
+
+
 async def _validate_connection_name_for_install(
     *,
     entry_id: str,
@@ -198,6 +211,46 @@ class MCPCatalogController(Controller):
         service = state["app_state"].mcp_catalog_service
         entry = await service.get_entry(entry_id)
         return ApiResponse(data=entry)
+
+    @get(
+        "/catalog/installed",
+        guards=[require_read_access],
+        summary="List installed catalog entries",
+    )
+    async def list_installed(
+        self,
+        state: State,
+        limit: CursorLimit = DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> PaginatedResponse[InstalledEntry]:
+        """List MCP catalog entries currently installed on this instance.
+
+        Without this endpoint the dashboard could not rehydrate the
+        installed-state badge across refreshes -- the install API was
+        write-only, so a successful install would persist server-side
+        but appear "uninstalled" again on the next page load.
+        """
+        app_state = state["app_state"]
+        installations_repo = app_state.mcp_installations_repo
+        # Walk all rows once; the installed list is bounded by the
+        # bundled catalog size (~20-50 entries) so a single read with
+        # a generous limit fits inside one cursor page.
+        records = await installations_repo.list_items(limit=500, offset=0)
+        entries = tuple(
+            InstalledEntry(
+                catalog_entry_id=row.catalog_entry_id,
+                connection_name=row.connection_name,
+                installed_at=row.installed_at.isoformat(),
+            )
+            for row in records
+        )
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @post(
         "/catalog/install",

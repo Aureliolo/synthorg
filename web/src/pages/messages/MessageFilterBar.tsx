@@ -153,7 +153,7 @@ interface FilterPillProps {
 
 function FilterPill({ label, onRemove }: FilterPillProps) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] text-secondary">
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] text-text-secondary">
       {label}
       <button
         type="button"

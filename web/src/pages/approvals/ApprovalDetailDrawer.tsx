@@ -271,7 +271,7 @@ export function ApprovalDetailDrawer({
                 >
                   {getRiskLevelLabel(approval.risk_level)}
                 </span>
-                <span className="text-xs text-secondary">
+                <span className="text-xs text-text-secondary">
                   {getApprovalStatusLabel(approval.status)}
                 </span>
               </div>
@@ -348,7 +348,7 @@ export function ApprovalDetailDrawer({
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Reason
                   </span>
-                  <p className="mt-1 rounded border border-border bg-surface p-2 text-sm text-secondary">
+                  <p className="mt-1 rounded border border-border bg-surface p-2 text-sm text-text-secondary">
                     {approval.decision_reason}
                   </p>
                 </div>
@@ -360,7 +360,7 @@ export function ApprovalDetailDrawer({
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Linked Task
                   </span>
-                  <p className="mt-1 font-mono text-xs text-secondary">{approval.task_id}</p>
+                  <p className="mt-1 font-mono text-xs text-text-secondary">{approval.task_id}</p>
                 </div>
               )}
 
@@ -374,7 +374,7 @@ export function ApprovalDetailDrawer({
                     {Object.entries(approval.metadata).map(([key, value]) => (
                       <div key={key} className="flex items-center gap-2 text-xs">
                         <dt className="font-mono text-muted-foreground">{key}:</dt>
-                        <dd className="text-secondary">
+                        <dd className="text-text-secondary">
                           {typeof value === 'string'
                             ? value
                             : typeof value === 'object' && value !== null
@@ -483,7 +483,7 @@ function DescriptionSection({ approval }: { approval: ApprovalResponse }) {
           </span>
         )}
       </span>
-      <p className="mt-1 text-sm text-secondary">{displayText}</p>
+      <p className="mt-1 text-sm text-text-secondary">{displayText}</p>
     </div>
   )
 }

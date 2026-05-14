@@ -25,6 +25,7 @@ export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
     fetchConnections: async () => {
       const requestId = ++_listRequestId
       set({ listLoading: true, listError: null })
+      const isLatest = () => requestId === _listRequestId
       try {
         const [connections, healthReports] = await Promise.all([
           listConnections(),
@@ -35,7 +36,7 @@ export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
             return null
           }),
         ])
-        if (requestId !== _listRequestId) return
+        if (!isLatest()) return
         const prevHealthMap = get().healthMap
         const healthMap: Record<string, HealthReport> = { ...prevHealthMap }
         if (healthReports !== null) {
@@ -43,14 +44,15 @@ export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
             healthMap[report.connection_name] = report
           }
         }
-        set({ connections, healthMap, listLoading: false })
+        set({ connections, healthMap })
       } catch (err) {
-        if (requestId !== _listRequestId) return
+        if (!isLatest()) return
         log.error('Failed to fetch connections:', getErrorMessage(err))
-        set({
-          listLoading: false,
-          listError: getErrorMessage(err),
-        })
+        set({ listError: getErrorMessage(err) })
+      } finally {
+        // Always clear ``listLoading`` for the latest request so an
+        // overlapping fetch can't strand the skeleton on.
+        if (isLatest()) set({ listLoading: false })
       }
     },
 

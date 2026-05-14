@@ -36,6 +36,29 @@ from synthorg.settings.definitions.api import SCALING_STRATEGY_PRIORITY_FALLBACK
 
 logger = get_logger(__name__)
 
+# Once-per-process flag: the scaling subsystem has no construction site
+# in ``create_app`` today, so every request to a scaling endpoint sees a
+# ``None`` service. Without this gate the controller fired one WARNING
+# per request, drowning real signal in noise. The first request that
+# notices the missing wire logs a single INFO so operators still see
+# "scaling is dormant"; subsequent requests stay silent.
+_SCALING_MISSING_LOGGED = False
+
+
+def _note_scaling_missing() -> None:
+    """Log a single INFO when scaling service is observed as unwired."""
+    global _SCALING_MISSING_LOGGED  # noqa: PLW0603
+    if _SCALING_MISSING_LOGGED:
+        return
+    _SCALING_MISSING_LOGGED = True
+    logger.info(
+        HR_SCALING_CONTROLLER_SERVICE_MISSING,
+        note=(
+            "Scaling service is not configured; endpoints return empty "
+            "data until the subsystem is wired in create_app."
+        ),
+    )
+
 
 # -- Response DTOs -----------------------------------------------------------
 
@@ -173,10 +196,7 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
-            logger.warning(
-                HR_SCALING_CONTROLLER_SERVICE_MISSING,
-                endpoint="list_strategies",
-            )
+            _note_scaling_missing()
             return PaginatedResponse[ScalingStrategyResponse](
                 data=(),
                 pagination=PaginationMeta(
@@ -230,10 +250,7 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
-            logger.warning(
-                HR_SCALING_CONTROLLER_SERVICE_MISSING,
-                endpoint="list_decisions",
-            )
+            _note_scaling_missing()
             return PaginatedResponse[ScalingDecisionResponse](
                 data=(),
                 pagination=PaginationMeta(
@@ -277,10 +294,7 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
-            logger.warning(
-                HR_SCALING_CONTROLLER_SERVICE_MISSING,
-                endpoint="list_signals",
-            )
+            _note_scaling_missing()
             return PaginatedResponse[ScalingSignalResponse](
                 data=(),
                 pagination=PaginationMeta(
@@ -350,10 +364,7 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
-            logger.warning(
-                HR_SCALING_CONTROLLER_SERVICE_MISSING,
-                endpoint="trigger_evaluation",
-            )
+            _note_scaling_missing()
             return ApiResponse(
                 data=(),
                 error="Scaling service not configured",
@@ -396,11 +407,7 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
-            logger.warning(
-                HR_SCALING_CONTROLLER_SERVICE_MISSING,
-                endpoint="update_strategy",
-                strategy=strategy_name,
-            )
+            _note_scaling_missing()
             return ApiResponse(
                 data=None,
                 error="Scaling service not configured",
@@ -466,10 +473,7 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
-            logger.warning(
-                HR_SCALING_CONTROLLER_SERVICE_MISSING,
-                endpoint="update_priority",
-            )
+            _note_scaling_missing()
             return ApiResponse(
                 data=(),
                 error="Scaling service not configured",

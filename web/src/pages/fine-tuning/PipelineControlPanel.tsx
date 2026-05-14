@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
@@ -74,14 +75,29 @@ export function PipelineControlPanel() {
 
   return (
     <div className="flex flex-col gap-section-gap">
-      <div className="flex items-end gap-4">
+      {/*
+       * Grid layout instead of ``flex items-end`` so the action
+       * buttons align with the INPUT row of the field rather than
+       * the hint line below it (previously the buttons sat one row
+       * too low, visually disconnected from their input).  The
+       * field's label + hint stack still flows correctly within the
+       * left column.
+       */}
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[1fr_auto]">
         <InputField
           label="Source Directory"
           value={sourceDir}
           onValueChange={setSourceDir}
-          hint="Directory containing org documents for training"
+          hint="Path INSIDE the backend container -- the default /data/documents resolves to the synthorg-data Docker volume. Drop training files into that volume (or override the path here) before running pre-flight."
         />
-        <div className="flex gap-2 pb-1">
+        {/*
+         * Spacer to push the buttons onto the same baseline as the
+         * input element rather than its label, then the button group
+         * itself.  ``mt-[1.625rem]`` matches the InputField label's
+         * height (text-xs + mb-1.5 + line-height) so the row aligns
+         * pixel-for-pixel regardless of theme density.
+         */}
+        <div className="flex gap-2 md:mt-[1.625rem]">
           <Button variant="outline" onClick={handlePreflight} disabled={loading}>
             Pre-flight Check
           </Button>
@@ -102,14 +118,26 @@ export function PipelineControlPanel() {
 
       {preflight && <PreflightResultPanel result={preflight} />}
 
+      {/*
+       * Disclosure-style toggle, but rendered as an ``outline``
+       * button with a chevron so it reads as a real interactive
+       * control, not body copy.  The previous ``ghost`` variant
+       * stripped all borders and made the toggle look like a
+       * stray text label.
+       */}
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => setShowAdvanced(!showAdvanced)}
-        className="self-start"
+        className="self-start gap-1.5"
         aria-expanded={showAdvanced}
         aria-controls="advanced-options-panel"
       >
+        {showAdvanced ? (
+          <ChevronDown className="size-3.5" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="size-3.5" aria-hidden="true" />
+        )}
         {showAdvanced ? 'Hide' : 'Show'} Advanced Options
       </Button>
 

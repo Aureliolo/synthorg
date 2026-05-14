@@ -52,7 +52,7 @@ export function ApprovalRiskGroupSection({
         icon={Icon}
         action={
           pendingIds.length > 0 ? (
-            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer">
+            <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
               <input
                 type="checkbox"
                 checked={allSelected}
