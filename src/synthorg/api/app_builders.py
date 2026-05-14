@@ -19,6 +19,7 @@ from synthorg.observability.events.api import (
 )
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace, SettingSource
+from synthorg.settings.mirrors import parse_bool
 from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 
 # All four of ``CostTracker`` / ``ChiefOfStaffChat`` / ``ChiefOfStaffConfig``
@@ -276,18 +277,14 @@ def _resolve_memory_dir() -> Path:
     return path
 
 
-_TELEMETRY_ENV_TRUE = frozenset({"true", "1", "yes"})
-_TELEMETRY_ENV_FALSE = frozenset({"false", "0", "no"})
-
-
-def _parse_telemetry_enabled_token(raw: str) -> bool | None:
-    """Parse a telemetry-enabled env token. Returns ``None`` on unknown values."""
-    token = normalize_ascii_lowercase(raw)
-    if token in _TELEMETRY_ENV_TRUE:
-        return True
-    if token in _TELEMETRY_ENV_FALSE:
-        return False
-    return None
+_TELEMETRY_ENV_ACCEPTED: tuple[str, ...] = (
+    "0",
+    "1",
+    "false",
+    "no",
+    "true",
+    "yes",
+)
 
 
 def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
@@ -313,17 +310,17 @@ def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
     resolved = resolve_init_value(
         SettingNamespace.TELEMETRY,
         "enabled",
-        parse=_parse_telemetry_enabled_token,
+        parse=parse_bool,
     )
     if resolved.source != SettingSource.ENVIRONMENT:
         env_raw = normalize_ascii_lowercase(
             os.environ.get("SYNTHORG_TELEMETRY_ENABLED", ""),
         )
         if env_raw:
-            accepted = sorted(_TELEMETRY_ENV_TRUE | _TELEMETRY_ENV_FALSE)
             msg = (
-                f"SYNTHORG_TELEMETRY_ENABLED must be one of {accepted!r}; "
-                f"got {env_raw!r}. Refusing to silently fall back to the parsed value."
+                f"SYNTHORG_TELEMETRY_ENABLED must be one of"
+                f" {list(_TELEMETRY_ENV_ACCEPTED)!r}; got {env_raw!r}."
+                f" Refusing to silently fall back to the parsed value."
             )
             raise ValueError(msg)
         return parsed

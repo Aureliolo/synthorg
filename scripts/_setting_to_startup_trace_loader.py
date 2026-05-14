@@ -116,7 +116,7 @@ def _build_setting_record(
         return None
     default = _extract_string(kwargs.get("default"))
     read_only = _extract_bool(kwargs.get("read_only_post_init")) is True
-    setting_key = _extract_string(kwargs.get("setting_key")) or f"{namespace}.{key}"
+    setting_key = f"{namespace}.{key}"
     has_suppression = _detect_register_suppression(
         defn_call,
         file_lines=file_lines,

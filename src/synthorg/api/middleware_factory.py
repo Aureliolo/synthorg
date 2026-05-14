@@ -26,6 +26,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_NETWORK_EXPOSURE_WARNING
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_str_tuple_json
 
 if TYPE_CHECKING:
     from litestar.types import Middleware
@@ -258,21 +259,6 @@ def _build_auth_exclude_paths(
     return exclude_paths
 
 
-def _parse_str_tuple_json(raw: str) -> tuple[str, ...] | None:
-    """Parse a JSON-encoded list of strings into a tuple."""
-    import json  # noqa: PLC0415
-
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, list):
-        return None
-    if not all(isinstance(item, str) for item in parsed):
-        return None
-    return tuple(parsed)
-
-
 def _warn_if_untrusted_proxies(trusted: frozenset[str], host: str) -> None:
     """Warn when no trusted proxies are configured for a non-local host."""
     if not trusted and host not in ("127.0.0.1", "localhost", "::1"):
@@ -448,7 +434,7 @@ def _build_middleware(
         trusted_resolved = resolve_init_value(
             SettingNamespace.API,
             "trusted_proxies",
-            parse=_parse_str_tuple_json,
+            parse=parse_str_tuple_json,
         )
         trusted = frozenset(
             trusted_resolved.value if isinstance(trusted_resolved.value, tuple) else ()

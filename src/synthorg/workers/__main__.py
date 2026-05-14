@@ -24,6 +24,9 @@ from synthorg.observability.events.workers import (
     WORKERS_MAIN_INVALID_WORKER_COUNT,
     WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
 )
+from synthorg.settings.bootstrap_resolver import resolve_init_value
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_int
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
 from synthorg.workers.worker import run_worker_pool
@@ -46,8 +49,12 @@ async def _placeholder_executor(claim: TaskClaim) -> TaskClaimStatus:
     return TaskClaimStatus.SUCCESS
 
 
-_DEFAULT_WORKER_COUNT: Final[int] = 4
-"""Fallback worker count when neither --workers nor env var is set."""
+_DEFAULT_WORKER_COUNT: Final[int] = 1
+"""Mirror of the registered ``workers.count`` default for help text and tests.
+
+The authoritative source is the ``SettingDefinition`` in
+:mod:`synthorg.settings.definitions.workers`; keep this in sync if the
+registry default changes."""
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -81,19 +88,23 @@ def _resolve_worker_count(explicit: int | None) -> int | None:
     """Resolve the effective worker count from flag + env var.
 
     Precedence: explicit ``--workers`` > ``SYNTHORG_WORKERS`` env var
-    > :data:`_DEFAULT_WORKER_COUNT`. Returns ``None`` when the env var
-    exists but is not a valid integer so the caller can surface a
-    structured usage error instead of crashing in argparse.
+    > registered ``workers.count`` default. Returns ``None`` when the
+    env var is set but not a valid integer so the caller can surface a
+    structured usage error instead of silently masking operator intent.
     """
     if explicit is not None:
         return explicit
-    env_value = os.environ.get("SYNTHORG_WORKERS")
-    if env_value is None:
-        return _DEFAULT_WORKER_COUNT
-    try:
-        return int(env_value)
-    except ValueError:
+    env_raw = os.environ.get("SYNTHORG_WORKERS", "").strip()
+    if env_raw and parse_int(env_raw) is None:
         return None
+    resolved = resolve_init_value(
+        SettingNamespace.WORKERS,
+        "count",
+        parse=parse_int,
+    )
+    if isinstance(resolved.value, int):
+        return resolved.value
+    return None
 
 
 async def _async_main(argv: list[str]) -> int:

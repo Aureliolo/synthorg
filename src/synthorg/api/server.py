@@ -17,7 +17,8 @@ from synthorg.observability.events.api import (
     API_TLS_CONFIGURED,
 )
 from synthorg.settings.bootstrap_resolver import resolve_init_value
-from synthorg.settings.enums import SettingNamespace, SettingSource
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_int, parse_str_tuple_json
 
 if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
@@ -45,21 +46,23 @@ def run_server(config: RootConfig) -> None:
         return raw or None
 
     def _str_tuple(key: str) -> tuple[str, ...]:
-        import json  # noqa: PLC0415
-
-        resolved = resolve_init_value(SettingNamespace.API, key)
-        if resolved.source == SettingSource.DEFAULT and not str(resolved.value):
-            return ()
-        try:
-            parsed = json.loads(str(resolved.value))
-        except json.JSONDecodeError:
-            return ()
-        if not isinstance(parsed, list):
-            return ()
-        return tuple(item for item in parsed if isinstance(item, str))
+        resolved = resolve_init_value(
+            SettingNamespace.API,
+            key,
+            parse=parse_str_tuple_json,
+        )
+        if isinstance(resolved.value, tuple):
+            return resolved.value
+        return ()
 
     host = str(resolve_init_value(SettingNamespace.API, "server_host").value)
-    port = int(resolve_init_value(SettingNamespace.API, "server_port", parse=int).value)
+    port = int(
+        resolve_init_value(
+            SettingNamespace.API,
+            "server_port",
+            parse=parse_int,
+        ).value
+    )
     ssl_certfile = _str_or_none("ssl_certfile")
     ssl_keyfile = _str_or_none("ssl_keyfile")
     ssl_ca_certs = _str_or_none("ssl_ca_certs")
