@@ -10,6 +10,7 @@ from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
     parse_int,
+    parse_str_tuple_json,
 )
 
 MIN_SECRET_LENGTH: Final[int] = 32
@@ -69,11 +70,6 @@ class AuthConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    # ``exclude_paths`` intentionally omits the mirror: its
-    # ``None`` sentinel means "auto-derive from the API prefix" and
-    # the middleware-factory distinguishes None vs. empty tuple. The
-    # registered ``api.auth_exclude_paths`` setting is still
-    # consulted via ``ConfigResolver`` at the use site.
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(
             field="jwt_expiry_minutes",
@@ -86,6 +82,15 @@ class AuthConfig(BaseModel):
             namespace=SettingNamespace.API,
             key="min_password_length",
             parse=parse_int,
+        ),
+        MirrorField(
+            field="exclude_paths",
+            namespace=SettingNamespace.API,
+            key="auth_exclude_paths",
+            parse=parse_str_tuple_json,
+            # ``None`` Pydantic default = "auto-derive from the API
+            # prefix"; only an explicit env override overrides it.
+            only_if_env_set=True,
         ),
     )
 

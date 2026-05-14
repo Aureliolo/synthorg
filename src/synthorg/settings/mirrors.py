@@ -27,7 +27,7 @@ from typing import Any
 
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.settings.bootstrap_resolver import resolve_init_value
-from synthorg.settings.enums import SettingNamespace  # noqa: TC001
+from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 _BOOL_TRUE: frozenset[str] = frozenset({"true", "1", "yes"})
@@ -84,12 +84,23 @@ class MirrorField:
         parse: Optional value parser; defaults to identity (returns the
             raw env string). Returning ``None`` signals invalid input;
             the registered default is then applied.
+        only_if_env_set: When ``True`` the mirror fires ONLY when the
+            operator has explicitly set the env var; if the resolver
+            falls back to the registered default, the Pydantic field
+            keeps its declared default. Use this when the Pydantic
+            field's default sentinel carries meaning the registry
+            default would overwrite (``None`` = "inherit from parent"
+            on CeremonyPolicyConfig, ``None`` = "unlimited" on
+            ``CoordinationSectionConfig.max_concurrency_per_wave``,
+            ``None`` = "auto-derive from API prefix" on
+            ``AuthConfig.exclude_paths``).
     """
 
     field: str
     namespace: SettingNamespace
     key: str
     parse: Callable[[str], Any] | None = None
+    only_if_env_set: bool = False
 
 
 def apply_settings_mirrors(
@@ -111,7 +122,9 @@ def apply_settings_mirrors(
 
     Returns:
         ``data`` with unset mirror fields populated from the registry.
-        Caller-supplied keys are preserved verbatim.
+        Caller-supplied keys are preserved verbatim. Mirrors declared
+        with ``only_if_env_set=True`` apply only when an env override
+        is present; the Pydantic default sentinel survives otherwise.
     """
     if not isinstance(data, dict):
         return data
@@ -126,6 +139,8 @@ def apply_settings_mirrors(
                 parse=mirror.parse,
             )
         except SettingNotFoundError:
+            continue
+        if mirror.only_if_env_set and resolved.source != SettingSource.ENVIRONMENT:
             continue
         overrides[mirror.field] = resolved.value
     if not overrides:

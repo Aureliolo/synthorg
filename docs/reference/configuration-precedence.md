@@ -221,6 +221,72 @@ Used by:
 - `synthorg.api.app_builders._bootstrap_app_logging` (log directory)
 - `synthorg.observability.setup._apply_console_level_override` (console log level)
 
+## Pydantic mirror fields (`apply_settings_mirrors`)
+
+Many Pydantic config classes (`ApiConfig`, `ServerConfig`,
+`BudgetConfig`, etc.) carry fields that mirror registered settings.
+With YAML eliminated from the precedence chain, the Pydantic-tier
+default would otherwise drift from the env-tier override resolved by
+`SettingsService`.
+
+`synthorg.settings.mirrors.apply_settings_mirrors` is the sanctioned
+fix. Each Pydantic class with mirror fields declares them via a
+`MirrorField` tuple and attaches a `model_validator(mode="before")`
+that populates unset fields from the registry. The Pydantic field
+declarations remain (consumer API unchanged) but the value at
+construction time IS the precedence-chain result.
+
+```python
+from typing import Any, ClassVar
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField, apply_settings_mirrors, parse_bool,
+)
+
+
+class MyConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.MYNS,
+            key="enabled",
+            parse=parse_bool,
+        ),
+    )
+
+    enabled: bool = Field(default=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+```
+
+### Sentinel-preserving mode: `only_if_env_set=True`
+
+When the Pydantic field's `None` default carries semantic meaning the
+registry default would clobber, set `only_if_env_set=True` on the
+`MirrorField`. The mirror then fires ONLY when the operator has
+explicitly set the env var; if the resolver falls back to the
+registered default the Pydantic field keeps its declared default.
+Used by:
+
+- `AuthConfig.exclude_paths` (`None` = auto-derive from API prefix)
+- `CoordinationSectionConfig.max_concurrency_per_wave` (`None` = unlimited)
+- `CeremonyPolicyConfig.{strategy, velocity_calculator, auto_transition, transition_threshold}` (`None` = inherit from level up)
+
+### Selecting between the three resolution helpers
+
+| Use case | Helper |
+|---|---|
+| Settings consumed at app construction, before `SettingsService` exists | `bootstrap_resolver.resolve_init_value` |
+| Settings consumed via a Pydantic `Config` field whose value comes from `RootConfig` | `mirrors.apply_settings_mirrors` |
+| Runtime-mutable settings consumed per request | `ConfigResolver.get_*()` (post-init) |
+| Hot-reloadable knobs needing one snapshot per process tick | Bridge-config snapshot pattern below |
+
 ## Protocol constants are not settings
 
 Wire-protocol numerics such as JSON-RPC error codes

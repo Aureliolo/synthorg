@@ -8,7 +8,7 @@ performs field-by-field 3-level resolution.
 from collections.abc import Mapping  # noqa: TC003 -- Pydantic runtime
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -17,6 +17,13 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_POLICY_CONFIG_CONFLICT,
     SPRINT_CEREMONY_POLICY_RESOLVED,
+)
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+    parse_float,
 )
 
 logger = get_logger(__name__)
@@ -102,6 +109,39 @@ class CeremonyPolicyConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    # All mirrors use ``only_if_env_set=True``: the ``None`` Pydantic
+    # default carries semantic meaning ("inherit from the next level
+    # up"; the project-level config falls back to framework defaults).
+    # Only an explicit env override should overwrite the None sentinel.
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="strategy",
+            namespace=SettingNamespace.COORDINATION,
+            key="ceremony_strategy",
+            only_if_env_set=True,
+        ),
+        MirrorField(
+            field="velocity_calculator",
+            namespace=SettingNamespace.COORDINATION,
+            key="ceremony_velocity_calculator",
+            only_if_env_set=True,
+        ),
+        MirrorField(
+            field="auto_transition",
+            namespace=SettingNamespace.COORDINATION,
+            key="ceremony_auto_transition",
+            parse=parse_bool,
+            only_if_env_set=True,
+        ),
+        MirrorField(
+            field="transition_threshold",
+            namespace=SettingNamespace.COORDINATION,
+            key="ceremony_transition_threshold",
+            parse=parse_float,
+            only_if_env_set=True,
+        ),
+    )
+
     strategy: CeremonyStrategyType | None = Field(
         default=None,
         description="Scheduling strategy type",
@@ -124,6 +164,11 @@ class CeremonyPolicyConfig(BaseModel):
         le=1.0,
         description="Fraction of tasks complete to trigger auto-transition",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class ResolvedCeremonyPolicy(BaseModel):
