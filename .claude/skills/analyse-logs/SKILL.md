@@ -219,17 +219,23 @@ with open('logs/synthorg.log') as f:
         except (json.JSONDecodeError, ValueError):
             pass
 
-# Parse access.log so excluded events can be verified to land in their
-# dedicated sink rather than silently disappearing. Skipping them in
-# the main discrepancy report without this check hides genuine
-# routing regressions (e.g., access.log handler not registered).
-access_events = set()  # {(event, logger)}
+# Parse access.log so excluded events can be verified per-entry (not
+# just key existence): mirror the 1-second timestamp window used for
+# synthorg.log so one matched record cannot mask many missing records
+# for the same (event, logger) key.
+access_events = {}  # (event, logger) -> [timestamps]
 try:
     with open('logs/access.log') as f:
         for line in f:
             try:
                 rec = json.loads(line.strip())
-                access_events.add((rec.get('event', ''), rec.get('logger', '')))
+                key = (rec.get('event', ''), rec.get('logger', ''))
+                ts_str = rec.get('timestamp', '')
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                except (ValueError, AttributeError):
+                    ts = None
+                access_events.setdefault(key, []).append(ts)
             except (json.JSONDecodeError, ValueError):
                 pass
 except FileNotFoundError:
@@ -245,6 +251,15 @@ for entry in docker_entries:
     if entry['event'] in excluded_events:
         if key not in access_events:
             excluded_missing.append(entry)
+            continue
+        if entry['ts']:
+            try:
+                d_ts = datetime.fromisoformat(entry['ts'].replace('Z', '+00:00'))
+                if not any(a_ts and abs((d_ts - a_ts).total_seconds()) <= 1.0
+                           for a_ts in access_events[key]):
+                    excluded_missing.append(entry)
+            except (ValueError, AttributeError):
+                pass  # fall back to key-only match (already matched above)
         continue
     if key not in file_events:
         missing.append(entry)

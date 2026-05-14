@@ -598,8 +598,34 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 )
                 raise
         # AFTER SettingsService auto-wire; resolver drives max_subworkflow_depth.
+        # Mirror the auto_wire_settings failure path so a resolver or
+        # register_observer() raise here still triggers _safe_shutdown
+        # instead of leaving the app half-wired.
         if persistence is not None:
-            await _wire_workflow_observer(task_engine, persistence, app_state)
+            try:
+                await _wire_workflow_observer(task_engine, persistence, app_state)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.error(
+                    API_APP_STARTUP,
+                    detail="workflow_observer_auto_wire_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                await _safe_shutdown(
+                    task_engine,
+                    meeting_scheduler,
+                    backup_service,
+                    approval_timeout_scheduler,
+                    settings_dispatcher,
+                    bridge,
+                    message_bus,
+                    persistence,
+                    performance_tracker=app_state._performance_tracker,  # noqa: SLF001
+                    distributed_task_queue=app_state.distributed_task_queue,
+                )
+                raise
 
         # When an external caller already supplied a
         # ``TrainingService`` to ``create_app()``, we skip the
