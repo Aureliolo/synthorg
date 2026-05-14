@@ -46,11 +46,36 @@ const NO_ERRORS: FineTuningErrors = {
   runs: null,
 }
 
+// Per-list pagination state surfaced from the wire envelope. Both
+// fields default to false/null on every fetch path; the dashboard
+// drains every page on initial fetch so an exhausted list always
+// settles at ``hasMore=false, nextCursor=null``. Stays in state so
+// future load-more UI can branch on a single flag (per the cursor
+// pagination convention in ``web/CLAUDE.md``).
+interface ListPagination {
+  nextCursor: string | null
+  hasMore: boolean
+}
+
+const NO_MORE: ListPagination = { nextCursor: null, hasMore: false }
+
+// Page size used when draining ``listCheckpoints`` / ``listRuns``.
+// Matches the endpoint default; smaller pages only multiply
+// round-trips without changing the draining outcome.
+const LIST_PAGE_SIZE = 50
+
+// Safety stop so a backend bug that keeps returning ``has_more=true``
+// cannot lock the dashboard in an infinite drain loop. Sized to cover
+// the bounded admin lists (checkpoints / runs) with a generous margin.
+const DRAIN_PAGE_LIMIT = 50
+
 interface FineTuningState {
   // State
   status: FineTuneStatus | null
   checkpoints: readonly CheckpointRecord[]
+  checkpointsPagination: ListPagination
   runs: readonly FineTuneRun[]
+  runsPagination: ListPagination
   preflight: PreflightResult | null
   loading: boolean
   errors: FineTuningErrors
@@ -83,7 +108,9 @@ export function selectFineTuningBannerError(
 export const useFineTuningStore = create<FineTuningState>((set, get) => ({
   status: null,
   checkpoints: [],
+  checkpointsPagination: NO_MORE,
   runs: [],
+  runsPagination: NO_MORE,
   preflight: null,
   loading: false,
   errors: NO_ERRORS,
@@ -107,9 +134,19 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
 
   fetchCheckpoints: async () => {
     try {
-      const page = await listCheckpoints()
+      const collected: CheckpointRecord[] = []
+      let lastPagination: ListPagination = NO_MORE
+      let offset = 0
+      for (let i = 0; i < DRAIN_PAGE_LIMIT; i++) {
+        const page = await listCheckpoints(LIST_PAGE_SIZE, offset)
+        collected.push(...page.data)
+        lastPagination = { nextCursor: page.nextCursor, hasMore: page.hasMore }
+        if (!page.hasMore || page.data.length === 0) break
+        offset += page.data.length
+      }
       set((state) => ({
-        checkpoints: page.data,
+        checkpoints: collected,
+        checkpointsPagination: lastPagination,
         errors: { ...state.errors, checkpoints: null },
       }))
     } catch (err) {
@@ -121,8 +158,21 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
 
   fetchRuns: async () => {
     try {
-      const page = await listRuns()
-      set((state) => ({ runs: page.data, errors: { ...state.errors, runs: null } }))
+      const collected: FineTuneRun[] = []
+      let lastPagination: ListPagination = NO_MORE
+      let offset = 0
+      for (let i = 0; i < DRAIN_PAGE_LIMIT; i++) {
+        const page = await listRuns(LIST_PAGE_SIZE, offset)
+        collected.push(...page.data)
+        lastPagination = { nextCursor: page.nextCursor, hasMore: page.hasMore }
+        if (!page.hasMore || page.data.length === 0) break
+        offset += page.data.length
+      }
+      set((state) => ({
+        runs: collected,
+        runsPagination: lastPagination,
+        errors: { ...state.errors, runs: null },
+      }))
     } catch (err) {
       log.error('Failed to fetch runs', sanitizeForLog(err))
       const message = getErrorMessage(err)

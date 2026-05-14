@@ -13,6 +13,7 @@ import { GitBranch, Loader2 } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Link, useNavigate } from 'react-router'
 import { createLogger } from '@/lib/logger'
+import { TRANSITION_SLOW_MS } from '@/lib/motion'
 import { useToastStore } from '@/stores/toast'
 import { sanitizeForLog } from '@/utils/logging'
 
@@ -205,7 +206,7 @@ function OrgChartInner() {
     // ``requestAnimationFrame`` lets ReactFlow commit the new node
     // positions to its internal store before we ask it to fit them.
     const id = requestAnimationFrame(() => {
-      void fitView({ padding: 0.2, duration: 400 })
+      void fitView({ padding: 0.2, duration: TRANSITION_SLOW_MS })
     })
     return () => cancelAnimationFrame(id)
   }, [viewMode, view.transitioning, view.displayNodes.length, fitView])

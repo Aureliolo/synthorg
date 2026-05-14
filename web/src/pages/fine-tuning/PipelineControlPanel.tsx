@@ -91,28 +91,35 @@ export function PipelineControlPanel() {
           hint="Path INSIDE the backend container -- the default /data/documents resolves to the synthorg-data Docker volume. Drop training files into that volume (or override the path here) before running pre-flight."
         />
         {/*
-         * Spacer to push the buttons onto the same baseline as the
-         * input element rather than its label, then the button group
-         * itself.  ``mt-[1.625rem]`` matches the InputField label's
-         * height (text-xs + mb-1.5 + line-height) so the row aligns
-         * pixel-for-pixel regardless of theme density.
+         * Mirror InputField's vertical stack so the button row aligns
+         * with the input row (not the label above it). The empty
+         * ``<span>`` reserves a label-height row using the SAME
+         * Tailwind tokens InputField itself uses (``text-sm`` for label
+         * size, ``gap-1.5`` for the label/input gap), so changes to
+         * InputField typography keep the alignment intact without any
+         * hardcoded rem offsets.
          */}
-        <div className="flex gap-2 md:mt-[1.625rem]">
-          <Button variant="outline" onClick={handlePreflight} disabled={loading}>
-            Pre-flight Check
-          </Button>
-          {isActive ? (
-            <Button variant="destructive" onClick={() => void cancelRun()}>
-              Cancel
+        <div className="flex flex-col gap-1.5">
+          <span aria-hidden="true" className="hidden text-sm font-medium md:block">
+            &nbsp;
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handlePreflight} disabled={loading}>
+              Pre-flight Check
             </Button>
-          ) : (
-            <Button
-              onClick={handleStart}
-              disabled={loading || (preflight != null && !preflight.can_proceed)}
-            >
-              Start Fine-Tuning
-            </Button>
-          )}
+            {isActive ? (
+              <Button variant="destructive" onClick={() => void cancelRun()}>
+                Cancel
+              </Button>
+            ) : (
+              <Button
+                onClick={handleStart}
+                disabled={loading || (preflight != null && !preflight.can_proceed)}
+              >
+                Start Fine-Tuning
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -3,7 +3,7 @@
 Browse and install MCP servers from the bundled catalog.
 """
 
-from typing import Literal
+from typing import Final, Literal
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -25,6 +25,9 @@ from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
 from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
 )
+from synthorg.integrations.mcp_catalog.installations import (  # noqa: TC001
+    McpInstallation,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALL_FAILED,
@@ -32,6 +35,12 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
+
+# Page size for draining the installed-MCP-entries repo before
+# cursor-paginating the response. Larger pages mean fewer round-trips
+# on big install sets; the page boundary itself is irrelevant to the
+# response shape because the controller drains every page.
+_LIST_PAGE_SIZE: Final[int] = 500
 
 
 class InstallEntryRequest(BaseModel):
@@ -233,10 +242,27 @@ class MCPCatalogController(Controller):
         """
         app_state: AppState = state.app_state
         installations_repo = app_state.mcp_installations_repo
-        # Walk all rows once; the installed list is bounded by the
-        # bundled catalog size (~20-50 entries) so a single read with
-        # a generous limit fits inside one cursor page.
-        records = await installations_repo.list_items(limit=500, offset=0)
+        # Drain every installed row before cursor-paginating the
+        # response. The bundled catalog is small today (~20-50 entries),
+        # but a fixed cap would silently truncate the installed list
+        # the moment an operator installs more than _LIST_PAGE_SIZE
+        # entries -- the dashboard would then show a partial set with
+        # no warning. The drain loop costs one extra round-trip only
+        # when the install count crosses the page boundary.
+        records_acc: list[McpInstallation] = []
+        offset = 0
+        while True:
+            batch = await installations_repo.list_items(
+                limit=_LIST_PAGE_SIZE,
+                offset=offset,
+            )
+            if not batch:
+                break
+            records_acc.extend(batch)
+            if len(batch) < _LIST_PAGE_SIZE:
+                break
+            offset += _LIST_PAGE_SIZE
+        records = tuple(records_acc)
         entries = tuple(
             InstalledEntry(
                 catalog_entry_id=row.catalog_entry_id,

@@ -4,7 +4,8 @@ import {
   useFineTuningStore,
 } from '@/stores/fine-tuning'
 import { useToastStore } from '@/stores/toast'
-import { apiError, apiSuccess, paginatedEnvelopeFor } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
+import type { PaginatedResult } from '@/api/client'
 import { server } from '@/test-setup'
 import type {
   CheckpointRecord,
@@ -66,12 +67,24 @@ const BASE_PREFLIGHT: PreflightResult = {
   can_proceed: true,
 }
 
+function pageOf<T>(items: readonly T[]): PaginatedResult<T> {
+  return {
+    data: [...items],
+    limit: 50,
+    nextCursor: null,
+    hasMore: false,
+    pagination: { limit: 50, next_cursor: null, has_more: false },
+  }
+}
+
 describe('useFineTuningStore', () => {
   beforeEach(() => {
     useFineTuningStore.setState({
       status: null,
       checkpoints: [],
+      checkpointsPagination: { nextCursor: null, hasMore: false },
       runs: [],
+      runsPagination: { nextCursor: null, hasMore: false },
       preflight: null,
       loading: false,
       errors: { status: null, checkpoints: null, runs: null },
@@ -110,7 +123,7 @@ describe('useFineTuningStore', () => {
     it('fetchCheckpoints populates checkpoints on success', async () => {
       server.use(
         http.get('/api/v1/admin/memory/fine-tune/checkpoints', () =>
-          HttpResponse.json(paginatedEnvelopeFor<typeof listCheckpoints>([BASE_CHECKPOINT])),
+          HttpResponse.json(paginatedFor<typeof listCheckpoints>(pageOf([BASE_CHECKPOINT]))),
         ),
       )
 
@@ -143,10 +156,10 @@ describe('useFineTuningStore', () => {
           HttpResponse.json(apiError('Backend offline'), { status: 503 }),
         ),
         http.get('/api/v1/admin/memory/fine-tune/checkpoints', () =>
-          HttpResponse.json(paginatedEnvelopeFor<typeof listCheckpoints>([BASE_CHECKPOINT])),
+          HttpResponse.json(paginatedFor<typeof listCheckpoints>(pageOf([BASE_CHECKPOINT]))),
         ),
         http.get('/api/v1/admin/memory/fine-tune/runs', () =>
-          HttpResponse.json(paginatedEnvelopeFor<typeof listRuns>([BASE_RUN])),
+          HttpResponse.json(paginatedFor<typeof listRuns>(pageOf([BASE_RUN]))),
         ),
       )
 
@@ -170,7 +183,7 @@ describe('useFineTuningStore', () => {
     it('fetchRuns populates runs on success', async () => {
       server.use(
         http.get('/api/v1/admin/memory/fine-tune/runs', () =>
-          HttpResponse.json(paginatedEnvelopeFor<typeof listRuns>([BASE_RUN])),
+          HttpResponse.json(paginatedFor<typeof listRuns>(pageOf([BASE_RUN]))),
         ),
       )
 

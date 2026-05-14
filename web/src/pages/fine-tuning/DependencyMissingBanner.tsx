@@ -8,10 +8,9 @@ export function DependencyMissingBanner() {
         The backend could not contact the fine-tuning sidecar
         (<code className="font-mono">synthorg-fine-tune-gpu</code> /
         <code className="font-mono">synthorg-fine-tune-cpu</code>), which
-        ships PyTorch + sentence-transformers. If you have
-        <code className="font-mono">fine_tuning=true</code> set already,
-        the most common cause is that the container is not running yet --
-        restart the stack so the orchestrator brings it up:
+        ships PyTorch + sentence-transformers. To enable and start the
+        sidecar (or restart it if it is already enabled but unreachable),
+        run:
       </p>
       <code className="mt-2 block rounded bg-muted px-3 py-2 font-mono text-xs text-foreground">
         synthorg config set sandbox true

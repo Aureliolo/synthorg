@@ -857,7 +857,7 @@ def _check_documents(
     )
 
 
-_FINE_TUNE_SIDECAR_HEALTH_URL: Final[str] = "http://fine-tune:15002/health"
+_FINE_TUNE_SIDECAR_HEALTH_URL: Final[str] = "http://fine-tune:15002/healthz"
 _FINE_TUNE_SIDECAR_HEALTH_TIMEOUT_S: Final[float] = 1.5
 _HTTP_STATUS_OK_MIN: Final[int] = 200
 _HTTP_STATUS_OK_MAX_EXCLUSIVE: Final[int] = 300
