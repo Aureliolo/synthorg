@@ -59,6 +59,28 @@ class WebhookEventPayload(BaseModel):
 # length while operator-visible logs still carry the route prefix.
 _IDEMPOTENCY_KEY_MAX_LEN: Final[int] = 255
 
+# In-process LRU cap for the ``ReplayProtector`` nonce cache. Chosen
+# to bound memory under a flood of unique nonces (each entry is the
+# nonce string plus an int timestamp; 10_000 entries is well below
+# the GiB scale even with kilobyte-sized nonces) while staying large
+# enough to cover the longest realistic replay window at a sustained
+# webhook delivery rate.
+_REPLAY_PROTECTOR_MAX_ENTRIES: Final[int] = 10_000
+
+
+def _len_prefixed(segment: str) -> str:
+    """Length-prefix a segment for injective string composition.
+
+    Joining raw segments with ``:`` is ambiguous when a segment itself
+    contains ``:``: ``("a:b", "c")`` and ``("a", "b:c")`` both collapse
+    to ``"a:b:c"``. Prefixing every segment with its character length
+    makes the encoding injective -- the same tuples encode as
+    ``"3:a:b:1:c"`` and ``"1:a:3:b:c"`` respectively. The colon inside
+    a segment is irrelevant because the length tells the reader (and
+    any future parser) how many characters belong to that segment.
+    """
+    return f"{len(segment)}:{segment}"
+
 
 def _build_idem_scope(
     *,
@@ -70,9 +92,13 @@ def _build_idem_scope(
     Including ``connection_name`` (and not just ``connection_type``) is
     defence in depth at the persistence row level: a stale dedup row
     written under one connection can never surface to a different
-    connection that happens to share an event type and nonce.
+    connection that happens to share an event type and nonce. Each
+    segment is length-prefixed via :func:`_len_prefixed` so two
+    distinct ``(connection_type, connection_name)`` pairs can never
+    collapse to the same scope string even when one of the parts
+    contains ``":"``.
     """
-    return f"webhooks:{connection_type}:{connection_name}"
+    return f"webhooks:{_len_prefixed(connection_type)}:{_len_prefixed(connection_name)}"
 
 
 def _build_idem_key(
@@ -88,7 +114,10 @@ def _build_idem_key(
     unbounded string copies into the f-string; (2) collapse the
     composed key via SHA-256 if it still exceeds the DB column's
     255-char CHECK constraint, preserving the (connection, event)
-    prefix for operator visibility when possible.
+    prefix for operator visibility when possible. Each input segment
+    is length-prefixed via :func:`_len_prefixed` so two distinct
+    ``(connection_name, event_type, nonce)`` tuples can never produce
+    the same key string even when one of the parts contains ``":"``.
     """
     nonce_for_key = (
         nonce
@@ -97,12 +126,14 @@ def _build_idem_key(
             nonce.encode("utf-8", errors="replace"),
         ).hexdigest()
     )
-    raw_key = f"{connection_name}:{event_type}:{nonce_for_key}"
+    encoded_name = _len_prefixed(connection_name)
+    encoded_event = _len_prefixed(event_type)
+    raw_key = f"{encoded_name}:{encoded_event}:{_len_prefixed(nonce_for_key)}"
     if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
         nonce_digest = hashlib.sha256(
             nonce_for_key.encode("utf-8", errors="replace"),
         ).hexdigest()
-        raw_key = f"{connection_name}:{event_type}:sha256:{nonce_digest}"
+        raw_key = f"{encoded_name}:{encoded_event}:sha256:{nonce_digest}"
         if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
             raw_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
     return raw_key
@@ -172,7 +203,7 @@ async def _get_replay_protector(state: State) -> ReplayProtector:
             cfg = app_state.config.integrations.webhooks
             cached = ReplayProtector(
                 window_seconds=cfg.replay_window_seconds,
-                max_entries=10_000,
+                max_entries=_REPLAY_PROTECTOR_MAX_ENTRIES,
             )
             app_state._webhook_replay_protector = cached  # noqa: SLF001
         return cached
