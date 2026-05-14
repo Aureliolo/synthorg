@@ -1,106 +1,59 @@
 /** Approval queue and HITL evidence types. */
 
-import type { ApprovalRiskLevel, ApprovalStatus, UrgencyLevel } from './enums'
+import type { ApprovalRiskLevel, ApprovalStatus } from './enums'
+import type { ApprovalResponse as WireApprovalResponse, EvidencePackage } from './dtos.gen'
 
-/** Mirrors `synthorg.core.evidence.RecommendedAction`. */
-export interface RecommendedAction {
-  action_type: string
-  label: string
-  description: string
-  confirmation_required: boolean
+export type {
+  ApproveRequest,
+  CreateApprovalRequest,
+  EvidencePackage,
+  EvidencePackageSignature,
+  RecommendedAction,
+  RejectRequest,
+} from './dtos.gen'
+
+/**
+ * ApprovalResponse with the defaulted Pydantic fields re-typed as
+ * required because the wire serializer ALWAYS emits them (defaults
+ * are serialised; the JSON schema simply omits them from
+ * ``required[]`` because Pydantic treats "has default" as "not
+ * required from the client side"). Frontend consumers can rely on
+ * the value being present at runtime.
+ */
+export type ApprovalResponse = Omit<
+  WireApprovalResponse,
+  'metadata' | 'status' | 'task_id' | 'decided_by' | 'decision_reason' | 'decided_at' | 'expires_at' | 'evidence_package' | 'seconds_remaining'
+> & {
+  readonly metadata: Record<string, string>
+  readonly status: ApprovalStatus
+  readonly task_id: string | null
+  readonly decided_by: string | null
+  readonly decision_reason: string | null
+  readonly decided_at: string | null
+  readonly expires_at: string | null
+  readonly evidence_package: EvidencePackage | null
+  readonly seconds_remaining: number | null
 }
 
+/** Pre-decoration approval row (the queue endpoint augments
+ *  ``ApprovalItem`` with ``seconds_remaining`` and ``urgency_level``
+ *  before returning ``ApprovalResponse``). The base type is not a
+ *  separate schema in OpenAPI; deriving it here from
+ *  ``ApprovalResponse`` keeps a single source of truth.
+ */
+export type ApprovalItem = Omit<ApprovalResponse, 'seconds_remaining' | 'urgency_level'>
+
+/** Inline enum on ``EvidencePackageSignature.algorithm``. OpenAPI
+ *  emits it as a string union, not a named schema. The runtime VALUES
+ *  tuple stays hand-maintained because the dashboard's signature
+ *  pickers iterate it. */
 export type SignatureAlgorithm = 'ml-dsa-65' | 'ed25519'
 
 export const SIGNATURE_ALGORITHM_VALUES = [
   'ml-dsa-65', 'ed25519',
 ] as const satisfies readonly SignatureAlgorithm[]
 
-/** Mirrors `synthorg.core.evidence.EvidencePackageSignature`. */
-export interface EvidencePackageSignature {
-  approver_id: string
-  algorithm: SignatureAlgorithm
-  /**
-   * Signature bytes serialized as a base64 string.
-   *
-   * The backend model stores raw ``bytes`` and the Pydantic JSON
-   * encoder emits standard RFC 4648 base64 (no URL-safe alphabet,
-   * padding preserved). Callers that need the raw bytes should run
-   * ``atob(signature_bytes)`` then convert the result to a
-   * ``Uint8Array``. This contract is verified by the DTO parity
-   * tests in ``tests/unit/api/test_dto_parity.py``.
-   */
-  signature_bytes: string
-  signed_at: string
-  chain_position: number
-}
-
-/**
- * Mirrors `synthorg.core.evidence.EvidencePackage` (extends
- * ``StructuredArtifact``). Structured payload for HITL approval
- * decisions: narrative, reasoning trace, recommended actions, and
- * audit-chain signatures.
- */
-export interface EvidencePackage {
-  id: string
-  title: string
-  narrative: string
-  reasoning_trace: readonly string[]
-  recommended_actions: readonly RecommendedAction[]
-  source_agent_id: string
-  task_id: string | null
-  risk_level: ApprovalRiskLevel
-  metadata: Record<string, unknown>
-  signature_threshold: number
-  signatures: readonly EvidencePackageSignature[]
-  /** Computed field -- whether the signature threshold has been met. */
-  is_fully_signed: boolean
-  /** Inherited from StructuredArtifact. */
-  created_at: string
-}
-
-export interface ApprovalItem {
-  id: string
-  action_type: string
-  title: string
-  description: string
-  requested_by: string
-  risk_level: ApprovalRiskLevel
-  status: ApprovalStatus
-  task_id: string | null
-  metadata: Record<string, string>
-  decided_by: string | null
-  decision_reason: string | null
-  created_at: string
-  decided_at: string | null
-  expires_at: string | null
-  /** Structured HITL evidence for rich approval UIs. */
-  evidence_package: EvidencePackage | null
-}
-
-export interface ApprovalResponse extends ApprovalItem {
-  seconds_remaining: number | null
-  urgency_level: UrgencyLevel
-}
-
-export interface CreateApprovalRequest {
-  action_type: string
-  title: string
-  description: string
-  risk_level: ApprovalRiskLevel
-  ttl_seconds?: number
-  task_id?: string
-  metadata?: Record<string, string>
-}
-
-export interface ApproveRequest {
-  comment?: string
-}
-
-export interface RejectRequest {
-  reason: string
-}
-
+/** Frontend-only query filter (not a Pydantic DTO). */
 export interface ApprovalFilters {
   status?: ApprovalStatus
   risk_level?: ApprovalRiskLevel

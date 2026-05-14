@@ -25,6 +25,7 @@ export function buildConnection(
     health_status: 'unknown',
     last_health_check_at: null,
     metadata: {},
+    secret_refs: [],
     webhook_receipt_retention_days: null,
     created_at: NOW,
     updated_at: NOW,
@@ -131,7 +132,7 @@ export const connectionsList = [
     return HttpResponse.json(
       successFor<typeof checkConnectionHealth>({
         connection_name: conn.name,
-        status: conn.health_status,
+        status: conn.health_status ?? 'unknown',
         latency_ms: conn.health_status === 'healthy' ? 42 : null,
         error_detail: conn.health_status === 'unhealthy' ? 'Connection refused' : null,
         checked_at: NOW,

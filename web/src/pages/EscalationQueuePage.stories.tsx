@@ -18,7 +18,7 @@ const sampleEscalations: readonly EscalationResponse[] = [
       decision: null,
       conflict: {
         id: 'conf-1',
-        type: 'authority',
+        type: 'other',
         task_id: 'task-1',
         subject: 'Decision authority on credentials rollout',
         detected_at: '2026-04-28T07:25:00+00:00',

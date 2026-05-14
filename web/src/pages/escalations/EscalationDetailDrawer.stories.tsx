@@ -16,7 +16,7 @@ const sampleDetail: EscalationResponse = {
     decision: null,
     conflict: {
       id: 'conflict-1',
-      type: 'authority',
+      type: 'other',
       task_id: 'task-1',
       subject: 'Decision authority on credentials rollout',
       detected_at: '2026-04-28T07:55:00+00:00',

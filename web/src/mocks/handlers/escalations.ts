@@ -20,6 +20,7 @@ export function buildEscalation(
       subject: 'Default conflict',
       positions: [],
       detected_at: '2026-04-19T00:00:00Z',
+      is_cross_department: false,
     },
     status: 'pending',
     created_at: '2026-04-19T00:00:00Z',
@@ -39,7 +40,7 @@ function buildResponse(
     ...overrides,
     escalation: esc,
     conflict_id: overrides.conflict_id ?? esc.conflict.id,
-    status: overrides.status ?? esc.status,
+    status: overrides.status ?? esc.status ?? 'pending',
   }
 }
 

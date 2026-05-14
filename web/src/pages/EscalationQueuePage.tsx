@@ -34,9 +34,9 @@ import { ESCALATION_STATUS_BADGE_COLORS } from '@/styles/status-colors'
 type PriorityBucket = 'critical' | 'high' | 'standard'
 
 const PRIORITY_BUCKET_TYPES: Record<PriorityBucket, readonly ConflictType[]> = {
-  critical: ['architecture', 'authority'],
-  high: ['strategy', 'technical'],
-  standard: ['resource', 'process'],
+  critical: ['architecture'],
+  high: ['implementation', 'priority'],
+  standard: ['resource', 'process', 'other'],
 }
 
 const PRIORITY_OPTIONS: ReadonlyArray<{
@@ -273,13 +273,13 @@ export default function EscalationQueuePage() {
                   action={
                     <span
                       role="img"
-                      aria-label={`Status ${e.status}`}
+                      aria-label={`Status ${e.status ?? 'pending'}`}
                       className={cn(
                         'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
-                        ESCALATION_STATUS_BADGE_COLORS[e.status],
+                        ESCALATION_STATUS_BADGE_COLORS[e.status ?? 'pending'],
                       )}
                     >
-                      {e.status.toUpperCase()}
+                      {(e.status ?? 'pending').toUpperCase()}
                     </span>
                   }
                 >

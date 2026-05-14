@@ -1,15 +1,32 @@
-/** Conflict resolution & human escalation queue types. */
+/** Conflict resolution and human escalation queue types. */
 
-import type { SeniorityLevel } from './enums'
+export type {
+  CancelEscalationRequest,
+  Conflict,
+  ConflictPosition,
+  Escalation,
+  EscalationResponse,
+  RejectDecision,
+  SubmitDecisionRequest,
+  WinnerDecision,
+} from './dtos.gen'
 
-export type ConflictType =
-  | 'resource'
-  | 'authority'
-  | 'process'
-  | 'strategy'
-  | 'technical'
-  | 'architecture'
+export type { ConflictType, EscalationStatus } from './enum-values.gen'
+export {
+  CONFLICT_TYPE_VALUES,
+  ESCALATION_STATUS_VALUES,
+} from './enum-values.gen'
 
+import type { RejectDecision, WinnerDecision } from './dtos.gen'
+
+/** Discriminated union of decision payloads (the wire surfaces the
+ *  variants as ``Conflict.resolution`` and ``Escalation.decision``;
+ *  OpenAPI emits them as separate schemas without a named union). */
+export type EscalationDecision = WinnerDecision | RejectDecision
+
+/** Frontend-only conflict-resolution outcome string union (mirrors a
+ *  Pydantic Literal that is referenced via a non-DTO chain so the
+ *  OpenAPI schema does not expose it as a named enum). */
 export type ConflictResolutionOutcome =
   | 'resolved_by_authority'
   | 'resolved_by_debate'
@@ -17,62 +34,3 @@ export type ConflictResolutionOutcome =
   | 'resolved_by_human'
   | 'rejected_by_human'
   | 'escalated_to_human'
-
-export type EscalationStatus = 'pending' | 'decided' | 'expired' | 'cancelled'
-
-export interface ConflictPosition {
-  readonly agent_id: string
-  readonly agent_department: string
-  readonly agent_level: SeniorityLevel
-  readonly position: string
-  readonly reasoning: string
-  readonly timestamp: string
-}
-
-export interface Conflict {
-  readonly id: string
-  readonly type: ConflictType
-  readonly task_id: string | null
-  readonly subject: string
-  readonly positions: readonly ConflictPosition[]
-  readonly detected_at: string
-  readonly is_cross_department?: boolean
-}
-
-export interface WinnerDecision {
-  readonly type: 'winner'
-  readonly winning_agent_id: string
-  readonly reasoning: string
-}
-
-export interface RejectDecision {
-  readonly type: 'reject'
-  readonly reasoning: string
-}
-
-export type EscalationDecision = WinnerDecision | RejectDecision
-
-export interface Escalation {
-  readonly id: string
-  readonly conflict: Conflict
-  readonly status: EscalationStatus
-  readonly created_at: string
-  readonly expires_at: string | null
-  readonly decided_at: string | null
-  readonly decided_by: string | null
-  readonly decision: EscalationDecision | null
-}
-
-export interface EscalationResponse {
-  readonly escalation: Escalation
-  readonly conflict_id: string
-  readonly status: EscalationStatus
-}
-
-export interface SubmitDecisionRequest {
-  readonly decision: EscalationDecision
-}
-
-export interface CancelEscalationRequest {
-  readonly reason: string
-}
