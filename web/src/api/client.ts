@@ -155,9 +155,22 @@ apiClient.interceptors.response.use(
         // branch previously short-circuited it, diverging from the
         // ``fetchWithRetryAfter`` contract used by non-axios call sites.
         if (waitMs !== DO_NOT_RETRY) {
-          config._rateLimitRetries = retries + 1
+          const retryCount = retries + 1
+          // Surfaces backend rate-limit pressure to dashboards / operators.
+          // ``log.warn`` (not ``info``) because the web logger ships only
+          // ``debug | warn | error`` levels; a silent absorbed 429 is a
+          // signal an SRE wants to see, not a debug-stripped trace.
+          // Pass the structured payload object directly: the logger's
+          // sanitizer routes objects through unchanged for devtools
+          // inspection (it stringifies primitives + strings only).
+          log.warn('http.rate_limited', {
+            retry_count: retryCount,
+            method,
+            status: 429,
+          })
+          config._rateLimitRetries = retryCount
           const nextHeaders = { ...(config.headers ?? {}) } as Record<string, string>
-          nextHeaders[RETRY_COUNT_HEADER] = String(retries + 1)
+          nextHeaders[RETRY_COUNT_HEADER] = String(retryCount)
           const retryConfig: AxiosRequestConfig = {
             ...config,
             headers: nextHeaders,
