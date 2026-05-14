@@ -108,10 +108,21 @@ def resolve_init_value(  # noqa: UP047
     default = definition.default if definition.default is not None else ""
     if parse is not None:
         parsed_default = parse(default)
-        if parsed_default is not None:
-            return BootstrapResolvedValue(
-                value=parsed_default,
-                source=SettingSource.DEFAULT,
+        if parsed_default is None:
+            # Registered defaults are validated at SettingDefinition
+            # construction; a parser that rejects one means either the
+            # default registration is wrong or the parser is too strict
+            # for its setting -- either way the typed contract is
+            # broken and callers expecting T must not receive the raw
+            # string default.
+            msg = (
+                f"Invalid registered default for {namespace}/{key}:"
+                f" {default!r} (parser returned None)"
             )
+            raise ValueError(msg)
+        return BootstrapResolvedValue(
+            value=parsed_default,
+            source=SettingSource.DEFAULT,
+        )
 
     return BootstrapResolvedValue(value=default, source=SettingSource.DEFAULT)

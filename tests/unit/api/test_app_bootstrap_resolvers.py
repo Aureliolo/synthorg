@@ -97,6 +97,12 @@ class TestResolveApiInt:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        monkeypatch.delenv(
+            "SYNTHORG_API_COMPRESSION_MINIMUM_SIZE_BYTES",
+            raising=False,
+        )
+        expected_default = _resolve_api_int("compression_minimum_size_bytes")
+
         # Regression guard: prior to wiring parse_int, _resolve_api_int
         # passed bare int() as the parse callback, which raised
         # ValueError uncaught and crashed app construction on any typo.
@@ -105,7 +111,7 @@ class TestResolveApiInt:
             "not-a-number",
         )
         # parse_int returns None, resolver falls back to default.
-        assert _resolve_api_int("compression_minimum_size_bytes") > 0
+        assert _resolve_api_int("compression_minimum_size_bytes") == expected_default
 
 
 @pytest.mark.unit

@@ -252,32 +252,19 @@ class RateLimitConfig(BaseModel):
 class ServerConfig(BaseModel):
     """Uvicorn server configuration.
 
+    Host, port, TLS paths, trusted-proxy list, and the compression /
+    request-size limits are resolved at boot via
+    :func:`synthorg.settings.bootstrap_resolver.resolve_init_value`
+    against the ``api.*`` registry entries rather than carried on this
+    model. Only the worker-process / auto-reload / WebSocket-ping knobs
+    that uvicorn needs at construction time live here.
+
     Attributes:
-        host: Bind address.
-        port: Bind port.
         reload: Enable auto-reload for development.
         workers: Number of worker processes.
         ws_ping_interval: WebSocket ping interval in seconds
             (0 to disable).
         ws_ping_timeout: WebSocket pong timeout in seconds.
-        ssl_certfile: Path to SSL certificate file (PEM format).
-        ssl_keyfile: Path to SSL private key file (PEM format).
-        ssl_ca_certs: Path to CA bundle for client cert
-            verification.
-        trusted_proxies: IP addresses/CIDRs trusted as reverse
-            proxies for ``X-Forwarded-For``/``X-Forwarded-Proto``
-            header processing.
-        compression_minimum_size_bytes: Minimum response body size
-            in bytes before brotli compression kicks in. Mirrors the
-            ``api.compression_minimum_size_bytes`` setting (restart
-            required); the API startup hook resolves the current
-            value and threads it in here so operator tuning via the
-            settings database takes effect on next boot.
-        request_max_body_size_bytes: Maximum accepted HTTP request
-            body size in bytes. Mirrors the
-            ``api.request_max_body_size_bytes`` setting (restart
-            required); populated the same way as
-            ``compression_minimum_size_bytes``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -317,8 +304,8 @@ class ApiConfig(BaseModel):
             ``api.rate_limiter_enabled`` registry entry
             (``read_only_post_init=True``): the boot-time resolver in
             ``api/app.py`` reads ``SYNTHORG_API_RATE_LIMITER_ENABLED``
-            first and falls through to this YAML field, then the
-            registry default.
+            and falls through to the registered default (env > code
+            default per the Cat-2 precedence model).
         per_op_rate_limit: Per-operation throttling configuration
             (layered on top of the global three-tier limiter).
         per_op_concurrency: Per-operation inflight concurrency capping
@@ -363,8 +350,8 @@ class ApiConfig(BaseModel):
             " Mirrors the ``api.rate_limiter_enabled`` registry entry"
             " (read_only_post_init=True): the boot-time resolver in"
             " ``api/app.py`` reads SYNTHORG_API_RATE_LIMITER_ENABLED"
-            " first and falls through to this YAML field, then the"
-            " registry default."
+            " and falls through to the registered default (env > code"
+            " default per the Cat-2 precedence model)."
         ),
     )
     per_op_rate_limit: PerOpRateLimitConfig = Field(
