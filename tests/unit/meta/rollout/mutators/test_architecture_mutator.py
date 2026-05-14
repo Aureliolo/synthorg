@@ -23,16 +23,21 @@ class TestRoutedArchitectureMutator:
 
         adapter.assert_awaited_once_with("agent-007", {"k": "v"})
 
-    async def test_register_handler_replaces_existing(self) -> None:
-        first = AsyncMock()
-        second = AsyncMock()
-        mutator = RoutedArchitectureMutator({"role": first})
-        mutator.register_handler("role", second)
+    async def test_adapter_table_is_immutable_after_construction(self) -> None:
+        """The adapter mapping is wrapped so callers cannot mutate dispatch."""
+        from types import MappingProxyType
 
-        await mutator.restore(target="role:bob", previous_value=None)
+        from synthorg.meta.rollout.mutators.architecture_mutator import (
+            ArchitectureAdapter,
+        )
 
-        first.assert_not_awaited()
-        second.assert_awaited_once_with("bob", None)
+        adapters: dict[str, ArchitectureAdapter] = {"role": AsyncMock()}
+        mutator = RoutedArchitectureMutator(adapters)
+
+        assert isinstance(mutator._adapters, MappingProxyType)
+        # Mutating the original dict the caller passed in must not affect dispatch.
+        adapters["department"] = AsyncMock()
+        assert "department" not in mutator._adapters
 
     async def test_compound_target_id_preserved(self) -> None:
         """``workflow:wf-123:v4`` keeps the version in the tail."""

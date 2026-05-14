@@ -94,6 +94,8 @@ class WorkspaceCodeMutator:
             await asyncio.to_thread(_atomic_write, resolved, content)
         except MemoryError, RecursionError:
             raise
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning(
                 META_ROLLBACK_OPERATION_FAILED,

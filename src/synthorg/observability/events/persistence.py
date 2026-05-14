@@ -521,3 +521,17 @@ PERSISTENCE_COST_CLAIM_DEDUPE_PRUNED: Final[str] = (
 PERSISTENCE_COST_CLAIM_DEDUPE_PRUNE_FAILED: Final[str] = (
     "persistence.cost_claim_dedupe.prune_failed"
 )
+
+# Principle-override repo events (rollback PromptMutator backing store)
+PERSISTENCE_PRINCIPLE_OVERRIDE_SAVE_FAILED: Final[str] = (
+    "persistence.principle_override.save_failed"
+)
+PERSISTENCE_PRINCIPLE_OVERRIDE_GET_FAILED: Final[str] = (
+    "persistence.principle_override.get_failed"
+)
+PERSISTENCE_PRINCIPLE_OVERRIDE_DELETE_FAILED: Final[str] = (
+    "persistence.principle_override.delete_failed"
+)
+PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED: Final[str] = (
+    "persistence.principle_override.list_failed"
+)

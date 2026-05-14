@@ -9,6 +9,12 @@ import aiosqlite
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_PRINCIPLE_OVERRIDE_DELETE_FAILED,
+    PERSISTENCE_PRINCIPLE_OVERRIDE_GET_FAILED,
+    PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED,
+    PERSISTENCE_PRINCIPLE_OVERRIDE_SAVE_FAILED,
+)
 from synthorg.persistence._shared import (
     format_iso_utc,
     normalize_utc,
@@ -66,7 +72,7 @@ class SQLitePrincipleOverrideRepository:
                     await self._db.rollback()
                 msg = f"Failed to save principle override for scope {scope!r}"
                 logger.warning(
-                    "persistence.principle_override.save_failed",
+                    PERSISTENCE_PRINCIPLE_OVERRIDE_SAVE_FAILED,
                     scope=str(scope),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -87,7 +93,7 @@ class SQLitePrincipleOverrideRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to load principle override for scope {scope!r}"
             logger.warning(
-                "persistence.principle_override.get_failed",
+                PERSISTENCE_PRINCIPLE_OVERRIDE_GET_FAILED,
                 scope=str(scope),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -118,7 +124,7 @@ class SQLitePrincipleOverrideRepository:
                     await self._db.rollback()
                 msg = f"Failed to delete principle override for scope {scope!r}"
                 logger.warning(
-                    "persistence.principle_override.delete_failed",
+                    PERSISTENCE_PRINCIPLE_OVERRIDE_DELETE_FAILED,
                     scope=str(scope),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -147,7 +153,7 @@ class SQLitePrincipleOverrideRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list principle overrides"
             logger.warning(
-                "persistence.principle_override.list_failed",
+                PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

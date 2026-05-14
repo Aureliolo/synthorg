@@ -100,8 +100,8 @@ column:preset_overrides:candidate_urls:TEXT:JSONB:Audit cluster #8: SQLite has n
 column:preset_overrides:default_models:TEXT:JSONB:Audit cluster #8: SQLite has no JSONB; column stores TEXT + json_valid CHECK
 column:preset_overrides:supported_auth_types:TEXT:JSONB:Audit cluster #8: SQLite has no JSONB; column stores TEXT + json_valid CHECK
 column:preset_overrides:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
-column:principle_overrides:created_at:TEXT:TIMESTAMPTZ:auto-generated; replace with audit-cited justification before commit
-column:principle_overrides:updated_at:TEXT:TIMESTAMPTZ:auto-generated; replace with audit-cited justification before commit
+column:principle_overrides:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:principle_overrides:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:project_cost_aggregates:last_updated:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:projects:deadline:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:projects:task_ids:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)

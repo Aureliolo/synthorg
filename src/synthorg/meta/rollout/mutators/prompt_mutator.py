@@ -6,6 +6,7 @@ repository on principle resolution, so subsequent reads see the
 override without rewriting the YAML packs.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
@@ -31,26 +32,54 @@ class PrincipleOverridePromptMutator:
     ) -> None:
         self._repo = override_repo
 
-    async def restore_principle(self, *, scope: str, text: str) -> None:
+    async def restore_principle(
+        self,
+        *,
+        scope: str,
+        text: str,
+        operation_id: str | None = None,
+    ) -> None:
         """Persist the override at ``scope``.
+
+        Args:
+            scope: Principle scope identifier (validated non-blank).
+            text: Override principle text (validated non-blank).
+            operation_id: Identifier of the rollback operation producing
+                this override. When supplied, ``restored_from`` is
+                persisted as ``"rollback:<operation_id>"`` so the audit
+                trail can correlate the override back to the operation;
+                when omitted, falls back to the literal ``"rollback"``.
 
         Raises:
             RollbackMutationDeniedError: If the underlying write fails
                 or the inputs are not non-blank strings.
         """
+        # ``NotBlankStr`` is a Pydantic ``Annotated`` type: constructing
+        # it directly does not run the AfterValidator, so we check for
+        # blank/whitespace-only inputs ourselves before treating them
+        # as ``NotBlankStr`` further down.
         if not scope or not scope.strip():
             msg = "restore_principle scope must be non-blank"
             raise RollbackMutationDeniedError(msg)
         if not text or not text.strip():
             msg = "restore_principle text must be non-blank"
             raise RollbackMutationDeniedError(msg)
+        typed_scope = NotBlankStr(scope)
+        typed_text = NotBlankStr(text)
+        provenance = (
+            NotBlankStr(f"rollback:{operation_id}")
+            if operation_id
+            else NotBlankStr("rollback")
+        )
         try:
             await self._repo.save(
-                NotBlankStr(scope),
-                NotBlankStr(text),
-                restored_from=NotBlankStr("rollback"),
+                typed_scope,
+                typed_text,
+                restored_from=provenance,
             )
         except MemoryError, RecursionError:
+            raise
+        except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning(

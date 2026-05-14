@@ -6,12 +6,14 @@ the prefix and dispatches to a per-type adapter callable. Each adapter
 takes ``(target_id, previous_value)`` and applies the restore through
 its underlying store.
 
-This is a deliberately thin abstraction so operators can extend the
-router with new ``<type>`` prefixes via :meth:`register_handler`
-without touching the rollback executor itself.
+The adapter registry is immutable after construction so the dispatch
+table cannot drift while ``restore`` is running. Operators extend the
+router by passing the full ``adapters`` dict at construction time.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
+from types import MappingProxyType
 from typing import Any
 
 from synthorg.meta.errors import (
@@ -42,15 +44,12 @@ class RoutedArchitectureMutator:
         self,
         adapters: dict[str, ArchitectureAdapter] | None = None,
     ) -> None:
-        self._adapters: dict[str, ArchitectureAdapter] = dict(adapters or {})
-
-    def register_handler(
-        self,
-        target_type: str,
-        adapter: ArchitectureAdapter,
-    ) -> None:
-        """Register or replace the adapter for ``target_type``."""
-        self._adapters[target_type] = adapter
+        # Wrap in MappingProxyType so the dispatch table cannot mutate
+        # under a running restore; constructing a new mutator is the
+        # only way to register additional adapters.
+        self._adapters: MappingProxyType[str, ArchitectureAdapter] = MappingProxyType(
+            dict(adapters or {})
+        )
 
     async def restore(self, *, target: str, previous_value: Any) -> None:
         """Parse ``target`` and dispatch to the registered adapter."""
@@ -81,6 +80,8 @@ class RoutedArchitectureMutator:
         try:
             await adapter(target_tail, previous_value)
         except MemoryError, RecursionError:
+            raise
+        except asyncio.CancelledError:
             raise
         except UnknownArchitectureTargetError:
             raise

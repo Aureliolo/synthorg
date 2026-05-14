@@ -266,6 +266,10 @@ describe('workflow-editor composed store', () => {
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
       expect(toasts[0]!.title).toContain('create')
+      // Description is what surfaces the underlying API error to the
+      // operator; without this assertion a future change that drops the
+      // `description` field would pass the variant/title checks silently.
+      expect(toasts[0]!.description).toBeDefined()
     })
 
     it('saveDefinition emits an error toast on a non-409 failure', async () => {
@@ -287,6 +291,7 @@ describe('workflow-editor composed store', () => {
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
       expect(toasts[0]!.title).toContain('save')
+      expect(toasts[0]!.description).toBeDefined()
     })
 
     it('saveDefinition emits a warning toast on 409 conflict', async () => {
@@ -325,6 +330,7 @@ describe('workflow-editor composed store', () => {
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
       expect(toasts[0]!.title.toLowerCase()).toContain('roll back')
+      expect(toasts[0]!.description).toBeDefined()
     })
   })
 })

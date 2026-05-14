@@ -131,7 +131,12 @@ class CostTracker(CostTrackerSummaryMixin):
             msg = f"claim_lru_capacity must be >= 1, got {claim_lru_capacity}"
             raise ValueError(msg)
         self._records: list[CostRecord] = []
-        self._lock: asyncio.Lock = asyncio.Lock()
+        # Defer Lock construction until the first async method runs so
+        # the lock binds to the live event loop, not whichever loop (if
+        # any) was current when the tracker was constructed. xdist
+        # workers tear down their loop between tests and a Lock bound
+        # to a closed loop deadlocks the next test.
+        self._lock: asyncio.Lock | None = None
         self._budget_config = budget_config
         self._department_resolver = department_resolver
         self._auto_prune_threshold = auto_prune_threshold
@@ -163,6 +168,18 @@ class CostTracker(CostTrackerSummaryMixin):
             has_project_cost_repo=project_cost_repo is not None,
             claim_lru_capacity=claim_lru_capacity,
         )
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Return the per-loop lock, creating it on first use.
+
+        asyncio is single-threaded per loop, so the ``is None`` check
+        and assignment cannot race within a loop. Constructing the
+        lock lazily lets the tracker survive xdist workers that
+        recreate the event loop between tests.
+        """
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @property
     def budget_config(self) -> BudgetConfig | None:
@@ -252,7 +269,7 @@ class CostTracker(CostTrackerSummaryMixin):
         # from the LRU prevents the capacity trim from popping a
         # still-running reservation, which would let a duplicate
         # slip past the membership check.
-        async with self._lock:
+        async with self._get_lock():
             if (
                 cost_record.claim_id in self._inflight_claims
                 or cost_record.claim_id in self._seen_claims
@@ -278,11 +295,11 @@ class CostTracker(CostTrackerSummaryMixin):
         try:
             await self._update_project_aggregate(cost_record)
         except BaseException:
-            async with self._lock:
+            async with self._get_lock():
                 self._inflight_claims.discard(cost_record.claim_id)
             raise
 
-        async with self._lock:
+        async with self._get_lock():
             # Promote the reservation to a finalised LRU entry under
             # the lock so the membership check above never observes
             # a gap where the claim is in neither set. Eviction only
@@ -317,7 +334,7 @@ class CostTracker(CostTrackerSummaryMixin):
         """
         ref = now or self._clock.now()
         cutoff = ref - timedelta(hours=_COST_WINDOW_HOURS)
-        async with self._lock:
+        async with self._get_lock():
             pruned = self._prune_before(cutoff)
             if pruned:
                 logger.info(
@@ -489,7 +506,7 @@ class CostTracker(CostTrackerSummaryMixin):
         Returns:
             Number of cost records.
         """
-        async with self._lock:
+        async with self._get_lock():
             return len(self._records)
 
     async def get_records(
@@ -749,7 +766,7 @@ class CostTracker(CostTrackerSummaryMixin):
                 ``self._clock.now()`` so ``FakeClock`` injection
                 deterministically controls auto-prune timing.
         """
-        async with self._lock:
+        async with self._get_lock():
             if len(self._records) > self._auto_prune_threshold:
                 ref = now or self._clock.now()
                 cutoff = ref - timedelta(hours=_COST_WINDOW_HOURS)

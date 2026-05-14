@@ -37,6 +37,20 @@ class TestPrincipleOverridePromptMutator:
         assert str(args[1]) == "Restored principle text"
         assert str(kwargs["restored_from"]) == "rollback"
 
+    async def test_restore_persists_operation_id_provenance(self) -> None:
+        """``operation_id`` is woven into ``restored_from`` for forensic audit."""
+        repo, save_mock = _make_repo()
+        mutator = PrincipleOverridePromptMutator(override_repo=repo)
+
+        await mutator.restore_principle(
+            scope="planning.scope.alpha",
+            text="Restored principle text",
+            operation_id="rb-2026-05-14-abc",
+        )
+
+        kwargs = save_mock.call_args.kwargs
+        assert str(kwargs["restored_from"]) == "rollback:rb-2026-05-14-abc"
+
     async def test_blank_scope_rejected(self) -> None:
         repo, save_mock = _make_repo()
         mutator = PrincipleOverridePromptMutator(override_repo=repo)

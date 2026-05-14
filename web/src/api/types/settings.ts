@@ -71,7 +71,7 @@ export interface SettingEntry {
   updated_at: string | null
 }
 
-/** Backend enforces max_length=8192 on value. */
+/** Backend enforces max_length=65536 on value. */
 export interface UpdateSettingRequest {
   value: string
 }
