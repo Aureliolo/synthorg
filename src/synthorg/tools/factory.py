@@ -600,6 +600,12 @@ def build_default_tools_from_config(  # noqa: PLR0913
     analytics_provider: AnalyticsProvider | None = None,
     metric_sink: MetricSink | None = None,
     async_task_service: AsyncTaskService | None = None,
+    org_memory_backend: OrgMemoryBackend | None = None,
+    org_fact_store: OrgFactStore | None = None,
+    wiki_exporter: WikiExporter | None = None,
+    architect_agent_id: str = _DEFAULT_ARCHITECT_AGENT_ID,
+    architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
+    architect_writes_enabled: bool = False,
     web_request_timeout: float,
 ) -> tuple[BaseTool, ...]:
     """Build default tools using parameters from a ``RootConfig``.
@@ -629,6 +635,21 @@ def build_default_tools_from_config(  # noqa: PLR0913
         async_task_service: Optional ``AsyncTaskService`` backing the
             async task steering tools.  When ``None``, those tools are
             skipped.
+        org_memory_backend: ``OrgMemoryBackend`` collaborator for the
+            KnowledgeArchitect tools.  Must be wired together with
+            ``org_fact_store`` and ``wiki_exporter`` to register the
+            ``memory.*`` architect surface; missing any of the three
+            keeps it inert.
+        org_fact_store: ``OrgFactStore`` for write/delete operations
+            on org facts.
+        wiki_exporter: Wiki exporter used by ``memory.browse_wiki``.
+        architect_agent_id: Agent identity bound to the architect
+            tools.  Defaults to a sentinel string operators can override.
+        architect_autonomy_level: Default autonomy level for the
+            architect tools.  ``SUPERVISED`` requires upstream plan
+            review; ``FULL`` blocks writes entirely.
+        architect_writes_enabled: ``SEMI`` autonomy opt-in flag.
+            Ignored unless ``architect_autonomy_level`` is ``SEMI``.
         web_request_timeout: Resolved
             ``tools.web_request_timeout_seconds`` registry value
             (required; callers resolve via ``ConfigResolver`` so the
@@ -731,4 +752,10 @@ def build_default_tools_from_config(  # noqa: PLR0913
         metric_sink=metric_sink,
         async_task_service=async_task_service,
         code_execution_sandbox=code_execution_sandbox,
+        org_memory_backend=org_memory_backend,
+        org_fact_store=org_fact_store,
+        wiki_exporter=wiki_exporter,
+        architect_agent_id=architect_agent_id,
+        architect_autonomy_level=architect_autonomy_level,
+        architect_writes_enabled=architect_writes_enabled,
     )

@@ -174,13 +174,26 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       // checks in store code.
       if (getErrorCode(err) === ErrorCode.VERSION_CONFLICT && definition) {
         log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
-        useToastStore.getState().add({
-          variant: 'warning',
-          title: 'Version conflict',
-          description: 'Another save occurred. Reloading the latest version.',
-        })
         set({ saving: false, error: 'Version conflict, another save occurred. Reloading...' })
         await get().loadDefinition(definition.id)
+        // ``loadDefinition`` swallows its own errors and writes them
+        // to ``state.error``. Promote the toast only after the reload
+        // settles so the user is not told "reloaded" when the reload
+        // itself failed and they are still looking at stale data.
+        if (get().error === null) {
+          useToastStore.getState().add({
+            variant: 'warning',
+            title: 'Version conflict',
+            description: 'Another save occurred. Reloaded the latest version.',
+          })
+        } else {
+          useToastStore.getState().add({
+            variant: 'error',
+            title: 'Reload failed after version conflict',
+            description:
+              'Could not reload the workflow after a concurrent save. Refresh the page to retry.',
+          })
+        }
       } else {
         log.warn('Failed to save workflow definition', sanitizeForLog(err))
         useToastStore.getState().add({

@@ -321,6 +321,36 @@ describe('workflow-editor composed store', () => {
       expect(warning!.title).toBe('Version conflict')
     })
 
+    it('saveDefinition emits an error toast when the post-conflict reload fails', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+        nodes: [],
+        edges: [],
+      })
+      server.use(
+        http.patch('/api/v1/workflows/:id', () =>
+          HttpResponse.json(
+            apiError('conflict', {
+              error_code: ErrorCode.VERSION_CONFLICT,
+              error_category: ErrorCategory.CONFLICT,
+            }),
+            { status: 409 },
+          ),
+        ),
+        http.get('/api/v1/workflows/:id', () =>
+          HttpResponse.json(apiError('reload failed'), { status: 500 }),
+        ),
+      )
+
+      await useWorkflowEditorStore.getState().saveDefinition()
+
+      const toasts = useToastStore.getState().toasts
+      const error = toasts.find((t) => t.variant === 'error')
+      expect(error).toBeDefined()
+      expect(error!.title).toBe('Reload failed after version conflict')
+      expect(toasts.some((t) => t.variant === 'warning')).toBe(false)
+    })
+
     it('rollback emits an error toast on failure', async () => {
       useWorkflowEditorStore.setState({
         definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
