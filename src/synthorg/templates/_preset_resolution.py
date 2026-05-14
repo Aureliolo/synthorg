@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from synthorg.core.agent import PersonalityConfig
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_PRESET_RESOLVED_CUSTOM,
@@ -70,7 +71,7 @@ def resolve_agent_personality(
         return copy.deepcopy(inline_personality)
     if preset_name:
         # Normalize once for both the lookup and the custom-source check.
-        key = preset_name.strip().lower()
+        key = normalize_ascii_lowercase(preset_name)
         is_custom = custom_presets is not None and key in custom_presets
         try:
             result = get_personality_preset(

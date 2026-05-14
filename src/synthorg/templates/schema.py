@@ -19,7 +19,10 @@ from synthorg.core.enums import (
     StrategicOutputMode,
     WorkflowType,
 )
-from synthorg.core.normalization import normalize_identifier
+from synthorg.core.normalization import (
+    normalize_ascii_lowercase,
+    normalize_identifier,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.config import EmbedderOverrideConfig  # noqa: TC001
 from synthorg.observability import get_logger
@@ -439,7 +442,7 @@ class CompanyTemplate(BaseModel):
             return None
         if not isinstance(value, str):
             return value  # let Pydantic's type validation reject it
-        return value.strip().lower()
+        return normalize_ascii_lowercase(value)
 
     @model_validator(mode="after")
     def _validate_agent_count_in_range(self) -> Self:

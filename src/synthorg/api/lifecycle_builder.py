@@ -14,13 +14,19 @@ from synthorg.api.lifecycle import (
     _safe_startup,
     _try_stop,
 )
-from synthorg.api.lifecycle_helpers import (
-    _apply_bridge_config,
-    _apply_security_timeout_interval,
-    _audit_retention_loop,
-    _build_settings_dispatcher,
+from synthorg.api.lifecycle_helpers.audit_retention import _audit_retention_loop
+from synthorg.api.lifecycle_helpers.bootstrap import (
     _maybe_bootstrap_agents,
     _maybe_promote_first_owner,
+)
+from synthorg.api.lifecycle_helpers.config_apply import (
+    _apply_bridge_config,
+    _apply_security_timeout_interval,
+)
+from synthorg.api.lifecycle_helpers.settings_dispatcher import (
+    _build_settings_dispatcher,
+)
+from synthorg.api.lifecycle_helpers.ticket_cleanup import (
     _resolve_event_stream_janitor_settings,
     _ticket_cleanup_loop,
 )

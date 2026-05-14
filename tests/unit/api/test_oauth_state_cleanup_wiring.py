@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.api import lifecycle_helpers
 from synthorg.api.auth.ticket_store import WsTicketStore
+from synthorg.api.lifecycle_helpers import ticket_cleanup as lifecycle_helpers
 from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.persistence.connection_protocol import OAuthStateRepository
 

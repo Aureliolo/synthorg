@@ -4,6 +4,7 @@ import asyncio
 import sys
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.enums import LogLevel
 from synthorg.observability.events.settings import (
@@ -133,7 +134,7 @@ class ObservabilitySettingsSubscriber:
             )
             return None
 
-        raw_corr = str(corr_result.value).strip().lower()
+        raw_corr = normalize_ascii_lowercase(str(corr_result.value))
         if raw_corr not in _VALID_BOOL_STRINGS:
             logger.error(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,

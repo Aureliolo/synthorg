@@ -195,7 +195,7 @@ class TestCheckHasNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Code default resolves as non-DATABASE source, returns False."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
@@ -212,7 +212,7 @@ class TestCheckHasNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
@@ -235,7 +235,7 @@ class TestCheckHasNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns False when get_entry raises a generic exception."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
@@ -258,7 +258,7 @@ class TestCheckHasNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns False when get_entry raises SettingNotFoundError."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
         from synthorg.settings.errors import SettingNotFoundError
@@ -287,7 +287,7 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """When DB key is absent, code default ["__all__"] resolves to all."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
         from synthorg.templates.locales import ALL_LATIN_LOCALES
@@ -306,7 +306,7 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns None when get_entry raises SettingNotFoundError."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
         from synthorg.settings.errors import SettingNotFoundError
@@ -329,7 +329,7 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -351,7 +351,7 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -373,7 +373,7 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -395,7 +395,7 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -418,7 +418,7 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """With resolve=False, the __all__ sentinel passes through raw."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
@@ -444,7 +444,7 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """With resolve=False, invalid codes are not filtered out."""
-        from synthorg.api.controllers.setup_helpers import (
+        from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 

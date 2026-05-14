@@ -5,6 +5,7 @@ from typing import Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import (
@@ -210,7 +211,7 @@ class DockerSandboxConfig(BaseModel):
 
         Accepts an integer with an optional ``k``/``m``/``g`` suffix.
         """
-        limit = self.memory_limit.strip().lower()
+        limit = normalize_ascii_lowercase(self.memory_limit)
         if not limit:
             msg = "Memory limit must not be empty"
             logger.warning(CONFIG_VALIDATION_FAILED, field="memory_limit", reason=msg)

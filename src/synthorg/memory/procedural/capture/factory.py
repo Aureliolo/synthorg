@@ -4,6 +4,7 @@ Constructs the appropriate capture strategy based on configuration,
 wiring proposers and backends as needed.
 """
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.memory.procedural.capture.config import CaptureConfig  # noqa: TC001
 from synthorg.memory.procedural.capture.failure_capture import FailureCaptureStrategy
 from synthorg.memory.procedural.capture.hybrid_capture import HybridCaptureStrategy
@@ -15,12 +16,70 @@ from synthorg.memory.procedural.success_proposer import (
     SuccessMemoryProposer,  # noqa: TC001
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.capture import (
-    CAPTURE_STRATEGY_BUILT,
-    CAPTURE_STRATEGY_UNKNOWN_TYPE,
-)
+from synthorg.observability.events.capture import CAPTURE_STRATEGY_BUILT
 
 logger = get_logger(__name__)
+
+
+def _build_failure(
+    config: CaptureConfig,
+    *,
+    failure_proposer: ProceduralMemoryProposer,
+    procedural_config: ProceduralMemoryConfig,
+    **_unused: object,
+) -> CaptureStrategy:
+    del config  # quality threshold lives on success branch only
+    logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="failure")
+    return FailureCaptureStrategy(
+        proposer=failure_proposer,
+        config=procedural_config,
+    )
+
+
+def _build_success(
+    config: CaptureConfig,
+    *,
+    success_proposer: SuccessMemoryProposer,
+    procedural_config: ProceduralMemoryConfig,
+    **_unused: object,
+) -> CaptureStrategy:
+    logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="success")
+    return SuccessCaptureStrategy(
+        proposer=success_proposer,
+        config=procedural_config,
+        min_quality_score=config.min_quality_score,
+    )
+
+
+def _build_hybrid(
+    config: CaptureConfig,
+    *,
+    failure_proposer: ProceduralMemoryProposer,
+    success_proposer: SuccessMemoryProposer,
+    procedural_config: ProceduralMemoryConfig,
+) -> CaptureStrategy:
+    logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="hybrid")
+    return HybridCaptureStrategy(
+        failure_strategy=FailureCaptureStrategy(
+            proposer=failure_proposer,
+            config=procedural_config,
+        ),
+        success_strategy=SuccessCaptureStrategy(
+            proposer=success_proposer,
+            config=procedural_config,
+            min_quality_score=config.min_quality_score,
+        ),
+    )
+
+
+_CAPTURE_REGISTRY: StrategyRegistry[CaptureStrategy] = StrategyRegistry(
+    {
+        "failure": _build_failure,
+        "success": _build_success,
+        "hybrid": _build_hybrid,
+    },
+    kind="capture_strategy",
+)
 
 
 def build_capture_strategy(
@@ -45,44 +104,12 @@ def build_capture_strategy(
         A CaptureStrategy instance matching the configured type.
 
     Raises:
-        ValueError: If config.type is not "failure", "success", or "hybrid".
+        StrategyFactoryNotFoundError: If ``config.type`` is not registered.
     """
-    strategy_type = config.type.lower()
-
-    if strategy_type == "failure":
-        logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="failure")
-        return FailureCaptureStrategy(
-            proposer=failure_proposer,
-            config=procedural_config,
-        )
-
-    if strategy_type == "success":
-        logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="success")
-        return SuccessCaptureStrategy(
-            proposer=success_proposer,
-            config=procedural_config,
-            min_quality_score=config.min_quality_score,
-        )
-
-    if strategy_type == "hybrid":
-        logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="hybrid")
-        failure_strategy = FailureCaptureStrategy(
-            proposer=failure_proposer,
-            config=procedural_config,
-        )
-        success_strategy = SuccessCaptureStrategy(
-            proposer=success_proposer,
-            config=procedural_config,
-            min_quality_score=config.min_quality_score,
-        )
-        return HybridCaptureStrategy(
-            failure_strategy=failure_strategy,
-            success_strategy=success_strategy,
-        )
-
-    msg = (
-        f"Unknown capture strategy type: {strategy_type}. "
-        'Must be "failure", "success", or "hybrid".'
+    return _CAPTURE_REGISTRY.build(
+        config.type,
+        config,
+        failure_proposer=failure_proposer,
+        success_proposer=success_proposer,
+        procedural_config=procedural_config,
     )
-    logger.warning(CAPTURE_STRATEGY_UNKNOWN_TYPE, strategy_type=strategy_type)
-    raise ValueError(msg)

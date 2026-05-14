@@ -16,6 +16,57 @@ from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
 
+from synthorg.api.controllers.setup.agent_helpers import (
+    AGENT_LOCK as _AGENT_LOCK,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
+    auto_create_template_agents as _auto_create_template_agents,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
+    auto_select_embedder,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
+    check_has_agents as _check_has_agents,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
+    check_needs_admin as _check_needs_admin,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
+    check_needs_setup as _check_needs_setup,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
+    collect_model_ids as _collect_model_ids,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
+    post_setup_reinit as _post_setup_reinit,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
+    validate_agent_index as _validate_agent_index,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    check_has_company as _check_has_company,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    check_has_name_locales as _check_has_name_locales,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    check_setup_not_complete as _check_setup_not_complete,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    persist_company_settings as _persist_company_settings,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    read_name_locales as _read_name_locales,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    resolve_min_password_length as _resolve_min_password_length,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    resolve_template as _resolve_template,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    validate_locale_selection as _validate_locale_selection,
+)
 from synthorg.api.controllers.setup_agents import (
     agent_dict_to_summary,
     agents_to_summaries,
@@ -24,57 +75,6 @@ from synthorg.api.controllers.setup_agents import (
     normalize_description,
     validate_model_assignment,
     validate_provider_and_model,
-)
-from synthorg.api.controllers.setup_helpers import (
-    AGENT_LOCK as _AGENT_LOCK,
-)
-from synthorg.api.controllers.setup_helpers import (
-    auto_create_template_agents as _auto_create_template_agents,
-)
-from synthorg.api.controllers.setup_helpers import (
-    auto_select_embedder,
-)
-from synthorg.api.controllers.setup_helpers import (
-    check_has_agents as _check_has_agents,
-)
-from synthorg.api.controllers.setup_helpers import (
-    check_has_company as _check_has_company,
-)
-from synthorg.api.controllers.setup_helpers import (
-    check_has_name_locales as _check_has_name_locales,
-)
-from synthorg.api.controllers.setup_helpers import (
-    check_needs_admin as _check_needs_admin,
-)
-from synthorg.api.controllers.setup_helpers import (
-    check_needs_setup as _check_needs_setup,
-)
-from synthorg.api.controllers.setup_helpers import (
-    check_setup_not_complete as _check_setup_not_complete,
-)
-from synthorg.api.controllers.setup_helpers import (
-    collect_model_ids as _collect_model_ids,
-)
-from synthorg.api.controllers.setup_helpers import (
-    persist_company_settings as _persist_company_settings,
-)
-from synthorg.api.controllers.setup_helpers import (
-    post_setup_reinit as _post_setup_reinit,
-)
-from synthorg.api.controllers.setup_helpers import (
-    read_name_locales as _read_name_locales,
-)
-from synthorg.api.controllers.setup_helpers import (
-    resolve_min_password_length as _resolve_min_password_length,
-)
-from synthorg.api.controllers.setup_helpers import (
-    resolve_template as _resolve_template,
-)
-from synthorg.api.controllers.setup_helpers import (
-    validate_agent_index as _validate_agent_index,
-)
-from synthorg.api.controllers.setup_helpers import (
-    validate_locale_selection as _validate_locale_selection,
 )
 from synthorg.api.controllers.setup_models import (
     AvailableLocalesResponse,
@@ -98,6 +98,7 @@ from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import ValidationError
+from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
@@ -139,7 +140,7 @@ async def _read_has_gpu_setting(settings_svc: SettingsService) -> bool | None:
             error=safe_error_description(exc),
         )
         return None
-    raw = (entry.value or "").strip().lower()
+    raw = normalize_ascii_lowercase_or_default(entry.value)
     match raw:
         case "true" | "1" | "yes":
             return True

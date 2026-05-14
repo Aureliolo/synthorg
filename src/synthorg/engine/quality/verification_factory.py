@@ -12,6 +12,7 @@ and model-matching logic.
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from synthorg.core.validation import require_non_blank
 from synthorg.engine.quality.decomposer_protocol import (
     CriteriaDecomposer,  # noqa: TC001
 )
@@ -55,23 +56,24 @@ def _require_non_blank_model_id(
     """Validate that a resolved model id is non-blank.
 
     The ``TierResolver`` protocol promises a ``NotBlankStr`` but it is a
-    runtime callable -- untrusted callers may still return a blank
-    string.  Fail here with a clear message instead of letting Pydantic
+    runtime callable; untrusted callers may still return a blank
+    string. Fail here with a clear message instead of letting Pydantic
     raise from inside ``LLMCriteriaDecomposer`` / ``LLMRubricGrader``.
     """
-    if not isinstance(value, str) or not value.strip():
-        msg = (
-            f"{component} tier_resolver returned a blank model id for "
-            f"tier {tier!r}; expected a non-blank string"
-        )
+    try:
+        return require_non_blank(value, name=f"{component} tier_resolver({tier!r})")
+    except ValueError as exc:
         logger.error(
             VERIFICATION_FACTORY_MISSING_PROVIDER,
             component=component,
             tier=str(tier),
             reason="blank_model_id",
         )
-        raise ValueError(msg)
-    return value
+        msg = (
+            f"{component} tier_resolver returned a blank model id for "
+            f"tier {tier!r}; expected a non-blank string"
+        )
+        raise ValueError(msg) from exc
 
 
 def build_decomposer(

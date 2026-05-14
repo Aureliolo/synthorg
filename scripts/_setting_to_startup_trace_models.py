@@ -20,7 +20,12 @@ _LIFECYCLE_FILES: Final[tuple[str, ...]] = (
     "src/synthorg/api/app.py",
     "src/synthorg/api/lifecycle.py",
     "src/synthorg/api/lifecycle_builder.py",
-    "src/synthorg/api/lifecycle_helpers.py",
+    "src/synthorg/api/lifecycle_helpers/__init__.py",
+    "src/synthorg/api/lifecycle_helpers/bootstrap.py",
+    "src/synthorg/api/lifecycle_helpers/config_apply.py",
+    "src/synthorg/api/lifecycle_helpers/settings_dispatcher.py",
+    "src/synthorg/api/lifecycle_helpers/audit_retention.py",
+    "src/synthorg/api/lifecycle_helpers/ticket_cleanup.py",
     "src/synthorg/api/auto_wire.py",
 )
 

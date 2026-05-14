@@ -17,7 +17,7 @@ from unittest.mock import create_autospec
 
 import pytest
 
-from synthorg.api import lifecycle_helpers
+from synthorg.api.lifecycle_helpers import ticket_cleanup as lifecycle_helpers
 
 
 def _no_arg_sync() -> object:
@@ -120,7 +120,7 @@ async def _run_loop_ticks(
         await real_sleep(0)
 
     monkeypatch.setattr(
-        "synthorg.api.lifecycle_helpers.asyncio.sleep",
+        "synthorg.api.lifecycle_helpers.ticket_cleanup.asyncio.sleep",
         _deterministic_sleep,
     )
     task = asyncio.create_task(lifecycle_helpers._ticket_cleanup_loop(app_state))

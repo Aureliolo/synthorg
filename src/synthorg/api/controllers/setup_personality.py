@@ -10,18 +10,18 @@ from litestar import Controller, get, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_200_OK
 
+from synthorg.api.controllers.setup.agent_helpers import (
+    AGENT_LOCK as _AGENT_LOCK,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
+    validate_agent_index as _validate_agent_index,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    check_setup_not_complete as _check_setup_not_complete,
+)
 from synthorg.api.controllers.setup_agents import (
     agent_dict_to_summary,
     get_existing_agents,
-)
-from synthorg.api.controllers.setup_helpers import (
-    AGENT_LOCK as _AGENT_LOCK,
-)
-from synthorg.api.controllers.setup_helpers import (
-    check_setup_not_complete as _check_setup_not_complete,
-)
-from synthorg.api.controllers.setup_helpers import (
-    validate_agent_index as _validate_agent_index,
 )
 from synthorg.api.controllers.setup_models import (
     PersonalityPresetInfoResponse,

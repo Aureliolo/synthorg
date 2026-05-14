@@ -10,6 +10,10 @@ from abc import ABC
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import ToolCategory
+from synthorg.core.normalization import (
+    collapse_whitespace_lowercase,
+    normalize_ascii_lowercase,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.terminal import TERMINAL_COMMAND_BLOCKED
 from synthorg.tools.base import BaseTool
@@ -75,7 +79,7 @@ class BaseTerminalTool(BaseTool, ABC):
         """
         # Collapse whitespace to prevent bypass via extra spaces
         # (e.g. "rm  -rf  /" bypassing "rm -rf /").
-        normalized = " ".join(command.strip().lower().split())
+        normalized = collapse_whitespace_lowercase(command)
         parts = normalized.split(maxsplit=1)
         executable = parts[0] if parts else ""
         for pattern in self._config.command_blocklist:
@@ -110,7 +114,7 @@ class BaseTerminalTool(BaseTool, ABC):
         """
         if not self._config.command_allowlist:
             return True
-        normalized = command.strip().lower()
+        normalized = normalize_ascii_lowercase(command)
         parts = normalized.split(maxsplit=1)
         executable = parts[0] if parts else ""
 

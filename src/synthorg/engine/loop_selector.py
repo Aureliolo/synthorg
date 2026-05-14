@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Final, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.enums import Complexity
+from synthorg.core.registry import StrategyRegistry
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
@@ -27,7 +28,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_DOWNGRADE,
     EXECUTION_LOOP_HYBRID_FALLBACK,
     EXECUTION_LOOP_NO_RULE_MATCH,
-    EXECUTION_LOOP_UNKNOWN_TYPE,
 )
 
 if TYPE_CHECKING:
@@ -266,6 +266,68 @@ def select_loop_type(  # noqa: PLR0913
     return _apply_hybrid_fallback(loop_type, hybrid_fallback)
 
 
+def _build_react_loop(
+    *,
+    checkpoint_callback: CheckpointCallback | None = None,
+    approval_gate: ApprovalGate | None = None,
+    stagnation_detector: StagnationDetector | None = None,
+    compaction_callback: CompactionCallback | None = None,
+    **_unused: object,
+) -> ExecutionLoop:
+    return ReactLoop(
+        checkpoint_callback=checkpoint_callback,
+        approval_gate=approval_gate,
+        stagnation_detector=stagnation_detector,
+        compaction_callback=compaction_callback,
+    )
+
+
+def _build_plan_execute_loop(
+    *,
+    checkpoint_callback: CheckpointCallback | None = None,
+    approval_gate: ApprovalGate | None = None,
+    stagnation_detector: StagnationDetector | None = None,
+    compaction_callback: CompactionCallback | None = None,
+    plan_execute_config: PlanExecuteConfig | None = None,
+    **_unused: object,
+) -> ExecutionLoop:
+    return PlanExecuteLoop(
+        config=plan_execute_config,
+        checkpoint_callback=checkpoint_callback,
+        approval_gate=approval_gate,
+        stagnation_detector=stagnation_detector,
+        compaction_callback=compaction_callback,
+    )
+
+
+def _build_hybrid_loop(
+    *,
+    checkpoint_callback: CheckpointCallback | None = None,
+    approval_gate: ApprovalGate | None = None,
+    stagnation_detector: StagnationDetector | None = None,
+    compaction_callback: CompactionCallback | None = None,
+    hybrid_loop_config: HybridLoopConfig | None = None,
+    **_unused: object,
+) -> ExecutionLoop:
+    return HybridLoop(
+        config=hybrid_loop_config,
+        checkpoint_callback=checkpoint_callback,
+        approval_gate=approval_gate,
+        stagnation_detector=stagnation_detector,
+        compaction_callback=compaction_callback,
+    )
+
+
+_LOOP_REGISTRY: StrategyRegistry[ExecutionLoop] = StrategyRegistry(
+    {
+        "react": _build_react_loop,
+        "plan_execute": _build_plan_execute_loop,
+        "hybrid": _build_hybrid_loop,
+    },
+    kind="execution_loop",
+)
+
+
 def build_execution_loop(  # noqa: PLR0913
     loop_type: str,
     *,
@@ -294,35 +356,14 @@ def build_execution_loop(  # noqa: PLR0913
         A concrete ``ExecutionLoop`` implementation.
 
     Raises:
-        ValueError: If ``loop_type`` is not recognized.
+        StrategyFactoryNotFoundError: If ``loop_type`` is not registered.
     """
-    if loop_type == "react":
-        return ReactLoop(
-            checkpoint_callback=checkpoint_callback,
-            approval_gate=approval_gate,
-            stagnation_detector=stagnation_detector,
-            compaction_callback=compaction_callback,
-        )
-    if loop_type == "plan_execute":
-        return PlanExecuteLoop(
-            config=plan_execute_config,
-            checkpoint_callback=checkpoint_callback,
-            approval_gate=approval_gate,
-            stagnation_detector=stagnation_detector,
-            compaction_callback=compaction_callback,
-        )
-    if loop_type == "hybrid":
-        return HybridLoop(
-            config=hybrid_loop_config,
-            checkpoint_callback=checkpoint_callback,
-            approval_gate=approval_gate,
-            stagnation_detector=stagnation_detector,
-            compaction_callback=compaction_callback,
-        )
-    logger.warning(
-        EXECUTION_LOOP_UNKNOWN_TYPE,
-        loop_type=repr(loop_type),
-        valid_types=sorted(_BUILDABLE_LOOP_TYPES),
+    return _LOOP_REGISTRY.build(
+        loop_type,
+        checkpoint_callback=checkpoint_callback,
+        approval_gate=approval_gate,
+        stagnation_detector=stagnation_detector,
+        compaction_callback=compaction_callback,
+        plan_execute_config=plan_execute_config,
+        hybrid_loop_config=hybrid_loop_config,
     )
-    msg = f"Unknown loop type: {loop_type!r}"
-    raise ValueError(msg)
