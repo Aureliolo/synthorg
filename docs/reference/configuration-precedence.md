@@ -231,6 +231,24 @@ With YAML eliminated from the precedence chain, the Pydantic-tier
 default would otherwise drift from the env-tier override resolved by
 `SettingsService`.
 
+### Settings-only registered keys (no Pydantic mirror)
+
+Some registered settings are consumed exclusively through
+`SettingsService` (or `ConfigResolver`) and have no corresponding
+field on any Pydantic config class. They participate in the standard
+precedence chain (DB > env > default) without needing a mirror
+declaration. Examples in the `company` namespace:
+
+- `company.name_locales`: consumed in
+  `src/synthorg/api/controllers/setup/company_helpers.py` via
+  `SettingsService.get_entry`.
+- `company.description`: registered for `/settings` UI discoverability;
+  no current code consumer.
+
+These keys are NOT fields on `RootConfig`; treating them as
+settings-only avoids the dual-surface drift that the mirror pattern
+exists to fix.
+
 `synthorg.settings.mirrors.apply_settings_mirrors` is the sanctioned
 fix. Each Pydantic class with mirror fields declares them via a
 `MirrorField` tuple and attaches a `model_validator(mode="before")`

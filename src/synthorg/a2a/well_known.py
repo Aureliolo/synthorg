@@ -20,12 +20,13 @@ from litestar.response import Response
 from synthorg.a2a.agent_card import AgentCardBuilder  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.normalization import strip_trailing_slash
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_AGENT_CARD_CACHE_HIT,
     A2A_AGENT_CARD_CACHE_MISS,
     A2A_AGENT_CARD_SERVED,
 )
+from synthorg.settings.errors import SettingNotFoundError
 
 logger = get_logger(__name__)
 
@@ -105,6 +106,39 @@ async def _put_cached_card(
         )
 
 
+async def _resolve_company_name(app_state: Any) -> str:
+    """Read ``company.company_name`` through ``ConfigResolver`` with fallback.
+
+    A ``/settings/company/company_name`` runtime write only reaches this
+    endpoint when the resolver is consulted per request; capturing the
+    value at boot-time would freeze it on the running process. The
+    fallback to ``app_state.config.company_name`` keeps ``.well-known``
+    serving on a settings-backend outage instead of 500'ing.
+
+    ``SettingNotFoundError`` is a quiet fallback because it is a normal
+    initial state on fresh installs before setup has registered the
+    key. The broader ``Exception`` catch logs WARNING with safe error
+    description; ``MemoryError`` and ``RecursionError`` propagate per
+    the surrounding controller's convention.
+    """
+    try:
+        resolved = await app_state.config_resolver.get_str("company", "company_name")
+    except MemoryError, RecursionError:
+        raise
+    except SettingNotFoundError:
+        return str(app_state.config.company_name)
+    except Exception as exc:
+        logger.warning(
+            A2A_AGENT_CARD_SERVED,
+            card_type="company",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            reason="company_name_resolver_failed_using_snapshot_fallback",
+        )
+        return str(app_state.config.company_name)
+    return str(resolved)
+
+
 class WellKnownAgentCardController(Controller):
     """Serves A2A Agent Cards at well-known URIs."""
 
@@ -158,10 +192,11 @@ class WellKnownAgentCardController(Controller):
         try:
             identities = await registry.list_active()
             base_url = strip_trailing_slash(str(request.base_url))
+            company_name = await _resolve_company_name(app_state)
             card = builder.build_company_card(
                 identities=identities,
                 base_url=f"{base_url}/api/v1/a2a",
-                company_name=str(app_state.config.company_name),
+                company_name=company_name,
             )
             card_data = card.model_dump()
             # Fingerprint: sorted identity IDs for staleness detection.

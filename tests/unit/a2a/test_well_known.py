@@ -1,11 +1,17 @@
 """Tests for well-known Agent Card cache helpers."""
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
 from synthorg.a2a.well_known import (
     _get_cached_card,
     _put_cached_card,
+    _resolve_company_name,
 )
+from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.resolver import ConfigResolver
 
 
 class TestCacheHelpers:
@@ -101,3 +107,60 @@ class TestCacheHelpers:
         # No fingerprint on get: always returns if within TTL
         result = await _get_cached_card("key-1", ttl=60)
         assert result == {"name": "test"}
+
+
+def _make_resolver_stub(*, get_str_side_effect: object = None) -> AsyncMock:
+    """Return an ``AsyncMock(spec=ConfigResolver)`` with ``get_str`` configured.
+
+    ``get_str_side_effect`` can be a plain return value or an exception
+    instance. When it is an Exception, it is wired as ``side_effect``;
+    otherwise it is the ``return_value``.
+    """
+    resolver = AsyncMock(spec=ConfigResolver)
+    if isinstance(get_str_side_effect, BaseException):
+        resolver.get_str.side_effect = get_str_side_effect
+    else:
+        resolver.get_str.return_value = get_str_side_effect
+    return resolver
+
+
+class TestResolveCompanyName:
+    """`_resolve_company_name` reads through ConfigResolver with snapshot fallback."""
+
+    @pytest.mark.unit
+    async def test_resolver_value_used_on_happy_path(self) -> None:
+        """Resolver value beats the boot snapshot when present."""
+        resolver = _make_resolver_stub(get_str_side_effect="Resolved Co")
+        config = SimpleNamespace(company_name="Snapshot Co")
+        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        assert await _resolve_company_name(app_state) == "Resolved Co"
+        resolver.get_str.assert_awaited_once_with("company", "company_name")
+
+    @pytest.mark.unit
+    async def test_setting_not_found_falls_back_to_snapshot(self) -> None:
+        """A missing registered key falls back to the boot snapshot quietly."""
+        resolver = _make_resolver_stub(
+            get_str_side_effect=SettingNotFoundError("missing"),
+        )
+        config = SimpleNamespace(company_name="Snapshot Co")
+        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        assert await _resolve_company_name(app_state) == "Snapshot Co"
+
+    @pytest.mark.unit
+    async def test_unexpected_resolver_failure_falls_back_to_snapshot(self) -> None:
+        """A persistence-backend outage logs and falls back to the snapshot."""
+        resolver = _make_resolver_stub(
+            get_str_side_effect=ConnectionError("db down"),
+        )
+        config = SimpleNamespace(company_name="Snapshot Co")
+        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        assert await _resolve_company_name(app_state) == "Snapshot Co"
+
+    @pytest.mark.unit
+    async def test_memory_error_propagates(self) -> None:
+        """``MemoryError`` is re-raised, not swallowed by the fallback."""
+        resolver = _make_resolver_stub(get_str_side_effect=MemoryError("oom"))
+        config = SimpleNamespace(company_name="Snapshot Co")
+        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        with pytest.raises(MemoryError):
+            await _resolve_company_name(app_state)
