@@ -322,6 +322,27 @@ def _to_screaming_snake(name: str) -> str:
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", intermediate).upper()
 
 
+_TS_SINGLE_QUOTE_ESCAPES: Final[dict[str, str]] = {
+    "\\": "\\\\",
+    "'": "\\'",
+    "\n": "\\n",
+    "\r": "\\r",
+    "\t": "\\t",
+}
+
+
+def _escape_for_ts_single_quoted(value: str) -> str:
+    r"""Escape ``value`` for embedding inside a single-quoted TS literal.
+
+    Today every Pydantic ``StrEnum`` member is a clean snake_case
+    identifier so the substitution is a no-op, but a future enum that
+    happens to contain a backslash, single quote, or whitespace control
+    character (\n / \r / \t) would otherwise emit syntactically invalid
+    TypeScript and silently break the dashboard build.
+    """
+    return value.translate(str.maketrans(_TS_SINGLE_QUOTE_ESCAPES))
+
+
 def render_enum_values(schema: dict[str, Any]) -> str:
     """Render the ``enum-values.gen.ts`` body from the schema dict.
 
@@ -343,7 +364,9 @@ def render_enum_values(schema: dict[str, Any]) -> str:
         if not all(isinstance(value, str) for value in members):
             continue
         snake = _to_screaming_snake(name)
-        rendered_members = ",\n".join(f"    '{value}'" for value in members)
+        rendered_members = ",\n".join(
+            f"    '{_escape_for_ts_single_quoted(value)}'" for value in members
+        )
         blocks.append(
             f"export const {snake}_VALUES = [\n"
             f"{rendered_members},\n"

@@ -246,6 +246,26 @@ class TestRenderEnumValues:
         output = gen.render_enum_values(fresh_schema)
         assert "AUTO-GENERATED: do not edit by hand." in output
 
+    def test_escapes_special_characters_in_enum_member(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """Members with quote / backslash / newline escape into valid TS.
+
+        No real Pydantic ``StrEnum`` carries these characters today, but
+        the escape is the only thing standing between a future awkward
+        member value and a syntactically broken ``enum-values.gen.ts``.
+        """
+        fresh_schema["components"]["schemas"]["AwkwardEnum"] = {
+            "type": "string",
+            "enum": ["it's", "back\\slash", "with\nnewline", "tab\tinside"],
+        }
+        output = gen.render_enum_values(fresh_schema)
+        assert "    'it\\'s',\n" in output
+        assert "    'back\\\\slash',\n" in output
+        assert "    'with\\nnewline',\n" in output
+        assert "    'tab\\tinside',\n" in output
+
 
 class TestCheckMode:
     """The ``--check`` path compares each output against the committed file."""
