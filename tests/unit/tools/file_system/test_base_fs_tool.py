@@ -42,3 +42,32 @@ def test_map_os_error(
     key, msg = _map_os_error(exc, "/workspace/missing.txt", "reading")
     assert key == expected_key
     assert msg == expected_msg_fragment
+
+
+@pytest.mark.unit
+def test_map_os_error_dedicated_tool_hint_appended_for_directory() -> None:
+    """Directory exceptions append the hint when supplied."""
+    key, msg = _map_os_error(
+        IsADirectoryError("is dir"),
+        "/workspace/subdir",
+        "deleting",
+        dedicated_tool_hint="use a dedicated tool for directory removal",
+    )
+    assert key == "is_directory"
+    assert msg == (
+        "Path is a directory, not a file: /workspace/subdir"
+        " (use a dedicated tool for directory removal)"
+    )
+
+
+@pytest.mark.unit
+def test_map_os_error_dedicated_tool_hint_ignored_for_non_directory() -> None:
+    """The hint is ignored unless the exception is IsADirectoryError."""
+    key, msg = _map_os_error(
+        FileNotFoundError("gone"),
+        "/workspace/missing.txt",
+        "deleting",
+        dedicated_tool_hint="use a dedicated tool for directory removal",
+    )
+    assert key == "not_found"
+    assert msg == "File not found: /workspace/missing.txt"

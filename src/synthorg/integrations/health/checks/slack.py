@@ -1,5 +1,6 @@
 """Slack API health check."""
 
+import re
 import time
 from datetime import UTC, datetime
 from typing import Final
@@ -21,6 +22,10 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 _TIMEOUT: Final[float] = 10.0
+_DEFAULT_SLACK_BASE_URL: Final[str] = "https://slack.com"
+_ALLOWED_BASE_URL_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^https://([a-z0-9-]+\.)?slack\.com$",
+)
 
 
 class SlackHealthCheck:
@@ -108,20 +113,42 @@ class SlackHealthCheck:
                 error_detail="missing Slack token",
                 checked_at=now,
             )
+        configured_base_url = credentials.get("api_base_url")
+        if configured_base_url is None or configured_base_url == "":
+            base_url = _DEFAULT_SLACK_BASE_URL
+        elif not _ALLOWED_BASE_URL_PATTERN.fullmatch(configured_base_url):
+            logger.warning(
+                HEALTH_CHECK_FAILED,
+                connection_name=connection.name,
+                reason="invalid_api_base_url",
+                error=(
+                    "api_base_url must match https://[<subdomain>.]slack.com;"
+                    " enterprise-grid override rejected for safety"
+                ),
+            )
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNHEALTHY,
+                error_detail="invalid api_base_url override",
+                checked_at=now,
+            )
+        else:
+            base_url = configured_base_url
 
-        return await self._call_auth_test(connection, token)
+        return await self._call_auth_test(connection, token, base_url)
 
     async def _call_auth_test(
         self,
         connection: Connection,
         token: str,
+        base_url: str,
     ) -> HealthReport:
         """Execute the ``auth.test`` call and interpret the response."""
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 resp = await client.post(
-                    "https://slack.com/api/auth.test",
+                    f"{base_url}/api/auth.test",
                     headers={"Authorization": f"Bearer {token}"},
                 )
         except httpx.HTTPError as exc:

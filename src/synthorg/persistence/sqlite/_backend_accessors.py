@@ -69,6 +69,9 @@ if TYPE_CHECKING:
     )
     from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
     from synthorg.persistence.preset_protocol import PersonalityPresetRepository
+    from synthorg.persistence.principle_override_protocol import (
+        PrincipleOverrideRepository,
+    )
     from synthorg.persistence.project_cost_aggregate_protocol import (
         ProjectCostAggregateRepository,
     )
@@ -155,6 +158,7 @@ class _BackendRepositoryAccessors:
     _refresh_tokens: RefreshTokenRepository | None
     _idempotency_keys: IdempotencyRepository | None
     _seen_claims: SeenClaimsRepository | None
+    _principle_overrides: PrincipleOverrideRepository | None
     _mcp_installations: McpInstallationRepository | None
     _org_facts: OrgFactRepository | None
     _ontology_entities: OntologyEntityRepository | None
@@ -494,6 +498,14 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._seen_claims,
             "seen_claims",
+        )
+
+    @property
+    def principle_overrides(self) -> PrincipleOverrideRepository:
+        """Repository for rollback-restored principle overrides."""
+        return self._require_connected(
+            self._principle_overrides,
+            "principle_overrides",
         )
 
     @property

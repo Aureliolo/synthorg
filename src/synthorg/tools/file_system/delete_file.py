@@ -1,4 +1,4 @@
-"""Delete file tool -- removes a single file from the workspace."""
+"""Delete file tool: removes a single file from the workspace."""
 
 import asyncio
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -6,16 +6,18 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.tool import TOOL_FS_DELETE, TOOL_FS_ERROR
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.file_system._args import DeleteFileArgs
-from synthorg.tools.file_system._base_fs_tool import BaseFileSystemTool
+from synthorg.tools.file_system._base_fs_tool import BaseFileSystemTool, _map_os_error
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 logger = get_logger(__name__)
+
+_DIRECTORY_HINT: str = "use a dedicated tool for directory removal"
 
 
 def _delete_sync(resolved: Path) -> int:
@@ -71,49 +73,6 @@ class DeleteFileTool(BaseFileSystemTool):
         """
         return True
 
-    @staticmethod
-    def _handle_delete_error(
-        exc: OSError,
-        user_path: str,
-    ) -> ToolExecutionResult:
-        """Map a delete OS error to a ``ToolExecutionResult``."""
-        if isinstance(exc, FileNotFoundError):
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="not_found")
-            return ToolExecutionResult(
-                content=f"File not found: {user_path}",
-                is_error=True,
-            )
-        if isinstance(exc, IsADirectoryError):
-            logger.warning(
-                TOOL_FS_ERROR,
-                path=user_path,
-                error="is_directory",
-            )
-            return ToolExecutionResult(
-                content=f"Cannot delete directory (use a dedicated tool): {user_path}",
-                is_error=True,
-            )
-        if isinstance(exc, PermissionError):
-            logger.warning(
-                TOOL_FS_ERROR,
-                path=user_path,
-                error="permission_denied",
-            )
-            return ToolExecutionResult(
-                content=f"Permission denied: {user_path}",
-                is_error=True,
-            )
-        logger.warning(
-            TOOL_FS_ERROR,
-            path=user_path,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return ToolExecutionResult(
-            content=f"OS error deleting file: {user_path}",
-            is_error=True,
-        )
-
     async def execute(
         self,
         *,
@@ -136,8 +95,15 @@ class DeleteFileTool(BaseFileSystemTool):
 
         try:
             size_bytes = await asyncio.to_thread(_delete_sync, resolved)
-        except OSError as exc:
-            return self._handle_delete_error(exc, user_path)
+        except (FileNotFoundError, IsADirectoryError, PermissionError, OSError) as exc:
+            log_key, msg = _map_os_error(
+                exc,
+                user_path,
+                "deleting",
+                dedicated_tool_hint=_DIRECTORY_HINT,
+            )
+            logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
+            return ToolExecutionResult(content=msg, is_error=True)
 
         logger.info(
             TOOL_FS_DELETE,

@@ -4,6 +4,7 @@ import base64
 import json
 
 import pytest
+import structlog.testing
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -11,7 +12,9 @@ from synthorg.api.cursor import (
     CursorSecret,
     InvalidCursorError,
     decode_cursor,
+    decode_keyset_cursor,
     encode_cursor,
+    encode_keyset_cursor,
 )
 from synthorg.api.cursor_config import CursorConfig
 
@@ -219,6 +222,94 @@ class TestFromConfig:
         monkeypatch.delenv("SYNTHORG_PAGINATION_CURSOR_SECRET", raising=False)
         config = CursorConfig.from_env()
         assert config.secret is None
+
+
+class TestObservability:
+    """Decode failures emit structured logs so operators can see them."""
+
+    def _tamper_signature(self, token: str) -> str:
+        """Replace the signature with a syntactically valid wrong HMAC."""
+        padded = token + "=" * (-len(token) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+        payload["s"] = "deadbeef" * 8
+        tampered_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        return base64.urlsafe_b64encode(tampered_bytes).rstrip(b"=").decode("ascii")
+
+    def test_offset_signature_tampering_logs_security_event(
+        self,
+        stable_secret: CursorSecret,
+    ) -> None:
+        """Offset HMAC mismatch fires security.cursor.signature_invalid."""
+        tampered = self._tamper_signature(encode_cursor(7, secret=stable_secret))
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(InvalidCursorError),
+        ):
+            decode_cursor(tampered, secret=stable_secret)
+        matched = [
+            e for e in events if e.get("event") == "security.cursor.signature_invalid"
+        ]
+        assert matched, f"expected signature_invalid log; got {events}"
+        assert matched[0].get("cursor_type") == "offset"
+        assert matched[0].get("log_level") == "warning"
+
+    def test_keyset_signature_tampering_logs_security_event(self) -> None:
+        """Keyset HMAC mismatch fires security.cursor.signature_invalid."""
+        secret = CursorSecret.from_key("keyset-observability-test-key-pad")
+        tampered = self._tamper_signature(
+            encode_keyset_cursor("after-key", secret=secret),
+        )
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(InvalidCursorError),
+        ):
+            decode_keyset_cursor(tampered, secret=secret)
+        matched = [
+            e for e in events if e.get("event") == "security.cursor.signature_invalid"
+        ]
+        assert matched, f"expected signature_invalid log; got {events}"
+        assert matched[0].get("cursor_type") == "keyset"
+
+    @pytest.mark.parametrize(
+        ("token", "expected_reason"),
+        [
+            ("", "empty_token"),
+            ("x" * 513, "length_exceeded"),
+            ("not!!base64!!", "base64_decode_failed"),
+        ],
+        ids=["empty", "too_long", "bad_base64"],
+    )
+    def test_decode_shape_failures_log_api_event(
+        self,
+        stable_secret: CursorSecret,
+        token: str,
+        expected_reason: str,
+    ) -> None:
+        """Shape failures fire api.cursor.decode_failed with a reason."""
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(InvalidCursorError),
+        ):
+            decode_cursor(token, secret=stable_secret)
+        matched = [e for e in events if e.get("event") == "api.cursor.decode_failed"]
+        assert matched, f"expected decode_failed log; got {events}"
+        assert matched[0].get("reason") == expected_reason
+
+    def test_missing_signature_field_logs_decode_failed(
+        self,
+        stable_secret: CursorSecret,
+    ) -> None:
+        """Missing 's' field fires api.cursor.decode_failed."""
+        token_bytes = json.dumps({"o": 10}, separators=(",", ":")).encode("utf-8")
+        token = base64.urlsafe_b64encode(token_bytes).rstrip(b"=").decode("ascii")
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(InvalidCursorError),
+        ):
+            decode_cursor(token, secret=stable_secret)
+        matched = [e for e in events if e.get("event") == "api.cursor.decode_failed"]
+        assert matched, f"expected decode_failed log; got {events}"
+        assert matched[0].get("reason") == "missing_signature_field"
 
 
 @given(offset=st.integers(min_value=0, max_value=10**9))

@@ -4,9 +4,10 @@ import {
   getWorkflow,
   updateWorkflow,
 } from '@/api/endpoints/workflows'
+import { ErrorCode } from '@/api/types/errors'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage, isAxiosError } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorCode, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject, isString } from '@/utils/type-guards'
 import type { PersistenceSlice, SliceCreator } from './types'
@@ -118,8 +119,17 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
         yamlPreview: yaml,
         validationResult: null,
       })
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Workflow ${def.name} created`,
+      })
     } catch (err) {
       log.warn('Failed to create workflow definition', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to create workflow'),
+        description: getErrorMessage(err),
+      })
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -183,34 +193,45 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       set({ definition: updatedDef, saving: false, dirty: false, validationResult: null })
       useToastStore.getState().add({
         variant: 'success',
-        title: 'Workflow saved',
+        title: `Workflow ${updatedDef.name} saved`,
       })
       return true
     } catch (err) {
-      // ``isAxiosError`` lets us read response.status without an
-      // unsafe ``as`` cast through a hand-rolled shape.
-      const status = isAxiosError(err) ? err.response?.status : undefined
-      if (status === 409 && definition) {
+      // Discriminate on the typed RFC 9457 ``error_code`` envelope
+      // rather than the raw HTTP status: web/CLAUDE.md "Error-code
+      // constants (MANDATORY)" forbids raw integer-literal status
+      // checks in store code.
+      if (getErrorCode(err) === ErrorCode.VERSION_CONFLICT && definition) {
         log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
-        // Surface via toast rather than transient error state because
-        // the immediate ``loadDefinition`` call below clears
-        // ``error`` to null before the UI can render it.
-        set({ saving: false })
-        useToastStore.getState().add({
-          variant: 'error',
-          title: 'Version conflict',
-          description: 'Another save occurred. Reloading the latest definition.',
-        })
+        set({ saving: false, error: 'Version conflict, another save occurred. Reloading...' })
         await get().loadDefinition(definition.id)
+        // ``loadDefinition`` swallows its own errors and writes them
+        // to ``state.error``. Promote the toast only after the reload
+        // settles so the user is not told "reloaded" when the reload
+        // itself failed and they are still looking at stale data.
+        if (get().error === null) {
+          useToastStore.getState().add({
+            variant: 'warning',
+            title: 'Version conflict',
+            description: 'Another save occurred. Reloaded the latest version.',
+          })
+        } else {
+          useToastStore.getState().add({
+            variant: 'error',
+            title: 'Reload failed after version conflict',
+            description:
+              'Could not reload the workflow after a concurrent save. Refresh the page to retry.',
+          })
+        }
         return false
       }
       log.warn('Failed to save workflow definition', sanitizeForLog(err))
-      set({ saving: false, error: getErrorMessage(err) })
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to save workflow',
+        ...getCrudErrorTitle(err, 'Failed to save workflow'),
         description: getErrorMessage(err),
       })
+      set({ saving: false, error: getErrorMessage(err) })
       return false
     }
   },

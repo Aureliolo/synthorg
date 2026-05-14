@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { Activity } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -13,7 +13,7 @@ interface ActivityFeedProps {
   activities: readonly ActivityItem[]
 }
 
-export function ActivityFeed({ activities }: ActivityFeedProps) {
+function ActivityFeedInner({ activities }: ActivityFeedProps) {
   const visible = useMemo(() => activities.slice(0, MAX_VISIBLE), [activities])
   const feedRef = useRef<HTMLDivElement>(null)
   const { isAutoScrolling, scrollToBottom } = useAutoScroll(feedRef)
@@ -50,3 +50,5 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
     </SectionCard>
   )
 }
+
+export const ActivityFeed = memo(ActivityFeedInner)

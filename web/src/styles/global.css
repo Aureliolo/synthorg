@@ -54,6 +54,11 @@
   --spacing-section-gap: var(--so-density-section-gap);
   --spacing-grid-gap: var(--so-density-grid-gap);
 
+  /* ---- Dialog widths (bridges --so-dialog-* into Tailwind max-w-*) ---- */
+  --max-w-dialog: var(--so-dialog-width);
+  --max-w-dialog-compact: var(--so-dialog-width-compact);
+  --max-w-dialog-roomy: var(--so-dialog-width-roomy);
+
   /* ---- shadcn bridge (Base UI / shadcn components use these token names) ---- */
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);

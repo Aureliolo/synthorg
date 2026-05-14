@@ -2,6 +2,7 @@
 
 from typing import Final
 
+API_CURSOR_DECODE_FAILED: Final[str] = "api.cursor.decode_failed"
 API_RATE_LIMIT_BACKEND_UNSUPPORTED: Final[str] = "api.rate_limit.backend.unsupported"
 API_REQUEST_STARTED: Final[str] = "api.request.started"
 API_STATE_SERVICE_ATTACHED: Final[str] = "api.state.service_attached"

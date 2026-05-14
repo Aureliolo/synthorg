@@ -115,7 +115,7 @@ const SpendingRow = memo(function SpendingRow({ row, currency }: SpendingRowProp
   )
 })
 
-export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) {
+function AgentSpendingTableInner({ rows, currency }: AgentSpendingTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('totalCost')
   const [sortDir, setSortDir] = useState<SortDirection>('desc')
 
@@ -167,3 +167,5 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
     </SectionCard>
   )
 }
+
+export const AgentSpendingTable = memo(AgentSpendingTableInner)

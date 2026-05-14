@@ -779,6 +779,16 @@ class TestDegradationResultValidation:
                 wait_seconds=-1.0,
             )
 
+    def test_extra_field_rejected(self) -> None:
+        """Unknown fields are rejected (extra='forbid')."""
+        with pytest.raises(ValidationError, match="extra"):
+            DegradationResult(
+                original_provider="a",
+                effective_provider="a",
+                action_taken=DegradationAction.FALLBACK,
+                unknown_field="surprise",  # type: ignore[call-arg]
+            )
+
 
 @pytest.mark.unit
 class TestExtractResetTimesEdgeCases:

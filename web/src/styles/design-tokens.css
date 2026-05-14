@@ -154,6 +154,19 @@
    */
   --so-density-card-tight: var(--so-space-3);
   --so-density-card-roomy: var(--so-space-5);
+
+  /*
+   * Dialog width axis. Pages compose them as
+   * `max-w-dialog-compact sm:max-w-dialog md:max-w-dialog-roomy`
+   * so a dialog opens flush on phones (compact), tightens at tablet
+   * (default), and grows to a comfortable reading width on desktop
+   * (roomy). The values mirror Tailwind's `max-w-sm/2xl/4xl` ladder
+   * (24rem / 42rem / 56rem) and stay density-invariant: density only
+   * shifts internal padding, not horizontal viewport allowance.
+   */
+  --so-dialog-width-compact: 24rem;
+  --so-dialog-width: 42rem;
+  --so-dialog-width-roomy: 56rem;
 }
 
 .density-dense {

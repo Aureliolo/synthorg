@@ -101,6 +101,9 @@ from synthorg.persistence.sqlite.preset_override_repo import (
 from synthorg.persistence.sqlite.preset_repo import (
     SQLitePersonalityPresetRepository,
 )
+from synthorg.persistence.sqlite.principle_override_repo import (
+    SQLitePrincipleOverrideRepository,
+)
 from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
     SQLiteProjectCostAggregateRepository,
 )
@@ -233,6 +236,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._refresh_tokens: SQLiteRefreshTokenRepository | None = None
         self._idempotency_keys: SQLiteIdempotencyRepository | None = None
         self._seen_claims: SQLiteSeenClaimsRepository | None = None
+        self._principle_overrides: SQLitePrincipleOverrideRepository | None = None
         self._mcp_installations: SQLiteMcpInstallationRepository | None = None
         self._org_facts: SQLiteOrgFactRepository | None = None
         self._ontology_entities: SQLiteOntologyEntityRepository | None = None
@@ -291,6 +295,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._refresh_tokens = None
         self._idempotency_keys = None
         self._seen_claims = None
+        self._principle_overrides = None
         self._mcp_installations = None
         self._org_facts = None
         self._ontology_entities = None
@@ -560,6 +565,10 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._seen_claims = SQLiteSeenClaimsRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._principle_overrides = SQLitePrincipleOverrideRepository(
             self._db,
             write_context=self.write_context,
         )
