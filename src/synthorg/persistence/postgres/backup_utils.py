@@ -14,7 +14,7 @@ import contextlib
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import IO, TYPE_CHECKING, Final, NoReturn
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.observability import get_logger, safe_error_description
@@ -96,98 +96,135 @@ async def _terminate_proc(proc: asyncio.subprocess.Process) -> None:
     await proc.wait()
 
 
-async def _run_pg_tool(
+async def _close_and_unlink(output_path: Path, fp: IO[bytes]) -> None:
+    """Close ``fp`` and remove ``output_path``; swallow unlink ``OSError``.
+
+    Used by the file-streaming pg_dump branch to clean up the empty or
+    partially written dump artifact whenever the subprocess spawn, the
+    ``communicate()`` await, or the non-zero-exit branch needs to bail
+    out before a valid dump is on disk.
+    """
+    await asyncio.to_thread(fp.close)
+    with contextlib.suppress(OSError):
+        await asyncio.to_thread(output_path.unlink)
+
+
+def _raise_pg_tool_failed(
+    binary: str, returncode: int | None, stderr: bytes
+) -> NoReturn:
+    """Log ``BACKUP_COMPONENT_FAILED`` and raise ``PgToolFailedError``."""
+    msg = (
+        f"{binary} exited with code {returncode}: "
+        f"{(stderr or b'').decode('utf-8', errors='replace').strip()}"
+    )
+    logger.warning(
+        BACKUP_COMPONENT_FAILED,
+        component=f"postgres_{Path(binary).stem}",
+        returncode=returncode,
+        error_type="PgToolFailedError",
+        error=msg,
+    )
+    raise PgToolFailedError(msg)
+
+
+def _raise_pg_tool_spawn_failed(binary: str, exc: OSError) -> NoReturn:
+    """Normalise ``create_subprocess_exec`` ``OSError`` to a domain error.
+
+    ``_resolve_binary`` is only a precheck; a binary can be deleted or
+    lose execute permission between the check and invocation, so the
+    spawn can still raise ``FileNotFoundError`` / ``PermissionError``
+    at runtime. Callers expect only :class:`PgToolUnavailableError`,
+    :class:`PgToolFailedError`, and :class:`TimeoutError` per the
+    public docstrings -- wrap the raw OS error so the contract holds.
+    """
+    msg = f"failed to spawn {binary}: {safe_error_description(exc)}"
+    logger.warning(
+        BACKUP_COMPONENT_FAILED,
+        component=f"postgres_{Path(binary).stem}",
+        error_type="PgToolFailedError",
+        error=msg,
+    )
+    raise PgToolFailedError(msg) from exc
+
+
+async def _run_pg_tool_file(
     binary: str,
     args: list[str],
     *,
     env: dict[str, str],
     timeout_seconds: float,
-    output_path: Path | None = None,
-) -> tuple[bytes, bytes]:
-    """Run a PG tool and return ``(stdout, stderr)`` on success.
+    output_path: Path,
+) -> bytes:
+    """Run a PG tool with stdout streamed to ``output_path``.
 
-    When ``output_path`` is provided, stdout is streamed to that file
-    instead of buffered in memory (used by ``pg_dump`` -> file).
-
-    On any exception (``TimeoutError``, ``asyncio.CancelledError``, or
-    anything raised by the spawned process), the subprocess is killed
-    and reaped before propagating, so no zombie processes or orphaned
-    output files are left behind.
-
-    Raises:
-        PgToolFailedError: Non-zero exit.
-        TimeoutError: Subprocess did not finish within
-            ``timeout_seconds``.
+    Returns the captured ``stderr`` bytes on success; raises
+    :class:`PgToolFailedError` on a non-zero exit or a spawn-time
+    ``OSError`` (binary disappeared, permission revoked between
+    ``_resolve_binary`` and exec). Timeouts / cancellations terminate
+    the process and remove the partially written dump before
+    re-raising, so callers cannot mistake a failed dump for a valid
+    empty one.
     """
-    if output_path is not None:
-        # ``open()`` can block on slow / network-attached storage, so
-        # offload to a thread to keep the event loop responsive.
-        fp = await asyncio.to_thread(output_path.open, "wb")
+    # ``open()`` can block on slow / network-attached storage, so
+    # offload to a thread to keep the event loop responsive.
+    fp = await asyncio.to_thread(output_path.open, "wb")
+    try:
         try:
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    binary,
-                    *args,
-                    env=env,
-                    stdout=fp,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-            except BaseException:
-                # Subprocess spawn itself failed (e.g. binary missing on
-                # PATH, ``no permission to execute``, OS-level fork
-                # failure). The file handle is still open and the file
-                # on disk is empty -- close + unlink before re-raising
-                # so we do not leak an empty dump artifact that callers
-                # could later misread as a valid dump.
-                await asyncio.to_thread(fp.close)
-                with contextlib.suppress(OSError):
-                    await asyncio.to_thread(output_path.unlink)
-                raise
-            try:
-                _stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=timeout_seconds,
-                )
-            except BaseException:
-                await _terminate_proc(proc)
-                # Close the file handle and remove the partially written
-                # dump before re-raising; timeouts and cancellations
-                # otherwise leave a truncated artifact that downstream
-                # validation cannot distinguish from a valid empty dump.
-                await asyncio.to_thread(fp.close)
-                with contextlib.suppress(OSError):
-                    await asyncio.to_thread(output_path.unlink)
-                raise
-        finally:
-            if not fp.closed:
-                await asyncio.to_thread(fp.close)
-        if proc.returncode != 0:
-            # A non-zero exit from pg_dump leaves a truncated or empty
-            # file behind; remove it so callers cannot mistake a failed
-            # dump for an empty-but-valid one (a 0-byte ``.pgdump`` is
-            # silently invalid otherwise).
-            with contextlib.suppress(OSError):
-                await asyncio.to_thread(output_path.unlink)
-            msg = (
-                f"{binary} exited with code {proc.returncode}: "
-                f"{(stderr or b'').decode('utf-8', errors='replace').strip()}"
+            proc = await asyncio.create_subprocess_exec(
+                binary,
+                *args,
+                env=env,
+                stdout=fp,
+                stderr=asyncio.subprocess.PIPE,
             )
-            logger.warning(
-                BACKUP_COMPONENT_FAILED,
-                component=f"postgres_{Path(binary).stem}",
-                returncode=proc.returncode,
-                error_type="PgToolFailedError",
-                error=msg,
+        except OSError as exc:
+            await _close_and_unlink(output_path, fp)
+            _raise_pg_tool_spawn_failed(binary, exc)
+        except BaseException:
+            await _close_and_unlink(output_path, fp)
+            raise
+        try:
+            _stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=timeout_seconds,
             )
-            raise PgToolFailedError(msg)
-        return b"", stderr or b""
-    proc = await asyncio.create_subprocess_exec(
-        binary,
-        *args,
-        env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+        except BaseException:
+            await _terminate_proc(proc)
+            await _close_and_unlink(output_path, fp)
+            raise
+    finally:
+        if not fp.closed:
+            await asyncio.to_thread(fp.close)
+    if proc.returncode != 0:
+        with contextlib.suppress(OSError):
+            await asyncio.to_thread(output_path.unlink)
+        _raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
+    return stderr or b""
+
+
+async def _run_pg_tool_buffered(
+    binary: str,
+    args: list[str],
+    *,
+    env: dict[str, str],
+    timeout_seconds: float,
+) -> tuple[bytes, bytes]:
+    """Run a PG tool buffering ``(stdout, stderr)`` in memory.
+
+    Raises :class:`PgToolFailedError` on a non-zero exit or a
+    spawn-time ``OSError``; timeouts / cancellations terminate the
+    process before re-raising.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            binary,
+            *args,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        _raise_pg_tool_spawn_failed(binary, exc)
     try:
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(),
@@ -197,19 +234,40 @@ async def _run_pg_tool(
         await _terminate_proc(proc)
         raise
     if proc.returncode != 0:
-        msg = (
-            f"{binary} exited with code {proc.returncode}: "
-            f"{(stderr or b'').decode('utf-8', errors='replace').strip()}"
-        )
-        logger.warning(
-            BACKUP_COMPONENT_FAILED,
-            component=f"postgres_{Path(binary).stem}",
-            returncode=proc.returncode,
-            error_type="PgToolFailedError",
-            error=msg,
-        )
-        raise PgToolFailedError(msg)
+        _raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
     return stdout or b"", stderr or b""
+
+
+async def _run_pg_tool(
+    binary: str,
+    args: list[str],
+    *,
+    env: dict[str, str],
+    timeout_seconds: float,
+    output_path: Path | None = None,
+) -> tuple[bytes, bytes]:
+    """Dispatch to file-streaming vs buffered subprocess execution.
+
+    Raises:
+        PgToolFailedError: Non-zero exit or spawn-time ``OSError``.
+        TimeoutError: Subprocess did not finish within
+            ``timeout_seconds``.
+    """
+    if output_path is not None:
+        stderr = await _run_pg_tool_file(
+            binary,
+            args,
+            env=env,
+            timeout_seconds=timeout_seconds,
+            output_path=output_path,
+        )
+        return b"", stderr
+    return await _run_pg_tool_buffered(
+        binary,
+        args,
+        env=env,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 async def pg_dump_to_file(

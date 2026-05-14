@@ -11,7 +11,7 @@ Two concrete strategies satisfy :class:`DecisionProcessor`:
   callers can fall back to a different strategy.
 """
 
-from typing import assert_never
+from typing import Final, assert_never
 from uuid import uuid4
 
 from synthorg.communication.conflict_resolution.escalation.models import (
@@ -39,11 +39,19 @@ from synthorg.core.clock import Clock, SystemClock
 # "move into type-checking block" hint is incorrect for this symbol.
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.conflict import CONFLICT_ESCALATION_RESOLVED
+from synthorg.observability.events.conflict import (
+    CONFLICT_ESCALATION_DECISION_FAILED,
+)
 
 logger = get_logger(__name__)
 
 _SYSTEM_CLOCK: Clock = SystemClock()
+
+# Dissent ids are ``f"dissent-{uuid4().hex[:N]}"``; N=12 keeps the id
+# short enough for human-readable audit lines while preserving ~48 bits
+# of entropy per row -- enough to avoid collisions within a single
+# escalation's position set without inflating the audit payload.
+_DISSENT_ID_HEX_LEN: Final[int] = 12
 
 _NO_WINNER_OUTCOMES = frozenset(
     {
@@ -74,7 +82,7 @@ def _build_dissent_records_from_resolution(
     timestamp = effective_clock.now()
     return tuple(
         DissentRecord(
-            id=f"dissent-{uuid4().hex[:12]}",
+            id=f"dissent-{uuid4().hex[:_DISSENT_ID_HEX_LEN]}",
             conflict=conflict,
             resolution=resolution,
             dissenting_agent_id=pos.agent_id,
@@ -119,7 +127,7 @@ def _build_winner_resolution(
             "does not match any position in the conflict"
         )
         logger.warning(
-            CONFLICT_ESCALATION_RESOLVED,
+            CONFLICT_ESCALATION_DECISION_FAILED,
             conflict_id=conflict.id,
             decided_by=decided_by,
             winning_agent_id=decision.winning_agent_id,
@@ -209,7 +217,7 @@ class WinnerOnlyDecisionProcessor:
                 "allow 'reject' decisions."
             )
             logger.warning(
-                CONFLICT_ESCALATION_RESOLVED,
+                CONFLICT_ESCALATION_DECISION_FAILED,
                 conflict_id=conflict.id,
                 decided_by=decided_by,
                 decision_type=getattr(decision, "type", type(decision).__name__),
