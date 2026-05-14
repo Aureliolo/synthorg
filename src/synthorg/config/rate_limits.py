@@ -7,13 +7,19 @@ rate-limit middleware both consume these from the config layer so the
 144 layer violation).
 """
 
-from typing import Any, Final, Literal
+from typing import Any, ClassVar, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+)
 
 logger = get_logger(__name__)
 
@@ -65,9 +71,23 @@ class PerOpRateLimitConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.API,
+            key="per_op_rate_limit_enabled",
+            parse=parse_bool,
+        ),
+    )
+
     enabled: bool = True
     backend: Literal["memory"] = "memory"
     overrides: dict[NotBlankStr, tuple[int, int]] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="before")
     @classmethod
@@ -148,6 +168,15 @@ class PerOpConcurrencyConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.API,
+            key="per_op_concurrency_enabled",
+            parse=parse_bool,
+        ),
+    )
+
     enabled: bool = True
     # Tighten to the only shipped backend.  A Redis adapter for
     # cross-worker fairness is planned; adding it here must land with
@@ -156,6 +185,11 @@ class PerOpConcurrencyConfig(BaseModel):
     # the factory raises ``NotImplementedError`` on at app construction.
     backend: Literal["memory"] = "memory"
     overrides: dict[NotBlankStr, int] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="before")
     @classmethod
