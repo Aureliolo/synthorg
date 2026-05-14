@@ -58,8 +58,12 @@ describe('ArtifactDetailPage', () => {
     expect(screen.getByTestId('artifact-detail-skeleton')).toBeInTheDocument()
   })
 
-  it('renders not found when no artifact and not loading', () => {
-    hookReturn = { ...defaultHookReturn, artifact: null }
+  it('renders not found when no artifact and error is set', () => {
+    hookReturn = {
+      ...defaultHookReturn,
+      artifact: null,
+      error: 'Artifact missing',
+    }
     renderPage()
     expect(screen.getByText('Artifact not found')).toBeInTheDocument()
   })
@@ -82,7 +86,7 @@ describe('ArtifactDetailPage', () => {
   })
 
   describe('property-based state transitions', () => {
-    it('shows skeleton only when loading with no artifact', () => {
+    it('shows skeleton whenever there is no artifact and no error', () => {
       fc.assert(
         fc.property(fc.boolean(), fc.boolean(), (loading, hasArtifact) => {
           hookReturn = {
@@ -93,20 +97,24 @@ describe('ArtifactDetailPage', () => {
           const { unmount } = renderPage()
           const hasSkeleton = screen.queryByTestId('artifact-detail-skeleton') !== null
           unmount()
-          return hasSkeleton === (loading && !hasArtifact)
+          return hasSkeleton === !hasArtifact
         }),
         { numRuns: 20 },
       )
     })
 
-    it('shows not-found only when no artifact and not loading', () => {
+    it('shows not-found only when no artifact and error is set', () => {
       fc.assert(
-        fc.property(fc.boolean(), (loading) => {
-          hookReturn = { ...defaultHookReturn, artifact: null, loading }
+        fc.property(fc.boolean(), fc.boolean(), (hasError, hasArtifact) => {
+          hookReturn = {
+            ...defaultHookReturn,
+            artifact: hasArtifact ? artifact : null,
+            error: hasError ? 'Artifact missing' : null,
+          }
           const { unmount } = renderPage()
           const hasNotFound = screen.queryByText('Artifact not found') !== null
           unmount()
-          return hasNotFound === !loading
+          return hasNotFound === (hasError && !hasArtifact)
         }),
         { numRuns: 10 },
       )

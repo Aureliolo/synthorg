@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { EditorState, Compartment, type Extension } from '@codemirror/state'
 import { EditorView, lineNumbers, drawSelection, keymap } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
@@ -7,6 +7,7 @@ import { json } from '@codemirror/lang-json'
 import { yaml } from '@codemirror/lang-yaml'
 import { tags } from '@lezer/highlight'
 import { cn } from '@/lib/utils'
+import { getCspNonce } from '@/lib/csp'
 
 export interface CodeMirrorEditorProps {
   /** Current document text (external source of truth). */
@@ -151,6 +152,15 @@ export function CodeMirrorEditor({
   // Track whether a programmatic update is in progress
   const isProgrammaticRef = useRef(false)
 
+  // Resolve the per-request CSP nonce so CodeMirror's injected
+  // <style> elements pass the page's ``style-src-elem 'self'
+  // 'nonce-...''`` policy.  Without this, the editor renders with
+  // unstyled line numbers + raw text and the browser logs a
+  // "blocked inline style" violation.  ``cspNonce`` is a static
+  // Facet on EditorView; supplied through the initial state so all
+  // theme + syntax-highlight modules pick it up at mount.
+  const cspNonce = useMemo(() => getCspNonce(), [])
+
   // Create editor on mount
   useEffect(() => {
     if (!containerRef.current) return
@@ -164,6 +174,7 @@ export function CodeMirrorEditor({
     const state = EditorState.create({
       doc: value,
       extensions: [
+        ...(cspNonce ? [EditorView.cspNonce.of(cspNonce)] : []),
         lineNumbers(),
         drawSelection(),
         bracketMatching(),

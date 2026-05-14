@@ -1,5 +1,11 @@
-import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse } from '../types/http'
+import {
+  apiClient,
+  unwrap,
+  unwrapPaginated,
+  unwrapVoid,
+  type PaginatedResult,
+} from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 // -- Types -----------------------------------------------------------
 
@@ -141,14 +147,16 @@ export async function runPreflight(
 }
 
 export async function listCheckpoints(
+  cursor: string | null = null,
   limit = 50,
-  offset = 0,
-): Promise<CheckpointRecord[]> {
-  const response = await apiClient.get<ApiResponse<CheckpointRecord[]>>(
+): Promise<PaginatedResult<CheckpointRecord>> {
+  const params: Record<string, string | number> = { limit }
+  if (cursor !== null) params.cursor = cursor
+  const response = await apiClient.get<PaginatedResponse<CheckpointRecord>>(
     `${BASE}/checkpoints`,
-    { params: { limit, offset } },
+    { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<CheckpointRecord>(response)
 }
 
 export async function deployCheckpoint(checkpointId: string): Promise<CheckpointRecord> {
@@ -174,9 +182,14 @@ export async function deleteCheckpoint(checkpointId: string): Promise<void> {
   unwrapVoid(response)
 }
 
-export async function listRuns(limit = 50, offset = 0): Promise<FineTuneRun[]> {
-  const response = await apiClient.get<ApiResponse<FineTuneRun[]>>(`${BASE}/runs`, {
-    params: { limit, offset },
+export async function listRuns(
+  cursor: string | null = null,
+  limit = 50,
+): Promise<PaginatedResult<FineTuneRun>> {
+  const params: Record<string, string | number> = { limit }
+  if (cursor !== null) params.cursor = cursor
+  const response = await apiClient.get<PaginatedResponse<FineTuneRun>>(`${BASE}/runs`, {
+    params,
   })
-  return unwrap(response)
+  return unwrapPaginated<FineTuneRun>(response)
 }

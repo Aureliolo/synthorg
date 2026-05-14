@@ -22,7 +22,7 @@ export function AttachmentList({ attachments }: AttachmentListProps) {
           <span
             // eslint-disable-next-line @eslint-react/no-array-index-key -- attachments lack stable IDs
             key={`${att.type}-${att.ref}-${i}`}
-            className="inline-flex items-center gap-1 rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-secondary"
+            className="inline-flex items-center gap-1 rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-text-secondary"
           >
             <Icon className="size-3" aria-hidden="true" />
             {att.ref}

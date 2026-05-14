@@ -52,7 +52,7 @@ const LINE_CLASSES = {
 const OUTCOME_CLASSES: Record<string, string> = {
   success: 'text-success',
   danger: 'text-danger',
-  'text-secondary': 'text-secondary',
+  'text-secondary': 'text-text-secondary',
 }
 
 export function ApprovalTimeline({ approval, className }: ApprovalTimelineProps) {
@@ -72,7 +72,7 @@ export function ApprovalTimeline({ approval, className }: ApprovalTimelineProps)
               aria-hidden="true"
             />
             {/* Label */}
-            <span className="mt-1.5 text-[10px] font-medium text-secondary">{step.label}</span>
+            <span className="mt-1.5 text-[10px] font-medium text-text-secondary">{step.label}</span>
             {/* Timestamp */}
             {step.timestamp && (
               <span className="mt-0.5 font-mono text-[9px] text-muted-foreground">
@@ -84,7 +84,7 @@ export function ApprovalTimeline({ approval, className }: ApprovalTimelineProps)
               <span
                 className={cn(
                   'mt-0.5 text-[10px] font-semibold',
-                  OUTCOME_CLASSES[getApprovalStatusColor(approval.status)] ?? 'text-secondary',
+                  OUTCOME_CLASSES[getApprovalStatusColor(approval.status)] ?? 'text-text-secondary',
                 )}
               >
                 {step.outcomeLabel}

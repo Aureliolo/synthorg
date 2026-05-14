@@ -7,6 +7,7 @@ querying training plans for agent onboarding.
 from datetime import UTC, datetime
 
 from litestar import Controller, get, post, put
+from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_200_OK
 
 from synthorg.api.dto import ApiResponse
@@ -161,14 +162,14 @@ class TrainingController(Controller):
     )
     async def create_plan(
         self,
-        app_state: AppState,
+        state: State,
         agent_name: PathName,
         data: CreateTrainingPlanRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
         """Create a training plan for the specified agent.
 
         Args:
-            app_state: Litestar application state.
+            state: Application state.
             agent_name: Agent identifier from the URL path.
             data: Request body (content types, caps, overrides, flags).
 
@@ -180,6 +181,7 @@ class TrainingController(Controller):
                 content types, caps, or override sources.
             NotFoundError: If the agent name does not resolve.
         """
+        app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
         enabled_types = _parse_content_types(data.content_types)
         override_sources = _coerce_override_sources(data.override_sources)
@@ -222,13 +224,13 @@ class TrainingController(Controller):
     )
     async def execute_plan(
         self,
-        app_state: AppState,
+        state: State,
         agent_name: PathName,
     ) -> ApiResponse[TrainingResultResponse]:
         """Execute the latest pending training plan.
 
         Args:
-            app_state: Litestar application state.
+            state: Application state.
             agent_name: Agent identifier from the URL path.
 
         Raises:
@@ -236,6 +238,7 @@ class TrainingController(Controller):
             ServiceUnavailableError: If the training service is not
                 yet wired into ``AppState`` for this deployment.
         """
+        app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
@@ -291,18 +294,19 @@ class TrainingController(Controller):
     )
     async def get_result(
         self,
-        app_state: AppState,
+        state: State,
         agent_name: PathName,
     ) -> ApiResponse[TrainingResultResponse]:
         """Get the latest training result for an agent.
 
         Args:
-            app_state: Litestar application state.
+            state: Application state.
             agent_name: Agent identifier from the URL path.
 
         Raises:
             NotFoundError: If no result is stored for the agent.
         """
+        app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
@@ -327,7 +331,7 @@ class TrainingController(Controller):
     )
     async def get_latest_plan(
         self,
-        app_state: AppState,
+        state: State,
         agent_name: PathName,
     ) -> ApiResponse[TrainingPlanResponse]:
         """Get the most recently created training plan for an agent.
@@ -338,12 +342,13 @@ class TrainingController(Controller):
         been executed).
 
         Args:
-            app_state: Litestar application state.
+            state: Application state.
             agent_name: Agent identifier from the URL path.
 
         Raises:
             NotFoundError: If no plan has been created for the agent.
         """
+        app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
@@ -368,13 +373,13 @@ class TrainingController(Controller):
     )
     async def preview_plan(
         self,
-        app_state: AppState,
+        state: State,
         agent_name: PathName,
     ) -> ApiResponse[TrainingResultResponse]:
         """Preview a training plan (dry run).
 
         Args:
-            app_state: Litestar application state.
+            state: Application state.
             agent_name: Agent identifier from the URL path.
 
         Raises:
@@ -382,6 +387,7 @@ class TrainingController(Controller):
             ServiceUnavailableError: If the training service is not
                 yet wired into ``AppState`` for this deployment.
         """
+        app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
@@ -408,7 +414,7 @@ class TrainingController(Controller):
     )
     async def update_overrides(
         self,
-        app_state: AppState,
+        state: State,
         agent_name: PathName,
         plan_id: str,
         data: UpdateTrainingOverridesRequest,
@@ -416,7 +422,7 @@ class TrainingController(Controller):
         """Update training plan overrides.
 
         Args:
-            app_state: Litestar application state.
+            state: Application state.
             agent_name: Agent identifier from the URL path.
             plan_id: Training plan id from the URL path.
             data: Request body with optional override updates.
@@ -429,6 +435,7 @@ class TrainingController(Controller):
             ValidationError: If the request contains invalid caps
                 or override source ids.
         """
+        app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
 
         plan = await app_state.persistence.training_plans.get(

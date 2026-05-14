@@ -16,6 +16,7 @@ export function createDetailActions(set: ProvidersSet) {
     fetchProviderDetail: async (name: string) => {
       const requestId = ++_detailRequestId
       set({ detailLoading: true, detailError: null })
+      const isLatest = () => requestId === _detailRequestId
       try {
         const [providerResult, modelsResult, healthResult] =
           await Promise.allSettled([
@@ -24,7 +25,7 @@ export function createDetailActions(set: ProvidersSet) {
             getProviderHealth(name),
           ])
 
-        if (requestId !== _detailRequestId) return
+        if (!isLatest()) return
 
         const provider = providerResult.status === 'fulfilled'
           ? { ...providerResult.value, name }
@@ -34,7 +35,6 @@ export function createDetailActions(set: ProvidersSet) {
             ? providerResult.reason
             : null
           set({
-            detailLoading: false,
             detailError: getErrorMessage(reason ?? 'Provider not found'),
             selectedProvider: null,
             selectedProviderModels: [],
@@ -62,15 +62,20 @@ export function createDetailActions(set: ProvidersSet) {
             modelsResult.status === 'fulfilled' ? modelsResult.value : [],
           selectedProviderHealth:
             healthResult.status === 'fulfilled' ? healthResult.value : null,
-          detailLoading: false,
           detailError: partialErrors.length > 0
             ? `Some data failed to load: ${partialErrors.join(', ')}`
             : null,
         })
       } catch (err) {
-        if (requestId !== _detailRequestId) return
+        if (!isLatest()) return
         log.error('Failed to fetch provider detail:', getErrorMessage(err))
-        set({ detailLoading: false, detailError: getErrorMessage(err) })
+        set({ detailError: getErrorMessage(err) })
+      } finally {
+        // Always clear ``detailLoading`` for the LATEST request --
+        // including the stale-return path -- so a race between
+        // overlapping fetches can't leave the spinner stuck on. The
+        // newer request will flip it back to ``true`` at its own start.
+        if (isLatest()) set({ detailLoading: false })
       }
     },
 

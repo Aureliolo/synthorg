@@ -32,6 +32,7 @@ export default function MessagesPage() {
     channelsLoading,
     channelsError,
     unreadCounts,
+    channelsWithMessages,
     messages,
     total,
     loading,
@@ -135,6 +136,7 @@ export default function MessagesPage() {
           channels={channels}
           activeChannel={activeChannel}
           unreadCounts={unreadCounts}
+          channelsWithMessages={channelsWithMessages}
           onSelectChannel={handleSelectChannel}
           loading={channelsLoading}
         />

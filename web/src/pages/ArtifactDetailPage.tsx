@@ -50,17 +50,20 @@ export default function ArtifactDetailPage() {
     if (wsConnected) hasEverConnectedRef.current = true
   }, [wsConnected])
 
-  if (loading && !artifact) {
-    return <ArtifactDetailSkeleton />
-  }
-
-  if (!artifact) {
+  // Error banner only when the fetch returned a definitive negative;
+  // skeleton covers both the "loading" path and the pre-fetch render
+  // window where ``loading`` hasn't flipped to ``true`` yet.
+  if (error && !artifact) {
     return (
       <div className="space-y-section-gap">
         <Breadcrumbs items={[{ label: 'Artifacts', to: ROUTES.ARTIFACTS }, { label: artifactId || 'Unknown artifact' }]} />
-        <ErrorBanner severity="error" title="Artifact not found" description={error ?? undefined} />
+        <ErrorBanner severity="error" title="Artifact not found" description={error} />
       </div>
     )
+  }
+
+  if (!artifact) {
+    return <ArtifactDetailSkeleton />
   }
 
   return (

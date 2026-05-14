@@ -14,6 +14,9 @@ export interface UseMessagesDataReturn {
   channelsLoading: boolean
   channelsError: string | null
   unreadCounts: Record<string, number>
+  /** Channels with at least one observed message; drives the sidebar
+   *  split between an "Active" group and a collapsed "Empty" group. */
+  channelsWithMessages: ReadonlySet<string>
 
   // Messages
   messages: Message[]
@@ -50,6 +53,7 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
   const channelsLoading = useMessagesStore((s) => s.channelsLoading)
   const channelsError = useMessagesStore((s) => s.channelsError)
   const unreadCounts = useMessagesStore((s) => s.unreadCounts)
+  const channelsWithMessages = useMessagesStore((s) => s.channelsWithMessages)
 
   const messages = useMessagesStore((s) => s.messages)
   const total = useMessagesStore((s) => s.total)
@@ -64,6 +68,9 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
   // Fetch channels on mount
   useEffect(() => {
     void useMessagesStore.getState().fetchChannels()
+    // Probe recent global messages once so the sidebar knows which
+    // channels are non-empty without having to visit each one.
+    void useMessagesStore.getState().fetchChannelActivity()
   }, [])
 
   // Fetch messages when active channel changes; reset unread
@@ -117,6 +124,7 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
     channelsLoading,
     channelsError,
     unreadCounts,
+    channelsWithMessages,
     messages,
     total,
     loading,

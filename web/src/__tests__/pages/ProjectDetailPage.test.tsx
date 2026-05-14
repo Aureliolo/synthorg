@@ -61,8 +61,12 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByTestId('project-detail-skeleton')).toBeInTheDocument()
   })
 
-  it('renders not found when no project and not loading', () => {
-    hookReturn = { ...defaultHookReturn, project: null }
+  it('renders not found when no project and error is set', () => {
+    hookReturn = {
+      ...defaultHookReturn,
+      project: null,
+      error: 'Project missing',
+    }
     renderPage()
     expect(screen.getByText('Project not found')).toBeInTheDocument()
   })
@@ -86,7 +90,7 @@ describe('ProjectDetailPage', () => {
   })
 
   describe('property-based state transitions', () => {
-    it('shows skeleton only when loading with no project', () => {
+    it('shows skeleton whenever there is no project and no error', () => {
       fc.assert(
         fc.property(fc.boolean(), fc.boolean(), (loading, hasProject) => {
           hookReturn = {
@@ -97,20 +101,24 @@ describe('ProjectDetailPage', () => {
           const { unmount } = renderPage()
           const hasSkeleton = screen.queryByTestId('project-detail-skeleton') !== null
           unmount()
-          return hasSkeleton === (loading && !hasProject)
+          return hasSkeleton === !hasProject
         }),
         { numRuns: 20 },
       )
     })
 
-    it('shows not-found only when no project and not loading', () => {
+    it('shows not-found only when no project and error is set', () => {
       fc.assert(
-        fc.property(fc.boolean(), (loading) => {
-          hookReturn = { ...defaultHookReturn, project: null, loading }
+        fc.property(fc.boolean(), fc.boolean(), (hasError, hasProject) => {
+          hookReturn = {
+            ...defaultHookReturn,
+            project: hasProject ? project : null,
+            error: hasError ? 'Project missing' : null,
+          }
           const { unmount } = renderPage()
           const hasNotFound = screen.queryByText('Project not found') !== null
           unmount()
-          return hasNotFound === !loading
+          return hasNotFound === (hasError && !hasProject)
         }),
         { numRuns: 10 },
       )

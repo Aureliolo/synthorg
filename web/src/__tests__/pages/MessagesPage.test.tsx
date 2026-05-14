@@ -9,6 +9,7 @@ const defaultReturn: UseMessagesDataReturn = {
   channelsLoading: false,
   channelsError: null,
   unreadCounts: {},
+  channelsWithMessages: new Set<string>(),
   messages: [],
   total: 0,
   loading: false,
@@ -95,9 +96,15 @@ describe('MessagesPage', () => {
   })
 
   it('renders channel sidebar with channels', () => {
+    // The sidebar buckets channels into an "Active" group (current
+    // selection / unread / known to carry messages) and a collapsed
+    // "Empty" group. Mark both channels as carrying messages so they
+    // land in the Active group and the rendered DOM exposes their
+    // names without the user having to expand the empty section.
     hookReturn = {
       ...defaultReturn,
       channels: [makeChannel('#engineering'), makeChannel('#product')],
+      channelsWithMessages: new Set(['#engineering', '#product']),
       expandedThreads: new Set(),
     }
     renderPage()

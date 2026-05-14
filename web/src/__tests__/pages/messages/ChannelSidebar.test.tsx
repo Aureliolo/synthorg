@@ -12,6 +12,14 @@ describe('ChannelSidebar', () => {
     ],
     activeChannel: null as string | null,
     unreadCounts: {} as Record<string, number>,
+    // Mark every channel as having messages by default so the
+    // existing render assertions hit the "active" group (the new
+    // "Empty" group is collapsed by default and would hide them).
+    channelsWithMessages: new Set([
+      '#engineering',
+      '#product',
+      '#dm-alice',
+    ]) as ReadonlySet<string>,
     onSelectChannel: vi.fn(),
     loading: false,
   }

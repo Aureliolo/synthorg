@@ -3,7 +3,7 @@
 Browse and install MCP servers from the bundled catalog.
 """
 
-from typing import Literal
+from typing import Final, Literal
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -18,11 +18,15 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
+from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
 from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
+)
+from synthorg.integrations.mcp_catalog.installations import (  # noqa: TC001
+    McpInstallation,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
@@ -31,6 +35,12 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
+
+# Page size for draining the installed-MCP-entries repo before
+# cursor-paginating the response. Larger pages mean fewer round-trips
+# on big install sets; the page boundary itself is irrelevant to the
+# response shape because the controller drains every page.
+_LIST_PAGE_SIZE: Final[int] = 500
 
 
 class InstallEntryRequest(BaseModel):
@@ -62,6 +72,19 @@ class InstallEntryResponse(BaseModel):
         ge=0,
         description="Number of tools exposed by the installed server",
     )
+
+
+class InstalledEntry(BaseModel):
+    """One row of the installed-MCP-entries listing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    catalog_entry_id: NotBlankStr = Field(description="Installed catalog entry id")
+    connection_name: NotBlankStr | None = Field(
+        default=None,
+        description="Bound connection name (when applicable)",
+    )
+    installed_at: str = Field(description="ISO-8601 UTC timestamp of installation")
 
 
 async def _validate_connection_name_for_install(
@@ -140,7 +163,7 @@ class MCPCatalogController(Controller):
         cursor: CursorParam = None,
     ) -> PaginatedResponse[CatalogEntry]:
         """List all curated MCP server entries (cursor-paginated)."""
-        app_state = state["app_state"]
+        app_state: AppState = state.app_state
         entries = await app_state.mcp_catalog_service.browse()
         page, meta = paginate_cursor(
             entries,
@@ -166,7 +189,7 @@ class MCPCatalogController(Controller):
         cursor: CursorParam = None,
     ) -> PaginatedResponse[CatalogEntry]:
         """Search catalog by name, description, or tags (cursor-paginated)."""
-        app_state = state["app_state"]
+        app_state: AppState = state.app_state
         entries = await app_state.mcp_catalog_service.search(q)
         page, meta = paginate_cursor(
             entries,
@@ -195,9 +218,73 @@ class MCPCatalogController(Controller):
         into the generic ``NotFoundError`` and lost the discriminating
         envelope.
         """
-        service = state["app_state"].mcp_catalog_service
-        entry = await service.get_entry(entry_id)
+        app_state: AppState = state.app_state
+        entry = await app_state.mcp_catalog_service.get_entry(entry_id)
         return ApiResponse(data=entry)
+
+    @get(
+        "/catalog/installed",
+        guards=[require_read_access],
+        summary="List installed catalog entries",
+    )
+    async def list_installed(
+        self,
+        state: State,
+        limit: CursorLimit = DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> PaginatedResponse[InstalledEntry]:
+        """List MCP catalog entries currently installed on this instance.
+
+        Without this endpoint the dashboard could not rehydrate the
+        installed-state badge across refreshes -- the install API was
+        write-only, so a successful install would persist server-side
+        but appear "uninstalled" again on the next page load.
+        """
+        app_state: AppState = state.app_state
+        installations_repo = app_state.mcp_installations_repo
+        # Drain every installed row before cursor-paginating the
+        # response. The bundled catalog is small today (~20-50 entries),
+        # but a fixed cap would silently truncate the installed list
+        # the moment an operator installs more than _LIST_PAGE_SIZE
+        # entries -- the dashboard would then show a partial set with
+        # no warning. The drain loop costs one extra round-trip only
+        # when the install count crosses the page boundary.
+        records_acc: list[McpInstallation] = []
+        offset = 0
+        # Each iteration advances ``offset`` by ``_LIST_PAGE_SIZE`` (the
+        # page is non-empty by the ``not batch`` guard) and the loop
+        # terminates the moment a page comes back smaller than the
+        # page size. Total iterations are
+        # ``ceil(installed_count / _LIST_PAGE_SIZE)`` with no sleep
+        # between iterations.
+        # lint-allow: long-running-loop-kill-switch -- bounded drain, not a daemon
+        while True:
+            batch = await installations_repo.list_items(
+                limit=_LIST_PAGE_SIZE,
+                offset=offset,
+            )
+            if not batch:
+                break
+            records_acc.extend(batch)
+            if len(batch) < _LIST_PAGE_SIZE:
+                break
+            offset += _LIST_PAGE_SIZE
+        records = tuple(records_acc)
+        entries = tuple(
+            InstalledEntry(
+                catalog_entry_id=row.catalog_entry_id,
+                connection_name=row.connection_name,
+                installed_at=row.installed_at.isoformat(),
+            )
+            for row in records
+        )
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @post(
         "/catalog/install",
@@ -219,7 +306,7 @@ class MCPCatalogController(Controller):
         entry_id = data.catalog_entry_id
         connection_name = data.connection_name
 
-        app_state = state["app_state"]
+        app_state: AppState = state.app_state
         service = app_state.mcp_catalog_service
         installations_repo = app_state.mcp_installations_repo
         connection_catalog = (
@@ -278,7 +365,7 @@ class MCPCatalogController(Controller):
         Missing entries are a silent no-op so the endpoint is
         idempotent and callers can always treat 200 as success.
         """
-        app_state = state["app_state"]
+        app_state: AppState = state.app_state
         service = app_state.mcp_catalog_service
         installations_repo = app_state.mcp_installations_repo
         removed = await service.uninstall(

@@ -16,6 +16,7 @@ import {
   Video,
 } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
+import { titleForPath } from '@/router/route-titles'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
@@ -67,6 +68,15 @@ export default function AppLayout() {
   // Global WebSocket subscription for app-wide notifications (e.g. personality
   // trimming toasts) so they render regardless of the current page.
   useGlobalNotifications()
+
+  // Drive ``document.title`` from the active route so the browser tab
+  // reflects the page the user is actually on.  Previously only three
+  // pages set the title imperatively and never reverted it, so visiting
+  // MCP Catalog left the tab labelled "MCP Catalog · SynthOrg" for the
+  // rest of the session regardless of where the user navigated next.
+  useEffect(() => {
+    document.title = titleForPath(location.pathname)
+  }, [location.pathname])
 
   // Listen for toggle-notification-drawer events (dispatched by Shift+N and
   // by the NotificationBell button). Handled here in AppLayout so the

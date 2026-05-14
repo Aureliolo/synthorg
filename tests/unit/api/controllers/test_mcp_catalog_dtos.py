@@ -4,6 +4,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from litestar.datastructures import State
 from pydantic import ValidationError
 
 from synthorg.api.controllers.mcp_catalog import (
@@ -100,7 +101,7 @@ class TestInstallEntryValidateFirst:
         app_state.has_connection_catalog = True
         app_state.connection_catalog = connection_catalog
 
-        state = {"app_state": app_state}
+        state = State({"app_state": app_state})
         data = InstallEntryRequest(
             catalog_entry_id="filesystem-mcp",
             connection_name="does-not-exist",
@@ -124,7 +125,7 @@ class TestInstallEntryValidateFirst:
         app_state.mcp_installations_repo = MagicMock()
         app_state.has_connection_catalog = False
 
-        state = {"app_state": app_state}
+        state = State({"app_state": app_state})
         data = InstallEntryRequest(
             catalog_entry_id="filesystem-mcp",
             connection_name="anything",

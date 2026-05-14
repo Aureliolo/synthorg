@@ -43,6 +43,7 @@ describe('useTrainingStore', () => {
       items_after_guards: [['procedural', 3]],
       items_stored: [['procedural', 3]],
       approval_item_id: null,
+      pending_approvals: [],
       review_pending: false,
       errors: [],
       started_at: '2026-04-01T00:00:00Z',

@@ -203,6 +203,16 @@ interface MessagesState {
   channels: Channel[]
   channelsLoading: boolean
   channelsError: string | null
+  /**
+   * Channel names that we have direct evidence carry at least one
+   * message.  Populated by ``fetchChannelActivity`` (single-page scan
+   * of recent messages without a channel filter), and incrementally
+   * extended whenever a message arrives via WS.  The sidebar uses
+   * this set to split topics into an "Active" group and a collapsed
+   * "Empty" group so a fresh install's long list of never-used
+   * topics doesn't drown the surface.
+   */
+  channelsWithMessages: Set<string>
 
   // Messages (for active channel)
   messages: Message[]
@@ -226,6 +236,7 @@ interface MessagesState {
 
   // Actions
   fetchChannels: () => Promise<void>
+  fetchChannelActivity: () => Promise<void>
   fetchMessages: (channel: string, limit?: number) => Promise<void>
   fetchMoreMessages: (channel: string) => Promise<void>
   handleWsEvent: (event: WsEvent, activeChannel: string | null) => void
@@ -236,17 +247,29 @@ interface MessagesState {
 
 let channelRequestSeq = 0
 let messageRequestSeq = 0
+let activityRequestSeq = 0
 
 /** Reset module-level sequence counters -- test-only. */
 export function _resetRequestSeqs(): void {
   channelRequestSeq = 0
   messageRequestSeq = 0
+  activityRequestSeq = 0
 }
+
+/**
+ * Page size for the channel-activity probe.  Large enough that a
+ * lightly-used deployment will see every active channel in one
+ * request; small enough that the cost is bounded.  Channels with
+ * NO messages in this window appear in the sidebar's "Empty" group
+ * (collapsed by default).
+ */
+const CHANNEL_ACTIVITY_LIMIT = 200
 
 export const useMessagesStore = create<MessagesState>()((set, get) => ({
   channels: [],
   channelsLoading: false,
   channelsError: null,
+  channelsWithMessages: new Set<string>(),
 
   messages: [],
   total: 0,
@@ -270,10 +293,40 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
       // ship today).
       const result = await messagesApi.listChannels()
       if (seq !== channelRequestSeq) return
-      set({ channels: result.data, channelsLoading: false })
+      set({ channels: result.data })
     } catch (err) {
       if (seq !== channelRequestSeq) return
-      set({ channelsLoading: false, channelsError: getErrorMessage(err) })
+      set({ channelsError: getErrorMessage(err) })
+    } finally {
+      if (seq === channelRequestSeq) set({ channelsLoading: false })
+    }
+  },
+
+  fetchChannelActivity: async () => {
+    const seq = ++activityRequestSeq
+    try {
+      // Single-page recent-messages probe without a channel filter --
+      // every channel whose name appears here demonstrably carries at
+      // least one recent message and lives in the "Active" sidebar
+      // group.  Channels missing from this set fall through to the
+      // collapsed "Empty" group so a fresh install's pre-created
+      // topics don't bury active threads.
+      const result = await messagesApi.listMessages({ limit: CHANNEL_ACTIVITY_LIMIT })
+      if (seq !== activityRequestSeq) return
+      // Merge into the existing set rather than overwriting it:
+      // ``handleWsEvent`` adds channels live as messages arrive, and
+      // a replace-on-completion would clobber any channel that became
+      // active AFTER the activity probe was issued but BEFORE it
+      // resolved (the probe's REST snapshot lags those WS events).
+      const merged = new Set<string>(get().channelsWithMessages)
+      for (const msg of result.data) merged.add(msg.channel)
+      set({ channelsWithMessages: merged })
+    } catch (err) {
+      if (seq !== activityRequestSeq) return
+      // The activity probe is a best-effort enhancement; on failure
+      // we leave the previous classification in place so the sidebar
+      // doesn't regress to a single-section list.
+      log.warn('fetchChannelActivity failed', sanitizeForLog(err))
     }
   },
 
@@ -347,6 +400,16 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
   handleWsEvent: (event, activeChannel) => {
     const message = parseWsMessage(event.payload)
     if (!message) return
+
+    // A live message proves the channel carries at least one entry,
+    // so it graduates from the sidebar's "Empty" group to "Active"
+    // immediately rather than waiting for the next activity probe.
+    set((s) => {
+      if (s.channelsWithMessages.has(message.channel)) return s
+      const next = new Set(s.channelsWithMessages)
+      next.add(message.channel)
+      return { channelsWithMessages: next }
+    })
 
     if (message.channel === activeChannel) {
       // Prepend to active channel (with dedup)

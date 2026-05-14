@@ -41,6 +41,7 @@ export interface TrainingResultResponse {
   items_after_guards: Array<[ContentType, number]>
   items_stored: Array<[ContentType, number]>
   approval_item_id: string | null
+  pending_approvals: ReadonlyArray<readonly [string, ContentType, number]>
   review_pending: boolean
   errors: string[]
   started_at: string

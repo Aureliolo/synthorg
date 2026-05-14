@@ -23,6 +23,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from litestar.datastructures import State
 from litestar.testing import TestClient
 
 from synthorg.api.cursor import CursorSecret
@@ -667,12 +668,14 @@ class TestMCPCatalogController:
         from synthorg.api.cursor import CursorSecret
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
-        state = {
-            "app_state": MagicMock(
-                mcp_catalog_service=CatalogService(),
-                cursor_secret=CursorSecret.ephemeral(),
-            ),
-        }
+        state = State(
+            {
+                "app_state": MagicMock(
+                    mcp_catalog_service=CatalogService(),
+                    cursor_secret=CursorSecret.ephemeral(),
+                ),
+            }
+        )
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
         response = await ctrl.browse_catalog.fn(
             ctrl,
@@ -689,12 +692,14 @@ class TestMCPCatalogController:
         from synthorg.api.cursor import CursorSecret, InvalidCursorError
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
-        state = {
-            "app_state": MagicMock(
-                mcp_catalog_service=CatalogService(),
-                cursor_secret=CursorSecret.ephemeral(),
-            ),
-        }
+        state = State(
+            {
+                "app_state": MagicMock(
+                    mcp_catalog_service=CatalogService(),
+                    cursor_secret=CursorSecret.ephemeral(),
+                ),
+            }
+        )
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
 
         # Tampered cursor that does not carry an HMAC signature recognised
@@ -720,13 +725,15 @@ class TestMCPCatalogController:
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
         repo = InMemoryMcpInstallationRepository()
-        state = {
-            "app_state": MagicMock(
-                mcp_catalog_service=CatalogService(),
-                mcp_installations_repo=repo,
-                has_connection_catalog=False,
-            ),
-        }
+        state = State(
+            {
+                "app_state": MagicMock(
+                    mcp_catalog_service=CatalogService(),
+                    mcp_installations_repo=repo,
+                    has_connection_catalog=False,
+                ),
+            }
+        )
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
         response = await ctrl.install_entry.fn(
             ctrl,
@@ -760,13 +767,15 @@ class TestMCPCatalogController:
         )
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
-        state = {
-            "app_state": MagicMock(
-                mcp_catalog_service=CatalogService(),
-                mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                has_connection_catalog=False,
-            ),
-        }
+        state = State(
+            {
+                "app_state": MagicMock(
+                    mcp_catalog_service=CatalogService(),
+                    mcp_installations_repo=InMemoryMcpInstallationRepository(),
+                    has_connection_catalog=False,
+                ),
+            }
+        )
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError):
             await ctrl.install_entry.fn(
@@ -793,14 +802,16 @@ class TestMCPCatalogController:
         )
         catalog.get = AsyncMock(return_value=wrong_type_conn)
 
-        state = {
-            "app_state": MagicMock(
-                mcp_catalog_service=CatalogService(),
-                mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                has_connection_catalog=True,
-                connection_catalog=catalog,
-            ),
-        }
+        state = State(
+            {
+                "app_state": MagicMock(
+                    mcp_catalog_service=CatalogService(),
+                    mcp_installations_repo=InMemoryMcpInstallationRepository(),
+                    has_connection_catalog=True,
+                    connection_catalog=catalog,
+                ),
+            }
+        )
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
         with pytest.raises(ValidationError):
             await ctrl.install_entry.fn(
@@ -828,13 +839,15 @@ class TestMCPCatalogController:
                 installed_at=datetime.now(UTC),
             ),
         )
-        state = {
-            "app_state": MagicMock(
-                mcp_catalog_service=CatalogService(),
-                mcp_installations_repo=repo,
-                has_connection_catalog=False,
-            ),
-        }
+        state = State(
+            {
+                "app_state": MagicMock(
+                    mcp_catalog_service=CatalogService(),
+                    mcp_installations_repo=repo,
+                    has_connection_catalog=False,
+                ),
+            }
+        )
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
         response = await ctrl.uninstall_entry.fn(
             ctrl,
@@ -851,13 +864,15 @@ class TestMCPCatalogController:
         )
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
-        state = {
-            "app_state": MagicMock(
-                mcp_catalog_service=CatalogService(),
-                mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                has_connection_catalog=False,
-            ),
-        }
+        state = State(
+            {
+                "app_state": MagicMock(
+                    mcp_catalog_service=CatalogService(),
+                    mcp_installations_repo=InMemoryMcpInstallationRepository(),
+                    has_connection_catalog=False,
+                ),
+            }
+        )
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
         response = await ctrl.uninstall_entry.fn(
             ctrl,
@@ -865,6 +880,66 @@ class TestMCPCatalogController:
             entry_id="not-installed",
         )
         assert response.data is None
+
+    async def test_list_installed_drains_all_repo_pages(self) -> None:
+        from datetime import UTC, datetime
+
+        from synthorg.api.controllers.mcp_catalog import (
+            _LIST_PAGE_SIZE,
+            MCPCatalogController,
+        )
+        from synthorg.api.cursor import CursorSecret
+        from synthorg.integrations.mcp_catalog.installations import McpInstallation
+        from synthorg.integrations.mcp_catalog.service import CatalogService
+
+        # Two repo pages: one full (triggers the loop to ask for
+        # another batch) and one short (terminates the drain).  The
+        # controller must drain both pages before paginate_cursor
+        # wraps the response so the dashboard never sees a truncated
+        # installed list when the install count crosses the page
+        # boundary.
+        now = datetime.now(UTC)
+        first_page = tuple(
+            McpInstallation(
+                catalog_entry_id=NotBlankStr(f"entry-{idx:04d}"),
+                connection_name=None,
+                installed_at=now,
+            )
+            for idx in range(_LIST_PAGE_SIZE)
+        )
+        second_page = (
+            McpInstallation(
+                catalog_entry_id=NotBlankStr("entry-tail"),
+                connection_name=None,
+                installed_at=now,
+            ),
+        )
+        repo = MagicMock()
+        repo.list_items = AsyncMock(side_effect=[first_page, second_page])
+
+        state = State(
+            {
+                "app_state": MagicMock(
+                    mcp_catalog_service=CatalogService(),
+                    mcp_installations_repo=repo,
+                    cursor_secret=CursorSecret.ephemeral(),
+                ),
+            },
+        )
+        ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
+        await ctrl.list_installed.fn(
+            ctrl,
+            state=state,
+            limit=50,
+            cursor=None,
+        )
+        # The drain loop must request a second batch once the first
+        # batch comes back full; without it, the second page would
+        # silently truncate.  The short second page terminates the
+        # drain so a third call is never issued.
+        assert repo.list_items.await_count == 2
+        assert repo.list_items.await_args_list[0].kwargs["offset"] == 0
+        assert repo.list_items.await_args_list[1].kwargs["offset"] == _LIST_PAGE_SIZE
 
 
 @pytest.mark.integration

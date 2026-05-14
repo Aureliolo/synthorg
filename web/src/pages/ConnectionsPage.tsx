@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Filter, Plus } from 'lucide-react'
 import type { Connection } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
@@ -39,10 +39,6 @@ export default function ConnectionsPage() {
     setTypeFilter(null)
     setHealthFilter(null)
   }
-
-  useEffect(() => {
-    document.title = 'Connections · SynthOrg'
-  }, [])
 
   const hasData = connections.length > 0 || filteredConnections.length > 0
 

@@ -36,7 +36,6 @@ export default function ClientDetailPage() {
   const [satisfaction, setSatisfaction] = useState<SatisfactionHistory | null>(
     null,
   )
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [satisfactionError, setSatisfactionError] = useState<string | null>(null)
 
@@ -60,13 +59,11 @@ export default function ClientDetailPage() {
     if (!clientId) {
       const timer = setTimeout(() => {
         setError('Missing client id in URL')
-        setLoading(false)
       }, 0)
       return () => clearTimeout(timer)
     }
     let cancelled = false
     const load = async () => {
-      setLoading(true)
       setClient(null)
       setSatisfaction(null)
       setError(null)
@@ -87,8 +84,6 @@ export default function ClientDetailPage() {
         if (cancelled) return
         log.error('get_client_failed', err)
         setError('Failed to load client. It may have been removed.')
-      } finally {
-        if (!cancelled) setLoading(false)
       }
     }
     void load()
@@ -97,19 +92,22 @@ export default function ClientDetailPage() {
     }
   }, [clientId])
 
-  if (loading) {
+  // Error banner only when the fetch returned a definitive negative;
+  // skeleton covers both the "loading" path and the pre-fetch render
+  // window where ``loading`` hasn't flipped to ``true`` yet.
+  if (error && !client) {
     return (
       <div className="space-y-section-gap">
-        <SkeletonCard />
+        <Breadcrumbs items={[{ label: 'Clients', to: ROUTES.CLIENTS }, { label: clientId ?? 'Unknown client' }]} />
+        <ErrorBanner severity="error" title="Client not found" description={error} />
       </div>
     )
   }
 
-  if (error || !client) {
+  if (!client) {
     return (
       <div className="space-y-section-gap">
-        <Breadcrumbs items={[{ label: 'Clients', to: ROUTES.CLIENTS }, { label: clientId ?? 'Unknown client' }]} />
-        <ErrorBanner severity="error" title="Client not found" description={error ?? undefined} />
+        <SkeletonCard />
       </div>
     )
   }

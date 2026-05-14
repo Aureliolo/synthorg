@@ -98,10 +98,15 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
     try {
       const result = await listArtifacts({ limit: 200 })
       if (isStaleListRequest(token)) return
-      set({ artifacts: result.data, totalArtifacts: result.data.length, listLoading: false })
+      set({ artifacts: result.data, totalArtifacts: result.data.length })
     } catch (err) {
       if (isStaleListRequest(token)) return
-      set({ listLoading: false, listError: getErrorMessage(err) })
+      set({ listError: getErrorMessage(err) })
+    } finally {
+      // Always clear ``listLoading`` for the latest request -- including
+      // the stale-return paths -- so an overlapping fetch can't leave
+      // the skeleton stuck on.
+      if (!isStaleListRequest(token)) set({ listLoading: false })
     }
   },
 
@@ -114,7 +119,7 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
       if (isStaleDetailRequest(token)) return
 
       // Show metadata immediately so the detail page renders while preview loads.
-      set({ selectedArtifact: artifact, detailLoading: false })
+      set({ selectedArtifact: artifact })
 
       // Fetch content preview in the background if applicable.
       if (artifact.content_type && artifact.size_bytes != null && artifact.size_bytes > 0 && isPreviewableText(artifact.content_type)) {
@@ -136,9 +141,10 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
       }
     } catch (err) {
       if (isStaleDetailRequest(token)) return
-      set({ detailLoading: false, detailError: getErrorMessage(err), selectedArtifact: null, contentPreview: null })
+      set({ detailError: getErrorMessage(err), selectedArtifact: null, contentPreview: null })
     } finally {
       if (_pendingDetailId === id) _pendingDetailId = null
+      if (!isStaleDetailRequest(token)) set({ detailLoading: false })
     }
   },
 

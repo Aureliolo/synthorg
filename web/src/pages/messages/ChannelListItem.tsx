@@ -37,7 +37,7 @@ function ChannelListItemImpl({
         'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
         'hover:bg-card-hover',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-        active ? 'bg-card-hover text-foreground' : 'text-secondary',
+        active ? 'bg-card-hover text-foreground' : 'text-text-secondary',
       )}
     >
       <Icon className="size-3.5 shrink-0" aria-hidden="true" />

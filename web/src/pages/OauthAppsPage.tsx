@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { KeyRound, Plus } from 'lucide-react'
 import { initiateOauth } from '@/api/endpoints/oauth'
 import type { Connection } from '@/api/types/integrations'
@@ -30,10 +30,6 @@ export default function OauthAppsPage() {
   const deleteConnection = useConnectionsStore((s) => s.deleteConnection)
   const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
   const [pendingDelete, setPendingDelete] = useState<Connection | null>(null)
-
-  useEffect(() => {
-    document.title = 'OAuth Apps · SynthOrg'
-  }, [])
 
   const oauthApps = useMemo(
     () => connections.filter((c) => c.connection_type === 'oauth_app'),

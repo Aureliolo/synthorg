@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ConnectionType, McpCatalogEntry } from '@/api/types/integrations'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -31,10 +31,6 @@ export default function McpCatalogPage() {
   const uninstall = useMcpCatalogStore((s) => s.uninstall)
   const [createConnectionType, setCreateConnectionType] =
     useState<ConnectionType | null>(null)
-
-  useEffect(() => {
-    document.title = 'MCP Catalog · SynthOrg'
-  }, [])
 
   const handleInstall = (entry: McpCatalogEntry) => {
     selectEntry(null)

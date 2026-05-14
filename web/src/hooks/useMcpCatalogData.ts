@@ -24,6 +24,12 @@ export function useMcpCatalogData(): UseMcpCatalogDataReturn {
     if (entries.length === 0 && !loading) {
       void useMcpCatalogStore.getState().fetchCatalog()
     }
+    // Hydrate installed-state from the backend every mount so the
+    // catalog correctly shows entries as "installed" after a refresh
+    // -- the install API is write-only, so without this the local
+    // ``installedEntryIds`` Set starts empty and the UI mis-renders
+    // already-installed entries as fresh installs.
+    void useMcpCatalogStore.getState().fetchInstalled()
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [])
 

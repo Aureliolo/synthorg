@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
@@ -74,42 +75,76 @@ export function PipelineControlPanel() {
 
   return (
     <div className="flex flex-col gap-section-gap">
-      <div className="flex items-end gap-4">
+      {/*
+       * Grid layout instead of ``flex items-end`` so the action
+       * buttons align with the INPUT row of the field rather than
+       * the hint line below it (previously the buttons sat one row
+       * too low, visually disconnected from their input).  The
+       * field's label + hint stack still flows correctly within the
+       * left column.
+       */}
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[1fr_auto]">
         <InputField
           label="Source Directory"
           value={sourceDir}
           onValueChange={setSourceDir}
-          hint="Directory containing org documents for training"
+          hint="Path INSIDE the backend container -- the default /data/documents resolves to the synthorg-data Docker volume. Drop training files into that volume (or override the path here) before running pre-flight."
         />
-        <div className="flex gap-2 pb-1">
-          <Button variant="outline" onClick={handlePreflight} disabled={loading}>
-            Pre-flight Check
-          </Button>
-          {isActive ? (
-            <Button variant="destructive" onClick={() => void cancelRun()}>
-              Cancel
+        {/*
+         * Mirror InputField's vertical stack so the button row aligns
+         * with the input row (not the label above it). The empty
+         * ``<span>`` reserves a label-height row using the SAME
+         * Tailwind tokens InputField itself uses (``text-sm`` for label
+         * size, ``gap-1.5`` for the label/input gap), so changes to
+         * InputField typography keep the alignment intact without any
+         * hardcoded rem offsets.
+         */}
+        <div className="flex flex-col gap-1.5">
+          <span aria-hidden="true" className="hidden text-sm font-medium md:block">
+            &nbsp;
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handlePreflight} disabled={loading}>
+              Pre-flight Check
             </Button>
-          ) : (
-            <Button
-              onClick={handleStart}
-              disabled={loading || (preflight != null && !preflight.can_proceed)}
-            >
-              Start Fine-Tuning
-            </Button>
-          )}
+            {isActive ? (
+              <Button variant="destructive" onClick={() => void cancelRun()}>
+                Cancel
+              </Button>
+            ) : (
+              <Button
+                onClick={handleStart}
+                disabled={loading || (preflight != null && !preflight.can_proceed)}
+              >
+                Start Fine-Tuning
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       {preflight && <PreflightResultPanel result={preflight} />}
 
+      {/*
+       * Disclosure-style toggle, but rendered as an ``outline``
+       * button with a chevron so it reads as a real interactive
+       * control, not body copy.  The previous ``ghost`` variant
+       * stripped all borders and made the toggle look like a
+       * stray text label.
+       */}
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => setShowAdvanced(!showAdvanced)}
-        className="self-start"
+        className="self-start gap-1.5"
         aria-expanded={showAdvanced}
         aria-controls="advanced-options-panel"
       >
+        {showAdvanced ? (
+          <ChevronDown className="size-3.5" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="size-3.5" aria-hidden="true" />
+        )}
         {showAdvanced ? 'Hide' : 'Show'} Advanced Options
       </Button>
 

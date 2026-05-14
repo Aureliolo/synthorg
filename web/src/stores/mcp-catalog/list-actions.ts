@@ -1,5 +1,6 @@
 import {
   browseMcpCatalog,
+  listInstalledMcp,
   searchMcpCatalog,
 } from '@/api/endpoints/mcp-catalog'
 import type { McpCatalogEntry } from '@/api/types/integrations'
@@ -35,6 +36,21 @@ export function createListActions(set: McpCatalogSet) {
           loading: false,
           error: getErrorMessage(err),
         })
+      }
+    },
+
+    fetchInstalled: async () => {
+      try {
+        const installed = await listInstalledMcp()
+        const ids = new Set(installed.map((row) => row.catalog_entry_id))
+        set({ installedEntryIds: ids })
+      } catch (err) {
+        // Hydration is best-effort -- on failure we leave the
+        // existing ``installedEntryIds`` Set in place so a transient
+        // network blip doesn't blank the install badges.  The
+        // catalog list error already surfaces network problems to
+        // the user via the page's error banner.
+        log.warn('Failed to hydrate MCP installed list:', getErrorMessage(err))
       }
     },
 

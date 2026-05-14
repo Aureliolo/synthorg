@@ -588,3 +588,229 @@ class TestCheckDocumentsBoundaries:
             min_recommended=50,
         )
         assert check.status == "warn"
+
+
+@pytest.mark.unit
+class TestListCheckpointsEndpoint:
+    """Direct-method coverage for ``MemoryAdminController.list_checkpoints``."""
+
+    async def test_no_cursor_starts_at_offset_zero(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from litestar.datastructures import State
+
+        from synthorg.api.controllers import memory as memory_module
+        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.cursor import CursorSecret
+
+        async def _list_stub(
+            limit: int,
+            offset: int,
+        ) -> tuple[tuple[object, ...], int]:
+            del limit, offset
+            return ((), 0)
+
+        list_mock = AsyncMock(spec=_list_stub, return_value=((), 0))
+        fake_service = SimpleNamespace(list_checkpoints=list_mock)
+
+        def _fake_build(
+            _app_state: object,
+            *,
+            require_fine_tune: bool = True,
+        ) -> SimpleNamespace:
+            del require_fine_tune
+            return fake_service
+
+        controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
+        original_build = memory_module._build_memory_service
+        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        try:
+            app_state = SimpleNamespace(cursor_secret=CursorSecret.ephemeral())
+            response = await controller.list_checkpoints.fn(
+                controller,
+                state=State({"app_state": app_state}),
+                cursor=None,
+                limit=50,
+            )
+        finally:
+            memory_module._build_memory_service = original_build
+
+        assert response.data == ()
+        list_mock.assert_awaited_once_with(limit=50, offset=0)
+
+    async def test_with_cursor_decodes_to_offset(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from litestar.datastructures import State
+
+        from synthorg.api.controllers import memory as memory_module
+        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.cursor import CursorSecret, encode_cursor
+
+        async def _list_stub(
+            limit: int,
+            offset: int,
+        ) -> tuple[tuple[object, ...], int]:
+            del limit, offset
+            return ((), 25)
+
+        list_mock = AsyncMock(spec=_list_stub, return_value=((), 25))
+        fake_service = SimpleNamespace(list_checkpoints=list_mock)
+
+        def _fake_build(
+            _app_state: object,
+            *,
+            require_fine_tune: bool = True,
+        ) -> SimpleNamespace:
+            del require_fine_tune
+            return fake_service
+
+        secret = CursorSecret.ephemeral()
+        cursor = encode_cursor(10, secret=secret)
+        controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
+        original_build = memory_module._build_memory_service
+        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        try:
+            await controller.list_checkpoints.fn(
+                controller,
+                state=State({"app_state": SimpleNamespace(cursor_secret=secret)}),
+                cursor=cursor,
+                limit=50,
+            )
+        finally:
+            memory_module._build_memory_service = original_build
+
+        list_mock.assert_awaited_once_with(limit=50, offset=10)
+
+    async def test_tampered_cursor_raises(self) -> None:
+        from types import SimpleNamespace
+
+        from litestar.datastructures import State
+
+        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.cursor import CursorSecret, InvalidCursorError
+
+        controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
+        app_state = SimpleNamespace(cursor_secret=CursorSecret.ephemeral())
+        with pytest.raises(InvalidCursorError):
+            await controller.list_checkpoints.fn(
+                controller,
+                state=State({"app_state": app_state}),
+                cursor="not-a-real-cursor",
+                limit=50,
+            )
+
+
+@pytest.mark.unit
+class TestListRunsEndpoint:
+    """Direct-method coverage for ``MemoryAdminController.list_runs``."""
+
+    async def test_no_cursor_starts_at_offset_zero(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from litestar.datastructures import State
+
+        from synthorg.api.controllers import memory as memory_module
+        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.cursor import CursorSecret
+
+        async def _list_stub(
+            limit: int,
+            offset: int,
+        ) -> tuple[tuple[object, ...], int]:
+            del limit, offset
+            return ((), 0)
+
+        list_mock = AsyncMock(spec=_list_stub, return_value=((), 0))
+        fake_service = SimpleNamespace(list_runs=list_mock)
+
+        def _fake_build(
+            _app_state: object,
+            *,
+            require_fine_tune: bool = True,
+        ) -> SimpleNamespace:
+            del require_fine_tune
+            return fake_service
+
+        controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
+        original_build = memory_module._build_memory_service
+        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        try:
+            app_state = SimpleNamespace(cursor_secret=CursorSecret.ephemeral())
+            response = await controller.list_runs.fn(
+                controller,
+                state=State({"app_state": app_state}),
+                cursor=None,
+                limit=50,
+            )
+        finally:
+            memory_module._build_memory_service = original_build
+
+        assert response.data == ()
+        list_mock.assert_awaited_once_with(limit=50, offset=0)
+
+    async def test_with_cursor_decodes_to_offset(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from litestar.datastructures import State
+
+        from synthorg.api.controllers import memory as memory_module
+        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.cursor import CursorSecret, encode_cursor
+
+        async def _list_stub(
+            limit: int,
+            offset: int,
+        ) -> tuple[tuple[object, ...], int]:
+            del limit, offset
+            return ((), 25)
+
+        list_mock = AsyncMock(spec=_list_stub, return_value=((), 25))
+        fake_service = SimpleNamespace(list_runs=list_mock)
+
+        def _fake_build(
+            _app_state: object,
+            *,
+            require_fine_tune: bool = True,
+        ) -> SimpleNamespace:
+            del require_fine_tune
+            return fake_service
+
+        secret = CursorSecret.ephemeral()
+        cursor = encode_cursor(15, secret=secret)
+        controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
+        original_build = memory_module._build_memory_service
+        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        try:
+            await controller.list_runs.fn(
+                controller,
+                state=State({"app_state": SimpleNamespace(cursor_secret=secret)}),
+                cursor=cursor,
+                limit=50,
+            )
+        finally:
+            memory_module._build_memory_service = original_build
+
+        list_mock.assert_awaited_once_with(limit=50, offset=15)
+
+    async def test_tampered_cursor_raises(self) -> None:
+        from types import SimpleNamespace
+
+        from litestar.datastructures import State
+
+        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.cursor import CursorSecret, InvalidCursorError
+
+        controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
+        app_state = SimpleNamespace(cursor_secret=CursorSecret.ephemeral())
+        with pytest.raises(InvalidCursorError):
+            await controller.list_runs.fn(
+                controller,
+                state=State({"app_state": app_state}),
+                cursor="not-a-real-cursor",
+                limit=50,
+            )
