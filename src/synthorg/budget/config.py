@@ -6,13 +6,21 @@ and risk budget configuration.
 """
 
 from collections import Counter
-from typing import Any, Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+    parse_float,
+    parse_int,
+)
 
 
 class BudgetAlertConfig(BaseModel):
@@ -28,6 +36,27 @@ class BudgetAlertConfig(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="warn_at",
+            namespace=SettingNamespace.BUDGET,
+            key="alert_warn_at",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="critical_at",
+            namespace=SettingNamespace.BUDGET,
+            key="alert_critical_at",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="hard_stop_at",
+            namespace=SettingNamespace.BUDGET,
+            key="alert_hard_stop_at",
+            parse=parse_int,
+        ),
+    )
 
     warn_at: int = Field(
         default=75,
@@ -50,6 +79,11 @@ class BudgetAlertConfig(BaseModel):
         strict=True,
         description="Percent of budget triggering hard stop",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_threshold_ordering(self) -> Self:
@@ -83,6 +117,21 @@ class AutoDowngradeConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.BUDGET,
+            key="auto_downgrade_enabled",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="threshold",
+            namespace=SettingNamespace.BUDGET,
+            key="auto_downgrade_threshold",
+            parse=parse_int,
+        ),
+    )
+
     enabled: bool = Field(
         default=False,
         description="Whether auto-downgrade is active",
@@ -98,6 +147,12 @@ class AutoDowngradeConfig(BaseModel):
         default=(),
         description="Ordered pairs of (from_alias, to_alias)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+
     boundary: Literal["task_assignment"] = Field(
         default="task_assignment",
         description=(
@@ -170,6 +225,38 @@ class BudgetConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="total_monthly",
+            namespace=SettingNamespace.BUDGET,
+            key="total_monthly",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="per_task_limit",
+            namespace=SettingNamespace.BUDGET,
+            key="per_task_limit",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="per_agent_daily_limit",
+            namespace=SettingNamespace.BUDGET,
+            key="per_agent_daily_limit",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="reset_day",
+            namespace=SettingNamespace.BUDGET,
+            key="reset_day",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="currency",
+            namespace=SettingNamespace.BUDGET,
+            key="currency",
+        ),
+    )
+
     total_monthly: float = Field(
         default=100.0,
         ge=0.0,
@@ -223,6 +310,11 @@ class BudgetConfig(BaseModel):
         default=False,
         description="Enable Prefill Token Equivalents tracking (observability-only)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_per_task_limit_within_monthly(self) -> Self:
