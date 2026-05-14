@@ -12,6 +12,7 @@ itself in CI; this file focuses on the pure-Python surface.
 """
 
 import importlib.util
+import os
 import subprocess
 from pathlib import Path
 from types import ModuleType
@@ -96,6 +97,61 @@ class TestToScreamingSnake:
 
     def test_single_word(self) -> None:
         assert gen._to_screaming_snake("Priority") == "PRIORITY"
+
+
+class TestHermeticEnv:
+    """``_hermetic_env`` sets defaults inside the block and restores on exit."""
+
+    _KEYS = (
+        "SYNTHORG_DB_PATH",
+        "SYNTHORG_DATABASE_URL",
+        "SYNTHORG_PAGINATION_CURSOR_SECRET",
+    )
+
+    def test_restores_absent_keys_after_block(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        for key in self._KEYS:
+            monkeypatch.delenv(key, raising=False)
+        with gen._hermetic_env():
+            assert os.environ["SYNTHORG_DB_PATH"] == ":memory:"
+            assert os.environ["SYNTHORG_PAGINATION_CURSOR_SECRET"]
+        for key in self._KEYS:
+            assert key not in os.environ
+
+    def test_preserves_operator_pinned_db_path(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        operator_db = str(tmp_path / "operator.db")
+        monkeypatch.setenv("SYNTHORG_DB_PATH", operator_db)
+        monkeypatch.setenv("SYNTHORG_DATABASE_URL", "postgresql://operator")
+        with gen._hermetic_env():
+            # Operator-pinned values stay; the helper does not stomp them.
+            assert os.environ["SYNTHORG_DB_PATH"] == operator_db
+            assert os.environ["SYNTHORG_DATABASE_URL"] == "postgresql://operator"
+        assert os.environ["SYNTHORG_DB_PATH"] == operator_db
+        assert os.environ["SYNTHORG_DATABASE_URL"] == "postgresql://operator"
+
+    def test_restores_on_error_inside_block(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        for key in self._KEYS:
+            monkeypatch.delenv(key, raising=False)
+
+        def _raise_inside_hermetic() -> None:
+            with gen._hermetic_env():
+                assert os.environ["SYNTHORG_DB_PATH"] == ":memory:"
+                msg = "boom"
+                raise RuntimeError(msg)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            _raise_inside_hermetic()
+        for key in self._KEYS:
+            assert key not in os.environ
 
 
 class TestRenderDtos:

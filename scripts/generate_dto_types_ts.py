@@ -36,6 +36,7 @@ Usage::
 """
 
 import argparse
+import contextlib
 import difflib
 import inspect
 import json
@@ -47,7 +48,10 @@ import sys
 import tempfile
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 WEB_DIR: Final[Path] = REPO_ROOT / "web"
@@ -80,23 +84,44 @@ _MONOMORPHISED: Final[re.Pattern[str]] = re.compile(
 )
 
 
-def _hermetic_env_setdefaults() -> None:
-    """Replicate ``scripts/export_openapi.py`` env contract.
+_HERMETIC_ENV_KEYS: Final[tuple[str, ...]] = (
+    "SYNTHORG_DB_PATH",
+    "SYNTHORG_DATABASE_URL",
+    "SYNTHORG_PAGINATION_CURSOR_SECRET",
+)
 
-    The OpenAPI export is deterministic only when the app boots
-    against an in-memory SQLite backend with a stable pagination
-    cursor secret. If the operator has not pinned a backend we force
-    the in-memory contract and clear ``SYNTHORG_DATABASE_URL`` so a
-    pre-set Postgres URL cannot silently steer the export onto a
-    different wiring path.
+
+@contextlib.contextmanager
+def _hermetic_env() -> Iterator[None]:
+    """Apply the deterministic OpenAPI-export env, then restore.
+
+    Replicates ``scripts/export_openapi.py``'s env contract: in-memory
+    SQLite backend with a stable pagination cursor secret. Snapshots
+    the original presence/value of each variable up-front and restores
+    on exit (success or error) so the mutation is scoped to the
+    ``with`` block, not leaked to anything that imports this module.
+
+    Honours an operator-pinned ``SYNTHORG_DB_PATH``: if set, the
+    function leaves both ``SYNTHORG_DB_PATH`` and
+    ``SYNTHORG_DATABASE_URL`` untouched (matching the prior
+    "operator wins" behaviour).
     """
-    if "SYNTHORG_DB_PATH" not in os.environ:
-        os.environ["SYNTHORG_DB_PATH"] = ":memory:"
-        os.environ.pop("SYNTHORG_DATABASE_URL", None)
-    os.environ.setdefault(
-        "SYNTHORG_PAGINATION_CURSOR_SECRET",
-        "openapi-export-stable-cursor-secret-not-a-real-secret",
-    )
+    snapshot = {key: os.environ.get(key) for key in _HERMETIC_ENV_KEYS}
+    try:
+        if "SYNTHORG_DB_PATH" not in os.environ:
+            os.environ["SYNTHORG_DB_PATH"] = ":memory:"
+            os.environ.pop("SYNTHORG_DATABASE_URL", None)
+        os.environ.setdefault(
+            "SYNTHORG_PAGINATION_CURSOR_SECRET",
+            "openapi-export-stable-cursor-secret-not-a-real-secret",
+        )
+        yield
+    finally:
+        for key, original in snapshot.items():
+            if original is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original
 
 
 def _collect_strenum_classes() -> dict[str, type]:
@@ -170,17 +195,21 @@ def export_openapi_schema() -> dict[str, Any]:
     Additionally normalises string-enum descriptions to break a
     Litestar schema-cache non-determinism (see
     :func:`_normalise_enum_descriptions`).
-    """
-    _hermetic_env_setdefaults()
-    # Defer imports so unit tests can patch this function without
-    # paying the app-boot cost.
-    from synthorg.api.app import create_app
-    from synthorg.api.openapi import inject_rfc9457_responses
 
-    app = create_app()
-    schema = app.openapi_schema.to_schema()
-    schema = inject_rfc9457_responses(schema)
-    return _normalise_enum_descriptions(schema)
+    The hermetic env (in-memory SQLite + stable cursor secret) is
+    scoped to this call via :func:`_hermetic_env`, so an in-process
+    caller's environment is never permanently mutated.
+    """
+    with _hermetic_env():
+        # Defer imports so unit tests can patch this function without
+        # paying the app-boot cost.
+        from synthorg.api.app import create_app
+        from synthorg.api.openapi import inject_rfc9457_responses
+
+        app = create_app()
+        schema = app.openapi_schema.to_schema()
+        schema = inject_rfc9457_responses(schema)
+        return _normalise_enum_descriptions(schema)
 
 
 def run_openapi_typescript(schema_path: Path) -> str:
