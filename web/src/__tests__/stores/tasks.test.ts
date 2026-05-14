@@ -494,5 +494,33 @@ describe('useTasksStore', () => {
       expect(useTasksStore.getState().tasks).toHaveLength(0)
       errorSpy.mockRestore()
     })
+
+    it('accepts frame that omits assigned_to (undefined → null is normalisation, not mutation)', () => {
+      const without: Record<string, unknown> = { ...mockTask }
+      delete without.assigned_to
+      const event: WsEvent = {
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: without },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks).toHaveLength(1)
+      expect(useTasksStore.getState().tasks[0]!.assigned_to).toBeNull()
+    })
+
+    it('accepts frame that omits parent_task_id (undefined → null is normalisation, not mutation)', () => {
+      const without: Record<string, unknown> = { ...mockTask }
+      delete without.parent_task_id
+      const event: WsEvent = {
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: without },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks).toHaveLength(1)
+      expect(useTasksStore.getState().tasks[0]!.parent_task_id).toBeNull()
+    })
   })
 })

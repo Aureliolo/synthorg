@@ -266,7 +266,11 @@ class TestCheckMode:
             (dtos_path, dtos_ts),
             (enum_path, enum_values_ts),
         ):
-            path.write_text(content, encoding="utf-8")
+            # Match the production ``_write`` semantics: LF newlines on every
+            # platform. ``write_text`` without ``newline="\n"`` would emit CRLF
+            # on Windows, which the byte-comparison gate (correctly) flags as
+            # drift.
+            path.write_bytes(content.encode("utf-8"))
         targets = (
             (openapi_path, openapi_ts),
             (dtos_path, dtos_ts),
@@ -282,7 +286,7 @@ class TestCheckMode:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         stale = tmp_path / "dtos.gen.ts"
-        stale.write_text("stale\n", encoding="utf-8")
+        stale.write_bytes(b"stale\n")
         targets = ((stale, "fresh\n"),)
         monkeypatch.setattr(gen, "REPO_ROOT", tmp_path)
         assert gen._check(targets) == 1
@@ -302,6 +306,26 @@ class TestCheckMode:
         assert gen._check(targets) == 1
         err = capsys.readouterr().err
         assert "missing generated file" in err
+
+    def test_check_fails_on_crlf_when_expected_is_lf(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``_write`` always emits LF; on-disk CRLF is real drift.
+
+        Universal-newline ``read_text`` would silently normalise CRLF to
+        LF and let a CRLF-encoded file pass the gate, masking a real
+        platform-divergent output. Byte comparison (this gate) catches it.
+        """
+        crlf_path = tmp_path / "dtos.gen.ts"
+        crlf_path.write_bytes(b"line one\r\nline two\r\n")
+        targets = ((crlf_path, "line one\nline two\n"),)
+        monkeypatch.setattr(gen, "REPO_ROOT", tmp_path)
+        assert gen._check(targets) == 1
+        err = capsys.readouterr().err
+        assert "out of sync" in err
 
 
 class TestRunOpenapiTypescript:

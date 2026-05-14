@@ -36,6 +36,7 @@ Usage::
 """
 
 import argparse
+import difflib
 import inspect
 import json
 import os
@@ -56,6 +57,8 @@ DTOS_GEN_TS: Final[Path] = WEB_DIR / "src" / "api" / "types" / "dtos.gen.ts"
 ENUM_VALUES_GEN_TS: Final[Path] = (
     WEB_DIR / "src" / "api" / "types" / "enum-values.gen.ts"
 )
+
+_DRIFT_DIFF_LINE_LIMIT: Final[int] = 60
 
 _HEADER: Final[str] = (
     "// AUTO-GENERATED: do not edit by hand.\n"
@@ -378,16 +381,25 @@ def _write(path: Path, content: str) -> None:
 
 
 def _check(targets: tuple[tuple[Path, str], ...]) -> int:
-    """Compare each (path, expected) pair; return non-zero on drift."""
+    """Compare each (path, expected) pair; return non-zero on drift.
+
+    Reads the on-disk file as bytes (no universal-newline translation)
+    and compares against the freshly rendered ``expected`` UTF-8 bytes.
+    ``_write`` always emits LF, so a CRLF-encoded file in the working
+    tree is a real drift the gate must catch -- ``read_text`` would
+    silently normalise CRLF to LF and let the divergence ship.
+    """
     failures: list[str] = []
     for path, expected in targets:
         rel = path.relative_to(REPO_ROOT).as_posix()
         if not path.exists():
             failures.append(f"missing generated file: {rel}")
             continue
-        actual = path.read_text(encoding="utf-8")
-        if actual != expected:
+        actual_bytes = path.read_bytes()
+        expected_bytes = expected.encode("utf-8")
+        if actual_bytes != expected_bytes:
             failures.append(f"out of sync: {rel}")
+            _print_drift_diff(rel, actual_bytes, expected_bytes)
     if failures:
         for failure in failures:
             print(failure, file=sys.stderr)
@@ -397,6 +409,50 @@ def _check(targets: tuple[tuple[Path, str], ...]) -> int:
         )
         return 1
     return 0
+
+
+def _print_drift_diff(
+    rel: str,
+    actual_bytes: bytes,
+    expected_bytes: bytes,
+) -> None:
+    """Print a short unified diff so CI logs reveal what drifted.
+
+    Falls back to a byte-length summary if the contents are not valid
+    UTF-8 (the generator only emits UTF-8, but the on-disk file may
+    have been touched by a non-UTF-8 editor).
+    """
+    try:
+        actual_text = actual_bytes.decode("utf-8")
+        expected_text = expected_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        print(
+            f"  bytes differ: actual={len(actual_bytes)} expected={len(expected_bytes)}",
+            file=sys.stderr,
+        )
+        return
+    diff = difflib.unified_diff(
+        actual_text.splitlines(keepends=True),
+        expected_text.splitlines(keepends=True),
+        fromfile=f"{rel} (on disk)",
+        tofile=f"{rel} (regenerated)",
+        n=2,
+    )
+    diff_lines = list(diff)
+    if not diff_lines:
+        print(
+            "  (no line-level diff; only byte-level / line-ending drift)",
+            file=sys.stderr,
+        )
+        return
+    head = "".join(diff_lines[:_DRIFT_DIFF_LINE_LIMIT])
+    sys.stderr.write(head)
+    if len(diff_lines) > _DRIFT_DIFF_LINE_LIMIT:
+        truncated = len(diff_lines) - _DRIFT_DIFF_LINE_LIMIT
+        print(
+            f"  ... ({truncated} more diff lines truncated)",
+            file=sys.stderr,
+        )
 
 
 def _re_exec_with_fixed_hash_seed() -> int | None:

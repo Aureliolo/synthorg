@@ -260,6 +260,25 @@ function arraysEqual(
 }
 
 /**
+ * Equality for an optional / nullable id field after sanitization.
+ *
+ * ``sanitizeTask`` routes ``assigned_to`` / ``parent_task_id`` through
+ * ``sanitizeNullable(c.field ?? null, ...)``, which normalises an
+ * omitted (``undefined``) wire field to ``null``. Comparing the
+ * sanitized value against the raw candidate with strict ``!==`` would
+ * then flag every absence-of-id frame as a "mutation" (``null`` vs
+ * ``undefined``) and drop legitimate updates.
+ *
+ * The gate exists to catch *meaningful* mutation -- a string id whose
+ * control / bidi characters were stripped during sanitization. Treat
+ * ``null`` and ``undefined`` as equivalent ("no value") and only flag
+ * a real string-vs-string divergence.
+ */
+function nullableIdEqual(sanitized: string | null | undefined, original: unknown): boolean {
+  return (sanitized ?? null) === (original ?? null)
+}
+
+/**
  * Minimum structural check for a ``Task``-shaped WS payload. Validates
  * the required identifier + enum-typed fields (``status``, ``priority``,
  * ``type``, ``estimated_complexity``, ``coordination_topology`` -- each
@@ -489,8 +508,8 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
           sanitized.id !== candidate.id ||
           sanitized.project !== candidate.project ||
           sanitized.created_by !== candidate.created_by
-        const assignedMutated = sanitized.assigned_to !== candidate.assigned_to
-        const parentMutated = sanitized.parent_task_id !== candidate.parent_task_id
+        const assignedMutated = !nullableIdEqual(sanitized.assigned_to, candidate.assigned_to)
+        const parentMutated = !nullableIdEqual(sanitized.parent_task_id, candidate.parent_task_id)
         const stringArraysMutated =
           !arraysEqual(sanitized.reviewers, candidate.reviewers) ||
           !arraysEqual(sanitized.dependencies, candidate.dependencies) ||
