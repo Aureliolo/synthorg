@@ -8079,7 +8079,7 @@ export type components = {
         readonly MeetingStatus: "scheduled" | "in_progress" | "completed" | "failed" | "cancelled" | "budget_exhausted";
         /**
          * MemoryCategory
-         * @description Memory type categories for agent memory (Â§7.2).
+         * @description Memory type categories for agent memory (§7.2).
          * @enum {string}
          */
         readonly MemoryCategory: "working" | "episodic" | "semantic" | "procedural" | "social";
@@ -8099,7 +8099,7 @@ export type components = {
         };
         /**
          * MemoryLevel
-         * @description Memory persistence level for an agent (Â§7.3).
+         * @description Memory persistence level for an agent (§7.3).
          * @default session
          * @enum {string}
          */

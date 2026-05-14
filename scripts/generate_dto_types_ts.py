@@ -218,6 +218,13 @@ def run_openapi_typescript(schema_path: Path) -> str:
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
+        # Pin stdout decoding to UTF-8. ``text=True`` alone uses
+        # ``locale.getpreferredencoding()``, which is ``cp1252`` on a
+        # default Windows install -- ``openapi-typescript`` always emits
+        # UTF-8, and decoding ``C2 A7`` (``§``) as cp1252 yields the
+        # mojibake ``Â§`` that diverges from CI's Linux output and trips
+        # the drift gate.
+        encoding="utf-8",
         check=False,
         timeout=120,
     )
