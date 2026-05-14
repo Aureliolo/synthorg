@@ -6,7 +6,7 @@ them all.
 """
 
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -15,6 +15,12 @@ from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+)
 
 logger = get_logger(__name__)
 
@@ -286,6 +292,20 @@ class ApiConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="api_prefix",
+            namespace=SettingNamespace.API,
+            key="api_prefix",
+        ),
+        MirrorField(
+            field="rate_limiter_enabled",
+            namespace=SettingNamespace.API,
+            key="rate_limiter_enabled",
+            parse=parse_bool,
+        ),
+    )
+
     cors: CorsConfig = Field(
         default_factory=CorsConfig,
         description="CORS configuration",
@@ -332,3 +352,8 @@ class ApiConfig(BaseModel):
         default="/api/v1",
         description="URL prefix for all API routes",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
