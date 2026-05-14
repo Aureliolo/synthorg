@@ -26,6 +26,7 @@ export function TaskDetailHeader({ task }: TaskDetailHeaderProps) {
             const updated = await useTasksStore.getState().updateTask(task.id, {
               title: value,
               expected_version: task.version,
+              priority: null,
             })
             if (!updated) {
               throw new Error('Failed to save title')

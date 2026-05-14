@@ -191,7 +191,7 @@ export function computePerformanceCards(
     },
     {
       label: 'AVG COMPLETION TIME',
-      value: formatCompletionTime(perf.avg_completion_time_seconds),
+      value: formatCompletionTime(perf.avg_completion_time_seconds ?? null),
       sparklineData: timeSparkline,
     },
     {
@@ -204,7 +204,7 @@ export function computePerformanceCards(
     },
     {
       label: 'COST PER TASK',
-      value: formatCostPerTask(perf.cost_per_task),
+      value: formatCostPerTask(perf.cost_per_task ?? null),
       sparklineData: costSparkline,
     },
   ]
@@ -254,11 +254,13 @@ const CAREER_COLOR_MAP: Record<CareerEventType, SemanticColor> = {
   onboarded: 'accent',
   demoted: 'warning',
   fired: 'danger',
+  offboarded: 'warning',
+  status_changed: 'accent',
 }
 
 /** Map a career event type to its semantic color. */
 export function getCareerEventColor(eventType: CareerEventType): SemanticColor {
-  return CAREER_COLOR_MAP[eventType]
+  return CAREER_COLOR_MAP[eventType] ?? 'accent'
 }
 
 // ── Activity event icons ───────────────────────────────────

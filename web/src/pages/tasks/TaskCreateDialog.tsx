@@ -136,7 +136,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
         created_by: form.created_by.trim(),
         assigned_to: form.assigned_to.trim() || undefined,
         estimated_complexity: form.estimated_complexity,
-        budget_limit: form.budget_limit ? Number(form.budget_limit) : undefined,
+        budget_limit: form.budget_limit ? Number(form.budget_limit) : 0,
       }
       // Sentinel-return: the store owns the error UX (toast + log) on
       // failure, so we only null-check here. ``null`` keeps the dialog

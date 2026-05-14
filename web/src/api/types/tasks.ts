@@ -1,5 +1,6 @@
 /** Task domain types. */
 
+import type { Task as WireTask } from './dtos.gen'
 import type {
   Complexity,
   CoordinationTopology,
@@ -10,84 +11,64 @@ import type {
   TaskType,
 } from './enums'
 
-export interface AcceptanceCriterion {
-  description: string
-  met: boolean
-}
+export type {
+  AcceptanceCriterion,
+  CancelTaskRequest,
+  CreateTaskRequest,
+  ExpectedArtifact,
+  TransitionTaskRequest,
+  UpdateTaskRequest,
+} from './dtos.gen'
 
-export interface ExpectedArtifact {
-  name: string
-  type: string
-}
-
-export interface Task {
-  id: string
-  title: string
-  description: string
-  type: TaskType
-  status: TaskStatus
-  priority: Priority
-  project: string
-  created_by: string
-  assigned_to: string | null
+/**
+ * Task with the Pydantic-defaulted fields re-typed as required (the
+ * wire serialiser emits them on every response) plus a handful of
+ * runtime / WS-only fields the dashboard relies on (``cost``,
+ * ``version``, ``created_at``, ``updated_at`` arrive on the WS
+ * task-updated payload even though the HTTP list / get endpoints
+ * project a lighter shape).
+ */
+export type Task = Omit<
+  WireTask,
+  | 'acceptance_criteria'
+  | 'artifacts_expected'
+  | 'budget_limit'
+  | 'coordination_topology'
+  | 'delegation_chain'
+  | 'dependencies'
+  | 'estimated_complexity'
+  | 'max_retries'
+  | 'priority'
+  | 'reviewers'
+  | 'status'
+  | 'task_structure'
+  | 'type'
+> & {
+  readonly status: TaskStatus
+  readonly priority: Priority
+  readonly type: TaskType
+  readonly estimated_complexity: Complexity
+  readonly coordination_topology: CoordinationTopology
+  readonly task_structure: TaskStructure | null
+  readonly budget_limit: number
+  readonly max_retries: number
   readonly reviewers: readonly string[]
   readonly dependencies: readonly string[]
-  readonly artifacts_expected: readonly ExpectedArtifact[]
-  readonly acceptance_criteria: readonly AcceptanceCriterion[]
-  estimated_complexity: Complexity
-  budget_limit: number
-  cost?: number
-  deadline: string | null
-  max_retries: number
-  parent_task_id: string | null
   readonly delegation_chain: readonly string[]
-  task_structure: TaskStructure | null
-  coordination_topology: CoordinationTopology
-  source?: TaskSource | null
-  version?: number
-  created_at?: string
-  updated_at?: string
+  readonly artifacts_expected: readonly import('./dtos.gen').ExpectedArtifact[]
+  readonly acceptance_criteria: readonly import('./dtos.gen').AcceptanceCriterion[]
+  readonly source?: TaskSource | null
+  readonly cost?: number
+  readonly version?: number
+  readonly created_at?: string
+  readonly updated_at?: string
 }
 
-export interface CreateTaskRequest {
-  title: string
-  description: string
-  type: TaskType
-  priority?: Priority
-  project: string
-  created_by: string
-  assigned_to?: string | null
-  estimated_complexity?: Complexity
-  budget_limit?: number
-}
-
-export interface UpdateTaskRequest {
-  title?: string
-  description?: string
-  priority?: Priority
-  assigned_to?: string | null
-  budget_limit?: number
-  expected_version?: number
-}
-
-export interface TransitionTaskRequest {
-  target_status: TaskStatus
-  assigned_to?: string | null
-  expected_version?: number
-}
-
-export interface CancelTaskRequest {
-  reason: string
-}
-
+/** Frontend-only query filter (not a Pydantic DTO). */
 export interface TaskFilters {
   status?: TaskStatus
   assigned_to?: string
   project?: string
-  // Page size passed through as the ``limit`` query param.  Pagination
-  // is cursor-based on the server (opaque ``cursor`` token), so there
-  // is no ``offset`` field -- callers consume ``nextCursor`` from the
-  // previous response instead.
   limit?: number
   cursor?: string
 }

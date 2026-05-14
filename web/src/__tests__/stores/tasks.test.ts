@@ -193,6 +193,7 @@ describe('useTasksStore', () => {
         type: 'development' as const,
         project: 'test-project',
         created_by: 'agent-cto',
+        budget_limit: 0,
       }
       const result = await useTasksStore.getState().createTask(payload)
       expect(result).toEqual(mockTask)
@@ -217,6 +218,7 @@ describe('useTasksStore', () => {
         type: 'development',
         project: 'p',
         created_by: 'a',
+        budget_limit: 0,
       })
 
       expect(result).toBeNull()
@@ -239,7 +241,7 @@ describe('useTasksStore', () => {
       )
       const result = await useTasksStore
         .getState()
-        .updateTask('task-1', { title: 'Updated title' })
+        .updateTask('task-1', { title: 'Updated title', priority: null })
       expect(result?.title).toBe('Updated title')
       expect(useTasksStore.getState().tasks[0]!.title).toBe('Updated title')
     })

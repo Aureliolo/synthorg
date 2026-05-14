@@ -371,7 +371,7 @@ describe('fetchMoreActivity', () => {
   it('appends new activity events', async () => {
     const existingEvents = [
       {
-        event_type: 'task_completed',
+        event_type: 'task_completed' as const,
         timestamp: '2026-03-26T12:00:00Z',
         description: 'Task done',
         related_ids: {},
@@ -387,7 +387,7 @@ describe('fetchMoreActivity', () => {
 
     const newEvents = [
       {
-        event_type: 'hired',
+        event_type: 'hired' as const,
         timestamp: '2026-03-25T10:00:00Z',
         description: 'Agent hired',
         related_ids: {},
@@ -426,7 +426,7 @@ describe('fetchMoreActivity', () => {
 
   it('caps activity at MAX_ACTIVITIES (100)', async () => {
     const existingEvents = Array.from({ length: 99 }, (_, i) => ({
-      event_type: 'task_completed',
+      event_type: 'task_completed' as const,
       timestamp: `2026-03-26T${String(i % 24).padStart(2, '0')}:${String(Math.floor(i / 24)).padStart(2, '0')}:00Z`,
       description: `Event ${i}`,
       related_ids: {},
@@ -475,7 +475,7 @@ describe('fetchMoreActivity', () => {
   it('preserves existing data on failure', async () => {
     const existingEvents = [
       {
-        event_type: 'task_completed',
+        event_type: 'task_completed' as const,
         timestamp: '2026-03-26T12:00:00Z',
         description: 'Task done',
         related_ids: {},
