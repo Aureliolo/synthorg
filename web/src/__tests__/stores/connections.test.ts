@@ -124,7 +124,9 @@ describe('useConnectionsStore', () => {
     expect(capturedBody).toEqual({
       name: 'primary-github',
       connection_type: 'github',
+      auth_method: 'bearer_token',
       credentials: { token: 'abc' },
+      health_check_enabled: true,
     })
     expect(useConnectionsStore.getState().connections).toHaveLength(1)
   })

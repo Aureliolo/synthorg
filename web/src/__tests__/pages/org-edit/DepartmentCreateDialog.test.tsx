@@ -42,6 +42,7 @@ describe('DepartmentCreateDialog', () => {
       expect(mockOnCreate).toHaveBeenCalledWith({
         name: 'design',
         budget_percent: 25,
+        autonomy_level: null,
       })
     })
   })
