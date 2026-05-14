@@ -219,13 +219,32 @@ with open('logs/synthorg.log') as f:
         except (json.JSONDecodeError, ValueError):
             pass
 
+# Parse access.log so excluded events can be verified to land in their
+# dedicated sink rather than silently disappearing. Skipping them in
+# the main discrepancy report without this check hides genuine
+# routing regressions (e.g., access.log handler not registered).
+access_events = set()  # {(event, logger)}
+try:
+    with open('logs/access.log') as f:
+        for line in f:
+            try:
+                rec = json.loads(line.strip())
+                access_events.add((rec.get('event', ''), rec.get('logger', '')))
+            except (json.JSONDecodeError, ValueError):
+                pass
+except FileNotFoundError:
+    pass
+
 # Find discrepancies (within 1-second timestamp window)
 missing = []
+excluded_missing = []
 for entry in docker_entries:
     key = (entry['event'], entry['logger'])
     if entry['event'] == '?':
         continue
     if entry['event'] in excluded_events:
+        if key not in access_events:
+            excluded_missing.append(entry)
         continue
     if key not in file_events:
         missing.append(entry)
@@ -248,6 +267,13 @@ if missing:
         print(f'  ... and {len(missing) - 20} more')
 else:
     print('No discrepancies: all Docker log entries found in file sinks.')
+
+if excluded_missing:
+    print(f'EXCLUDED-SINK-GAP: {len(excluded_missing)} excluded Docker entries not found in dedicated sink (access.log):')
+    for m in excluded_missing[:20]:
+        print(f'  [{m[\"level\"]}] {m[\"event\"]} [{m[\"logger\"]}]')
+    if len(excluded_missing) > 20:
+        print(f'  ... and {len(excluded_missing) - 20} more')
 "
 ```
 

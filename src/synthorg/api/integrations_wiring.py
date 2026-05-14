@@ -10,7 +10,7 @@ from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
 
 from synthorg.core.persistence_errors import PersistenceConnectionError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
@@ -125,9 +125,12 @@ def _wire_tunnel_provider(auth_token_env: str) -> TunnelProvider | None:
         provider = NgrokAdapter(auth_token_env=auth_token_env)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
+            service="tunnel_provider",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             note="tunnel provider auto-wire failed (non-fatal)",
         )
         return None

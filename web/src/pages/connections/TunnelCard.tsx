@@ -48,6 +48,11 @@ export function TunnelCard() {
   const start = useTunnelStore((s) => s.start)
   const stop = useTunnelStore((s) => s.stop)
   const [introOpen, setIntroOpen] = useState(false)
+  // Distinguishes the toggle path (confirm should start the tunnel)
+  // from the Info button (confirm is a plain close); without this
+  // flag, opening the explainer dialog and confirming would expose
+  // the local backend to the public internet by accident.
+  const [introMode, setIntroMode] = useState<'info' | 'enable'>('info')
 
   const isRunning = phase === 'on'
   const isTransitioning = phase === 'enabling' || phase === 'disabling'
@@ -105,6 +110,7 @@ export function TunnelCard() {
       }
     })()
     if (!acknowledged) {
+      setIntroMode('enable')
       setIntroOpen(true)
       return
     }
@@ -161,7 +167,10 @@ export function TunnelCard() {
             size="icon"
             variant="ghost"
             aria-label="About the webhook tunnel"
-            onClick={() => setIntroOpen(true)}
+            onClick={() => {
+              setIntroMode('info')
+              setIntroOpen(true)
+            }}
           >
             <Info className="size-4" aria-hidden />
           </Button>
@@ -265,10 +274,14 @@ export function TunnelCard() {
         open={introOpen}
         onOpenChange={setIntroOpen}
         title="About the webhook tunnel"
-        confirmLabel={isRunning ? 'Close' : 'I understand, start tunnel'}
+        confirmLabel={
+          introMode === 'enable' && !isRunning
+            ? 'I understand, start tunnel'
+            : 'Close'
+        }
         cancelLabel="Cancel"
         onConfirm={async () => {
-          if (isRunning) return
+          if (introMode !== 'enable' || isRunning) return
           await handleIntroConfirm()
         }}
       >
