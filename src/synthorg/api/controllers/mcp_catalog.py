@@ -251,6 +251,13 @@ class MCPCatalogController(Controller):
         # when the install count crosses the page boundary.
         records_acc: list[McpInstallation] = []
         offset = 0
+        # Each iteration advances ``offset`` by ``_LIST_PAGE_SIZE`` (the
+        # page is non-empty by the ``not batch`` guard) and the loop
+        # terminates the moment a page comes back smaller than the
+        # page size. Total iterations are
+        # ``ceil(installed_count / _LIST_PAGE_SIZE)`` with no sleep
+        # between iterations.
+        # lint-allow: long-running-loop-kill-switch -- bounded drain, not a daemon
         while True:
             batch = await installations_repo.list_items(
                 limit=_LIST_PAGE_SIZE,
