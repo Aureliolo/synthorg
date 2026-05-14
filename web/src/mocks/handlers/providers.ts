@@ -254,6 +254,7 @@ export const providersHandlers = [
         alias: null,
         cost_per_1k_input: 0,
         cost_per_1k_output: 0,
+        currency: 'USD',
         max_context: 0,
         estimated_latency_ms: null,
         local_params: null,

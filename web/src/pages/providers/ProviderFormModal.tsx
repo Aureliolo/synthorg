@@ -293,12 +293,14 @@ export function ProviderFormModal({
         } else {
           const data: CreateProviderRequest = {
             name: name.trim(),
+            driver: '',
             litellm_provider: litellmProvider || undefined,
             auth_type: authType,
             api_key: authType === 'api_key' && apiKey ? apiKey : undefined,
             subscription_token: authType === 'subscription' && subscriptionToken ? subscriptionToken : undefined,
             tos_accepted: authType === 'subscription' && tosAccepted,
             base_url: trimmedBaseUrl,
+            models: [],
           }
           const createFn = overrides?.onCreateProvider ?? useProvidersStore.getState().createProvider
           const result = await createFn(data)

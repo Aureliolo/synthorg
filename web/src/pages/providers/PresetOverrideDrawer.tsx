@@ -63,13 +63,9 @@ function PresetOverrideForm({
   const [submitting, setSubmitting] = useState(false)
 
   const handleSave = async (): Promise<void> => {
-    const payload: PresetOverrideUpdateRequest = {}
-    if (isCloud(preset)) {
-      const trimmed = baseUrl.trim()
-      payload.base_url = trimmed === '' ? null : trimmed
-    } else {
-      payload.candidate_urls = parseLines(candidateUrls)
-    }
+    const payload: PresetOverrideUpdateRequest = isCloud(preset)
+      ? { base_url: baseUrl.trim() === '' ? null : baseUrl.trim() }
+      : { candidate_urls: parseLines(candidateUrls) }
     setSubmitting(true)
     const result = await updatePresetOverride(preset.name, payload)
     setSubmitting(false)

@@ -8,6 +8,7 @@ const baseModel: ProviderModelResponse = {
   alias: 'local-7b',
   cost_per_1k_input: 0,
   cost_per_1k_output: 0,
+  currency: 'USD',
   max_context: 4096,
   estimated_latency_ms: null,
   local_params: null,

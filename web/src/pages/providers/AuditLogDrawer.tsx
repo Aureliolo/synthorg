@@ -32,7 +32,7 @@ const EVENT_LABEL: Record<ProviderAuditEventType, string> = {
 }
 
 function summariseEvent(event: ProviderAuditEvent): string {
-  const payload = event.payload
+  const payload = event.payload ?? {}
   if (event.event_type === 'model_added' || event.event_type === 'model_removed') {
     const id = payload.model_id
     return typeof id === 'string' ? id : ''

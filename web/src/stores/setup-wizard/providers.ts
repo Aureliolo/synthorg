@@ -27,12 +27,12 @@ async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
     const response = await probeLocal()
     // Filter out undefined entries from the envelope
     const results = Object.fromEntries(
-      Object.entries(response.results).filter(
+      Object.entries(response.results ?? {}).filter(
         (entry): entry is [string, ProbePresetResponse] => entry[1] !== undefined,
       ),
     )
     const errors = Object.fromEntries(
-      Object.entries(response.errors).filter(
+      Object.entries(response.errors ?? {}).filter(
         (entry): entry is [string, string] => entry[1] !== undefined,
       ),
     )
@@ -95,6 +95,8 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
         name,
         api_key: apiKey,
         base_url: baseUrl,
+        auth_type: 'api_key',
+        tos_accepted: false,
       })
       set((s) => ({ providers: { ...s.providers, [name]: provider } }))
 

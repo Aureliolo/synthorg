@@ -402,7 +402,7 @@ export async function addProviderModel(
 
 export async function syncProviderModels(
   name: string,
-  data: SyncModelsRequest = {},
+  data: SyncModelsRequest = { replace_existing: true },
 ): Promise<SyncModelsResponse> {
   const response = await apiClient.post<ApiResponse<SyncModelsResponse>>(
     `/providers/${encodeURIComponent(name)}/models/sync`,
