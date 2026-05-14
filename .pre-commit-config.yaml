@@ -478,6 +478,20 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
+      - id: dto-types-ts-in-sync
+        name: dto-types-ts-in-sync gate (web/src/api/types/*.gen.ts matches Pydantic DTOs via OpenAPI)
+        entry: uv run python scripts/check_dto_types_ts_in_sync.py
+        language: system
+        # Trigger on every Pydantic source the OpenAPI schema reads
+        # from (api DTOs, core enums and shared types), the generator
+        # and gate themselves, the schema export script, the RFC 9457
+        # enricher, every committed output, npm lock files, and this
+        # config. A backend DTO edit that does not regenerate the
+        # mirrors fails the gate before the diff ships.
+        files: ^(src/synthorg/api/.*\.py|src/synthorg/core/.*\.py|scripts/(generate_dto_types_ts|check_dto_types_ts_in_sync|export_openapi)\.py|src/synthorg/api/openapi\.py|web/src/api/types/(openapi|dtos|enum-values)\.gen\.ts|web/package\.json|web/package-lock\.json|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
       - id: ws-protocol-version-in-sync
         name: ws-protocol-version-in-sync gate (WS_PROTOCOL_VERSION in Python and TypeScript agree)
         entry: uv run python scripts/check_ws_protocol_version_in_sync.py

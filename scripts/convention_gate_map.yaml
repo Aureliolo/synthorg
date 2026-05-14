@@ -142,6 +142,11 @@ mandatory_rules:
     header: Error-code constants
     gate: scripts/check_error_codes_ts_in_sync.py
 
+  - id: web-claude-md::generated-dto-types
+    file: web/CLAUDE.md
+    header: Generated DTO types
+    gate: scripts/check_dto_types_ts_in_sync.py
+
   - id: web-claude-md::design-system
     file: web/CLAUDE.md
     header: Design System

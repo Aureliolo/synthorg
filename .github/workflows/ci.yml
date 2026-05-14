@@ -65,8 +65,11 @@ jobs:
               - 'web/src/utils/constants.ts'
             dashboard:
               - 'web/**'
-              - 'src/synthorg/api/schemas/**'
+              - 'src/synthorg/api/**'
+              - 'src/synthorg/core/**'
               - 'scripts/export_openapi.py'
+              - 'scripts/generate_dto_types_ts.py'
+              - 'scripts/check_dto_types_ts_in_sync.py'
               - 'docs/openapi/openapi.json'
               - 'pyproject.toml'
               - 'uv.lock'
@@ -555,6 +558,8 @@ jobs:
         run: uv run python scripts/export_openapi.py
       - run: npm ci
         working-directory: web
+      - name: DTO TypeScript drift gate (#1889)
+        run: uv run python scripts/check_dto_types_ts_in_sync.py
       - name: Production build
         run: npm run build
         working-directory: web
