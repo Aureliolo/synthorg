@@ -144,7 +144,7 @@ __all__ = (
 def _format_violation_line(v: Violation) -> str:
     """One-line stdout violation report."""
     return (
-        f"{v.source_file}:{v.source_line}: setting {v.yaml_path} is "
+        f"{v.source_file}:{v.source_line}: setting {v.setting_key} is "
         f"{v.kind} -- {v.reason}"
     )
 

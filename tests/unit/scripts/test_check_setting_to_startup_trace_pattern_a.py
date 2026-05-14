@@ -118,7 +118,7 @@ def test_pattern_a_flags_cross_namespace_consumption(tmp_path: Path) -> None:
         },
     )
     violations = _MODULE.scan_repo(repo, baseline_path=None)  # type: ignore[attr-defined]
-    flagged = {v.yaml_path for v in violations}
+    flagged = {v.setting_key for v in violations}
     assert "engine.timeout_enforcement_enabled" in flagged
 
 
@@ -164,7 +164,7 @@ def test_pattern_a_skips_non_resolver_receivers(tmp_path: Path) -> None:
         },
     )
     violations = _MODULE.scan_repo(repo, baseline_path=None)  # type: ignore[attr-defined]
-    flagged = {v.yaml_path for v in violations}
+    flagged = {v.setting_key for v in violations}
     assert "engine.timeout_enforcement_enabled" not in flagged, (
         f"non-resolver receivers should not trigger Pattern A; got {flagged}"
     )
@@ -259,5 +259,5 @@ def test_pattern_a_resolves_setting_namespace_enum(tmp_path: Path) -> None:
         },
     )
     violations = _MODULE.scan_repo(repo, baseline_path=None)  # type: ignore[attr-defined]
-    flagged = {v.yaml_path for v in violations}
+    flagged = {v.setting_key for v in violations}
     assert "engine.timeout_enforcement_enabled" in flagged

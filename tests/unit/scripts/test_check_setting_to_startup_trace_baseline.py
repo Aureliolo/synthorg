@@ -125,7 +125,7 @@ def test_baseline_new_violation_fails(tmp_path: Path) -> None:
         repo,
         baseline_path=baseline,
     )
-    assert {v.yaml_path for v in new} == {"backup.path"}
+    assert {v.setting_key for v in new} == {"backup.path"}
     assert stale == []
 
 
@@ -205,7 +205,7 @@ def test_load_baseline_malformed_entries_raise_valueerror(
     """Malformed baseline entries fail loud (any wrong shape).
 
     The lint rejects entries that don't match
-    ``<yaml_path>:<kind>:<owning_class>``: too few fields, empty
+    ``<setting_key>:<kind>:<owning_class>``: too few fields, empty
     fields, or too many fields. Silent fallthrough on any of these
     would let real violations slip past the baseline filter.
     """
@@ -337,11 +337,11 @@ def test_ghost_service_rejects_kind_gating_namespace_mismatch() -> None:
         )
 
 
-def test_violation_rejects_colon_in_yaml_path() -> None:
-    """Colon in ``yaml_path`` would corrupt baseline format; reject at construction."""
-    with pytest.raises(ValueError, match="yaml_path"):
+def test_violation_rejects_colon_in_setting_key() -> None:
+    """Colon in ``setting_key`` corrupts baseline format; reject at construction."""
+    with pytest.raises(ValueError, match="setting_key"):
         _MODULE.Violation(  # type: ignore[attr-defined]
-            yaml_path="bad:path",
+            setting_key="bad:path",
             kind="ghost-wired",
             owning_class="X",
             source_file="src/synthorg/settings/definitions/x.py",
@@ -354,7 +354,7 @@ def test_violation_rejects_colon_in_owning_class() -> None:
     """Colon in ``owning_class`` corrupts baseline format; reject at construction."""
     with pytest.raises(ValueError, match="owning_class"):
         _MODULE.Violation(  # type: ignore[attr-defined]
-            yaml_path="x.y",
+            setting_key="x.y",
             kind="ghost-wired",
             owning_class="bad:class",
             source_file="src/synthorg/settings/definitions/x.py",

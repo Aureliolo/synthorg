@@ -594,7 +594,7 @@ def find_factory_gated_ghosts(
     """
     if settings_by_yaml is None:
         records = load_setting_definitions(src_root / "settings" / "definitions")
-        settings_by_yaml = {s.yaml_path: s for s in records}
+        settings_by_yaml = {s.setting_key: s for s in records}
     trees_by_path = _load_lifecycle_trees(src_root)
     ghosts: dict[str, GhostService] = {}
     for path, tree in trees_by_path.items():

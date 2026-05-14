@@ -206,7 +206,7 @@ def _build_violation_for_pattern_a(
     if (setting.namespace, setting.key) not in consumers:
         return None
     return Violation(
-        yaml_path=setting.yaml_path,
+        setting_key=setting.setting_key,
         kind="ghost-wired",
         owning_class=ghost.class_name,
         source_file=setting.source_file,
@@ -255,7 +255,7 @@ def _build_violation_for_factory_gated(
     if gating_setting is None or _is_default_enabled(gating_setting.default):
         return None
     return Violation(
-        yaml_path=setting.yaml_path,
+        setting_key=setting.setting_key,
         kind="ghost-wired",
         owning_class=ghost.class_name,
         source_file=setting.source_file,
@@ -303,7 +303,7 @@ def _build_violation_for_hardcoded_none(
     if setting.key not in text:
         return None
     return Violation(
-        yaml_path=setting.yaml_path,
+        setting_key=setting.setting_key,
         kind="ghost-wired",
         owning_class=ghost.class_name,
         source_file=setting.source_file,
@@ -388,7 +388,7 @@ def scan_repo(
         return []
     definitions_dir = src_root / "settings" / "definitions"
     settings = load_setting_definitions(definitions_dir)
-    settings_by_yaml = {s.yaml_path: s for s in settings}
+    settings_by_yaml = {s.setting_key: s for s in settings}
     class_index = _build_class_index(src_root)
     class_file_text_cache: dict[Path, str] = {}
     resolver_consumers_cache: dict[Path, list[tuple[str, str]]] = {}
@@ -416,7 +416,7 @@ def scan_repo(
 
 
 def _load_baseline(path: Path) -> set[str]:
-    """Parse a baseline file into a set of ``<yaml_path>:<kind>:<class>`` keys.
+    """Parse a baseline file into a set of ``<setting_key>:<kind>:<class>`` keys.
 
     Blank lines and ``#`` comment lines are ignored. Other lines must
     match the expected three-field shape; malformed entries raise to
@@ -445,7 +445,7 @@ def _load_baseline(path: Path) -> set[str]:
         if len(parts) != _BASELINE_FIELDS or not all(p for p in parts):
             msg = (
                 f"{path.as_posix()}:{lineno}: malformed baseline entry "
-                f"(expected '<yaml_path>:<kind>:<owning_class>', got {stripped!r})"
+                f"(expected '<setting_key>:<kind>:<owning_class>', got {stripped!r})"
             )
             raise ValueError(msg)
         entries.add(stripped)

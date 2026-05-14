@@ -31,7 +31,7 @@ _LIFECYCLE_FILES: Final[tuple[str, ...]] = (
 
 _BASELINE_HEADER = """\
 # Frozen baseline of pre-existing settings → startup-wiring violations.
-# Each line is `<yaml_path>:<kind>:<owning_class>` sorted in
+# Each line is `<setting_key>:<kind>:<owning_class>` sorted in
 # deterministic order.
 #
 # scripts/check_setting_to_startup_trace.py reads this file to
@@ -55,7 +55,7 @@ class SettingRecord:
 
     namespace: str
     key: str
-    yaml_path: str
+    setting_key: str
     default: str | None
     read_only_post_init: bool
     source_file: str
@@ -109,7 +109,7 @@ class GhostService:
 class Violation:
     """A single ghost-wired setting flagged by the lint.
 
-    Invariant: ``yaml_path`` and ``owning_class`` must not contain
+    Invariant: ``setting_key`` and ``owning_class`` must not contain
     ``:`` because :meth:`baseline_key` joins fields with that
     delimiter. Setting names are dotted-lowercase (no colons by
     convention) and class names are bare identifiers; both
@@ -118,7 +118,7 @@ class Violation:
     rename that breaks the format fails fast.
     """
 
-    yaml_path: str
+    setting_key: str
     kind: _ViolationKind
     owning_class: str
     source_file: str
@@ -127,8 +127,8 @@ class Violation:
 
     def __post_init__(self) -> None:
         """Reject field values that would corrupt the baseline format."""
-        if ":" in self.yaml_path:
-            msg = f"yaml_path may not contain ':'; got {self.yaml_path!r}"
+        if ":" in self.setting_key:
+            msg = f"setting_key may not contain ':'; got {self.setting_key!r}"
             raise ValueError(msg)
         if ":" in self.owning_class:
             msg = f"owning_class may not contain ':'; got {self.owning_class!r}"
@@ -136,7 +136,7 @@ class Violation:
 
     def baseline_key(self) -> str:
         """Compact key used in the baseline file format."""
-        return f"{self.yaml_path}:{self.kind}:{self.owning_class}"
+        return f"{self.setting_key}:{self.kind}:{self.owning_class}"
 
 
 def _line_has_trailing_marker(line: str) -> bool:
