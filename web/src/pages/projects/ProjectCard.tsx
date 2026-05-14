@@ -40,7 +40,7 @@ export function ProjectCard({ project, onToggleSelect, selected = false }: Proje
     >
       <div className="mb-2 flex items-center gap-2">
         <span className="truncate text-sm font-semibold text-foreground">{project.name}</span>
-        <ProjectStatusBadge status={project.status} showLabel />
+        <ProjectStatusBadge status={project.status ?? 'planning'} showLabel />
       </div>
 
       {project.description && (
@@ -48,16 +48,16 @@ export function ProjectCard({ project, onToggleSelect, selected = false }: Proje
       )}
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <StatPill label="Tasks" value={project.task_ids.length} />
-        {project.budget > 0 && (
-          <StatPill label="Budget" value={formatCurrency(project.budget)} />
+        <StatPill label="Tasks" value={project.task_ids?.length ?? 0} />
+        {(project.budget ?? 0) > 0 && (
+          <StatPill label="Budget" value={formatCurrency(project.budget ?? 0)} />
         )}
       </div>
 
       <div className="flex items-center justify-between text-xs text-text-muted">
         <span className="flex items-center gap-1">
           <Users className="size-3" />
-          {project.team.length} member{project.team.length !== 1 ? 's' : ''}
+          {(project.team?.length ?? 0)} member{(project.team?.length ?? 0) !== 1 ? 's' : ''}
         </span>
         {project.deadline && (
           <span>Due {formatRelativeTime(project.deadline)}</span>
