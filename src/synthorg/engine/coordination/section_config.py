@@ -4,12 +4,21 @@ Bridges the ``coordination:`` section in company YAML to the
 per-run :class:`CoordinationConfig` used by :class:`MultiAgentCoordinator`.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, ClassVar
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.routing.models import AutoTopologyConfig
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+    parse_int,
+)
 
 
 class CoordinationSectionConfig(BaseModel):
@@ -27,6 +36,32 @@ class CoordinationSectionConfig(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="max_concurrency_per_wave",
+            namespace=SettingNamespace.COORDINATION,
+            key="max_concurrency_per_wave",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="fail_fast",
+            namespace=SettingNamespace.COORDINATION,
+            key="fail_fast",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="enable_workspace_isolation",
+            namespace=SettingNamespace.COORDINATION,
+            key="enable_workspace_isolation",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="base_branch",
+            namespace=SettingNamespace.COORDINATION,
+            key="base_branch",
+        ),
+    )
 
     topology: CoordinationTopology = Field(
         default=CoordinationTopology.AUTO,
@@ -53,6 +88,11 @@ class CoordinationSectionConfig(BaseModel):
         default="main",
         description="Git branch for workspace isolation",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: Any) -> Any:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     def to_coordination_config(
         self,
