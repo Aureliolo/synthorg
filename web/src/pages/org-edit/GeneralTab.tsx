@@ -61,11 +61,11 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   })
   const [dirty, setDirty] = useState(false)
 
-  // Sync form to config on identity change (react.dev "Adjusting some state when a prop changes"); skip while dirty so we don't clobber in-progress edits.
+  // Sync form to config on identity change (react.dev "Adjusting some state when a prop changes"); skip while dirty so we don't clobber in-progress edits. Only update the prev-ref after a successful sync so a config identity change while dirty is retried on the next render once dirty clears.
   const prevConfigRef = useRef<typeof config | undefined>(undefined)
-  if (config !== prevConfigRef.current) {
+  if (!dirty && config !== prevConfigRef.current) {
     prevConfigRef.current = config
-    if (config && !dirty) {
+    if (config) {
       setForm({
         company_name: config.company_name,
         autonomy_level: (config.autonomy_level && VALID_AUTONOMY_LEVELS.has(config.autonomy_level))

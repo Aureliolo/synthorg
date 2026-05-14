@@ -240,7 +240,7 @@ export function generateInsights(
 
   // Quality insight
   if (perf.quality_score != null && perf.quality_score >= 8.0) {
-    insights.push(`Quality score of ${perf.quality_score.toFixed(1)}/10 -- consistently high output.`)
+    insights.push(`Quality score of ${perf.quality_score.toFixed(1)}/10: consistently high output.`)
   }
 
   return insights.slice(0, 3)

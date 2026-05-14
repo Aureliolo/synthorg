@@ -5,6 +5,7 @@ import {
   updateWorkflow,
 } from '@/api/endpoints/workflows'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject, isString } from '@/utils/type-guards'
@@ -160,17 +161,34 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
         expected_revision: definition.revision,
       })
       set({ definition: updatedDef, saving: false, dirty: false, validationResult: null })
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Workflow saved',
+      })
     } catch (err) {
       // ``isAxiosError`` lets us read response.status without an
       // unsafe ``as`` cast through a hand-rolled shape.
       const status = isAxiosError(err) ? err.response?.status : undefined
       if (status === 409 && definition) {
         log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
-        set({ saving: false, error: 'Version conflict. Another save occurred. Reloading...' })
+        // Surface via toast rather than transient error state because
+        // the immediate ``loadDefinition`` call below clears
+        // ``error`` to null before the UI can render it.
+        set({ saving: false })
+        useToastStore.getState().add({
+          variant: 'warning',
+          title: 'Version conflict',
+          description: 'Another save occurred. Reloading the latest definition.',
+        })
         await get().loadDefinition(definition.id)
       } else {
         log.warn('Failed to save workflow definition', sanitizeForLog(err))
         set({ saving: false, error: getErrorMessage(err) })
+        useToastStore.getState().add({
+          variant: 'error',
+          title: 'Failed to save workflow',
+          description: getErrorMessage(err),
+        })
       }
     }
   },

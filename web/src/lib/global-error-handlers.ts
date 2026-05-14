@@ -11,11 +11,11 @@ const TOAST_TITLE = 'Unexpected client error'
 // silenced by accident.
 const BENIGN_ERROR_PATTERNS: readonly RegExp[] = [
   /^ResizeObserver loop (limit exceeded|completed with undelivered notifications)\.?$/,
-  /^Hydration failed because the initial UI does not match /,
+  /^Hydration failed because the initial UI does not match what was rendered on the server\.?$/,
   /^Text content does not match server-rendered HTML\.?$/,
   /^Hydration completed but contains mismatches\.?$/,
   /^Loading chunk \d+ failed\.?$/,
-  /^Failed to fetch dynamically imported module: /,
+  /^Failed to fetch dynamically imported module: \S+$/,
 ]
 
 export function isBenignError(reason: unknown): boolean {
