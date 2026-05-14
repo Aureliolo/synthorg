@@ -112,10 +112,15 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
       return { ok: false, error: msg }
     }
     try {
+      // Only attach ``api_key`` when this preset actually authenticates
+      // with one. ``auth_type: 'none'`` (local providers like Ollama)
+      // would otherwise carry the api_key field through to the backend,
+      // and a non-empty string there is rejected by ``_check_api_key``
+      // (CreateFromPresetRequest validator).
       const provider = await createFromPreset({
         preset_name: presetName,
         name,
-        api_key: apiKey,
+        ...(authType === 'api_key' ? { api_key: apiKey } : {}),
         base_url: baseUrl,
         auth_type: authType,
         tos_accepted: false,

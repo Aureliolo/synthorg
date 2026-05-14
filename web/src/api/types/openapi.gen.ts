@@ -1724,6 +1724,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/integrations/mcp/catalog/installed": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List installed catalog entries */
+        readonly get: operations["ApiV1IntegrationsMcpCatalogInstalledListInstalled"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/integrations/mcp/catalog/search": {
         readonly parameters: {
             readonly query?: never;
@@ -7724,6 +7741,15 @@ export type components = {
             /** @default [] */
             readonly scopes: readonly string[];
         };
+        /** InstalledEntry */
+        readonly InstalledEntry: {
+            /** @description Installed catalog entry id */
+            readonly catalog_entry_id: string;
+            /** @description Bound connection name (when applicable) */
+            readonly connection_name?: string | null;
+            /** @description ISO-8601 UTC timestamp of installation */
+            readonly installed_at: string;
+        };
         /** InstallEntryRequest */
         readonly InstallEntryRequest: {
             /** @description Catalog entry identifier to install */
@@ -8652,6 +8678,21 @@ export type components = {
         readonly PaginatedResponse_HealthReport_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["HealthReport"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error?: string | null;
+            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[InstalledEntry] */
+        readonly PaginatedResponse_InstalledEntry_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["InstalledEntry"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -12458,8 +12499,10 @@ export interface operations {
     readonly ApiV1AdminMemoryFineTuneCheckpointsListCheckpoints: {
         readonly parameters: {
             readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
-                readonly offset?: number;
             };
             readonly header?: never;
             readonly path?: never;
@@ -12636,8 +12679,10 @@ export interface operations {
     readonly ApiV1AdminMemoryFineTuneRunsListRuns: {
         readonly parameters: {
             readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
-                readonly offset?: number;
             };
             readonly header?: never;
             readonly path?: never;
@@ -13400,9 +13445,7 @@ export interface operations {
     };
     readonly ApiV1AgentsAgentNameTrainingExecuteExecutePlan: {
         readonly parameters: {
-            readonly query: {
-                readonly app_state: unknown;
-            };
+            readonly query?: never;
             readonly header?: never;
             readonly path: {
                 /** @description Resource name */
@@ -13433,9 +13476,7 @@ export interface operations {
     };
     readonly ApiV1AgentsAgentNameTrainingPlanGetLatestPlan: {
         readonly parameters: {
-            readonly query: {
-                readonly app_state: unknown;
-            };
+            readonly query?: never;
             readonly header?: never;
             readonly path: {
                 /** @description Resource name */
@@ -13464,9 +13505,7 @@ export interface operations {
     };
     readonly ApiV1AgentsAgentNameTrainingPlanCreatePlan: {
         readonly parameters: {
-            readonly query: {
-                readonly app_state: unknown;
-            };
+            readonly query?: never;
             readonly header?: never;
             readonly path: {
                 /** @description Resource name */
@@ -13501,9 +13540,7 @@ export interface operations {
     };
     readonly ApiV1AgentsAgentNameTrainingPlanPlanIdOverridesUpdateOverrides: {
         readonly parameters: {
-            readonly query: {
-                readonly app_state: unknown;
-            };
+            readonly query?: never;
             readonly header?: never;
             readonly path: {
                 /** @description Resource name */
@@ -13539,9 +13576,7 @@ export interface operations {
     };
     readonly ApiV1AgentsAgentNameTrainingPreviewPreviewPlan: {
         readonly parameters: {
-            readonly query: {
-                readonly app_state: unknown;
-            };
+            readonly query?: never;
             readonly header?: never;
             readonly path: {
                 /** @description Resource name */
@@ -13572,9 +13607,7 @@ export interface operations {
     };
     readonly ApiV1AgentsAgentNameTrainingResultGetResult: {
         readonly parameters: {
-            readonly query: {
-                readonly app_state: unknown;
-            };
+            readonly query?: never;
             readonly header?: never;
             readonly path: {
                 /** @description Resource name */
@@ -15991,6 +16024,36 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1IntegrationsMcpCatalogInstalledListInstalled: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_InstalledEntry_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
