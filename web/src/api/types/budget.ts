@@ -10,10 +10,10 @@ import type {
   PeriodSummary as WirePeriodSummary,
 } from './dtos.gen'
 
-export type { FinishReason } from './enum-values.gen'
-export { FINISH_REASON_VALUES } from './enum-values.gen'
+export type { FinishReason, LLMCallCategory } from './enum-values.gen'
+export { FINISH_REASON_VALUES, LLM_CALL_CATEGORY_VALUES } from './enum-values.gen'
 
-import type { FinishReason } from './enum-values.gen'
+import type { FinishReason, LLMCallCategory } from './enum-values.gen'
 
 /** Promote Pydantic-defaulted fields to required. The wire emits
  *  each of them on every response (defaults are serialised), so
@@ -31,7 +31,7 @@ export type CostRecord = Omit<
   | 'project_id'
 > & {
   readonly project_id: string | null
-  readonly call_category: 'productive' | 'coordination' | 'system' | 'embedding' | null
+  readonly call_category: LLMCallCategory | null
   readonly accuracy_effort_ratio: number | null
   readonly latency_ms: number | null
   readonly cache_hit: boolean | null

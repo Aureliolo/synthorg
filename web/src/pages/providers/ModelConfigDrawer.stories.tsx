@@ -2,13 +2,14 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ModelConfigDrawer } from './ModelConfigDrawer'
 import { useProvidersStore } from '@/stores/providers'
 import type { ProviderModelResponse } from '@/api/types/providers'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const baseModel: ProviderModelResponse = {
   id: 'test-local-7b',
   alias: 'local-7b',
   cost_per_1k_input: 0,
   cost_per_1k_output: 0,
-  currency: 'USD',
+  currency: DEFAULT_CURRENCY,
   max_context: 4096,
   estimated_latency_ms: null,
   local_params: null,

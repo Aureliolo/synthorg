@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UseProviderDetailDataReturn } from '@/hooks/useProviderDetailData'
 import type { ProviderModelResponse } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 let hookReturn: UseProviderDetailDataReturn
 
@@ -42,7 +43,7 @@ function makeProvider(name: string): ProviderWithName {
 }
 
 const testModels: ProviderModelResponse[] = [
-  { id: 'test-model', alias: 'test', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, currency: 'USD', max_context: 200000, estimated_latency_ms: null, local_params: null, supports_tools: true, supports_vision: false, supports_streaming: true },
+  { id: 'test-model', alias: 'test', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, currency: DEFAULT_CURRENCY, max_context: 200000, estimated_latency_ms: null, local_params: null, supports_tools: true, supports_vision: false, supports_streaming: true },
 ]
 
 const defaultReturn: UseProviderDetailDataReturn = {

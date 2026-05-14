@@ -27,7 +27,7 @@ export function TestConnectionResult({ result, className }: TestConnectionResult
           <CheckCircle2 className="size-4 shrink-0" />
           <span>
             Connected{result.model_tested ? ` (${result.model_tested})` : ''}
-            {result.latency_ms != null ? ` - ${formatLatency(result.latency_ms ?? null)}` : ''}
+            {result.latency_ms != null ? ` - ${formatLatency(result.latency_ms)}` : ''}
           </span>
         </>
       ) : (

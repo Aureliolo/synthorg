@@ -94,6 +94,23 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
     // presets onto the wrong auth path.
     const preset = get().presets.find((p) => p.name === presetName)
     const authType = preset?.auth_type ?? 'api_key'
+    // This shortcut only carries api_key + base_url; non-api_key auth
+    // (subscription, custom_header, oauth) needs richer credentials
+    // that this signature cannot supply. Reject with a clear message
+    // pointing the caller at createProviderFromPresetFull rather than
+    // letting the server-side validation fail with a confusing error.
+    if (authType !== 'api_key' && authType !== 'none') {
+      const msg =
+        `Preset '${presetName}' uses ${authType} authentication, which requires more than an API key. ` +
+        `Use the full provider creation flow to supply the required credentials.`
+      set({ providersError: msg })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Preset requires extra credentials',
+        description: msg,
+      })
+      return { ok: false, error: msg }
+    }
     try {
       const provider = await createFromPreset({
         preset_name: presetName,

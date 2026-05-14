@@ -121,7 +121,7 @@ export interface ProvidersState {
   addProviderModel: (name: string, data: AddModelRequest) => Promise<ProviderConfig | null>
   syncProviderModels: (
     name: string,
-    data?: SyncModelsRequest,
+    data: SyncModelsRequest,
   ) => Promise<SyncModelsResponse | null>
   updateRateLimits: (
     name: string,

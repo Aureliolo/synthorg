@@ -9,6 +9,8 @@ export type {
 export type { CeremonyStrategyType } from './enum-values.gen'
 export { CEREMONY_STRATEGY_TYPE_VALUES } from './enum-values.gen'
 
+import type { CeremonyStrategyType } from './enum-values.gen'
+
 /** Frontend-only type aliases for fields that exist only as embedded
  *  ``dict`` payloads on the wire (validated via
  *  ``CeremonyPolicyConfig.model_validate`` on the backend; the
@@ -24,7 +26,7 @@ export type VelocityCalcType =
 export type PolicyFieldSource = 'project' | 'department' | 'default'
 
 export interface CeremonyPolicyConfig {
-  strategy?: import('./enum-values.gen').CeremonyStrategyType | null
+  strategy?: CeremonyStrategyType | null
   strategy_config?: Record<string, unknown> | null
   velocity_calculator?: VelocityCalcType | null
   auto_transition?: boolean | null

@@ -319,7 +319,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
      */
     syncProviderModels: async (
       name: string,
-      data: SyncModelsRequest = { replace_existing: true },
+      data: SyncModelsRequest,
     ): Promise<SyncModelsResponse | null> => {
       beginMutation(set)
       try {

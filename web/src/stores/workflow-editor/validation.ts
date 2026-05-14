@@ -57,12 +57,16 @@ export const createValidationSlice: SliceCreator<ValidationSlice> = (set, get) =
     try {
       const result = await validateWorkflowDraft({
         name: definition.name,
-        description: '',
-        version: '1.0.0',
+        // Preserve draft metadata; only fall back to defaults when the
+        // draft genuinely lacks a value. Hardcoded overwrites here would
+        // mean the validator sees a different shape than the editor
+        // shows (e.g. a true is_subworkflow gets reported invalid).
+        description: definition.description ?? '',
+        version: definition.version ?? '1.0.0',
         workflow_type: definition.workflow_type ?? 'sequential_pipeline',
-        inputs: [],
-        outputs: [],
-        is_subworkflow: false,
+        inputs: (definition.inputs ?? []).map((d) => ({ ...d, default: d.default ?? null })),
+        outputs: (definition.outputs ?? []).map((d) => ({ ...d, default: d.default ?? null })),
+        is_subworkflow: definition.is_subworkflow ?? false,
         nodes: nodes.map((n) => {
           const nodeType: WorkflowNodeType = isWorkflowNodeType(n.type)
             ? n.type

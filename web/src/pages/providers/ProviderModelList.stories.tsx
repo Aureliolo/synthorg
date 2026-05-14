@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 import { ProviderModelList } from './ProviderModelList'
 import type { ProviderModelResponse } from '@/api/types/providers'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const models: ProviderModelResponse[] = [
   {
@@ -9,7 +10,7 @@ const models: ProviderModelResponse[] = [
     alias: 'large',
     cost_per_1k_input: 0.015,
     cost_per_1k_output: 0.075,
-    currency: 'USD',
+    currency: DEFAULT_CURRENCY,
     max_context: 200000,
     estimated_latency_ms: 1500,
     local_params: null,
@@ -22,7 +23,7 @@ const models: ProviderModelResponse[] = [
     alias: 'medium',
     cost_per_1k_input: 0.003,
     cost_per_1k_output: 0.015,
-    currency: 'USD',
+    currency: DEFAULT_CURRENCY,
     max_context: 200000,
     estimated_latency_ms: 500,
     local_params: null,
@@ -35,7 +36,7 @@ const models: ProviderModelResponse[] = [
     alias: 'small',
     cost_per_1k_input: 0.0008,
     cost_per_1k_output: 0.004,
-    currency: 'USD',
+    currency: DEFAULT_CURRENCY,
     max_context: 200000,
     estimated_latency_ms: 200,
     local_params: null,
@@ -70,7 +71,7 @@ export const NoCapabilities: Story = {
       alias: 'local-small',
       cost_per_1k_input: 0,
       cost_per_1k_output: 0,
-      currency: 'USD',
+      currency: DEFAULT_CURRENCY,
       max_context: 128000,
       estimated_latency_ms: null,
       local_params: null,

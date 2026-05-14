@@ -87,7 +87,7 @@ export function WorkflowTableView({
                   </td>
                   <td className="px-4 py-2.5">
                     <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-                      {(w.workflow_type ?? '').replace(/_/g, ' ')}
+                      {w.workflow_type ? w.workflow_type.replace(/_/g, ' ') : 'Unknown'}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-right text-muted-foreground">{w.nodes.length}</td>

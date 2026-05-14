@@ -36,23 +36,15 @@ export { AUTH_TYPE_VALUES, PROVIDER_HEALTH_STATUS_VALUES } from './enum-values.g
 import type {
   CloudPreset as WireCloudPreset,
   LocalPreset as WireLocalPreset,
+  ProviderAuditEvent as WireProviderAuditEvent,
   ProviderResponse as WireProviderResponse,
 } from './dtos.gen'
 
-/** Frontend-only union mirroring the inline string union on the wire
- *  ProviderAuditEvent.event_type. */
-export type ProviderAuditEventType =
-  | 'provider_created'
-  | 'provider_updated'
-  | 'provider_deleted'
-  | 'provider_credentials_rotated'
-  | 'provider_rate_limits_updated'
-  | 'preset_override_updated'
-  | 'model_added'
-  | 'model_removed'
-  | 'model_config_updated'
-  | 'model_pulled'
-  | 'models_synced'
+/** Mirrors the inline string union on the wire ProviderAuditEvent.event_type
+ *  (openapi-typescript inlines anonymous unions rather than emitting a named
+ *  type), aliased to the generated parent so backend additions are picked up
+ *  without hand-editing this file. */
+export type ProviderAuditEventType = WireProviderAuditEvent['event_type']
 
 /** Discriminated-union rotation payload keyed by ``auth_type``. The
  *  wire validates this via a server-side discriminated model; OpenAPI
