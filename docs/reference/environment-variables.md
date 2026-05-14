@@ -3,8 +3,8 @@
 On-demand reference for the `SYNTHORG_*` environment variables the
 backend reads.  The precedence rule that governs **mutable** settings
 is in [configuration-precedence.md](configuration-precedence.md); the
-short version is `DB > env > YAML > default`.  Variables in this page
-fall into three categories:
+short version is `DB > env > default`.  Variables in this page fall
+into three categories:
 
 - **Init-time only:** read once at process start; no registry entry.
   Operator changes require a process restart.  Used for credentials
