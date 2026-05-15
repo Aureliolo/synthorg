@@ -392,6 +392,12 @@ class TestCompanyAgentCardEndpoint:
         )
         assert second.content == {"name": "New Co"}
         assert builder.build_company_card.call_count == 2
+        # The rename must overwrite the same host-scoped key, not
+        # orphan a never-reused entry: exactly one company entry.
+        company_keys = [
+            k for k in well_known._card_cache if k.startswith("__company__:")
+        ]
+        assert len(company_keys) == 1
 
 
 class TestAgentCardEndpoint:

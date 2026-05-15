@@ -242,15 +242,17 @@ class WellKnownAgentCardController(Controller):
         ttl = app_state.config.a2a.agent_card_cache_ttl_seconds
 
         base_url = strip_trailing_slash(str(request.base_url))
-        # Resolve company_name before the cache read and key on it so a
-        # runtime write to ``company.company_name`` (DB-tier override
-        # per the configuration-precedence contract) takes effect
-        # immediately instead of being hidden until TTL expiry. Stale
-        # entries for prior names age out by TTL. Agent-list staleness
-        # remains TTL-bounded by design.
+        # Resolve company_name before the cache read and use it as the
+        # read-side fingerprint so a runtime write to
+        # ``company.company_name`` (DB-tier override per the
+        # configuration-precedence contract) invalidates the cached
+        # card immediately instead of being hidden until TTL expiry.
+        # The key stays stable per host so a rename overwrites the same
+        # entry rather than orphaning a never-reused one. Agent-list
+        # staleness remains TTL-bounded by design.
         company_name = await _resolve_company_name(app_state)
-        cache_key = f"__company__:{base_url}:{company_name}"
-        cached = await _get_cached_card(cache_key, ttl)
+        cache_key = f"__company__:{base_url}"
+        cached = await _get_cached_card(cache_key, ttl, fingerprint=company_name)
         if cached is not None:
             logger.debug(A2A_AGENT_CARD_CACHE_HIT, cache_key=cache_key)
             return _card_response(cached, ttl)
@@ -275,7 +277,12 @@ class WellKnownAgentCardController(Controller):
             )
             return _service_unavailable_response()
 
-        await _put_cached_card(cache_key, card_data, ttl)
+        await _put_cached_card(
+            cache_key,
+            card_data,
+            ttl,
+            fingerprint=company_name,
+        )
         logger.info(
             A2A_AGENT_CARD_SERVED,
             card_type="company",
