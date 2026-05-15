@@ -7,10 +7,15 @@ Pipeline:
    ``scripts/export_openapi.py``: in-memory SQLite + stable pagination
    cursor secret) and export the enriched OpenAPI schema via
    ``synthorg.api.openapi.inject_rfc9457_responses``.
-2. Hand the schema to ``npx openapi-typescript`` (pinned via
-   ``web/package-lock.json``) to render the verbatim
+2. Promote every property of every response-side schema into
+   ``required[]`` (see ``_promote_response_defaults_to_required``).
+   ``openapi-typescript`` reads ``required[]`` literally, while
+   Pydantic's default serialiser always emits every field, so without
+   this step generated response types are wrongly optional.
+3. Hand the post-processed schema to ``npx openapi-typescript``
+   (pinned via ``web/package-lock.json``) to render the verbatim
    ``openapi.gen.ts`` (full ``paths`` + ``components`` shape).
-3. Render two thin Python-side outputs from the same schema dict:
+4. Render two thin Python-side outputs from the same schema dict:
    - ``dtos.gen.ts``: a named-alias layer over
      ``components['schemas']`` so consumers can write ``AgentConfig``
      instead of ``components['schemas']['AgentConfig']``. Litestar's
@@ -238,9 +243,9 @@ def _promote_response_defaults_to_required(
     ``openapi-typescript`` reads JSON Schema's ``required[]`` literally
     and emits anything outside it as optional, but Pydantic's default
     response serialiser (``model_dump_json`` without ``exclude_unset``)
-    always emits every model field. The mismatch forced hand-maintained
-    ``Omit<Wire, ...> & { ... }`` and ``Required<Wire>`` overlays in
-    ``web/src/api/types/*.ts``.
+    always emits every model field. To match the wire, every response
+    property must therefore be declared required, even those carrying a
+    JSON-schema default.
 
     A schema is **request-only** iff it is reached via at least one
     ``paths.*.<verb>.requestBody.content.*.schema.$ref`` AND is not

@@ -185,9 +185,33 @@ class TestPromoteResponseDefaultsToRequired:
         fresh_schema: dict[str, Any],
     ) -> None:
         """A schema referenced by BOTH a requestBody and a response is
-        treated as response-side (per #1906 wording)."""
+        treated as response-side: response serialisation always emits
+        every field, so the type must be tightened to response accuracy."""
         gen._promote_response_defaults_to_required(fresh_schema)
         defn = fresh_schema["components"]["schemas"]["FixtureBothSided"]
+        assert "optional_with_default" in defn["required"]
+
+    def test_non_2xx_response_schema_promoted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """A schema reached only via a non-2xx (``404``) response is
+        still response-side. The promoter harvests refs under every
+        ``responses`` node without filtering by status code, so error
+        DTOs are tightened just like success DTOs."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureErrorResponse"]
+        assert "optional_with_default" in defn["required"]
+
+    def test_orphan_schema_promoted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """A schema referenced by no path operation at all is not
+        request-only (it appears in no ``requestBody`` ref), so the
+        promoter treats it as response-side and promotes it."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureOrphan"]
         assert "optional_with_default" in defn["required"]
 
     def test_no_default_property_still_promoted_on_response_side(

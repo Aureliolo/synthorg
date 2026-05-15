@@ -20,6 +20,10 @@ representative document that exercises every type-mapping branch:
 - A request-only schema, a response-only schema, and a both-sided
   schema, each with a defaulted property absent from ``required[]``,
   to drive ``_promote_response_defaults_to_required``.
+- A schema referenced only under a non-2xx response and an orphan
+  schema referenced by no path operation at all, both with a
+  defaulted property absent from ``required[]``, to pin the
+  status-code-agnostic and orphan branches of the promoter.
 """
 
 from typing import Any, Final
@@ -78,6 +82,16 @@ FIXTURE_SCHEMA: Final[dict[str, Any]] = {
                                 "schema": {
                                     "$ref": "#/components/schemas/"
                                     "FixtureResponseWithDefault",
+                                },
+                            },
+                        },
+                    },
+                    "404": {
+                        "description": "not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FixtureErrorResponse",
                                 },
                             },
                         },
@@ -265,6 +279,36 @@ FIXTURE_SCHEMA: Final[dict[str, Any]] = {
                     },
                 },
                 "title": "FixtureBothSided",
+            },
+            # Reached only via a non-2xx (``404``) response $ref. The
+            # promoter does not filter by status code, so its defaulted
+            # property must still be moved into ``required[]``.
+            "FixtureErrorResponse": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "optional_with_default": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "default": None,
+                        "title": "OptionalWithDefault",
+                    },
+                },
+                "title": "FixtureErrorResponse",
+            },
+            # Referenced by no path operation at all (neither a
+            # requestBody nor any response). Not request-only, so the
+            # promoter treats it as response-side and promotes it.
+            "FixtureOrphan": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "optional_with_default": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "default": None,
+                        "title": "OptionalWithDefault",
+                    },
+                },
+                "title": "FixtureOrphan",
             },
         },
     },
