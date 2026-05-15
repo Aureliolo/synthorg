@@ -59,7 +59,7 @@ For each risk: coverage status, SynthOrg design location, and action.
 
 | # | Risk | Coverage | Location | Action |
 |---|---|---|---|---|
-| **1.1** | Tacit collusion | **Gap** (low priority) | - | LATER: mechanism-level anti-collusion only relevant for negotiation/client-simulation templates (v0.8+). |
+| **1.1** | Tacit collusion | **Gap** (low priority) | - | LATER: mechanism-level anti-collusion only relevant for negotiation / client-simulation templates on the backlog. |
 | **1.2** | Priority monopolization | **Partial** | `budget/coordination_config.py`, task priority field | Current priority is manual/role-based; no fee/rotation mechanism. LATER: relevant only when multiple clients compete for shared agent pool. |
 | **1.3** | Competitive task avoidance | **Partial** | `TaskAssignmentStrategy` (6 strategies) | Manual / hierarchical hard-bind is a mitigation by design. `AuctionAssignmentStrategy` is vulnerable; document risk in docstring. |
 | **1.4** | Strategic information withholding | **Gap** (low priority) | `Message` parts have no integrity proofs | LATER: only material for adversarial A2A federation. Ties to R4. |

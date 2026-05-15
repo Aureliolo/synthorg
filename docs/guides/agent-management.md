@@ -93,11 +93,11 @@ Current behavior (`delete_agent` in `src/synthorg/api/services/_org_agent_mutati
 2. The agent record is removed from the active org configuration.
 3. A company snapshot is persisted and an `API_AGENT_DELETED` event is logged and broadcast on the `agents` WebSocket channel.
 
-Planned (not yet implemented): automated task reassignment via `TaskReassignmentStrategy`, memory archival via `MemoryArchivalStrategy`, selective promotion to `OrgMemoryBackend`, and an explicit `TERMINATED` lifecycle state. Until those land, fires are best paired with manual task reassignment before the DELETE call.
+Not yet wired into the DELETE flow: automated task reassignment via `TaskReassignmentStrategy` (concrete: `QueueReturnStrategy` in `src/synthorg/hr/queue_return_strategy.py`), memory archival via `MemoryArchivalStrategy` (concrete: `FullSnapshotStrategy` in `src/synthorg/hr/full_snapshot_strategy.py`), selective promotion to `OrgMemoryBackend`, and an explicit `TERMINATED` lifecycle state. The strategies exist as part of the offboarding-service shape but the API DELETE handler does not invoke them; fires are best paired with manual task reassignment before the DELETE call.
 
-## Rehiring from archive (planned)
+## Rehiring from archive
 
-A dedicated `POST /api/v1/agents/{agent_name}/rehire` endpoint (which would restore archived memory into a new identity with a fresh hire date and version chain) is **not yet implemented** in the agents controller. Until it ships, rehiring is a manual two-step: list archived agents via the existing listing, then recreate with `POST /api/v1/agents` using a fresh `CreateAgentOrgRequest` payload; memory restoration is performed out-of-band through the Memory Admin API. This planned surface sits alongside the same lifecycle automation called out in [Firing](#firing).
+A dedicated `POST /api/v1/agents/{agent_name}/rehire` endpoint (which would restore archived memory into a new identity with a fresh hire date and version chain) is not implemented in the agents controller. Rehiring is a manual two-step today: list archived agents via the existing listing, then recreate with `POST /api/v1/agents` using a fresh `CreateAgentOrgRequest` payload; memory restoration is performed out-of-band through the Memory Admin API. The endpoint sits alongside the same lifecycle automation called out in [Firing](#firing); track on the GitHub issue tracker.
 
 ## Lifecycle events (WebSocket)
 

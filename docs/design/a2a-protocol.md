@@ -103,7 +103,7 @@ Four enforcement strategies are defined behind `QuadraticEnforcementStrategy`:
 | `hard_block` | Reject new connections when `max_agent_connections` exceeded |
 | `disabled` | No detection or enforcement |
 
-Only `alert_only` ships today; the other three are defined in config but not yet implemented. See [Security -> Quadratic Communication Enforcement](security.md#quadratic-communication-enforcement).
+`alert_only` is the shipped enforcement strategy. `soft_throttle`, `hard_block`, and `disabled` are defined in config; the dispatch shape is in place but the per-mode behaviour is not yet wired into `MessageBus.publish`. See [Security -> Quadratic Communication Enforcement](security.md#quadratic-communication-enforcement).
 
 ## Configuration Summary
 

@@ -420,7 +420,7 @@ appendix maps each risk to SynthOrg coverage. Full analysis in
 
 | # | Risk | Coverage | Location / Action |
 |---|---|---|---|
-| 1.1 | Tacit collusion | Gap (low priority) | Only relevant for negotiation/client-simulation templates (v0.8+). |
+| 1.1 | Tacit collusion | Gap (low priority) | Only relevant for negotiation / client-simulation templates that are still on the backlog. |
 | 1.2 | Priority monopolization | Partial | `budget/coordination_config.py`; no fee/rotation mechanism yet. |
 | 1.3 | Competitive task avoidance | Partial | Manual / hierarchical strategies safe; `AuctionAssignmentStrategy` vulnerable. |
 | 1.4 | Strategic information withholding | Gap (low priority) | Material only for adversarial A2A federation. Constraint on #1253. |
