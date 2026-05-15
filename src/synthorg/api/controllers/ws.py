@@ -19,7 +19,6 @@ The server pushes ``WsEvent`` JSON on subscribed channels.
 
 import asyncio
 import json
-import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -681,33 +680,20 @@ async def _setup_connection(
     return channels_plugin, subscriber
 
 
-# Process-wide guard for the active-WS read-modify-write below. Two
-# WS handler coroutines never interleave inside a single sync block,
-# but Prometheus' metrics scrape thread (run by the ASGI server's
-# background scraper) can read ``app.state`` concurrently with a
-# handler that is mid-increment; the lock keeps the increment + store
-# pair indivisible from any concurrent reader's perspective.
-_WS_CONNECTION_COUNT_LOCK = threading.Lock()
-
-
 def _record_ws_connection_opened(socket: WebSocket[Any, Any, Any]) -> None:
     """Increment the WS active-connection gauge.
 
     The Prometheus collector lives on ``app_state``; the helper checks
     presence defensively so a controller running without the
     observability stack (rare; mostly tests) does not blow up at
-    setup. The gauge total is kept in a small mutable counter on
-    ``app.state`` so the controller does not need to count sockets
-    itself.
+    setup. ``Gauge.inc()`` is internally thread-safe, so no explicit
+    lock is needed between the WS handler coroutine and the metrics
+    scrape thread.
     """
     app_state = socket.app.state["app_state"]
     if not app_state.has_prometheus_collector:
         return
-    state_dict = socket.app.state
-    with _WS_CONNECTION_COUNT_LOCK:
-        current = int(state_dict.get("ws_active_connection_count", 0)) + 1
-        state_dict["ws_active_connection_count"] = current
-    app_state.prometheus_collector.set_ws_active_connections(count=current)
+    app_state.prometheus_collector.inc_ws_active_connections()
 
 
 def _record_ws_connection_closed(
@@ -719,16 +705,12 @@ def _record_ws_connection_closed(
     app_state = socket.app.state["app_state"]
     if not app_state.has_prometheus_collector:
         return
-    state_dict = socket.app.state
-    with _WS_CONNECTION_COUNT_LOCK:
-        current = max(0, int(state_dict.get("ws_active_connection_count", 0)) - 1)
-        state_dict["ws_active_connection_count"] = current
     collector = app_state.prometheus_collector
     collector.record_ws_connection_lifetime(
         transport="websocket",
         duration_sec=duration_sec,
     )
-    collector.set_ws_active_connections(count=current)
+    collector.dec_ws_active_connections()
 
 
 async def _teardown_connection(
@@ -826,8 +808,6 @@ async def ws_handler(
     # lifetime into the ``synthorg_ws_connection_lifetime_seconds``
     # histogram. ``time.monotonic`` so a wall-clock NTP step does not
     # push the bucket bound.
-    import time  # noqa: PLC0415
-
     connection_started_at = time.monotonic()
     _record_ws_connection_opened(socket)
 
@@ -909,8 +889,6 @@ async def ws_handler(
             )
     finally:
         if consumer_task is not None:
-            import time  # noqa: PLC0415
-
             _record_ws_connection_closed(
                 socket,
                 duration_sec=time.monotonic() - connection_started_at,

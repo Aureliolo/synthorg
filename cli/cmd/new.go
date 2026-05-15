@@ -36,12 +36,13 @@ Available kinds:
 	GroupID: "core",
 	Args:    cobra.NoArgs,
 	// Render the help text when the user runs ``synthorg new`` with no
-	// subcommand. The default Cobra behaviour for a command with no
-	// RunE plus ``Args: cobra.NoArgs`` is a silent zero-exit, which
-	// hides the available scaffold kinds from operators discovering
-	// the surface for the first time.
+	// subcommand, then exit with the usage error code so the parent
+	// shell can detect that a kind/domain was required. Without the
+	// explicit ExitUsage, the bare ``synthorg new`` would print help
+	// and exit 0, indistinguishable from a successful operation.
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return cmd.Help()
+		_ = cmd.Help()
+		return NewExitError(ExitUsage, nil)
 	},
 }
 

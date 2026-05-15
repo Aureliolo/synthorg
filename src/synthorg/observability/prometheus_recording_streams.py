@@ -51,6 +51,13 @@ class StreamRecordingMixin:
         """
         require_label("ws transport", transport, VALID_WS_TRANSPORTS)
         require_finite("record_ws_connection_lifetime: duration_sec", duration_sec)
+        # Negative durations would silently poison the histogram (e.g.
+        # NTP-adjusted monotonic clocks should never go backwards, but
+        # a future Clock-seam replacement might; reject at the source).
+        require_non_negative(
+            "record_ws_connection_lifetime: duration_sec",
+            duration_sec,
+        )
         self._ws_connection_lifetime.labels(transport=transport).observe(
             duration_sec,
         )
@@ -68,6 +75,22 @@ class StreamRecordingMixin:
         """Replace the gauge with the current connection count."""
         require_non_negative("set_ws_active_connections: count", count)
         self._ws_active_connections.set(count)
+
+    def inc_ws_active_connections(self) -> None:
+        """Atomically increment the active-WS gauge by one.
+
+        ``prometheus_client.Gauge`` is internally thread-safe, so the
+        caller does not need to coordinate with the scrape thread.
+        """
+        self._ws_active_connections.inc()
+
+    def dec_ws_active_connections(self) -> None:
+        """Atomically decrement the active-WS gauge by one.
+
+        ``prometheus_client.Gauge`` is internally thread-safe, so the
+        caller does not need to coordinate with the scrape thread.
+        """
+        self._ws_active_connections.dec()
 
     def record_pg_pool_size(self, *, backend: str, size: int) -> None:
         """Replace the configured pool-size gauge."""
@@ -90,6 +113,8 @@ class StreamRecordingMixin:
         """Observe a connection-acquisition latency."""
         require_label("pg backend", backend, VALID_PG_BACKENDS)
         require_finite("record_pg_pool_acquire: duration_sec", duration_sec)
+        # Negative durations would silently poison the histogram.
+        require_non_negative("record_pg_pool_acquire: duration_sec", duration_sec)
         self._pg_pool_acquire_duration.labels(backend=backend).observe(
             duration_sec,
         )

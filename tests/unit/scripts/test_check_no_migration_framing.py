@@ -470,6 +470,18 @@ class TestPatternParametrized:
                 '"""Used to be scattered across 15 handlers."""\n',
             ),
             (
+                "were previously owned",
+                '"""Helpers that were previously owned by the bus module."""\n',
+            ),
+            (
+                "were previously emitted",
+                '"""Events that were previously emitted by the legacy hook."""\n',
+            ),
+            (
+                "were previously wrapped",
+                '"""Calls that were previously wrapped in retry shims."""\n',
+            ),
+            (
                 "used to be",
                 '"""These checks used to be tolerated in per-agent fan-out."""\n',
             ),

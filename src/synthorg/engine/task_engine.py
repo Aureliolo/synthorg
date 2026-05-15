@@ -389,23 +389,33 @@ class TaskEngine(TaskEngineLoopsMixin):
 
         Extracted from :meth:`stop` so the outer ``asyncio.wait_for``
         hard-deadline guard has a single awaitable to bound.
-        """
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + effective_timeout
 
-        await self._drain_processing(effective_timeout)
+        The budget is split evenly between the processing-drain stage
+        and the observer-drain stage so a slow processing cancellation
+        (e.g. xdist-loaded CI runner where ``asyncio.wait_for`` fires
+        late and cancellation handshake takes tens of ms) cannot starve
+        the observer drain into a zero-budget call. Under the previous
+        single-budget design, ``_drain_processing(effective_timeout)``
+        could consume the entire deadline; the observer drain then ran
+        with ``remaining≈0``, which under load left the outer
+        ``hard_deadline = 2 * effective_timeout`` racing against the
+        cancellation latency of the observer queue ``put(None)``. The
+        even split guarantees each stage at least ``effective_timeout /
+        2`` so the outer guard never fires on a normal drain.
+        """
+        stage_budget = effective_timeout / 2.0
+
+        await self._drain_processing(stage_budget)
         # Signal the observer loop that no more events will arrive.
-        # Bounded by remaining budget -- if the queue is full and the
-        # dispatcher is stuck, we skip the sentinel and let
-        # _drain_observer cancel the observer task on timeout.
-        remaining = max(0.0, deadline - loop.time())
+        # Bounded by the observer-stage budget -- if the queue is full
+        # and the dispatcher is stuck, the suppressed TimeoutError lets
+        # _drain_observer cancel the observer task on its own timeout.
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(
                 self._observer_queue.put(None),
-                timeout=remaining,
+                timeout=stage_budget,
             )
-        observer_budget = max(0.0, deadline - loop.time())
-        await self._drain_observer(observer_budget)
+        await self._drain_observer(stage_budget)
 
     @property
     def is_running(self) -> bool:

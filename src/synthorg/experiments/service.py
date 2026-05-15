@@ -15,7 +15,7 @@ returns the recorded assignment when one exists).
 """
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import NotFoundError, ValidationError
@@ -39,10 +39,13 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_HASH_BUCKET_MAX = 2**32
-"""Upper bound on the hash bucket. The hash output is folded into a
-``uint32`` so the cumulative-weight walk stays deterministic across
-Python versions (the canonical hashlib algorithm is stable)."""
+_HASH_DIGEST_BYTES: Final[int] = 4
+"""Number of leading SHA-256 digest bytes folded into the bucket. Four
+bytes produce a ``uint32`` so the cumulative-weight walk stays
+deterministic across Python versions (the canonical hashlib algorithm
+is stable). The natural ``uint32`` range already bounds the bucket
+before the final ``% modulus`` reduction, so no intermediate ceiling
+modulo is needed."""
 
 
 class ExperimentService:
@@ -174,14 +177,26 @@ class ExperimentService:
             assigned_at=self._clock.now(),
         )
         await self._repo.record_assignment(assignment)
+        # Re-fetch after record so a concurrent writer that landed
+        # first (race between get_assignment and record_assignment) is
+        # the authoritative record. The choice is deterministic so both
+        # writers chose the same variant; only ``assigned_at`` differs,
+        # and the first writer's timestamp is the one durable repos
+        # would have committed before a second insert would have hit a
+        # unique constraint.
+        canonical = await self._repo.get_assignment(
+            experiment=experiment,
+            subject_id=subject_id,
+        )
+        result = canonical if canonical is not None else assignment
         logger.info(
             EXPERIMENT_ASSIGNMENT_COMPUTED,
             experiment=str(experiment),
             subject_id=str(subject_id),
-            variant=chosen.variant,
+            variant=str(result.variant),
             variant_count=len(variants),
         )
-        return assignment
+        return result
 
     async def list_assignments(
         self,
@@ -231,5 +246,9 @@ class ExperimentService:
         """
         material = f"{experiment}\x1f{subject_id}".encode()
         digest = hashlib.sha256(material).digest()
-        raw = int.from_bytes(digest[:4], byteorder="big", signed=False)
-        return (raw % _HASH_BUCKET_MAX) % modulus
+        raw = int.from_bytes(
+            digest[:_HASH_DIGEST_BYTES],
+            byteorder="big",
+            signed=False,
+        )
+        return raw % modulus

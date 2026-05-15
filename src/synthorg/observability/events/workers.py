@@ -51,6 +51,9 @@ WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED: Final[str] = (
 
 # Main entry point
 WORKERS_MAIN_INVALID_WORKER_COUNT: Final[str] = "workers.main.invalid_worker_count"
+WORKERS_MAIN_INVALID_EXECUTOR_CONFIG: Final[str] = (
+    "workers.main.invalid_executor_config"
+)
 WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED: Final[str] = (
     "workers.main.placeholder_executor_invoked"
 )

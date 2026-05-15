@@ -78,7 +78,7 @@ await dispatcher.dispatch(
 
 The worker logs:
 
-```
+```text
 workers.worker.claim_received task_id=task-A
 workers.worker.executor.invoked task_id=task-A
 workers.worker.executor.completed task_id=task-A outcome=success

@@ -407,6 +407,12 @@ class AppState(AppStateServicesMixin):
         # deployments may swap the implementation to invoke the full
         # AgentEngine instead of the baseline lifecycle walk.
         self._worker_execution_service: WorkerExecutionService | None = None
+        # Guards the double-checked locking on first-access lazy wiring
+        # of worker_execution_service / experiment_service. Both
+        # properties may be invoked from concurrent request handlers
+        # before any explicit ``set_*`` call, so the bare None check
+        # without a lock could construct two instances and lose state.
+        self._lazy_service_lock: threading.Lock = threading.Lock()
         # Lazily constructed against an in-memory repository so the
         # ``/experiments`` controller works out of the box; deployments
         # swap in a durable repository via ``set_experiment_service``.
@@ -808,9 +814,11 @@ class AppState(AppStateServicesMixin):
         implementation before any HTTP traffic arrives.
         """
         if self._worker_execution_service is None:
-            self._worker_execution_service = LifecycleAdvancingExecutionService(
-                task_engine=self.task_engine,
-            )
+            with self._lazy_service_lock:
+                if self._worker_execution_service is None:
+                    self._worker_execution_service = LifecycleAdvancingExecutionService(
+                        task_engine=self.task_engine,
+                    )
         return self._worker_execution_service
 
     def set_worker_execution_service(
@@ -839,10 +847,12 @@ class AppState(AppStateServicesMixin):
         repository before any HTTP traffic arrives.
         """
         if self._experiment_service is None:
-            self._experiment_service = ExperimentService(
-                repository=InMemoryExperimentRepository(),
-                clock=self.clock,
-            )
+            with self._lazy_service_lock:
+                if self._experiment_service is None:
+                    self._experiment_service = ExperimentService(
+                        repository=InMemoryExperimentRepository(),
+                        clock=self.clock,
+                    )
         return self._experiment_service
 
     def set_experiment_service(self, service: ExperimentService) -> None:

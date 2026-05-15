@@ -29,6 +29,7 @@ once at construction.
 """
 
 from typing import TYPE_CHECKING, Any, Final
+from urllib.parse import quote
 
 import httpx
 
@@ -115,7 +116,11 @@ class TaskExecutionExecutor:
 
     async def __call__(self, claim: TaskClaim) -> TaskClaimStatus:
         """Execute the claim by calling the backend execute endpoint."""
-        url = f"{self._base_url}/api/v1/tasks/{claim.task_id}/execute"
+        # URL-encode the task_id segment so reserved characters in the
+        # claim identifier cannot produce a malformed path. ``safe=""``
+        # forces slashes inside the id to be escaped too.
+        encoded_task_id = quote(str(claim.task_id), safe="")
+        url = f"{self._base_url}/api/v1/tasks/{encoded_task_id}/execute"
         logger.info(
             WORKERS_EXECUTOR_HTTP_INVOKED,
             task_id=claim.task_id,
@@ -210,11 +215,13 @@ class TaskExecutionExecutor:
                 task_id=claim.task_id,
                 terminal_status=terminal_status,
             )
-            return (
-                TaskClaimStatus.FAILED
-                if terminal_status == "failed"
-                else TaskClaimStatus.SUCCESS
-            )
+            # All terminal task statuses (``completed`` / ``cancelled``
+            # / ``failed``) map to SUCCESS so the JetStream claim is
+            # acked. A task that finished in ``failed`` status is still
+            # a successful execution from the worker's perspective; the
+            # business-logic failure is recorded on the task itself,
+            # not on the claim, so redelivery would not help.
+            return TaskClaimStatus.SUCCESS
         # 2xx but no terminal status: the backend acknowledged the
         # request and may have advanced the task to an intermediate
         # state. Treat as retry so the next claim re-runs from the new

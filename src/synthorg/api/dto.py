@@ -35,6 +35,7 @@ MAX_LIMIT: int = 200
 
 _MAX_METADATA_KEYS: int = 20
 _MAX_METADATA_STR_LEN: int = 256
+_MAX_SELECTION_WEIGHT: int = 1000
 
 
 # ── Structured error detail (RFC 9457) ─────────────────────────
@@ -438,7 +439,11 @@ class RegisterExperimentVariantRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     variant: NotBlankStr = Field(description="Variant name within the experiment")
-    weight: int = Field(ge=1, le=1000, description="Relative selection weight")
+    weight: int = Field(
+        ge=1,
+        le=_MAX_SELECTION_WEIGHT,
+        description="Relative selection weight",
+    )
     description: str = Field(default="", description="Operator notes")
 
 
@@ -752,6 +757,7 @@ class RollbackAgentIdentityRequest(BaseModel):
 __all__ = [
     "ApiResponse",
     "ApproveRequest",
+    "AssignExperimentRequest",
     "CancelTaskRequest",
     "CoordinateTaskRequest",
     "CoordinationPhaseResponse",
@@ -764,12 +770,14 @@ __all__ = [
     "CreateTaskRequest",
     "DiscoverModelsResponse",
     "ErrorDetail",
+    "ExecuteTaskRequest",
     "PaginatedResponse",
     "PaginationMeta",
     "ProbeLocalResponse",
     "ProbePresetResponse",
     "ProblemDetail",
     "ProviderResponse",
+    "RegisterExperimentVariantRequest",
     "RejectRequest",
     "RollbackAgentIdentityRequest",
     "TestConnectionRequest",

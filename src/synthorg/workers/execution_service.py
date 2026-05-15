@@ -113,6 +113,14 @@ class LifecycleAdvancingExecutionService:
         """
         task = await self._task_engine.get_task(task_id)
         if task is None:
+            logger.warning(
+                WORKERS_EXECUTION_SERVICE_NO_OP,
+                task_id=task_id,
+                reason="task_not_found",
+                previous_status=previous_status,
+                new_status=new_status,
+                idempotency_key=idempotency_key,
+            )
             msg = f"Task {task_id!r} not found"
             raise NotFoundError(msg)
         current_status = task.status

@@ -140,6 +140,7 @@ async def test_delete_variant_returns_false_when_absent() -> None:
 
 async def test_list_assignments_paginates_in_recency_order() -> None:
     svc, _ = _service()
+    clock = svc._clock
     await svc.register_variant(
         experiment=NotBlankStr("exp"),
         variant=NotBlankStr("v"),
@@ -150,6 +151,11 @@ async def test_list_assignments_paginates_in_recency_order() -> None:
             experiment=NotBlankStr("exp"),
             subject_id=NotBlankStr(f"u-{i}"),
         )
+        # Advance the FakeClock so each assignment carries a distinct
+        # timestamp; without this the recency sort would degenerate to
+        # stable insertion order and the assertion below would pass for
+        # an ascending-sort regression too.
+        clock.advance(1)  # type: ignore[attr-defined]
     page, total = await svc.list_assignments(
         NotBlankStr("exp"),
         limit=3,
@@ -157,3 +163,15 @@ async def test_list_assignments_paginates_in_recency_order() -> None:
     )
     assert total == 5
     assert len(page) == 3
+    # Assignments were created in order u-0 ... u-4 with strictly
+    # increasing timestamps; the page contract is "most recent first,"
+    # so the first three subject ids on page must be the last three
+    # created in reverse order. Without this assert an ordering
+    # regression (e.g. a repo switching from descending to ascending
+    # sort) would still pass the total / length checks.
+    assert [str(item.subject_id) for item in page] == ["u-4", "u-3", "u-2"]
+    # The ``assigned_at`` timestamps must also be strictly decreasing
+    # across the page; this is the underlying contract that any future
+    # durable repo must honour even when subject ids are unordered.
+    timestamps = [item.assigned_at for item in page]
+    assert timestamps == sorted(timestamps, reverse=True)

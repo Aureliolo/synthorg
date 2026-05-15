@@ -32,6 +32,7 @@ import httpx
 from synthorg.communication.config import NatsConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.workers import (
+    WORKERS_MAIN_INVALID_EXECUTOR_CONFIG,
     WORKERS_MAIN_INVALID_WORKER_COUNT,
     WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
 )
@@ -165,12 +166,16 @@ async def _async_main(argv: list[str]) -> int:
         stream_name_prefix=args.stream_prefix,
     )
 
+    # Resolve the executor BEFORE starting the queue so a missing-config
+    # SystemExit from ``_resolve_executor`` does not leak a started
+    # JetStream consumer (the queue's stop() in the finally below would
+    # never run because the SystemExit unwinds straight past the try).
+    executor, http_client = _resolve_executor(args)
     task_queue = JetStreamTaskQueue(
         queue_config=queue_config,
         nats_config=nats_config,
     )
     await task_queue.start()
-    executor, http_client = _resolve_executor(args)
     try:
         await run_worker_pool(
             queue_config=queue_config,
@@ -199,9 +204,23 @@ def _resolve_executor(
         return _placeholder_executor, None
     if not args.api_base_url:
         msg = "--executor http requires --api-base-url (or SYNTHORG_API_BASE_URL)"
+        logger.error(
+            WORKERS_MAIN_INVALID_EXECUTOR_CONFIG,
+            executor=args.executor,
+            missing_flag="--api-base-url",
+            missing_env="SYNTHORG_API_BASE_URL",
+            error=msg,
+        )
         raise SystemExit(msg)
     if not args.auth_token:
         msg = "--executor http requires --auth-token (or SYNTHORG_WORKER_AUTH_TOKEN)"
+        logger.error(
+            WORKERS_MAIN_INVALID_EXECUTOR_CONFIG,
+            executor=args.executor,
+            missing_flag="--auth-token",
+            missing_env="SYNTHORG_WORKER_AUTH_TOKEN",
+            error=msg,
+        )
         raise SystemExit(msg)
     http_client = httpx.AsyncClient()
     executor = TaskExecutionExecutor(

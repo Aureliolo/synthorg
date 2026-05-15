@@ -104,7 +104,7 @@ _FRAMING_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         "were previously inlined",
         re.compile(
             r"\bwere\s+previously\s+(?:inlined|duplicated|scattered|"
-            r"extracted)\b",
+            r"extracted|owned|emitted|wrapped)\b",
             re.IGNORECASE,
         ),
     ),

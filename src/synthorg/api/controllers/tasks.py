@@ -5,7 +5,7 @@ from typing import Annotated, Final
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
-from litestar.status_codes import HTTP_204_NO_CONTENT
+from litestar.status_codes import HTTP_200_OK, HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import (
     ApiResponse,
@@ -324,6 +324,11 @@ class TaskController(Controller):
 
     @post(
         "/{task_id:str}/execute",
+        # The endpoint mutates the existing task, not creates a new
+        # resource. Override Litestar's default 201 with 200 so the
+        # worker's ACK/NACK contract reads the success class directly
+        # instead of treating "Created" as a special case.
+        status_code=HTTP_200_OK,
         guards=[
             require_write_access,
             per_op_rate_limit_from_policy("tasks.execute", key="user"),

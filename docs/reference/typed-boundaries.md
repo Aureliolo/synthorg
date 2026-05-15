@@ -1,8 +1,15 @@
 # Typed Boundaries
 
-The six security-sensitive API entry points listed below validate
-inbound payloads through a single helper,
-`synthorg.api.boundary.parse_typed`. The helper replaces the legacy
+The security-sensitive API entry points listed below split into two
+groups. The **parse_typed-enforced** boundaries (`jwt`,
+`settings.security`, `ws.control`, `audit_chain`, `a2a.jsonrpc`,
+`mcp.tool`: the original six) validate inbound payloads through a
+single helper, `synthorg.api.boundary.parse_typed`. The
+**informational/lenient** entries (`provider.tool_call`,
+`webhook.payload`, `mcp.tool.dual_path`) are documented in the same
+table for discoverability but are NOT gated by `parse_typed`; the
+table's `Model` column marks them explicitly (`no Pydantic`,
+`extra="allow"`, dual-path helpers). The helper replaces the legacy
 `dict[str, Any]` contract that let a typo or rename slip silently
 through dict access at the auth, agent tool plane, audit trail, RPC,
 and settings surfaces.

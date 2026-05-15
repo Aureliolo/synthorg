@@ -86,18 +86,18 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		// config.Load(...) returns DefaultState silently when the file
 		// is absent, so a non-nil error here means the file exists but
 		// is unreadable, malformed, or fails schema validation.
-		// Distinguish each shape so the operator knows whether to
-		// repair the file or check permissions instead of guessing
-		// from a generic ``loading config:`` wrapper.
-		msg := err.Error()
+		// Distinguish each shape via typed sentinels so the operator
+		// knows whether to repair the file or check permissions
+		// instead of guessing from a generic ``loading config:``
+		// wrapper.
 		switch {
-		case strings.HasPrefix(msg, "parsing config"):
+		case errors.Is(err, config.ErrParsing):
 			return fmt.Errorf(
 				"config file is malformed (invalid JSON); "+
 					"edit it manually or remove it and re-run "+
 					"'synthorg init': %w", err,
 			)
-		case strings.HasPrefix(msg, "reading config"):
+		case errors.Is(err, config.ErrReading):
 			return fmt.Errorf(
 				"config file is unreadable (check filesystem "+
 					"permissions): %w", err,

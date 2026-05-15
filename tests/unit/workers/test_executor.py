@@ -44,7 +44,15 @@ async def test_terminal_completed_returns_success() -> None:
     assert outcome is TaskClaimStatus.SUCCESS
 
 
-async def test_terminal_failed_returns_failed() -> None:
+async def test_terminal_failed_returns_success() -> None:
+    """A 2xx response with terminal ``failed`` status still acks the claim.
+
+    The worker's claim outcome reflects whether the execution attempt
+    completed end-to-end, not whether the task itself succeeded. A task
+    that terminated in ``failed`` status is recorded on the task; the
+    JetStream claim should be acked so the dispatcher does not redeliver.
+    """
+
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -58,7 +66,7 @@ async def test_terminal_failed_returns_failed() -> None:
             http_client=http,
         )
         outcome = await executor(_claim())
-    assert outcome is TaskClaimStatus.FAILED
+    assert outcome is TaskClaimStatus.SUCCESS
 
 
 async def test_non_terminal_200_returns_retry() -> None:

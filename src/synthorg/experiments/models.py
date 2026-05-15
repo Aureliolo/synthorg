@@ -1,8 +1,12 @@
 """Pydantic models for the A/B experiment registry."""
 
+from typing import Final
+
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
+
+_MAX_VARIANT_WEIGHT: Final[int] = 1000
 
 
 class ExperimentVariant(BaseModel):
@@ -26,7 +30,11 @@ class ExperimentVariant(BaseModel):
 
     experiment: NotBlankStr = Field(description="Experiment key (kebab-case)")
     variant: NotBlankStr = Field(description="Variant name within the experiment")
-    weight: int = Field(ge=1, le=1000, description="Relative selection weight")
+    weight: int = Field(
+        ge=1,
+        le=_MAX_VARIANT_WEIGHT,
+        description="Relative selection weight",
+    )
     description: str = Field(default="", description="Operator notes")
     created_at: AwareDatetime = Field(description="Registration timestamp (UTC)")
 
