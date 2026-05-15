@@ -26,7 +26,7 @@ Launch 158 specialized agents (agent slots 01-159 minus the retired slot 14) to 
 | Argument | Directories | Agents |
 |----------|-------------|-------------|
 | `full` (default) | All | All 158 agents (slots 01-159, slot 14 retired) |
-| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153, 154-155, 157 |
+| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-13, 15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153, 154-155, 157 (slot 14 retired) |
 | `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150, 154-155, 156 |
 | `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142, 154-155, 158 |
 | `docs/` | `docs/`, `site/`, `src/synthorg/` | 17, 20, 42, 48-51, 73-86, 103-104, 107-108, 123, 159 |
@@ -3855,7 +3855,7 @@ After validation, read all finding files and build `_audit/latest/INDEX.md`.
 4. When composing INDEX entries: if a finding's key is in the FALSE_POSITIVE list, SKIP it (do not include at any severity). If in the INTENTIONAL list, include with `[INTENTIONAL]` prefix and do not count toward severity totals.
 5. **Final self-check**: before saving INDEX.md, scan the draft for the substrings "Python 2 syntax", "missing parens", "missing parentheses around exception", "PEP 2". If any appear, delete those rows -- they slipped past the validation purge.
 6. **Path verification**: for every Top-20 critical+high entry, run Read on the cited file. If the file does not exist, drop the entry; if the cited line is out of range, drop the entry. The 2026-05-15 synthesizer hallucinated `audit/chain_coordinator.py`, `docs/design/permission-model.md`, `docs/design/approval-flow.md` -- none existed in the repo.
-7. **Zero-finding agent list verification**: do NOT guess which agents had zero findings. Run `Bash: grep -L '\*\*Findings\*\*: [1-9]' _audit/latest/findings/[0-9][0-9]-*.md` to enumerate agent finding files where the `**Findings**` header is 0 or missing. The `[0-9][0-9]-*.md` glob restricts the match to numbered-slot agent files and excludes synthesis artifacts (`validate-batch-*.md`, `INDEX.md`, etc.) that would otherwise inflate the zero-finding list. Cross-reference with files that have substantive content -- some agents wrote prose summaries instead of strict-format headers, so a missing header does not always mean zero findings.
+7. **Zero-finding agent list verification**: do NOT guess which agents had zero findings. Run `Bash: grep -L '\*\*Findings\*\*: [1-9]' _audit/latest/findings/[0-9][0-9]*-*.md` to enumerate agent finding files where the `**Findings**` header is 0 or missing. The `[0-9][0-9]*-*.md` glob restricts the match to numbered-slot agent files (two or more leading digits, so 2-digit IDs like `15-...` AND 3-digit IDs like `159-...` are covered) and excludes synthesis artifacts (`validate-batch-*.md`, `INDEX.md`, etc.) that would otherwise inflate the zero-finding list. Cross-reference with files that have substantive content -- some agents wrote prose summaries instead of strict-format headers, so a missing header does not always mean zero findings.
 
 Use this template:
 
