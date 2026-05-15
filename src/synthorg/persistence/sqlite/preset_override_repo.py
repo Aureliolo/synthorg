@@ -100,10 +100,10 @@ class SQLitePresetOverrideRepo:
             )
             raise QueryError(msg) from exc
 
-    async def upsert(self, override: PresetOverride) -> PresetOverride:
+    async def save(self, override: PresetOverride) -> None:
         """Insert or replace the override for ``override.preset_name``."""
         if override.updated_at is None or override.updated_by is None:
-            msg = "PresetOverride.updated_at and updated_by must be set on upsert"
+            msg = "PresetOverride.updated_at and updated_by must be set on save"
             logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
                 preset_name=override.preset_name,
@@ -143,7 +143,7 @@ class SQLitePresetOverrideRepo:
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
-                msg = "Failed to upsert preset override"
+                msg = "Failed to save preset override"
                 logger.warning(
                     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
                     error_type=type(exc).__name__,
@@ -151,7 +151,32 @@ class SQLitePresetOverrideRepo:
                     preset_name=override.preset_name,
                 )
                 raise QueryError(msg) from exc
-        return override
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[PresetOverride, ...]:
+        """List overrides ordered by preset_name ascending."""
+        sql = (
+            "SELECT preset_name, default_models, supported_auth_types, "
+            "candidate_urls, base_url, updated_at, updated_by "
+            "FROM preset_overrides "
+            "ORDER BY preset_name ASC LIMIT ? OFFSET ?"
+        )
+        try:
+            cursor = await self._db.execute(sql, (limit, offset))
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list preset overrides"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(self._row_to_override(dict(r)) for r in rows)
 
     async def delete(self, preset_name: NotBlankStr) -> bool:
         """Remove the override for ``preset_name``."""

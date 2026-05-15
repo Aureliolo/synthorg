@@ -382,12 +382,20 @@ class _FakePresetOverrideRepo:
     async def get(self, preset_name: NotBlankStr) -> Any | None:
         return self._overrides.get(preset_name)
 
-    async def upsert(self, override: Any) -> Any:
+    async def save(self, override: Any) -> None:
         self._overrides[override.preset_name] = override
-        return override
 
     async def delete(self, preset_name: NotBlankStr) -> bool:
         return self._overrides.pop(preset_name, None) is not None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        items = sorted(self._overrides.values(), key=lambda o: o.preset_name)
+        return tuple(items[offset : offset + limit])
 
 
 class FakeCustomRuleRepository:

@@ -42,19 +42,20 @@ async def test_get_when_missing_returns_none(backend: PersistenceBackend) -> Non
     assert result is None
 
 
-async def test_upsert_then_get(backend: PersistenceBackend) -> None:
+async def test_save_then_get(backend: PersistenceBackend) -> None:
     repo = backend.preset_overrides
-    saved = await repo.upsert(_override())
+    record = _override()
+    await repo.save(record)
     loaded = await repo.get("test-cloud-provider")
     assert loaded is not None
     assert loaded.preset_name == "test-cloud-provider"
-    assert loaded.base_url == saved.base_url
+    assert loaded.base_url == record.base_url
 
 
-async def test_upsert_replaces_existing(backend: PersistenceBackend) -> None:
+async def test_save_replaces_existing(backend: PersistenceBackend) -> None:
     repo = backend.preset_overrides
-    await repo.upsert(_override(base_url="https://first.example.com/v1"))
-    await repo.upsert(_override(base_url="https://second.example.com/v1"))
+    await repo.save(_override(base_url="https://first.example.com/v1"))
+    await repo.save(_override(base_url="https://second.example.com/v1"))
     loaded = await repo.get("test-cloud-provider")
     assert loaded is not None
     assert loaded.base_url == "https://second.example.com/v1"
@@ -62,7 +63,7 @@ async def test_upsert_replaces_existing(backend: PersistenceBackend) -> None:
 
 async def test_delete_existing(backend: PersistenceBackend) -> None:
     repo = backend.preset_overrides
-    await repo.upsert(_override())
+    await repo.save(_override())
     removed = await repo.delete("test-cloud-provider")
     assert removed is True
     assert await repo.get("test-cloud-provider") is None
@@ -80,7 +81,7 @@ async def test_round_trip_models_list(backend: PersistenceBackend) -> None:
         ProviderModelConfig(id="example-large-001", alias="large"),
         ProviderModelConfig(id="example-small-001", alias="small"),
     )
-    await repo.upsert(_override(default_models=models))
+    await repo.save(_override(default_models=models))
     loaded = await repo.get("test-cloud-provider")
     assert loaded is not None
     assert loaded.default_models is not None
@@ -91,7 +92,7 @@ async def test_round_trip_models_list(backend: PersistenceBackend) -> None:
 async def test_round_trip_candidate_urls_list(backend: PersistenceBackend) -> None:
     repo = backend.preset_overrides
     urls = ("http://localhost:11434", "http://10.0.0.5:11434")
-    await repo.upsert(
+    await repo.save(
         _override(
             preset_name="test-local-provider",
             base_url=None,
@@ -106,7 +107,17 @@ async def test_round_trip_candidate_urls_list(backend: PersistenceBackend) -> No
 async def test_round_trip_supported_auth_types(backend: PersistenceBackend) -> None:
     repo = backend.preset_overrides
     auth_types = (AuthType.API_KEY, AuthType.SUBSCRIPTION)
-    await repo.upsert(_override(supported_auth_types=auth_types))
+    await repo.save(_override(supported_auth_types=auth_types))
     loaded = await repo.get("test-cloud-provider")
     assert loaded is not None
     assert loaded.supported_auth_types == auth_types
+
+
+async def test_list_items_orders_by_preset_name(backend: PersistenceBackend) -> None:
+    repo = backend.preset_overrides
+    await repo.save(_override(preset_name="zeta-provider"))
+    await repo.save(_override(preset_name="alpha-provider"))
+
+    page = await repo.list_items(limit=10)
+    names = [row.preset_name for row in page]
+    assert names == sorted(names)

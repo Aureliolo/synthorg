@@ -109,7 +109,7 @@ class PresetOverrideService:
         merged = self._build_merged(preset_name, existing, updates, actor)
         self._validate_against_preset(preset, merged)
 
-        saved = await self._repo.upsert(merged)
+        await self._repo.save(merged)
         if self._audit_service is not None:
             await self._audit_service.record(
                 provider_name=preset_name,
@@ -119,7 +119,7 @@ class PresetOverrideService:
                     "fields_changed": sorted(updates.keys()),
                 },
             )
-        return saved
+        return merged
 
     async def delete_override(
         self,
