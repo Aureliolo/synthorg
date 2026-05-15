@@ -96,6 +96,8 @@ except A, B as exc:    # INVALID -- binding without parens
 
 If you find yourself about to write a finding like "PEP 2 syntax", "missing parentheses around exception types", "should be `except (A, B):`" -- STOP. That finding is a guaranteed false positive on this codebase. Move on.
 
+**HARD STOP**: Before saving your finding file, scan your draft for the strings "Python 2 syntax", "Python 2 exception", "missing parentheses around exception", "missing parens around exception", "should be `except (`", "comma in except clause". If ANY of these appear, DELETE THAT FINDING IMMEDIATELY. Do not include it in your output file. Do not even include it as "info"-severity. The validation phase will reject it and skew the FP rate. Past runs (2026-05-15) had agent 88 emit 3 such findings as "CRITICAL" despite this very note: the agent re-read this rule, wrote the findings anyway, and they were ALL false positives confirmed by source inspection. Read the project's `pyproject.toml` if you doubt the Python version (it requires 3.14+) and trust that requirement before flagging syntax.
+
 **Em-dash ban**: never emit em-dash characters in finding output, descriptions, or proposals. Use `--` instead. Pre-commit blocks em-dashes via `no-em-dashes` hook; findings that contain them are inadmissible.
 
 **Vendor-agnostic naming**: never reference real vendor names (Anthropic, OpenAI, Claude, GPT) in finding text or proposed code changes outside `.claude/` skill bodies. Use `example-provider`, `example-large-001`, etc.
@@ -169,15 +171,32 @@ Rules:
 - Do NOT fix anything -- audit only
 - Do NOT use Bash to write files -- use the Write tool
 - **DO NOT write helper / analysis Python scripts to disk anywhere** (no `*.py` in
-  the project root, in `scripts/`, in `c:\tmp\`, in `/tmp`, anywhere on the
-  filesystem outside `_audit/latest/findings/`). Past runs leaked 14+ scratch
-  scripts (`find_missing_logging.py`, `parse_audit.py`, `audit_pydantic_models*.py`,
-  `validate_config_examples.py`, `audit_diff.py`, etc.) that triggered Pyright
-  diagnostics in the main thread and required user cleanup. Use Grep/Glob/Read
-  inline -- if you can't accomplish the audit with those, narrow your scope.
-  The Write tool exists ONLY to write your finding file. The audit Bash tool is
-  for read-only inspection (`git`, `gh`, `find`, `wc`); never for `python -c`,
-  `cat >`, `tee`, redirects, or heredocs.
+  the project root, in `scripts/`, in `c:\tmp\`, in `/tmp`, in `C:\Users\<name>\tmp\`,
+  in `C:\Users\<name>\.claude\`, anywhere on the filesystem outside
+  `_audit/latest/findings/`). Past runs leaked 25+ scratch scripts that triggered
+  Pyright diagnostics in the main thread and required user cleanup. Documented
+  leaks include: `find_missing_logging.py`, `parse_audit.py`,
+  `audit_pydantic_models{,_v2,_v3}.py`, `validate_config_examples.py`,
+  `audit_diff.py`, `audit_exports.py`, `audit_final.py`, `audit_orphans.py`,
+  `audit_refined.py`, `comprehensive_consumed_check.py`,
+  `extract_consumed_settings.py`, `final_unwired_audit.py`, `find_orphans.py`,
+  `investigate_unwired_settings.py`, `run_orphan_check.py`,
+  `verify_all_unwired.py`, `verify_settings_consumption.py`, `audit_models.py`,
+  `audit_settings.py`, `audit_api_docs.py`, `check_immutability.py`,
+  `check_model_mutations.py`, `pattern_finder.py`,
+  `scripts/audit_api_drift_comprehensive.py`,
+  `scripts/audit_api_reference_drift.py`, `scripts/audit_pydantic_models.py`,
+  `scripts/audit_phase35_synthesis.py`. Use Grep/Glob/Read inline -- if you
+  can't accomplish the audit with those, narrow your scope. The Write tool
+  exists ONLY to write your finding file. The audit Bash tool is for read-only
+  inspection (`git`, `gh`, `find`, `wc`); never for `python -c`, `cat >`,
+  `tee`, redirects, or heredocs.
+- **NEVER write to `investigation.py`** at project root. That file belongs to
+  the user as their standing debug script (per memory rule
+  `feedback_investigation_script.md`). The 2026-05-15 audit had an agent
+  overwrite it with audit-helper code; the user had to `git restore` to
+  recover. `investigation.py` is reserved -- treat it as an external
+  file you have no business touching.
 
 ## Five FP-prevention rules (LOAD-BEARING)
 
@@ -270,6 +289,59 @@ The 2026-05-03 run had agent flag AuthService's mixed sync/async API as
 high-severity duplication; the actual distribution was 100% production-async
 + test-fixture-sync, which made the choice obvious (drop sync, keep async).
 Without the distribution, the finding looked like a hard choice.
+
+### R-F: Pre-write self-review (apply before saving the finding file)
+
+Before calling Write on your finding file, perform a self-review pass:
+
+1. Re-read each finding in your draft. For each one, ask:
+   - Is the cited `file:line` real? Open the file at the cited line; verify
+     the quoted code matches. If you can't see the cited line, DELETE the
+     finding (you're hallucinating).
+   - Is the suggested fix already in place in the surrounding 50 lines?
+     (R-A check) -- if yes, DELETE.
+   - Does the finding name a Python syntax issue with `except A, B:`?
+     (PEP-758 check) -- if yes, DELETE.
+   - Does the audit cite a "convention violation" without naming the
+     convention or pointing to its enforcement script? -- if yes, DELETE
+     (you don't know the convention).
+
+2. Verify each cited file path exists (use Read on a few). 2026-05-15 had
+   synthesizer-style agents hallucinate `audit/chain_coordinator.py`,
+   `docs/design/permission-model.md`, `docs/design/approval-flow.md` --
+   none of those exist in the repo.
+
+3. If your draft is over 30 findings, sample 5 random ones and verify them
+   in full. Past haiku runs of agent 14 emitted 84 findings, ALL false
+   positives -- the prompt's first 5 verification samples would have caught
+   the pattern (regex misses type annotations / framework DI / factory
+   returns / `__all__` / isinstance / star imports). If your sample shows
+   2 or more FPs, dramatically narrow your scope or DELETE the whole
+   finding class.
+
+A small high-confidence list of confirmed findings is worth 10x a long
+list with a 50%+ FP rate. The audit user reads the small list; the long
+list goes to validation and ~half gets deleted there at higher cost.
+
+### R-G: Validators must quote source code before each verdict
+
+(Applies in Phase 3 validation, not the per-agent phase.) Every finding
+verdict (CONFIRMED / FALSE_POSITIVE / INTENTIONAL) emitted by a validator
+MUST be accompanied by:
+
+1. The cited path:line opened via Read.
+2. A 2-5 line quote of the actual surrounding code.
+3. A one-sentence reason tying the quote to the verdict.
+
+A verdict without a code quote is a worthless verdict -- the validator
+just rubber-stamped the audit agent. Past runs (validation in 2026-05-03,
+2026-05-15) had ~10% of CONFIRMED verdicts collapse on second look
+because the validator never opened the cited file. The 2026-05-15 run
+also had the synthesis agent (Phase 4) ignore validation FALSE_POSITIVE
+verdicts entirely and emit 3 PEP-758 findings as "critical" -- so
+validators must also write their verdicts in a format the synthesizer
+can mechanically parse (the existing `### file:line -- VERDICT` heading
+template).
 ```
 
 ### Streaming Pool Execution
@@ -602,7 +674,11 @@ list of HIGH-CONFIDENCE confirmed mismatches is far more useful than 44
 findings with 80% FP rate.
 ```
 
-### Wave 3: Dead Code & Unused (3 agents)
+### Wave 3: Dead Code & Unused (2 agents -- agent 14 retired 2026-05-15)
+
+**Agent 14 RETIRED**: see Retired Agents table. Replaced by `vulture` in CI.
+
+<!-- ORIGINAL AGENT 14 PROMPT RETAINED FOR REFERENCE; DO NOT LAUNCH
 
 **Agent 14: unused-python-exports** (sonnet)
 File: `_audit/latest/findings/14-unused-python-exports.md`
@@ -614,6 +690,7 @@ Exclude: __init__ methods, property descriptors, __repr__/__str__, metaclass
 methods, enum members, Pydantic field definitions. Severity: medium.
 
 ```
+-->
 
 **Agent 15: unused-dto-fields** (sonnet)
 File: `_audit/latest/findings/15-unused-dto-fields.md`
@@ -775,8 +852,54 @@ File: `_audit/latest/findings/30-missing-settings-bridge.md`
 
 ```text
 Cross-reference hardcoded values in src/synthorg/ with settings definitions in
-settings/definitions/. Find values that SHOULD be configurable but are hardcoded,
-and settings defined but never consumed by any code. Severity: medium.
+settings/definitions/. Find values that SHOULD be configurable but are hardcoded.
+
+CRITICAL FALSE-POSITIVE GUARD: prior runs of this agent (2026-05-15) had a ~70%
+FP rate (~40 of ~57 findings overturned). The root cause: the prompt asked for
+"values that SHOULD be configurable" without defining "should be". Agents
+flagged every Final[int|float] constant regardless of whether operators would
+actually want to tune it. Many flagged constants are internal protocol-boundary
+values that should NEVER be tunable.
+
+A constant is an "operator-tunable knob" ONLY IF an experienced operator
+running SynthOrg in production would plausibly want to override it to match
+their environment. Examples of WHAT QUALIFIES:
+- Cost / budget thresholds (alert at, hard stop at)
+- Rate limit windows + burst caps for user-controlled flows
+- Polling intervals for user-visible loops
+- Batch sizes / cache sizes for performance tuning
+- Retry counts for user-controlled retries
+- Display thresholds (warn at N items, etc.)
+
+Examples of WHAT DOES NOT QUALIFY (do NOT flag):
+- Shutdown drain timeouts (orchestrator contract -- changing breaks deploy)
+- NATS / WS / HTTP protocol-boundary values (max payload, frame size, max
+  message length) -- changing breaks the protocol
+- JWT expiry / token rotation values (security-critical, baked-in)
+- Audit log retention / chain depth (security/compliance constants)
+- Internal exponential backoff base values (libraries' implementation detail)
+- Process-lifecycle constants (sleep before SIGKILL, etc.)
+- Any value where the surrounding code comment says "do not tune" or "by
+  design" or "protocol boundary"
+- Internal "test-only" constants (poll loops in test fixtures)
+- Compression / encoding constants (algorithm tuning -- impl detail)
+
+VERIFICATION REQUIREMENT: before flagging ANY constant as a missing
+settings-bridge candidate:
+1. Read the constant's file context (5 lines above + below). Look for
+   comments like "operator-facing", "tunable", "policy", "threshold" --
+   present means flag; absent means probably internal.
+2. Check `settings/definitions/<namespace>.py` -- if a setting with a
+   close name exists, the value IS wired; do NOT flag.
+3. Ask: "If a SaaS-tier operator emailed support saying 'I want to change
+   this value', would the support reply be 'set this env var' or 'sorry,
+   that's not tunable'?" If the latter, do NOT flag.
+
+A 5-finding list of cited operator-tunable knobs absent from settings is
+worth far more than 57 findings spread across internal constants.
+
+Severity: medium. Cap at 15 findings total per run; if you exceed 15, narrow
+your scope and re-evaluate -- you are likely capturing internal constants.
 
 ```
 
@@ -1548,12 +1671,27 @@ Severity: medium.
 File: `_audit/latest/findings/78-cli-reference-drift.md`
 
 ```text
-Compare CLI reference pages in docs/reference/ (and cli/CLAUDE.md command
-listings) against actual cobra definitions in cli/cmd/*.go.
+Compare CLI reference documentation against actual cobra definitions in
+cli/cmd/*.go.
+
+VERIFICATION REQUIREMENT (2026-05-15 lesson): before flagging a flag as
+"undocumented", you MUST grep ALL of these locations for the flag name:
+- `docs/reference/cli*.md` (canonical reference)
+- `cli/CLAUDE.md` (CLI project documentation)
+- `cli/README.md` (if exists)
+- `docs/guides/*.md` (operator-facing how-tos may document flags too)
+
+Emit the grep evidence in your finding (paste the actual `git grep -n
+'<flag-name>'` output). A finding without that evidence is inadmissible.
+
+2026-05-15 run had this agent emit a HIGH-severity finding claiming
+`--encrypt-secrets` was undocumented when it was in fact documented in
+`cli/CLAUDE.md` line 107. The agent only searched `docs/reference/`. A
+multi-source grep would have caught it.
 
 Flag:
 - Documented flags or commands that don't exist
-- Real flags or commands with no docs entry
+- Real flags or commands with no docs entry in ANY of the locations above
 - Description drift between docs and cobra Long / Short fields
 
 Severity: medium.
@@ -1707,6 +1845,22 @@ Audit authentication and cookie hygiene:
 - JWT usage without alg/exp/iss/aud validation
 - OAuth flows missing state/nonce parameters
 - CSRF protection gaps on state-mutating endpoints
+
+PEP 758 HARD STOP (2026-05-15 lesson): this agent has historically misflagged
+`except A, B:` (unparenthesised, no `as` binding) in auth/oauth code as
+"Python 2 syntax" / "missing parentheses" / "CRITICAL Python syntax error".
+That syntax is VALID Python 3.14 per PEP 758, deliberately used throughout
+the codebase, including in auth/oauth files (api/auth/controller.py:757,
+integrations/oauth/state_service.py:74, integrations/oauth/callback_handler.py:56).
+The 2026-05-15 run emitted 3 such findings as CRITICAL despite the rule in
+the preamble.
+
+Before writing your finding file, do a final sweep: search your draft for
+the substrings "Python 2", "missing parens", "missing parentheses around
+exception", "should be `except (`", "PEP 2". If you find ANY, delete that
+finding immediately. Do NOT include it at any severity. Verify the
+codebase's Python version by reading `pyproject.toml` `requires-python` if
+you doubt the rule.
 
 Severity: high.
 ```
@@ -3558,6 +3712,7 @@ These concerns are already enforced by hooks, linters, or external tooling today
 | changelog-release-notes | `release-please` (automated) |
 | changelog-releases-parity | `release-please` (automated) |
 | tests-without-assertions (slot 98) | Retired 2026-04-20. Regex-based detection cannot distinguish helper-function assertions, `pytest.raises`/guard-raises patterns, or Pydantic validation-raises from truly empty tests. Produced ~93% false positives in validation (14/15 sampled findings were valid tests). Rely on coverage + mutation testing for vacuous-test detection instead. |
+| unused-python-exports (slot 14) | Retired 2026-05-15. Regex-based detection cannot see type annotations, Litestar framework dependency injection (`data: SomeRequestModel`), factory pattern returns (only `build_x()` imported, not the `X` class returned), `__all__` re-exports, isinstance / typing.Protocol structural usage, or test fixture return types. 2026-05-15 run produced 84 findings, 100% false-positive (validate-batch-01 sampled 28, found 0 confirmed). Use `vulture` for Python dead-code detection (add to dev deps + pre-push gate) or `ruff` `F401` for unused imports. The semantic gap between "imported by name" and "used at runtime via framework / annotation / Protocol structural matching" is too wide for regex. The original prompt is kept commented in Wave 3 for reference only. |
 
 ### Planned Retirements
 
@@ -3616,7 +3771,31 @@ For a typical full run (~400 findings across ~100 non-empty files), expect ~17-2
 ```text
 You are validating audit findings by reading the ACTUAL SOURCE CODE.
 
-For each finding below, do:
+## R-G MANDATORY: per-finding code quote
+
+Every verdict you emit (CONFIRMED, FALSE_POSITIVE, INTENTIONAL) MUST be
+accompanied by:
+1. The cited path:line opened via Read.
+2. A 2-5 line quote of the actual surrounding code.
+3. A one-sentence reason tying the quote to the verdict.
+
+A verdict without a code quote is rubber-stamping; the next synthesizer
+pass will treat it as untrusted. If you cannot read the file at the cited
+line (file doesn't exist, line out of range), emit FALSE_POSITIVE with
+reason "cited path does not exist" or "line out of range".
+
+## PEP 758 FALSE_POSITIVE override
+
+If an audit finding flags `except A, B:` (no parens, no `as`) as a Python
+syntax error, "Python 2 syntax", or "missing parens", the verdict is
+ALWAYS FALSE_POSITIVE. The codebase is Python 3.14+ (verify with
+`requires-python` in `pyproject.toml`) and PEP 758 makes that syntax
+valid. Past runs (2026-05-15) had agent 88 emit 3 such findings as
+CRITICAL; all were FALSE_POSITIVE.
+
+## Per-finding process
+
+For each finding below:
 1. Read the file at the reported line number
 2. Quote the actual code (2-5 lines)
 3. Check if the issue is real or a false positive
@@ -3625,12 +3804,22 @@ For each finding below, do:
 
 Write results to: _audit/latest/findings/validate-batch-{N}.md
 
-Format per finding:
+Format per finding (mechanically parseable; synthesizer reads this verbatim):
 ### [original-file]:[line] -- [CONFIRMED|FALSE_POSITIVE|INTENTIONAL]
 **Original**: [description from audit agent]
-**Actual code**: [quoted code]
-**Verdict**: [explanation]
+**Actual code**:
+```
+<file:line>
+<2-5 line quote>
+```
+**Verdict**: [reason tying quote to verdict]
 ---
+
+## Per-batch summary at the bottom
+
+After all per-finding entries, write a `## Summary` section:
+- Per source file: N confirmed / M false-positive / K intentional
+- Note any audit agents with FP rate above 30% (recommend prompt revision)
 
 Findings to validate:
 {BATCH_OF_FINDINGS}
@@ -3650,6 +3839,16 @@ Findings to validate:
 After validation, read all finding files and build `_audit/latest/INDEX.md`.
 
 **MANDATORY for the agent that builds INDEX.md**: enumerate the actual files in `_audit/latest/findings/` via `Glob` or `Bash ls _audit/latest/findings/`. Use the REAL filenames. The 2026-05-03 run produced an INDEX with hallucinated filenames (`14-web-store-architecture-drift.md`, `19-benchmark-regression.md`, etc.) that did not match the agent roster. Before writing INDEX, list `_audit/latest/findings/*.md` and copy the names verbatim. Each entry's finding count must come from actually grepping the file (`grep -cE "^### (critical|high|medium|low|info)" <path>`), not from an assumed wave grouping.
+
+**MANDATORY: apply validation verdicts BEFORE composing INDEX (2026-05-15 lesson).** The synthesizer in the 2026-05-15 run read finding files directly and produced an INDEX with 3 PEP-758 findings tagged as CRITICAL despite `validate-batch-12.md` explicitly marking them FALSE_POSITIVE. The synthesizer must:
+
+1. **Read EVERY `_audit/latest/findings/validate-batch-*.md` file FIRST**, before reading any source finding file.
+2. Build an in-memory FALSE_POSITIVE list of `(file:line | symbol)` keys whose verdict in any validate-batch is FALSE_POSITIVE.
+3. Build an INTENTIONAL list the same way.
+4. When composing INDEX entries: if a finding's key is in the FALSE_POSITIVE list, SKIP it (do not include at any severity). If in the INTENTIONAL list, include with `[INTENTIONAL]` prefix and do not count toward severity totals.
+5. **Final self-check**: before saving INDEX.md, scan the draft for the substrings "Python 2 syntax", "missing parens", "missing parentheses around exception", "PEP 2". If any appear, delete those rows -- they slipped past the validation purge.
+6. **Path verification**: for every Top-20 critical+high entry, run Read on the cited file. If the file does not exist, drop the entry; if the cited line is out of range, drop the entry. The 2026-05-15 synthesizer hallucinated `audit/chain_coordinator.py`, `docs/design/permission-model.md`, `docs/design/approval-flow.md` -- none existed in the repo.
+7. **Zero-finding agent list verification**: do NOT guess which agents had zero findings. Run `Bash: grep -L '\\*\\*Findings\\*\\*: [1-9]' _audit/latest/findings/*.md` to enumerate files where the `**Findings**` header is 0 or missing. Cross-reference with files that have substantive content -- some agents wrote prose summaries instead of strict-format headers, so a missing header does not always mean zero findings.
 
 Use this template:
 
@@ -3709,7 +3908,11 @@ Present INDEX.md to the user with a one-paragraph summary, then **always produce
 
 ### Phase 5 DEFAULT: Deduped Issue List (MANDATORY before triage prompt)
 
-Group every confirmed finding by its **issue class** (= the agent-finding-file source -- e.g. all 107 raw findings from `09-unwired-settings.md` collapse into ONE row "Unwired settings"). Write `_audit/latest/ISSUES.md`:
+Group every confirmed finding by its **issue class** (= the agent-finding-file source -- e.g. all 107 raw findings from `09-unwired-settings.md` collapse into ONE row "Unwired settings"). Write `_audit/latest/ISSUES.md`.
+
+**The same FALSE_POSITIVE / INTENTIONAL purge rules from Phase 4 apply here.** Read validate-batch files first; build the FP set; exclude FP findings from the count and from any "Top affected paths" examples. The 2026-05-15 run had the ISSUES.md emit "Python 2 syntax in exception handlers" as critical issue #1 with 3 affected paths, all of which validate-batch-12 had marked FALSE_POSITIVE.
+
+ISSUES.md format:
 
 ```markdown
 # Deduped Issue List
@@ -3977,8 +4180,10 @@ The 2026-05-03 run leaked at least 14 helper scripts to disk despite the agent-p
 Run this Bash sweep:
 
 ```bash
-rm -f find_missing_logging.py find_missing_logging_filtered.py parse_audit.py validate_config_examples.py audit_diff.py audit_parity.py check_docs.py check_rate_limits.py circular_dep_analyzer.py check_protocols.py debug_scanner.py detailed_check.py final_audit.py find_unwired.py test_regex.py validate_configs.py verify_final.py verify_protocols.py || true
+rm -f find_missing_logging.py find_missing_logging_filtered.py parse_audit.py validate_config_examples.py audit_diff.py audit_parity.py check_docs.py check_rate_limits.py circular_dep_analyzer.py check_protocols.py debug_scanner.py detailed_check.py final_audit.py find_unwired.py test_regex.py validate_configs.py verify_final.py verify_protocols.py audit_exports.py audit_final.py audit_orphans.py audit_refined.py audit_via_grep.sh comprehensive_consumed_check.py extract_consumed_settings.py final_unwired_audit.py find_orphans.py investigate_unwired_settings.py run_orphan_check.py verify_all_unwired.py verify_settings_consumption.py audit_models.py audit_settings.py audit_api_docs.py check_immutability.py check_model_mutations.py pattern_finder.py || true
 ```
+
+**NEVER include `investigation.py` in this sweep.** That file belongs to the user as their standing debug script (per memory rule `feedback_investigation_script.md`). If `investigation.py` is unexpectedly modified, prompt the user to `git restore investigation.py` -- do NOT delete it.
 
 (`rm -f` is silent on missing paths, so no stderr redirect is needed; `|| true` keeps the chain from aborting on edge-case errors. Per Rule #11, the project's PreToolUse hook blocks `2>/dev/null` and other redirects unconditionally.)
 
@@ -4034,5 +4239,29 @@ Document specific issues observed in named runs so future runs avoid repeating t
 - **Renovate Dependency Dashboard #1730** appeared in `gh issue list` injected into agent prompts. Per memory rule `feedback_open_issues_exclude_renovate.md`, exclude any Renovate-managed issue from the issue list.
 - **Phase 6 DIFF agent only validated 31% of agents** because it ran in parallel with synthesis instead of after, and assumed batches were complete. Sequence Phase 6 strictly after Phase 3 validation finishes.
 - **`_audit/latest` re-link collision** when re-running: `ln -sfn` alone fails on a pre-existing real directory or Windows Junction; `rm -f` alone refuses on a directory. The Phase 0 setup command now handles all three states (symlink, real directory / Junction, missing) via `if test -d _audit/latest && ! test -L _audit/latest; then rm -rf _audit/latest; else rm -f _audit/latest; fi` before the relink.
+
+### 2026-05-15 run
+
+- **Agent 14 (`unused-python-exports`) had ~100% FP rate** (84 findings, 0 confirmed in validate-batch-01). Regex/grep cannot see Litestar framework dependency injection (`data: SomeRequestModel` parameter binding), factory pattern returns (only the factory imported), type annotations using the symbol, `__all__` re-exports, isinstance / Protocol structural matching, or test fixture return types. RETIRED in this skill version; the original prompt is commented out in Wave 3 for reference; replacement is `vulture` for Python dead-code detection.
+
+- **Agent 30 (`missing-settings-bridge`) had ~70% FP rate** (~40 of ~57 findings overturned in validate-batch-05). Root cause: the prompt asked "values that SHOULD be configurable" without criteria. Agents flagged every `Final[int|float]` constant. Internal protocol-boundary values (shutdown drain, NATS payload max, JWT expiry, audit retention) got swept in. Fixed via tighter prompt criteria (operator-tunable knob definition + exclusion list) + 15-finding cap.
+
+- **Agent 88 (`cookie-auth-security`) emitted 3 PEP-758 misflags as CRITICAL** despite the preamble's PEP-758 rule. Validate-batch-12 confirmed all 3 FALSE_POSITIVE (`except A, B:` is valid Python 3.14 per PEP 758). Fixed via per-agent hard-stop directive: agent must scan its draft for the substrings "Python 2", "missing parens", "should be `except (`" before saving and DELETE any matching finding.
+
+- **Agent 78 (`cli-reference-drift`) misflagged `--encrypt-secrets` as undocumented**. The flag IS documented in `cli/CLAUDE.md` line 107 but the agent only grepped `docs/reference/`. Fixed via multi-source grep requirement (search ALL of `docs/reference/cli*.md`, `cli/CLAUDE.md`, `cli/README.md`, `docs/guides/*.md`) with evidence requirement.
+
+- **Phase 4 synthesizer ignored validation verdicts and emitted 3 PEP-758 findings as CRITICAL** despite validate-batch-12.md explicitly marking them FALSE_POSITIVE. The synthesizer read finding files directly without consulting validate-batch files first. Fixed via 7-step mandatory pre-INDEX procedure: (1) read all validate-batch files FIRST, (2) build FP/INTENTIONAL key set, (3) exclude FP entries at composition time, (4) self-check the draft for PEP-758 substrings, (5) verify each Top-20 path exists via Read, (6) enumerate zero-finding files via grep not by guess.
+
+- **Synthesizer hallucinated file paths** in Top-20: `audit/chain_coordinator.py`, `docs/design/permission-model.md`, `docs/design/approval-flow.md` did not exist in the repo. Fixed via path-verification step in Phase 4.
+
+- **~25 scratch scripts leaked** to project root + `scripts/` + `c:\tmp\` + `C:\Users\Aurelio\tmp\` + `C:\Users\Aurelio\.claude\` despite Rule #10. Documented inventory added to Rule #10 + Phase 7 cleanup sweep extended. Recommendation: add a PreToolUse hook blocking Write of `*.py` files at project root + `scripts/` during audit runs (couldn't be added retroactively for this run).
+
+- **`investigation.py` was overwritten by an audit agent** at project root, destroying the user's standing debug script. Fixed via explicit no-touch rule in the agent prompt template + Phase 7 cleanup safeguard (never delete `investigation.py`, only prompt user to `git restore` it).
+
+- **Agent 121 produced two near-duplicate finding files** (`121-ws-sse-robustness.md` and `121-websocket-sse-robustness.md`) due to either a double launch or the agent saving twice with different name variants. Fixed via "synthesizer must dedupe by leading slot number" instruction; per-agent prompts already specify the canonical filename.
+
+- **Validators rubber-stamped some CONFIRMED verdicts** without quoting source code. Added R-G (validator must quote 2-5 lines of source code per verdict) to make rubber-stamping mechanically visible in the verdict file.
+
+- **finding-file format varies** across agents -- some used strict `### [severity] file:LINE` headings, many used prose summaries. The skill's "Finding File Format" section is mandatory but agents disobey under prompt pressure. Phase 4 INDEX builder must extract findings tolerantly (read each summary section) rather than relying on `grep -c "^### "` counts. The 2026-05-15 run had every file return `0` to the standard heading-pattern grep despite ~673 raw findings collected.
 
 When updating the skill in response to a new run's lessons, add a new dated subsection here. Older subsections stay so the rationale for each rule is traceable.
