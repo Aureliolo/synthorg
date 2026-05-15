@@ -387,21 +387,16 @@ class TaskEngine(TaskEngineLoopsMixin):
     async def _drain_all(self, effective_timeout: float) -> None:
         """Drain the mutation queue + observer queue within the given budget.
 
-        Extracted from :meth:`stop` so the outer ``asyncio.wait_for``
-        hard-deadline guard has a single awaitable to bound.
-
-        The budget is split evenly between the processing-drain stage
-        and the observer-drain stage so a slow processing cancellation
-        (e.g. xdist-loaded CI runner where ``asyncio.wait_for`` fires
-        late and cancellation handshake takes tens of ms) cannot starve
-        the observer drain into a zero-budget call. Under the previous
-        single-budget design, ``_drain_processing(effective_timeout)``
-        could consume the entire deadline; the observer drain then ran
-        with ``remaining≈0``, which under load left the outer
-        ``hard_deadline = 2 * effective_timeout`` racing against the
-        cancellation latency of the observer queue ``put(None)``. The
-        even split guarantees each stage at least ``effective_timeout /
-        2`` so the outer guard never fires on a normal drain.
+        Splits ``effective_timeout`` evenly between the processing-drain
+        stage and the observer-drain stage so each stage is guaranteed
+        at least ``effective_timeout / 2``. A slow processing
+        cancellation (cancellation handshake latency under contention,
+        for example) cannot starve the observer drain into a
+        zero-budget call, and the outer
+        ``hard_deadline = 2 * effective_timeout`` guard set by
+        :meth:`stop` never fires on a normal drain. Wrapped in a single
+        awaitable so the outer ``asyncio.wait_for`` has exactly one
+        thing to bound.
         """
         stage_budget = effective_timeout / 2.0
 

@@ -207,6 +207,7 @@ class AppState(AppStateServicesMixin):
         "_idempotency_service",
         "_integration_health_facade_service",
         "_interrupt_store",
+        "_lazy_service_lock",
         "_lockout_store",
         "_mcp_catalog_facade_service",
         "_mcp_catalog_service",

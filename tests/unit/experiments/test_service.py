@@ -17,17 +17,15 @@ from tests._shared.fake_clock import FakeClock
 pytestmark = pytest.mark.unit
 
 
-def _service() -> tuple[ExperimentService, InMemoryExperimentRepository]:
+def _service() -> tuple[ExperimentService, InMemoryExperimentRepository, FakeClock]:
     repo = InMemoryExperimentRepository()
-    svc = ExperimentService(
-        repository=repo,
-        clock=FakeClock(start=datetime(2026, 5, 15, tzinfo=UTC)),
-    )
-    return svc, repo
+    clock = FakeClock(start=datetime(2026, 5, 15, tzinfo=UTC))
+    svc = ExperimentService(repository=repo, clock=clock)
+    return svc, repo, clock
 
 
 async def test_assign_deterministic_same_subject_same_variant() -> None:
-    svc, _ = _service()
+    svc, _, _ = _service()
     await svc.register_variant(
         experiment=NotBlankStr("exp"),
         variant=NotBlankStr("control"),
@@ -44,7 +42,7 @@ async def test_assign_deterministic_same_subject_same_variant() -> None:
 
 
 async def test_assign_respects_weight_distribution() -> None:
-    svc, _ = _service()
+    svc, _, _ = _service()
     await svc.register_variant(
         experiment=NotBlankStr("exp"),
         variant=NotBlankStr("control"),
@@ -67,7 +65,7 @@ async def test_assign_respects_weight_distribution() -> None:
 
 
 async def test_assign_replays_recorded_assignment_after_variant_change() -> None:
-    svc, repo = _service()
+    svc, repo, _ = _service()
     await svc.register_variant(
         experiment=NotBlankStr("exp"),
         variant=NotBlankStr("control"),
@@ -102,7 +100,7 @@ async def test_assign_replays_recorded_assignment_after_variant_change() -> None
 
 
 async def test_assign_raises_when_no_variants_registered() -> None:
-    svc, _ = _service()
+    svc, _, _ = _service()
     from synthorg.core.domain_errors import NotFoundError
 
     with pytest.raises(NotFoundError, match="no registered variants"):
@@ -113,7 +111,7 @@ async def test_assign_raises_when_no_variants_registered() -> None:
 
 
 async def test_register_variant_idempotent_replace() -> None:
-    svc, repo = _service()
+    svc, repo, _ = _service()
     await svc.register_variant(
         experiment=NotBlankStr("exp"),
         variant=NotBlankStr("v1"),
@@ -130,7 +128,7 @@ async def test_register_variant_idempotent_replace() -> None:
 
 
 async def test_delete_variant_returns_false_when_absent() -> None:
-    svc, _ = _service()
+    svc, _, _ = _service()
     removed = await svc.delete_variant(
         experiment=NotBlankStr("exp"),
         variant=NotBlankStr("ghost"),
@@ -139,8 +137,7 @@ async def test_delete_variant_returns_false_when_absent() -> None:
 
 
 async def test_list_assignments_paginates_in_recency_order() -> None:
-    svc, _ = _service()
-    clock = svc._clock
+    svc, _, clock = _service()
     await svc.register_variant(
         experiment=NotBlankStr("exp"),
         variant=NotBlankStr("v"),
@@ -155,7 +152,7 @@ async def test_list_assignments_paginates_in_recency_order() -> None:
         # timestamp; without this the recency sort would degenerate to
         # stable insertion order and the assertion below would pass for
         # an ascending-sort regression too.
-        clock.advance(1)  # type: ignore[attr-defined]
+        clock.advance(1)
     page, total = await svc.list_assignments(
         NotBlankStr("exp"),
         limit=3,

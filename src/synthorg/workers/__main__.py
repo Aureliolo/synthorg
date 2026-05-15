@@ -51,8 +51,9 @@ async def _placeholder_executor(claim: TaskClaim) -> TaskClaimStatus:
     """Acknowledge the claim without executing any task logic.
 
     Smoke-test fallback for the dispatch path; only used when the
-    operator passes ``--executor placeholder`` or when no backend
-    URL is configured.
+    operator explicitly passes ``--executor placeholder``. A missing
+    backend URL is handled by ``_resolve_executor()`` exiting with
+    ``SystemExit`` rather than silently falling back to this executor.
     """
     logger.info(
         WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
@@ -175,8 +176,14 @@ async def _async_main(argv: list[str]) -> int:
         queue_config=queue_config,
         nats_config=nats_config,
     )
-    await task_queue.start()
+    # ``queue_started`` gates the ``task_queue.stop()`` call so a
+    # ``start()`` failure does not call ``stop()`` on a queue that
+    # never bound the consumer, and a flag-flip lets the owned
+    # ``http_client`` close cleanly regardless of which stage failed.
+    queue_started = False
     try:
+        await task_queue.start()
+        queue_started = True
         await run_worker_pool(
             queue_config=queue_config,
             task_queue=task_queue,
@@ -186,7 +193,8 @@ async def _async_main(argv: list[str]) -> int:
     finally:
         if http_client is not None:
             await http_client.aclose()
-        await task_queue.stop()
+        if queue_started:
+            await task_queue.stop()
     return 0
 
 

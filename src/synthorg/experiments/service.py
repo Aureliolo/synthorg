@@ -18,9 +18,10 @@ import hashlib
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.experiments.models import (
+    _MAX_VARIANT_WEIGHT,
     ExperimentAssignment,
     ExperimentVariant,
 )
@@ -77,14 +78,14 @@ class ExperimentService:
                 the Pydantic model bound for callers that build a
                 ``weight`` dynamically rather than from a frozen DTO).
         """
-        if weight < 1:
+        if weight < 1 or weight > _MAX_VARIANT_WEIGHT:
             logger.warning(
                 EXPERIMENT_VARIANT_INVALID_WEIGHT,
                 experiment=str(experiment),
                 variant=str(variant),
                 weight=weight,
             )
-            msg = "weight must be >= 1"
+            msg = f"weight must be between 1 and {_MAX_VARIANT_WEIGHT}"
             raise ValidationError(msg)
         record = ExperimentVariant(
             experiment=experiment,
@@ -176,14 +177,29 @@ class ExperimentService:
             variant=NotBlankStr(chosen.variant),
             assigned_at=self._clock.now(),
         )
-        await self._repo.record_assignment(assignment)
-        # Re-fetch after record so a concurrent writer that landed
-        # first (race between get_assignment and record_assignment) is
-        # the authoritative record. The choice is deterministic so both
-        # writers chose the same variant; only ``assigned_at`` differs,
-        # and the first writer's timestamp is the one durable repos
-        # would have committed before a second insert would have hit a
-        # unique constraint.
+        try:
+            await self._repo.record_assignment(assignment)
+        except ConflictError:
+            # A concurrent writer won the insert race against a durable
+            # repository whose ``record_assignment`` enforces a unique
+            # constraint on ``(experiment, subject_id)``. Re-read the
+            # canonical assignment instead of failing: the choice is
+            # deterministic so the winning row carries the same variant,
+            # only the ``assigned_at`` timestamp differs.
+            canonical = await self._repo.get_assignment(
+                experiment=experiment,
+                subject_id=subject_id,
+            )
+            if canonical is None:
+                raise
+            return canonical
+        # Re-fetch after a successful record so a concurrent writer that
+        # landed first (race between get_assignment and
+        # record_assignment under a last-write-wins backend like the
+        # in-memory repo) is the authoritative record. The choice is
+        # deterministic so both writers chose the same variant; only
+        # ``assigned_at`` differs, and the first writer's timestamp is
+        # the canonical one.
         canonical = await self._repo.get_assignment(
             experiment=experiment,
             subject_id=subject_id,

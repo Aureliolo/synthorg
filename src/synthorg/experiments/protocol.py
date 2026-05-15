@@ -45,7 +45,14 @@ class ExperimentRepository(Protocol):
         self,
         assignment: ExperimentAssignment,
     ) -> None:
-        """Insert or update the row keyed on ``(experiment, subject_id)``."""
+        """Insert or update the row keyed on ``(experiment, subject_id)``.
+
+        Durable backends may enforce a unique constraint on the
+        composite key and raise
+        :class:`synthorg.core.domain_errors.ConflictError` when a
+        concurrent writer lands the row first. Callers handle the
+        conflict by re-reading via :meth:`get_assignment`.
+        """
         ...
 
     async def get_assignment(
