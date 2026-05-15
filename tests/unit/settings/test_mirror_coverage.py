@@ -56,8 +56,12 @@ def _discover_mirror_classes() -> list[tuple[type[BaseModel], MirrorField]]:
     for module_info in pkgutil.walk_packages(synthorg.__path__, prefix="synthorg."):
         try:
             module = importlib.import_module(module_info.name)
-        except ImportError:
-            continue
+        except ImportError as exc:
+            msg = (
+                f"Failed to import {module_info.name!r} while discovering "
+                "_MIRROR_FIELDS; skipping it would silently reduce coverage."
+            )
+            raise AssertionError(msg) from exc
         for _, cls in inspect.getmembers(module, inspect.isclass):
             if cls.__module__ != module_info.name:
                 continue

@@ -183,34 +183,44 @@ async def _assemble_company_card(
     return card_data, fingerprint, len(identities)
 
 
-async def _resolve_and_build_agent_card(
-    app_state: Any,
-    agent_id: str,
-    host_base: str,
-) -> tuple[dict[str, Any], str] | None:
-    """Resolve an agent and build its card payload + fingerprint.
+async def _resolve_agent_for_card(app_state: Any, agent_id: str) -> Any | None:
+    """Resolve an agent identity by id, then by name.
 
-    Returns ``(card_data, fingerprint)``, or ``None`` when no agent
-    matches ``agent_id`` (caller maps that to 404). Raises on any other
+    Returns the identity, or ``None`` when no agent matches
+    ``agent_id`` (caller maps that to 404). Raises on registry
     failure; the caller maps that to a 503.
     """
     registry = app_state.agent_registry
     identity = await registry.get(agent_id)
     if identity is None:
         identity = await registry.get_by_name(agent_id)
-    if identity is None:
-        return None
+    return identity
+
+
+def _agent_fingerprint(identity: Any) -> str:
+    """Compute the staleness fingerprint for an agent identity.
+
+    Derived from name + role + skills so a rename, role change, or
+    skill edit invalidates a cached card before TTL expiry instead
+    of serving a stale document.
+    """
+    return hashlib.sha256(
+        f"{identity.name}:{identity.role}:{identity.skills}".encode(),
+    ).hexdigest()[:16]
+
+
+def _build_agent_card_payload(
+    app_state: Any,
+    identity: Any,
+    host_base: str,
+) -> dict[str, Any]:
+    """Build the card payload for an already-resolved identity."""
     builder: AgentCardBuilder = app_state.a2a_card_builder
     card = builder.build(
         identity=identity,
         base_url=f"{host_base}/api/v1/a2a",
     )
-    card_data = card.model_dump()
-    # Fingerprint: identity name + role + skills for staleness.
-    fingerprint = hashlib.sha256(
-        f"{identity.name}:{identity.role}:{identity.skills}".encode(),
-    ).hexdigest()[:16]
-    return card_data, fingerprint
+    return card.model_dump()
 
 
 class WellKnownAgentCardController(Controller):
@@ -254,11 +264,13 @@ class WellKnownAgentCardController(Controller):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 A2A_AGENT_CARD_SERVED,
                 card_type="company",
-                error="Failed to build company agent card",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="company_agent_card_build_failed",
             )
             return _service_unavailable_response()
 
@@ -296,7 +308,32 @@ class WellKnownAgentCardController(Controller):
 
         host_base = strip_trailing_slash(str(request.base_url))
         cache_key = f"{agent_id}:{host_base}"
-        cached = await _get_cached_card(cache_key, ttl)
+
+        try:
+            identity = await _resolve_agent_for_card(app_state, agent_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.error(
+                A2A_AGENT_CARD_SERVED,
+                card_type="agent",
+                agent_id=agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="agent_identity_resolution_failed",
+            )
+            return _service_unavailable_response()
+
+        if identity is None:
+            msg = f"Agent '{agent_id}' not found"
+            raise NotFoundError(msg)
+
+        # Resolve identity before the cache read so the current
+        # fingerprint gates the lookup: a rename, role change, or
+        # skill edit invalidates the cached card immediately instead
+        # of being served stale until TTL expiry.
+        fingerprint = _agent_fingerprint(identity)
+        cached = await _get_cached_card(cache_key, ttl, fingerprint=fingerprint)
         if cached is not None:
             logger.debug(A2A_AGENT_CARD_CACHE_HIT, cache_key=cache_key)
             return _card_response(cached, ttl)
@@ -304,27 +341,20 @@ class WellKnownAgentCardController(Controller):
         logger.debug(A2A_AGENT_CARD_CACHE_MISS, cache_key=cache_key)
 
         try:
-            built = await _resolve_and_build_agent_card(
-                app_state,
-                agent_id,
-                host_base,
-            )
+            card_data = _build_agent_card_payload(app_state, identity, host_base)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 A2A_AGENT_CARD_SERVED,
                 card_type="agent",
                 agent_id=agent_id,
-                error="Failed to build agent card",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="agent_card_build_failed",
             )
             return _service_unavailable_response()
 
-        if built is None:
-            msg = f"Agent '{agent_id}' not found"
-            raise NotFoundError(msg)
-
-        card_data, fingerprint = built
         await _put_cached_card(cache_key, card_data, ttl, fingerprint=fingerprint)
         logger.info(A2A_AGENT_CARD_SERVED, card_type="agent", agent_id=agent_id)
         return _card_response(card_data, ttl)
