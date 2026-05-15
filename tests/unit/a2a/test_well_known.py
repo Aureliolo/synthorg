@@ -364,6 +364,35 @@ class TestCompanyAgentCardEndpoint:
         assert kwargs["error"] == "RuntimeError: db down"
         assert "exc_info" not in kwargs
 
+    @pytest.mark.unit
+    async def test_company_name_change_invalidates_cache(self) -> None:
+        """A runtime company_name write is served immediately, not at TTL."""
+        registry = AsyncMock(spec=AgentRegistryService)
+        registry.list_active.return_value = (_make_identity(),)
+        builder = Mock(spec=AgentCardBuilder)
+        builder.build_company_card.side_effect = [
+            SimpleNamespace(model_dump=lambda: {"name": "Old Co"}),
+            SimpleNamespace(model_dump=lambda: {"name": "New Co"}),
+        ]
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_str.return_value = "Old Co"
+        app_state = _make_app_state(
+            registry=registry, builder=builder, resolver=resolver
+        )
+        controller = _controller()
+
+        first = await controller.company_agent_card.fn(
+            controller, _state(app_state), _make_request()
+        )
+        assert first.content == {"name": "Old Co"}
+
+        resolver.get_str.return_value = "New Co"
+        second = await controller.company_agent_card.fn(
+            controller, _state(app_state), _make_request()
+        )
+        assert second.content == {"name": "New Co"}
+        assert builder.build_company_card.call_count == 2
+
 
 class TestAgentCardEndpoint:
     """`agent_card` resolve-first / fingerprint / failure behaviour."""
@@ -489,11 +518,11 @@ class TestAgentCardEndpoint:
 
 
 class TestAssembleCompanyCard:
-    """`_assemble_company_card` payload + fingerprint."""
+    """`_assemble_company_card` payload + agent count."""
 
     @pytest.mark.unit
-    async def test_returns_payload_fingerprint_and_count(self) -> None:
-        """Fingerprint is derived from the sorted identity ids."""
+    async def test_returns_payload_and_count_for_resolved_name(self) -> None:
+        """The pre-resolved name is forwarded to the builder verbatim."""
         registry = AsyncMock(spec=AgentRegistryService)
         registry.list_active.return_value = (
             _make_identity(agent_id="b"),
@@ -501,18 +530,17 @@ class TestAssembleCompanyCard:
         )
         builder = Mock(spec=AgentCardBuilder)
         builder.build_company_card.return_value = SimpleNamespace(
-            model_dump=lambda: {"name": "Snapshot Co"},
+            model_dump=lambda: {"name": "Resolved Co"},
         )
-        resolver = AsyncMock(spec=ConfigResolver)
-        resolver.get_str.return_value = "Snapshot Co"
-        app_state = _make_app_state(
-            registry=registry, builder=builder, resolver=resolver
-        )
+        app_state = _make_app_state(registry=registry, builder=builder)
 
-        card_data, fingerprint, count = await _assemble_company_card(
-            app_state, "http://test.example"
+        card_data, count = await _assemble_company_card(
+            app_state, "http://test.example", "Resolved Co"
         )
-        assert card_data == {"name": "Snapshot Co"}
+        assert card_data == {"name": "Resolved Co"}
         assert count == 2
-        assert len(fingerprint) == 16
-        builder.build_company_card.assert_called_once()
+        builder.build_company_card.assert_called_once_with(
+            identities=registry.list_active.return_value,
+            base_url="http://test.example/api/v1/a2a",
+            company_name="Resolved Co",
+        )

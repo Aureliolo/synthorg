@@ -160,27 +160,22 @@ def _service_unavailable_response() -> Response[dict[str, Any]]:
 async def _assemble_company_card(
     app_state: Any,
     base_url: str,
-) -> tuple[dict[str, Any], str, int]:
-    """Build the company card payload + staleness fingerprint.
+    company_name: str,
+) -> tuple[dict[str, Any], int]:
+    """Build the company card payload for an already-resolved name.
 
-    Returns ``(card_data, fingerprint, agent_count)``. Raises on any
-    failure; the caller maps that to a 503.
+    Returns ``(card_data, agent_count)``. Raises on any failure; the
+    caller maps that to a 503.
     """
     builder: AgentCardBuilder = app_state.a2a_card_builder
     registry = app_state.agent_registry
     identities = await registry.list_active()
-    company_name = await _resolve_company_name(app_state)
     card = builder.build_company_card(
         identities=identities,
         base_url=f"{base_url}/api/v1/a2a",
         company_name=company_name,
     )
-    card_data = card.model_dump()
-    # Fingerprint: sorted identity IDs for staleness detection.
-    fingerprint = hashlib.sha256(
-        ",".join(sorted(str(i.id) for i in identities)).encode(),
-    ).hexdigest()[:16]
-    return card_data, fingerprint, len(identities)
+    return card.model_dump(), len(identities)
 
 
 async def _resolve_agent_for_card(app_state: Any, agent_id: str) -> Any | None:
@@ -247,9 +242,14 @@ class WellKnownAgentCardController(Controller):
         ttl = app_state.config.a2a.agent_card_cache_ttl_seconds
 
         base_url = strip_trailing_slash(str(request.base_url))
-        cache_key = f"__company__:{base_url}"
-        # Fingerprint not checked on read for company card (requires
-        # listing all agents); TTL-based expiry is the primary guard.
+        # Resolve company_name before the cache read and key on it so a
+        # runtime write to ``company.company_name`` (DB-tier override
+        # per the configuration-precedence contract) takes effect
+        # immediately instead of being hidden until TTL expiry. Stale
+        # entries for prior names age out by TTL. Agent-list staleness
+        # remains TTL-bounded by design.
+        company_name = await _resolve_company_name(app_state)
+        cache_key = f"__company__:{base_url}:{company_name}"
         cached = await _get_cached_card(cache_key, ttl)
         if cached is not None:
             logger.debug(A2A_AGENT_CARD_CACHE_HIT, cache_key=cache_key)
@@ -258,9 +258,10 @@ class WellKnownAgentCardController(Controller):
         logger.debug(A2A_AGENT_CARD_CACHE_MISS, cache_key=cache_key)
 
         try:
-            card_data, fingerprint, agent_count = await _assemble_company_card(
+            card_data, agent_count = await _assemble_company_card(
                 app_state,
                 base_url,
+                company_name,
             )
         except MemoryError, RecursionError:
             raise
@@ -274,12 +275,7 @@ class WellKnownAgentCardController(Controller):
             )
             return _service_unavailable_response()
 
-        await _put_cached_card(
-            cache_key,
-            card_data,
-            ttl,
-            fingerprint=fingerprint,
-        )
+        await _put_cached_card(cache_key, card_data, ttl)
         logger.info(
             A2A_AGENT_CARD_SERVED,
             card_type="company",
