@@ -58,7 +58,7 @@ class EvolutionOutcomeStore(Protocol):
                 :class:`ProposalAltitude`).
             applied: Whether the adaptation was applied (``True``) or
                 rejected / rolled back (``False``).
-            proposed_at: When the proposal was originally generated.
+            proposed_at: When the proposal was generated.
         """
         ...
 

@@ -68,6 +68,51 @@ _FRAMING_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         "Round-N fix/review",
         re.compile(r"\bround-\d+\s+(?:fix|review|fix:|review:)", re.IGNORECASE),
     ),
+    # Code-migration "previously <verb>" shapes. The verb list is
+    # deliberately code-migration specific: ``lived``, ``inlined``,
+    # ``extracted``, ``duplicated``, ``scattered`` describe where the
+    # code USED TO LIVE. Bare ``previously`` matches plenty of
+    # legitimate runtime prose (``previously compacted conversation``,
+    # ``previously stored ciphertext``) and is not enforced.
+    (
+        "previously <verb>",
+        re.compile(
+            r"\bpreviously\s+(?:lived|inlined|extracted|duplicated|"
+            r"scattered|routed|emitted|wrapped|owned)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "were previously inlined",
+        re.compile(
+            r"\bwere\s+previously\s+(?:inlined|duplicated|scattered|"
+            r"extracted)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "was previously inlined",
+        re.compile(
+            r"\bwas\s+previously\s+(?:inlined|duplicated|extracted|"
+            r"scattered|owned|emitted|wrapped)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "used to be",
+        re.compile(r"\bused\s+to\s+be\b", re.IGNORECASE),
+    ),
+    # ``originally <verb>``: targeted code-migration verb list.
+    # Compound form ``originally-claimed`` is the same narrative shape
+    # and matches via the ``[-\s]`` alternation.
+    (
+        "originally <verb>",
+        re.compile(
+            r"\boriginally[-\s](?:generated|promised|claimed|owned|"
+            r"wrapped|emitted|inlined|extracted|routed|handled)\b",
+            re.IGNORECASE,
+        ),
+    ),
 )
 
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: migration-framing"

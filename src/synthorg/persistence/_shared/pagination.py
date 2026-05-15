@@ -1,12 +1,12 @@
 """Shared pagination-argument validation for SQLite + Postgres repos.
 
 Both backends accept ``limit: int`` / ``offset: int`` on their cursor
-paginated read methods; the validation is the same in both places
-(reject non-int, reject ``bool``, reject ``limit < 1`` / ``offset < 0``)
-and was previously duplicated verbatim across two files. Extracting
-the helper keeps the validation rule in one place; backend-specific
-bits stay in the call sites (the ``event`` constant + extra context
-kwargs to log).
+paginated read methods. The validation rule (reject non-int, reject
+``bool``, reject ``limit < 1`` / ``offset < 0``) is identical across
+backends and lives here as a single helper so a future tightening
+applies everywhere atomically. Backend-specific concerns (the
+``event`` constant emitted on rejection and extra context kwargs to
+log) stay in the call sites.
 """
 
 from typing import Final

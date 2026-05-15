@@ -162,8 +162,9 @@ async def _resolve_agent_ids(
     ``assemble_department_health`` handler can surface registry outage
     as a degraded response instead of silently reporting zero agents.
     Other exceptions (e.g. unexpected registry bugs) are logged and
-    swallowed because per-name lookup failures used to be tolerated in
-    the previous per-agent fan-out.
+    swallowed so a single bad agent identity does not collapse the
+    department-wide health snapshot; the missing agent simply omits
+    from the result.
     """
     if not app_state.has_agent_registry:
         return ()
