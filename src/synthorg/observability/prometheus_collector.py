@@ -161,7 +161,7 @@ class PrometheusCollector(RecordingMixin):
         prefix: Metric name prefix (default ``"synthorg"``).
     """
 
-    def __init__(self, *, prefix: str = "synthorg") -> None:
+    def __init__(self, *, prefix: str = "synthorg") -> None:  # noqa: PLR0915 -- single-shot wiring of every metric family
         self._prefix = prefix
         self.registry = CollectorRegistry()
 
@@ -280,6 +280,13 @@ class PrometheusCollector(RecordingMixin):
         self._mcp_handler_duration = self._push.mcp_handler_duration
         self._budget_query_duration = self._push.budget_query_duration
         self._audit_chain_verifications = self._push.audit_chain_verifications
+        self._ws_connection_lifetime = self._push.ws_connection_lifetime
+        self._ws_revalidation_outcomes = self._push.ws_revalidation_outcomes
+        self._ws_active_connections = self._push.ws_active_connections
+        self._pg_pool_size = self._push.pg_pool_size
+        self._pg_pool_active_connections = self._push.pg_pool_active_connections
+        self._pg_pool_acquire_duration = self._push.pg_pool_acquire_duration
+        self._pg_pool_exhausted = self._push.pg_pool_exhausted
 
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
