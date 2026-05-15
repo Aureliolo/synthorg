@@ -648,3 +648,11 @@ repos:
         # ~13s wall-clock on the full repo; same cost trade-off as
         # no-review-origin-in-code above. Moved to pre-push.
         stages: [pre-push]
+
+      - id: no-api-dto-in-persistence-or-service
+        name: forbid synthorg.api.dto_* imports inside persistence/ and service/
+        entry: uv run python scripts/check_no_api_dto_in_persistence_or_service.py
+        language: system
+        files: ^(src/synthorg/(persistence|service)/.*\.py|scripts/check_no_api_dto_in_persistence_or_service\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
