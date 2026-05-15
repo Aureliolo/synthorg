@@ -111,8 +111,10 @@ def _make_service(
 
     guard.evaluate = AsyncMock(side_effect=_make_guard_decision)
 
-    adapter = AsyncMock()
+    adapter = AsyncMock(spec=AdaptationAdapter)
     adapter.name = "test_adapter"
+    # ``axis`` is a protocol @property; PropertyMock makes the spec'd
+    # attribute return the concrete enum instead of a child mock.
     type(adapter).axis = PropertyMock(
         return_value=AdaptationAxis.PROMPT_TEMPLATE,
     )
@@ -218,7 +220,7 @@ class TestEvolutionServiceEvolve:
             side_effect=[(snap_v1,), (snap_v2,)],
         )
 
-        adapter = AsyncMock()
+        adapter = AsyncMock(spec=AdaptationAdapter)
         adapter.apply = AsyncMock()
         type(adapter).axis = PropertyMock(
             return_value=AdaptationAxis.IDENTITY,

@@ -190,7 +190,7 @@ def _pick_distinct_float(default: float, lo: float, hi: float) -> float:
     for delta in (0.5, 0.25, 0.1, 0.01):
         for cand in (default + delta, default - delta):
             if cand != default and lo <= cand <= hi:
-                return round(cand, 6)
+                return cand
     if lo > float("-inf") and lo != default:
         return lo
     if hi < float("inf") and hi != default:

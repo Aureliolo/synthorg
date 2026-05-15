@@ -139,6 +139,80 @@ async def _resolve_company_name(app_state: Any) -> str:
     return str(resolved)
 
 
+def _card_response(card_data: dict[str, Any], ttl: int) -> Response[dict[str, Any]]:
+    """Build the success JSON response with the public cache header."""
+    return Response(
+        content=card_data,
+        media_type="application/json",
+        headers={"Cache-Control": f"public, max-age={ttl}"},
+    )
+
+
+def _service_unavailable_response() -> Response[dict[str, Any]]:
+    """Build the 503 response served when card assembly fails."""
+    return Response(
+        content={"error": "Service temporarily unavailable"},
+        media_type="application/json",
+        status_code=503,
+    )
+
+
+async def _assemble_company_card(
+    app_state: Any,
+    base_url: str,
+) -> tuple[dict[str, Any], str, int]:
+    """Build the company card payload + staleness fingerprint.
+
+    Returns ``(card_data, fingerprint, agent_count)``. Raises on any
+    failure; the caller maps that to a 503.
+    """
+    builder: AgentCardBuilder = app_state.a2a_card_builder
+    registry = app_state.agent_registry
+    identities = await registry.list_active()
+    company_name = await _resolve_company_name(app_state)
+    card = builder.build_company_card(
+        identities=identities,
+        base_url=f"{base_url}/api/v1/a2a",
+        company_name=company_name,
+    )
+    card_data = card.model_dump()
+    # Fingerprint: sorted identity IDs for staleness detection.
+    fingerprint = hashlib.sha256(
+        ",".join(sorted(str(i.id) for i in identities)).encode(),
+    ).hexdigest()[:16]
+    return card_data, fingerprint, len(identities)
+
+
+async def _resolve_and_build_agent_card(
+    app_state: Any,
+    agent_id: str,
+    host_base: str,
+) -> tuple[dict[str, Any], str] | None:
+    """Resolve an agent and build its card payload + fingerprint.
+
+    Returns ``(card_data, fingerprint)``, or ``None`` when no agent
+    matches ``agent_id`` (caller maps that to 404). Raises on any other
+    failure; the caller maps that to a 503.
+    """
+    registry = app_state.agent_registry
+    identity = await registry.get(agent_id)
+    if identity is None:
+        identity = await registry.get_by_name(agent_id)
+    if identity is None:
+        return None
+    builder: AgentCardBuilder = app_state.a2a_card_builder
+    card = builder.build(
+        identity=identity,
+        base_url=f"{host_base}/api/v1/a2a",
+    )
+    card_data = card.model_dump()
+    # Fingerprint: identity name + role + skills for staleness.
+    fingerprint = hashlib.sha256(
+        f"{identity.name}:{identity.role}:{identity.skills}".encode(),
+    ).hexdigest()[:16]
+    return card_data, fingerprint
+
+
 class WellKnownAgentCardController(Controller):
     """Serves A2A Agent Cards at well-known URIs."""
 
@@ -160,57 +234,23 @@ class WellKnownAgentCardController(Controller):
     ) -> Response[dict[str, Any]]:
         """Serve the company-level Agent Card."""
         app_state = state["app_state"]
-        a2a_config = app_state.config.a2a
-        ttl = a2a_config.agent_card_cache_ttl_seconds
+        ttl = app_state.config.a2a.agent_card_cache_ttl_seconds
 
-        host_base = strip_trailing_slash(str(request.base_url))
-        company_cache_key = f"__company__:{host_base}"
+        base_url = strip_trailing_slash(str(request.base_url))
+        cache_key = f"__company__:{base_url}"
         # Fingerprint not checked on read for company card (requires
         # listing all agents); TTL-based expiry is the primary guard.
-        cached = await _get_cached_card(company_cache_key, ttl)
+        cached = await _get_cached_card(cache_key, ttl)
         if cached is not None:
-            logger.debug(
-                A2A_AGENT_CARD_CACHE_HIT,
-                cache_key=company_cache_key,
-            )
-            return Response(
-                content=cached,
-                media_type="application/json",
-                headers={
-                    "Cache-Control": f"public, max-age={ttl}",
-                },
-            )
+            logger.debug(A2A_AGENT_CARD_CACHE_HIT, cache_key=cache_key)
+            return _card_response(cached, ttl)
 
-        logger.debug(
-            A2A_AGENT_CARD_CACHE_MISS,
-            cache_key=company_cache_key,
-        )
-
-        builder: AgentCardBuilder = app_state.a2a_card_builder
-        registry = app_state.agent_registry
+        logger.debug(A2A_AGENT_CARD_CACHE_MISS, cache_key=cache_key)
 
         try:
-            identities = await registry.list_active()
-            base_url = strip_trailing_slash(str(request.base_url))
-            company_name = await _resolve_company_name(app_state)
-            card = builder.build_company_card(
-                identities=identities,
-                base_url=f"{base_url}/api/v1/a2a",
-                company_name=company_name,
-            )
-            card_data = card.model_dump()
-            # Fingerprint: sorted identity IDs for staleness detection.
-            id_fp = hashlib.sha256(
-                ",".join(
-                    sorted(str(i.id) for i in identities),
-                ).encode(),
-            ).hexdigest()[:16]
-            cache_key = f"__company__:{base_url}"
-            await _put_cached_card(
-                cache_key,
-                card_data,
-                ttl,
-                fingerprint=id_fp,
+            card_data, fingerprint, agent_count = await _assemble_company_card(
+                app_state,
+                base_url,
             )
         except MemoryError, RecursionError:
             raise
@@ -220,24 +260,20 @@ class WellKnownAgentCardController(Controller):
                 card_type="company",
                 error="Failed to build company agent card",
             )
-            return Response(
-                content={"error": "Service temporarily unavailable"},
-                media_type="application/json",
-                status_code=503,
-            )
+            return _service_unavailable_response()
 
+        await _put_cached_card(
+            cache_key,
+            card_data,
+            ttl,
+            fingerprint=fingerprint,
+        )
         logger.info(
             A2A_AGENT_CARD_SERVED,
             card_type="company",
-            agent_count=len(identities),
+            agent_count=agent_count,
         )
-        return Response(
-            content=card_data,
-            media_type="application/json",
-            headers={
-                "Cache-Control": f"public, max-age={ttl}",
-            },
-        )
+        return _card_response(card_data, ttl)
 
     @get(
         "/agents/{agent_id:str}/agent-card.json",
@@ -256,36 +292,23 @@ class WellKnownAgentCardController(Controller):
         from synthorg.core.domain_errors import NotFoundError  # noqa: PLC0415
 
         app_state = state["app_state"]
-        a2a_config = app_state.config.a2a
-        ttl = a2a_config.agent_card_cache_ttl_seconds
+        ttl = app_state.config.a2a.agent_card_cache_ttl_seconds
 
         host_base = strip_trailing_slash(str(request.base_url))
-        agent_cache_key = f"{agent_id}:{host_base}"
-        cached = await _get_cached_card(agent_cache_key, ttl)
+        cache_key = f"{agent_id}:{host_base}"
+        cached = await _get_cached_card(cache_key, ttl)
         if cached is not None:
-            logger.debug(
-                A2A_AGENT_CARD_CACHE_HIT,
-                cache_key=agent_cache_key,
-            )
-            return Response(
-                content=cached,
-                media_type="application/json",
-                headers={
-                    "Cache-Control": f"public, max-age={ttl}",
-                },
-            )
+            logger.debug(A2A_AGENT_CARD_CACHE_HIT, cache_key=cache_key)
+            return _card_response(cached, ttl)
 
-        logger.debug(
-            A2A_AGENT_CARD_CACHE_MISS,
-            cache_key=agent_cache_key,
-        )
-
-        registry = app_state.agent_registry
+        logger.debug(A2A_AGENT_CARD_CACHE_MISS, cache_key=cache_key)
 
         try:
-            identity = await registry.get(agent_id)
-            if identity is None:
-                identity = await registry.get_by_name(agent_id)
+            built = await _resolve_and_build_agent_card(
+                app_state,
+                agent_id,
+                host_base,
+            )
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -295,57 +318,13 @@ class WellKnownAgentCardController(Controller):
                 agent_id=agent_id,
                 error="Failed to build agent card",
             )
-            return Response(
-                content={"error": "Service temporarily unavailable"},
-                media_type="application/json",
-                status_code=503,
-            )
+            return _service_unavailable_response()
 
-        if identity is None:
+        if built is None:
             msg = f"Agent '{agent_id}' not found"
             raise NotFoundError(msg)
 
-        try:
-            builder: AgentCardBuilder = app_state.a2a_card_builder
-            card = builder.build(
-                identity=identity,
-                base_url=f"{host_base}/api/v1/a2a",
-            )
-            card_data = card.model_dump()
-            # Fingerprint: identity name + role + skills for staleness.
-            agent_fp = hashlib.sha256(
-                f"{identity.name}:{identity.role}:{identity.skills}".encode(),
-            ).hexdigest()[:16]
-            await _put_cached_card(
-                agent_cache_key,
-                card_data,
-                ttl,
-                fingerprint=agent_fp,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.exception(
-                A2A_AGENT_CARD_SERVED,
-                card_type="agent",
-                agent_id=agent_id,
-                error="Failed to build agent card",
-            )
-            return Response(
-                content={"error": "Service temporarily unavailable"},
-                media_type="application/json",
-                status_code=503,
-            )
-
-        logger.info(
-            A2A_AGENT_CARD_SERVED,
-            card_type="agent",
-            agent_id=agent_id,
-        )
-        return Response(
-            content=card_data,
-            media_type="application/json",
-            headers={
-                "Cache-Control": f"public, max-age={ttl}",
-            },
-        )
+        card_data, fingerprint = built
+        await _put_cached_card(cache_key, card_data, ttl, fingerprint=fingerprint)
+        logger.info(A2A_AGENT_CARD_SERVED, card_type="agent", agent_id=agent_id)
+        return _card_response(card_data, ttl)

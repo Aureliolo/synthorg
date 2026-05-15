@@ -285,6 +285,30 @@ class MyConfig(BaseModel):
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 ```
 
+### Available parsers
+
+`synthorg.settings.mirrors` ships the parser callbacks below. A
+`MirrorField` with `parse=None` applies identity parsing (the raw env
+string reaches the field, and the Pydantic field type does any
+coercion). A parser returning `None` signals invalid input; the
+registered default is then applied.
+
+| Parser | Signature | Use for |
+|---|---|---|
+| `parse_bool` | `(str) -> bool \| None` | Boolean tokens (`true`/`false`/`1`/`0`/`yes`/`no`). |
+| `parse_int` | `(str) -> int \| None` | Integer settings. |
+| `parse_float` | `(str) -> float \| None` | Float settings. |
+| `parse_str_tuple_json` | `(str) -> tuple[str, ...] \| None` | JSON list-of-strings into a tuple. |
+| `parse_json_int_pair_dict` | `(str) -> dict[str, list[int]] \| None` | JSON `{op: [int, int]}` (e.g. `PerOpRateLimitConfig.overrides`). Top-level shape only; the owning config's `mode="before"` validator promotes inner lists to tuples and rejects negatives. |
+| `parse_json_int_dict` | `(str) -> dict[str, int] \| None` | JSON `{op: int}` (e.g. `PerOpConcurrencyConfig.overrides`). Top-level shape only; the owning validator rejects non-int / negative values. |
+
+The two JSON-dict parsers deliberately validate only the top-level
+JSON structure. Per-entry semantics (non-blank keys, tuple arity,
+non-negativity) belong to the owning config's `mode="before"`
+validator so operator-facing error context fires before Pydantic
+coercion. See "Validator declaration order" in
+[conventions.md](conventions.md).
+
 ### Sentinel-preserving mode: `only_if_env_set=True`
 
 When the Pydantic field's `None` default carries semantic meaning the

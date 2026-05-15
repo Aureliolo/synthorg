@@ -164,3 +164,14 @@ class TestResolveCompanyName:
         app_state = SimpleNamespace(config_resolver=resolver, config=config)
         with pytest.raises(MemoryError):
             await _resolve_company_name(app_state)
+
+    @pytest.mark.unit
+    async def test_recursion_error_propagates(self) -> None:
+        """``RecursionError`` is re-raised, not swallowed by the fallback."""
+        resolver = _make_resolver_stub(
+            get_str_side_effect=RecursionError("too deep"),
+        )
+        config = SimpleNamespace(company_name="Snapshot Co")
+        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        with pytest.raises(RecursionError):
+            await _resolve_company_name(app_state)
