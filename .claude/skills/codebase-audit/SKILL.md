@@ -3842,7 +3842,10 @@ Findings to validate:
 
 After validation, read all finding files and build `_audit/latest/INDEX.md`.
 
-**MANDATORY for the agent that builds INDEX.md**: enumerate the actual files in `_audit/latest/findings/` via `Glob` or `Bash ls _audit/latest/findings/`. Use the REAL filenames. The 2026-05-03 run produced an INDEX with hallucinated filenames (`14-web-store-architecture-drift.md`, `19-benchmark-regression.md`, etc.) that did not match the agent roster. Before writing INDEX, list `_audit/latest/findings/*.md` and copy the names verbatim. Each entry's finding count must come from actually grepping the file (`grep -cE "^### (critical|high|medium|low|info)" <path>`), not from an assumed wave grouping.
+**MANDATORY for the agent that builds INDEX.md**: enumerate the actual files in `_audit/latest/findings/` via `Glob` or `Bash ls _audit/latest/findings/`. Use the REAL filenames. The 2026-05-03 run produced an INDEX with hallucinated filenames (`14-web-store-architecture-drift.md`, `19-benchmark-regression.md`, etc.) that did not match the agent roster. Before writing INDEX, list `_audit/latest/findings/*.md` and copy the names verbatim. Each entry's finding count comes from a two-step extraction (not an assumed wave grouping):
+
+1. **Fast-path grep** as the first attempt: `grep -cE "^### (critical|high|medium|low|info)" <path>`. If the count is >= 1, trust it.
+2. **Tolerant fallback** when grep returns 0: actually Read the file and scan its summary sections for prose-style findings (lines like `Finding:`, `Severity:`, `**Finding N**`, numbered paragraph entries, or per-issue subsections). Many agents disobey the strict heading format under prompt pressure (the 2026-05-15 run had ~673 raw findings collected, yet the strict grep returned 0 across every file). When grep returns 0, the count comes from this manual scan, NOT from accepting the zero. Treat `grep -c "^### " == 0` as "format unknown, re-read" rather than "no findings".
 
 **MANDATORY: apply validation verdicts BEFORE composing INDEX (2026-05-15 lesson).** The synthesizer in the 2026-05-15 run read finding files directly and produced an INDEX with 3 PEP-758 findings tagged as CRITICAL despite `validate-batch-12.md` explicitly marking them FALSE_POSITIVE. The synthesizer must:
 
