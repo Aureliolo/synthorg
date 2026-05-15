@@ -1,12 +1,12 @@
 ---
-description: "Full codebase audit: launches 159 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
+description: "Full codebase audit: launches 158 specialized agents (slot 14 retired) to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
 argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only]"
 allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
 # /codebase-audit: Full Codebase Audit
 
-Launch 159 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
+Launch 158 specialized agents (agent slots 01-159 minus the retired slot 14) to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
 
 ## Key Principles
 
@@ -25,7 +25,7 @@ Launch 159 specialized agents to audit the entire codebase (or a targeted scope)
 
 | Argument | Directories | Agents |
 |----------|-------------|-------------|
-| `full` (default) | All | All 159 agents |
+| `full` (default) | All | All 158 agents (slots 01-159, slot 14 retired) |
 | `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153, 154-155, 157 |
 | `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150, 154-155, 156 |
 | `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142, 154-155, 158 |
@@ -346,15 +346,15 @@ template).
 
 ### Streaming Pool Execution
 
-Maintain a **rolling pool of 10 active agents** at all times. Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send agents 01-10 in a single message (10 parallel `run_in_background: true` calls). Then for each completion notification, launch the next pending agent. Continue until all 159 agents have completed.
+Maintain a **rolling pool of 10 active agents** at all times. Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send agents 01-10 in a single message (10 parallel `run_in_background: true` calls). Then for each completion notification, launch the next pending agent. Continue until all 158 active agents (slots 01-159, skipping retired slot 14) have completed.
 
 This pipelines I/O and end-to-end runtime: a slow Wave 1 agent never blocks Wave 2-31 from starting, and the model spends notification cycles dispatching new work instead of idling. Skill agents are independent (each writes its own file), so order-of-completion does not matter -- only that the pool stays saturated until the queue drains.
 
 **Pool size rationale**: 10 active agents matches what one main-loop cycle can usefully dispatch and track without notification fatigue. Going wider (20+) increases context spent on notification handling; going narrower (5) under-utilizes the agent runtime.
 
-**Order**: agents 01 → 159 in numeric order. Skipping forward when a later agent is "more interesting" wastes the streaming property -- the pool drains itself naturally.
+**Order**: agents 01 → 159 in numeric order, skipping the retired slot 14 (158 launches total). Skipping forward when a later agent is "more interesting" wastes the streaming property -- the pool drains itself naturally.
 
-**Progress reporting**: every 10 completions, report "N/{AGENTS_LAUNCHED} done" to the user where `{AGENTS_LAUNCHED}` is the total for the current scope (159 for `full`, fewer for scoped runs). Do not report per-completion -- that is too chatty.
+**Progress reporting**: every 10 completions, report "N/{AGENTS_LAUNCHED} done" to the user where `{AGENTS_LAUNCHED}` is the total for the current scope (158 for `full` -- slot 14 retired -- fewer for scoped runs). Do not report per-completion -- that is too chatty.
 
 The 18-batch grouping (A-R) below is retained ONLY as a reference for which agent IDs map to which wave, not as a scheduling boundary:
 
@@ -3738,7 +3738,7 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 **Required on every run. Every single finding gets validated. There is no severity threshold, no scope cap, no opt-out, no "spot-check" shortcut.** Validation runs on all findings (critical, high, medium, low, AND info) uniformly. This skill is for huge audits; the false-positive filter must apply to every finding so INDEX.md is not contaminated by un-validated noise. If an audit agent emits 400 findings of one type, all 400 get validated -- not a sample, not a top-N, not a severity-gated subset.
 
-After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (159 for `full`, fewer for scoped runs).
+After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (158 for `full` with slot 14 retired, fewer for scoped runs).
 
 ### Process
 
@@ -3855,7 +3855,7 @@ After validation, read all finding files and build `_audit/latest/INDEX.md`.
 4. When composing INDEX entries: if a finding's key is in the FALSE_POSITIVE list, SKIP it (do not include at any severity). If in the INTENTIONAL list, include with `[INTENTIONAL]` prefix and do not count toward severity totals.
 5. **Final self-check**: before saving INDEX.md, scan the draft for the substrings "Python 2 syntax", "missing parens", "missing parentheses around exception", "PEP 2". If any appear, delete those rows -- they slipped past the validation purge.
 6. **Path verification**: for every Top-20 critical+high entry, run Read on the cited file. If the file does not exist, drop the entry; if the cited line is out of range, drop the entry. The 2026-05-15 synthesizer hallucinated `audit/chain_coordinator.py`, `docs/design/permission-model.md`, `docs/design/approval-flow.md` -- none existed in the repo.
-7. **Zero-finding agent list verification**: do NOT guess which agents had zero findings. Run `Bash: grep -L '\*\*Findings\*\*: [1-9]' _audit/latest/findings/*.md` to enumerate files where the `**Findings**` header is 0 or missing. Cross-reference with files that have substantive content -- some agents wrote prose summaries instead of strict-format headers, so a missing header does not always mean zero findings.
+7. **Zero-finding agent list verification**: do NOT guess which agents had zero findings. Run `Bash: grep -L '\*\*Findings\*\*: [1-9]' _audit/latest/findings/[0-9][0-9]-*.md` to enumerate agent finding files where the `**Findings**` header is 0 or missing. The `[0-9][0-9]-*.md` glob restricts the match to numbered-slot agent files and excludes synthesis artifacts (`validate-batch-*.md`, `INDEX.md`, etc.) that would otherwise inflate the zero-finding list. Cross-reference with files that have substantive content -- some agents wrote prose summaries instead of strict-format headers, so a missing header does not always mean zero findings.
 
 Use this template:
 
@@ -4087,7 +4087,7 @@ Also write `_audit/latest/findings.json` (machine-readable):
 {
   "run_id": "<run-id-timestamp>",
   "scope": "full",
-  "agents_launched": 159,
+  "agents_launched": 158,
   "validation": {"validated": 412, "false_positives": 67, "intentional": 12},
   "findings": [
     {
@@ -4174,7 +4174,7 @@ Optional, best-effort. Each agent can have a golden-input test:
 
 A new command `/codebase-audit self-test` runs each agent against its golden input and verifies it finds the seeded issue. Catches prompt rot.
 
-Bootstrap: not all 159 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
+Bootstrap: not all 158 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
 
 If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 
