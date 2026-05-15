@@ -515,6 +515,24 @@ PERSISTENCE_CEREMONY_STATE_DELETE_FAILED: Final[str] = (
     "persistence.ceremony_state.delete_failed"
 )
 
+# Meeting cooldown events (per-meeting-type last-triggered persistence)
+PERSISTENCE_MEETING_COOLDOWN_UPSERTED: Final[str] = (
+    "persistence.meeting_cooldown.upserted"
+)
+PERSISTENCE_MEETING_COOLDOWN_UPSERT_FAILED: Final[str] = (
+    "persistence.meeting_cooldown.upsert_failed"
+)
+PERSISTENCE_MEETING_COOLDOWN_LOADED: Final[str] = "persistence.meeting_cooldown.loaded"
+PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED: Final[str] = (
+    "persistence.meeting_cooldown.load_failed"
+)
+PERSISTENCE_MEETING_COOLDOWN_DELETED: Final[str] = (
+    "persistence.meeting_cooldown.deleted"
+)
+PERSISTENCE_MEETING_COOLDOWN_DELETE_FAILED: Final[str] = (
+    "persistence.meeting_cooldown.delete_failed"
+)
+
 # Worker seen-claims events (TaskClaim idempotency dedup)
 PERSISTENCE_SEEN_CLAIMS_MARK_FAILED: Final[str] = "persistence.seen_claims.mark_failed"
 PERSISTENCE_SEEN_CLAIMS_LOOKUP_FAILED: Final[str] = (
