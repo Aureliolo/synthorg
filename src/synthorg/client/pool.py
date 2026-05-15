@@ -9,6 +9,7 @@ from synthorg.client.models import (
 )
 from synthorg.client.protocols import ClientInterface  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.client import CLIENT_NOT_FOUND
 
 logger = get_logger(__name__)
 
@@ -69,6 +70,11 @@ class ClientPool:
         """
         async with self._lock:
             if client_id not in self._profiles:
+                logger.warning(
+                    CLIENT_NOT_FOUND,
+                    client_id=client_id,
+                    operation="remove",
+                )
                 msg = f"Client {client_id!r} not found"
                 raise KeyError(msg)
             profile = self._profiles.pop(client_id)
@@ -89,6 +95,11 @@ class ClientPool:
         """
         async with self._lock:
             if client_id not in self._profiles:
+                logger.warning(
+                    CLIENT_NOT_FOUND,
+                    client_id=client_id,
+                    operation="deactivate",
+                )
                 msg = f"Client {client_id!r} not found"
                 raise KeyError(msg)
             self._active[client_id] = False
@@ -105,6 +116,11 @@ class ClientPool:
         """
         async with self._lock:
             if client_id not in self._profiles:
+                logger.warning(
+                    CLIENT_NOT_FOUND,
+                    client_id=client_id,
+                    operation="reactivate",
+                )
                 msg = f"Client {client_id!r} not found"
                 raise KeyError(msg)
             self._active[client_id] = True
@@ -118,6 +134,11 @@ class ClientPool:
         """
         async with self._lock:
             if client_id not in self._profiles:
+                logger.warning(
+                    CLIENT_NOT_FOUND,
+                    client_id=client_id,
+                    operation="is_active",
+                )
                 msg = f"Client {client_id!r} not found"
                 raise KeyError(msg)
             return self._active.get(client_id, True)
@@ -130,6 +151,11 @@ class ClientPool:
         """
         async with self._lock:
             if client_id not in self._profiles:
+                logger.warning(
+                    CLIENT_NOT_FOUND,
+                    client_id=client_id,
+                    operation="get_profile",
+                )
                 msg = f"Client {client_id!r} not found"
                 raise KeyError(msg)
             return self._profiles[client_id]

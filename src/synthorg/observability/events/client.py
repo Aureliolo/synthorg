@@ -36,3 +36,15 @@ CLIENT_REQUEST_TRANSITION_CONFIG_ERROR: Final[str] = (
 )
 
 CLIENT_CONFIG_INVALID: Final[str] = "client.config.invalid"
+
+# Pool / store lookup failures emitted before the corresponding KeyError
+# so operators see which CRUD operation rejected a missing identifier,
+# not just a bare exception in the controller's error envelope.
+CLIENT_NOT_FOUND: Final[str] = "client.pool.client_not_found"
+CLIENT_REQUEST_NOT_FOUND: Final[str] = "client.request.not_found"
+
+# Persisted status transition (emitted at the caller AFTER the request
+# is saved). Pure-constructor transitions inside ``with_status`` are
+# covered by CLIENT_REQUEST_TRANSITION; this event records "the row in
+# the store now carries the new status".
+CLIENT_REQUEST_STATUS_TRANSITIONED: Final[str] = "client.request.status_transitioned"

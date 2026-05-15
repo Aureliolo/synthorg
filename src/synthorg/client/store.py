@@ -18,6 +18,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
     CLIENT_FEEDBACK_RECORDED,
+    CLIENT_REQUEST_NOT_FOUND,
     CLIENT_REQUEST_SUBMITTED,
     SIMULATION_RUN_CANCELLED,
     SIMULATION_RUN_COMPLETED,
@@ -144,6 +145,11 @@ class RequestStore:
         """Return the request by id or raise ``KeyError``."""
         async with self._lock:
             if request_id not in self._requests:
+                logger.warning(
+                    CLIENT_REQUEST_NOT_FOUND,
+                    request_id=request_id,
+                    operation="get",
+                )
                 msg = f"Request {request_id!r} not found"
                 raise KeyError(msg)
             return self._requests[request_id]

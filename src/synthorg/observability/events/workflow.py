@@ -42,6 +42,13 @@ SPRINT_CREATED: str = "workflow.sprint.created"
 SPRINT_LIFECYCLE_TRANSITION: str = "workflow.sprint.lifecycle_transition"
 """Sprint transitioned between lifecycle statuses."""
 
+SPRINT_STATUS_TRANSITIONED: str = "workflow.sprint.status_transitioned"
+"""Sprint row in the store now carries the new status (emitted by the
+caller AFTER persistence write). ``with_transition`` is a pure
+constructor so the SPRINT_LIFECYCLE_TRANSITION event from the state
+machine covers transition *intent*; this event records the persisted
+state-of-record."""
+
 SPRINT_LIFECYCLE_TRANSITION_INVALID: str = (
     "workflow.sprint.lifecycle_transition_invalid"
 )

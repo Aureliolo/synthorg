@@ -22,6 +22,7 @@ from synthorg.client.models import (
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.client import CLIENT_REQUEST_STATUS_TRANSITIONED
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -232,6 +233,13 @@ class RequestController(Controller):
                 **overrides,
             )
             await sim_state.request_store.save(scoped)
+            logger.info(
+                CLIENT_REQUEST_STATUS_TRANSITIONED,
+                request_id=scoped.request_id,
+                client_id=scoped.client_id,
+                from_status=stored.status.value,
+                to_status=scoped.status.value,
+            )
             # Publish inside the lock so the save + WS event are
             # ordered atomically: a concurrent approve that takes the
             # lock after us cannot emit its own event before ours
@@ -290,6 +298,13 @@ class RequestController(Controller):
             else:
                 final, _ = await sim_state.intake_engine.finalize_scoped(stored)
             await sim_state.request_store.save(final)
+            logger.info(
+                CLIENT_REQUEST_STATUS_TRANSITIONED,
+                request_id=final.request_id,
+                client_id=final.client_id,
+                from_status=stored.status.value,
+                to_status=final.status.value,
+            )
             _publish(request, WsEventType.REQUEST_APPROVED, final)
         # Approve walks to ``TASK_CREATED`` (terminal) -- drop the lock
         # so the registry does not accumulate.
@@ -335,6 +350,13 @@ class RequestController(Controller):
                 metadata=metadata,
             )
             await sim_state.request_store.save(cancelled)
+            logger.info(
+                CLIENT_REQUEST_STATUS_TRANSITIONED,
+                request_id=cancelled.request_id,
+                client_id=cancelled.client_id,
+                from_status=stored.status.value,
+                to_status=cancelled.status.value,
+            )
             _publish(request, WsEventType.REQUEST_REJECTED, cancelled)
         # Reject walks to ``CANCELLED`` (terminal) -- drop the lock.
         app_state.release_request_lock_if_idle(request_id)

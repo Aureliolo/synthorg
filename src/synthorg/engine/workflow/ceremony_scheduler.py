@@ -39,6 +39,7 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_STRATEGY_HOOK_FAILED,
     SPRINT_CEREMONY_TRIGGER_FAILED,
     SPRINT_CEREMONY_TRIGGERED,
+    SPRINT_STATUS_TRANSITIONED,
 )
 
 if TYPE_CHECKING:
@@ -412,15 +413,22 @@ class CeremonyScheduler:
             context,
         )
         if target is not None and sprint.status is SprintStatus.ACTIVE:
+            previous_status = sprint.status.value
             logger.info(
                 SPRINT_AUTO_TRANSITION,
                 sprint_id=sprint.id,
-                from_status=sprint.status.value,
+                from_status=previous_status,
                 to_status=target.value,
                 strategy=self._active_strategy.strategy_type.value,
             )
             sprint = sprint.with_transition(target)
             self._active_sprint = sprint
+            logger.info(
+                SPRINT_STATUS_TRANSITIONED,
+                sprint_id=sprint.id,
+                from_status=previous_status,
+                to_status=sprint.status.value,
+            )
         return sprint
 
     # -- One-shot ceremonies -------------------------------------------
