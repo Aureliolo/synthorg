@@ -300,7 +300,16 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         host_config = self._build_host_config(category=category)
         if network_mode is not None:
             host_config["NetworkMode"] = network_mode
-        labels: dict[str, str] = {"synthorg.sandbox": "true"}
+        # WP-1: ``synthorg.managed=true`` is the canonical label the
+        # reconciliation pass filters on at sandbox-subsystem start
+        # (see ``synthorg.tools.sandbox.reconciliation``).  Operators
+        # MUST NOT strip this label or the orphan cleanup will treat
+        # the container as a foreign daemon process and leave it
+        # running on restart.
+        labels: dict[str, str] = {
+            "synthorg.sandbox": "true",
+            "synthorg.managed": "true",
+        }
         if owner_id is not None:
             labels["synthorg.sandbox.owner_id"] = owner_id
         container_config: dict[str, Any] = {
