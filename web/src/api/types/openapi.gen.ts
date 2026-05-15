@@ -18098,7 +18098,7 @@ export interface operations {
     readonly ApiV1ProvidersNameDiscoverModelsDiscoverModels: {
         readonly parameters: {
             readonly query?: {
-                /** @description Canonical preset hint (e.g. anthropic, ollama). */
+                /** @description Canonical preset hint (e.g. "example-provider", "test-provider"). */
                 readonly preset_hint?: string | null;
             };
             readonly header?: never;

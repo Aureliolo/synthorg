@@ -4,7 +4,7 @@ Provides endpoints for event ingestion (collector role),
 pattern querying, and threshold recommendations.
 """
 
-from typing import Final
+from typing import Annotated, Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -114,12 +114,14 @@ class MetaAnalyticsController(Controller):
     async def get_patterns(
         self,
         state: State,
-        min_deployments: int = Parameter(
-            default=3,
-            ge=1,
-            le=100,
-            description="Minimum deployment count for a pattern to be returned.",
-        ),
+        min_deployments: Annotated[
+            int,
+            Parameter(
+                ge=1,
+                le=100,
+                description="Minimum deployment count for a pattern to be returned.",
+            ),
+        ] = _DEFAULT_MIN_DEPLOYMENTS_FLOOR,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[AggregatedPattern]:

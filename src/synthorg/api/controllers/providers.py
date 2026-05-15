@@ -594,7 +594,9 @@ class ProviderController(Controller):
             str | None,
             Parameter(
                 max_length=64,
-                description="Canonical preset hint (e.g. anthropic, ollama).",
+                description=(
+                    'Canonical preset hint (e.g. "example-provider", "test-provider").'
+                ),
             ),
         ] = None,
     ) -> ApiResponse[DiscoverModelsResponse]:
