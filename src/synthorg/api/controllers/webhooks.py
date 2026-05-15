@@ -503,6 +503,69 @@ def _assert_receipt_retryable(receipt: WebhookReceipt) -> None:
     raise ConflictError(msg)
 
 
+async def _retry_publish_and_transition(
+    *,
+    persistence: Any,
+    bus: Any,
+    receipt: WebhookReceipt,
+    payload: Mapping[str, object],
+) -> dict[str, object]:
+    """Do the publish-and-CAS body of ``retry_receipt`` under idempotency.
+
+    Returns the publish-response dict augmented with ``receipt_id``,
+    matching the contract of the un-wrapped previous implementation so
+    cached idempotency results stay compatible with prior dashboards.
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    await _transition_webhook_receipt_status(
+        persistence,
+        receipt,
+        new_status=_RECEIPT_STATUS_RETRYING,
+        previous=receipt.status,
+        processed_at=None,
+        error=None,
+        cas_from=_RECEIPT_STATUS_FAILED,
+    )
+    try:
+        result = await _publish_webhook_event_and_log(
+            bus=bus,
+            connection_name=str(receipt.connection_name),
+            event_type=receipt.event_type or "",
+            payload=payload,
+            dedup_source="manual_retry",
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.error(
+            WEBHOOK_REJECTED,
+            receipt_id=str(receipt.id),
+            connection_name=str(receipt.connection_name),
+            reason="retry_publish_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        await _transition_webhook_receipt_status(
+            persistence,
+            receipt,
+            new_status=_RECEIPT_STATUS_FAILED,
+            previous=_RECEIPT_STATUS_RETRYING,
+            processed_at=datetime.now(UTC),
+            error=safe_error_description(exc),
+        )
+        raise
+    await _transition_webhook_receipt_status(
+        persistence,
+        receipt,
+        new_status=_RECEIPT_STATUS_RECEIVED,
+        previous=_RECEIPT_STATUS_RETRYING,
+        processed_at=datetime.now(UTC),
+        error=None,
+    )
+    return {**result, "receipt_id": str(receipt.id)}
+
+
 class WebhooksController(Controller):
     """Webhook receiver and activity log endpoints."""
 
@@ -683,21 +746,19 @@ class WebhooksController(Controller):
         """Re-publish a stored webhook payload to the message bus.
 
         Looks up the receipt, asserts it is in ``failed`` (only
-        retryable state), claims it via a CAS ``retrying`` transition,
-        re-publishes the captured payload, then flips to ``received``
-        on success or back to ``failed`` on publish error. The bus
-        publish bypasses the durable idempotency service because the
-        operator-triggered retry is intentional: a fresh execution
-        chain must run even if the original delivery already
-        succeeded once.
+        retryable state), wraps the publish-and-transition body in
+        :meth:`IdempotencyService.run_idempotent` with scope
+        ``"webhooks:retry"`` and the receipt id as the key. The CAS
+        ``failed`` to ``retrying`` to ``received`` chain still runs
+        inside the callback, so a duplicate operator click hits the
+        idempotency cache instead of attempting a second transition
+        that the CAS guard would reject anyway.
 
         Heavy lifting lives in module-level helpers
         (``_load_payload_from_receipt``, ``_assert_receipt_retryable``,
         ``_transition_webhook_receipt_status``) so this orchestrator
         stays under the repository's 50-line function cap.
         """
-        from datetime import UTC, datetime  # noqa: PLC0415
-
         from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
         persistence = state["app_state"].persistence
@@ -714,60 +775,46 @@ class WebhooksController(Controller):
         _assert_receipt_retryable(receipt)
 
         payload = _load_payload_from_receipt(receipt)
-        # CAS on ``failed`` (not on ``previous_status``) so the DB
-        # predicate matches the guard above; two concurrent retries
-        # cannot both pass.
-        await _transition_webhook_receipt_status(
-            persistence,
-            receipt,
-            new_status=_RECEIPT_STATUS_RETRYING,
-            previous=receipt.status,
-            processed_at=None,
-            error=None,
-            cas_from=_RECEIPT_STATUS_FAILED,
-        )
-
         bus = state["app_state"].message_bus
-        try:
-            result = await _publish_webhook_event_and_log(
+
+        async def _do_retry() -> dict[str, object]:
+            return await _retry_publish_and_transition(
+                persistence=persistence,
                 bus=bus,
-                connection_name=str(receipt.connection_name),
-                event_type=receipt.event_type or "",
+                receipt=receipt,
                 payload=payload,
-                dedup_source="manual_retry",
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            # Log the publish failure BEFORE the fallback status write
-            # so the original cause is preserved even if the status
-            # write also fails. Use ``error_type`` +
-            # ``safe_error_description`` (never raw ``str(exc)``)
-            # because the exception text may carry bus / DSN secrets.
-            logger.error(
-                WEBHOOK_REJECTED,
+
+        scope = NotBlankStr("webhooks:retry")
+        idem_key = NotBlankStr(receipt_id)
+        outcome = await state["app_state"].idempotency_service.run_idempotent(
+            scope=scope,
+            key=idem_key,
+            callback=_do_retry,
+        )
+        if outcome.timed_out:
+            logger.warning(
+                IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                scope=scope,
+                idempotency_key=idem_key,
                 receipt_id=str(receipt.id),
                 connection_name=str(receipt.connection_name),
-                reason="retry_publish_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                endpoint="webhook.retry",
             )
-            await _transition_webhook_receipt_status(
-                persistence,
-                receipt,
-                new_status=_RECEIPT_STATUS_FAILED,
-                previous=_RECEIPT_STATUS_RETRYING,
-                processed_at=datetime.now(UTC),
-                error=safe_error_description(exc),
+            msg = "Concurrent in-flight webhook retry"
+            raise ConflictError(msg)
+        cached = outcome.result
+        if not isinstance(cached, dict):
+            logger.error(
+                IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                scope=scope,
+                idempotency_key=idem_key,
+                receipt_id=str(receipt.id),
+                connection_name=str(receipt.connection_name),
+                endpoint="webhook.retry",
+                note="cached_response_type_mismatch",
+                cached_type=type(cached).__name__,
             )
-            raise
-
-        await _transition_webhook_receipt_status(
-            persistence,
-            receipt,
-            new_status=_RECEIPT_STATUS_RECEIVED,
-            previous=_RECEIPT_STATUS_RETRYING,
-            processed_at=datetime.now(UTC),
-            error=None,
-        )
-        return ApiResponse(data={**result, "receipt_id": str(receipt.id)})
+            msg = "Cached retry response was not a JSON object"
+            raise TypeError(msg)
+        return ApiResponse(data=cached)
