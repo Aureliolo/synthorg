@@ -453,6 +453,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         meeting_scheduler=meeting_scheduler,
         agent_registry=agent_registry,
         provider_registry=provider_registry,
+        persistence=persistence,
     )
     meeting_orchestrator = meeting_wire.meeting_orchestrator
     meeting_scheduler = meeting_wire.meeting_scheduler
