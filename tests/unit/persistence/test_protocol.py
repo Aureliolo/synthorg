@@ -875,6 +875,18 @@ class _FakeBackend:
         return object()
 
     @property
+    def ceremony_scheduler_state(self) -> Any:
+        return object()
+
+    @property
+    def meeting_cooldown(self) -> Any:
+        return object()
+
+    @property
+    def tracked_containers(self) -> Any:
+        return object()
+
+    @property
     def connections(self) -> Any:
         return object()
 
