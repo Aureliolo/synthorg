@@ -113,8 +113,8 @@ competitors:
       memory: {support: full, note: "Pluggable architecture with 3 backends (Mem0, composite, in-memory); 5 memory types (working, episodic, semantic, procedural, social); hybrid retrieval (dense + BM25 sparse, linear-weighted fusion)"}
       tool_use: {support: full, note: "MCP protocol, sandbox isolation, invocation tracking; 14 ToolCategory values (file_system, code_execution, version_control, web, database, terminal, design, communication, analytics, deployment, memory, ontology, mcp, other)"}
       human_in_loop: {support: full, note: "Approval gates, review workflows, 4 autonomy tiers (FULL, SEMI, SUPERVISED, LOCKED), two-stage safety classifier, LLM fallback evaluator"}
-      budget_tracking: {support: partial, note: "Per-token, per-agent, hierarchical cascades, CFO optimization, and automatic model downgrade shipped; risk-unit action budgets still in progress"}
-      security_model: {support: partial, note: "Rule engine + LLM evaluator, progressive trust, audit trail, output scanning, and hallucination detection shipped; self-healing SSRF still in progress"}
+      budget_tracking: {support: full, note: "Per-token, per-agent, hierarchical cascades, CFO optimization, automatic model downgrade, and risk-unit action budgets"}
+      security_model: {support: full, note: "Rule engine + LLM evaluator, progressive trust, audit trail, output scanning, hallucination detection, and self-healing SSRF validation"}
       observability: {support: full, note: "Structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, OTLP"}
       web_dashboard: {support: full, note: "React 19 dashboard with org chart, tasks, budgets, workflow editor, setup wizard, WebSocket + SSE resilience"}
       cli: {support: partial, note: "Go binary for container management and verification; not used for agent orchestration"}

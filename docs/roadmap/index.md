@@ -23,6 +23,7 @@ What works today:
 - **Multi-user access** with HttpOnly cookie sessions, CSRF protection, concurrent session control, JWT auth, and session management
 - **Local model management** for Ollama and LM Studio (browse, pull, delete, configure launch parameters)
 - **Observability** with structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, and OTLP
+- **Notification sinks** with operator alerts via Slack, ntfy, email, and HTTP relay (severity filtering and per-channel routing)
 
 What's not there yet:
 
@@ -34,10 +35,9 @@ What's not there yet:
 Prioritised by dependency order. All work is tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues).
 
 - Operational guides: runtime settings reference, notifications and event subscriptions, workflow API tutorials, agent lifecycle, memory admin API
-- Notification sink MVP for operator alerts (Slack, ntfy, email via HTTP sink relay)
 - OpenAPI TypeScript codegen for the web dashboard
 - REST API and dashboard UI for agent evolution configuration and triggering
-- PostgreSQL performance tuning + TimescaleDB hypertable support for append-only time-series tables
+- TimescaleDB hypertable support for append-only time-series tables
 - Dynamic company scaling across clusters
 - Multi-project support with project-scoped teams and isolated budgets
 - Plugin system and benchmarking suite
