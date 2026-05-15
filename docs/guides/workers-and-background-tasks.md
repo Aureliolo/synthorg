@@ -30,6 +30,18 @@ SynthOrg's distributed task queue runs over NATS JetStream. The dispatcher (`syn
 
 NATS-side settings live under `communication.nats_*` (URL, credentials, reconnect timing).
 
+## Worker authentication
+
+The worker pool's HTTP executor authenticates back to the backend with a per-deployment bearer token. The token source is the `SYNTHORG_WORKER_AUTH_TOKEN` environment variable, read once at worker construction time (see `src/synthorg/workers/__main__.py`).
+
+Operational guidance:
+
+- Treat the token like any other long-lived credential: store it in your secrets manager (Vault, AWS Secrets Manager, etc.) and inject it into the worker container via `env` rather than baking it into the image.
+- Rotate the token on a schedule that matches the rest of your service-account hygiene (typically every 90 days). Rotation is a rolling restart of the worker pool with the new value; nothing else changes.
+- Always set `SYNTHORG_API_BASE_URL` to an HTTPS endpoint in production. Sending the bearer token over plain HTTP discloses it on the wire.
+- The token is NEVER logged. Worker observability events redact the `Authorization` header; if you see a token in a worker log it is a regression. File an issue.
+- Workers refuse to start with an empty token (`SYNTHORG_WORKER_AUTH_TOKEN=""`); failing fast at boot is intentional so an unauthenticated executor never reaches a real backend.
+
 ## Worked example: run the worker pool
 
 Start a local NATS:

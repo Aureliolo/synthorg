@@ -5,19 +5,21 @@ description: Authenticate and call the 10 most common SynthOrg REST endpoints vi
 
 # REST API Examples
 
-The SynthOrg REST API is mounted at `/api/v1` on the backend service (default port `3001`). Every endpoint requires a Bearer JWT token; the response is a typed envelope (`ApiResponse<T>` or `PaginatedResponse<T>`). This guide shows the 10 most common operations.
+The SynthOrg REST API is mounted at `/api/v1` on the backend service (default port `3001`). Every endpoint requires authentication; the JWT is delivered as an HttpOnly `Set-Cookie` header by `/auth/login`, so subsequent calls authenticate by carrying the cookie back, not by attaching an `Authorization: Bearer` header. The response envelope is a typed `ApiResponse<T>` or `PaginatedResponse<T>`. This guide shows the 10 most common operations.
 
-The base URL placeholder `$BASE` defaults to `http://localhost:3001`.
+The base URL placeholder `$BASE` defaults to `http://localhost:3001`. Examples assume `jq` is installed for response inspection.
 
 ## Authenticate
 
 ### curl
 
 ```bash
-TOKEN=$(curl -s -X POST $BASE/api/v1/auth/login \
+# Login. -c writes the session cookie to a jar; -b on every subsequent
+# call reads it back. The response body carries only metadata
+# (expires_in, must_change_password); the JWT is in Set-Cookie.
+curl -s -c cookies.txt -X POST $BASE/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  --data '{"username":"admin","password":"admin"}' \
-  | jq -r '.data.token')
+  --data '{"username":"admin","password":"admin"}' | jq
 ```
 
 ### Python (httpx)
@@ -25,38 +27,42 @@ TOKEN=$(curl -s -X POST $BASE/api/v1/auth/login \
 ```python
 import httpx
 
-resp = httpx.post(
-    "http://localhost:3001/api/v1/auth/login",
-    json={"username": "admin", "password": "admin"},
-)
+# httpx.Client persists cookies on its ``.cookies`` jar between calls.
+client = httpx.Client(base_url="http://localhost:3001")
+resp = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
 resp.raise_for_status()
-token = resp.json()["data"]["token"]
+# Token is in client.cookies now; every subsequent client.get/post
+# carries it back automatically.
 ```
 
 ### JavaScript (fetch)
 
 ```javascript
+// credentials: 'include' both sends and accepts cookies. In a browser
+// this works against same-origin or CORS-allowed targets; in Node 18+
+// fetch use undici's cookie jar via dispatchers (see node docs).
 const resp = await fetch('http://localhost:3001/api/v1/auth/login', {
   method: 'POST',
+  credentials: 'include',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ username: 'admin', password: 'admin' }),
 })
-const token = (await resp.json()).data.token
+const { data: session } = await resp.json()
+console.log('session expires in', session.expires_in, 'seconds')
 ```
 
 ## 1. List agents
 
 ```bash
-curl -s "$BASE/api/v1/agents" -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt "$BASE/api/v1/agents" | jq
 ```
 
 ```python
-resp = httpx.get(f"{base}/api/v1/agents", headers={"Authorization": f"Bearer {token}"})
-agents = resp.json()["data"]
+agents = client.get("/api/v1/agents").json()["data"]
 ```
 
 ```javascript
-const r = await fetch(`${base}/api/v1/agents`, { headers: { Authorization: `Bearer ${token}` } })
+const r = await fetch(`${base}/api/v1/agents`, { credentials: 'include' })
 const { data: agents } = await r.json()
 ```
 
@@ -65,16 +71,14 @@ Returns a paginated envelope; the `meta.next_cursor` field drives the next page.
 ## 2. Create a task
 
 ```bash
-curl -s -X POST "$BASE/api/v1/tasks" \
-  -H "Authorization: Bearer $TOKEN" \
+curl -s -b cookies.txt -X POST "$BASE/api/v1/tasks" \
   -H "Content-Type: application/json" \
   --data '{"title":"Build a sample","description":"Smoke test","acceptance_criteria":["Compiles","Runs"]}'
 ```
 
 ```python
-resp = httpx.post(
-    f"{base}/api/v1/tasks",
-    headers={"Authorization": f"Bearer {token}"},
+resp = client.post(
+    "/api/v1/tasks",
     json={
         "title": "Build a sample",
         "description": "Smoke test",
@@ -87,7 +91,8 @@ task = resp.json()["data"]
 ```javascript
 const r = await fetch(`${base}/api/v1/tasks`, {
   method: 'POST',
-  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ title: 'Build a sample', description: 'Smoke test', acceptance_criteria: ['Compiles', 'Runs'] }),
 })
 const { data: task } = await r.json()
@@ -96,42 +101,35 @@ const { data: task } = await r.json()
 ## 3. Get a task
 
 ```bash
-curl -s "$BASE/api/v1/tasks/$TASK_ID" -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt "$BASE/api/v1/tasks/$TASK_ID" | jq
 ```
 
 ```python
-resp = httpx.get(f"{base}/api/v1/tasks/{task_id}", headers={"Authorization": f"Bearer {token}"})
-task = resp.json()["data"]
+task = client.get(f"/api/v1/tasks/{task_id}").json()["data"]
 ```
 
 ## 4. List artifacts for a task
 
 ```bash
-curl -s "$BASE/api/v1/artifacts?task_id=$TASK_ID" -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt "$BASE/api/v1/artifacts?task_id=$TASK_ID" | jq
 ```
 
 ```python
-resp = httpx.get(
-    f"{base}/api/v1/artifacts",
-    params={"task_id": task_id},
-    headers={"Authorization": f"Bearer {token}"},
-)
+resp = client.get("/api/v1/artifacts", params={"task_id": task_id})
 artifacts = resp.json()["data"]
 ```
 
 ## 5. Submit a client request
 
 ```bash
-curl -s -X POST "$BASE/api/v1/requests" \
-  -H "Authorization: Bearer $TOKEN" \
+curl -s -b cookies.txt -X POST "$BASE/api/v1/requests" \
   -H "Content-Type: application/json" \
   --data '{"client_id":"c-1","requirement":{"title":"Ship the thing","description":"Make it work","acceptance_criteria":["Tests pass"]}}'
 ```
 
 ```python
-resp = httpx.post(
-    f"{base}/api/v1/requests",
-    headers={"Authorization": f"Bearer {token}"},
+resp = client.post(
+    "/api/v1/requests",
     json={
         "client_id": "c-1",
         "requirement": {
@@ -146,8 +144,7 @@ resp = httpx.post(
 ## 6. Approve a client request
 
 ```bash
-curl -s -X POST "$BASE/api/v1/requests/$REQUEST_ID/approve" \
-  -H "Authorization: Bearer $TOKEN"
+curl -s -b cookies.txt -X POST "$BASE/api/v1/requests/$REQUEST_ID/approve"
 ```
 
 The approve endpoint walks the request through the intake engine (when in `SUBMITTED` status) or finalises a previously-scoped request.
@@ -155,28 +152,25 @@ The approve endpoint walks the request through the intake engine (when in `SUBMI
 ## 7. Fetch budget utilisation
 
 ```bash
-curl -s "$BASE/api/v1/budget/utilization" -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt "$BASE/api/v1/budget/utilization" | jq
 ```
 
 ```python
-resp = httpx.get(f"{base}/api/v1/budget/utilization", headers={"Authorization": f"Bearer {token}"})
-util = resp.json()["data"]
+util = client.get("/api/v1/budget/utilization").json()["data"]
 print(f"Monthly: {util['monthly_used_percent']:.1f}% Daily: {util['daily_used_percent']:.1f}%")
 ```
 
 ## 8. Decide on a pending approval
 
 ```bash
-curl -s -X POST "$BASE/api/v1/approvals/$APPROVAL_ID/decide" \
-  -H "Authorization: Bearer $TOKEN" \
+curl -s -b cookies.txt -X POST "$BASE/api/v1/approvals/$APPROVAL_ID/decide" \
   -H "Content-Type: application/json" \
   --data '{"verdict":"approve","rationale":"Canary signal clean."}'
 ```
 
 ```python
-resp = httpx.post(
-    f"{base}/api/v1/approvals/{approval_id}/decide",
-    headers={"Authorization": f"Bearer {token}"},
+resp = client.post(
+    f"/api/v1/approvals/{approval_id}/decide",
     json={"verdict": "approve", "rationale": "Canary signal clean."},
 )
 ```
@@ -184,8 +178,7 @@ resp = httpx.post(
 ## 9. Invoke an MCP tool
 
 ```bash
-curl -s -X POST "$BASE/api/v1/mcp/invoke" \
-  -H "Authorization: Bearer $TOKEN" \
+curl -s -b cookies.txt -X POST "$BASE/api/v1/mcp/invoke" \
   -H "Content-Type: application/json" \
   --data '{"tool":"hello.greet","arguments":{"name":"world","times":2}}'
 ```
@@ -193,7 +186,8 @@ curl -s -X POST "$BASE/api/v1/mcp/invoke" \
 ```javascript
 const r = await fetch(`${base}/api/v1/mcp/invoke`, {
   method: 'POST',
-  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ tool: 'hello.greet', arguments: { name: 'world', times: 2 } }),
 })
 const result = await r.json()
@@ -202,7 +196,11 @@ const result = await r.json()
 ## 10. Subscribe to the live event WebSocket
 
 ```javascript
-const ws = new WebSocket(`ws://localhost:3001/api/v1/ws?token=${token}`)
+// The session cookie is sent automatically because the WebSocket
+// upgrade runs against the same origin; no Authorization header is
+// involved. Make sure document.cookie still holds the session cookie
+// at upgrade time.
+const ws = new WebSocket(`ws://localhost:3001/api/v1/ws`)
 ws.onmessage = (e) => {
   const evt = JSON.parse(e.data)
   console.log('[event]', evt.event_type, evt.payload)

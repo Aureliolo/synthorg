@@ -10,8 +10,8 @@ from typing import Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
 
+from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import (
     ApiResponse,
     AssignExperimentRequest,
@@ -22,6 +22,7 @@ from synthorg.api.dto import (
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,  # noqa: TC001 -- runtime parameter annotation
+    CursorParam,  # noqa: TC001 -- runtime parameter annotation
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -114,20 +115,31 @@ class ExperimentsController(Controller):
         state: State,
         experiment: PathId,
         limit: CursorLimit = _DEFAULT_LIMIT,
-        offset: int | None = Parameter(default=0, ge=0),
+        cursor: CursorParam = None,
     ) -> PaginatedResponse[ExperimentAssignment]:
-        """List recorded assignments for an experiment (newest first)."""
+        """List recorded assignments for an experiment (newest first).
+
+        Pagination uses the standard opaque HMAC-signed cursor (see
+        :mod:`synthorg.api.cursor`); the cursor decodes to an internal
+        offset so callers cannot forge a token that skips to an
+        arbitrary page.
+        """
         app_state: AppState = state.app_state
+        offset = decode_cursor(cursor, secret=app_state.cursor_secret) if cursor else 0
         page, total = await app_state.experiment_service.list_assignments(
             NotBlankStr(experiment),
             limit=limit,
-            offset=offset or 0,
+            offset=offset,
         )
-        next_offset = (offset or 0) + len(page)
+        next_offset = offset + len(page)
         has_more = next_offset < total
         meta = PaginationMeta(
             limit=limit,
-            next_cursor=str(next_offset) if has_more else None,
+            next_cursor=(
+                encode_cursor(next_offset, secret=app_state.cursor_secret)
+                if has_more
+                else None
+            ),
             has_more=has_more,
         )
         return PaginatedResponse(data=page, pagination=meta)

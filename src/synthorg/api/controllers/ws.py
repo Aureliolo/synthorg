@@ -19,6 +19,7 @@ The server pushes ``WsEvent`` JSON on subscribed channels.
 
 import asyncio
 import json
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -680,6 +681,15 @@ async def _setup_connection(
     return channels_plugin, subscriber
 
 
+# Process-wide guard for the active-WS read-modify-write below. Two
+# WS handler coroutines never interleave inside a single sync block,
+# but Prometheus' metrics scrape thread (run by the ASGI server's
+# background scraper) can read ``app.state`` concurrently with a
+# handler that is mid-increment; the lock keeps the increment + store
+# pair indivisible from any concurrent reader's perspective.
+_WS_CONNECTION_COUNT_LOCK = threading.Lock()
+
+
 def _record_ws_connection_opened(socket: WebSocket[Any, Any, Any]) -> None:
     """Increment the WS active-connection gauge.
 
@@ -694,9 +704,9 @@ def _record_ws_connection_opened(socket: WebSocket[Any, Any, Any]) -> None:
     if not app_state.has_prometheus_collector:
         return
     state_dict = socket.app.state
-    current = int(state_dict.get("ws_active_connection_count", 0))
-    current += 1
-    state_dict["ws_active_connection_count"] = current
+    with _WS_CONNECTION_COUNT_LOCK:
+        current = int(state_dict.get("ws_active_connection_count", 0)) + 1
+        state_dict["ws_active_connection_count"] = current
     app_state.prometheus_collector.set_ws_active_connections(count=current)
 
 
@@ -710,9 +720,9 @@ def _record_ws_connection_closed(
     if not app_state.has_prometheus_collector:
         return
     state_dict = socket.app.state
-    current = int(state_dict.get("ws_active_connection_count", 0))
-    current = max(0, current - 1)
-    state_dict["ws_active_connection_count"] = current
+    with _WS_CONNECTION_COUNT_LOCK:
+        current = max(0, int(state_dict.get("ws_active_connection_count", 0)) - 1)
+        state_dict["ws_active_connection_count"] = current
     collector = app_state.prometheus_collector
     collector.record_ws_connection_lifetime(
         transport="websocket",

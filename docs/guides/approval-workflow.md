@@ -52,8 +52,8 @@ curl -X POST http://localhost:8000/api/v1/approvals/approval-1/decide \
 
 The gate unparks the context and resumes the agent loop. The audit chain records:
 
-1. `approval.escalation.raised` at park time.
-2. `approval.decided` at verdict time with the reviewer identity.
+1. `api.approval.created` at park time (one row per pending approval).
+2. `security.approval.approved` / `security.approval.rejected` at verdict time, with the reviewer identity.
 3. `approval.status_transitioned` AFTER persistence write.
 
 ## Operator surface
@@ -69,10 +69,10 @@ For terminal automation, the MCP tool `approvals.decide` accepts the same verdic
 
 ## Observability
 
-- `approval.escalation.raised` (info): one per park.
-- `approval.decided` (info): one per verdict; carries `verdict`, `actor_id`, `rationale_present`.
+- `api.approval.created` (info): one per pending approval row written to the store.
+- `security.approval.approved` / `security.approval.rejected` (info): one per verdict; carries `actor_id` and either the rationale or the approval payload.
 - `approval.status_transitioned` (info): AFTER persistence write, with `from_status` and `to_status`.
-- `approval.auto_rejected` (warning): on timeout-driven auto-rejection.
+- `api.approval.expired` (warning): emitted on timeout-driven auto-rejection alongside the persistence write.
 
 The `synthorg_approval_decisions_total` counter has bounded label `outcome` in `VALID_APPROVAL_OUTCOMES` (`approve` / `reject` / `request_changes` / `auto_rejected`).
 

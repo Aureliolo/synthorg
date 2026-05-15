@@ -34,13 +34,23 @@ uv sync
 
 ## Install external CLI tools (one-time per machine)
 
-Some gates and the docs build rely on external binaries that are not Python packages: `golangci-lint` (Go linter, used by the CLI) and `d2` (architecture diagram renderer). Install them once per development machine:
+Some gates and the docs build rely on external binaries that are not Python packages: `golangci-lint` (Go linter, used by the CLI) and `d2` (architecture diagram renderer).
+
+Install `golangci-lint` once per machine:
 
 ```bash
 bash scripts/install_cli_tools.sh
 ```
 
-The script downloads the pinned versions that match CI (`.github/workflows/cli.yml` and the docs job). Re-run it only after bumping the pinned version; subsequent `uv sync` invocations do NOT re-run the script. CI uses its own action-based install steps, so this is strictly a local-developer convenience.
+The script downloads the pinned `golangci-lint` version that matches CI (`.github/workflows/cli.yml`). Re-run only after bumping the pinned version; subsequent `uv sync` invocations do NOT re-run the script. CI uses its own action-based install step, so this is strictly a local-developer convenience.
+
+Install `d2` separately (the docs job pins `v0.7.1`). The fastest path is the upstream installer:
+
+```bash
+curl -fsSL https://d2lang.com/install.sh | sh -s -- --version v0.7.1
+```
+
+On Windows, install via `winget install Terrastruct.d2` or download the release archive from `https://github.com/terrastruct/d2/releases`. Either way, ensure the resulting `d2` binary is on `PATH`; the docs build invokes it directly.
 
 ## Verify Installation
 

@@ -42,6 +42,7 @@ CLIENT_CONFIG_INVALID: Final[str] = "client.config.invalid"
 # not just a bare exception in the controller's error envelope.
 CLIENT_NOT_FOUND: Final[str] = "client.pool.client_not_found"
 CLIENT_REQUEST_NOT_FOUND: Final[str] = "client.request.not_found"
+SIMULATION_RUN_NOT_FOUND: Final[str] = "simulation.run.not_found"
 
 # Persisted status transition (emitted at the caller AFTER the request
 # is saved). Pure-constructor transitions inside ``with_status`` are

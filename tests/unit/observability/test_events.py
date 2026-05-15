@@ -329,6 +329,8 @@ class TestEventConstants:
             "registry",
             # Resilience handler validation and event logging.
             "resilience",
+            # A/B experiment variant registry + deterministic assignment.
+            "experiments",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

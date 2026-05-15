@@ -17,7 +17,7 @@ import asyncio
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from psycopg.rows import dict_row
 from pydantic import BaseModel
@@ -496,7 +496,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         return NotBlankStr("postgres")
 
     @property
-    def kind(self) -> str:
+    def kind(self) -> Literal["sqlite", "postgres"]:
         """Return the backend discriminator (``"postgres"``)."""
         return "postgres"
 

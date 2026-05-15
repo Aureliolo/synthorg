@@ -11,6 +11,24 @@ recurring shapes:
   ``we used to`` -- forensic prose that names a past state of the
   code. ``moved`` alone is fine; only the ``moved here in`` shape
   signals migration narrative ("once upon a time...").
+* ``previously <verb>`` where ``<verb>`` is one of the migration
+  shapes (``lived``, ``inlined``, ``extracted``, ``duplicated``,
+  ``scattered``, ``routed``, ``emitted``, ``wrapped``, ``owned``).
+  Bare ``previously`` is left alone so legitimate runtime prose
+  ("previously stored ciphertext", "previously compacted
+  conversation") is not flagged.
+* ``were previously inlined`` / ``was previously inlined`` and the
+  same shape with ``duplicated`` / ``extracted`` / ``scattered`` /
+  ``owned`` / ``emitted`` / ``wrapped`` -- copular variants of the
+  ``previously <verb>`` rule above.
+* ``used to be`` -- variant of ``we used to`` that names a past
+  shape of the code as a fact ("used to be scattered across N
+  handlers").
+* ``originally <verb>`` (and ``originally-<verb>``) where ``<verb>``
+  is one of ``generated``, ``promised``, ``claimed``, ``owned``,
+  ``wrapped``, ``emitted``, ``inlined``, ``extracted``, ``routed``,
+  ``handled`` -- "as originally promised" framing that pins prose to
+  a long-gone earlier version of the code.
 * ``Phase \\d+`` and ``phase \\d+`` -- ordinal pipeline numbering
   couples to a specific shape; semantic names (``decompose``,
   ``route``, ``dispatch``) survive insertions / reorders.

@@ -16049,9 +16049,10 @@ export interface operations {
     readonly ApiV1ExperimentsAssignmentsListAssignments: {
         readonly parameters: {
             readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
-                readonly offset?: number | null;
             };
             readonly header?: never;
             readonly path: {

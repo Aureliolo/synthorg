@@ -465,7 +465,12 @@ class CeremonyScheduler:
             )
             sprint = sprint.with_transition(target)
             self._active_sprint = sprint
-            logger.info(
+            # Sprint state is in-memory on the scheduler (no sprint
+            # repository exists today), so this is a transition of the
+            # cached object, not a persistence write. Logged at DEBUG
+            # so it does not get treated as an audit-grade transition
+            # event alongside the persisted ``client.request`` family.
+            logger.debug(
                 SPRINT_STATUS_TRANSITIONED,
                 sprint_id=sprint.id,
                 from_status=previous_status,

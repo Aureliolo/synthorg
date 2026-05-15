@@ -12,7 +12,7 @@ alongside the testcontainers postgres image.
 
 import shutil
 from pathlib import Path
-from typing import cast
+from typing import assert_never, cast
 
 import pytest
 
@@ -48,8 +48,7 @@ def _build_handler(
             pytest.skip("pg_dump / pg_restore binaries are not available on PATH")
         postgres_backend = cast(PostgresPersistenceBackend, backend)
         return PostgresPersistenceComponentHandler(config=postgres_backend.config)
-    msg = f"Unknown backend kind: {backend.kind!r}"
-    raise ValueError(msg)
+    assert_never(backend.kind)
 
 
 async def test_backup_handler_round_trip(

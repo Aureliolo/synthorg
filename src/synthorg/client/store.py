@@ -23,6 +23,7 @@ from synthorg.observability.events.client import (
     SIMULATION_RUN_CANCELLED,
     SIMULATION_RUN_COMPLETED,
     SIMULATION_RUN_FAILED,
+    SIMULATION_RUN_NOT_FOUND,
     SIMULATION_RUN_STARTED,
     SIMULATION_RUN_UPDATE_REJECTED,
 )
@@ -273,6 +274,11 @@ class SimulationStore:
         """Return the record by id or raise ``KeyError``."""
         async with self._lock:
             if simulation_id not in self._runs:
+                logger.warning(
+                    SIMULATION_RUN_NOT_FOUND,
+                    simulation_id=simulation_id,
+                    operation="get",
+                )
                 msg = f"Simulation {simulation_id!r} not found"
                 raise KeyError(msg)
             return self._runs[simulation_id]

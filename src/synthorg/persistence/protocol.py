@@ -5,7 +5,7 @@ management.  Repository protocols provide entity-level access.
 """
 
 from contextlib import AbstractAsyncContextManager  # noqa: TC003
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
@@ -201,12 +201,14 @@ class PersistenceBackend(Protocol):
     """
 
     @property
-    def kind(self) -> str:
+    def kind(self) -> Literal["sqlite", "postgres"]:
         """Return the backend's discriminator string.
 
         One of ``"sqlite"`` or ``"postgres"``. Used by call sites that
         need to pick a backend-specific helper (e.g. backup handler
-        factories) without ``isinstance`` checks.
+        factories) without ``isinstance`` checks. The ``Literal`` type
+        means mypy rejects an implementation that returns any other
+        string.
         """
         ...
 

@@ -39,6 +39,9 @@ from synthorg.observability.prometheus_labels import (
 )
 from synthorg.observability.prometheus_push_metrics import PushMetrics
 from synthorg.observability.prometheus_recording import RecordingMixin
+from synthorg.observability.prometheus_recording_streams import (
+    StreamRecordingMixin,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -145,7 +148,7 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         return None
 
 
-class PrometheusCollector(RecordingMixin):
+class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     """Collects business metrics from SynthOrg services for Prometheus.
 
     Uses a dedicated ``CollectorRegistry`` to avoid polluting the global

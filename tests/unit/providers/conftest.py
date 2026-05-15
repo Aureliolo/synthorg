@@ -74,7 +74,7 @@ class CompletionConfigFactory(ModelFactory[CompletionConfig]):
     temperature = 0.7
     max_tokens = 1024
     stop_sequences = ()
-    top_p = None
+    top_p = 1.0
     timeout = None
 
 

@@ -28,7 +28,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.experiments import (
     EXPERIMENT_ASSIGNMENT_COMPUTED,
     EXPERIMENT_ASSIGNMENT_REPLAYED,
+    EXPERIMENT_NOT_FOUND,
     EXPERIMENT_VARIANT_DELETED,
+    EXPERIMENT_VARIANT_INVALID_WEIGHT,
     EXPERIMENT_VARIANT_REGISTERED,
 )
 
@@ -73,6 +75,12 @@ class ExperimentService:
                 ``weight`` dynamically rather than from a frozen DTO).
         """
         if weight < 1:
+            logger.warning(
+                EXPERIMENT_VARIANT_INVALID_WEIGHT,
+                experiment=str(experiment),
+                variant=str(variant),
+                weight=weight,
+            )
             msg = "weight must be >= 1"
             raise ValidationError(msg)
         record = ExperimentVariant(
@@ -150,6 +158,12 @@ class ExperimentService:
             return recorded
         variants = await self._repo.list_for_experiment(experiment)
         if not variants:
+            logger.warning(
+                EXPERIMENT_NOT_FOUND,
+                experiment=str(experiment),
+                subject_id=str(subject_id),
+                reason="no_variants_registered",
+            )
             msg = f"Experiment {experiment!r} has no registered variants"
             raise NotFoundError(msg)
         chosen = self._choose_variant(experiment, subject_id, variants)
