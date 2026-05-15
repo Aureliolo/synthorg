@@ -76,6 +76,43 @@ def parse_str_tuple_json(raw: str) -> tuple[str, ...] | None:
     return tuple(parsed)
 
 
+def parse_json_int_pair_dict(raw: str) -> dict[str, list[int]] | None:
+    """Parse a JSON ``{op_name: [int, int]}`` env token.
+
+    Returns the raw ``dict[str, list[int]]`` produced by ``json.loads``;
+    the owning Pydantic config's ``mode="before"`` validator promotes
+    inner lists to tuples and rejects malformed values, so this parser
+    only enforces top-level JSON shape (object with string keys).
+    """
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    if not all(isinstance(k, str) for k in parsed):
+        return None
+    return parsed
+
+
+def parse_json_int_dict(raw: str) -> dict[str, int] | None:
+    """Parse a JSON ``{op_name: int}`` env token.
+
+    Returns the raw ``dict[str, int]`` from ``json.loads``. The owning
+    Pydantic validator rejects non-int and negative values, so this
+    parser only enforces top-level JSON shape (object with string keys).
+    """
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    if not all(isinstance(k, str) for k in parsed):
+        return None
+    return parsed
+
+
 @dataclass(frozen=True)
 class MirrorField:
     """Declaration of one settings-mirror Pydantic field.

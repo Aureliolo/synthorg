@@ -10,6 +10,10 @@ from synthorg.api.config import (
     RateLimitTimeUnit,
     ServerConfig,
 )
+from synthorg.config.rate_limits import (
+    PerOpConcurrencyConfig,
+    PerOpRateLimitConfig,
+)
 
 
 @pytest.mark.unit
@@ -163,3 +167,107 @@ class TestRateLimitConfigMirrors:
         )
         rl = RateLimitConfig()
         assert "/api/v1/healthz" in rl.exclude_paths
+
+
+@pytest.mark.unit
+class TestPerOpOverridesMirror:
+    """Coverage for the per-operation overrides mirror integration.
+
+    The JSON-typed env vars ``SYNTHORG_API_PER_OP_RATE_LIMIT_OVERRIDES``
+    and ``SYNTHORG_API_PER_OP_CONCURRENCY_OVERRIDES`` populate the
+    Pydantic ``overrides`` dict on construction, then the existing
+    ``mode='before'`` shape validators run on the populated dict.
+    """
+
+    def test_rate_limit_overrides_env_populates_dict(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_PER_OP_RATE_LIMIT_OVERRIDES",
+            '{"memory.fine_tune":[2,3600]}',
+        )
+        cfg = PerOpRateLimitConfig()
+        assert cfg.overrides == {"memory.fine_tune": (2, 3600)}
+
+    def test_rate_limit_overrides_empty_env_keeps_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SYNTHORG_API_PER_OP_RATE_LIMIT_OVERRIDES", raising=False)
+        cfg = PerOpRateLimitConfig()
+        assert cfg.overrides == {}
+
+    def test_rate_limit_overrides_invalid_env_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_PER_OP_RATE_LIMIT_OVERRIDES",
+            "{not valid json",
+        )
+        cfg = PerOpRateLimitConfig()
+        assert cfg.overrides == {}
+
+    def test_rate_limit_overrides_caller_kwarg_wins_over_env(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_PER_OP_RATE_LIMIT_OVERRIDES",
+            '{"memory.fine_tune":[2,3600]}',
+        )
+        cfg = PerOpRateLimitConfig(overrides={"meetings.invite": (5, 60)})
+        assert cfg.overrides == {"meetings.invite": (5, 60)}
+
+    def test_rate_limit_overrides_env_with_negative_value_rejected(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_PER_OP_RATE_LIMIT_OVERRIDES",
+            '{"memory.fine_tune":[-1,3600]}',
+        )
+        with pytest.raises(ValidationError, match="non-negative"):
+            PerOpRateLimitConfig()
+
+    def test_concurrency_overrides_env_populates_dict(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_PER_OP_CONCURRENCY_OVERRIDES",
+            '{"memory.fine_tune":1}',
+        )
+        cfg = PerOpConcurrencyConfig()
+        assert cfg.overrides == {"memory.fine_tune": 1}
+
+    def test_concurrency_overrides_empty_env_keeps_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SYNTHORG_API_PER_OP_CONCURRENCY_OVERRIDES", raising=False)
+        cfg = PerOpConcurrencyConfig()
+        assert cfg.overrides == {}
+
+    def test_concurrency_overrides_invalid_env_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_PER_OP_CONCURRENCY_OVERRIDES",
+            "{not valid json",
+        )
+        cfg = PerOpConcurrencyConfig()
+        assert cfg.overrides == {}
+
+    def test_concurrency_overrides_env_with_negative_value_rejected(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_API_PER_OP_CONCURRENCY_OVERRIDES",
+            '{"memory.fine_tune":-1}',
+        )
+        with pytest.raises(ValidationError, match="non-negative"):
+            PerOpConcurrencyConfig()

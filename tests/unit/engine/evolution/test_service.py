@@ -84,7 +84,11 @@ def _make_service(
 ) -> EvolutionService:
     """Build an EvolutionService with mocked dependencies."""
     if config is None:
-        config = EvolutionConfig()
+        # Tests in this module exercise the full pipeline by default;
+        # the kill-switch ``enabled`` defaults to False on a fresh
+        # install, so opt in explicitly here. Tests that want the
+        # disabled-no-op path pass ``EvolutionConfig(enabled=False)``.
+        config = EvolutionConfig(enabled=True)
 
     store = identity_store or AsyncMock()
     if identity_store is None:
@@ -107,8 +111,10 @@ def _make_service(
 
     guard.evaluate = AsyncMock(side_effect=_make_guard_decision)
 
-    adapter = AsyncMock()
+    adapter = AsyncMock(spec=AdaptationAdapter)
     adapter.name = "test_adapter"
+    # ``axis`` is a protocol @property; PropertyMock makes the spec'd
+    # attribute return the concrete enum instead of a child mock.
     type(adapter).axis = PropertyMock(
         return_value=AdaptationAxis.PROMPT_TEMPLATE,
     )
@@ -187,6 +193,7 @@ class TestEvolutionServiceEvolve:
 
         proposal = _make_proposal(axis=AdaptationAxis.IDENTITY)
         config = EvolutionConfig(
+            enabled=True,
             adapters=AdapterConfig(identity=True),
         )
         identity = _make_identity()
@@ -213,7 +220,7 @@ class TestEvolutionServiceEvolve:
             side_effect=[(snap_v1,), (snap_v2,)],
         )
 
-        adapter = AsyncMock()
+        adapter = AsyncMock(spec=AdaptationAdapter)
         adapter.apply = AsyncMock()
         type(adapter).axis = PropertyMock(
             return_value=AdaptationAxis.IDENTITY,

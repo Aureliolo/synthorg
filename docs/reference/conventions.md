@@ -84,6 +84,23 @@ All `mode="before"` validators in the codebase return new dicts; the
 immutability tests under `tests/unit/{api,tools}/...` lock in the
 pattern.
 
+### Validator declaration order (`mode="before"`)
+
+Pydantic v2 runs multiple `mode="before"` validators on a class in
+**reverse declaration order**: the validator declared LAST in source
+runs FIRST. When a class pairs a settings-mirror validator
+(`_apply_mirrors`, populating a field from the env via
+`apply_settings_mirrors`) with a shape validator that must inspect the
+populated value, declare the shape validator BEFORE `_apply_mirrors`
+in source so it runs AFTER the mirror has populated the field.
+
+Reference: `PerOpRateLimitConfig._validate_override_tuples` and
+`PerOpConcurrencyConfig._validate_override_values` in
+`src/synthorg/config/rate_limits.py` are declared before
+`_apply_mirrors` precisely so the env-populated `overrides` dict is
+shape-checked. Getting the order wrong means the shape validator runs
+against an empty default and never sees the env override.
+
 ## 5. Event constant module imports
 
 Every observability event is defined as a `Final[str]` constant under

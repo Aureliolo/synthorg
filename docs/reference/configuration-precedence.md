@@ -231,6 +231,24 @@ With YAML eliminated from the precedence chain, the Pydantic-tier
 default would otherwise drift from the env-tier override resolved by
 `SettingsService`.
 
+### Settings-only registered keys (no Pydantic mirror)
+
+Some registered settings are consumed exclusively through
+`SettingsService` (or `ConfigResolver`) and have no corresponding
+field on any Pydantic config class. They participate in the standard
+precedence chain (DB > env > default) without needing a mirror
+declaration. Examples in the `company` namespace:
+
+- `company.name_locales`: consumed in
+  `src/synthorg/api/controllers/setup/company_helpers.py` via
+  `SettingsService.get_entry`.
+- `company.description`: registered for `/settings` UI discoverability;
+  no current code consumer.
+
+These keys are NOT fields on `RootConfig`; treating them as
+settings-only avoids the dual-surface drift that the mirror pattern
+exists to fix.
+
 `synthorg.settings.mirrors.apply_settings_mirrors` is the sanctioned
 fix. Each Pydantic class with mirror fields declares them via a
 `MirrorField` tuple and attaches a `model_validator(mode="before")`
@@ -266,6 +284,30 @@ class MyConfig(BaseModel):
     def _apply_mirrors(cls, data: Any) -> Any:
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 ```
+
+### Available parsers
+
+`synthorg.settings.mirrors` ships the parser callbacks below. A
+`MirrorField` with `parse=None` applies identity parsing (the raw env
+string reaches the field, and the Pydantic field type does any
+coercion). A parser returning `None` signals invalid input; the
+registered default is then applied.
+
+| Parser | Signature | Use for |
+|---|---|---|
+| `parse_bool` | `(str) -> bool \| None` | Boolean tokens (`true`/`false`/`1`/`0`/`yes`/`no`). |
+| `parse_int` | `(str) -> int \| None` | Integer settings. |
+| `parse_float` | `(str) -> float \| None` | Float settings. |
+| `parse_str_tuple_json` | `(str) -> tuple[str, ...] \| None` | JSON list-of-strings into a tuple. |
+| `parse_json_int_pair_dict` | `(str) -> dict[str, list[int]] \| None` | JSON `{op: [int, int]}` (e.g. `PerOpRateLimitConfig.overrides`). Top-level shape only; the owning config's `mode="before"` validator promotes inner lists to tuples and rejects negatives. |
+| `parse_json_int_dict` | `(str) -> dict[str, int] \| None` | JSON `{op: int}` (e.g. `PerOpConcurrencyConfig.overrides`). Top-level shape only; the owning validator rejects non-int / negative values. |
+
+The two JSON-dict parsers deliberately validate only the top-level
+JSON structure. Per-entry semantics (non-blank keys, tuple arity,
+non-negativity) belong to the owning config's `mode="before"`
+validator so operator-facing error context fires before Pydantic
+coercion. See "Validator declaration order" in
+[conventions.md](conventions.md).
 
 ### Sentinel-preserving mode: `only_if_env_set=True`
 
