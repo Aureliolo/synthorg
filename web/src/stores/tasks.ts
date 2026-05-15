@@ -103,7 +103,10 @@ function sanitizeMetadataValue(value: unknown, depth: number): unknown {
     const out: Record<string, unknown> = {}
     for (const [rawKey, rawValue] of Object.entries(value)) {
       const key = sanitizeWsString(rawKey, METADATA_KEY_CAP)
-      if (key === undefined) continue
+      // sanitizeWsString already returns undefined for empty-after-strip,
+      // but assert the no-empty-key invariant locally so a future change
+      // to its contract can't collapse distinct tainted keys onto "".
+      if (key === undefined || key.length === 0) continue
       out[key] = sanitizeMetadataValue(rawValue, depth + 1)
     }
     return out
