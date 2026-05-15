@@ -297,11 +297,17 @@ class CompletionConfig(BaseModel):
         default=(),
         description="Stop sequences",
     )
-    top_p: float | None = Field(
-        default=None,
+    top_p: float = Field(
+        default=1.0,
         ge=0.0,
         le=1.0,
-        description="Nucleus sampling threshold",
+        description=(
+            "Nucleus-sampling threshold. Defaults to 1.0 (full "
+            "distribution, no truncation) so every completion call "
+            "has an explicit deterministic value without each site "
+            "having to repeat it. Override when the prompt class "
+            "needs a custom value alongside ``temperature``."
+        ),
     )
     timeout: float | None = Field(
         default=None,
