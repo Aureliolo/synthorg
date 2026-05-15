@@ -533,6 +533,24 @@ PERSISTENCE_MEETING_COOLDOWN_DELETE_FAILED: Final[str] = (
     "persistence.meeting_cooldown.delete_failed"
 )
 
+# Tracked Docker container events (sandbox lifecycle persistence)
+PERSISTENCE_TRACKED_CONTAINER_SAVED: Final[str] = "persistence.tracked_container.saved"
+PERSISTENCE_TRACKED_CONTAINER_SAVE_FAILED: Final[str] = (
+    "persistence.tracked_container.save_failed"
+)
+PERSISTENCE_TRACKED_CONTAINER_LOADED: Final[str] = (
+    "persistence.tracked_container.loaded"
+)
+PERSISTENCE_TRACKED_CONTAINER_LOAD_FAILED: Final[str] = (
+    "persistence.tracked_container.load_failed"
+)
+PERSISTENCE_TRACKED_CONTAINER_DELETED: Final[str] = (
+    "persistence.tracked_container.deleted"
+)
+PERSISTENCE_TRACKED_CONTAINER_DELETE_FAILED: Final[str] = (
+    "persistence.tracked_container.delete_failed"
+)
+
 # Worker seen-claims events (TaskClaim idempotency dedup)
 PERSISTENCE_SEEN_CLAIMS_MARK_FAILED: Final[str] = "persistence.seen_claims.mark_failed"
 PERSISTENCE_SEEN_CLAIMS_LOOKUP_FAILED: Final[str] = (

@@ -1347,3 +1347,40 @@ CREATE TABLE principle_overrides (
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );
+
+-- WP-1 restart-safety tables: persist scheduler / cooldown / sandbox
+-- state across process restarts. Backed by single-row-per-key
+-- repositories; see the matching ``*_protocol.py`` files for the full
+-- semantics. JSON columns are TEXT (not JSONB) so save/get round-trips
+-- the serialized strings unchanged across both backends; the tables
+-- are tiny (one row per sprint / meeting type / container) so JSONB
+-- indexing offers no benefit.
+
+-- Ceremony scheduler per-sprint snapshot. CeremonyScheduler owns four
+-- in-memory state attributes describing the ceremony-trigger position
+-- of one active sprint.
+CREATE TABLE ceremony_scheduler_state (
+    sprint_id TEXT NOT NULL PRIMARY KEY CHECK (length(trim(sprint_id)) > 0),
+    completion_counters_json TEXT NOT NULL,
+    fired_once_triggers_json TEXT NOT NULL,
+    total_completions INTEGER NOT NULL CHECK (total_completions >= 0),
+    velocity_history_json TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
+-- MeetingScheduler per-meeting-type last-triggered timestamp for the
+-- recurring-meeting cooldown. Wall-clock (not monotonic) so the value
+-- survives process restart meaningfully.
+CREATE TABLE meeting_cooldown (
+    meeting_type_name TEXT NOT NULL PRIMARY KEY
+        CHECK (length(trim(meeting_type_name)) > 0),
+    last_triggered_at TIMESTAMPTZ NOT NULL
+);
+
+-- Docker sandbox container tracking. The sandbox lifecycle persists
+-- one row per managed container (sandbox + optional paired sidecar).
+CREATE TABLE tracked_containers (
+    container_id TEXT NOT NULL PRIMARY KEY CHECK (length(trim(container_id)) > 0),
+    sidecar_id TEXT CHECK (sidecar_id IS NULL OR length(trim(sidecar_id)) > 0),
+    created_at TIMESTAMPTZ NOT NULL
+);

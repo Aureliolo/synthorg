@@ -27,6 +27,7 @@ column:audit_entries:matched_rules:TEXT:JSONB:SQLite has no JSONB type; column s
 column:audit_entries:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:budget_config_versions:saved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:budget_config_versions:snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:ceremony_scheduler_state:updated_at:TEXT:TIMESTAMPTZ:auto-generated; replace with audit-cited justification before commit
 column:checkpoints:context_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
 column:checkpoints:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:collaboration_metrics:delegation_success:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
@@ -82,6 +83,7 @@ column:lifecycle_events:metadata:TEXT:JSONB:SQLite has no JSONB type; column sto
 column:lifecycle_events:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:login_attempts:attempted_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:mcp_installations:installed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:meeting_cooldown:last_triggered_at:TEXT:TIMESTAMPTZ:auto-generated; replace with audit-cited justification before commit
 column:messages:attachments:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
 column:messages:metadata:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
 column:messages:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
@@ -139,6 +141,7 @@ column:tasks:delegation_chain:TEXT:JSONB:SQLite has no JSONB type; column stores
 column:tasks:dependencies:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
 column:tasks:reviewers:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
 column:tasks:task_structure:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:tracked_containers:created_at:TEXT:TIMESTAMPTZ:auto-generated; replace with audit-cited justification before commit
 column:training_plans:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:training_plans:enabled_content_types:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
 column:training_plans:executed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
