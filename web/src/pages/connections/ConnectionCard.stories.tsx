@@ -13,6 +13,7 @@ const baseConnection: Connection = {
   health_status: 'healthy',
   last_health_check_at: '2026-04-12T08:00:00Z',
   metadata: {},
+  rate_limiter: null,
   secret_refs: [],
   webhook_receipt_retention_days: null,
   created_at: '2026-04-01T09:00:00Z',

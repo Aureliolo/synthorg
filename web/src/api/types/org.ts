@@ -1,6 +1,7 @@
 /** Company/organization structure, department and team mutation requests. */
 
 import type { AgentConfig } from './agents'
+import type { Department as WireDepartment } from './dtos.gen'
 import type { AutonomyLevel, DepartmentName, SeniorityLevel } from './enums'
 
 export type {
@@ -16,25 +17,22 @@ export type {
   UpdateTeamRequest,
 } from './dtos.gen'
 
-import type { Department as WireDepartment } from './dtos.gen'
-
 /**
- * Department with the Pydantic-defaulted fields re-typed as optional
- * (the wire still serialises them as their defaults, but the dashboard
- * treats them as opt-in display fields and many test fixtures
- * construct minimal {name, teams} objects). The frontend-only
- * display_name is added for the synthetic-dept fall-through where no
- * backend department row exists for an agent's declared department.
+ * Department with the dashboard-only ``display_name`` extra. The wire
+ * does not carry it; the synthetic-dept fall-through (used when an
+ * agent's declared department has no backend row) populates it from
+ * the dept name.
+ *
+ * The wire's required-vs-optional shape is now correct out of the
+ * generator, so this type only ADDS the optional ``display_name``:
+ * it is NOT an ``Omit<Wire, ...> & { ... }`` tightening overlay.
  */
-export type Department = Partial<Omit<WireDepartment, 'name' | 'teams'>> & {
-  readonly name: string
-  readonly teams: readonly {
-    readonly name: string
-    readonly lead: string
-    readonly members: readonly string[]
-  }[]
+export type Department = WireDepartment & {
   readonly display_name?: string
 }
+
+/** Alias kept for call sites that want to be explicit. */
+export type DashboardDepartment = Department
 
 /** Frontend-only shapes for embedded dict payloads (Pydantic
  *  validates them via ``model_validate`` on inline dicts; not

@@ -3,6 +3,22 @@ import { PackApplyPreviewDialog } from './PackApplyPreviewDialog'
 import type { PackInfoResponse } from '@/api/types/templates'
 import type { Department } from '@/api/types/org'
 
+const baseDept = {
+  autonomy_level: null,
+  ceremony_policy: null,
+  head: null,
+  head_id: null,
+  policies: {
+    approval_chains: [],
+    review_requirements: {
+      min_reviewers: 0,
+      required_reviewer_roles: [],
+      self_review_allowed: true,
+    },
+  },
+  reporting_lines: [],
+} satisfies Partial<Department>
+
 const samplePack: PackInfoResponse = {
   name: 'platform-team',
   display_name: 'Platform Team',
@@ -14,13 +30,13 @@ const samplePack: PackInfoResponse = {
 }
 
 const fittingDepartments: readonly Department[] = [
-  { name: 'engineering', display_name: 'Engineering', budget_percent: 50, teams: [] },
-  { name: 'product', display_name: 'Product', budget_percent: 30, teams: [] },
+  { ...baseDept, name: 'engineering', display_name: 'Engineering', budget_percent: 50, teams: [] },
+  { ...baseDept, name: 'product', display_name: 'Product', budget_percent: 30, teams: [] },
 ]
 
 const overflowDepartments: readonly Department[] = [
-  { name: 'engineering', display_name: 'Engineering', budget_percent: 70, teams: [] },
-  { name: 'product', display_name: 'Product', budget_percent: 25, teams: [] },
+  { ...baseDept, name: 'engineering', display_name: 'Engineering', budget_percent: 70, teams: [] },
+  { ...baseDept, name: 'product', display_name: 'Product', budget_percent: 25, teams: [] },
 ]
 
 const meta = {

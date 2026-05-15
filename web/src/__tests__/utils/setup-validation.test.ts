@@ -45,6 +45,7 @@ const makeModel = (overrides: Partial<ProviderModelConfig> = {}): ProviderModelC
 })
 
 const makeProvider = (overrides: Partial<ProviderConfig> = {}): ProviderConfig => ({
+  name: null,
   driver: 'test-provider',
   litellm_provider: null,
   auth_type: 'api_key',

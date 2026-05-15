@@ -2,9 +2,9 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { DndContext } from '@dnd-kit/core'
 import { TaskColumn } from './TaskColumn'
 import { KANBAN_COLUMNS } from '@/utils/tasks'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
-function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Task {
+function makeTask(id: string, title: string, overrides: Partial<DashboardTask> = {}): DashboardTask {
   return {
     id,
     title,
@@ -27,6 +27,9 @@ function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Tas
     delegation_chain: [],
     task_structure: null,
     coordination_topology: 'auto',
+    middleware_override: null,
+    source: null,
+    metadata: {},
     version: 1,
     created_at: '2026-03-20T10:00:00Z',
     updated_at: '2026-03-25T14:00:00Z',

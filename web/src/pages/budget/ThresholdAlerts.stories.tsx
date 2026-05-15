@@ -13,6 +13,13 @@ const baseBudgetConfig: BudgetConfig = {
   reset_day: 1,
   currency: DEFAULT_CURRENCY,
   pte_tracking_enabled: false,
+  risk_budget: {
+    alerts: { critical_at: 90, warn_at: 75 },
+    enabled: false,
+    per_agent_daily_risk_limit: 20,
+    per_task_risk_limit: 5,
+    total_daily_risk_limit: 100,
+  },
 }
 
 function makeOverview(usedPercent: number): OverviewMetrics {

@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { TaskListView } from './TaskListView'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
-function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Task {
+function makeTask(id: string, title: string, overrides: Partial<DashboardTask> = {}): DashboardTask {
   return {
     id,
     title,
@@ -26,6 +26,9 @@ function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Tas
     delegation_chain: [],
     task_structure: null,
     coordination_topology: 'auto',
+    middleware_override: null,
+    source: null,
+    metadata: {},
     ...overrides,
   }
 }

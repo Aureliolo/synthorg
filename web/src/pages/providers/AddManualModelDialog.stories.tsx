@@ -14,6 +14,7 @@ const meta = {
     (Story) => {
       useProvidersStore.setState({
         addProviderModel: async () => ({
+          name: null,
           driver: 'litellm',
           litellm_provider: null,
           auth_type: 'api_key',

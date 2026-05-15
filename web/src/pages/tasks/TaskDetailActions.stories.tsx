@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from 'storybook/test'
 import { TaskDetailActions } from './TaskDetailActions'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
-const baseTask: Task = {
+const baseTask: DashboardTask = {
   id: 'task-1',
   title: 'Implement new workflow engine',
   description: '',
@@ -25,6 +25,9 @@ const baseTask: Task = {
   delegation_chain: [],
   task_structure: null,
   coordination_topology: 'auto',
+  middleware_override: null,
+  source: null,
+  metadata: {},
   version: 1,
 }
 

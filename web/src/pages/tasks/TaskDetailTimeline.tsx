@@ -1,5 +1,5 @@
 import { Circle, CircleCheck, CirclePlay, UserCheck, Clock } from 'lucide-react'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 import { cn } from '@/lib/utils'
 import { formatDateTime } from '@/utils/format'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
@@ -13,7 +13,7 @@ interface TimelineEntry {
   readonly tone: 'neutral' | 'accent' | 'success'
 }
 
-function buildEntries(task: Task): readonly TimelineEntry[] {
+function buildEntries(task: DashboardTask): readonly TimelineEntry[] {
   const entries: TimelineEntry[] = []
 
   if (task.created_at) {
@@ -61,7 +61,7 @@ function buildEntries(task: Task): readonly TimelineEntry[] {
 }
 
 interface TaskDetailTimelineProps {
-  task: Task
+  task: DashboardTask
 }
 
 /**

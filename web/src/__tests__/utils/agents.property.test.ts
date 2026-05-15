@@ -73,6 +73,10 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   tools: fc.constant({ access_level: 'standard' as const, allowed: ['git'], denied: [] }),
   authority: fc.constant({}),
   autonomy_level: fc.constantFrom('full' as const, 'semi' as const, 'supervised' as const, 'locked' as const, null),
+  strategic_output_mode: fc.constant(null),
+  personality_preset: fc.constant(null),
+  tier: fc.constant(null),
+  model_requirement: fc.constant(null),
   hiring_date: fc.integer({ min: 1735689600000, max: 1767225600000 }).map(
     (ms) => new Date(ms).toISOString(),
   ),
@@ -90,6 +94,7 @@ const arbWindowMetrics: fc.Arbitrary<WindowMetrics> = fc.nat({ max: 100 }).chain
     avg_tokens_per_task: null,
     success_rate: null,
     collaboration_score: null,
+    currency: null,
   })),
 )
 

@@ -21,7 +21,7 @@ import type {
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
-  Task,
+  DashboardTask,
   TaskFilters,
   TransitionTaskRequest,
   UpdateTaskRequest,
@@ -62,10 +62,77 @@ const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>([
 ] satisfies readonly CoordinationTopology[])
 const log = createLogger('tasks')
 
+// ``metadata`` is an arbitrary key-value bag on the wire
+// (``{ [key: string]: unknown }``) and ``middleware_override`` is a
+// nullable string array; both arrive verbatim on the WS task-updated
+// payload. Neither can be enumerated field-by-field like the rest of
+// ``Task``, so they need structural sanitizers: every string (keys
+// included -- ``TaskDetailMetadata`` renders them) is routed through
+// ``sanitizeWsString`` and the recursion is depth-bounded so a deeply
+// nested adversarial payload cannot exhaust the stack.
+const METADATA_MAX_DEPTH = 8
+const METADATA_STRING_CAP = 4096
+const METADATA_KEY_CAP = 256
+
+/** A non-null, non-array object whose prototype is ``Object`` or null
+ * (rejects ``Date`` / ``Map`` / ``Set`` / class instances). */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false
+  }
+  const proto = Object.getPrototypeOf(value) as unknown
+  return proto === Object.prototype || proto === null
+}
+
+/** Recursively clamp a metadata value: strings through
+ * ``sanitizeWsString``, finite numbers / booleans / null preserved,
+ * objects / arrays walked, everything else (functions, symbols,
+ * ``undefined``, ``Date`` / ``Map`` / ``Set``) dropped to ``null``.
+ * Recursion past ``METADATA_MAX_DEPTH`` collapses to ``null``. */
+function sanitizeMetadataValue(value: unknown, depth: number): unknown {
+  if (depth > METADATA_MAX_DEPTH) return null
+  if (typeof value === 'string') {
+    return sanitizeWsString(value, METADATA_STRING_CAP) ?? ''
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'boolean' || value === null) return value
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeMetadataValue(entry, depth + 1))
+  }
+  if (isPlainObject(value)) {
+    // Null-prototype accumulator: a ``__proto__`` (or ``constructor``)
+    // key in the attacker-controlled WS payload would otherwise hit the
+    // prototype setter on a ``{}`` literal, mutating the prototype or
+    // dropping the field instead of storing it as plain data (CWE-1321).
+    const out: Record<string, unknown> = Object.create(null) as Record<
+      string,
+      unknown
+    >
+    for (const [rawKey, rawValue] of Object.entries(value)) {
+      const key = sanitizeWsString(rawKey, METADATA_KEY_CAP)
+      // sanitizeWsString already returns undefined for empty-after-strip,
+      // but assert the no-empty-key invariant locally so a future change
+      // to its contract can't collapse distinct tainted keys onto "".
+      if (key === undefined || key.length === 0) continue
+      out[key] = sanitizeMetadataValue(rawValue, depth + 1)
+    }
+    return out
+  }
+  return null
+}
+
+/** Sanitize the whole ``metadata`` bag; non-objects collapse to
+ * ``{}`` so the consumer always sees a safe record. */
+function sanitizeMetadata(value: unknown): Record<string, unknown> {
+  if (!isPlainObject(value)) return {}
+  const result = sanitizeMetadataValue(value, 0)
+  return isPlainObject(result) ? result : {}
+}
+
 interface TasksState {
   // Data
-  tasks: Task[]
-  selectedTask: Task | null
+  tasks: DashboardTask[]
+  selectedTask: DashboardTask | null
   total: number
 
   // Loading states
@@ -79,10 +146,10 @@ interface TasksState {
   // NOT wrap these in try/catch; check the sentinel and branch on it.
   fetchTasks: (filters?: TaskFilters) => Promise<void>
   fetchTask: (taskId: string) => Promise<void>
-  createTask: (data: CreateTaskRequest) => Promise<Task | null>
-  updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<Task | null>
-  transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<Task | null>
-  cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<Task | null>
+  createTask: (data: CreateTaskRequest) => Promise<DashboardTask | null>
+  updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<DashboardTask | null>
+  transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<DashboardTask | null>
+  cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<DashboardTask | null>
   deleteTask: (taskId: string) => Promise<boolean>
 
   // Real-time
@@ -91,7 +158,7 @@ interface TasksState {
   // Optimistic helpers
   pendingTransitions: Set<string>
   optimisticTransition: (taskId: string, targetStatus: TaskStatus) => () => void
-  upsertTask: (task: Task) => void
+  upsertTask: (task: DashboardTask) => void
   removeTask: (taskId: string) => void
 }
 
@@ -105,7 +172,7 @@ const pendingTransitions = new Set<string>()
  * ``description`` is the only freeform string field (``met`` is a
  * boolean validated by the shape guard already).
  */
-function sanitizeTask(c: Task): Task {
+function sanitizeTask(c: DashboardTask): DashboardTask {
   // Build the returned Task explicitly rather than spreading ``c``:
   // any future string field added to ``Task`` must be wired through
   // ``sanitizeWsString`` here, and a spread would silently bypass
@@ -175,6 +242,9 @@ function sanitizeTask(c: Task): Task {
     delegation_chain: sanitizeIds(c.delegation_chain),
     task_structure: c.task_structure,
     coordination_topology: c.coordination_topology,
+    middleware_override:
+      c.middleware_override == null ? null : sanitizeIds(c.middleware_override),
+    metadata: sanitizeMetadata(c.metadata),
     source:
       c.source === undefined || c.source === null
         ? c.source
@@ -191,6 +261,15 @@ function sanitizeTask(c: Task): Task {
 /** Each ``dependencies`` / ``reviewers`` / ``delegation_chain`` entry must be a plain string. */
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((dep) => typeof dep === 'string')
+}
+
+/** ``middleware_override`` is ``string[] | null`` on the wire.
+ *
+ * Accepting ``undefined`` mirrors ``isNullableString``: a sender that
+ * omits the key should be normalised to ``null`` by ``sanitizeTask``,
+ * not have the whole frame dropped by the shape guard. */
+function isNullableStringArray(value: unknown): boolean {
+  return value === undefined || value === null || isStringArray(value)
 }
 
 /** Each ``artifacts_expected`` entry must have string ``path`` + ``type``. */
@@ -260,6 +339,23 @@ function arraysEqual(
 }
 
 /**
+ * Equality for the nullable ``middleware_override`` chain after
+ * sanitization. The chain selects which middleware runs for the task,
+ * so a control/bidi-carrying entry silently normalized away would
+ * redirect execution -- treat that as a mutation and reject the frame,
+ * mirroring the ``reviewers`` / ``dependencies`` / ``delegation_chain``
+ * gate. ``null`` and an absent field are equivalent ("no override").
+ */
+function nullableArraysEqual(
+  sanitized: readonly string[] | null,
+  original: unknown,
+): boolean {
+  if (sanitized === null) return original === null || original === undefined
+  if (!isStringArray(original)) return false
+  return arraysEqual(sanitized, original)
+}
+
+/**
  * Equality for an optional / nullable id field after sanitization.
  *
  * ``sanitizeTask`` routes ``assigned_to`` / ``parent_task_id`` through
@@ -287,7 +383,7 @@ function nullableIdEqual(sanitized: string | null | undefined, original: unknown
  * ``delegation_chain``, ``artifacts_expected``, ``acceptance_criteria``),
  * and the nullable / optional scalars that ``sanitizeTask`` reads.
  */
-function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
+function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & DashboardTask {
   // Enum fields routed through sanitizeWsEnum (status, priority, type,
   // source) accept any non-empty string here; the sanitizer applies
   // the allowlist + safe fallback. Rejecting unknown values would
@@ -305,6 +401,13 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     isStringArray(c.reviewers) &&
     isStringArray(c.dependencies) &&
     isStringArray(c.delegation_chain) &&
+    // ``middleware_override`` selects the per-task middleware chain
+    // (behavioural, not just display); ``metadata`` is an arbitrary
+    // key-value bag. Both reach state via ``sanitizeTask`` and so must
+    // pass a shape gate -- a non-array / non-object here would break
+    // the structural sanitizers' invariants.
+    isNullableStringArray(c.middleware_override) &&
+    isPlainObject(c.metadata) &&
     isArtifactsExpectedShape(c.artifacts_expected) &&
     isAcceptanceCriteriaShape(c.acceptance_criteria) &&
     // Nullable / optional fields consumed by ``sanitizeTask``. Without
@@ -514,12 +617,17 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
           !arraysEqual(sanitized.reviewers, candidate.reviewers) ||
           !arraysEqual(sanitized.dependencies, candidate.dependencies) ||
           !arraysEqual(sanitized.delegation_chain, candidate.delegation_chain)
+        const middlewareMutated = !nullableArraysEqual(
+          sanitized.middleware_override,
+          candidate.middleware_override,
+        )
         if (
           requiredBlank ||
           requiredMutated ||
           assignedMutated ||
           parentMutated ||
-          stringArraysMutated
+          stringArraysMutated ||
+          middlewareMutated
         ) {
           log.error(
             'Task payload lost or mutated identifier-bearing fields during sanitization, skipping upsert',

@@ -36,6 +36,7 @@ function makeRecord(overrides: Partial<CostRecord> = {}): CostRecord {
     retry_reason: null,
     finish_reason: null,
     success: null,
+    claim_id: '',
     ...overrides,
   }
 }
@@ -475,6 +476,13 @@ describe('computeBudgetMetricCards', () => {
       reset_day: 1,
       currency: 'EUR',
       pte_tracking_enabled: false,
+      risk_budget: {
+        alerts: { critical_at: 90, warn_at: 75 },
+        enabled: false,
+        per_agent_daily_risk_limit: 20,
+        per_task_risk_limit: 5,
+        total_daily_risk_limit: 100,
+      },
     }
     const cards = computeBudgetMetricCards(overview, budgetConfig, null)
     expect(cards[0]!.progress).toBeDefined()

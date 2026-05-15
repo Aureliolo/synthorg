@@ -154,6 +154,177 @@ class TestHermeticEnv:
             assert key not in os.environ
 
 
+class TestPromoteResponseDefaultsToRequired:
+    """``_promote_response_defaults_to_required`` promotes properties
+    on response-side schemas only.
+
+    A schema is request-only iff it is the target of at least one
+    ``requestBody.$ref`` AND not the target of any response ``$ref``.
+    Every other schema gets its defaulted properties promoted so the
+    dashboard reads them as always present.
+    """
+
+    def test_response_only_schema_default_property_promoted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureResponseWithDefault"]
+        assert "optional_with_default" in defn["required"]
+
+    def test_request_only_schema_default_property_left_optional(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureRequestWithDefault"]
+        assert "optional_with_default" not in defn.get("required", [])
+
+    def test_both_sided_schema_promoted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """A schema referenced by BOTH a requestBody and a response is
+        treated as response-side: response serialisation always emits
+        every field, so the type must be tightened to response accuracy."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureBothSided"]
+        assert "optional_with_default" in defn["required"]
+
+    def test_non_2xx_response_schema_promoted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """A schema reached only via a non-2xx (``404``) response is
+        still response-side. The promoter harvests refs under every
+        ``responses`` node without filtering by status code, so error
+        DTOs are tightened just like success DTOs."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureErrorResponse"]
+        assert "optional_with_default" in defn["required"]
+
+    def test_orphan_schema_promoted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """A schema referenced by no path operation at all is not
+        request-only (it appears in no ``requestBody`` ref), so the
+        promoter treats it as response-side and promotes it."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureOrphan"]
+        assert "optional_with_default" in defn["required"]
+
+    def test_no_default_property_still_promoted_on_response_side(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """Every property on a response-side schema is promoted, not
+        just defaulted ones. Pydantic's serialiser emits every field,
+        but the JSON schema drops ``default`` for ``$ref``-typed and
+        ``Optional[X] = None`` fields. The wire reality is "always
+        emitted", so the walker promotes every property."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureResponseWithDefault"]
+        assert "optional_no_default" in defn["required"]
+
+    def test_request_only_no_default_property_left_optional(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """The promoter must never tighten request-only schemas; both
+        defaulted and non-defaulted properties stay optional."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureRequestWithDefault"]
+        existing = set(defn.get("required", []))
+        assert "optional_no_default" not in existing
+        assert "optional_with_default" not in existing
+
+    def test_existing_required_entries_preserved(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """Pre-existing ``required[]`` members are kept across the
+        promotion (set semantics)."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureResponseWithDefault"]
+        assert "required_field" in defn["required"]
+
+    def test_idempotent(self, fresh_schema: dict[str, Any]) -> None:
+        gen._promote_response_defaults_to_required(fresh_schema)
+        first = sorted(
+            fresh_schema["components"]["schemas"]["FixtureResponseWithDefault"][
+                "required"
+            ],
+        )
+        gen._promote_response_defaults_to_required(fresh_schema)
+        second = sorted(
+            fresh_schema["components"]["schemas"]["FixtureResponseWithDefault"][
+                "required"
+            ],
+        )
+        assert first == second
+
+    def test_string_enum_schema_untouched(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """String enums have no ``properties``; nothing to promote."""
+        before = dict(fresh_schema["components"]["schemas"]["FixtureEnum"])
+        gen._promote_response_defaults_to_required(fresh_schema)
+        after = fresh_schema["components"]["schemas"]["FixtureEnum"]
+        assert after == before
+
+    def test_envelope_schema_with_default_data_promoted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """``ApiResponse_FixtureResponse_`` has ``data`` and ``error``
+        defaulted to ``None``; the wire emits both. Promote them."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["ApiResponse_FixtureResponse_"]
+        assert set(defn["required"]) >= {"data", "error"}
+
+    def test_required_list_is_sorted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """The promoter writes ``required`` back sorted so re-runs are
+        byte-stable for the drift gate."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        defn = fresh_schema["components"]["schemas"]["FixtureResponseWithDefault"]
+        assert defn["required"] == sorted(defn["required"])
+
+    def test_returns_mutated_schema(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """Mirror ``_normalise_enum_descriptions``: the function returns
+        the schema dict for chaining."""
+        returned = gen._promote_response_defaults_to_required(fresh_schema)
+        assert returned is fresh_schema
+
+    def test_nested_request_body_ref_not_promoted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """A component reached only transitively through a request-body
+        wrapper's property ``$ref`` is still request-only.
+
+        ``FixtureNestedRequestWrapper`` is referenced directly by a
+        ``requestBody`` and embeds a ``$ref`` to
+        ``FixtureNestedRequestTarget``. Neither is reached by any
+        response, so the transitive closure must classify both as
+        request-only and leave the nested target's defaulted /
+        non-defaulted optional properties out of ``required[]``."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        target = fresh_schema["components"]["schemas"]["FixtureNestedRequestTarget"]
+        existing = set(target.get("required", []))
+        assert "optional_with_default" not in existing
+        assert "optional_no_default" not in existing
+        wrapper = fresh_schema["components"]["schemas"]["FixtureNestedRequestWrapper"]
+        assert set(wrapper.get("required", [])) == {"nested"}
+
+
 class TestRenderDtos:
     """``render_dtos`` walks ``components.schemas`` and emits aliases."""
 

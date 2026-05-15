@@ -31,6 +31,7 @@ const makeCompanyResponse = (): SetupCompanyResponse => ({
 })
 
 const makeProvider = (modelIds: readonly string[] = ['test-model-001']): ProviderConfig => ({
+  name: null,
   driver: 'test-provider',
   litellm_provider: null,
   auth_type: 'api_key',

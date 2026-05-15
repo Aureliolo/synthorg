@@ -43,6 +43,7 @@ const meta = {
             health_status: 'healthy',
             last_health_check_at: null,
             metadata: {},
+            rate_limiter: null,
             secret_refs: [],
             webhook_receipt_retention_days: null,
             created_at: '2026-04-01T09:00:00Z',

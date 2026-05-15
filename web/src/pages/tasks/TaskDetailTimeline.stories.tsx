@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { TaskDetailTimeline } from './TaskDetailTimeline'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
-const baseTask: Task = {
+const baseTask: DashboardTask = {
   id: 'task-1',
   title: 'Demo task',
   description: 'A demo task used for Storybook.',
@@ -24,6 +24,9 @@ const baseTask: Task = {
   delegation_chain: [],
   task_structure: null,
   coordination_topology: 'sas',
+  middleware_override: null,
+  source: null,
+  metadata: {},
   version: 1,
   created_at: '2026-04-19T09:00:00Z',
   updated_at: '2026-04-20T11:30:00Z',

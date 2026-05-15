@@ -7,10 +7,15 @@ Pipeline:
    ``scripts/export_openapi.py``: in-memory SQLite + stable pagination
    cursor secret) and export the enriched OpenAPI schema via
    ``synthorg.api.openapi.inject_rfc9457_responses``.
-2. Hand the schema to ``npx openapi-typescript`` (pinned via
-   ``web/package-lock.json``) to render the verbatim
+2. Promote every property of every response-side schema into
+   ``required[]`` (see ``_promote_response_defaults_to_required``).
+   ``openapi-typescript`` reads ``required[]`` literally, while
+   Pydantic's default serialiser always emits every field, so without
+   this step generated response types are wrongly optional.
+3. Hand the post-processed schema to ``npx openapi-typescript``
+   (pinned via ``web/package-lock.json``) to render the verbatim
    ``openapi.gen.ts`` (full ``paths`` + ``components`` shape).
-3. Render two thin Python-side outputs from the same schema dict:
+4. Render two thin Python-side outputs from the same schema dict:
    - ``dtos.gen.ts``: a named-alias layer over
      ``components['schemas']`` so consumers can write ``AgentConfig``
      instead of ``components['schemas']['AgentConfig']``. Litestar's
@@ -82,6 +87,9 @@ _PASCAL_CASE: Final[re.Pattern[str]] = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 _MONOMORPHISED: Final[re.Pattern[str]] = re.compile(
     r"^(?P<wrapper>[A-Z][A-Za-z0-9]*)_(?P<inner>[A-Za-z0-9_]+)_$",
 )
+# Strip the JSON-Schema $ref namespace prefix to recover a bare
+# ``components.schemas`` key.
+_COMPONENT_REF_PREFIX: Final[str] = "#/components/schemas/"
 
 
 _HERMETIC_ENV_KEYS: Final[tuple[str, ...]] = (
@@ -187,6 +195,123 @@ def _normalise_enum_descriptions(schema: dict[str, Any]) -> dict[str, Any]:
     return schema
 
 
+def _harvest_refs_under(subtree: Any, targets: set[str]) -> None:
+    """Recursively harvest every ``$ref`` value into ``targets``."""
+    if isinstance(subtree, dict):
+        ref = subtree.get("$ref")
+        if isinstance(ref, str) and ref.startswith(_COMPONENT_REF_PREFIX):
+            targets.add(ref[len(_COMPONENT_REF_PREFIX) :])
+        for value in subtree.values():
+            _harvest_refs_under(value, targets)
+    elif isinstance(subtree, list):
+        for item in subtree:
+            _harvest_refs_under(item, targets)
+
+
+def _walk_to_key(subtree: Any, key: str, targets: set[str]) -> None:
+    """Walk ``subtree`` collecting refs under every node named ``key``."""
+    if isinstance(subtree, dict):
+        for child_key, child_value in subtree.items():
+            if child_key == key:
+                _harvest_refs_under(child_value, targets)
+            else:
+                _walk_to_key(child_value, key, targets)
+    elif isinstance(subtree, list):
+        for item in subtree:
+            _walk_to_key(item, key, targets)
+
+
+def _collect_ref_targets(node: Any, key: str, schemas: dict[str, Any]) -> set[str]:
+    """Collect the transitive ``$ref`` closure reachable under ``key``.
+
+    Returned names are bare ``components.schemas`` keys (the
+    ``#/components/schemas/`` prefix is stripped). The seed set is
+    every schema referenced literally under a subtree named ``key``;
+    the closure then follows every ``$ref`` inside those component
+    definitions so a schema reached only indirectly (e.g. a
+    ``requestBody`` wrapper that embeds ``$ref`` to ``FooOptions``)
+    is still attributed to ``key``. Without the closure a nested
+    request-only schema would be misclassified as response-side and
+    have all its properties wrongly promoted to ``required[]``.
+
+    The walk carries a ``seen`` set so self-referential or cyclic
+    component graphs (``A -> B -> A``) terminate.
+    """
+    seed: set[str] = set()
+    _walk_to_key(node, key, seed)
+    seen: set[str] = set()
+    stack = list(seed)
+    while stack:
+        name = stack.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        defn = schemas.get(name)
+        if isinstance(defn, dict):
+            nested: set[str] = set()
+            _harvest_refs_under(defn, nested)
+            stack.extend(nested - seen)
+    return seen
+
+
+def _promote_response_defaults_to_required(
+    schema: dict[str, Any],
+) -> dict[str, Any]:
+    """Promote every property to ``required[]`` on response-side schemas.
+
+    ``openapi-typescript`` reads JSON Schema's ``required[]`` literally
+    and emits anything outside it as optional, but Pydantic's default
+    response serialiser (``model_dump_json`` without ``exclude_unset``)
+    always emits every model field. To match the wire, every response
+    property must therefore be declared required, even those carrying a
+    JSON-schema default.
+
+    A schema is **request-only** iff it is reached via at least one
+    ``paths.*.<verb>.requestBody.content.*.schema.$ref`` AND is not
+    reached via any response ``$ref``. Every other schema is
+    response-side; on those, every property in ``properties`` is
+    appended to ``required[]``. The rule is "every property", not
+    "every property with a JSON-schema ``default``", because Pydantic
+    drops ``default`` from the JSON schema for ``$ref``-typed fields
+    (``priority: Priority = Priority.MEDIUM``), ``Optional[X] = None``
+    fields, and ``default_factory`` fields, even though the wire
+    still emits them on every response.
+
+    The function mutates ``schema`` in place and returns it for
+    chaining (matching :func:`_normalise_enum_descriptions`). It is
+    idempotent: ``required`` is treated as a set, sorted on write so
+    re-runs are byte-stable for the drift gate.
+    """
+    paths = schema.get("paths", {})
+    schemas = schema.get("components", {}).get("schemas", {})
+    request_refs = _collect_ref_targets(paths, "requestBody", schemas)
+    response_refs = _collect_ref_targets(paths, "responses", schemas)
+    request_only_names = request_refs - response_refs
+
+    for name, defn in schemas.items():
+        if name in request_only_names:
+            continue
+        if not isinstance(defn, dict):
+            continue
+        properties = defn.get("properties")
+        if not isinstance(properties, dict) or not properties:
+            continue
+        existing_required = defn.get("required")
+        required = (
+            set(existing_required) if isinstance(existing_required, list) else set()
+        )
+        all_properties = {
+            prop_name
+            for prop_name, prop_defn in properties.items()
+            if isinstance(prop_defn, dict)
+        }
+        added = bool(all_properties - required)
+        required |= all_properties
+        if added or isinstance(existing_required, list):
+            defn["required"] = sorted(required)
+    return schema
+
+
 def export_openapi_schema() -> dict[str, Any]:
     """Boot the app and return the enriched OpenAPI schema dict.
 
@@ -194,7 +319,10 @@ def export_openapi_schema() -> dict[str, Any]:
     and the public ``docs/openapi/openapi.json`` see the same schema.
     Additionally normalises string-enum descriptions to break a
     Litestar schema-cache non-determinism (see
-    :func:`_normalise_enum_descriptions`).
+    :func:`_normalise_enum_descriptions`) and promotes defaulted
+    response-side properties into ``required[]`` so generated
+    TypeScript matches the wire reality (see
+    :func:`_promote_response_defaults_to_required`).
 
     The hermetic env (in-memory SQLite + stable cursor secret) is
     scoped to this call via :func:`_hermetic_env`, so an in-process
@@ -209,7 +337,8 @@ def export_openapi_schema() -> dict[str, Any]:
         app = create_app()
         schema = app.openapi_schema.to_schema()
         schema = inject_rfc9457_responses(schema)
-        return _normalise_enum_descriptions(schema)
+        schema = _normalise_enum_descriptions(schema)
+        return _promote_response_defaults_to_required(schema)
 
 
 def run_openapi_typescript(schema_path: Path) -> str:

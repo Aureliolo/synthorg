@@ -4,7 +4,7 @@ import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { cn } from '@/lib/utils'
 import { useTasksStore } from '@/stores/tasks'
 import type { Priority } from '@/api/types/enums'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDate } from '@/utils/format'
 import { getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
@@ -17,7 +17,7 @@ const PRIORITY_OPTIONS: readonly SelectOption[] = PRIORITIES.map((p) => ({
 }))
 
 interface TaskDetailMetadataProps {
-  task: Task
+  task: DashboardTask
 }
 
 export function TaskDetailMetadata({ task }: TaskDetailMetadataProps) {

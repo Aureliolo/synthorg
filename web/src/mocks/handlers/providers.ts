@@ -106,6 +106,7 @@ export function buildProvider(
   overrides: Partial<ProviderConfig> = {},
 ): ProviderConfig {
   return {
+    name: null,
     driver: 'litellm',
     litellm_provider: null,
     auth_type: 'api_key',

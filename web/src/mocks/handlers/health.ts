@@ -27,6 +27,7 @@ export const healthHandlers = [
         status: 'ok',
         persistence: true,
         message_bus: true,
+        providers: true,
         telemetry: 'disabled',
         version: '0.6.4',
         uptime_seconds: 0,

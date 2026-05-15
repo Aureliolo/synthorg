@@ -1,20 +1,20 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type {
   AgentActivityEvent,
-  AgentConfig,
   AgentPerformanceSummary,
   CareerEvent,
+  DashboardAgentConfig,
 } from '../types/agents'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type { AutonomyLevelRequest, AutonomyLevelResponse } from '../types/system'
 
-export async function listAgents(params?: PaginationParams): Promise<PaginatedResult<AgentConfig>> {
-  const response = await apiClient.get<PaginatedResponse<AgentConfig>>('/agents', { params })
-  return unwrapPaginated<AgentConfig>(response)
+export async function listAgents(params?: PaginationParams): Promise<PaginatedResult<DashboardAgentConfig>> {
+  const response = await apiClient.get<PaginatedResponse<DashboardAgentConfig>>('/agents', { params })
+  return unwrapPaginated<DashboardAgentConfig>(response)
 }
 
-export async function getAgent(name: string): Promise<AgentConfig> {
-  const response = await apiClient.get<ApiResponse<AgentConfig>>(`/agents/${encodeURIComponent(name)}`)
+export async function getAgent(name: string): Promise<DashboardAgentConfig> {
+  const response = await apiClient.get<ApiResponse<DashboardAgentConfig>>(`/agents/${encodeURIComponent(name)}`)
   return unwrap(response)
 }
 
