@@ -93,4 +93,6 @@ Adding a migration: read `docs/guides/persistence-migrations.md` first.  Never h
 
 `scripts/check_persistence_boundary.py` (pre-push hook + CI Lint job).
 
+`scripts/check_no_api_dto_in_persistence_or_service.py` (pre-push hook + CI Lint job) is the sibling layer-discipline gate added in WP-1. It forbids `from synthorg.api.dto_*` imports inside `src/synthorg/persistence/` and `src/synthorg/service/`, so durable storage code cannot bind to API response shapes. The provider-audit and preset-override repositories switched to `synthorg.providers.management.capability_dtos` as part of the same change.
+
 `scripts/check_dual_backend_test_parity.py` (pre-push hook + CI Lint job) protects the conformance-test arm of the same boundary: every test under `tests/conformance/persistence/` must consume the parametrised `backend: PersistenceBackend` fixture (no direct `aiosqlite` / `psycopg` typing, no `backend.backend_name == "..."` body conditionals), and every repository protocol exposed on `PersistenceBackend` must be exercised by at least one test.

@@ -1370,7 +1370,10 @@ CREATE TABLE ceremony_scheduler_state (
 
 -- MeetingScheduler per-meeting-type last-triggered timestamp for the
 -- recurring-meeting cooldown. Wall-clock (not monotonic) so the value
--- survives process restart meaningfully.
+-- survives process restart meaningfully. SQLite stores the same field
+-- as TEXT via parse_iso_utc / format_iso_utc; the divergence is
+-- intentional and exercised by the dual-backend conformance suite.
+-- One row per meeting type so no secondary index beyond the PK.
 CREATE TABLE meeting_cooldown (
     meeting_type_name TEXT NOT NULL PRIMARY KEY
         CHECK (length(trim(meeting_type_name)) > 0),
@@ -1379,6 +1382,10 @@ CREATE TABLE meeting_cooldown (
 
 -- Docker sandbox container tracking. The sandbox lifecycle persists
 -- one row per managed container (sandbox + optional paired sidecar).
+-- Queried via PK lookup (delete) and full-scan load_all() at start;
+-- no secondary indexes needed for the expected single-host fleet size.
+-- SQLite sibling stores created_at as TEXT; conformance tests pin the
+-- round-trip equality across backends.
 CREATE TABLE tracked_containers (
     container_id TEXT NOT NULL PRIMARY KEY CHECK (length(trim(container_id)) > 0),
     sidecar_id TEXT CHECK (sidecar_id IS NULL OR length(trim(sidecar_id)) > 0),

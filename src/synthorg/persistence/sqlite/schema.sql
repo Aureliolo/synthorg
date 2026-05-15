@@ -1392,7 +1392,8 @@ CREATE TABLE ceremony_scheduler_state (
 -- recurring-meeting cooldown. Hydrated at scheduler start via
 -- load_all(); upserted after every successful trigger. Wall-clock
 -- timestamp (not monotonic) so the value remains meaningful across
--- process boundaries.
+-- process boundaries. One row per meeting type (cardinality matches
+-- the static meeting catalogue), so no secondary index beyond the PK.
 CREATE TABLE meeting_cooldown (
     meeting_type_name TEXT NOT NULL PRIMARY KEY
         CHECK(length(trim(meeting_type_name)) > 0),
@@ -1403,6 +1404,8 @@ CREATE TABLE meeting_cooldown (
 -- one row per managed container (sandbox + optional paired sidecar)
 -- so a process restart can reconcile against the Docker daemon's
 -- label-filtered container list and clean up orphans on both sides.
+-- Queried via PK lookup (delete) and full-scan load_all() at start;
+-- no secondary indexes needed for the expected single-host fleet size.
 CREATE TABLE tracked_containers (
     container_id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(container_id)) > 0),
     sidecar_id TEXT CHECK(sidecar_id IS NULL OR length(trim(sidecar_id)) > 0),

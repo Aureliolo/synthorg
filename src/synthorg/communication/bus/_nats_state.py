@@ -62,9 +62,10 @@ class _NatsState:
     # ``create_state``.
     stop_failed: bool = False
     # Hard deadline on the ``client.drain()`` call inside ``stop()``.
-    # Reads from ``NatsConfig`` so deployments can tune it per cluster;
-    # default 30s matches the upstream NATS client's own connection
-    # close grace window.
+    # 30s matches the upstream NATS client's own connection close grace
+    # window. Construction-time override via dataclass replace if a
+    # deployment ever needs to tune it; no per-cluster ``NatsConfig``
+    # field yet because no caller has asked for one.
     stop_drain_timeout_seconds: float = 30.0
     # Last time (``time.monotonic`` seconds) a subscriber queue-overflow
     # event was emitted for a given ``(channel, subscriber)``. Used to

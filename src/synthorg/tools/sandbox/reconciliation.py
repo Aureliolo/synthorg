@@ -136,7 +136,7 @@ async def reconcile_tracked_containers(
     # nothing to clean up on the daemon side.
     for container_id in db_only:
         try:
-            await repo.delete(container_id)  # type: ignore[arg-type]
+            await repo.delete(container_id)
         except Exception as exc:
             logger.warning(
                 DOCKER_CONTAINER_REMOVED,

@@ -20,8 +20,8 @@ stats:
     raw: 26
     display: '26'
   convention_gates:
-    raw: 45
-    display: '45'
+    raw: 46
+    display: '46'
 sources:
   tests: uv run python -m pytest --collect-only -q
   mem0_stars: gh api repos/mem0ai/mem0 --jq .stargazers_count

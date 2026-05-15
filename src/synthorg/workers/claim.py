@@ -155,7 +155,13 @@ class JetStreamTaskQueue:
         # concurrent stop cannot race a start.  Hot-path
         # publish/consume traffic does NOT take this lock; the NATS
         # client + JetStream APIs serialize their own state.
-        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
+        # ``asyncio.Lock()`` is bound to whichever running loop first
+        # ``await``s on it; constructing it here in __init__ is safe
+        # because the queue's async surface (``start`` / ``publish`` /
+        # ``stop``) is only ever entered from a running loop, and
+        # pytest fixtures that hand this instance across loops also
+        # build a fresh queue per loop.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- ctx
         # Timed-out stops mark the queue unrestartable.  Recovery
         # requires constructing a fresh instance (the existing NATS
         # client may still hold the durable consumer's pull

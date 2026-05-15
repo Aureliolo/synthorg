@@ -357,8 +357,13 @@ class InMemoryBackend:
 
     # -- Extra (not in protocol) --------------------------------------
 
-    def clear(self, agent_id: NotBlankStr) -> int:
+    async def clear(self, agent_id: NotBlankStr) -> int:
         """Remove all memories for an agent (session cleanup).
+
+        Acquires ``_store_lock`` so the pop does not race a concurrent
+        ``store`` / ``retrieve`` / ``delete`` / ``count`` on the same
+        agent's store; the rest of the public surface is async and
+        holds the same lock.
 
         Args:
             agent_id: Agent whose memories to clear.
@@ -366,8 +371,9 @@ class InMemoryBackend:
         Returns:
             Number of entries removed.
         """
-        agent_store = self._store.pop(str(agent_id), {})
-        return len(agent_store)
+        async with self._store_lock:
+            agent_store = self._store.pop(str(agent_id), {})
+            return len(agent_store)
 
 
 # -- Filter helpers (module-private) ----------------------------------

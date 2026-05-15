@@ -776,13 +776,16 @@ class WebhooksController(Controller):
 
         payload = _load_payload_from_receipt(receipt)
         bus = state["app_state"].message_bus
+        # Snapshot the payload mapping so a re-invocation of the
+        # idempotency callback cannot observe a mutated capture.
+        payload_snapshot: Mapping[str, object] = dict(payload)
 
         async def _do_retry() -> dict[str, object]:
             return await _retry_publish_and_transition(
                 persistence=persistence,
                 bus=bus,
                 receipt=receipt,
-                payload=payload,
+                payload=payload_snapshot,
             )
 
         scope = NotBlankStr("webhooks:retry")

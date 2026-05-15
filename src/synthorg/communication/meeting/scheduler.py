@@ -83,6 +83,7 @@ class MeetingScheduler:
     """
 
     __slots__ = (
+        "_background_drain_task",
         "_clock",
         "_config",
         "_cooldown_hydrated",
@@ -136,6 +137,12 @@ class MeetingScheduler:
         self._lifecycle_lock: asyncio.Lock | None = None
         self._lifecycle_lock_loop: asyncio.AbstractEventLoop | None = None
         self._tasks: list[asyncio.Task[None]] = []
+        # Holds the shielded drain task spawned in stop() so the orphan
+        # (timeout case) is observable to tests / operators. Cleared on
+        # the next stop() entry, reassigned on completion.
+        self._background_drain_task: asyncio.Task[list[BaseException | None]] | None = (
+            None
+        )
         self._running = False
         # Set to True when a stop() drain exceeds the hard deadline.
         # Prevents a subsequent start() from spawning a second set of
@@ -157,11 +164,18 @@ class MeetingScheduler:
     def _lifecycle_lock_for_current_loop(self) -> asyncio.Lock:
         """Return a lifecycle lock bound to the running loop, rebinding if needed.
 
-        A pre-seeded lock with ``_lifecycle_lock_loop is None`` (e.g. a
-        test double injected before any ``start()`` ran) is preserved
-        unless the recorded loop is concretely different from the
-        current one.  Without this guard, the helper would replace the
-        injected lock on first call and silently weaken race tests.
+        Three paths:
+
+        1. No running loop (``RuntimeError`` from ``get_running_loop``):
+           build a lock if absent and return it; the caller will
+           ``await`` it once a loop is up.
+        2. Recorded loop is ``None`` (pre-seeded by a test double
+           before any ``start()`` ran): keep the injected lock as-is so
+           race tests that pre-acquired it stay deterministic.
+        3. Recorded loop is set and differs from ``current`` (a stale
+           lock from a previous pytest-asyncio loop): rebind to the
+           current running loop so the next ``await`` does not raise
+           "loop is closed".
         """
         try:
             current = asyncio.get_running_loop()
@@ -230,12 +244,16 @@ class MeetingScheduler:
 
         now_wall = datetime.now(UTC)
         now_monotonic = self._clock()
-        for record in records:
-            elapsed = (now_wall - record.last_triggered_at).total_seconds()
-            self._last_triggered[record.meeting_type_name] = now_monotonic - max(
-                0.0, elapsed
-            )
-        self._cooldown_hydrated = True
+        # Acquire the cooldown lock so a trigger_event that races the
+        # post-start hydrate cannot interleave its read-then-write
+        # against the bulk hydrate write.
+        async with self._cooldown_lock_for_current_loop():
+            for record in records:
+                elapsed = (now_wall - record.last_triggered_at).total_seconds()
+                self._last_triggered[record.meeting_type_name] = now_monotonic - max(
+                    0.0, elapsed
+                )
+            self._cooldown_hydrated = True
 
     async def _persist_cooldown(self, meeting_type_name: str) -> None:
         """Upsert the wall-clock timestamp for one meeting type's cooldown.
@@ -445,6 +463,11 @@ class MeetingScheduler:
                 drain_task: asyncio.Task[list[BaseException | None]] = (
                     asyncio.create_task(_drain())
                 )
+                # Park the reference so tests can assert "drain finished"
+                # / "drain orphaned after stop_failed" without grepping
+                # the asyncio task registry. Cleared at the head of the
+                # next stop() invocation.
+                self._background_drain_task = drain_task
                 try:
                     results = await asyncio.wait_for(
                         asyncio.shield(drain_task),

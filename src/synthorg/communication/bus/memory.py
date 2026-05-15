@@ -630,13 +630,19 @@ class InMemoryMessageBus:
         finally:
             # Remove this waiter's future from the active set so the
             # next ``unsubscribe`` only targets still-live waiters.
-            # No ``await`` separates the read and write of
-            # ``_waiters``, so no other coroutine can interleave on
-            # the single-threaded asyncio event loop. The asymmetry
-            # with the lock-guarded add is intentional -- the remove
-            # must run after ``_await_with_shutdown`` completes,
-            # which means after at least one ``await`` already
-            # released the lock.
+            #
+            # Safety: asyncio is single-threaded; the ``get`` /
+            # ``discard`` / ``pop`` sequence below has no ``await``
+            # between operations, so no other coroutine can run in
+            # the gap and observe a half-cleared entry. The asymmetry
+            # with the lock-guarded add at line 627 is deliberate:
+            # the add must happen before the await inside
+            # ``_await_with_shutdown`` reaches the lock-held block on
+            # the producer side, so it pays for the lock; the remove
+            # only needs to land before the next ``unsubscribe`` runs,
+            # and asyncio's run-to-completion guarantee delivers that
+            # for free. If this bus is ever migrated to real threads,
+            # the discard must move inside ``async with self._lock``.
             active = self._waiters.get(key)
             if active is not None:
                 active.discard(unsub_future)

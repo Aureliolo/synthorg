@@ -38,10 +38,11 @@ from datetime import datetime  # noqa: TC003 -- referenced by Protocol signature
 from typing import Protocol, TypeVar, runtime_checkable
 
 T = TypeVar("T")
-ID = TypeVar("ID")
-FilterSpec = TypeVar("FilterSpec")
+T_co = TypeVar("T_co", covariant=True)
+ID_contra = TypeVar("ID_contra", contravariant=True)
+FilterSpec_contra = TypeVar("FilterSpec_contra", contravariant=True)
 Event = TypeVar("Event")
-State = TypeVar("State")
+State_contra = TypeVar("State_contra", contravariant=True)
 Op = TypeVar("Op")
 
 
@@ -69,7 +70,7 @@ class SingletonRepository(Protocol[T]):
 
 
 @runtime_checkable
-class IdKeyedRepository(Protocol[T, ID]):
+class IdKeyedRepository(Protocol[T, ID_contra]):
     """CRUD by primary key.
 
     Composite keys are expressed via ``ID = tuple[NotBlankStr, ...]``;
@@ -80,11 +81,11 @@ class IdKeyedRepository(Protocol[T, ID]):
         """Insert or update an entity (idempotent upsert)."""
         ...
 
-    async def get(self, entity_id: ID) -> T | None:
+    async def get(self, entity_id: ID_contra) -> T | None:
         """Retrieve an entity by id, or ``None`` when absent."""
         ...
 
-    async def delete(self, entity_id: ID) -> bool:
+    async def delete(self, entity_id: ID_contra) -> bool:
         """Delete an entity by id. Return ``True`` iff a row existed."""
         ...
 
@@ -94,7 +95,7 @@ class IdKeyedRepository(Protocol[T, ID]):
 
 
 @runtime_checkable
-class FilteredQueryRepository(Protocol[T, FilterSpec]):
+class FilteredQueryRepository(Protocol[T_co, FilterSpec_contra]):
     """Multi-row query with a typed ``FilterSpec`` args model.
 
     Always composed alongside :class:`IdKeyedRepository` for entities
@@ -103,21 +104,27 @@ class FilteredQueryRepository(Protocol[T, FilterSpec]):
 
     async def query(
         self,
-        filter_spec: FilterSpec,
+        filter_spec: FilterSpec_contra,
         *,
         limit: int = 100,
         offset: int = 0,
-    ) -> tuple[T, ...]:
-        """Return all entities matching the filter spec (paginated)."""
+    ) -> tuple[T_co, ...]:
+        """Return all entities matching the filter spec (paginated).
+
+        Order: each concrete repo documents its ordering invariant
+        (typically primary-key ascending). Callers that need a
+        different order should sort the returned tuple in the caller
+        rather than embedding sort hints in ``FilterSpec``.
+        """
         ...
 
-    async def count(self, filter_spec: FilterSpec) -> int:
+    async def count(self, filter_spec: FilterSpec_contra) -> int:
         """Return the number of entities matching the filter spec."""
         ...
 
 
 @runtime_checkable
-class AppendOnlyRepository(Protocol[Event, FilterSpec]):
+class AppendOnlyRepository(Protocol[Event, FilterSpec_contra]):
     """Immutable event log with query and retention purge.
 
     No per-row update or delete; ``purge_before`` is the only deletion
@@ -130,12 +137,17 @@ class AppendOnlyRepository(Protocol[Event, FilterSpec]):
 
     async def query(
         self,
-        filter_spec: FilterSpec,
+        filter_spec: FilterSpec_contra,
         *,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[Event, ...]:
-        """Return events matching the filter spec, newest-first (paginated)."""
+        """Return events matching the filter spec, newest-first (paginated).
+
+        Order is fixed: append-only logs return rows by descending
+        append timestamp / id so a paginated walk yields the most
+        recent activity first without per-repo configuration.
+        """
         ...
 
     async def purge_before(self, threshold: datetime) -> int:
@@ -144,7 +156,7 @@ class AppendOnlyRepository(Protocol[Event, FilterSpec]):
 
 
 @runtime_checkable
-class StatefulRepository(Protocol[T, ID, State]):
+class StatefulRepository(Protocol[T, ID_contra, State_contra]):
     """IdKeyed + atomic compare-and-set status transitions.
 
     ``transition_if`` is the structural distinction from
@@ -161,19 +173,19 @@ class StatefulRepository(Protocol[T, ID, State]):
         """Insert or update an entity."""
         ...
 
-    async def get(self, entity_id: ID) -> T | None:
+    async def get(self, entity_id: ID_contra) -> T | None:
         """Retrieve an entity by id."""
         ...
 
-    async def delete(self, entity_id: ID) -> bool:
+    async def delete(self, entity_id: ID_contra) -> bool:
         """Delete an entity by id. Return ``True`` iff a row existed."""
         ...
 
     async def transition_if(
         self,
-        entity_id: ID,
-        from_state: State,
-        to_state: State,
+        entity_id: ID_contra,
+        from_state: State_contra,
+        to_state: State_contra,
         **updates: object,
     ) -> bool:
         """Atomic CAS: move ``entity_id`` from ``from_state`` to ``to_state``.
@@ -181,12 +193,20 @@ class StatefulRepository(Protocol[T, ID, State]):
         Returns ``True`` iff the row was in ``from_state`` and is now
         in ``to_state``. Returns ``False`` on state mismatch or when
         no row exists.
+
+        ``**updates`` carries status-correlated columns whose names and
+        types are documented per concrete repo's own ``transition_if``
+        signature: passing a key the concrete repo does not declare is
+        a contract violation, not a silently-ignored argument. Concrete
+        repos should introduce a per-repo ``TypedDict`` for the kwargs
+        so the type checker enforces the contract without docstring
+        archaeology.
         """
         ...
 
 
 @runtime_checkable
-class MVCCRepository(Protocol[T, ID, Op]):
+class MVCCRepository(Protocol[T_co, ID_contra, Op]):
     """Append-only operation log plus point-in-time snapshots.
 
     The only concrete consumer today is ``OrgFactRepository``; the
@@ -197,18 +217,18 @@ class MVCCRepository(Protocol[T, ID, Op]):
         """Append one operation (immutable log entry)."""
         ...
 
-    async def snapshot_at(self, timestamp: datetime) -> tuple[T, ...]:
+    async def snapshot_at(self, timestamp: datetime) -> tuple[T_co, ...]:
         """Return entity state as of ``timestamp``."""
         ...
 
-    async def get(self, entity_id: ID) -> T | None:
+    async def get(self, entity_id: ID_contra) -> T_co | None:
         """Return the current (latest) state of an entity by id."""
         ...
 
-    async def retract(self, entity_id: ID, reason: str) -> None:
+    async def retract(self, entity_id: ID_contra, reason: str) -> None:
         """Non-destructive delete: append a tombstone op with ``reason``."""
         ...
 
-    async def get_operation_log(self, entity_id: ID) -> tuple[Op, ...]:
+    async def get_operation_log(self, entity_id: ID_contra) -> tuple[Op, ...]:
         """Return the full op history for one entity (oldest-first)."""
         ...

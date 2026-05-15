@@ -500,7 +500,7 @@ def _clear_attr(value: object) -> None:
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
-    def __init__(self) -> None:
+    def __init__(self) -> None:  # noqa: PLR0915 -- one assignment per repo; splitting blurs the inventory
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
         self._custom_presets = FakePersonalityPresetRepository()
@@ -558,6 +558,10 @@ class FakePersistenceBackend:
         self._project_cost_aggregates_stub: object | None = None
         self._fine_tune_checkpoints_stub: object | None = None
         self._fine_tune_runs_stub: object | None = None
+        self._meeting_cooldown_stub: object | None = None
+        self._ceremony_scheduler_state_stub: object | None = None
+        self._tracked_container_stub: object | None = None
+        self._idempotency_stub: object | None = None
 
     def clear(self) -> None:
         """Reset all in-memory state for test isolation.
@@ -857,6 +861,49 @@ class FakePersistenceBackend:
         if self._fine_tune_runs_stub is None:
             self._fine_tune_runs_stub = AsyncMock()
         return self._fine_tune_runs_stub
+
+    @property
+    def meeting_cooldown(self) -> Any:
+        """Cached fake meeting cooldown repository (WP-1)."""
+        from unittest.mock import AsyncMock
+
+        if self._meeting_cooldown_stub is None:
+            stub = AsyncMock()
+            stub.load_all = AsyncMock(return_value=())
+            self._meeting_cooldown_stub = stub
+        return self._meeting_cooldown_stub
+
+    @property
+    def ceremony_scheduler_state(self) -> Any:
+        """Cached fake ceremony scheduler state repository (WP-1)."""
+        from unittest.mock import AsyncMock
+
+        if self._ceremony_scheduler_state_stub is None:
+            stub = AsyncMock()
+            stub.load_all = AsyncMock(return_value=())
+            stub.get = AsyncMock(return_value=None)
+            self._ceremony_scheduler_state_stub = stub
+        return self._ceremony_scheduler_state_stub
+
+    @property
+    def tracked_container(self) -> Any:
+        """Cached fake tracked-container repository (WP-1)."""
+        from unittest.mock import AsyncMock
+
+        if self._tracked_container_stub is None:
+            stub = AsyncMock()
+            stub.load_all = AsyncMock(return_value=())
+            self._tracked_container_stub = stub
+        return self._tracked_container_stub
+
+    @property
+    def idempotency(self) -> Any:
+        """Cached fake idempotency repository."""
+        from unittest.mock import AsyncMock
+
+        if self._idempotency_stub is None:
+            self._idempotency_stub = AsyncMock()
+        return self._idempotency_stub
 
     def build_lockouts(self, auth_config: Any) -> Any:
         """Fake lockout repository builder.

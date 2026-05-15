@@ -50,6 +50,11 @@ mandatory_rules:
     header: Persistence Boundary
     gate: scripts/check_persistence_boundary.py
 
+  - id: claude-md::no-api-dto-in-persistence-or-service
+    file: CLAUDE.md
+    header: Persistence Boundary
+    gate: scripts/check_no_api_dto_in_persistence_or_service.py
+
   - id: claude-md::convention-rollout
     file: CLAUDE.md
     header: Convention Rollout
