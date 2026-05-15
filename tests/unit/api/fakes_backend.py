@@ -880,19 +880,20 @@ class FakePersistenceBackend:
 
         if self._ceremony_scheduler_state_stub is None:
             stub = AsyncMock()
-            stub.load_all = AsyncMock(return_value=())
             stub.get = AsyncMock(return_value=None)
+            stub.list_items = AsyncMock(return_value=())
             self._ceremony_scheduler_state_stub = stub
         return self._ceremony_scheduler_state_stub
 
     @property
-    def tracked_container(self) -> Any:
+    def tracked_containers(self) -> Any:
         """Cached fake tracked-container repository (WP-1)."""
         from unittest.mock import AsyncMock
 
         if self._tracked_container_stub is None:
             stub = AsyncMock()
             stub.load_all = AsyncMock(return_value=())
+            stub.list_items = AsyncMock(return_value=())
             self._tracked_container_stub = stub
         return self._tracked_container_stub
 

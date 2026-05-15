@@ -47,7 +47,7 @@ class SQLiteMeetingCooldownRepository:
         except Exception:
             logger.warning(event, error="rollback failed")
 
-    async def upsert(self, record: MeetingCooldownRecord) -> None:
+    async def save(self, record: MeetingCooldownRecord) -> None:
         """Insert or replace the cooldown row for one meeting type."""
         params = (
             record.meeting_type_name,
@@ -63,7 +63,7 @@ class SQLiteMeetingCooldownRepository:
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback_quietly(PERSISTENCE_MEETING_COOLDOWN_UPSERT_FAILED)
-                msg = f"Failed to upsert meeting cooldown {record.meeting_type_name!r}"
+                msg = f"Failed to save meeting cooldown {record.meeting_type_name!r}"
                 logger.warning(
                     PERSISTENCE_MEETING_COOLDOWN_UPSERT_FAILED,
                     meeting_type_name=record.meeting_type_name,
@@ -72,8 +72,30 @@ class SQLiteMeetingCooldownRepository:
                 )
                 raise QueryError(msg) from exc
 
+    async def get(self, meeting_type_name: NotBlankStr) -> MeetingCooldownRecord | None:
+        """Read the cooldown row for one meeting type, or ``None`` if absent."""
+        try:
+            cursor = await self._db.execute(
+                "SELECT meeting_type_name, last_triggered_at "
+                "FROM meeting_cooldown WHERE meeting_type_name = ?",
+                (meeting_type_name,),
+            )
+            row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to load meeting cooldown {meeting_type_name!r}"
+            logger.warning(
+                PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,
+                meeting_type_name=meeting_type_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        return self._row_to_record(dict(row))
+
     async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
-        """Load every cooldown row."""
+        """Load every cooldown row (bespoke per ADR-0001 D7)."""
         try:
             cursor = await self._db.execute(
                 "SELECT meeting_type_name, last_triggered_at FROM meeting_cooldown"
@@ -87,28 +109,48 @@ class SQLiteMeetingCooldownRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        results: list[MeetingCooldownRecord] = []
-        for row in rows:
-            row_dict = dict(row)
-            try:
-                row_dict["last_triggered_at"] = parse_iso_utc(
-                    str(row_dict["last_triggered_at"])
-                )
-                results.append(MeetingCooldownRecord.model_validate(row_dict))
-            except (ValidationError, ValueError) as exc:
-                msg = (
-                    f"corrupt meeting_cooldown row "
-                    f"{row_dict.get('meeting_type_name')!r}"
-                )
-                logger.warning(
-                    PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,
-                    meeting_type_name=row_dict.get("meeting_type_name"),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
+        results = tuple(self._row_to_record(dict(r)) for r in rows)
         logger.debug(PERSISTENCE_MEETING_COOLDOWN_LOADED, count=len(results))
-        return tuple(results)
+        return results
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[MeetingCooldownRecord, ...]:
+        """List cooldown rows ordered by meeting_type_name ascending."""
+        try:
+            cursor = await self._db.execute(
+                "SELECT meeting_type_name, last_triggered_at "
+                "FROM meeting_cooldown "
+                "ORDER BY meeting_type_name ASC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list meeting cooldown rows"
+            logger.warning(
+                PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(self._row_to_record(dict(r)) for r in rows)
+
+    def _row_to_record(self, row: dict[str, object]) -> MeetingCooldownRecord:
+        try:
+            row["last_triggered_at"] = parse_iso_utc(str(row["last_triggered_at"]))
+            return MeetingCooldownRecord.model_validate(row)
+        except (ValidationError, ValueError) as exc:
+            msg = f"corrupt meeting_cooldown row {row.get('meeting_type_name')!r}"
+            logger.warning(
+                PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,
+                meeting_type_name=row.get("meeting_type_name"),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def delete(self, meeting_type_name: NotBlankStr) -> bool:
         """Delete the cooldown row for one meeting type."""

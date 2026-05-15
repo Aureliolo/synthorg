@@ -26,7 +26,8 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import IdKeyedRepository
 
 
 class TrackedContainerRecord(BaseModel):
@@ -49,25 +50,34 @@ class TrackedContainerRecord(BaseModel):
 
 
 @runtime_checkable
-class TrackedContainerRepository(Protocol):
-    """Persistence interface for tracked Docker sandbox containers."""
+class TrackedContainerRepository(
+    IdKeyedRepository[TrackedContainerRecord, NotBlankStr],
+    Protocol,
+):
+    """Persistence interface for tracked Docker sandbox containers.
 
-    async def save(self, record: TrackedContainerRecord) -> None:
+    Composes :class:`IdKeyedRepository` (ADR-0001): the natural key is
+    ``container_id``. ``load_all`` is retained as a bespoke perf method
+    (ADR D7) because reconciliation reads every row at start; paginated
+    ``list_items`` is also provided to satisfy the generic surface.
+    """
+
+    async def save(self, entity: TrackedContainerRecord) -> None:
         """Insert or replace the tracking row for one container.
 
         Args:
-            record: Tracking record to persist.
+            entity: Tracking record to persist.
 
         Raises:
             QueryError: If the underlying write fails.
         """
         ...
 
-    async def get(self, container_id: NotBlankStr) -> TrackedContainerRecord | None:
+    async def get(self, entity_id: NotBlankStr) -> TrackedContainerRecord | None:
         """Read the tracking row for one container, or ``None`` if absent.
 
         Args:
-            container_id: Docker container id to look up.
+            entity_id: Docker container id to look up.
 
         Returns:
             The persisted record, or ``None`` if no row exists.
@@ -77,11 +87,11 @@ class TrackedContainerRepository(Protocol):
         """
         ...
 
-    async def delete(self, container_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete the tracking row for one container.
 
         Args:
-            container_id: Docker container id to remove.
+            entity_id: Docker container id to remove.
 
         Returns:
             ``True`` if a row was deleted, ``False`` if no row existed.
@@ -91,8 +101,32 @@ class TrackedContainerRepository(Protocol):
         """
         ...
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[TrackedContainerRecord, ...]:
+        """List tracked containers ordered by ``container_id`` ascending.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Paginated records in ascending container-id order.
+
+        Raises:
+            QueryError: If the underlying read fails.
+        """
+        ...
+
     async def load_all(self) -> tuple[TrackedContainerRecord, ...]:
-        """Load every tracking row (called once at sandbox-subsystem start).
+        """Load every tracking row in one call (called at start).
+
+        Bespoke per ADR-0001 D7: reconciliation needs the full set in
+        one round-trip and the table is small (one row per managed
+        container), so paginating ``list_items`` would be wasteful.
 
         Returns:
             All persisted records, order unspecified.

@@ -276,7 +276,7 @@ class MeetingScheduler:
             last_triggered_at=datetime.now(UTC),
         )
         try:
-            await self._cooldown_repo.upsert(record)
+            await self._cooldown_repo.save(record)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:

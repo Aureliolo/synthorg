@@ -138,3 +138,49 @@ ON CONFLICT (sprint_id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
         return rowcount > 0
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[CeremonySchedulerStateRecord, ...]:
+        """List snapshots ordered by sprint_id ascending."""
+        sql = (
+            "SELECT sprint_id, completion_counters_json, "
+            "fired_once_triggers_json, total_completions, "
+            "velocity_history_json, updated_at "
+            "FROM ceremony_scheduler_state "
+            "ORDER BY sprint_id ASC LIMIT %s OFFSET %s"
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, (limit, offset))
+                rows: list[dict[str, Any]] = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list ceremony scheduler state snapshots"
+            logger.warning(
+                PERSISTENCE_CEREMONY_STATE_LOAD_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        records: list[CeremonySchedulerStateRecord] = []
+        for row in rows:
+            try:
+                row["updated_at"] = normalize_utc(row["updated_at"])
+                records.append(CeremonySchedulerStateRecord.model_validate(row))
+            except (ValidationError, ValueError) as exc:
+                sprint_id = str(row.get("sprint_id"))
+                msg = f"corrupt ceremony_scheduler_state row for sprint {sprint_id!r}"
+                logger.warning(
+                    PERSISTENCE_CEREMONY_STATE_LOAD_FAILED,
+                    sprint_id=sprint_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return tuple(records)

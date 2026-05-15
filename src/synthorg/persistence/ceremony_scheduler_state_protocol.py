@@ -26,7 +26,8 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import IdKeyedRepository
 
 
 class CeremonySchedulerStateRecord(BaseModel):
@@ -64,19 +65,23 @@ class CeremonySchedulerStateRecord(BaseModel):
 
 
 @runtime_checkable
-class CeremonySchedulerStateRepository(Protocol):
+class CeremonySchedulerStateRepository(
+    IdKeyedRepository[CeremonySchedulerStateRecord, NotBlankStr],
+    Protocol,
+):
     """Persistence interface for ceremony scheduler state snapshots.
 
-    Implementations live under ``persistence/sqlite/`` and
-    ``persistence/postgres/`` with a shared dual-backend conformance
-    suite under ``tests/conformance/persistence/``.
+    Composes :class:`IdKeyedRepository` (ADR-0001): the natural key is
+    ``sprint_id``. Implementations live under ``persistence/sqlite/``
+    and ``persistence/postgres/`` with a shared dual-backend
+    conformance suite under ``tests/conformance/persistence/``.
     """
 
-    async def save(self, record: CeremonySchedulerStateRecord) -> None:
+    async def save(self, entity: CeremonySchedulerStateRecord) -> None:
         """Persist a state snapshot for one sprint (upsert by sprint_id).
 
         Args:
-            record: Snapshot to persist. Replaces any existing row with
+            entity: Snapshot to persist. Replaces any existing row with
                 the same ``sprint_id``.
 
         Raises:
@@ -84,11 +89,11 @@ class CeremonySchedulerStateRepository(Protocol):
         """
         ...
 
-    async def get(self, sprint_id: NotBlankStr) -> CeremonySchedulerStateRecord | None:
+    async def get(self, entity_id: NotBlankStr) -> CeremonySchedulerStateRecord | None:
         """Load the snapshot for one sprint, or ``None`` if absent.
 
         Args:
-            sprint_id: Sprint whose state to load.
+            entity_id: Sprint id whose state to load.
 
         Returns:
             The persisted snapshot, or ``None`` if no row exists.
@@ -98,16 +103,36 @@ class CeremonySchedulerStateRepository(Protocol):
         """
         ...
 
-    async def delete(self, sprint_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete the snapshot for one sprint.
 
         Args:
-            sprint_id: Sprint whose state to remove.
+            entity_id: Sprint id whose state to remove.
 
         Returns:
             ``True`` if a row was deleted, ``False`` if no row existed.
 
         Raises:
             QueryError: If the underlying DELETE fails.
+        """
+        ...
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[CeremonySchedulerStateRecord, ...]:
+        """List persisted snapshots, ordered by ``sprint_id`` ascending.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Paginated snapshots in ascending sprint-id order.
+
+        Raises:
+            QueryError: If the underlying read fails.
         """
         ...

@@ -61,7 +61,7 @@ class TestWP1RestartSafety:
     ) -> None:
         """Meeting cooldown timestamps persist across a simulated restart."""
         when = datetime(2026, 5, 15, 10, 0, tzinfo=UTC)
-        await backend.meeting_cooldown.upsert(
+        await backend.meeting_cooldown.save(
             MeetingCooldownRecord(
                 meeting_type_name=NotBlankStr("daily-standup"),
                 last_triggered_at=when,
@@ -110,7 +110,7 @@ class TestWP1RestartSafety:
                 updated_at=datetime.now(UTC),
             ),
         )
-        await backend.meeting_cooldown.upsert(
+        await backend.meeting_cooldown.save(
             MeetingCooldownRecord(
                 meeting_type_name=NotBlankStr("combo-meeting"),
                 last_triggered_at=datetime.now(UTC),

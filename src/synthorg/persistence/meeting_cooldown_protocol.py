@@ -21,7 +21,8 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import IdKeyedRepository
 
 
 class MeetingCooldownRecord(BaseModel):
@@ -45,45 +46,84 @@ class MeetingCooldownRecord(BaseModel):
 
 
 @runtime_checkable
-class MeetingCooldownRepository(Protocol):
+class MeetingCooldownRepository(
+    IdKeyedRepository[MeetingCooldownRecord, NotBlankStr],
+    Protocol,
+):
     """Persistence interface for meeting cooldown timestamps.
 
-    Implementations live under ``persistence/sqlite/`` and
-    ``persistence/postgres/``.
+    Composes :class:`IdKeyedRepository` (ADR-0001): the natural key is
+    ``meeting_type_name``. ``load_all`` is retained as a bespoke perf
+    method (ADR D7) because the scheduler hydrates every row at start
+    and the cardinality matches the static meeting catalogue.
     """
 
-    async def upsert(self, record: MeetingCooldownRecord) -> None:
+    async def save(self, entity: MeetingCooldownRecord) -> None:
         """Insert or replace the cooldown row for one meeting type.
 
         Args:
-            record: Cooldown record to persist.
+            entity: Cooldown record to persist.
 
         Raises:
             QueryError: If the underlying write fails.
         """
         ...
 
-    async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
-        """Load every cooldown row (called once at scheduler start).
+    async def get(self, entity_id: NotBlankStr) -> MeetingCooldownRecord | None:
+        """Read the cooldown row for one meeting type, or ``None`` if absent.
+
+        Args:
+            entity_id: Meeting type name whose cooldown to look up.
 
         Returns:
-            All persisted cooldown rows, order unspecified.
+            The persisted record, or ``None`` if no row exists.
 
         Raises:
             QueryError: If the underlying read fails.
         """
         ...
 
-    async def delete(self, meeting_type_name: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete the cooldown row for one meeting type.
 
         Args:
-            meeting_type_name: Meeting type whose cooldown to remove.
+            entity_id: Meeting type name whose cooldown to remove.
 
         Returns:
             ``True`` if a row was deleted, ``False`` if no row existed.
 
         Raises:
             QueryError: If the underlying DELETE fails.
+        """
+        ...
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[MeetingCooldownRecord, ...]:
+        """List cooldown rows ordered by ``meeting_type_name`` ascending.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Paginated cooldown rows in ascending meeting-type-name order.
+
+        Raises:
+            QueryError: If the underlying read fails.
+        """
+        ...
+
+    async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
+        """Load every cooldown row in one call (bespoke per ADR-0001 D7).
+
+        Returns:
+            All persisted cooldown rows, order unspecified.
+
+        Raises:
+            QueryError: If the underlying read fails.
         """
         ...

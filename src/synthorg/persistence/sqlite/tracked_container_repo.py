@@ -120,7 +120,7 @@ class SQLiteTrackedContainerRepository:
         return deleted
 
     async def load_all(self) -> tuple[TrackedContainerRecord, ...]:
-        """Load every tracking row."""
+        """Load every tracking row (bespoke per ADR-0001 D7)."""
         try:
             cursor = await self._db.execute(
                 "SELECT container_id, sidecar_id, created_at FROM tracked_containers"
@@ -137,6 +137,31 @@ class SQLiteTrackedContainerRepository:
         results = tuple(self._row_to_record(dict(r)) for r in rows)
         logger.debug(PERSISTENCE_TRACKED_CONTAINER_LOADED, count=len(results))
         return results
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[TrackedContainerRecord, ...]:
+        """List tracked containers ordered by container_id ascending."""
+        try:
+            cursor = await self._db.execute(
+                "SELECT container_id, sidecar_id, created_at "
+                "FROM tracked_containers "
+                "ORDER BY container_id ASC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list tracked container rows"
+            logger.warning(
+                PERSISTENCE_TRACKED_CONTAINER_LOAD_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(self._row_to_record(dict(r)) for r in rows)
 
     def _row_to_record(self, row: dict[str, object]) -> TrackedContainerRecord:
         try:

@@ -23,20 +23,20 @@ def _record(
 
 
 class TestMeetingCooldownRepository:
-    async def test_upsert_and_load_all(self, backend: PersistenceBackend) -> None:
-        await backend.meeting_cooldown.upsert(_record(name="daily"))
-        await backend.meeting_cooldown.upsert(_record(name="weekly"))
+    async def test_save_and_load_all(self, backend: PersistenceBackend) -> None:
+        await backend.meeting_cooldown.save(_record(name="daily"))
+        await backend.meeting_cooldown.save(_record(name="weekly"))
 
         rows = await backend.meeting_cooldown.load_all()
         names = {r.meeting_type_name for r in rows}
         assert "daily" in names
         assert "weekly" in names
 
-    async def test_upsert_replaces(self, backend: PersistenceBackend) -> None:
+    async def test_save_replaces(self, backend: PersistenceBackend) -> None:
         first = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
         second = datetime(2026, 5, 15, 12, 0, tzinfo=UTC)
-        await backend.meeting_cooldown.upsert(_record(name="daily", when=first))
-        await backend.meeting_cooldown.upsert(_record(name="daily", when=second))
+        await backend.meeting_cooldown.save(_record(name="daily", when=first))
+        await backend.meeting_cooldown.save(_record(name="daily", when=second))
 
         rows = await backend.meeting_cooldown.load_all()
         matched = [r for r in rows if r.meeting_type_name == "daily"]
@@ -48,7 +48,7 @@ class TestMeetingCooldownRepository:
         assert rows == ()
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
-        await backend.meeting_cooldown.upsert(_record(name="daily"))
+        await backend.meeting_cooldown.save(_record(name="daily"))
 
         deleted = await backend.meeting_cooldown.delete(NotBlankStr("daily"))
         assert deleted is True
@@ -59,3 +59,24 @@ class TestMeetingCooldownRepository:
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         deleted = await backend.meeting_cooldown.delete(NotBlankStr("ghost"))
         assert deleted is False
+
+    async def test_get_returns_record_or_none(
+        self, backend: PersistenceBackend
+    ) -> None:
+        when = datetime(2026, 5, 14, 9, 0, tzinfo=UTC)
+        await backend.meeting_cooldown.save(_record(name="daily", when=when))
+
+        found = await backend.meeting_cooldown.get(NotBlankStr("daily"))
+        assert found is not None
+        assert found.last_triggered_at == when
+
+        missing = await backend.meeting_cooldown.get(NotBlankStr("ghost"))
+        assert missing is None
+
+    async def test_list_items_orders_by_name(self, backend: PersistenceBackend) -> None:
+        await backend.meeting_cooldown.save(_record(name="weekly"))
+        await backend.meeting_cooldown.save(_record(name="daily"))
+
+        page = await backend.meeting_cooldown.list_items(limit=10)
+        names = [r.meeting_type_name for r in page]
+        assert names == sorted(names)

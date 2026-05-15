@@ -31,7 +31,7 @@ class PostgresMeetingCooldownRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def upsert(self, record: MeetingCooldownRecord) -> None:
+    async def save(self, record: MeetingCooldownRecord) -> None:
         """Insert or replace the cooldown row for one meeting type."""
         params: tuple[Any, ...] = (
             record.meeting_type_name,
@@ -49,7 +49,7 @@ class PostgresMeetingCooldownRepository:
                 await cur.execute(sql, params)
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = f"Failed to upsert meeting cooldown {record.meeting_type_name!r}"
+            msg = f"Failed to save meeting cooldown {record.meeting_type_name!r}"
             logger.warning(
                 PERSISTENCE_MEETING_COOLDOWN_UPSERT_FAILED,
                 meeting_type_name=record.meeting_type_name,
@@ -58,8 +58,34 @@ class PostgresMeetingCooldownRepository:
             )
             raise QueryError(msg) from exc
 
+    async def get(self, meeting_type_name: NotBlankStr) -> MeetingCooldownRecord | None:
+        """Read the cooldown row for one meeting type, or ``None`` if absent."""
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT meeting_type_name, last_triggered_at "
+                    "FROM meeting_cooldown WHERE meeting_type_name = %s",
+                    (meeting_type_name,),
+                )
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = f"Failed to load meeting cooldown {meeting_type_name!r}"
+            logger.warning(
+                PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,
+                meeting_type_name=meeting_type_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        return self._row_to_record(row)
+
     async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
-        """Load every cooldown row."""
+        """Load every cooldown row (bespoke per ADR-0001 D7)."""
         try:
             async with (
                 self._pool.connection() as conn,
@@ -77,22 +103,52 @@ class PostgresMeetingCooldownRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        results: list[MeetingCooldownRecord] = []
-        for row in rows:
-            try:
-                row["last_triggered_at"] = normalize_utc(row["last_triggered_at"])
-                results.append(MeetingCooldownRecord.model_validate(row))
-            except (ValidationError, ValueError) as exc:
-                msg = f"corrupt meeting_cooldown row {row.get('meeting_type_name')!r}"
-                logger.warning(
-                    PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,
-                    meeting_type_name=row.get("meeting_type_name"),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
+        results = tuple(self._row_to_record(r) for r in rows)
         logger.debug(PERSISTENCE_MEETING_COOLDOWN_LOADED, count=len(results))
-        return tuple(results)
+        return results
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[MeetingCooldownRecord, ...]:
+        """List cooldown rows ordered by meeting_type_name ascending."""
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT meeting_type_name, last_triggered_at "
+                    "FROM meeting_cooldown "
+                    "ORDER BY meeting_type_name ASC LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list meeting cooldown rows"
+            logger.warning(
+                PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(self._row_to_record(r) for r in rows)
+
+    def _row_to_record(self, row: dict[str, Any]) -> MeetingCooldownRecord:
+        try:
+            row["last_triggered_at"] = normalize_utc(row["last_triggered_at"])
+            return MeetingCooldownRecord.model_validate(row)
+        except (ValidationError, ValueError) as exc:
+            msg = f"corrupt meeting_cooldown row {row.get('meeting_type_name')!r}"
+            logger.warning(
+                PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,
+                meeting_type_name=row.get("meeting_type_name"),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def delete(self, meeting_type_name: NotBlankStr) -> bool:
         """Delete the cooldown row for one meeting type."""
