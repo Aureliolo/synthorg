@@ -368,9 +368,9 @@ curl -X DELETE http://localhost:3001/api/v1/admin/memory/fine-tune/checkpoints/$
   -H "Cookie: ${SESSION}"
 ```
 
-### Planned admin endpoints
+### Admin endpoints on the backlog
 
-Consolidation, reindex, procedural-skill management, and organization-memory promotion are described in the [Memory design page](../design/memory.md#consolidation-and-retention) but are not yet exposed as REST endpoints. Track progress against the Memory roadmap; in the meantime these operations happen on agent-lifecycle boundaries (consolidation cycles, startup reindex, procedural-memory auto-generation).
+Consolidation, reindex, procedural-skill management, and organization-memory promotion are described in the [Memory design page](../design/memory.md#consolidation-and-retention) but are not exposed as REST endpoints today. These operations happen on agent-lifecycle boundaries (consolidation cycles, startup reindex, procedural-memory auto-generation); a dedicated admin surface is tracked on the GitHub issue tracker under the memory label.
 
 ---
 

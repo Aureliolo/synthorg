@@ -591,13 +591,12 @@ class ProviderController(Controller):
         state: State,
         name: PathName,
         preset_hint: Annotated[
-            str,
+            str | None,
             Parameter(
                 max_length=64,
                 description="Canonical preset hint (e.g. anthropic, ollama).",
             ),
-        ]
-        | None = None,
+        ] = None,
     ) -> ApiResponse[DiscoverModelsResponse]:
         """Discover available models from a provider endpoint.
 

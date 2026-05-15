@@ -1,9 +1,10 @@
 """Message controller -- read + operator-driven DELETE via MessageService."""
 
-from typing import Any, Final
+from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, delete, get
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
@@ -35,7 +36,10 @@ class MessageController(Controller):
     async def list_messages(
         self,
         state: State,
-        channel: str | None = None,
+        channel: Annotated[
+            str | None,
+            Parameter(description="Filter to messages on this channel."),
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Message]:

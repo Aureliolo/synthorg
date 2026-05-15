@@ -5,10 +5,11 @@ endpoints for the ontology subsystem.
 """
 
 from datetime import UTC, datetime
-from typing import Final
+from typing import Annotated, Final
 
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.cursor import decode_cursor
@@ -131,7 +132,10 @@ class OntologyController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
-        tier: str | None = None,
+        tier: Annotated[
+            str | None,
+            Parameter(description="Filter to entity definitions in this tier."),
+        ] = None,
     ) -> PaginatedResponse[EntityResponse]:
         """List all entity definitions, filterable by tier."""
         app_state: AppState = state.app_state
@@ -410,7 +414,10 @@ class OntologyController(Controller):
         self,
         state: State,
         name: PathName,
-        version: int,
+        version: Annotated[
+            int,
+            Parameter(description="Entity definition version to fetch."),
+        ],
     ) -> ApiResponse[EntityVersionResponse]:
         """Get a specific version snapshot."""
         app_state: AppState = state.app_state

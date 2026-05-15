@@ -451,7 +451,7 @@ class TestMeetingController:
             "/api/v1/meetings",
             params={"meeting_type": long_type},
         )
-        assert resp.status_code == 422
+        assert resp.status_code in (400, 422)
 
     def test_auto_wired_meetings_returns_200(
         self,

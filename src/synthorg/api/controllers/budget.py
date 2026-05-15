@@ -298,21 +298,19 @@ class BudgetController(Controller):
         self,
         state: State,
         agent_id: Annotated[
-            str,
+            str | None,
             Parameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to cost records emitted by this agent.",
             ),
-        ]
-        | None = None,
+        ] = None,
         task_id: Annotated[
-            str,
+            str | None,
             Parameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to cost records emitted under this task.",
             ),
-        ]
-        | None = None,
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> CostRecordListResponse:

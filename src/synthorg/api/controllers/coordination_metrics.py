@@ -90,23 +90,31 @@ class CoordinationMetricsController(Controller):
         self,
         state: State,
         task_id: Annotated[
-            str,
+            str | None,
             Parameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to coordination metrics emitted under this task.",
             ),
-        ]
-        | None = None,
+        ] = None,
         agent_id: Annotated[
-            str,
+            str | None,
             Parameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to coordination metrics emitted by this agent.",
             ),
-        ]
-        | None = None,
-        since: datetime | None = None,
-        until: datetime | None = None,
+        ] = None,
+        since: Annotated[
+            datetime | None,
+            Parameter(
+                description="Filter to metrics emitted at or after this ISO timestamp."
+            ),
+        ] = None,
+        until: Annotated[
+            datetime | None,
+            Parameter(
+                description="Filter to metrics emitted at or before this ISO timestamp."
+            ),
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[CoordinationMetricsRecord]:

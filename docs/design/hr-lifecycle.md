@@ -293,16 +293,25 @@ human decision.
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D9, D10)"
 
+    Each decision below names the protocol that ships today and the
+    concrete `Initial strategy` that the default factory wires. "Initial
+    strategy" is the shipped default, not aspirational scaffolding;
+    operators replace it by registering an alternative strategy on the
+    relevant factory.
+
     - **D9: Task Reassignment.** Pluggable `TaskReassignmentStrategy` protocol. Initial
-      strategy: queue-return; tasks return to unassigned queue, existing `TaskRoutingService`
-      re-routes with priority boost for reassigned tasks. Future strategies:
-      same-department/lowest-load, manager-decides (LLM), HR agent decides.
+      strategy: queue-return (concrete: `QueueReturnStrategy` in
+      `src/synthorg/hr/queue_return_strategy.py`); tasks return to unassigned queue,
+      existing `TaskRoutingService` re-routes with priority boost for reassigned tasks.
+      Future strategies on the backlog: same-department / lowest-load, manager-decides
+      (LLM), HR agent decides.
     - **D10: Memory Archival.** Pluggable `MemoryArchivalStrategy` protocol. Initial
-      strategy: full snapshot, read-only. Pipeline: retrieve all memories, archive to
-      `ArchivalStore`, selectively promote semantic+procedural memories to
+      strategy: full snapshot, read-only (concrete: `FullSnapshotStrategy` in
+      `src/synthorg/hr/full_snapshot_strategy.py`). Pipeline: retrieve all memories,
+      archive to `ArchivalStore`, selectively promote semantic+procedural memories to
       `OrgMemoryBackend` (rule-based), clean hot store, mark agent TERMINATED. Rehiring
-      restores archived memories into a new `AgentIdentity`. Future strategies: selective
-      discard, full-accessible.
+      restores archived memories into a new `AgentIdentity`. Future strategies on the
+      backlog: selective discard, full-accessible.
 
 ## Performance Tracking
 
@@ -485,6 +494,11 @@ Agents can move between seniority levels based on performance:
 - Model upgrades/downgrades may accompany level changes (configurable, see [auto-downgrade](budget.md#cost-controls))
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D13, D14, D15)"
+
+    Each decision below names the protocol that ships today and the
+    concrete `Initial strategy` that the default factory wires. "Initial
+    strategy" is the shipped default; operators substitute via the
+    factory.
 
     - **D13: Promotion Criteria.** Pluggable `PromotionCriteriaStrategy` protocol. Initial
       strategy: configurable threshold gates. `ThresholdEvaluator` with

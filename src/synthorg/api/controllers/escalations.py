@@ -9,10 +9,11 @@ client cannot flood the queue.  Error responses use the shared RFC
 9457 handlers registered by :mod:`synthorg.api.exception_handlers`.
 """
 
-from typing import Any, Final
+from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.cursor import decode_cursor, encode_cursor
@@ -133,7 +134,12 @@ class EscalationsController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
-        status: EscalationStatus = EscalationStatus.PENDING,
+        status: Annotated[
+            EscalationStatus,
+            Parameter(
+                description="Filter to escalations in this status (default PENDING)."
+            ),
+        ] = EscalationStatus.PENDING,
     ) -> PaginatedResponse[EscalationResponse]:
         """Page over escalations filtered by ``status`` (default PENDING)."""
         app_state: AppState = state.app_state
