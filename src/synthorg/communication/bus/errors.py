@@ -25,3 +25,24 @@ class BusStreamError(CommunicationError):
     failures, and KV bucket setup failures. Context typically includes
     ``stream`` or ``bucket`` keys identifying the failing primitive.
     """
+
+
+class BusStopTimeoutError(CommunicationError):
+    """Raised when a bus / queue client's ``stop()`` drain exceeds its hard deadline.
+
+    Per ``docs/reference/lifecycle-sync.md`` a timed-out drain must mark
+    the instance unrestartable: the partially-drained NATS connection
+    may still hold the durable consumer's pull subscription and a fresh
+    ``start()`` would attach a second listener. The class flips its
+    ``_stop_failed`` flag before raising; callers that catch this error
+    must construct a fresh instance to recover.
+    """
+
+
+class BusUnrestartableError(CommunicationError):
+    """Raised when ``start()`` is called after a timed-out ``stop()``.
+
+    See :class:`BusStopTimeoutError` for the underlying invariant. The
+    only safe recovery is constructing a fresh instance, so this error
+    surfaces the operator-visible signal rather than silently retrying.
+    """

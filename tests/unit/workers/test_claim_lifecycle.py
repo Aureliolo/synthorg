@@ -375,3 +375,65 @@ async def test_next_claim_before_start_logs_not_running(
     ]
     assert len(matched) == 1
     assert matched[0].kwargs["operation"] == "next_claim"
+
+
+# Lifecycle lock + timed-out stop
+
+
+@pytest.mark.unit
+async def test_lifecycle_lock_serialises_concurrent_starts() -> None:
+    """Two concurrent ``start()`` calls cannot both pass the ``_running`` check."""
+    import asyncio
+
+    queue = _make_queue()
+    queue._running = True  # Simulate already-running so any caller hits the guard.
+
+    async def _try_start() -> Exception | None:
+        try:
+            await queue.start()
+        except Exception as exc:
+            return exc
+        return None
+
+    results = await asyncio.gather(_try_start(), _try_start(), return_exceptions=False)
+
+    # Both calls must observe the running flag and raise the same
+    # RuntimeError; the lifecycle lock serialises them so neither
+    # silently overwrites the other.
+    assert all(isinstance(r, RuntimeError) for r in results)
+
+
+@pytest.mark.unit
+async def test_stop_drain_timeout_marks_unrestartable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``stop()`` drain exceeding the deadline raises and flips _stop_failed."""
+    import asyncio
+
+    from synthorg.communication.bus.errors import BusStopTimeoutError
+
+    queue = _make_queue()
+    queue._stop_drain_timeout_seconds = 0.05
+
+    async def _slow_drain() -> None:
+        await asyncio.sleep(10.0)
+
+    queue._client = AsyncMock(spec=_ClientStub)
+    queue._client.drain.side_effect = _slow_drain
+
+    with pytest.raises(BusStopTimeoutError):
+        await queue.stop()
+
+    assert queue._stop_failed is True
+
+
+@pytest.mark.unit
+async def test_start_after_stop_timeout_raises_unrestartable() -> None:
+    """``start()`` after a timed-out stop raises ``BusUnrestartableError``."""
+    from synthorg.communication.bus.errors import BusUnrestartableError
+
+    queue = _make_queue()
+    queue._stop_failed = True
+
+    with pytest.raises(BusUnrestartableError):
+        await queue.start()

@@ -9,6 +9,7 @@ API behind a small ``publish_claim`` / ``next_claim`` / ``ack`` /
 ``nack`` surface that both the dispatcher and worker use.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final
@@ -19,7 +20,9 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from synthorg.communication.bus import redact_url
 from synthorg.communication.bus.errors import (
     BusConnectionError,
+    BusStopTimeoutError,
     BusStreamError,
+    BusUnrestartableError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -45,6 +48,16 @@ _MAX_CLAIM_PAYLOAD_BYTES: Final[int] = 1 * 1024 * 1024
 Claims are small JSON envelopes; anything larger is either a protocol
 mismatch or a DoS vector. Reject before invoking Pydantic validation
 to prevent memory exhaustion on malformed claims.
+"""
+
+_STOP_DRAIN_TIMEOUT_SECONDS: Final[float] = 10.0
+"""Hard deadline on ``JetStreamTaskQueue.stop()``'s NATS drain.
+
+Per ``docs/reference/lifecycle-sync.md``, a stop that cannot drain
+within a bounded window must mark the queue unrestartable rather than
+hang forever. 10 seconds covers the routine ``client.drain()`` ack
+flush; a longer wait usually means the NATS server is unreachable and
+the operator should treat the queue as poisoned.
 """
 
 
@@ -137,6 +150,18 @@ class JetStreamTaskQueue:
         self._js: Any = None
         self._sub: Any = None
         self._running = False
+        # Per docs/reference/lifecycle-sync.md: serialize start/stop +
+        # _running check-and-set under a dedicated lifecycle lock so a
+        # concurrent stop cannot race a start.  Hot-path
+        # publish/consume traffic does NOT take this lock; the NATS
+        # client + JetStream APIs serialize their own state.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
+        # Timed-out stops mark the queue unrestartable.  Recovery
+        # requires constructing a fresh instance (the existing NATS
+        # client may still hold the durable consumer's pull
+        # subscription).
+        self._stop_failed = False
+        self._stop_drain_timeout_seconds = _STOP_DRAIN_TIMEOUT_SECONDS
 
     @property
     def is_running(self) -> bool:
@@ -147,6 +172,9 @@ class JetStreamTaskQueue:
         """Connect to NATS and ensure the work-queue stream exists.
 
         Raises:
+            BusUnrestartableError: If a previous ``stop()`` exceeded
+                its drain timeout and marked the instance unrestartable.
+                Callers must construct a fresh instance.
             RuntimeError: If ``start()`` is called while the queue is
                 already running. Reconnecting would leak the existing
                 client/subscription and attach multiple listeners to
@@ -157,25 +185,32 @@ class JetStreamTaskQueue:
                 connection is established. The partially-initialized
                 client is drained before the exception propagates.
         """
-        if self._running:
-            logger.warning(
-                WORKERS_QUEUE_START_REJECTED,
-                reason="already_running",
-            )
-            msg = "JetStreamTaskQueue.start() called while already running"
-            raise RuntimeError(msg)
-        try:
-            await self._connect()
-            await self._ensure_stream()
-            await self._ensure_consumer()
-        except BaseException:
-            # Stream or consumer creation failed (or we were cancelled).
-            # Drop the partially-initialized client so the caller does
-            # not leak a live connection; re-raise so the error
-            # surfaces at the call site.
-            await self._drain_partial()
-            raise
-        self._running = True
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "JetStreamTaskQueue is unrestartable: prior stop() "
+                    "exceeded the drain timeout; construct a fresh instance"
+                )
+                raise BusUnrestartableError(msg)
+            if self._running:
+                logger.warning(
+                    WORKERS_QUEUE_START_REJECTED,
+                    reason="already_running",
+                )
+                msg = "JetStreamTaskQueue.start() called while already running"
+                raise RuntimeError(msg)
+            try:
+                await self._connect()
+                await self._ensure_stream()
+                await self._ensure_consumer()
+            except BaseException:
+                # Stream or consumer creation failed (or we were cancelled).
+                # Drop the partially-initialized client so the caller does
+                # not leak a live connection; re-raise so the error
+                # surfaces at the call site.
+                await self._drain_partial()
+                raise
+            self._running = True
 
     async def stop(self) -> None:
         """Close the NATS connection. Idempotent.
@@ -183,33 +218,59 @@ class JetStreamTaskQueue:
         Drains the NATS client whenever one is present, even if
         ``_running`` was never flipped to ``True`` (e.g., when
         ``start()`` raised after ``_connect()`` succeeded).
+
+        Raises:
+            BusStopTimeoutError: If the NATS drain exceeds
+                ``_stop_drain_timeout_seconds``. Marks the queue
+                unrestartable; subsequent ``start()`` will raise
+                :class:`BusUnrestartableError`.
         """
-        self._running = False
-        if self._sub is not None:
-            try:
-                await self._sub.unsubscribe()
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-            self._sub = None
-        if self._client is not None:
-            try:
-                await self._client.drain()
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    WORKERS_TASK_QUEUE_DRAIN_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-            self._client = None
-            self._js = None
+        async with self._lifecycle_lock:
+            self._running = False
+            if self._sub is not None:
+                try:
+                    await self._sub.unsubscribe()
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                self._sub = None
+            if self._client is not None:
+                try:
+                    await asyncio.wait_for(
+                        self._client.drain(),
+                        timeout=self._stop_drain_timeout_seconds,
+                    )
+                except TimeoutError as exc:
+                    # Hard deadline exceeded. Mark unrestartable and
+                    # raise the typed error so the operator can act.
+                    self._stop_failed = True
+                    logger.warning(
+                        WORKERS_TASK_QUEUE_DRAIN_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        timeout_seconds=self._stop_drain_timeout_seconds,
+                        note="stop drain exceeded deadline; queue is now unrestartable",
+                    )
+                    msg = (
+                        f"JetStreamTaskQueue.stop() drain exceeded "
+                        f"{self._stop_drain_timeout_seconds}s"
+                    )
+                    raise BusStopTimeoutError(msg) from exc
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        WORKERS_TASK_QUEUE_DRAIN_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                self._client = None
+                self._js = None
 
     async def _drain_partial(self) -> None:
         """Tear down any half-initialised connection/consumer after a failed start."""
