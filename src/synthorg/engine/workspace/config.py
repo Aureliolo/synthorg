@@ -49,6 +49,12 @@ class SemanticAnalysisConfig(BaseModel):
         le=2.0,
         description="Temperature for LLM analysis",
     )
+    llm_top_p: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Nucleus-sampling top-p for LLM analysis",
+    )
     llm_max_tokens: int = Field(
         default=4096,
         gt=0,

@@ -241,6 +241,12 @@ class ProceduralMemoryConfig(BaseModel):
         le=2.0,
         description="Sampling temperature for the proposer",
     )
+    top_p: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Nucleus-sampling top-p for the proposer",
+    )
     max_tokens: int = Field(
         default=1500,
         gt=0,

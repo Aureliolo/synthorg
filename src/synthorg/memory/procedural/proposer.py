@@ -137,12 +137,14 @@ class ProceduralMemoryProposer:
         self._cost_tracker = cost_tracker
         self._completion_config = CompletionConfig(
             temperature=config.temperature,
+            top_p=config.top_p,
             max_tokens=config.max_tokens,
         )
         logger.debug(
             PROCEDURAL_MEMORY_PROPOSER_INIT,
             model=config.model,
             temperature=config.temperature,
+            top_p=config.top_p,
             max_tokens=config.max_tokens,
             min_confidence=config.min_confidence,
         )
