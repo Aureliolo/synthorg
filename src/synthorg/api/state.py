@@ -64,6 +64,8 @@ from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: 
 from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
+from synthorg.experiments import ExperimentService
+from synthorg.experiments.in_memory_repository import InMemoryExperimentRepository
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
@@ -199,6 +201,7 @@ class AppState(AppStateServicesMixin):
         "_evaluation_version_service",
         "_event_stream_hub",
         "_events_read_service",
+        "_experiment_service",
         "_fine_tune_orchestrator",
         "_health_prober_service",
         "_idempotency_service",
@@ -404,6 +407,10 @@ class AppState(AppStateServicesMixin):
         # deployments may swap the implementation to invoke the full
         # AgentEngine instead of the baseline lifecycle walk.
         self._worker_execution_service: WorkerExecutionService | None = None
+        # Lazily constructed against an in-memory repository so the
+        # ``/experiments`` controller works out of the box; deployments
+        # swap in a durable repository via ``set_experiment_service``.
+        self._experiment_service: ExperimentService | None = None
         # Lazily constructed when first accessed via the property; the
         # service wraps ``persistence.idempotency_keys`` and lives only
         # if a persistence backend is configured.
@@ -819,6 +826,31 @@ class AppState(AppStateServicesMixin):
             "_worker_execution_service",
             service,
             "Worker execution service",
+        )
+
+    @property
+    def experiment_service(self) -> ExperimentService:
+        """Return the A/B experiment service, auto-wiring the default.
+
+        Lazy construction uses the in-memory repository so the
+        ``/experiments`` controller works in dev / smoke-test runs
+        without a persistence backend. Production deployments call
+        :meth:`set_experiment_service` at startup with a durable
+        repository before any HTTP traffic arrives.
+        """
+        if self._experiment_service is None:
+            self._experiment_service = ExperimentService(
+                repository=InMemoryExperimentRepository(),
+                clock=self.clock,
+            )
+        return self._experiment_service
+
+    def set_experiment_service(self, service: ExperimentService) -> None:
+        """Attach the experiment service (once-only)."""
+        self._set_once(
+            "_experiment_service",
+            service,
+            "Experiment service",
         )
 
     @property

@@ -432,6 +432,26 @@ class TransitionTaskRequest(BaseModel):
     )
 
 
+class RegisterExperimentVariantRequest(BaseModel):
+    """Payload for registering an A/B experiment variant."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    variant: NotBlankStr = Field(description="Variant name within the experiment")
+    weight: int = Field(ge=1, le=1000, description="Relative selection weight")
+    description: str = Field(default="", description="Operator notes")
+
+
+class AssignExperimentRequest(BaseModel):
+    """Payload for requesting a deterministic variant assignment."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    subject_id: NotBlankStr = Field(
+        description="Subject identifier (agent id, user id, project id, ...)",
+    )
+
+
 class ExecuteTaskRequest(BaseModel):
     """Payload for the worker-callable ``POST /tasks/{id}/execute`` endpoint.
 

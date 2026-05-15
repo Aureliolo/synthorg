@@ -194,6 +194,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # simulations
     "simulations.cancel": (30, 60),
     "simulations.create": (30, 3600),
+    # experiments (A/B test registry)
+    "experiments.register": (50, 60),
+    "experiments.assign": (500, 60),
     # tasks
     "tasks.cancel": (50, 60),
     "tasks.coordinate": (10, 60),
