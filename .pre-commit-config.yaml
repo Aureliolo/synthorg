@@ -603,6 +603,19 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: schema-drift-revisions-sqlite
+        name: schema.sql matches accumulated revisions (sqlite arm)
+        entry: uv run python scripts/check_schema_drift_revisions.py --backend sqlite
+        language: system
+        # Trigger when the sqlite schema, sqlite revisions, the gate
+        # script itself, or this config changes. The postgres arm
+        # needs Docker and runs in CI only; sqlite catches the
+        # 'forgot to update schema.sql' bug-class at pre-push without
+        # external dependencies (~5-10s).
+        files: ^(src/synthorg/persistence/sqlite/(schema\.sql|revisions/.*\.sql)|scripts/check_schema_drift_revisions\.py|scripts/_schema_drift_.*\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: convention-gate-inventory
         name: convention-gate inventory (MANDATORY <-> gate parity)
         entry: uv run python scripts/check_convention_gate_inventory.py
