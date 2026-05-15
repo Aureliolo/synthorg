@@ -235,6 +235,16 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 		return nil
 	}
 
+	// Surface a permission error in the install directory before the
+	// download starts; otherwise the user waits through a multi-MB
+	// transfer only to fail at the final ``Replace`` step.
+	if err := selfupdate.ProbeInstallDirWritable(); err != nil {
+		return fmt.Errorf(
+			"cannot update CLI in place; re-run as an administrator "+
+				"or move the binary to a writable directory: %w", err,
+		)
+	}
+
 	out.Step("Downloading...")
 	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL, result.SigstoreBundURL)
 	if err != nil {

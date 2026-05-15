@@ -35,6 +35,14 @@ Available kinds:
   synthorg new controller ping`,
 	GroupID: "core",
 	Args:    cobra.NoArgs,
+	// Render the help text when the user runs ``synthorg new`` with no
+	// subcommand. The default Cobra behaviour for a command with no
+	// RunE plus ``Args: cobra.NoArgs`` is a silent zero-exit, which
+	// hides the available scaffold kinds from operators discovering
+	// the surface for the first time.
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return cmd.Help()
+	},
 }
 
 var newServiceCmd = newKindCmd(scaffold.KindService, "service")
