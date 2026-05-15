@@ -5,7 +5,7 @@ Sources (best-effort; failures keep the previously-stored value):
 
 * ``tests``                 -- ``uv run python -m pytest --collect-only -q``
 * ``mem0_stars``            -- ``gh api repos/mem0ai/mem0 --jq .stargazers_count``
-* ``providers_curated``     -- ``len(synthorg.providers.presets.list_presets())``
+* ``providers_curated``     -- ``len(synthorg.providers.presets.list_featured_presets())``
 * ``providers_via_litellm`` -- ``len(litellm.model_cost)``
 * ``subagents``             -- ``glob .claude/agents/*.md``
 * ``convention_gates``      -- ``glob scripts/check_*.py``
@@ -27,6 +27,7 @@ The fix is to restore the file from git history before re-running.
 Numeric thresholds are named module constants -- never magic literals.
 """
 
+import ast
 import datetime as dt
 import re
 import subprocess
@@ -65,7 +66,7 @@ _PYTEST_SUMMARY_RE: Final[re.Pattern[str]] = re.compile(
 _SOURCES: Final[dict[str, str]] = {
     "tests": "uv run python -m pytest --collect-only -q",
     "mem0_stars": "gh api repos/mem0ai/mem0 --jq .stargazers_count",
-    "providers_curated": "synthorg.providers.presets.list_presets",
+    "providers_curated": "synthorg.providers.presets.list_featured_presets",
     "providers_via_litellm": "len(litellm.model_cost)",
     "subagents": "glob .claude/agents/*.md",
     "convention_gates": "glob scripts/check_*.py",
@@ -197,18 +198,57 @@ def _fetch_mem0_stars() -> StatEntry:
     }
 
 
+_PRESETS_PATH: Final[Path] = REPO_ROOT / "src" / "synthorg" / "providers" / "presets.py"
+_FEATURED_TUPLE_NAME: Final[str] = "_FEATURED_PRESETS"
+
+
 def _fetch_providers_curated() -> StatEntry:
-    """Count curated provider presets via ``synthorg.providers.presets``."""
+    """Count hand-curated featured provider presets.
+
+    Tracks ``_FEATURED_PRESETS`` (the hand-curated entries with brand
+    logo, vetted description, and prefilled model defaults), not the
+    full ``list_presets()`` surface which auto-derives an entry for
+    every LiteLLM chat namespace. The public claim is the featured
+    count because that is what surfaces in the setup wizard's primary
+    grid.
+
+    Uses an ``ast`` walk of ``presets.py`` rather than an ``import``:
+    the providers package pulls in the budget tracker which has its own
+    initialisation chain, and a one-shot script must not pay that cost
+    (or fail when the chain has unrelated circular-import drift). The
+    tuple literal is the authoritative source either way.
+    """
     name = "providers_curated"
     source = _SOURCES[name]
+    if not _PRESETS_PATH.is_file():
+        raise _StatFetchError(name, source, f"{_PRESETS_PATH} not found")
     try:
-        from synthorg.providers.presets import list_presets
-    except ImportError as exc:
+        tree = ast.parse(_PRESETS_PATH.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError) as exc:
         raise _StatFetchError(
-            name, source, f"could not import synthorg.providers.presets: {exc}"
+            name, source, f"could not parse {_PRESETS_PATH.name}: {exc}"
         ) from exc
-    raw = len(list_presets())
-    return {"raw": raw, "display": str(raw)}
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign | ast.Assign):
+            continue
+        targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id != _FEATURED_TUPLE_NAME:
+                continue
+            value = node.value
+            if not isinstance(value, ast.Tuple):
+                raise _StatFetchError(
+                    name,
+                    source,
+                    f"{_FEATURED_TUPLE_NAME} is not a tuple literal",
+                )
+            raw = len(value.elts)
+            return {"raw": raw, "display": str(raw)}
+    raise _StatFetchError(
+        name, source, f"{_FEATURED_TUPLE_NAME} not found in {_PRESETS_PATH.name}"
+    )
 
 
 def _fetch_providers_via_litellm() -> StatEntry:

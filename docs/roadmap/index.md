@@ -2,7 +2,7 @@
 
 ## Current Status
 
-SynthOrg is in **active development**. The core subsystems are built, tested (<!--RS:tests-->29,000+<!--/RS--> tests in the latest run, 80%+ coverage), and integrated through a REST + WebSocket API, React 19 dashboard, and Go CLI. See the [releases page](https://github.com/Aureliolo/synthorg/releases) for the latest tagged build.
+SynthOrg is in **active development**. The core subsystems are built, tested (<!--RS:tests-->30,000+<!--/RS--> tests in the latest run, 80%+ coverage), and integrated through a REST + WebSocket API, React 19 dashboard, and Go CLI. See the [releases page](https://github.com/Aureliolo/synthorg/releases) for the latest tagged build.
 
 What works today:
 
@@ -14,7 +14,7 @@ What works today:
 - **Memory** with hybrid retrieval (dense + BM25 sparse with RRF fusion), tool-based injection, procedural memory auto-generation from failures, consolidation (LLM Merge, Search-and-Ask), and MVCC snapshot reads on the shared knowledge store
 - **Communication** with message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), meeting protocols, and an A2A gateway for external agent systems
 - **Workflow engine** with Kanban, Agile sprints, ceremony scheduling (8 strategies), visual workflow editor, and workflow execution from graph definitions
-- **Tool ecosystem** with 8+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication) and sandbox security (auth proxy, gVisor, Chainguard packages)
+- **Tool ecosystem** with 12+ categories (file system, code execution, version control, web, database, terminal, design, communication, analytics, deployment, memory, MCP servers) and sandbox security (auth proxy, gVisor, Chainguard packages)
 - **Persistence** with SQLite (single-node default) and PostgreSQL (multi-instance, dual-backend conformance-tested) backends, yoyo-managed schema migrations, and ISO 4217 currency stamping on every cost-bearing row
 - **Distributed runtime** with NATS JetStream message bus and distributed task queue for multi-instance deployments
 - **Web dashboard** (React 19 + shadcn/ui) with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, setup wizard, and WebSocket / SSE resilience

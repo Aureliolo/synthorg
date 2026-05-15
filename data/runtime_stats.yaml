@@ -1,18 +1,18 @@
 schema_version: 1
-last_generated_utc: '2026-05-13T19:13:08Z'
-generator_revision: 3e69976a8
+last_generated_utc: '2026-05-15T15:49:25Z'
+generator_revision: d29621464
 stats:
   tests:
-    raw: 30090
+    raw: 30536
     rounded: 30000
     display: 30,000+
   mem0_stars:
-    raw: 55598
+    raw: 55792
     rounded: 55000
     display: 55k+
   providers_curated:
-    raw: 19
-    display: '19'
+    raw: 20
+    display: '20'
   providers_via_litellm:
     raw: 2708
     display: 2700+
@@ -25,7 +25,7 @@ stats:
 sources:
   tests: uv run python -m pytest --collect-only -q
   mem0_stars: gh api repos/mem0ai/mem0 --jq .stargazers_count
-  providers_curated: synthorg.providers.presets.list_presets
+  providers_curated: synthorg.providers.presets.list_featured_presets
   providers_via_litellm: len(litellm.model_cost)
   subagents: glob .claude/agents/*.md
   convention_gates: glob scripts/check_*.py
