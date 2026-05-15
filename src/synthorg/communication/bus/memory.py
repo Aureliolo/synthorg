@@ -109,8 +109,14 @@ class InMemoryMessageBus:
         self._clock = clock or SystemClock()
         # Eager init: ``publish`` / ``subscribe`` / ``receive`` may be
         # called before any background lifecycle task runs, so the
-        # bus lock must exist before the first hot-path acquire.
+        # hot-path bus lock must exist before the first acquire.
         self._lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
+        # Per docs/reference/lifecycle-sync.md: serialize start/stop +
+        # _running check-and-set under a dedicated lifecycle lock so a
+        # concurrent restart cannot race the hot-path mutations.  Hot-
+        # path publish/subscribe/receive continue to use ``_lock`` so
+        # routine traffic does not serialise against lifecycle calls.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._channels: dict[str, Channel] = {}
         self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope | None]] = {}
         self._history: dict[str, deque[Message]] = {}
@@ -161,25 +167,26 @@ class InMemoryMessageBus:
         Raises:
             MessageBusAlreadyRunningError: If already running.
         """
-        async with self._lock:
+        async with self._lifecycle_lock:
             if self._running:
                 msg = "Message bus is already running"
                 logger.warning(COMM_BUS_ALREADY_RUNNING)
                 raise MessageBusAlreadyRunningError(msg)
-            self._channels.clear()
-            self._queues.clear()
-            self._history.clear()
-            self._known_agents.clear()
-            self._waiters.clear()
-            self._running = True
-            self._shutdown_event.clear()
-            self._idle_poll_count = 0
-            self._last_idle_summary = self._clock.monotonic()
-            maxlen = self._config.retention.max_messages_per_channel
-            for name in self._config.channels:
-                ch = Channel(name=name, type=ChannelType.TOPIC)
-                self._channels[name] = ch
-                self._history[name] = deque(maxlen=maxlen)
+            async with self._lock:
+                self._channels.clear()
+                self._queues.clear()
+                self._history.clear()
+                self._known_agents.clear()
+                self._waiters.clear()
+                self._running = True
+                self._shutdown_event.clear()
+                self._idle_poll_count = 0
+                self._last_idle_summary = self._clock.monotonic()
+                maxlen = self._config.retention.max_messages_per_channel
+                for name in self._config.channels:
+                    ch = Channel(name=name, type=ChannelType.TOPIC)
+                    self._channels[name] = ch
+                    self._history[name] = deque(maxlen=maxlen)
         logger.info(
             COMM_BUS_STARTED,
             channels_created=len(self._config.channels),
@@ -190,7 +197,7 @@ class InMemoryMessageBus:
 
         Signals all pending :meth:`receive` calls to return ``None``.
         """
-        async with self._lock:
+        async with self._lifecycle_lock:
             if not self._running:
                 return
             self._running = False
