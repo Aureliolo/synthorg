@@ -170,7 +170,7 @@ Rules:
 - If zero issues, still create the file and note what you checked
 - Do NOT fix anything -- audit only
 - Do NOT use Bash to write files -- use the Write tool
-- **DO NOT write helper / analysis Python scripts to disk anywhere** (no `*.py` in
+- **DO NOT write helper / analysis Python or Bash scripts to disk anywhere** (no `*.py` or `*.sh` in
   the project root, in `scripts/`, in `c:\tmp\`, in `/tmp`, in `C:\Users\<name>\tmp\`,
   in `C:\Users\<name>\.claude\`, anywhere on the filesystem outside
   `_audit/latest/findings/`). Past runs leaked 25+ scratch scripts that triggered
@@ -3808,10 +3808,11 @@ Format per finding (mechanically parseable; synthesizer reads this verbatim):
 ### [original-file]:[line] -- [CONFIRMED|FALSE_POSITIVE|INTENTIONAL]
 **Original**: [description from audit agent]
 **Actual code**:
-```
+```text
 <file:line>
 <2-5 line quote>
 ```
+
 **Verdict**: [reason tying quote to verdict]
 ---
 
@@ -3848,7 +3849,7 @@ After validation, read all finding files and build `_audit/latest/INDEX.md`.
 4. When composing INDEX entries: if a finding's key is in the FALSE_POSITIVE list, SKIP it (do not include at any severity). If in the INTENTIONAL list, include with `[INTENTIONAL]` prefix and do not count toward severity totals.
 5. **Final self-check**: before saving INDEX.md, scan the draft for the substrings "Python 2 syntax", "missing parens", "missing parentheses around exception", "PEP 2". If any appear, delete those rows -- they slipped past the validation purge.
 6. **Path verification**: for every Top-20 critical+high entry, run Read on the cited file. If the file does not exist, drop the entry; if the cited line is out of range, drop the entry. The 2026-05-15 synthesizer hallucinated `audit/chain_coordinator.py`, `docs/design/permission-model.md`, `docs/design/approval-flow.md` -- none existed in the repo.
-7. **Zero-finding agent list verification**: do NOT guess which agents had zero findings. Run `Bash: grep -L '\\*\\*Findings\\*\\*: [1-9]' _audit/latest/findings/*.md` to enumerate files where the `**Findings**` header is 0 or missing. Cross-reference with files that have substantive content -- some agents wrote prose summaries instead of strict-format headers, so a missing header does not always mean zero findings.
+7. **Zero-finding agent list verification**: do NOT guess which agents had zero findings. Run `Bash: grep -L '\*\*Findings\*\*: [1-9]' _audit/latest/findings/*.md` to enumerate files where the `**Findings**` header is 0 or missing. Cross-reference with files that have substantive content -- some agents wrote prose summaries instead of strict-format headers, so a missing header does not always mean zero findings.
 
 Use this template:
 
@@ -4183,7 +4184,7 @@ Run this Bash sweep:
 rm -f find_missing_logging.py find_missing_logging_filtered.py parse_audit.py validate_config_examples.py audit_diff.py audit_parity.py check_docs.py check_rate_limits.py circular_dep_analyzer.py check_protocols.py debug_scanner.py detailed_check.py final_audit.py find_unwired.py test_regex.py validate_configs.py verify_final.py verify_protocols.py audit_exports.py audit_final.py audit_orphans.py audit_refined.py audit_via_grep.sh comprehensive_consumed_check.py extract_consumed_settings.py final_unwired_audit.py find_orphans.py investigate_unwired_settings.py run_orphan_check.py verify_all_unwired.py verify_settings_consumption.py audit_models.py audit_settings.py audit_api_docs.py check_immutability.py check_model_mutations.py pattern_finder.py || true
 ```
 
-**NEVER include `investigation.py` in this sweep.** That file belongs to the user as their standing debug script (per memory rule `feedback_investigation_script.md`). If `investigation.py` is unexpectedly modified, prompt the user to `git restore investigation.py` -- do NOT delete it.
+**NEVER include `investigation.py` in this sweep.** That file belongs to the user as their standing debug script (per memory rule `feedback_investigation_script.md`). The file is untracked (not in git), so `git restore` cannot recover it. If `investigation.py` is unexpectedly modified, prompt the user to manually restore it from their own backup -- do NOT delete it.
 
 (`rm -f` is silent on missing paths, so no stderr redirect is needed; `|| true` keeps the chain from aborting on edge-case errors. Per Rule #11, the project's PreToolUse hook blocks `2>/dev/null` and other redirects unconditionally.)
 
@@ -4254,9 +4255,9 @@ Document specific issues observed in named runs so future runs avoid repeating t
 
 - **Synthesizer hallucinated file paths** in Top-20: `audit/chain_coordinator.py`, `docs/design/permission-model.md`, `docs/design/approval-flow.md` did not exist in the repo. Fixed via path-verification step in Phase 4.
 
-- **~25 scratch scripts leaked** to project root + `scripts/` + `c:\tmp\` + `C:\Users\Aurelio\tmp\` + `C:\Users\Aurelio\.claude\` despite Rule #10. Documented inventory added to Rule #10 + Phase 7 cleanup sweep extended. Recommendation: add a PreToolUse hook blocking Write of `*.py` files at project root + `scripts/` during audit runs (couldn't be added retroactively for this run).
+- **~25 scratch scripts leaked** to project root + `scripts/` + `c:\tmp\` + `C:\Users\<name>\tmp\` + `C:\Users\<name>\.claude\` despite Rule #10. Documented inventory added to Rule #10 + Phase 7 cleanup sweep extended. Recommendation: add a PreToolUse hook blocking Write of `*.py` files at project root + `scripts/` during audit runs (couldn't be added retroactively for this run).
 
-- **`investigation.py` was overwritten by an audit agent** at project root, destroying the user's standing debug script. Fixed via explicit no-touch rule in the agent prompt template + Phase 7 cleanup safeguard (never delete `investigation.py`, only prompt user to `git restore` it).
+- **`investigation.py` was overwritten by an audit agent** at project root, destroying the user's standing debug script. Fixed via explicit no-touch rule in the agent prompt template + Phase 7 cleanup safeguard (never delete `investigation.py`; the file is untracked so `git restore` cannot recover it, prompt the user to restore from their own backup instead).
 
 - **Agent 121 produced two near-duplicate finding files** (`121-ws-sse-robustness.md` and `121-websocket-sse-robustness.md`) due to either a double launch or the agent saving twice with different name variants. Fixed via "synthesizer must dedupe by leading slot number" instruction; per-agent prompts already specify the canonical filename.
 
