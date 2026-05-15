@@ -100,7 +100,14 @@ function sanitizeMetadataValue(value: unknown, depth: number): unknown {
     return value.map((entry) => sanitizeMetadataValue(entry, depth + 1))
   }
   if (isPlainObject(value)) {
-    const out: Record<string, unknown> = {}
+    // Null-prototype accumulator: a ``__proto__`` (or ``constructor``)
+    // key in the attacker-controlled WS payload would otherwise hit the
+    // prototype setter on a ``{}`` literal, mutating the prototype or
+    // dropping the field instead of storing it as plain data (CWE-1321).
+    const out: Record<string, unknown> = Object.create(null) as Record<
+      string,
+      unknown
+    >
     for (const [rawKey, rawValue] of Object.entries(value)) {
       const key = sanitizeWsString(rawKey, METADATA_KEY_CAP)
       // sanitizeWsString already returns undefined for empty-after-strip,

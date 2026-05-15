@@ -574,6 +574,32 @@ describe('useTasksStore', () => {
       expect(stored).toEqual({ fn: null, when: null, ok: 'fine' })
     })
 
+    it('does not pollute Object.prototype via a __proto__ metadata key', () => {
+      // JSON.parse makes ``__proto__`` an own enumerable property, the
+      // shape a malicious WS payload would carry.
+      const meta = JSON.parse(
+        '{"__proto__":{"polluted":true},"safe":"x"}',
+      ) as Record<string, unknown>
+      const event: WsEvent = {
+        event_type: 'task.updated',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: { ...mockTask, metadata: meta } },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      const stored = useTasksStore.getState().tasks[0]!.metadata as Record<
+        string,
+        unknown
+      >
+      expect((({}) as Record<string, unknown>).polluted).toBeUndefined()
+      expect(Object.getPrototypeOf(stored)).toBeNull()
+      expect(Object.prototype.hasOwnProperty.call(stored, '__proto__')).toBe(true)
+      expect(Object.getOwnPropertyDescriptor(stored, '__proto__')?.value).toEqual({
+        polluted: true,
+      })
+      expect(stored.safe).toBe('x')
+    })
+
     it('rejects frame where metadata is not a plain object', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       const tainted = { ...mockTask, metadata: ['not', 'an', 'object'] }
