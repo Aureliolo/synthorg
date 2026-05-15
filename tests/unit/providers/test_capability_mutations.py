@@ -72,12 +72,20 @@ class _FakeOverrideRepo:
     async def get(self, preset_name: Any) -> PresetOverride | None:
         return self.store.get(preset_name)
 
-    async def upsert(self, override: PresetOverride) -> PresetOverride:
+    async def save(self, override: PresetOverride) -> None:
         self.store[override.preset_name] = override
-        return override
 
     async def delete(self, preset_name: Any) -> bool:
         return self.store.pop(preset_name, None) is not None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[PresetOverride, ...]:
+        items = sorted(self.store.values(), key=lambda o: o.preset_name)
+        return tuple(items[offset : offset + limit])
 
 
 def _make_provider_config(
