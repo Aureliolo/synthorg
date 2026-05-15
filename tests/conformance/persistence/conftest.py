@@ -193,6 +193,17 @@ def _acquire_shared_postgres(state_file: Path) -> dict[str, Any]:
         reason = f"Could not start Postgres test container: {type(exc).__name__}: {exc}"
         state_file.write_text(json.dumps({"skip_reason": reason}))
         pytest.skip(reason)
+    # ``container.start()`` blocks on testcontainers' internal readiness
+    # probe (``pg_isready`` via the wait strategy), but on Docker Desktop
+    # the vpnkit / gvisor port-proxy occasionally takes another ~1-2s
+    # before the published port routes cleanly. Probe once from the host
+    # side so the first peer worker that arrives sees an accepting
+    # connection rather than racing the proxy.
+    _wait_for_postgres_accept(
+        host=container.get_container_host_ip(),
+        port=int(container.get_exposed_port(5432)),
+        timeout_seconds=15.0,
+    )
     data = {
         "container_id": container.get_wrapped_container().id,
         "host": container.get_container_host_ip(),
@@ -204,6 +215,33 @@ def _acquire_shared_postgres(state_file: Path) -> dict[str, Any]:
     }
     state_file.write_text(json.dumps(data))
     return data
+
+
+def _wait_for_postgres_accept(
+    *,
+    host: str,
+    port: int,
+    timeout_seconds: float,
+) -> None:
+    """Poll a TCP connect against ``host:port`` until it accepts.
+
+    Bounds total wait by ``timeout_seconds``; on expiry returns
+    without raising so the existing testcontainers wait strategy
+    handles the error path (``container.start()`` would already have
+    raised if postgres itself never came up). The poll is a thin
+    belt-and-braces guard against the Docker Desktop port-proxy
+    accept gap; production deployments never hit it.
+    """
+    import socket
+    import time
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1.0):
+                return
+        except OSError:
+            time.sleep(0.2)
 
 
 def _release_shared_postgres(state_file: Path) -> None:
