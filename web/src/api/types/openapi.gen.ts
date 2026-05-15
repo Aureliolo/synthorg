@@ -4487,25 +4487,25 @@ export type components = {
         /** AnonymizedOutcomeEvent */
         readonly AnonymizedOutcomeEvent: {
             readonly altitude: string;
-            readonly confidence: number | null;
+            readonly confidence?: number | null;
             /** @enum {null|string} */
-            readonly decision: "approved" | "rejected" | null;
+            readonly decision?: "approved" | "rejected" | null;
             readonly deployment_id: string;
             /** @default [] */
             readonly enabled_altitudes: readonly string[];
             /** @enum {string} */
             readonly event_type: "proposal_decision" | "rollout_result";
-            readonly industry_tag: string | null;
-            readonly observation_hours: number | null;
-            readonly regression_verdict: string | null;
-            readonly rollout_outcome: string | null;
+            readonly industry_tag?: string | null;
+            readonly observation_hours?: number | null;
+            readonly regression_verdict?: string | null;
+            readonly rollout_outcome?: string | null;
             /**
              * @default 1
              * @constant
              */
             readonly schema_version: "1";
             readonly sdk_version: string;
-            readonly source_rule: string | null;
+            readonly source_rule?: string | null;
             readonly timestamp: string;
         };
         /** ApiResponse[ActiveCeremonyStrategyResponse] */

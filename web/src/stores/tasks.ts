@@ -62,6 +62,63 @@ const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>([
 ] satisfies readonly CoordinationTopology[])
 const log = createLogger('tasks')
 
+// ``metadata`` is an arbitrary key-value bag on the wire
+// (``{ [key: string]: unknown }``) and ``middleware_override`` is a
+// nullable string array; both arrive verbatim on the WS task-updated
+// payload. Neither can be enumerated field-by-field like the rest of
+// ``Task``, so they need structural sanitizers: every string (keys
+// included -- ``TaskDetailMetadata`` renders them) is routed through
+// ``sanitizeWsString`` and the recursion is depth-bounded so a deeply
+// nested adversarial payload cannot exhaust the stack.
+const METADATA_MAX_DEPTH = 8
+const METADATA_STRING_CAP = 4096
+const METADATA_KEY_CAP = 256
+
+/** A non-null, non-array object whose prototype is ``Object`` or null
+ * (rejects ``Date`` / ``Map`` / ``Set`` / class instances). */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false
+  }
+  const proto = Object.getPrototypeOf(value) as unknown
+  return proto === Object.prototype || proto === null
+}
+
+/** Recursively clamp a metadata value: strings through
+ * ``sanitizeWsString``, finite numbers / booleans / null preserved,
+ * objects / arrays walked, everything else (functions, symbols,
+ * ``undefined``, ``Date`` / ``Map`` / ``Set``) dropped to ``null``.
+ * Recursion past ``METADATA_MAX_DEPTH`` collapses to ``null``. */
+function sanitizeMetadataValue(value: unknown, depth: number): unknown {
+  if (depth > METADATA_MAX_DEPTH) return null
+  if (typeof value === 'string') {
+    return sanitizeWsString(value, METADATA_STRING_CAP) ?? ''
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'boolean' || value === null) return value
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeMetadataValue(entry, depth + 1))
+  }
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {}
+    for (const [rawKey, rawValue] of Object.entries(value)) {
+      const key = sanitizeWsString(rawKey, METADATA_KEY_CAP)
+      if (key === undefined) continue
+      out[key] = sanitizeMetadataValue(rawValue, depth + 1)
+    }
+    return out
+  }
+  return null
+}
+
+/** Sanitize the whole ``metadata`` bag; non-objects collapse to
+ * ``{}`` so the consumer always sees a safe record. */
+function sanitizeMetadata(value: unknown): Record<string, unknown> {
+  if (!isPlainObject(value)) return {}
+  const result = sanitizeMetadataValue(value, 0)
+  return isPlainObject(result) ? result : {}
+}
+
 interface TasksState {
   // Data
   tasks: DashboardTask[]
@@ -175,8 +232,9 @@ function sanitizeTask(c: DashboardTask): DashboardTask {
     delegation_chain: sanitizeIds(c.delegation_chain),
     task_structure: c.task_structure,
     coordination_topology: c.coordination_topology,
-    middleware_override: c.middleware_override,
-    metadata: c.metadata,
+    middleware_override:
+      c.middleware_override === null ? null : sanitizeIds(c.middleware_override),
+    metadata: sanitizeMetadata(c.metadata),
     source:
       c.source === undefined || c.source === null
         ? c.source
@@ -193,6 +251,11 @@ function sanitizeTask(c: DashboardTask): DashboardTask {
 /** Each ``dependencies`` / ``reviewers`` / ``delegation_chain`` entry must be a plain string. */
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((dep) => typeof dep === 'string')
+}
+
+/** ``middleware_override`` is ``string[] | null`` on the wire. */
+function isNullableStringArray(value: unknown): value is string[] | null {
+  return value === null || isStringArray(value)
 }
 
 /** Each ``artifacts_expected`` entry must have string ``path`` + ``type``. */
@@ -262,6 +325,23 @@ function arraysEqual(
 }
 
 /**
+ * Equality for the nullable ``middleware_override`` chain after
+ * sanitization. The chain selects which middleware runs for the task,
+ * so a control/bidi-carrying entry silently normalized away would
+ * redirect execution -- treat that as a mutation and reject the frame,
+ * mirroring the ``reviewers`` / ``dependencies`` / ``delegation_chain``
+ * gate. ``null`` and an absent field are equivalent ("no override").
+ */
+function nullableArraysEqual(
+  sanitized: readonly string[] | null,
+  original: unknown,
+): boolean {
+  if (sanitized === null) return original === null || original === undefined
+  if (!isStringArray(original)) return false
+  return arraysEqual(sanitized, original)
+}
+
+/**
  * Equality for an optional / nullable id field after sanitization.
  *
  * ``sanitizeTask`` routes ``assigned_to`` / ``parent_task_id`` through
@@ -307,6 +387,13 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     isStringArray(c.reviewers) &&
     isStringArray(c.dependencies) &&
     isStringArray(c.delegation_chain) &&
+    // ``middleware_override`` selects the per-task middleware chain
+    // (behavioural, not just display); ``metadata`` is an arbitrary
+    // key-value bag. Both reach state via ``sanitizeTask`` and so must
+    // pass a shape gate -- a non-array / non-object here would break
+    // the structural sanitizers' invariants.
+    isNullableStringArray(c.middleware_override) &&
+    isPlainObject(c.metadata) &&
     isArtifactsExpectedShape(c.artifacts_expected) &&
     isAcceptanceCriteriaShape(c.acceptance_criteria) &&
     // Nullable / optional fields consumed by ``sanitizeTask``. Without
@@ -516,12 +603,17 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
           !arraysEqual(sanitized.reviewers, candidate.reviewers) ||
           !arraysEqual(sanitized.dependencies, candidate.dependencies) ||
           !arraysEqual(sanitized.delegation_chain, candidate.delegation_chain)
+        const middlewareMutated = !nullableArraysEqual(
+          sanitized.middleware_override,
+          candidate.middleware_override,
+        )
         if (
           requiredBlank ||
           requiredMutated ||
           assignedMutated ||
           parentMutated ||
-          stringArraysMutated
+          stringArraysMutated ||
+          middlewareMutated
         ) {
           log.error(
             'Task payload lost or mutated identifier-bearing fields during sanitization, skipping upsert',

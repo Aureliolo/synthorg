@@ -303,6 +303,27 @@ class TestPromoteResponseDefaultsToRequired:
         returned = gen._promote_response_defaults_to_required(fresh_schema)
         assert returned is fresh_schema
 
+    def test_nested_request_body_ref_not_promoted(
+        self,
+        fresh_schema: dict[str, Any],
+    ) -> None:
+        """A component reached only transitively through a request-body
+        wrapper's property ``$ref`` is still request-only.
+
+        ``FixtureNestedRequestWrapper`` is referenced directly by a
+        ``requestBody`` and embeds a ``$ref`` to
+        ``FixtureNestedRequestTarget``. Neither is reached by any
+        response, so the transitive closure must classify both as
+        request-only and leave the nested target's defaulted /
+        non-defaulted optional properties out of ``required[]``."""
+        gen._promote_response_defaults_to_required(fresh_schema)
+        target = fresh_schema["components"]["schemas"]["FixtureNestedRequestTarget"]
+        existing = set(target.get("required", []))
+        assert "optional_with_default" not in existing
+        assert "optional_no_default" not in existing
+        wrapper = fresh_schema["components"]["schemas"]["FixtureNestedRequestWrapper"]
+        assert set(wrapper.get("required", [])) == {"nested"}
+
 
 class TestRenderDtos:
     """``render_dtos`` walks ``components.schemas`` and emits aliases."""

@@ -221,18 +221,37 @@ def _walk_to_key(subtree: Any, key: str, targets: set[str]) -> None:
             _walk_to_key(item, key, targets)
 
 
-def _collect_ref_targets(node: Any, key: str) -> set[str]:
-    """Collect every ``$ref`` target under any subtree named ``key``.
+def _collect_ref_targets(node: Any, key: str, schemas: dict[str, Any]) -> set[str]:
+    """Collect the transitive ``$ref`` closure reachable under ``key``.
 
     Returned names are bare ``components.schemas`` keys (the
-    ``#/components/schemas/`` prefix is stripped). Used to enumerate
-    every schema reached via ``requestBody`` and every schema reached
-    via ``responses``; the post-process classifier subtracts these
-    sets to identify request-only schemas.
+    ``#/components/schemas/`` prefix is stripped). The seed set is
+    every schema referenced literally under a subtree named ``key``;
+    the closure then follows every ``$ref`` inside those component
+    definitions so a schema reached only indirectly (e.g. a
+    ``requestBody`` wrapper that embeds ``$ref`` to ``FooOptions``)
+    is still attributed to ``key``. Without the closure a nested
+    request-only schema would be misclassified as response-side and
+    have all its properties wrongly promoted to ``required[]``.
+
+    The walk carries a ``seen`` set so self-referential or cyclic
+    component graphs (``A -> B -> A``) terminate.
     """
-    targets: set[str] = set()
-    _walk_to_key(node, key, targets)
-    return targets
+    seed: set[str] = set()
+    _walk_to_key(node, key, seed)
+    seen: set[str] = set()
+    stack = list(seed)
+    while stack:
+        name = stack.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        defn = schemas.get(name)
+        if isinstance(defn, dict):
+            nested: set[str] = set()
+            _harvest_refs_under(defn, nested)
+            stack.extend(nested - seen)
+    return seen
 
 
 def _promote_response_defaults_to_required(
@@ -264,11 +283,11 @@ def _promote_response_defaults_to_required(
     re-runs are byte-stable for the drift gate.
     """
     paths = schema.get("paths", {})
-    request_refs = _collect_ref_targets(paths, "requestBody")
-    response_refs = _collect_ref_targets(paths, "responses")
+    schemas = schema.get("components", {}).get("schemas", {})
+    request_refs = _collect_ref_targets(paths, "requestBody", schemas)
+    response_refs = _collect_ref_targets(paths, "responses", schemas)
     request_only_names = request_refs - response_refs
 
-    schemas = schema.get("components", {}).get("schemas", {})
     for name, defn in schemas.items():
         if name in request_only_names:
             continue

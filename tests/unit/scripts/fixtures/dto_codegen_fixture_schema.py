@@ -124,6 +124,34 @@ FIXTURE_SCHEMA: Final[dict[str, Any]] = {
                 },
             },
         },
+        "/fixture/nested-request": {
+            "post": {
+                "summary": "Nested request-only fixture",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/"
+                                "FixtureNestedRequestWrapper",
+                            },
+                        },
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FixtureResponse",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
     },
     "components": {
         "schemas": {
@@ -294,6 +322,44 @@ FIXTURE_SCHEMA: Final[dict[str, Any]] = {
                     },
                 },
                 "title": "FixtureErrorResponse",
+            },
+            # Reached only via a ``requestBody.$ref`` wrapper that
+            # embeds a component ``$ref`` to ``FixtureNestedRequestTarget``.
+            # The wrapper itself is directly under requestBody; the
+            # target is reachable only transitively. The promoter must
+            # follow the closure so the nested target counts as
+            # request-only and its defaulted properties stay optional.
+            "FixtureNestedRequestWrapper": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "nested": {
+                        "$ref": "#/components/schemas/FixtureNestedRequestTarget",
+                    },
+                },
+                "required": ["nested"],
+                "title": "FixtureNestedRequestWrapper",
+            },
+            "FixtureNestedRequestTarget": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "required_field": {
+                        "type": "string",
+                        "title": "RequiredField",
+                    },
+                    "optional_with_default": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "default": None,
+                        "title": "OptionalWithDefault",
+                    },
+                    "optional_no_default": {
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
+                        "title": "OptionalNoDefault",
+                    },
+                },
+                "required": ["required_field"],
+                "title": "FixtureNestedRequestTarget",
             },
             # Referenced by no path operation at all (neither a
             # requestBody nor any response). Not request-only, so the

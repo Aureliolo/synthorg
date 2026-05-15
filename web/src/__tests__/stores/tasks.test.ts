@@ -525,5 +525,131 @@ describe('useTasksStore', () => {
       expect(useTasksStore.getState().tasks).toHaveLength(1)
       expect(useTasksStore.getState().tasks[0]!.parent_task_id).toBeNull()
     })
+
+    it('recursively sanitizes metadata string values and keys', () => {
+      const tainted = {
+        ...mockTask,
+        metadata: {
+          [`label${RLO}`]: `value${RLO}`,
+          nested: { inner: `deep${RLO}` },
+          list: [`a${RLO}`, 2, true],
+          keep_number: 5,
+        },
+      }
+      const event: WsEvent = {
+        event_type: 'task.updated',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: tainted },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      const stored = useTasksStore.getState().tasks[0]!.metadata as Record<
+        string,
+        unknown
+      >
+      expect(stored).toEqual({
+        label: 'value',
+        nested: { inner: 'deep' },
+        list: ['a', 2, true],
+        keep_number: 5,
+      })
+    })
+
+    it('drops non-JSON metadata values to null', () => {
+      const tainted = {
+        ...mockTask,
+        metadata: { fn: () => 1, when: new Date(), ok: 'fine' },
+      }
+      const event: WsEvent = {
+        event_type: 'task.updated',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: tainted },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      const stored = useTasksStore.getState().tasks[0]!.metadata as Record<
+        string,
+        unknown
+      >
+      expect(stored).toEqual({ fn: null, when: null, ok: 'fine' })
+    })
+
+    it('rejects frame where metadata is not a plain object', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const tainted = { ...mockTask, metadata: ['not', 'an', 'object'] }
+      const event: WsEvent = {
+        event_type: 'task.updated',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: tainted },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks).toHaveLength(0)
+      errorSpy.mockRestore()
+    })
+
+    it('sanitizes a clean middleware_override chain through', () => {
+      const tainted = {
+        ...mockTask,
+        middleware_override: ['rate-limit', 'audit'],
+      }
+      const event: WsEvent = {
+        event_type: 'task.updated',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: tainted },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks[0]!.middleware_override).toEqual([
+        'rate-limit',
+        'audit',
+      ])
+    })
+
+    it('rejects frame where a middleware_override entry carries bidi chars', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const tainted = {
+        ...mockTask,
+        middleware_override: ['audit', `rate-limit${RLO}`],
+      }
+      const event: WsEvent = {
+        event_type: 'task.updated',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: tainted },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks).toHaveLength(0)
+      errorSpy.mockRestore()
+    })
+
+    it('rejects frame where middleware_override is a non-string array', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const tainted = {
+        ...mockTask,
+        middleware_override: [1, 2] as unknown as string[],
+      }
+      const event: WsEvent = {
+        event_type: 'task.updated',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: tainted },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks).toHaveLength(0)
+      errorSpy.mockRestore()
+    })
+
+    it('accepts a null middleware_override', () => {
+      const event: WsEvent = {
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: { ...mockTask, middleware_override: null } },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks).toHaveLength(1)
+      expect(useTasksStore.getState().tasks[0]!.middleware_override).toBeNull()
+    })
   })
 })
