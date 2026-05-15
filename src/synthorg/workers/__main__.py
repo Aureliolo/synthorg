@@ -6,10 +6,9 @@ against the current ``NatsConfig`` and runs a pool of
 :class:`Worker` instances with a placeholder executor.
 
 The placeholder executor acks each claim as ``SUCCESS`` after
-logging it. Wiring the real agent runtime (``agent_engine``) and
-the HTTP transition callback is a follow-up; this module exists so
-the ``synthorg worker start`` command has something to exec while
-the task queue plumbing lands incrementally.
+logging it; the real agent-runtime executor (``agent_engine``
+invocation + HTTP transition callback) is tracked in #1925 and
+will replace this module's executor wiring.
 """
 
 import argparse
@@ -37,9 +36,9 @@ logger = get_logger(__name__)
 async def _placeholder_executor(claim: TaskClaim) -> TaskClaimStatus:
     """Acknowledge the claim without executing any task logic.
 
-    Real agent runtime integration lands in a follow-up; this
-    placeholder exists so operators can smoke-test the dispatch
-    path end-to-end (engine -> NATS -> worker -> ack).
+    Smoke-test executor for the dispatch path (engine -> NATS ->
+    worker -> ack); the real agent-runtime executor is tracked in
+    #1925.
     """
     logger.info(
         WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
