@@ -139,6 +139,17 @@
 		redir /docs/ permanent
 	}
 
+	# --- Legacy doc URL redirects (must precede the generic /docs/* handler) ---
+	# Keep old inbound links working when docs were moved or renamed.
+	# Add an entry here when relocating a page; remove once the link
+	# source is updated.
+	@legacy_getting_started path /docs/getting-started /docs/getting-started/
+	redir @legacy_getting_started /docs/getting_started/ permanent
+	@legacy_decisions path /docs/decisions /docs/decisions/
+	redir @legacy_decisions /docs/architecture/decisions/ permanent
+	@legacy_comparison path /docs/comparison /docs/comparison/
+	redir @legacy_comparison /docs/reference/comparison/ permanent
+
 	# --- Static MkDocs documentation (no nonce) ---
 	handle /docs/* {
 		header {

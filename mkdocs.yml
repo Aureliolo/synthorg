@@ -31,6 +31,14 @@ theme:
 
 plugins:
   - search
+  # Preserve old URLs from before docs reshuffles. Each line maps an
+  # old path to its current location. Keep entries minimal and remove
+  # any once the corresponding inbound links are updated.
+  - redirects:
+      redirect_maps:
+        'getting-started.md': 'getting_started.md'
+        'decisions.md': 'architecture/decisions.md'
+        'comparison.md': 'reference/comparison.md'
   # D2 rendering is handled via pymdownx.superfences custom_fences
   # (see d2_fence.py) because zensical does not run mkdocs plugin
   # lifecycle hooks. Keep the config here so d2_fence.py reads it.
