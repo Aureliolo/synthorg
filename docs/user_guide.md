@@ -75,8 +75,8 @@ After the containers are running, open the web dashboard at [http://localhost:30
 
 1. **Account** (conditional): create the first admin user. This step only appears when no admin account exists yet.
 2. **Template**: choose a company template. Templates are displayed in a searchable grid with category and size filters, grouped into Recommended and Other sections. Each card shows structural metadata (agent count, departments, autonomy level, workflow). Side-by-side comparison is available.
-3. **Company**: name your synthetic organization, set a description, choose a display currency, and select a model tier profile (Economy, Balanced, or Premium).
-4. **Providers**: configure LLM providers. Local providers (e.g. Ollama) are auto-detected with a re-scan button; additional providers can be added via the full provider form supporting API key, subscription, and custom configurations. Model discovery runs automatically after adding a provider.
+3. **Providers**: configure LLM providers. Local providers (e.g. Ollama) are auto-detected with a re-scan button; additional providers can be added via the full provider form supporting API key, subscription, and custom configurations. Model discovery runs automatically after adding a provider.
+4. **Company**: name your synthetic organization, set a description, choose a display currency, and select a model tier profile (Economy, Balanced, or Premium).
 5. **Agents**: customize agent names, personality presets, and model assignments. Agents are pre-populated from the selected template with models matched to configured providers.
 6. **Theme**: set UI preferences including color palette, typography, layout density, animation level, and sidebar position.
 7. **Complete**: review a summary of your configuration and launch the organization.

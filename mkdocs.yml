@@ -179,6 +179,11 @@ nav:
       - reference/standards.md
       - Implicit Conventions: reference/conventions.md
       - Framework Comparison: reference/comparison.md
+      - CLI Per-Command Flags: reference/cli-commands.md
+      - CLI Config Subcommands: reference/cli-config-subcommands.md
+      - CLI Environment Variables: reference/cli-env-vars.md
+      - CLI Persistence Backends: reference/cli-persistence-backends.md
+      - Configuration Precedence: reference/configuration-precedence.md
       - Embedding Evaluation: reference/embedding-evaluation.md
       - Scoring Hyperparameters: reference/scoring-hyperparameters.md
       - Error Reference: errors.md
