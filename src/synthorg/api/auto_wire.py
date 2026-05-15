@@ -481,6 +481,7 @@ def auto_wire_meetings(  # noqa: PLR0913 -- meeting wiring needs the full dep se
             effective_config,
             meeting_orchestrator,
             agent_registry,
+            persistence=persistence,
         )
 
     try:
@@ -671,6 +672,7 @@ def _wire_meeting_scheduler(
     effective_config: RootConfig,
     orchestrator: MeetingOrchestrator,
     agent_registry: AgentRegistryService | None,
+    persistence: PersistenceBackend | None = None,
 ) -> MeetingScheduler:
     """Create a MeetingScheduler with participant resolver.
 
@@ -678,6 +680,10 @@ def _wire_meeting_scheduler(
         effective_config: Root company configuration.
         orchestrator: Meeting orchestrator instance.
         agent_registry: Agent registry (may be ``None``).
+        persistence: Optional connected persistence backend. When
+            supplied, the scheduler is wired with the
+            ``MeetingCooldownRepository`` so its per-meeting-type
+            cooldown timestamps survive process restarts.
 
     Returns:
         A configured ``MeetingScheduler`` instance.
@@ -688,6 +694,11 @@ def _wire_meeting_scheduler(
             config=effective_config.communication.meetings,
             orchestrator=orchestrator,
             participant_resolver=resolver,
+            cooldown_repo=(
+                persistence.meeting_cooldown
+                if persistence is not None and persistence.is_connected
+                else None
+            ),
         )
     except Exception as exc:
         logger.error(
