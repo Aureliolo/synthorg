@@ -651,5 +651,19 @@ describe('useTasksStore', () => {
       expect(useTasksStore.getState().tasks).toHaveLength(1)
       expect(useTasksStore.getState().tasks[0]!.middleware_override).toBeNull()
     })
+
+    it('accepts frame that omits middleware_override (undefined → null, not dropped)', () => {
+      const without: Record<string, unknown> = { ...mockTask }
+      delete without.middleware_override
+      const event: WsEvent = {
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: without },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks).toHaveLength(1)
+      expect(useTasksStore.getState().tasks[0]!.middleware_override).toBeNull()
+    })
   })
 })

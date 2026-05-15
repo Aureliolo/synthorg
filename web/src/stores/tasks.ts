@@ -233,7 +233,7 @@ function sanitizeTask(c: DashboardTask): DashboardTask {
     task_structure: c.task_structure,
     coordination_topology: c.coordination_topology,
     middleware_override:
-      c.middleware_override === null ? null : sanitizeIds(c.middleware_override),
+      c.middleware_override == null ? null : sanitizeIds(c.middleware_override),
     metadata: sanitizeMetadata(c.metadata),
     source:
       c.source === undefined || c.source === null
@@ -253,9 +253,13 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((dep) => typeof dep === 'string')
 }
 
-/** ``middleware_override`` is ``string[] | null`` on the wire. */
-function isNullableStringArray(value: unknown): value is string[] | null {
-  return value === null || isStringArray(value)
+/** ``middleware_override`` is ``string[] | null`` on the wire.
+ *
+ * Accepting ``undefined`` mirrors ``isNullableString``: a sender that
+ * omits the key should be normalised to ``null`` by ``sanitizeTask``,
+ * not have the whole frame dropped by the shape guard. */
+function isNullableStringArray(value: unknown): boolean {
+  return value === undefined || value === null || isStringArray(value)
 }
 
 /** Each ``artifacts_expected`` entry must have string ``path`` + ``type``. */
