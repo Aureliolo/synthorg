@@ -7,10 +7,10 @@ import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { useFlash } from '@/hooks/useFlash'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
 export interface TaskCardProps {
-  task: Task
+  task: DashboardTask
   onSelect: (taskId: string) => void
   isDragging?: boolean
   isOverlay?: boolean

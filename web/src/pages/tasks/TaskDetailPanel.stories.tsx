@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { TaskDetailPanel } from './TaskDetailPanel'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
-const mockTask: Task = {
+const mockTask: DashboardTask = {
   id: 'task-1',
   title: 'Implement authentication flow',
   description: 'Build login, signup, and password reset with JWT tokens and refresh token rotation.',
@@ -29,6 +29,9 @@ const mockTask: Task = {
   delegation_chain: [],
   task_structure: 'sequential',
   coordination_topology: 'auto',
+  middleware_override: null,
+  source: null,
+  metadata: {},
   version: 3,
   created_at: '2026-03-25T10:00:00.000Z',
   updated_at: '2026-03-27T14:30:00.000Z',

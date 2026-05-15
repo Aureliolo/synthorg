@@ -1,21 +1,21 @@
 import type {
   AgentActivityEvent,
-  AgentConfig,
   AgentPerformanceSummary,
   CareerEvent,
+  DashboardAgentConfig,
 } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
 import type { ApprovalResponse } from '@/api/types/approvals'
 import type { Artifact } from '@/api/types/artifacts'
 import type { MeetingResponse } from '@/api/types/meetings'
 import type { Channel, Message } from '@/api/types/messages'
-import type { CompanyConfig, Department } from '@/api/types/org'
+import type { CompanyConfig, DashboardDepartment } from '@/api/types/org'
 import type { Project } from '@/api/types/projects'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
-export function makeTask(id: string, overrides?: Partial<Task>): Task
-export function makeTask(id: string, title: string, overrides?: Partial<Task>): Task
-export function makeTask(id: string, titleOrOverrides?: string | Partial<Task>, overrides?: Partial<Task>): Task {
+export function makeTask(id: string, overrides?: Partial<DashboardTask>): DashboardTask
+export function makeTask(id: string, title: string, overrides?: Partial<DashboardTask>): DashboardTask
+export function makeTask(id: string, titleOrOverrides?: string | Partial<DashboardTask>, overrides?: Partial<DashboardTask>): DashboardTask {
   const title = typeof titleOrOverrides === 'string' ? titleOrOverrides : `Task ${id}`
   const finalOverrides = typeof titleOrOverrides === 'object' ? titleOrOverrides : overrides
   return {
@@ -40,6 +40,9 @@ export function makeTask(id: string, titleOrOverrides?: string | Partial<Task>, 
     delegation_chain: [],
     task_structure: null,
     coordination_topology: 'auto',
+    middleware_override: null,
+    source: null,
+    metadata: {},
     version: 1,
     created_at: '2026-03-20T10:00:00Z',
     updated_at: '2026-03-25T14:00:00Z',
@@ -47,7 +50,7 @@ export function makeTask(id: string, titleOrOverrides?: string | Partial<Task>, 
   }
 }
 
-export function makeAgent(name: string, overrides?: Partial<AgentConfig>): AgentConfig {
+export function makeAgent(name: string, overrides?: Partial<DashboardAgentConfig>): DashboardAgentConfig {
   return {
     id: `agent-${name}`,
     name,
@@ -72,16 +75,34 @@ export function makeAgent(name: string, overrides?: Partial<AgentConfig>): Agent
     tools: { access_level: 'standard', allowed: ['code_edit'], denied: [] },
     authority: {},
     autonomy_level: 'semi',
+    strategic_output_mode: null,
+    personality_preset: null,
+    tier: null,
+    model_requirement: null,
     hiring_date: '2026-03-01T00:00:00Z',
     ...overrides,
   }
 }
 
 /** Intentionally accepts `string` for test flexibility (non-enum dept names). */
-export function makeDepartment(name: string, overrides?: Partial<Department>): Department {
+export function makeDepartment(name: string, overrides?: Partial<DashboardDepartment>): DashboardDepartment {
   return {
-    name: name as Department['name'],
+    name: name as DashboardDepartment['name'],
     display_name: name.charAt(0).toUpperCase() + name.slice(1),
+    autonomy_level: null,
+    budget_percent: 0,
+    ceremony_policy: null,
+    head: null,
+    head_id: null,
+    policies: {
+      approval_chains: [],
+      review_requirements: {
+        min_reviewers: 0,
+        required_reviewer_roles: [],
+        self_review_allowed: true,
+      },
+    },
+    reporting_lines: [],
     teams: [],
     ...overrides,
   }

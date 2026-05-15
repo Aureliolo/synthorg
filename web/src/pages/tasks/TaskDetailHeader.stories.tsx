@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { TaskDetailHeader } from './TaskDetailHeader'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
-const baseTask: Task = {
+const baseTask: DashboardTask = {
   id: 'task-1',
   title: 'Implement new workflow engine',
   description: 'Port the legacy runner to the RFC-driven pipeline.',
@@ -24,6 +24,9 @@ const baseTask: Task = {
   delegation_chain: [],
   task_structure: null,
   coordination_topology: 'auto',
+  middleware_override: null,
+  source: null,
+  metadata: {},
   version: 1,
   created_at: '2026-04-19T00:00:00Z',
   updated_at: '2026-04-19T00:00:00Z',

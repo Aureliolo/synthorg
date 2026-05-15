@@ -9,13 +9,13 @@ import { getTaskTypeLabel } from '@/utils/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
 import { ArrowDown, ArrowUp, Inbox } from 'lucide-react'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
 type SortKey = 'status' | 'title' | 'assignee' | 'priority' | 'type' | 'deadline' | 'cost'
 type SortDirection = 'asc' | 'desc'
 
 export interface TaskListViewProps {
-  tasks: Task[]
+  tasks: DashboardTask[]
   onSelectTask: (taskId: string) => void
 }
 
@@ -31,7 +31,7 @@ const COLUMNS: { key: SortKey; label: string; width: string; sortable: boolean }
   { key: 'cost', label: 'Cost', width: 'w-20', sortable: true },
 ]
 
-function compareTasks(a: Task, b: Task, key: SortKey, dir: SortDirection): number {
+function compareTasks(a: DashboardTask, b: DashboardTask, key: SortKey, dir: SortDirection): number {
   let cmp = 0
   switch (key) {
     case 'status': cmp = a.status.localeCompare(b.status); break
@@ -115,7 +115,7 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
 export const TaskListView = memo(TaskListViewInner)
 
 interface TaskListRowProps {
-  task: Task
+  task: DashboardTask
   onSelectTask: (taskId: string) => void
 }
 

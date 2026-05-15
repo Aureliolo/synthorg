@@ -6,7 +6,25 @@ const mockConfig: CompanyConfig = {
   company_name: 'Acme Corp',
   agents: [],
   departments: [
-    { name: 'engineering', display_name: 'Engineering', teams: [] },
+    {
+      name: 'engineering',
+      display_name: 'Engineering',
+      autonomy_level: null,
+      budget_percent: 0,
+      ceremony_policy: null,
+      head: null,
+      head_id: null,
+      policies: {
+        approval_chains: [],
+        review_requirements: {
+          min_reviewers: 0,
+          required_reviewer_roles: [],
+          self_review_allowed: true,
+        },
+      },
+      reporting_lines: [],
+      teams: [],
+    },
   ],
 }
 

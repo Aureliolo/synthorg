@@ -25,6 +25,7 @@ export function buildConnection(
     health_status: 'unknown',
     last_health_check_at: null,
     metadata: {},
+    rate_limiter: null,
     secret_refs: [],
     webhook_receipt_retention_days: null,
     created_at: NOW,

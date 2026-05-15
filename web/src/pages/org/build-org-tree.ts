@@ -1,8 +1,8 @@
 import type { Node, Edge } from '@xyflow/react'
-import type { AgentConfig } from '@/api/types/agents'
+import type { DashboardAgentConfig } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
 import type { DepartmentName, SeniorityLevel } from '@/api/types/enums'
-import type { CompanyConfig, Department } from '@/api/types/org'
+import type { CompanyConfig, DashboardDepartment } from '@/api/types/org'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import { resolveRuntimeStatus } from './status-mapping'
 
@@ -199,7 +199,7 @@ export function buildOrgTree(
   // Identify CEO (for the LEAD badge + root-dept selection)
   const ceo = findCeo(agents)
   const ceoId = ceo ? (ceo.id ?? ceo.name) : undefined
-  const rootDeptName: DepartmentName | null = ceo ? ceo.department : null
+  const rootDeptName: DepartmentName | null = ceo ? (ceo.department as DepartmentName) : null
 
   // Owner nodes (human operators)
   //
@@ -232,7 +232,7 @@ export function buildOrgTree(
   }
 
   // Group agents by department
-  const deptAgents = new Map<string, AgentConfig[]>()
+  const deptAgents = new Map<string, DashboardAgentConfig[]>()
   for (const agent of agents) {
     const list = deptAgents.get(agent.department) ?? []
     list.push(agent)
@@ -242,21 +242,30 @@ export function buildOrgTree(
   // Resolve the effective department list (config + any synthesised
   // for agents whose dept isn't in config -- resilience for drift).
   const configuredDeptNames = new Set(config.departments.map((d) => d.name))
-  const syntheticDepts: Department[] = []
+  const syntheticDepts: DashboardDepartment[] = []
   for (const deptName of deptAgents.keys()) {
     if (!configuredDeptNames.has(deptName)) {
       syntheticDepts.push({
         name: deptName,
         autonomy_level: null,
         budget_percent: 0,
+        ceremony_policy: null,
         head: null,
         head_id: null,
+        policies: {
+          approval_chains: [],
+          review_requirements: {
+            min_reviewers: 0,
+            required_reviewer_roles: [],
+            self_review_allowed: true,
+          },
+        },
         reporting_lines: [],
         teams: [],
       })
     }
   }
-  const allDepartments: readonly Department[] =
+  const allDepartments: readonly DashboardDepartment[] =
     syntheticDepts.length === 0
       ? config.departments
       : [...config.departments, ...syntheticDepts]
@@ -270,7 +279,7 @@ export function buildOrgTree(
   const otherDepts = allDepartments.filter((d) => d !== rootDept)
 
   // Compute per-dept data (shared helper)
-  const buildDeptData = (dept: Department): DepartmentGroupData => {
+  const buildDeptData = (dept: DashboardDepartment): DepartmentGroupData => {
     const deptMembers = deptAgents.get(dept.name) ?? []
     const health = healthMap.get(dept.name)
     const activeCount = deptMembers.filter(
@@ -442,8 +451,8 @@ export function buildOrgTree(
 function emitDeptChildren(
   nodes: Node[],
   edges: Edge[],
-  dept: Department,
-  deptAgents: Map<string, AgentConfig[]>,
+  dept: DashboardDepartment,
+  deptAgents: Map<string, DashboardAgentConfig[]>,
   runtimeStatuses: Record<string, AgentRuntimeStatus>,
   ceoId: string | undefined,
 ): void {
@@ -507,7 +516,7 @@ function emitDeptChildren(
       agentId,
       name: agent.name,
       role: agent.role,
-      department: agent.department,
+      department: agent.department as DepartmentName,
       level: agent.level,
       runtimeStatus,
       isDeptLead: headId != null && agentId === headId,
@@ -547,14 +556,14 @@ function emitDeptChildren(
 
 // ── Helper functions ────────────────────────────────────────
 
-function findHighestSeniority(agents: readonly AgentConfig[]): AgentConfig | null {
+function findHighestSeniority(agents: readonly DashboardAgentConfig[]): DashboardAgentConfig | null {
   if (agents.length === 0) return null
   return agents.reduce((best, curr) =>
     seniorityOf(curr.level) > seniorityOf(best.level) ? curr : best,
   )
 }
 
-function findCeo(agents: readonly AgentConfig[]): AgentConfig | null {
+function findCeo(agents: readonly DashboardAgentConfig[]): DashboardAgentConfig | null {
   const [execCeo] = agents.filter(
     (a) => a.department === 'executive' && a.level === 'c_suite',
   )

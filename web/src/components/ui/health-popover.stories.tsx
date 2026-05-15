@@ -23,6 +23,7 @@ const BASE_PAYLOAD = {
   status: 'ok' as const,
   persistence: true,
   message_bus: true,
+  providers: true,
   telemetry: 'disabled' as const,
   version: '0.6.4',
   uptime_seconds: 847_200,

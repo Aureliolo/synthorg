@@ -46,6 +46,9 @@ function arbTask(): fc.Arbitrary<Task> {
     delegation_chain: fc.constant([] as readonly string[]),
     task_structure: fc.constant(null),
     coordination_topology: fc.constant('auto' as const),
+    middleware_override: fc.constant(null),
+    source: fc.constant(null),
+    metadata: fc.constant({}),
   })
 }
 

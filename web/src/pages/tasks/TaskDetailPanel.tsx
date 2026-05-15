@@ -14,10 +14,10 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
 import type { Priority, TaskStatus } from '@/api/types/enums'
-import type { CancelTaskRequest, Task, TransitionTaskRequest, UpdateTaskRequest } from '@/api/types/tasks'
+import type { CancelTaskRequest, DashboardTask, TransitionTaskRequest, UpdateTaskRequest } from '@/api/types/tasks'
 
 export interface TaskDetailPanelProps {
-  task: Task
+  task: DashboardTask
   onClose: () => void
   onUpdate: (taskId: string, data: UpdateTaskRequest) => Promise<void>
   onTransition: (taskId: string, data: TransitionTaskRequest) => Promise<void>

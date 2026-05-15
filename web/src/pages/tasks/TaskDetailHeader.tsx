@@ -1,10 +1,10 @@
 import { InlineEdit } from '@/components/ui/inline-edit'
 import { PriorityBadge, TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { useTasksStore } from '@/stores/tasks'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
 interface TaskDetailHeaderProps {
-  task: Task
+  task: DashboardTask
 }
 
 export function TaskDetailHeader({ task }: TaskDetailHeaderProps) {

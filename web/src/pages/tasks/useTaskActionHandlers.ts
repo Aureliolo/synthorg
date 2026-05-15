@@ -4,7 +4,7 @@ import { ROUTES } from '@/router/routes'
 import { useTasksStore } from '@/stores/tasks'
 import { useToastStore } from '@/stores/toast'
 import type { TaskStatus } from '@/api/types/enums'
-import type { Task } from '@/api/types/tasks'
+import type { DashboardTask } from '@/api/types/tasks'
 
 export interface TaskActionHandlers {
   transitioning: TaskStatus | null
@@ -22,7 +22,7 @@ export interface TaskActionHandlers {
  * wrap the store mutations in try/catch; instead it null-checks the
  * sentinel returns to decide whether to navigate / unwind.
  */
-export function useTaskActionHandlers(task: Task | null | undefined): TaskActionHandlers {
+export function useTaskActionHandlers(task: DashboardTask | null | undefined): TaskActionHandlers {
   const navigate = useNavigate()
   const [transitioning, setTransitioning] = useState<TaskStatus | null>(null)
 

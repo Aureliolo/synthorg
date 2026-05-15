@@ -4190,10 +4190,10 @@ export type components = {
         /** ActionItem */
         readonly ActionItem: {
             /** @description Agent responsible for the action */
-            readonly assignee_id?: string | null;
+            readonly assignee_id: string | null;
             /** @description What needs to be done */
             readonly description: string;
-            readonly priority?: components["schemas"]["Priority"];
+            readonly priority: components["schemas"]["Priority"];
         };
         /** ActivateWorkflowRequest */
         readonly ActivateWorkflowRequest: {
@@ -4205,21 +4205,21 @@ export type components = {
         /** ActiveCeremonyStrategyResponse */
         readonly ActiveCeremonyStrategyResponse: {
             /** @description Active sprint ID, null if no sprint running */
-            readonly sprint_id?: string | null;
+            readonly sprint_id: string | null;
             /**
              * @description Active sprint strategy, null if no sprint running
              * @enum {string|null}
              */
-            readonly strategy?: "task_driven" | "calendar" | "hybrid" | "event_driven" | "budget_driven" | "throughput_adaptive" | "external_trigger" | "milestone_driven" | null;
+            readonly strategy: "task_driven" | "calendar" | "hybrid" | "event_driven" | "budget_driven" | "throughput_adaptive" | "external_trigger" | "milestone_driven" | null;
         };
         /** ActiveEmbedderResponse */
         readonly ActiveEmbedderResponse: {
             /** @description Embedding vector dimensions */
-            readonly dims?: number | null;
+            readonly dims: number | null;
             /** @description Embedding model identifier */
-            readonly model?: string | null;
+            readonly model: string | null;
             /** @description Embedding provider name */
-            readonly provider?: string | null;
+            readonly provider: string | null;
         };
         /** ActivityEvent */
         readonly ActivityEvent: {
@@ -4230,7 +4230,7 @@ export type components = {
             readonly description: string;
             readonly event_type: components["schemas"]["ActivityEventType"];
             /** @description Related entity identifiers */
-            readonly related_ids?: {
+            readonly related_ids: {
                 readonly [key: string]: string;
             };
             /**
@@ -4267,51 +4267,51 @@ export type components = {
         /** AgentConfig */
         readonly AgentConfig: {
             /** @description Raw authority config */
-            readonly authority?: {
+            readonly authority: {
                 readonly [key: string]: unknown;
             };
             /**
              * @description Per-agent autonomy level override (D6)
              * @enum {string|null}
              */
-            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
+            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
             /** @description Department name */
             readonly department: string;
-            readonly level?: components["schemas"]["SeniorityLevel"];
+            readonly level: components["schemas"]["SeniorityLevel"];
             /** @description Raw memory config */
-            readonly memory?: {
+            readonly memory: {
                 readonly [key: string]: unknown;
             };
             /** @description Raw model config */
-            readonly model?: {
+            readonly model: {
                 readonly [key: string]: unknown;
             };
             /** @description Structured model requirement dict emitted by the setup wizard (tier / priority / min_context / capabilities). Stored as a raw dict because the canonical ``ModelRequirement`` model lives in ``synthorg.templates`` and importing it here would create a config -> templates cycle; the matcher rehydrates the dict at use sites. */
-            readonly model_requirement?: {
+            readonly model_requirement: {
                 readonly [key: string]: unknown;
             } | null;
             /** @description Agent display name */
             readonly name: string;
             /** @description Raw personality config */
-            readonly personality?: {
+            readonly personality: {
                 readonly [key: string]: unknown;
             };
             /** @description Named personality preset.  ``setup_agents`` writes the resolved preset name back when bootstrapping from a template, so the company-agents setting must round-trip the field rather than reject it under ``extra=forbid``. */
-            readonly personality_preset?: string | null;
+            readonly personality_preset: string | null;
             /** @description Role name */
             readonly role: string;
             /**
              * @description Per-agent strategic output mode override. None inherits the company strategy config default.
              * @enum {string|null}
              */
-            readonly strategic_output_mode?: "option_expander" | "advisor" | "decision_maker" | "context_dependent" | null;
+            readonly strategic_output_mode: "option_expander" | "advisor" | "decision_maker" | "context_dependent" | null;
             /**
              * @description Resolved model tier from the setup wizard (``large`` / ``medium`` / ``small``). Round-trips so the company-agents setting survives Pydantic validation when the wizard persists tier alongside the model selection.
              * @enum {null|string}
              */
-            readonly tier?: "large" | "medium" | "small" | null;
+            readonly tier: "large" | "medium" | "small" | null;
             /** @description Raw tools config */
-            readonly tools?: {
+            readonly tools: {
                 readonly [key: string]: unknown;
             };
         };
@@ -4323,22 +4323,22 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly last_active_at?: string | null;
+            readonly last_active_at: string | null;
             readonly lifecycle_status: components["schemas"]["AgentStatus"];
-            readonly performance?: components["schemas"]["PerformanceSummary"] | null;
-            readonly trust?: components["schemas"]["TrustSummary"] | null;
+            readonly performance: components["schemas"]["PerformanceSummary"] | null;
+            readonly trust: components["schemas"]["TrustSummary"] | null;
         };
         /**
          * AgentIdentity
          * @description Full frozen entity model at this version
          */
         readonly AgentIdentity: {
-            readonly authority?: components["schemas"]["Authority"];
+            readonly authority: components["schemas"]["Authority"];
             /**
              * @description Per-agent autonomy level override (D6)
              * @enum {string|null}
              */
-            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
+            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
             /** @description Department name */
             readonly department: string;
             /**
@@ -4350,23 +4350,23 @@ export type components = {
              * Format: uuid
              * @description Unique agent identifier
              */
-            readonly id?: string;
-            readonly level?: components["schemas"]["SeniorityLevel"];
-            readonly memory?: components["schemas"]["MemoryConfig"];
+            readonly id: string;
+            readonly level: components["schemas"]["SeniorityLevel"];
+            readonly memory: components["schemas"]["MemoryConfig"];
             readonly model: components["schemas"]["ModelConfig"];
             /** @description Agent display name */
             readonly name: string;
-            readonly personality?: components["schemas"]["PersonalityConfig"];
+            readonly personality: components["schemas"]["PersonalityConfig"];
             /** @description Role name */
             readonly role: string;
-            readonly skills?: components["schemas"]["SkillSet"];
-            readonly status?: components["schemas"]["AgentStatus"];
+            readonly skills: components["schemas"]["SkillSet"];
+            readonly status: components["schemas"]["AgentStatus"];
             /**
              * @description Per-agent strategic output mode override. None inherits the company strategy config default.
              * @enum {string|null}
              */
-            readonly strategic_output_mode?: "option_expander" | "advisor" | "decision_maker" | "context_dependent" | null;
-            readonly tools?: components["schemas"]["ToolPermissions"];
+            readonly strategic_output_mode: "option_expander" | "advisor" | "decision_maker" | "context_dependent" | null;
+            readonly tools: components["schemas"]["ToolPermissions"];
         };
         /** AgentIdentityDiff */
         readonly AgentIdentityDiff: {
@@ -4383,7 +4383,7 @@ export type components = {
          * @description Agent-level middleware configuration
          */
         readonly AgentMiddlewareConfig: {
-            readonly authority_deference?: components["schemas"]["AuthorityDeferenceConfig"];
+            readonly authority_deference: components["schemas"]["AuthorityDeferenceConfig"];
             /**
              * @description Agent middleware names in execution order
              * @default [
@@ -4406,15 +4406,15 @@ export type components = {
             /** @description Agent display name */
             readonly agent_name: string;
             /** @description Average task duration in seconds (30d window, falling back to 7d) */
-            readonly avg_completion_time_seconds?: number | null;
+            readonly avg_completion_time_seconds: number | null;
             /** @description Overall collaboration score */
-            readonly collaboration_score?: number | null;
+            readonly collaboration_score: number | null;
             /** @description Average cost per task in the configured display currency (30d window, falling back to 7d) */
-            readonly cost_per_task?: number | null;
+            readonly cost_per_task: number | null;
             /** @description Overall quality score */
-            readonly quality_score?: number | null;
+            readonly quality_score: number | null;
             /** @description Task success rate as percentage (30d window, falling back to 7d) */
-            readonly success_rate_percent?: number | null;
+            readonly success_rate_percent: number | null;
             /** @description Tasks completed in the last 7 days */
             readonly tasks_completed_7d: number;
             /** @description Tasks completed in the last 30 days */
@@ -4463,7 +4463,7 @@ export type components = {
             readonly altitude: string;
             readonly approval_rate: number;
             readonly avg_confidence: number;
-            readonly avg_observation_hours?: number | null;
+            readonly avg_observation_hours: number | null;
             readonly decision_count: number;
             readonly deployment_count: number;
             /** @default [] */
@@ -4487,942 +4487,942 @@ export type components = {
         /** AnonymizedOutcomeEvent */
         readonly AnonymizedOutcomeEvent: {
             readonly altitude: string;
-            readonly confidence?: number | null;
+            readonly confidence: number | null;
             /** @enum {null|string} */
-            readonly decision?: "approved" | "rejected" | null;
+            readonly decision: "approved" | "rejected" | null;
             readonly deployment_id: string;
             /** @default [] */
             readonly enabled_altitudes: readonly string[];
             /** @enum {string} */
             readonly event_type: "proposal_decision" | "rollout_result";
-            readonly industry_tag?: string | null;
-            readonly observation_hours?: number | null;
-            readonly regression_verdict?: string | null;
-            readonly rollout_outcome?: string | null;
+            readonly industry_tag: string | null;
+            readonly observation_hours: number | null;
+            readonly regression_verdict: string | null;
+            readonly rollout_outcome: string | null;
             /**
              * @default 1
              * @constant
              */
             readonly schema_version: "1";
             readonly sdk_version: string;
-            readonly source_rule?: string | null;
+            readonly source_rule: string | null;
             readonly timestamp: string;
         };
         /** ApiResponse[ActiveCeremonyStrategyResponse] */
         readonly ApiResponse_ActiveCeremonyStrategyResponse_: {
-            readonly data?: components["schemas"]["ActiveCeremonyStrategyResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ActiveCeremonyStrategyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ActiveEmbedderResponse] */
         readonly ApiResponse_ActiveEmbedderResponse_: {
-            readonly data?: components["schemas"]["ActiveEmbedderResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ActiveEmbedderResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentConfig] */
         readonly ApiResponse_AgentConfig_: {
-            readonly data?: components["schemas"]["AgentConfig"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["AgentConfig"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentHealthResponse] */
         readonly ApiResponse_AgentHealthResponse_: {
-            readonly data?: components["schemas"]["AgentHealthResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["AgentHealthResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentIdentity] */
         readonly ApiResponse_AgentIdentity_: {
-            readonly data?: components["schemas"]["AgentIdentity"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["AgentIdentity"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentIdentityDiff] */
         readonly ApiResponse_AgentIdentityDiff_: {
-            readonly data?: components["schemas"]["AgentIdentityDiff"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["AgentIdentityDiff"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentPerformanceSummary] */
         readonly ApiResponse_AgentPerformanceSummary_: {
-            readonly data?: components["schemas"]["AgentPerformanceSummary"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["AgentPerformanceSummary"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentSpending] */
         readonly ApiResponse_AgentSpending_: {
-            readonly data?: components["schemas"]["AgentSpending"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["AgentSpending"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ApplyTemplatePackResponse] */
         readonly ApiResponse_ApplyTemplatePackResponse_: {
-            readonly data?: components["schemas"]["ApplyTemplatePackResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ApplyTemplatePackResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ApprovalResponse] */
         readonly ApiResponse_ApprovalResponse_: {
-            readonly data?: components["schemas"]["ApprovalResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ApprovalResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Artifact] */
         readonly ApiResponse_Artifact_: {
-            readonly data?: components["schemas"]["Artifact"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["Artifact"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AutonomyLevelResponse] */
         readonly ApiResponse_AutonomyLevelResponse_: {
-            readonly data?: components["schemas"]["AutonomyLevelResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["AutonomyLevelResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AvailableLocalesResponse] */
         readonly ApiResponse_AvailableLocalesResponse_: {
-            readonly data?: components["schemas"]["AvailableLocalesResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["AvailableLocalesResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[BackupManifest] */
         readonly ApiResponse_BackupManifest_: {
-            readonly data?: components["schemas"]["BackupManifest"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["BackupManifest"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[BudgetConfig] */
         readonly ApiResponse_BudgetConfig_: {
-            readonly data?: components["schemas"]["BudgetConfig"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["BudgetConfig"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CalibrationSummaryResponse] */
         readonly ApiResponse_CalibrationSummaryResponse_: {
-            readonly data?: components["schemas"]["CalibrationSummaryResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["CalibrationSummaryResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CapabilitiesResponse] */
         readonly ApiResponse_CapabilitiesResponse_: {
-            readonly data?: components["schemas"]["CapabilitiesResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["CapabilitiesResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CatalogEntry] */
         readonly ApiResponse_CatalogEntry_: {
-            readonly data?: components["schemas"]["CatalogEntry"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["CatalogEntry"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CheckpointRecord] */
         readonly ApiResponse_CheckpointRecord_: {
-            readonly data?: components["schemas"]["CheckpointRecord"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["CheckpointRecord"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ClientProfile] */
         readonly ApiResponse_ClientProfile_: {
-            readonly data?: components["schemas"]["ClientProfile"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ClientProfile"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CollaborationScoreResult] */
         readonly ApiResponse_CollaborationScoreResult_: {
-            readonly data?: components["schemas"]["CollaborationScoreResult"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["CollaborationScoreResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Connection] */
         readonly ApiResponse_Connection_: {
-            readonly data?: components["schemas"]["Connection"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["Connection"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CookieSessionResponse] */
         readonly ApiResponse_CookieSessionResponse_: {
-            readonly data?: components["schemas"]["CookieSessionResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["CookieSessionResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CoordinationResultResponse] */
         readonly ApiResponse_CoordinationResultResponse_: {
-            readonly data?: components["schemas"]["CoordinationResultResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["CoordinationResultResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Department] */
         readonly ApiResponse_Department_: {
-            readonly data?: components["schemas"]["Department"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["Department"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[DepartmentHealth] */
         readonly ApiResponse_DepartmentHealth_: {
-            readonly data?: components["schemas"]["DepartmentHealth"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["DepartmentHealth"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, Any]] */
         readonly ApiResponse_dict_str_Any_: {
-            readonly data?: {
+            readonly data: {
                 readonly [key: string]: unknown;
             } | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, int]] */
         readonly ApiResponse_dict_str_int_: {
-            readonly data?: {
+            readonly data: {
                 readonly [key: string]: number;
             } | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, object]] */
         readonly ApiResponse_dict_str_object_: {
-            readonly data?: {
+            readonly data: {
                 readonly [key: string]: unknown;
             } | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, str]] */
         readonly ApiResponse_dict_str_str_: {
-            readonly data?: {
+            readonly data: {
                 readonly [key: string]: string;
             } | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, Union[int, str]]] */
         readonly ApiResponse_dict_str_Union_int_str_: {
-            readonly data?: {
+            readonly data: {
                 readonly [key: string]: number | string;
             } | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, Union[str, bool, NoneType]]] */
         readonly ApiResponse_dict_str_Union_str_bool_NoneType_: {
-            readonly data?: {
+            readonly data: {
                 readonly [key: string]: string | boolean | null;
             } | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[DiscoverModelsResponse] */
         readonly ApiResponse_DiscoverModelsResponse_: {
-            readonly data?: components["schemas"]["DiscoverModelsResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["DiscoverModelsResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[DiscoveryPolicyResponse] */
         readonly ApiResponse_DiscoveryPolicyResponse_: {
-            readonly data?: components["schemas"]["DiscoveryPolicyResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["DiscoveryPolicyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[EntityResponse] */
         readonly ApiResponse_EntityResponse_: {
-            readonly data?: components["schemas"]["EntityResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["EntityResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[EntityVersionResponse] */
         readonly ApiResponse_EntityVersionResponse_: {
-            readonly data?: components["schemas"]["EntityVersionResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["EntityVersionResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[EscalationResponse] */
         readonly ApiResponse_EscalationResponse_: {
-            readonly data?: components["schemas"]["EscalationResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["EscalationResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[FineTuneStatus] */
         readonly ApiResponse_FineTuneStatus_: {
-            readonly data?: components["schemas"]["FineTuneStatus"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["FineTuneStatus"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ForecastResponse] */
         readonly ApiResponse_ForecastResponse_: {
-            readonly data?: components["schemas"]["ForecastResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ForecastResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[HealthReport] */
         readonly ApiResponse_HealthReport_: {
-            readonly data?: components["schemas"]["HealthReport"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["HealthReport"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[InstallEntryResponse] */
         readonly ApiResponse_InstallEntryResponse_: {
-            readonly data?: components["schemas"]["InstallEntryResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["InstallEntryResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[list[SessionResponse]] */
         readonly ApiResponse_list_SessionResponse_: {
-            readonly data?: readonly components["schemas"]["SessionResponse"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["SessionResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[LivenessStatus] */
         readonly ApiResponse_LivenessStatus_: {
-            readonly data?: components["schemas"]["LivenessStatus"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["LivenessStatus"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[MeetingResponse] */
         readonly ApiResponse_MeetingResponse_: {
-            readonly data?: components["schemas"]["MeetingResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["MeetingResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[NoneType] */
         readonly ApiResponse_NoneType_: {
             readonly data: null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[OverrideResponse] */
         readonly ApiResponse_OverrideResponse_: {
-            readonly data?: components["schemas"]["OverrideResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["OverrideResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[OverviewMetrics] */
         readonly ApiResponse_OverviewMetrics_: {
-            readonly data?: components["schemas"]["OverviewMetrics"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["OverviewMetrics"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PipelineResult] */
         readonly ApiResponse_PipelineResult_: {
-            readonly data?: components["schemas"]["PipelineResult"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["PipelineResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PreflightResult] */
         readonly ApiResponse_PreflightResult_: {
-            readonly data?: components["schemas"]["PreflightResult"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["PreflightResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PresetDetailResponse] */
         readonly ApiResponse_PresetDetailResponse_: {
-            readonly data?: components["schemas"]["PresetDetailResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["PresetDetailResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PresetOverride] */
         readonly ApiResponse_PresetOverride_: {
-            readonly data?: components["schemas"]["PresetOverride"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["PresetOverride"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProbeLocalResponse] */
         readonly ApiResponse_ProbeLocalResponse_: {
-            readonly data?: components["schemas"]["ProbeLocalResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ProbeLocalResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Project] */
         readonly ApiResponse_Project_: {
-            readonly data?: components["schemas"]["Project"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["Project"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProviderHealthSummary] */
         readonly ApiResponse_ProviderHealthSummary_: {
-            readonly data?: components["schemas"]["ProviderHealthSummary"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ProviderHealthSummary"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProviderModelResponse] */
         readonly ApiResponse_ProviderModelResponse_: {
-            readonly data?: components["schemas"]["ProviderModelResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ProviderModelResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProviderResponse] */
         readonly ApiResponse_ProviderResponse_: {
-            readonly data?: components["schemas"]["ProviderResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ProviderResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[QualityOverrideResponse] */
         readonly ApiResponse_QualityOverrideResponse_: {
-            readonly data?: components["schemas"]["QualityOverrideResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["QualityOverrideResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[RateLimitsResponse] */
         readonly ApiResponse_RateLimitsResponse_: {
-            readonly data?: components["schemas"]["RateLimitsResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["RateLimitsResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ReadinessStatus] */
         readonly ApiResponse_ReadinessStatus_: {
-            readonly data?: components["schemas"]["ReadinessStatus"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ReadinessStatus"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ReportResponse] */
         readonly ApiResponse_ReportResponse_: {
-            readonly data?: components["schemas"]["ReportResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ReportResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ResolvedCeremonyPolicyResponse] */
         readonly ApiResponse_ResolvedCeremonyPolicyResponse_: {
-            readonly data?: components["schemas"]["ResolvedCeremonyPolicyResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ResolvedCeremonyPolicyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[RestoreResponse] */
         readonly ApiResponse_RestoreResponse_: {
-            readonly data?: components["schemas"]["RestoreResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["RestoreResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SatisfactionHistory] */
         readonly ApiResponse_SatisfactionHistory_: {
-            readonly data?: components["schemas"]["SatisfactionHistory"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SatisfactionHistory"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ScalingStrategyResponse] */
         readonly ApiResponse_ScalingStrategyResponse_: {
-            readonly data?: components["schemas"]["ScalingStrategyResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["ScalingStrategyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SecurityConfigExportResponse] */
         readonly ApiResponse_SecurityConfigExportResponse_: {
-            readonly data?: components["schemas"]["SecurityConfigExportResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SecurityConfigExportResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SettingEntry] */
         readonly ApiResponse_SettingEntry_: {
-            readonly data?: components["schemas"]["SettingEntry"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SettingEntry"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupAgentResponse] */
         readonly ApiResponse_SetupAgentResponse_: {
-            readonly data?: components["schemas"]["SetupAgentResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SetupAgentResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupAgentSummary] */
         readonly ApiResponse_SetupAgentSummary_: {
-            readonly data?: components["schemas"]["SetupAgentSummary"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SetupAgentSummary"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupCompanyResponse] */
         readonly ApiResponse_SetupCompanyResponse_: {
-            readonly data?: components["schemas"]["SetupCompanyResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SetupCompanyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupCompleteResponse] */
         readonly ApiResponse_SetupCompleteResponse_: {
-            readonly data?: components["schemas"]["SetupCompleteResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SetupCompleteResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupNameLocalesResponse] */
         readonly ApiResponse_SetupNameLocalesResponse_: {
-            readonly data?: components["schemas"]["SetupNameLocalesResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SetupNameLocalesResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupStatusResponse] */
         readonly ApiResponse_SetupStatusResponse_: {
-            readonly data?: components["schemas"]["SetupStatusResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SetupStatusResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[StageDecisionResult] */
         readonly ApiResponse_StageDecisionResult_: {
-            readonly data?: components["schemas"]["StageDecisionResult"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["StageDecisionResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SyncModelsResponse] */
         readonly ApiResponse_SyncModelsResponse_: {
-            readonly data?: components["schemas"]["SyncModelsResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["SyncModelsResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Task] */
         readonly ApiResponse_Task_: {
-            readonly data?: components["schemas"]["Task"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["Task"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TeamResponse] */
         readonly ApiResponse_TeamResponse_: {
-            readonly data?: components["schemas"]["TeamResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["TeamResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TestConnectionResponse] */
         readonly ApiResponse_TestConnectionResponse_: {
-            readonly data?: components["schemas"]["TestConnectionResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["TestConnectionResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TestSinkConfigResponse] */
         readonly ApiResponse_TestSinkConfigResponse_: {
-            readonly data?: components["schemas"]["TestSinkConfigResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["TestSinkConfigResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TrainingPlanResponse] */
         readonly ApiResponse_TrainingPlanResponse_: {
-            readonly data?: components["schemas"]["TrainingPlanResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["TrainingPlanResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TrainingResultResponse] */
         readonly ApiResponse_TrainingResultResponse_: {
-            readonly data?: components["schemas"]["TrainingResultResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["TrainingResultResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TrendsResponse] */
         readonly ApiResponse_TrendsResponse_: {
-            readonly data?: components["schemas"]["TrendsResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["TrendsResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[AgentConfig, ...]] */
         readonly "ApiResponse_tuple_AgentConfig_..._": {
-            readonly data?: readonly components["schemas"]["AgentConfig"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["AgentConfig"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[Annotated[Union[CloudPreset, LocalPreset], FieldInfo(annotation=NoneType, required=True, discriminator='kind')], ...]] */
         readonly "ApiResponse_tuple_Annotated_Union_CloudPreset_LocalPreset_FieldInfo_annotation_NoneType_required_True_discriminator_kind_..._": {
-            readonly data?: readonly (components["schemas"]["CloudPreset"] | components["schemas"]["LocalPreset"])[] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly (components["schemas"]["CloudPreset"] | components["schemas"]["LocalPreset"])[] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[BlueprintInfoResponse, ...]] */
         readonly "ApiResponse_tuple_BlueprintInfoResponse_..._": {
-            readonly data?: readonly components["schemas"]["BlueprintInfoResponse"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["BlueprintInfoResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[CareerEvent, ...]] */
         readonly "ApiResponse_tuple_CareerEvent_..._": {
-            readonly data?: readonly components["schemas"]["CareerEvent"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["CareerEvent"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[Department, ...]] */
         readonly "ApiResponse_tuple_Department_..._": {
-            readonly data?: readonly components["schemas"]["Department"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["Department"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[DriftReportResponse, ...]] */
         readonly "ApiResponse_tuple_DriftReportResponse_..._": {
-            readonly data?: readonly components["schemas"]["DriftReportResponse"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["DriftReportResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[InterruptResponse, ...]] */
         readonly "ApiResponse_tuple_InterruptResponse_..._": {
-            readonly data?: readonly components["schemas"]["InterruptResponse"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["InterruptResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[MeetingResponse, ...]] */
         readonly "ApiResponse_tuple_MeetingResponse_..._": {
-            readonly data?: readonly components["schemas"]["MeetingResponse"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["MeetingResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[PackInfoResponse, ...]] */
         readonly "ApiResponse_tuple_PackInfoResponse_..._": {
-            readonly data?: readonly components["schemas"]["PackInfoResponse"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["PackInfoResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[ScalingDecisionResponse, ...]] */
         readonly "ApiResponse_tuple_ScalingDecisionResponse_..._": {
-            readonly data?: readonly components["schemas"]["ScalingDecisionResponse"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["ScalingDecisionResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[SettingDefinition, ...]] */
         readonly "ApiResponse_tuple_SettingDefinition_..._": {
-            readonly data?: readonly components["schemas"]["SettingDefinition"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["SettingDefinition"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[SettingEntry, ...]] */
         readonly "ApiResponse_tuple_SettingEntry_..._": {
-            readonly data?: readonly components["schemas"]["SettingEntry"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["SettingEntry"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[str, ...]] */
         readonly "ApiResponse_tuple_str_..._": {
-            readonly data?: readonly string[] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly string[] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[SubworkflowSummary, ...]] */
         readonly "ApiResponse_tuple_SubworkflowSummary_..._": {
-            readonly data?: readonly components["schemas"]["SubworkflowSummary"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["SubworkflowSummary"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[TeamResponse, ...]] */
         readonly "ApiResponse_tuple_TeamResponse_..._": {
-            readonly data?: readonly components["schemas"]["TeamResponse"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["TeamResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[TemplateInfoResponse, ...]] */
         readonly "ApiResponse_tuple_TemplateInfoResponse_..._": {
-            readonly data?: readonly components["schemas"]["TemplateInfoResponse"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["TemplateInfoResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[WebhookReceipt, ...]] */
         readonly "ApiResponse_tuple_WebhookReceipt_..._": {
-            readonly data?: readonly components["schemas"]["WebhookReceipt"][] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: readonly components["schemas"]["WebhookReceipt"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Union[dict[str, Any], NoneType]] */
         readonly ApiResponse_Union_dict_str_Any_NoneType_: {
-            readonly data?: {
+            readonly data: {
                 readonly [key: string]: unknown;
             } | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Union[PresetOverride, NoneType]] */
         readonly ApiResponse_Union_PresetOverride_NoneType_: {
-            readonly data?: components["schemas"]["PresetOverride"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["PresetOverride"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[UserInfoResponse] */
         readonly ApiResponse_UserInfoResponse_: {
-            readonly data?: components["schemas"]["UserInfoResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["UserInfoResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[UserResponse] */
         readonly ApiResponse_UserResponse_: {
-            readonly data?: components["schemas"]["UserResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["UserResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[AgentIdentity]] */
         readonly ApiResponse_VersionSnapshot_AgentIdentity_: {
-            readonly data?: components["schemas"]["VersionSnapshot_AgentIdentity_"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["VersionSnapshot_AgentIdentity_"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[BudgetConfig]] */
         readonly ApiResponse_VersionSnapshot_BudgetConfig_: {
-            readonly data?: components["schemas"]["VersionSnapshot_BudgetConfig_"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["VersionSnapshot_BudgetConfig_"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[Company]] */
         readonly ApiResponse_VersionSnapshot_Company_: {
-            readonly data?: components["schemas"]["VersionSnapshot_Company_"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["VersionSnapshot_Company_"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[EvaluationConfig]] */
         readonly ApiResponse_VersionSnapshot_EvaluationConfig_: {
-            readonly data?: components["schemas"]["VersionSnapshot_EvaluationConfig_"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["VersionSnapshot_EvaluationConfig_"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[Role]] */
         readonly ApiResponse_VersionSnapshot_Role_: {
-            readonly data?: components["schemas"]["VersionSnapshot_Role_"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["VersionSnapshot_Role_"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[WorkflowDefinition]] */
         readonly ApiResponse_VersionSnapshot_WorkflowDefinition_: {
-            readonly data?: components["schemas"]["VersionSnapshot_WorkflowDefinition_"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["VersionSnapshot_WorkflowDefinition_"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WorkflowDefinition] */
         readonly ApiResponse_WorkflowDefinition_: {
-            readonly data?: components["schemas"]["WorkflowDefinition"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["WorkflowDefinition"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WorkflowDiff] */
         readonly ApiResponse_WorkflowDiff_: {
-            readonly data?: components["schemas"]["WorkflowDiff"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["WorkflowDiff"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WorkflowExecution] */
         readonly ApiResponse_WorkflowExecution_: {
-            readonly data?: components["schemas"]["WorkflowExecution"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["WorkflowExecution"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WorkflowValidationResult] */
         readonly ApiResponse_WorkflowValidationResult_: {
-            readonly data?: components["schemas"]["WorkflowValidationResult"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["WorkflowValidationResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WsTicketResponse] */
         readonly ApiResponse_WsTicketResponse_: {
-            readonly data?: components["schemas"]["WsTicketResponse"] | null;
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly data: components["schemas"]["WsTicketResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
@@ -5443,7 +5443,7 @@ export type components = {
             readonly pack_name: string;
             readonly rebalance_mode: components["schemas"]["RebalanceMode"];
             /** @description Scale factor applied to existing departments */
-            readonly scale_factor?: number | null;
+            readonly scale_factor: number | null;
         };
         /** ApprovalChain */
         readonly ApprovalChain: {
@@ -5469,27 +5469,27 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly decided_at?: string | null;
-            readonly decided_by?: string | null;
-            readonly decision_reason?: string | null;
+            readonly decided_at: string | null;
+            readonly decided_by: string | null;
+            readonly decision_reason: string | null;
             readonly description: string;
             /** @description Structured evidence for HITL approval */
-            readonly evidence_package?: components["schemas"]["EvidencePackage"] | null;
+            readonly evidence_package: components["schemas"]["EvidencePackage"] | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly expires_at?: string | null;
+            readonly expires_at: string | null;
             readonly id: string;
-            readonly metadata?: {
+            readonly metadata: {
                 readonly [key: string]: string;
             };
             readonly requested_by: string;
             readonly risk_level: components["schemas"]["ApprovalRiskLevel"];
             /** @description Seconds until expiry (null if no TTL set) */
-            readonly seconds_remaining?: number | null;
-            readonly status?: components["schemas"]["ApprovalStatus"];
-            readonly task_id?: string | null;
+            readonly seconds_remaining: number | null;
+            readonly status: components["schemas"]["ApprovalStatus"];
+            readonly task_id: string | null;
             readonly title: string;
             readonly urgency_level: components["schemas"]["UrgencyLevel"];
         };
@@ -5521,7 +5521,7 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly created_at?: string | null;
+            readonly created_at: string | null;
             /** @description Agent ID of the creator */
             readonly created_by: string;
             /**
@@ -5534,7 +5534,7 @@ export type components = {
             /** @description File or directory path of the artifact */
             readonly path: string;
             /** @description ID of the project this artifact belongs to */
-            readonly project_id?: string | null;
+            readonly project_id: string | null;
             /**
              * @description Content size in bytes (zero when no content stored)
              * @default 0
@@ -5553,17 +5553,17 @@ export type components = {
         /** AuditEntry */
         readonly AuditEntry: {
             readonly action_type: string;
-            readonly agent_id?: string | null;
-            readonly approval_id?: string | null;
+            readonly agent_id: string | null;
+            readonly approval_id: string | null;
             readonly arguments_hash: string;
-            readonly confidence?: components["schemas"]["EvaluationConfidence"];
+            readonly confidence: components["schemas"]["EvaluationConfidence"];
             readonly evaluation_duration_ms: number;
             readonly id: string;
             /** @default [] */
             readonly matched_rules: readonly string[];
             readonly reason: string;
             readonly risk_level: components["schemas"]["ApprovalRiskLevel"];
-            readonly task_id?: string | null;
+            readonly task_id: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -5602,7 +5602,7 @@ export type components = {
              */
             readonly can_delegate_to: readonly string[];
             /** @description Role this position reports to */
-            readonly reports_to?: string | null;
+            readonly reports_to: string | null;
         };
         /**
          * AuthorityDeferenceConfig
@@ -5673,9 +5673,9 @@ export type components = {
          * @description Autonomy configuration (level + presets)
          */
         readonly AutonomyConfig: {
-            readonly level?: components["schemas"]["AutonomyLevel"];
+            readonly level: components["schemas"]["AutonomyLevel"];
             /** @description Available autonomy presets */
-            readonly presets?: {
+            readonly presets: {
                 readonly [key: string]: components["schemas"]["AutonomyPreset"];
             };
         };
@@ -5821,8 +5821,8 @@ export type components = {
         };
         /** BudgetConfig */
         readonly BudgetConfig: {
-            readonly alerts?: components["schemas"]["BudgetAlertConfig"];
-            readonly auto_downgrade?: components["schemas"]["AutoDowngradeConfig"];
+            readonly alerts: components["schemas"]["BudgetAlertConfig"];
+            readonly auto_downgrade: components["schemas"]["AutoDowngradeConfig"];
             /**
              * @description ISO 4217 currency code stamped onto every new cost record and used for display formatting. SynthOrg does not convert provider costs -- provider token prices are reported in the provider-native currency (see ``DEFAULT_CURRENCY``) and changing this setting relabels the code stamped onto subsequent records without translating any numeric values. Historical rows retain the code that was active when they were written.
              * @default USD
@@ -5848,7 +5848,7 @@ export type components = {
              * @default 1
              */
             readonly reset_day: number;
-            readonly risk_budget?: components["schemas"]["RiskBudgetConfig"];
+            readonly risk_budget: components["schemas"]["RiskBudgetConfig"];
             /**
              * @description Monthly budget limit
              * @default 100
@@ -5858,7 +5858,7 @@ export type components = {
         /** CalibrationSummaryResponse */
         readonly CalibrationSummaryResponse: {
             readonly agent_id: string;
-            readonly average_drift?: number | null;
+            readonly average_drift: number | null;
             /** @description Number of calibration records */
             readonly record_count: number;
             /**
@@ -5899,7 +5899,7 @@ export type components = {
             /** @description Who triggered the event */
             readonly initiated_by: string;
             /** @description Additional structured metadata */
-            readonly metadata?: {
+            readonly metadata: {
                 readonly [key: string]: string;
             };
             /**
@@ -5916,9 +5916,9 @@ export type components = {
             readonly description: string;
             readonly id: string;
             readonly name: string;
-            readonly npm_package?: string | null;
+            readonly npm_package: string | null;
             /** @enum {string|null} */
-            readonly required_connection_type?: "github" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | null;
+            readonly required_connection_type: "github" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | null;
             /** @default [] */
             readonly tags: readonly string[];
             /**
@@ -5959,7 +5959,7 @@ export type components = {
              * @default []
              */
             readonly subscribers: readonly string[];
-            readonly type?: components["schemas"]["ChannelType"];
+            readonly type: components["schemas"]["ChannelType"];
         };
         /**
          * ChannelType
@@ -5984,7 +5984,7 @@ export type components = {
         /** CheckpointRecord */
         readonly CheckpointRecord: {
             /** @description Pre-deployment config backup (JSON) */
-            readonly backup_config_json?: string | null;
+            readonly backup_config_json: string | null;
             /** @description Base model identifier */
             readonly base_model: string;
             /**
@@ -5995,7 +5995,7 @@ export type components = {
             /** @description Training document count */
             readonly doc_count: number;
             /** @description Evaluation metrics */
-            readonly eval_metrics?: components["schemas"]["EvalMetrics"] | null;
+            readonly eval_metrics: components["schemas"]["EvalMetrics"] | null;
             /** @description Unique checkpoint ID */
             readonly id: string;
             /**
@@ -6058,7 +6058,7 @@ export type components = {
         /** CloudPreset */
         readonly CloudPreset: {
             readonly auth_type: components["schemas"]["AuthType"];
-            readonly default_base_url?: string | null;
+            readonly default_base_url: string | null;
             /** @default [] */
             readonly default_models: readonly components["schemas"]["ProviderModelConfig"][];
             readonly description: string;
@@ -6134,7 +6134,7 @@ export type components = {
          * @description Full frozen entity model at this version
          */
         readonly Company: {
-            readonly config?: components["schemas"]["CompanyConfig"];
+            readonly config: components["schemas"]["CompanyConfig"];
             /**
              * @description Company departments
              * @default []
@@ -6145,15 +6145,15 @@ export type components = {
              * @default []
              */
             readonly escalation_paths: readonly components["schemas"]["EscalationPath"][];
-            readonly hr_registry?: components["schemas"]["HRRegistry"];
+            readonly hr_registry: components["schemas"]["HRRegistry"];
             /**
              * Format: uuid
              * @description Company identifier
              */
-            readonly id?: string;
+            readonly id: string;
             /** @description Company name */
             readonly name: string;
-            readonly type?: components["schemas"]["CompanyType"];
+            readonly type: components["schemas"]["CompanyType"];
             /**
              * @description Cross-department workflow handoffs
              * @default []
@@ -6166,8 +6166,8 @@ export type components = {
          */
         readonly CompanyConfig: {
             /** @description Timeout policy for pending approval items */
-            readonly approval_timeout?: components["schemas"]["WaitForeverConfig"] | components["schemas"]["DenyOnTimeoutConfig"] | components["schemas"]["TieredTimeoutConfig"] | components["schemas"]["EscalationChainConfig"];
-            readonly autonomy?: components["schemas"]["AutonomyConfig"];
+            readonly approval_timeout: components["schemas"]["WaitForeverConfig"] | components["schemas"]["DenyOnTimeoutConfig"] | components["schemas"]["TieredTimeoutConfig"] | components["schemas"]["EscalationChainConfig"];
+            readonly autonomy: components["schemas"]["AutonomyConfig"];
             /**
              * @description Monthly budget in the configured currency
              * @default 100
@@ -6178,7 +6178,7 @@ export type components = {
              * @default hybrid
              */
             readonly communication_pattern: string;
-            readonly middleware?: components["schemas"]["MiddlewareConfig"];
+            readonly middleware: components["schemas"]["MiddlewareConfig"];
             /**
              * @description Replay session from event log on agent start
              * @default false
@@ -6226,7 +6226,7 @@ export type components = {
             /** @description Brief dispute description */
             readonly subject: string;
             /** @description Related task ID */
-            readonly task_id?: string | null;
+            readonly task_id: string | null;
             readonly type: components["schemas"]["ConflictType"];
         };
         /**
@@ -6262,36 +6262,36 @@ export type components = {
         /** Connection */
         readonly Connection: {
             readonly auth_method: components["schemas"]["AuthMethod"];
-            readonly base_url?: string | null;
+            readonly base_url: string | null;
             readonly connection_type: components["schemas"]["ConnectionType"];
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly created_at?: string;
+            readonly created_at: string;
             /** @default true */
             readonly health_check_enabled: boolean;
-            readonly health_status?: components["schemas"]["ConnectionStatus"];
-            readonly id?: string;
+            readonly health_status: components["schemas"]["ConnectionStatus"];
+            readonly id: string;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly last_health_check_at?: string | null;
-            readonly metadata?: {
+            readonly last_health_check_at: string | null;
+            readonly metadata: {
                 readonly [key: string]: string;
             };
             readonly name: string;
-            readonly rate_limiter?: components["schemas"]["RateLimiterConfig"] | null;
+            readonly rate_limiter: components["schemas"]["RateLimiterConfig"] | null;
             /** @default [] */
             readonly secret_refs: readonly components["schemas"]["SecretRef"][];
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly updated_at?: string;
+            readonly updated_at: string;
             /** @description Per-connection override for webhook-receipt retention (days). None = use the global default; 0 = never sweep this connection's receipts. */
-            readonly webhook_receipt_retention_days?: number | null;
+            readonly webhook_receipt_retention_days: number | null;
         };
         /**
          * ConnectionStatus
@@ -6343,28 +6343,28 @@ export type components = {
          */
         readonly CoordinationMetrics: {
             /** @description Amdahl's Law speedup ceiling */
-            readonly amdahl_ceiling?: components["schemas"]["AmdahlCeiling"] | null;
+            readonly amdahl_ceiling: components["schemas"]["AmdahlCeiling"] | null;
             /** @description Coordination efficiency */
-            readonly efficiency?: components["schemas"]["CoordinationEfficiency"] | null;
+            readonly efficiency: components["schemas"]["CoordinationEfficiency"] | null;
             /** @description Error amplification */
-            readonly error_amplification?: components["schemas"]["ErrorAmplification"] | null;
+            readonly error_amplification: components["schemas"]["ErrorAmplification"] | null;
             /** @description Message density */
-            readonly message_density?: components["schemas"]["MessageDensity"] | null;
+            readonly message_density: components["schemas"]["MessageDensity"] | null;
             /** @description O(n^2) message overhead detection */
-            readonly message_overhead?: components["schemas"]["MessageOverhead"] | null;
+            readonly message_overhead: components["schemas"]["MessageOverhead"] | null;
             /** @description Coordination overhead */
-            readonly overhead?: components["schemas"]["CoordinationOverhead"] | null;
+            readonly overhead: components["schemas"]["CoordinationOverhead"] | null;
             /** @description Redundancy rate */
-            readonly redundancy_rate?: components["schemas"]["RedundancyRate"] | null;
+            readonly redundancy_rate: components["schemas"]["RedundancyRate"] | null;
             /** @description Slowest-agent gap metric */
-            readonly straggler_gap?: components["schemas"]["StragglerGap"] | null;
+            readonly straggler_gap: components["schemas"]["StragglerGap"] | null;
             /** @description Token cost vs speedup ratio */
-            readonly token_speedup_ratio?: components["schemas"]["TokenSpeedupRatio"] | null;
+            readonly token_speedup_ratio: components["schemas"]["TokenSpeedupRatio"] | null;
         };
         /** CoordinationMetricsRecord */
         readonly CoordinationMetricsRecord: {
             /** @description Lead agent (None for system-level runs) */
-            readonly agent_id?: string | null;
+            readonly agent_id: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -6393,7 +6393,7 @@ export type components = {
              *     ]
              */
             readonly chain: readonly string[];
-            readonly clarification_gate?: components["schemas"]["ClarificationGateConfig"];
+            readonly clarification_gate: components["schemas"]["ClarificationGateConfig"];
         };
         /** CoordinationOverhead */
         readonly CoordinationOverhead: {
@@ -6407,7 +6407,7 @@ export type components = {
         /** CoordinationPhaseResponse */
         readonly CoordinationPhaseResponse: {
             readonly duration_seconds: number;
-            readonly error?: string | null;
+            readonly error: string | null;
             readonly phase: string;
             readonly success: boolean;
         };
@@ -6440,18 +6440,18 @@ export type components = {
         /** CostRecord */
         readonly CostRecord: {
             /** @description Accuracy-effort ratio for the task this call belongs to (populated at task completion when quality signals are available) */
-            readonly accuracy_effort_ratio?: number | null;
+            readonly accuracy_effort_ratio: number | null;
             /** @description Agent identifier */
             readonly agent_id: string;
             /** @description Whether the provider served this call from cache */
-            readonly cache_hit?: boolean | null;
+            readonly cache_hit: boolean | null;
             /**
              * @description LLM call category (productive, coordination, system, embedding)
              * @enum {string|null}
              */
-            readonly call_category?: "productive" | "coordination" | "system" | "embedding" | null;
+            readonly call_category: "productive" | "coordination" | "system" | "embedding" | null;
             /** @description Idempotency key for this billing event. Generated once at construction (UUID4 by default) so retries / JetStream redelivery / in-process tracker double-submission cannot double-bill: ``CostTracker.record`` keeps a bounded LRU of seen ``claim_id`` values and treats repeats as no-ops. */
-            readonly claim_id?: string;
+            readonly claim_id: string;
             /** @description Numeric cost of the call, denominated in ``currency`` */
             readonly cost: number;
             /** @description ISO 4217 currency code for ``cost`` */
@@ -6460,25 +6460,25 @@ export type components = {
              * @description LLM finish reason for this call
              * @enum {string|null}
              */
-            readonly finish_reason?: "stop" | "max_tokens" | "tool_use" | "content_filter" | "error" | null;
+            readonly finish_reason: "stop" | "max_tokens" | "tool_use" | "content_filter" | "error" | null;
             /** @description Input token count */
             readonly input_tokens: number;
             /** @description Round-trip latency in milliseconds */
-            readonly latency_ms?: number | null;
+            readonly latency_ms: number | null;
             /** @description Model identifier */
             readonly model: string;
             /** @description Output token count */
             readonly output_tokens: number;
             /** @description Project this cost belongs to */
-            readonly project_id?: string | null;
+            readonly project_id: string | null;
             /** @description LLM provider name */
             readonly provider: string;
             /** @description Number of retry attempts before success */
-            readonly retry_count?: number | null;
+            readonly retry_count: number | null;
             /** @description Exception type name of the last retried error */
-            readonly retry_reason?: string | null;
+            readonly retry_reason: string | null;
             /** @description Whether the call completed without error or content filter */
-            readonly success?: boolean | null;
+            readonly success: boolean | null;
             /** @description Task identifier */
             readonly task_id: string;
             /**
@@ -6498,8 +6498,8 @@ export type components = {
             readonly daily_summary: readonly components["schemas"]["DailySummary"][];
             /** @default [] */
             readonly data: readonly components["schemas"]["CostRecord"][];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             readonly period_summary: components["schemas"]["PeriodSummary"];
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -6910,23 +6910,23 @@ export type components = {
              * @description Per-department autonomy level override (D6)
              * @enum {string|null}
              */
-            readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
+            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
             /**
              * @description Percentage of company budget allocated
              * @default 0
              */
             readonly budget_percent: number;
             /** @description Per-department ceremony policy override */
-            readonly ceremony_policy?: {
+            readonly ceremony_policy: {
                 readonly [key: string]: unknown;
             } | null;
             /** @description Department head role name or identifier */
-            readonly head?: string | null;
+            readonly head: string | null;
             /** @description Optional unique identifier for the department head */
-            readonly head_id?: string | null;
+            readonly head_id: string | null;
             /** @description Department name */
             readonly name: string;
-            readonly policies?: components["schemas"]["DepartmentPolicies"];
+            readonly policies: components["schemas"]["DepartmentPolicies"];
             /**
              * @description Explicit reporting relationships
              * @default []
@@ -6945,9 +6945,9 @@ export type components = {
             /** @description Total agents */
             readonly agent_count: number;
             /** @description Mean quality score (0-10) */
-            readonly avg_performance_score?: number | null;
+            readonly avg_performance_score: number | null;
             /** @description Mean collaboration score (0-10) */
-            readonly collaboration_score?: number | null;
+            readonly collaboration_score: number | null;
             /** @description 7-day daily spend sparkline */
             readonly cost_trend: readonly components["schemas"]["TrendDataPoint"][];
             /**
@@ -6978,7 +6978,7 @@ export type components = {
              * @default []
              */
             readonly approval_chains: readonly components["schemas"]["ApprovalChain"][];
-            readonly review_requirements?: components["schemas"]["ReviewRequirements"];
+            readonly review_requirements: components["schemas"]["ReviewRequirements"];
         };
         /** DiscoverModelsResponse */
         readonly DiscoverModelsResponse: {
@@ -7027,10 +7027,10 @@ export type components = {
             /** @enum {string} */
             readonly change_type: "added" | "removed" | "reconnected" | "type_changed" | "label_changed";
             readonly edge_id: string;
-            readonly new_value?: {
+            readonly new_value: {
                 readonly [key: string]: unknown;
             } | null;
-            readonly old_value?: {
+            readonly old_value: {
                 readonly [key: string]: unknown;
             } | null;
         };
@@ -7193,7 +7193,7 @@ export type components = {
             readonly error_code: components["schemas"]["ErrorCode"];
             readonly instance: string;
             /** @description Seconds to wait before retrying (null when not applicable). */
-            readonly retry_after?: number | null;
+            readonly retry_after: number | null;
             /** @default false */
             readonly retryable: boolean;
             readonly title: string;
@@ -7211,16 +7211,16 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly decided_at?: string | null;
-            readonly decided_by?: string | null;
-            readonly decision?: components["schemas"]["WinnerDecision"] | components["schemas"]["RejectDecision"] | null;
+            readonly decided_at: string | null;
+            readonly decided_by: string | null;
+            readonly decision: components["schemas"]["WinnerDecision"] | components["schemas"]["RejectDecision"] | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly expires_at?: string | null;
+            readonly expires_at: string | null;
             readonly id: string;
-            readonly status?: components["schemas"]["EscalationStatus"];
+            readonly status: components["schemas"]["EscalationStatus"];
         };
         /** EscalationChainConfig */
         readonly EscalationChainConfig: {
@@ -7229,7 +7229,7 @@ export type components = {
              * @default []
              */
             readonly chain: readonly components["schemas"]["EscalationStep"][];
-            readonly on_chain_exhausted?: components["schemas"]["TimeoutActionType"];
+            readonly on_chain_exhausted: components["schemas"]["TimeoutActionType"];
             /**
              * @default escalation
              * @constant
@@ -7297,7 +7297,7 @@ export type components = {
              */
             readonly max_concurrent_benchmarks: number;
             /** @description Operator override for pillar-to-action mapping. Values are validated as ``NotBlankStr`` so blank or whitespace-only action identifiers are rejected at config load. */
-            readonly pattern_action_map?: {
+            readonly pattern_action_map: {
                 readonly [key: string]: string;
             } | null;
             /**
@@ -7357,12 +7357,12 @@ export type components = {
              * @default 2
              */
             readonly calibration_drift_threshold: number;
-            readonly efficiency?: components["schemas"]["EfficiencyConfig"];
-            readonly eval_loop?: components["schemas"]["EvalLoopConfig"];
-            readonly experience?: components["schemas"]["ExperienceConfig"];
-            readonly governance?: components["schemas"]["GovernanceConfig"];
-            readonly intelligence?: components["schemas"]["IntelligenceConfig"];
-            readonly resilience?: components["schemas"]["ResilienceConfig"];
+            readonly efficiency: components["schemas"]["EfficiencyConfig"];
+            readonly eval_loop: components["schemas"]["EvalLoopConfig"];
+            readonly experience: components["schemas"]["ExperienceConfig"];
+            readonly governance: components["schemas"]["GovernanceConfig"];
+            readonly intelligence: components["schemas"]["IntelligenceConfig"];
+            readonly resilience: components["schemas"]["ResilienceConfig"];
         };
         /** EventBatch */
         readonly EventBatch: {
@@ -7385,7 +7385,7 @@ export type components = {
              */
             readonly is_fully_signed: boolean;
             /** @description Additional key-value metadata */
-            readonly metadata?: {
+            readonly metadata: {
                 readonly [key: string]: unknown;
             };
             /** @description Plain-English explanation of the approval context */
@@ -7411,7 +7411,7 @@ export type components = {
             /** @description Producing agent identifier */
             readonly source_agent_id: string;
             /** @description Related task identifier */
-            readonly task_id?: string | null;
+            readonly task_id: string | null;
             /** @description Short human-readable summary */
             readonly title: string;
         };
@@ -7472,7 +7472,7 @@ export type components = {
         /** FilePart */
         readonly FilePart: {
             /** @description Optional MIME type */
-            readonly mime_type?: string | null;
+            readonly mime_type: string | null;
             /**
              * @description Part type discriminator
              * @default file
@@ -7523,16 +7523,16 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly completed_at?: string | null;
+            readonly completed_at: string | null;
             readonly config: components["schemas"]["FineTuneRunConfig"];
             /** @description Run duration in seconds (``None`` if not completed). */
-            readonly duration_seconds?: number | null;
+            readonly duration_seconds: number | null;
             /** @description Error message if failed */
-            readonly error?: string | null;
+            readonly error: string | null;
             /** @description Unique run identifier */
             readonly id: string;
             /** @description Progress within current stage */
-            readonly progress?: number | null;
+            readonly progress: number | null;
             readonly stage: components["schemas"]["FineTuneStage"];
             /**
              * @description Successfully completed stage names
@@ -7602,12 +7602,12 @@ export type components = {
         /** FineTuneStatus */
         readonly FineTuneStatus: {
             /** @description Error message if failed */
-            readonly error?: string | null;
+            readonly error: string | null;
             /** @description Progress fraction (0.0-1.0) */
-            readonly progress?: number | null;
+            readonly progress: number | null;
             /** @description Current or most recent run ID */
-            readonly run_id?: string | null;
-            readonly stage?: components["schemas"]["FineTuneStage"];
+            readonly run_id: string | null;
+            readonly stage: components["schemas"]["FineTuneStage"];
         };
         /**
          * FinishReason
@@ -7639,7 +7639,7 @@ export type components = {
             /** @description Per-day cumulative spend projections */
             readonly daily_projections: readonly components["schemas"]["ForecastPoint"][];
             /** @description Days until budget exhaustion */
-            readonly days_until_exhausted?: number | null;
+            readonly days_until_exhausted: number | null;
             /** @description Projection horizon */
             readonly horizon_days: number;
             /** @description Projected total spend over the horizon */
@@ -7692,12 +7692,12 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly checked_at?: string;
+            readonly checked_at: string;
             readonly connection_name: string;
             /** @default 0 */
             readonly consecutive_failures: number;
-            readonly error_detail?: string | null;
-            readonly latency_ms?: number | null;
+            readonly error_detail: string | null;
+            readonly latency_ms: number | null;
             readonly status: components["schemas"]["ConnectionStatus"];
         };
         /**
@@ -7732,8 +7732,8 @@ export type components = {
             /** @enum {string} */
             readonly change_type: "modified" | "added" | "removed";
             readonly field_path: string;
-            readonly new_value?: string | null;
-            readonly old_value?: string | null;
+            readonly new_value: string | null;
+            readonly old_value: string | null;
         };
         /** InitiateOAuthFlowRequest */
         readonly InitiateOAuthFlowRequest: {
@@ -7746,7 +7746,7 @@ export type components = {
             /** @description Installed catalog entry id */
             readonly catalog_entry_id: string;
             /** @description Bound connection name (when applicable) */
-            readonly connection_name?: string | null;
+            readonly connection_name: string | null;
             /** @description ISO-8601 UTC timestamp of installation */
             readonly installed_at: string;
         };
@@ -7789,17 +7789,17 @@ export type components = {
         /** InterruptResponse */
         readonly InterruptResponse: {
             readonly agent_id: string;
-            readonly context_snippet?: string | null;
+            readonly context_snippet: string | null;
             readonly created_at: string;
-            readonly evidence_package_id?: string | null;
+            readonly evidence_package_id: string | null;
             readonly id: string;
-            readonly question?: string | null;
+            readonly question: string | null;
             readonly session_id: string;
             readonly timeout_seconds: number;
-            readonly tool_args?: {
+            readonly tool_args: {
                 readonly [key: string]: unknown;
             } | null;
-            readonly tool_name?: string | null;
+            readonly tool_name: string | null;
             readonly type: components["schemas"]["InterruptType"];
         };
         /**
@@ -7844,7 +7844,7 @@ export type components = {
             /** @description Absolute difference between LLM and behavioral scores */
             readonly drift: number;
             /** @description Unique record identifier */
-            readonly id?: string;
+            readonly id: string;
             /** @description ID of the sampled CollaborationMetricRecord */
             readonly interaction_record_id: string;
             /** @description LLM-assigned collaboration score */
@@ -7870,19 +7870,19 @@ export type components = {
         readonly LLMCallCategory: "productive" | "coordination" | "system" | "embedding";
         /** LocalModelParams */
         readonly LocalModelParams: {
-            readonly num_batch?: number | null;
-            readonly num_ctx?: number | null;
-            readonly num_gpu_layers?: number | null;
-            readonly num_threads?: number | null;
+            readonly num_batch: number | null;
+            readonly num_ctx: number | null;
+            readonly num_gpu_layers: number | null;
+            readonly num_threads: number | null;
             /** @description Repetition penalty */
-            readonly repeat_penalty?: number | null;
+            readonly repeat_penalty: number | null;
         };
         /** LocalPreset */
         readonly LocalPreset: {
             readonly auth_type: components["schemas"]["AuthType"];
             /** @default [] */
             readonly candidate_urls: readonly string[];
-            readonly default_base_url?: string | null;
+            readonly default_base_url: string | null;
             readonly description: string;
             readonly display_name: string;
             readonly driver: string;
@@ -7935,7 +7935,7 @@ export type components = {
              */
             readonly description: string;
             /** @description Agent who presents this item */
-            readonly presenter_id?: string | null;
+            readonly presenter_id: string | null;
             /** @description Agenda topic title */
             readonly title: string;
         };
@@ -8065,21 +8065,21 @@ export type components = {
              */
             readonly contribution_rank: readonly string[];
             /** @description Error description on failure */
-            readonly error_message?: string | null;
+            readonly error_message: string | null;
             /** @description Meeting duration in seconds (null if no minutes) */
-            readonly meeting_duration_seconds?: number | null;
+            readonly meeting_duration_seconds: number | null;
             /** @description Unique meeting ID */
             readonly meeting_id: string;
             /** @description Meeting type from config */
             readonly meeting_type_name: string;
             /** @description Complete minutes on success */
-            readonly minutes?: components["schemas"]["MeetingMinutes"] | null;
+            readonly minutes: components["schemas"]["MeetingMinutes"] | null;
             readonly protocol_type: components["schemas"]["MeetingProtocolType"];
             readonly status: components["schemas"]["MeetingStatus"];
             /** @description Token budget allocated */
             readonly token_budget: number;
             /** @description Total tokens consumed per participant */
-            readonly token_usage_by_participant?: {
+            readonly token_usage_by_participant: {
                 readonly [key: string]: number;
             };
         };
@@ -8115,13 +8115,13 @@ export type components = {
          */
         readonly MemoryConfig: {
             /** @description Days to retain memories (None = forever) */
-            readonly retention_days?: number | null;
+            readonly retention_days: number | null;
             /**
              * @description Per-category retention overrides for this agent
              * @default []
              */
             readonly retention_overrides: readonly components["schemas"]["AgentRetentionRule"][];
-            readonly type?: components["schemas"]["MemoryLevel"];
+            readonly type: components["schemas"]["MemoryLevel"];
         };
         /**
          * MemoryLevel
@@ -8138,11 +8138,11 @@ export type components = {
              * Format: uuid
              * @description Unique message identifier
              */
-            readonly id?: string;
-            readonly metadata?: components["schemas"]["MessageMetadata"];
+            readonly id: string;
+            readonly metadata: components["schemas"]["MessageMetadata"];
             /** @description Ordered content parts (text, data, files, URIs) */
             readonly parts: readonly (components["schemas"]["TextPart"] | components["schemas"]["DataPart"] | components["schemas"]["FilePart"] | components["schemas"]["UriPart"])[];
-            readonly priority?: components["schemas"]["MessagePriority"];
+            readonly priority: components["schemas"]["MessagePriority"];
             /** @description Sender agent ID */
             readonly sender: string;
             /**
@@ -8176,7 +8176,7 @@ export type components = {
          */
         readonly MessageMetadata: {
             /** @description Estimated cost in the configured currency */
-            readonly cost?: number | null;
+            readonly cost: number | null;
             /**
              * @description Immutable key-value pairs for arbitrary metadata
              * @default []
@@ -8186,11 +8186,11 @@ export type components = {
                 string
             ])[];
             /** @description Related project identifier */
-            readonly project_id?: string | null;
+            readonly project_id: string | null;
             /** @description Related task identifier */
-            readonly task_id?: string | null;
+            readonly task_id: string | null;
             /** @description LLM tokens consumed */
-            readonly tokens_used?: number | null;
+            readonly tokens_used: number | null;
         };
         /** MessageOverhead */
         readonly MessageOverhead: {
@@ -8235,8 +8235,8 @@ export type components = {
          * @description Agent and coordination middleware configuration
          */
         readonly MiddlewareConfig: {
-            readonly agent?: components["schemas"]["AgentMiddlewareConfig"];
-            readonly coordination?: components["schemas"]["CoordinationMiddlewareConfig"];
+            readonly agent: components["schemas"]["AgentMiddlewareConfig"];
+            readonly coordination: components["schemas"]["CoordinationMiddlewareConfig"];
         };
         /**
          * ModelConfig
@@ -8244,7 +8244,7 @@ export type components = {
          */
         readonly ModelConfig: {
             /** @description Fallback model identifier */
-            readonly fallback_model?: string | null;
+            readonly fallback_model: string | null;
             /**
              * @description Maximum output tokens
              * @default 4096
@@ -8256,7 +8256,7 @@ export type components = {
              * @description Model capability tier (large/medium/small)
              * @enum {null|string}
              */
-            readonly model_tier?: "large" | "medium" | "small" | null;
+            readonly model_tier: "large" | "medium" | "small" | null;
             /** @description LLM provider name */
             readonly provider: string;
             /**
@@ -8281,11 +8281,11 @@ export type components = {
         readonly NodeChange: {
             /** @enum {string} */
             readonly change_type: "added" | "removed" | "moved" | "config_changed" | "label_changed" | "type_changed";
-            readonly new_value?: {
+            readonly new_value: {
                 readonly [key: string]: unknown;
             } | null;
             readonly node_id: string;
-            readonly old_value?: {
+            readonly old_value: {
                 readonly [key: string]: unknown;
             } | null;
         };
@@ -8312,7 +8312,7 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly expires_at?: string | null;
+            readonly expires_at: string | null;
             readonly reason: string;
             readonly score: number;
         };
@@ -8364,8 +8364,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8379,8 +8379,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8394,8 +8394,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8409,8 +8409,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8424,8 +8424,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8439,8 +8439,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8454,8 +8454,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8469,8 +8469,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8484,8 +8484,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8499,8 +8499,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8514,8 +8514,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8529,8 +8529,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8544,8 +8544,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8559,8 +8559,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8576,8 +8576,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8593,8 +8593,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8608,8 +8608,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8623,8 +8623,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8638,8 +8638,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8653,8 +8653,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8668,8 +8668,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8683,8 +8683,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8698,8 +8698,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8713,8 +8713,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8728,8 +8728,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8743,8 +8743,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8758,8 +8758,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8773,8 +8773,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8788,8 +8788,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8803,8 +8803,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8818,8 +8818,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8833,8 +8833,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8848,8 +8848,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8863,8 +8863,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8878,8 +8878,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8893,8 +8893,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8908,8 +8908,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8923,8 +8923,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8938,8 +8938,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8953,8 +8953,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8968,8 +8968,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8983,8 +8983,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -8998,8 +8998,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -9013,8 +9013,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -9028,8 +9028,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -9043,8 +9043,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -9058,8 +9058,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -9073,8 +9073,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -9088,8 +9088,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -9103,8 +9103,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -9118,8 +9118,8 @@ export type components = {
              * @default []
              */
             readonly degraded_sources: readonly string[];
-            readonly error?: string | null;
-            readonly error_detail?: components["schemas"]["ErrorDetail"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
@@ -9134,7 +9134,7 @@ export type components = {
             /** @description Maximum items per page */
             readonly limit: number;
             /** @description Opaque cursor for the next page (null on final page) */
-            readonly next_cursor?: string | null;
+            readonly next_cursor: string | null;
         };
         /** ParentReference */
         readonly ParentReference: {
@@ -9150,16 +9150,16 @@ export type components = {
              */
             readonly parent_type: "workflow_definition" | "subworkflow";
             /** @description Parent's semver when parent_type is subworkflow */
-            readonly parent_version?: string | null;
+            readonly parent_version: string | null;
             /** @description Pinned semver */
             readonly pinned_version: string;
         };
         /** PerformanceSummary */
         readonly PerformanceSummary: {
-            readonly collaboration_score?: number | null;
-            readonly quality_score?: number | null;
+            readonly collaboration_score: number | null;
+            readonly quality_score: number | null;
             /** @enum {string|null} */
-            readonly trend?: "improving" | "stable" | "declining" | "insufficient_data" | null;
+            readonly trend: "improving" | "stable" | "declining" | "insufficient_data" | null;
         };
         /** PeriodSummary */
         readonly PeriodSummary: {
@@ -9189,20 +9189,20 @@ export type components = {
              * @default 0.5
              */
             readonly agreeableness: number;
-            readonly collaboration?: components["schemas"]["CollaborationPreference"];
+            readonly collaboration: components["schemas"]["CollaborationPreference"];
             /**
              * @description Communication style description
              * @default neutral
              */
             readonly communication_style: string;
-            readonly conflict_approach?: components["schemas"]["ConflictApproach"];
+            readonly conflict_approach: components["schemas"]["ConflictApproach"];
             /**
              * @description Big Five conscientiousness (thoroughness, reliability)
              * @default 0.5
              */
             readonly conscientiousness: number;
-            readonly creativity?: components["schemas"]["CreativityLevel"];
-            readonly decision_making?: components["schemas"]["DecisionMakingStyle"];
+            readonly creativity: components["schemas"]["CreativityLevel"];
+            readonly decision_making: components["schemas"]["DecisionMakingStyle"];
             /**
              * @description Extended personality description
              * @default
@@ -9218,7 +9218,7 @@ export type components = {
              * @default 0.5
              */
             readonly openness: number;
-            readonly risk_tolerance?: components["schemas"]["RiskTolerance"];
+            readonly risk_tolerance: components["schemas"]["RiskTolerance"];
             /**
              * @description Emotional stability (1.0 = very calm)
              * @default 0.5
@@ -9229,7 +9229,7 @@ export type components = {
              * @default []
              */
             readonly traits: readonly string[];
-            readonly verbosity?: components["schemas"]["CommunicationVerbosity"];
+            readonly verbosity: components["schemas"]["CommunicationVerbosity"];
         };
         /** PersonalityPresetInfoResponse */
         readonly PersonalityPresetInfoResponse: {
@@ -9244,7 +9244,7 @@ export type components = {
              * Format: date-time
              * @description Timestamp of pipeline completion
              */
-            readonly reviewed_at?: string;
+            readonly reviewed_at: string;
             /**
              * @description Results from each stage in execution order
              * @default []
@@ -9267,7 +9267,7 @@ export type components = {
         /** PreflightCheck */
         readonly PreflightCheck: {
             /** @description Additional detail */
-            readonly detail?: string | null;
+            readonly detail: string | null;
             /** @description Result description */
             readonly message: string;
             /** @description Check identifier */
@@ -9288,21 +9288,21 @@ export type components = {
              */
             readonly checks: readonly components["schemas"]["PreflightCheck"][];
             /** @description VRAM-based batch size recommendation */
-            readonly recommended_batch_size?: number | null;
+            readonly recommended_batch_size: number | null;
         };
         /** PresetDetailResponse */
         readonly PresetDetailResponse: {
             /** @default 0.5 */
             readonly agreeableness: number;
-            readonly collaboration?: components["schemas"]["CollaborationPreference"];
+            readonly collaboration: components["schemas"]["CollaborationPreference"];
             /** @default neutral */
             readonly communication_style: string;
-            readonly conflict_approach?: components["schemas"]["ConflictApproach"];
+            readonly conflict_approach: components["schemas"]["ConflictApproach"];
             /** @default 0.5 */
             readonly conscientiousness: number;
-            readonly created_at?: string | null;
-            readonly creativity?: components["schemas"]["CreativityLevel"];
-            readonly decision_making?: components["schemas"]["DecisionMakingStyle"];
+            readonly created_at: string | null;
+            readonly creativity: components["schemas"]["CreativityLevel"];
+            readonly decision_making: components["schemas"]["DecisionMakingStyle"];
             /** @default  */
             readonly description: string;
             /** @default 0.5 */
@@ -9310,34 +9310,34 @@ export type components = {
             readonly name: string;
             /** @default 0.5 */
             readonly openness: number;
-            readonly risk_tolerance?: components["schemas"]["RiskTolerance"];
+            readonly risk_tolerance: components["schemas"]["RiskTolerance"];
             readonly source: components["schemas"]["PresetSource"];
             /** @default 0.5 */
             readonly stress_response: number;
             /** @default [] */
             readonly traits: readonly string[];
-            readonly updated_at?: string | null;
-            readonly verbosity?: components["schemas"]["CommunicationVerbosity"];
+            readonly updated_at: string | null;
+            readonly verbosity: components["schemas"]["CommunicationVerbosity"];
         };
         /** PresetOverride */
         readonly PresetOverride: {
             /** @description Override for cloud-preset base URL */
-            readonly base_url?: string | null;
+            readonly base_url: string | null;
             /** @description Override for local-preset candidate URLs */
-            readonly candidate_urls?: readonly string[] | null;
+            readonly candidate_urls: readonly string[] | null;
             /** @description Override for default model list */
-            readonly default_models?: readonly components["schemas"]["ProviderModelConfig"][] | null;
+            readonly default_models: readonly components["schemas"]["ProviderModelConfig"][] | null;
             /** @description Preset this override targets */
             readonly preset_name: string;
             /** @description Override for allowed auth types */
-            readonly supported_auth_types?: readonly components["schemas"]["AuthType"][] | null;
+            readonly supported_auth_types: readonly components["schemas"]["AuthType"][] | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly updated_at?: string | null;
+            readonly updated_at: string | null;
             /** @description Actor id of last override writer */
-            readonly updated_by?: string | null;
+            readonly updated_by: string | null;
         };
         /** PresetOverrideUpdateRequest */
         readonly PresetOverrideUpdateRequest: {
@@ -9382,10 +9382,10 @@ export type components = {
         };
         /** ProbeLocalResponse */
         readonly ProbeLocalResponse: {
-            readonly errors?: {
+            readonly errors: {
                 readonly [key: string]: string;
             };
-            readonly results?: {
+            readonly results: {
                 readonly [key: string]: components["schemas"]["ProbePresetResponse"];
             };
         };
@@ -9395,7 +9395,7 @@ export type components = {
             readonly candidates_tried: number;
             /** @default 0 */
             readonly model_count: number;
-            readonly url?: string | null;
+            readonly url: string | null;
         };
         /**
          * ProblemDetail
@@ -9448,7 +9448,7 @@ export type components = {
              */
             readonly budget: number;
             /** @description Optional deadline (ISO 8601 string) */
-            readonly deadline?: string | null;
+            readonly deadline: string | null;
             /**
              * @description Detailed project description
              * @default
@@ -9457,10 +9457,10 @@ export type components = {
             /** @description Unique project identifier */
             readonly id: string;
             /** @description Agent ID of the project lead */
-            readonly lead?: string | null;
+            readonly lead: string | null;
             /** @description Project display name */
             readonly name: string;
-            readonly status?: components["schemas"]["ProjectStatus"];
+            readonly status: components["schemas"]["ProjectStatus"];
             /**
              * @description IDs of tasks belonging to this project
              * @default []
@@ -9504,14 +9504,14 @@ export type components = {
              */
             readonly event_type: "provider_created" | "provider_updated" | "provider_deleted" | "provider_credentials_rotated" | "provider_rate_limits_updated" | "preset_override_updated" | "model_added" | "model_removed" | "model_config_updated" | "model_pulled" | "models_synced";
             /** @description Repo-assigned row id */
-            readonly id?: number | null;
+            readonly id: number | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly occurred_at: string;
             /** @description Event-specific metadata; credentials must be masked. Wrapped in MappingProxyType after validation so the audit row stays append-only at the Python level too. */
-            readonly payload?: {
+            readonly payload: {
                 readonly [key: string]: unknown;
             };
             /** @description Provider name the mutation targets */
@@ -9526,7 +9526,7 @@ export type components = {
         /** ProviderHealthSummary */
         readonly ProviderHealthSummary: {
             /** @description Average response time in ms (24h window) */
-            readonly avg_response_time_ms?: number | null;
+            readonly avg_response_time_ms: number | null;
             /**
              * @description Total calls in the last 24h
              * @default 0
@@ -9542,7 +9542,7 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly last_check_timestamp?: string | null;
+            readonly last_check_timestamp: string | null;
             /**
              * @description Total cost in the last 24h
              * @default 0
@@ -9560,7 +9560,7 @@ export type components = {
          */
         readonly ProviderModelConfig: {
             /** @description Short alias for routing rules */
-            readonly alias?: string | null;
+            readonly alias: string | null;
             /**
              * @description Cost per 1k input tokens (base currency)
              * @default 0
@@ -9572,11 +9572,11 @@ export type components = {
              */
             readonly cost_per_1k_output: number;
             /** @description Estimated median latency in milliseconds */
-            readonly estimated_latency_ms?: number | null;
+            readonly estimated_latency_ms: number | null;
             /** @description Model identifier */
             readonly id: string;
             /** @description Per-model launch parameters for local providers */
-            readonly local_params?: components["schemas"]["LocalModelParams"] | null;
+            readonly local_params: components["schemas"]["LocalModelParams"] | null;
             /**
              * @description Maximum context window size in tokens
              * @default 200000
@@ -9586,7 +9586,7 @@ export type components = {
         /** ProviderModelResponse */
         readonly ProviderModelResponse: {
             /** @description Short alias for routing rules */
-            readonly alias?: string | null;
+            readonly alias: string | null;
             /**
              * @description Cost per 1k input tokens
              * @default 0
@@ -9603,11 +9603,11 @@ export type components = {
              */
             readonly currency: string;
             /** @description Estimated median latency in ms */
-            readonly estimated_latency_ms?: number | null;
+            readonly estimated_latency_ms: number | null;
             /** @description Model identifier */
             readonly id: string;
             /** @description Per-model launch parameters for local providers */
-            readonly local_params?: components["schemas"]["LocalModelParams"] | null;
+            readonly local_params: components["schemas"]["LocalModelParams"] | null;
             /**
              * @description Max context window in tokens
              * @default 200000
@@ -9632,28 +9632,28 @@ export type components = {
         /** ProviderResponse */
         readonly ProviderResponse: {
             readonly auth_type: components["schemas"]["AuthType"];
-            readonly base_url?: string | null;
-            readonly custom_header_name?: string | null;
+            readonly base_url: string | null;
+            readonly custom_header_name: string | null;
             readonly driver: string;
             readonly has_api_key: boolean;
             readonly has_custom_header: boolean;
             readonly has_oauth_credentials: boolean;
             /** @default false */
             readonly has_subscription_token: boolean;
-            readonly litellm_provider?: string | null;
+            readonly litellm_provider: string | null;
             readonly models: readonly components["schemas"]["ProviderModelConfig"][];
-            readonly name?: string | null;
-            readonly oauth_client_id?: string | null;
-            readonly oauth_scope?: string | null;
-            readonly oauth_token_url?: string | null;
-            readonly preset_name?: string | null;
+            readonly name: string | null;
+            readonly oauth_client_id: string | null;
+            readonly oauth_scope: string | null;
+            readonly oauth_token_url: string | null;
+            readonly preset_name: string | null;
             /** @default false */
             readonly supports_model_config: boolean;
             /** @default false */
             readonly supports_model_delete: boolean;
             /** @default false */
             readonly supports_model_pull: boolean;
-            readonly tos_accepted_at?: string | null;
+            readonly tos_accepted_at: string | null;
         };
         /** PullModelRequest */
         readonly PullModelRequest: {
@@ -9675,7 +9675,7 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly expires_at?: string | null;
+            readonly expires_at: string | null;
             /** @description Why the override was applied */
             readonly reason: string;
             /** @description Override score */
@@ -9725,11 +9725,11 @@ export type components = {
         /** ReadinessStatus */
         readonly ReadinessStatus: {
             /** @description Message bus running (None if not configured) */
-            readonly message_bus?: boolean | null;
+            readonly message_bus: boolean | null;
             /** @description Persistence backend healthy (None if not configured) */
-            readonly persistence?: boolean | null;
+            readonly persistence: boolean | null;
             /** @description All tracked providers reachable (None if not configured) */
-            readonly providers?: boolean | null;
+            readonly providers: boolean | null;
             readonly status: components["schemas"]["ReadinessOutcome"];
             readonly telemetry: components["schemas"]["TelemetryStatus"];
             /** @description Seconds since startup */
@@ -9800,7 +9800,7 @@ export type components = {
             /** @description Subordinate role name or identifier */
             readonly subordinate: string;
             /** @description Optional unique identifier for the subordinate */
-            readonly subordinate_id?: string | null;
+            readonly subordinate_id: string | null;
             /**
              * @description Hierarchy lookup key: ``subordinate_id`` when set, else ``subordinate``.
              *
@@ -9811,7 +9811,7 @@ export type components = {
             /** @description Supervisor role name or identifier */
             readonly supervisor: string;
             /** @description Optional unique identifier for the supervisor */
-            readonly supervisor_id?: string | null;
+            readonly supervisor_id: string | null;
             /**
              * @description Hierarchy lookup key: ``supervisor_id`` when set, else ``supervisor``.
              *
@@ -9971,11 +9971,11 @@ export type components = {
              */
             readonly duration_ms: number;
             /** @description Additional stage-specific metadata */
-            readonly metadata?: {
+            readonly metadata: {
                 readonly [key: string]: unknown;
             };
             /** @description Explanation for the verdict */
-            readonly reason?: string | null;
+            readonly reason: string | null;
             /** @description Identifier of the review stage */
             readonly stage_name: string;
             readonly verdict: components["schemas"]["ReviewVerdict"];
@@ -10001,7 +10001,7 @@ export type components = {
          * @description Cumulative risk-unit action budget configuration
          */
         readonly RiskBudgetConfig: {
-            readonly alerts?: components["schemas"]["RiskBudgetAlertConfig"];
+            readonly alerts: components["schemas"]["RiskBudgetAlertConfig"];
             /** @default false */
             readonly enabled: boolean;
             /** @default 20 */
@@ -10023,7 +10023,7 @@ export type components = {
          * @description Full frozen entity model at this version
          */
         readonly Role: {
-            readonly authority_level?: components["schemas"]["SeniorityLevel"];
+            readonly authority_level: components["schemas"]["SeniorityLevel"];
             readonly department: components["schemas"]["DepartmentName"];
             /**
              * @description Human-readable description
@@ -10038,7 +10038,7 @@ export type components = {
              */
             readonly required_skills: readonly string[];
             /** @description Template file for system prompt */
-            readonly system_prompt_template?: string | null;
+            readonly system_prompt_template: string | null;
             /**
              * @description Tools available to this role
              * @default []
@@ -10117,11 +10117,11 @@ export type components = {
             /** @description Strategy that proposed this */
             readonly source_strategy: string;
             /** @description Agent targeted for pruning */
-            readonly target_agent_id?: string | null;
+            readonly target_agent_id: string | null;
             /** @description Department for the hire target */
-            readonly target_department?: string | null;
+            readonly target_department: string | null;
             /** @description Role to hire for */
-            readonly target_role?: string | null;
+            readonly target_role: string | null;
             /**
              * @description Skills required for the hire target
              * @default []
@@ -10135,7 +10135,7 @@ export type components = {
             /** @description Signal source */
             readonly source: string;
             /** @description Configured threshold for this signal */
-            readonly threshold?: number | null;
+            readonly threshold: number | null;
             /** @description ISO timestamp when collected */
             readonly timestamp: string;
             /** @description Current value */
@@ -10162,7 +10162,7 @@ export type components = {
             readonly config: {
                 readonly [key: string]: unknown;
             };
-            readonly custom_policies_warning?: string | null;
+            readonly custom_policies_warning: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -10234,7 +10234,7 @@ export type components = {
          */
         readonly SettingDefinition: {
             /** @description Default value as string */
-            readonly default?: string | null;
+            readonly default: string | null;
             /** @description Human-readable description */
             readonly description: string;
             /**
@@ -10243,16 +10243,16 @@ export type components = {
              */
             readonly enum_values: readonly string[];
             /** @description Override the auto-derived ``SYNTHORG_{NAMESPACE}_{KEY}`` env var name with a custom one (e.g. ``SYNTHORG_LOG_DIR`` for ``observability.log_directory``).  Used when an established operator-facing env var name predates the auto-derivation rule.  When set, the resolver looks up *only* this name; the auto-derived name is not consulted. */
-            readonly env_var_override?: string | null;
+            readonly env_var_override: string | null;
             /** @description UI grouping label */
             readonly group: string;
             /** @description Setting key within namespace */
             readonly key: string;
-            readonly level?: components["schemas"]["SettingLevel"];
+            readonly level: components["schemas"]["SettingLevel"];
             /** @description Maximum value for numeric types */
-            readonly max_value?: number | null;
+            readonly max_value: number | null;
             /** @description Minimum value for numeric types */
-            readonly min_value?: number | null;
+            readonly min_value: number | null;
             readonly namespace: components["schemas"]["SettingNamespace"];
             /**
              * @description Sourced from environment at startup; mutation via SettingsService is rejected. Implies restart_required=True.
@@ -10271,14 +10271,14 @@ export type components = {
             readonly sensitive: boolean;
             readonly type: components["schemas"]["SettingType"];
             /** @description Regex pattern for string validation */
-            readonly validator_pattern?: string | null;
+            readonly validator_pattern: string | null;
         };
         /** SettingEntry */
         readonly SettingEntry: {
             readonly definition: components["schemas"]["SettingDefinition"];
             readonly source: components["schemas"]["SettingSource"];
             /** @description ISO 8601 timestamp (DB values only) */
-            readonly updated_at?: string | null;
+            readonly updated_at: string | null;
             /** @description Resolved value as string */
             readonly value: string;
         };
@@ -10373,11 +10373,11 @@ export type components = {
         readonly SetupAgentSummary: {
             readonly department: string;
             /** @enum {string|null} */
-            readonly level?: "junior" | "mid" | "senior" | "lead" | "principal" | "director" | "vp" | "c_suite" | null;
-            readonly model_id?: string | null;
-            readonly model_provider?: string | null;
+            readonly level: "junior" | "mid" | "senior" | "lead" | "principal" | "director" | "vp" | "c_suite" | null;
+            readonly model_id: string | null;
+            readonly model_provider: string | null;
             readonly name: string;
-            readonly personality_preset?: string | null;
+            readonly personality_preset: string | null;
             readonly role: string;
             /**
              * @default medium
@@ -10408,8 +10408,8 @@ export type components = {
             readonly agents: readonly components["schemas"]["SetupAgentSummary"][];
             readonly company_name: string;
             readonly department_count: number;
-            readonly description?: string | null;
-            readonly template_applied?: string | null;
+            readonly description: string | null;
+            readonly template_applied: string | null;
         };
         /** SetupCompleteResponse */
         readonly SetupCompleteResponse: {
@@ -10446,7 +10446,7 @@ export type components = {
             readonly is_default: boolean;
             readonly json_format: boolean;
             readonly level: string;
-            readonly rotation?: components["schemas"]["SinkRotationResponse"] | null;
+            readonly rotation: components["schemas"]["SinkRotationResponse"] | null;
             /** @default [] */
             readonly routing_prefixes: readonly string[];
             readonly sink_type: string;
@@ -10631,17 +10631,17 @@ export type components = {
              */
             readonly artifacts_expected: readonly components["schemas"]["ExpectedArtifact"][];
             /** @description Agent ID of the assignee */
-            readonly assigned_to?: string | null;
+            readonly assigned_to: string | null;
             /**
              * @description Maximum spend for this task in the configured currency
              * @default 0
              */
             readonly budget_limit: number;
-            readonly coordination_topology?: components["schemas"]["CoordinationTopology"];
+            readonly coordination_topology: components["schemas"]["CoordinationTopology"];
             /** @description Agent name of the task creator */
             readonly created_by: string;
             /** @description Optional deadline (ISO 8601 string) */
-            readonly deadline?: string | null;
+            readonly deadline: string | null;
             /**
              * @description Ordered agent names of delegators (root first)
              * @default []
@@ -10654,7 +10654,7 @@ export type components = {
             readonly dependencies: readonly string[];
             /** @description Detailed task description */
             readonly description: string;
-            readonly estimated_complexity?: components["schemas"]["Complexity"];
+            readonly estimated_complexity: components["schemas"]["Complexity"];
             /** @description Unique task identifier */
             readonly id: string;
             /**
@@ -10663,14 +10663,14 @@ export type components = {
              */
             readonly max_retries: number;
             /** @description Arbitrary key-value metadata for pipeline tracking and labels */
-            readonly metadata?: {
+            readonly metadata: {
                 readonly [key: string]: unknown;
             };
             /** @description Per-task middleware chain override (None = use company default) */
-            readonly middleware_override?: readonly string[] | null;
+            readonly middleware_override: readonly string[] | null;
             /** @description Parent task ID when created via delegation */
-            readonly parent_task_id?: string | null;
-            readonly priority?: components["schemas"]["Priority"];
+            readonly parent_task_id: string | null;
+            readonly priority: components["schemas"]["Priority"];
             /** @description Project ID this task belongs to */
             readonly project: string;
             /**
@@ -10682,13 +10682,13 @@ export type components = {
              * @description Origin of this task (internal, client, or simulation)
              * @enum {string|null}
              */
-            readonly source?: "internal" | "client" | "simulation" | null;
-            readonly status?: components["schemas"]["TaskStatus"];
+            readonly source: "internal" | "client" | "simulation" | null;
+            readonly status: components["schemas"]["TaskStatus"];
             /**
              * @description Classification of subtask relationships (None = not classified)
              * @enum {string|null}
              */
-            readonly task_structure?: "sequential" | "parallel" | "mixed" | null;
+            readonly task_structure: "sequential" | "parallel" | "mixed" | null;
             /** @description Short task title */
             readonly title: string;
             readonly type: components["schemas"]["TaskType"];
@@ -10777,7 +10777,7 @@ export type components = {
              * @default 0
              */
             readonly agent_count: number;
-            readonly autonomy_level?: components["schemas"]["AutonomyLevel"];
+            readonly autonomy_level: components["schemas"]["AutonomyLevel"];
             /**
              * @description Number of departments defined in the template
              * @default 0
@@ -10811,7 +10811,7 @@ export type components = {
         };
         /** TemplateVariableResponse */
         readonly TemplateVariableResponse: {
-            readonly default?: string | number | boolean | null;
+            readonly default: string | number | boolean | null;
             /** @default  */
             readonly description: string;
             readonly name: string;
@@ -10841,9 +10841,9 @@ export type components = {
         };
         /** TestConnectionResponse */
         readonly TestConnectionResponse: {
-            readonly error?: string | null;
-            readonly latency_ms?: number | null;
-            readonly model_tested?: string | null;
+            readonly error: string | null;
+            readonly latency_ms: number | null;
+            readonly model_tested: string | null;
             readonly success: boolean;
         };
         /** TestSinkConfigRequest */
@@ -10861,7 +10861,7 @@ export type components = {
         };
         /** TestSinkConfigResponse */
         readonly TestSinkConfigResponse: {
-            readonly error?: string | null;
+            readonly error: string | null;
             readonly valid: boolean;
         };
         /** TextPart */
@@ -10893,7 +10893,7 @@ export type components = {
              * @default []
              */
             readonly actions: readonly string[];
-            readonly on_timeout?: components["schemas"]["TimeoutActionType"];
+            readonly on_timeout: components["schemas"]["TimeoutActionType"];
             /** @description Minutes before the timeout action */
             readonly timeout_minutes: number;
         };
@@ -10905,7 +10905,7 @@ export type components = {
              */
             readonly policy: "tiered";
             /** @description Tier configs keyed by risk level (low/medium/high/critical) */
-            readonly tiers?: {
+            readonly tiers: {
                 readonly [key: string]: components["schemas"]["TierConfig"];
             };
         };
@@ -10954,7 +10954,7 @@ export type components = {
          * @description Tool permissions
          */
         readonly ToolPermissions: {
-            readonly access_level?: components["schemas"]["ToolAccessLevel"];
+            readonly access_level: components["schemas"]["ToolAccessLevel"];
             /**
              * @description Explicitly allowed tools
              * @default []
@@ -10971,14 +10971,14 @@ export type components = {
              */
             readonly mcp_capabilities: readonly string[];
             /** @description Per-agent sub-constraint overrides */
-            readonly sub_constraints?: components["schemas"]["ToolSubConstraints"] | null;
+            readonly sub_constraints: components["schemas"]["ToolSubConstraints"] | null;
         };
         /** ToolSubConstraints */
         readonly ToolSubConstraints: {
-            readonly code_execution?: components["schemas"]["CodeExecutionIsolation"];
-            readonly file_system?: components["schemas"]["FileSystemScope"];
-            readonly git?: components["schemas"]["GitAccess"];
-            readonly network?: components["schemas"]["NetworkMode"];
+            readonly code_execution: components["schemas"]["CodeExecutionIsolation"];
+            readonly file_system: components["schemas"]["FileSystemScope"];
+            readonly git: components["schemas"]["GitAccess"];
+            readonly network: components["schemas"]["NetworkMode"];
             /**
              * @description Allowed host:port pairs for allowlist_only network mode
              * @default []
@@ -10989,7 +10989,7 @@ export type components = {
              * @default []
              */
             readonly requires_approval: readonly string[];
-            readonly terminal?: components["schemas"]["TerminalAccess"];
+            readonly terminal: components["schemas"]["TerminalAccess"];
         };
         /** TrainingPlanResponse */
         readonly TrainingPlanResponse: {
@@ -11004,7 +11004,7 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly executed_at?: string | null;
+            readonly executed_at: string | null;
             readonly id: string;
             readonly new_agent_id: string;
             readonly new_agent_role: string;
@@ -11026,7 +11026,7 @@ export type components = {
         readonly TrainingPlanStatus: "pending" | "executed" | "failed";
         /** TrainingResultResponse */
         readonly TrainingResultResponse: {
-            readonly approval_item_id?: string | null;
+            readonly approval_item_id: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -11140,9 +11140,9 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly last_evaluated_at?: string | null;
+            readonly last_evaluated_at: string | null;
             readonly level: components["schemas"]["ToolAccessLevel"];
-            readonly score?: number | null;
+            readonly score: number | null;
         };
         /** UpdateAgentModelRequest */
         readonly UpdateAgentModelRequest: {
@@ -11523,43 +11523,43 @@ export type components = {
         /** WebhookReceipt */
         readonly WebhookReceipt: {
             readonly connection_name: string;
-            readonly error?: string | null;
+            readonly error: string | null;
             /** @default  */
             readonly event_type: string;
-            readonly id?: string;
+            readonly id: string;
             /** @default  */
             readonly payload_json: string;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly processed_at?: string | null;
+            readonly processed_at: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
-            readonly received_at?: string;
+            readonly received_at: string;
             /** @default received */
             readonly status: string;
         };
         /** WindowMetrics */
         readonly WindowMetrics: {
             /** @description Average completion time */
-            readonly avg_completion_time_seconds?: number | null;
+            readonly avg_completion_time_seconds: number | null;
             /** @description Average cost per task, denominated in ``currency`` */
-            readonly avg_cost_per_task?: number | null;
+            readonly avg_cost_per_task: number | null;
             /** @description Average quality score */
-            readonly avg_quality_score?: number | null;
+            readonly avg_quality_score: number | null;
             /** @description Average tokens per task */
-            readonly avg_tokens_per_task?: number | null;
+            readonly avg_tokens_per_task: number | null;
             /** @description Collaboration score */
-            readonly collaboration_score?: number | null;
+            readonly collaboration_score: number | null;
             /** @description ISO 4217 currency code for ``avg_cost_per_task``; ``None`` when ``avg_cost_per_task`` is ``None`` */
-            readonly currency?: string | null;
+            readonly currency: string | null;
             /** @description Records in the window */
             readonly data_point_count: number;
             /** @description Task success rate */
-            readonly success_rate?: number | null;
+            readonly success_rate: number | null;
             /** @description Number of successful tasks */
             readonly tasks_completed: number;
             /** @description Number of failed tasks */
@@ -11583,7 +11583,7 @@ export type components = {
              * Format: date-time
              * @description Creation timestamp (UTC)
              */
-            readonly created_at?: string;
+            readonly created_at: string;
             /** @description Creator identity */
             readonly created_by: string;
             /**
@@ -11629,13 +11629,13 @@ export type components = {
              * Format: date-time
              * @description Last update timestamp (UTC)
              */
-            readonly updated_at?: string;
+            readonly updated_at: string;
             /**
              * @description Semver version string (MAJOR.MINOR.PATCH)
              * @default 1.0.0
              */
             readonly version: string;
-            readonly workflow_type?: components["schemas"]["WorkflowType"];
+            readonly workflow_type: components["schemas"]["WorkflowType"];
         };
         /** WorkflowDiff */
         readonly WorkflowDiff: {
@@ -11656,12 +11656,12 @@ export type components = {
             /** @description Unique edge identifier */
             readonly id: string;
             /** @description Optional display label */
-            readonly label?: string | null;
+            readonly label: string | null;
             /** @description Source node ID */
             readonly source_node_id: string;
             /** @description Target node ID */
             readonly target_node_id: string;
-            readonly type?: components["schemas"]["WorkflowEdgeType"];
+            readonly type: components["schemas"]["WorkflowEdgeType"];
         };
         /**
          * WorkflowEdgeType
@@ -11680,18 +11680,18 @@ export type components = {
              * Format: date-time
              * @description Completion timestamp
              */
-            readonly completed_at?: string | null;
+            readonly completed_at: string | null;
             /**
              * Format: date-time
              * @description Creation timestamp (UTC)
              */
-            readonly created_at?: string;
+            readonly created_at: string;
             /** @description Source definition ID */
             readonly definition_id: string;
             /** @description Definition revision (optimistic concurrency) at activation time */
             readonly definition_revision: number;
             /** @description Error message when FAILED */
-            readonly error?: string | null;
+            readonly error: string | null;
             /** @description Unique execution ID */
             readonly id: string;
             /**
@@ -11701,12 +11701,12 @@ export type components = {
             readonly node_executions: readonly components["schemas"]["WorkflowNodeExecution"][];
             /** @description Project ID for created tasks */
             readonly project: string;
-            readonly status?: components["schemas"]["WorkflowExecutionStatus"];
+            readonly status: components["schemas"]["WorkflowExecutionStatus"];
             /**
              * Format: date-time
              * @description Last update timestamp (UTC)
              */
-            readonly updated_at?: string;
+            readonly updated_at: string;
             /**
              * @description Optimistic concurrency version
              * @default 1
@@ -11740,7 +11740,7 @@ export type components = {
         /** WorkflowIODeclaration */
         readonly WorkflowIODeclaration: {
             /** @description Default value when not required */
-            readonly default?: unknown | null;
+            readonly default: unknown | null;
             /**
              * @description Human-readable description
              * @default
@@ -11776,7 +11776,7 @@ export type components = {
         /** WorkflowNode */
         readonly WorkflowNode: {
             /** @description Type-specific configuration */
-            readonly config?: {
+            readonly config: {
                 readonly [key: string]: unknown;
             };
             /** @description Unique node identifier */
@@ -11801,10 +11801,10 @@ export type components = {
             readonly node_id: string;
             readonly node_type: components["schemas"]["WorkflowNodeType"];
             /** @description Reason when status is SKIPPED */
-            readonly skipped_reason?: string | null;
-            readonly status?: components["schemas"]["WorkflowNodeExecutionStatus"];
+            readonly skipped_reason: string | null;
+            readonly status: components["schemas"]["WorkflowNodeExecutionStatus"];
             /** @description Concrete task ID (TASK nodes only) */
-            readonly task_id?: string | null;
+            readonly task_id: string | null;
         };
         /**
          * WorkflowNodeExecutionStatus
@@ -11840,11 +11840,11 @@ export type components = {
         readonly WorkflowValidationError: {
             readonly code: components["schemas"]["ValidationErrorCode"];
             /** @description Related edge ID */
-            readonly edge_id?: string | null;
+            readonly edge_id: string | null;
             /** @description Human-readable message */
             readonly message: string;
             /** @description Related node ID */
-            readonly node_id?: string | null;
+            readonly node_id: string | null;
         };
         /** WorkflowValidationResult */
         readonly WorkflowValidationResult: {

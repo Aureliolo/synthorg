@@ -34,6 +34,9 @@ export function buildTask(overrides: Partial<Task> = {}): Task {
     delegation_chain: [],
     task_structure: null,
     coordination_topology: 'auto',
+    middleware_override: null,
+    source: null,
+    metadata: {},
     version: 1,
     ...overrides,
   }

@@ -17,9 +17,9 @@ import {
 } from 'lucide-react'
 import type {
   ActivityEventType,
-  AgentConfig,
   AgentPerformanceSummary,
   CareerEventType,
+  DashboardAgentConfig,
 } from '@/api/types/agents'
 import type { AgentStatus, SeniorityLevel } from '@/api/types/enums'
 import type { MetricCardProps } from '@/components/ui/metric-card'
@@ -59,9 +59,9 @@ export function toRuntimeStatus(status: AgentStatus): AgentRuntimeStatus {
 
 /** Client-side filter agents by search, department, level, and status. */
 export function filterAgents(
-  agents: readonly AgentConfig[],
+  agents: readonly DashboardAgentConfig[],
   filters: AgentFilters,
-): AgentConfig[] {
+): DashboardAgentConfig[] {
   let result = [...agents]
 
   if (filters.department) {
@@ -112,10 +112,10 @@ const STATUS_RANK: Record<AgentStatus, number> = {
 
 /** Sort agents by a given key. Does not mutate the input. */
 export function sortAgents(
-  agents: readonly AgentConfig[],
+  agents: readonly DashboardAgentConfig[],
   sortBy: AgentSortKey,
   direction: 'asc' | 'desc' = 'asc',
-): AgentConfig[] {
+): DashboardAgentConfig[] {
   const sorted = [...agents]
   const dir = direction === 'asc' ? 1 : -1
 
@@ -217,7 +217,7 @@ export function computePerformanceCards(
  * The agent parameter is accepted for future personality-based insights but not yet used.
  */
 export function generateInsights(
-  _agent: AgentConfig,
+  _agent: DashboardAgentConfig,
   perf: AgentPerformanceSummary | null,
 ): string[] {
   if (!perf) return []

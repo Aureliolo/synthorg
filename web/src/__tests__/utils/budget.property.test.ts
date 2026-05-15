@@ -47,6 +47,7 @@ const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   retry_reason: fc.oneof(fc.stringMatching(/^[a-z_]{3,20}$/), fc.constant(null)),
   finish_reason: finishReasonArb,
   success: fc.oneof(fc.boolean(), fc.constant(null)),
+  claim_id: fc.constant(''),
 })
 
 const alertsArb: fc.Arbitrary<BudgetAlertConfig> = fc

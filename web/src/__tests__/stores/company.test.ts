@@ -10,7 +10,7 @@ import { makeAgent, makeCompanyConfig, makeDepartment } from '../helpers/factori
 const mockConfig: CompanyConfig = {
   company_name: 'Test Corp',
   agents: [],
-  departments: [{ name: 'engineering', display_name: 'Engineering', teams: [] }],
+  departments: [makeDepartment('engineering')],
 }
 
 const mockDeptHealth: DepartmentHealth = {
@@ -138,8 +138,8 @@ describe('useCompanyStore', () => {
     const configWithTwoDepts: CompanyConfig = {
       ...mockConfig,
       departments: [
-        { name: 'engineering', display_name: 'Engineering', teams: [] },
-        { name: 'product', display_name: 'Product', teams: [] },
+        makeDepartment('engineering'),
+        makeDepartment('product'),
       ],
     }
     useCompanyStore.setState({ config: configWithTwoDepts })

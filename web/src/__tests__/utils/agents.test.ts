@@ -55,6 +55,10 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     tools: { access_level: 'standard', allowed: ['file_system', 'git'], denied: [] },
     authority: {},
     autonomy_level: 'semi',
+    strategic_output_mode: null,
+    personality_preset: null,
+    tier: null,
+    model_requirement: null,
     hiring_date: '2026-01-15T00:00:00Z',
     ...overrides,
   }
@@ -84,6 +88,7 @@ function makePerformance(overrides: Partial<AgentPerformanceSummary> = {}): Agen
         avg_tokens_per_task: 2400,
         success_rate: 0.92,
         collaboration_score: 7.2,
+        currency: DEFAULT_CURRENCY,
       },
       {
         window_size: '30d',
@@ -96,6 +101,7 @@ function makePerformance(overrides: Partial<AgentPerformanceSummary> = {}): Agen
         avg_tokens_per_task: 2500,
         success_rate: 0.94,
         collaboration_score: 7.5,
+        currency: DEFAULT_CURRENCY,
       },
     ],
     trends: [

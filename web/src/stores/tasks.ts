@@ -21,7 +21,7 @@ import type {
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
-  Task,
+  DashboardTask,
   TaskFilters,
   TransitionTaskRequest,
   UpdateTaskRequest,
@@ -64,8 +64,8 @@ const log = createLogger('tasks')
 
 interface TasksState {
   // Data
-  tasks: Task[]
-  selectedTask: Task | null
+  tasks: DashboardTask[]
+  selectedTask: DashboardTask | null
   total: number
 
   // Loading states
@@ -79,10 +79,10 @@ interface TasksState {
   // NOT wrap these in try/catch; check the sentinel and branch on it.
   fetchTasks: (filters?: TaskFilters) => Promise<void>
   fetchTask: (taskId: string) => Promise<void>
-  createTask: (data: CreateTaskRequest) => Promise<Task | null>
-  updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<Task | null>
-  transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<Task | null>
-  cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<Task | null>
+  createTask: (data: CreateTaskRequest) => Promise<DashboardTask | null>
+  updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<DashboardTask | null>
+  transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<DashboardTask | null>
+  cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<DashboardTask | null>
   deleteTask: (taskId: string) => Promise<boolean>
 
   // Real-time
@@ -91,7 +91,7 @@ interface TasksState {
   // Optimistic helpers
   pendingTransitions: Set<string>
   optimisticTransition: (taskId: string, targetStatus: TaskStatus) => () => void
-  upsertTask: (task: Task) => void
+  upsertTask: (task: DashboardTask) => void
   removeTask: (taskId: string) => void
 }
 
@@ -105,7 +105,7 @@ const pendingTransitions = new Set<string>()
  * ``description`` is the only freeform string field (``met`` is a
  * boolean validated by the shape guard already).
  */
-function sanitizeTask(c: Task): Task {
+function sanitizeTask(c: DashboardTask): DashboardTask {
   // Build the returned Task explicitly rather than spreading ``c``:
   // any future string field added to ``Task`` must be wired through
   // ``sanitizeWsString`` here, and a spread would silently bypass
@@ -175,6 +175,8 @@ function sanitizeTask(c: Task): Task {
     delegation_chain: sanitizeIds(c.delegation_chain),
     task_structure: c.task_structure,
     coordination_topology: c.coordination_topology,
+    middleware_override: c.middleware_override,
+    metadata: c.metadata,
     source:
       c.source === undefined || c.source === null
         ? c.source
@@ -287,7 +289,7 @@ function nullableIdEqual(sanitized: string | null | undefined, original: unknown
  * ``delegation_chain``, ``artifacts_expected``, ``acceptance_criteria``),
  * and the nullable / optional scalars that ``sanitizeTask`` reads.
  */
-function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
+function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & DashboardTask {
   // Enum fields routed through sanitizeWsEnum (status, priority, type,
   // source) accept any non-empty string here; the sanitizer applies
   // the allowlist + safe fallback. Rejecting unknown values would

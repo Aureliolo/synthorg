@@ -39,8 +39,38 @@ function makeAgent(overrides: Partial<AgentConfig> & { name: string; id?: string
     tools: { access_level: 'standard', allowed: [], denied: [] },
     authority: {},
     autonomy_level: null,
+    strategic_output_mode: null,
+    personality_preset: null,
+    tier: null,
+    model_requirement: null,
     hiring_date: '2026-01-01',
     ...overrides,
+  }
+}
+
+function makeDept(
+  name: string,
+  displayName: string,
+  teams: { name: string; lead: string; members: readonly string[] }[] = [],
+): CompanyConfig['departments'][number] {
+  return {
+    name,
+    display_name: displayName,
+    autonomy_level: null,
+    budget_percent: 0,
+    ceremony_policy: null,
+    head: null,
+    head_id: null,
+    policies: {
+      approval_chains: [],
+      review_requirements: {
+        min_reviewers: 0,
+        required_reviewer_roles: [],
+        self_review_allowed: true,
+      },
+    },
+    reporting_lines: [],
+    teams,
   }
 }
 
@@ -52,6 +82,20 @@ function makeConfig(agents: AgentConfig[], departments?: CompanyConfig['departme
     departments: departments ?? deptNames.map((name) => ({
       name,
       display_name: name.charAt(0).toUpperCase() + name.slice(1),
+      autonomy_level: null,
+      budget_percent: 0,
+      ceremony_policy: null,
+      head: null,
+      head_id: null,
+      policies: {
+        approval_chains: [],
+        review_requirements: {
+          min_reviewers: 0,
+          required_reviewer_roles: [],
+          self_review_allowed: true,
+        },
+      },
+      reporting_lines: [],
       teams: [],
     })),
   }
@@ -298,13 +342,9 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'jr', name: 'Junior', department: 'engineering', level: 'junior' }),
     ]
     const config = makeConfig(agents, [
-      {
-        name: 'engineering',
-        display_name: 'Engineering',
-        teams: [
-          { name: 'backend', lead: 'Lead', members: ['Lead', 'Senior', 'Junior'] },
-        ],
-      },
+      makeDept('engineering', 'Engineering', [
+        { name: 'backend', lead: 'Lead', members: ['Lead', 'Senior', 'Junior'] },
+      ]),
     ])
     const result = buildOrgTree(config, {}, [])
 
@@ -322,8 +362,8 @@ describe('buildOrgTree', () => {
       company_name: 'Test',
       agents,
       departments: [
-        { name: 'engineering', display_name: 'Engineering', teams: [] },
-        { name: 'product', display_name: 'Product', teams: [] },
+        makeDept('engineering', 'Engineering'),
+        makeDept('product', 'Product'),
       ],
     }
     const result = buildOrgTree(config, {}, [])
@@ -418,11 +458,11 @@ describe('team group nodes', () => {
       makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
       makeAgent({ id: 'a2', name: 'Bob', department: 'engineering', level: 'mid' }),
     ]
-    const depts = [{
-      name: 'engineering' as DepartmentName,
-      display_name: 'Engineering',
-      teams: [{ name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] }],
-    }]
+    const depts = [
+      makeDept('engineering', 'Engineering', [
+        { name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] },
+      ]),
+    ]
     const result = buildOrgTree(makeConfig(agents, depts), {}, [])
     const teamNodes = result.nodes.filter((n) => n.type === 'team')
     expect(teamNodes).toHaveLength(1)
@@ -435,11 +475,11 @@ describe('team group nodes', () => {
       makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
       makeAgent({ id: 'a2', name: 'Bob', department: 'engineering', level: 'mid' }),
     ]
-    const depts = [{
-      name: 'engineering' as DepartmentName,
-      display_name: 'Engineering',
-      teams: [{ name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] }],
-    }]
+    const depts = [
+      makeDept('engineering', 'Engineering', [
+        { name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] },
+      ]),
+    ]
     const result = buildOrgTree(makeConfig(agents, depts), {}, [])
     const bob = result.nodes.find((n) => n.id === 'a2')
     expect(bob?.parentId).toBe('team-engineering-backend')
@@ -460,11 +500,11 @@ describe('team group nodes', () => {
       makeAgent({ id: 'a2', name: 'Bob', department: 'engineering', level: 'mid' }),
       makeAgent({ id: 'a3', name: 'Carol', department: 'engineering', level: 'mid' }),
     ]
-    const depts = [{
-      name: 'engineering' as DepartmentName,
-      display_name: 'Engineering',
-      teams: [{ name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] }],
-    }]
+    const depts = [
+      makeDept('engineering', 'Engineering', [
+        { name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] },
+      ]),
+    ]
     const result = buildOrgTree(makeConfig(agents, depts), {}, [])
     const carol = result.nodes.find((n) => n.id === 'a3')
     expect(carol?.parentId).toBe('dept-engineering')

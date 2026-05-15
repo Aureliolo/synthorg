@@ -9,6 +9,7 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { ActivityItem } from '@/api/types/analytics'
 import type { Department } from '@/api/types/org'
 import type { WsEvent } from '@/api/types/websocket'
+import { makeDepartment } from '../helpers/factories'
 
 const mockOverview = {
   total_tasks: 24,
@@ -231,11 +232,7 @@ describe('useAnalyticsStore', () => {
           HttpResponse.json(
             paginatedFor<typeof listDepartments>({
               data: [
-                {
-                  name: 'engineering',
-                  display_name: 'Engineering',
-                  teams: [],
-                } as Department,
+                makeDepartment('engineering'),
               ],
               limit: 100,
               nextCursor: null,
@@ -297,9 +294,9 @@ describe('useAnalyticsStore', () => {
           HttpResponse.json(
             paginatedFor<typeof listDepartments>({
               data: [
-                { name: 'engineering', display_name: 'Engineering', teams: [] } as Department,
-                { name: 'design', display_name: 'Design', teams: [] } as Department,
-                { name: 'operations', display_name: 'Operations', teams: [] } as Department,
+                makeDepartment('engineering'),
+                makeDepartment('design'),
+                makeDepartment('operations'),
               ],
               limit: 100,
               nextCursor: null,

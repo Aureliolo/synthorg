@@ -23,6 +23,10 @@ const mockAgents: AgentConfig[] = [
     tools: { access_level: 'standard', allowed: ['code_edit'], denied: [] },
     authority: {},
     autonomy_level: 'semi',
+    strategic_output_mode: null,
+    personality_preset: null,
+    tier: null,
+    model_requirement: null,
     hiring_date: '2026-03-01T00:00:00Z',
   },
   {
@@ -44,6 +48,10 @@ const mockAgents: AgentConfig[] = [
     tools: { access_level: 'standard', allowed: ['code_edit'], denied: [] },
     authority: {},
     autonomy_level: 'supervised',
+    strategic_output_mode: null,
+    personality_preset: null,
+    tier: null,
+    model_requirement: null,
     hiring_date: '2026-03-10T00:00:00Z',
   },
   {
@@ -65,6 +73,10 @@ const mockAgents: AgentConfig[] = [
     tools: { access_level: 'standard', allowed: ['search'], denied: [] },
     authority: {},
     autonomy_level: 'semi',
+    strategic_output_mode: null,
+    personality_preset: null,
+    tier: null,
+    model_requirement: null,
     hiring_date: '2026-03-05T00:00:00Z',
   },
 ]
@@ -73,8 +85,44 @@ const mockConfig: CompanyConfig = {
   company_name: 'Acme Corp',
   agents: mockAgents,
   departments: [
-    { name: 'engineering', display_name: 'Engineering', teams: [] },
-    { name: 'product', display_name: 'Product', teams: [] },
+    {
+      name: 'engineering',
+      display_name: 'Engineering',
+      autonomy_level: null,
+      budget_percent: 0,
+      ceremony_policy: null,
+      head: null,
+      head_id: null,
+      policies: {
+        approval_chains: [],
+        review_requirements: {
+          min_reviewers: 0,
+          required_reviewer_roles: [],
+          self_review_allowed: true,
+        },
+      },
+      reporting_lines: [],
+      teams: [],
+    },
+    {
+      name: 'product',
+      display_name: 'Product',
+      autonomy_level: null,
+      budget_percent: 0,
+      ceremony_policy: null,
+      head: null,
+      head_id: null,
+      policies: {
+        approval_chains: [],
+        review_requirements: {
+          min_reviewers: 0,
+          required_reviewer_roles: [],
+          self_review_allowed: true,
+        },
+      },
+      reporting_lines: [],
+      teams: [],
+    },
   ],
 }
 

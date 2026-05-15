@@ -17,6 +17,9 @@ representative document that exercises every type-mapping branch:
   special case.
 - An ``allOf`` / ``oneOf`` schema name that is NOT PascalCase so
   the generator skips it (defensive).
+- A request-only schema, a response-only schema, and a both-sided
+  schema, each with a defaulted property absent from ``required[]``,
+  to drive ``_promote_response_defaults_to_required``.
 """
 
 from typing import Any, Final
@@ -46,6 +49,60 @@ FIXTURE_SCHEMA: Final[dict[str, Any]] = {
                                 "schema": {
                                     "$ref": "#/components/schemas/"
                                     "ApiResponse_FixtureResponse_",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "/fixture/promotion": {
+            "post": {
+                "summary": "Promotion fixture",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/"
+                                "FixtureRequestWithDefault",
+                            },
+                        },
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/"
+                                    "FixtureResponseWithDefault",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            "put": {
+                "summary": "Both-sided fixture",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FixtureBothSided",
+                            },
+                        },
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FixtureBothSided",
                                 },
                             },
                         },
@@ -146,6 +203,68 @@ FIXTURE_SCHEMA: Final[dict[str, Any]] = {
             "inline_anon_schema": {
                 "type": "string",
                 "enum": ["x", "y"],
+            },
+            # Reached only via a ``requestBody.$ref`` -- the promoter
+            # must leave its defaulted properties alone so request
+            # types stay optional client-side.
+            "FixtureRequestWithDefault": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "required_field": {
+                        "type": "string",
+                        "title": "RequiredField",
+                    },
+                    "optional_with_default": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "default": None,
+                        "title": "OptionalWithDefault",
+                    },
+                    "optional_no_default": {
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
+                        "title": "OptionalNoDefault",
+                    },
+                },
+                "required": ["required_field"],
+                "title": "FixtureRequestWithDefault",
+            },
+            # Reached only via a response $ref -- the promoter must
+            # move ``optional_with_default`` into ``required[]``.
+            "FixtureResponseWithDefault": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "required_field": {
+                        "type": "string",
+                        "title": "RequiredField",
+                    },
+                    "optional_with_default": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "default": None,
+                        "title": "OptionalWithDefault",
+                    },
+                    "optional_no_default": {
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
+                        "title": "OptionalNoDefault",
+                    },
+                },
+                "required": ["required_field"],
+                "title": "FixtureResponseWithDefault",
+            },
+            # Reached via BOTH a requestBody $ref and a response $ref.
+            # The promoter treats both-sided schemas as response-side
+            # (response wins) so the defaulted property is promoted.
+            "FixtureBothSided": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "optional_with_default": {
+                        "type": "string",
+                        "default": "",
+                        "title": "OptionalWithDefault",
+                    },
+                },
+                "title": "FixtureBothSided",
             },
         },
     },

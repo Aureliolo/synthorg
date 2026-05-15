@@ -1,9 +1,10 @@
 /** Approval queue and HITL evidence types. */
 
+import type { ApprovalResponse } from './dtos.gen'
 import type { ApprovalRiskLevel, ApprovalStatus } from './enums'
-import type { ApprovalResponse as WireApprovalResponse, EvidencePackage } from './dtos.gen'
 
 export type {
+  ApprovalResponse,
   ApproveRequest,
   CreateApprovalRequest,
   EvidencePackage,
@@ -11,29 +12,6 @@ export type {
   RecommendedAction,
   RejectRequest,
 } from './dtos.gen'
-
-/**
- * ApprovalResponse with the defaulted Pydantic fields re-typed as
- * required because the wire serializer ALWAYS emits them (defaults
- * are serialised; the JSON schema simply omits them from
- * ``required[]`` because Pydantic treats "has default" as "not
- * required from the client side"). Frontend consumers can rely on
- * the value being present at runtime.
- */
-export type ApprovalResponse = Omit<
-  WireApprovalResponse,
-  'metadata' | 'status' | 'task_id' | 'decided_by' | 'decision_reason' | 'decided_at' | 'expires_at' | 'evidence_package' | 'seconds_remaining'
-> & {
-  readonly metadata: Record<string, string>
-  readonly status: ApprovalStatus
-  readonly task_id: string | null
-  readonly decided_by: string | null
-  readonly decision_reason: string | null
-  readonly decided_at: string | null
-  readonly expires_at: string | null
-  readonly evidence_package: EvidencePackage | null
-  readonly seconds_remaining: number | null
-}
 
 /** Pre-decoration approval row (the queue endpoint augments
  *  ``ApprovalItem`` with ``seconds_remaining`` and ``urgency_level``

@@ -27,11 +27,33 @@ const mockConfig: CompanyConfig = {
       tools: { access_level: 'standard', allowed: ['code_edit'], denied: [] },
       authority: {},
       autonomy_level: 'semi',
+      strategic_output_mode: null,
+      personality_preset: null,
+      tier: null,
+      model_requirement: null,
       hiring_date: '2026-03-01T00:00:00Z',
     },
   ],
   departments: [
-    { name: 'engineering', display_name: 'Engineering', teams: [] },
+    {
+      name: 'engineering',
+      display_name: 'Engineering',
+      autonomy_level: null,
+      budget_percent: 0,
+      ceremony_policy: null,
+      head: null,
+      head_id: null,
+      policies: {
+        approval_chains: [],
+        review_requirements: {
+          min_reviewers: 0,
+          required_reviewer_roles: [],
+          self_review_allowed: true,
+        },
+      },
+      reporting_lines: [],
+      teams: [],
+    },
   ],
 }
 

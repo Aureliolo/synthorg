@@ -4,6 +4,7 @@ import { useProvidersStore } from '@/stores/providers'
 import type { ProviderConfig } from '@/api/types/providers'
 
 const apiKeyProvider: ProviderConfig = {
+  name: null,
   driver: 'litellm',
   litellm_provider: 'cloud-test',
   auth_type: 'api_key',
