@@ -15,6 +15,7 @@ from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.api.path_params import QUERY_MAX_LENGTH
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.coordination.ceremony_policy.policy_resolver import (
     ActiveCeremonyStrategyResponse,
@@ -62,7 +63,7 @@ class CeremonyPolicyController(Controller):
         department: Annotated[
             NotBlankStr | None,
             Parameter(
-                max_length=128,
+                max_length=QUERY_MAX_LENGTH,
                 description="Department to resolve against; omit for project policy.",
             ),
         ] = None,

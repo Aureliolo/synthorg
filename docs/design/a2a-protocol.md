@@ -94,16 +94,16 @@ See [Communication Coordination -> Loop Prevention](communication-coordination.m
 
 `MessageOverhead.is_quadratic` flags configurations where pairwise agent-to-agent messaging approaches `O(n^2)`. External agent federation can amplify this (every external connection potentially talks to every internal agent).
 
-Four enforcement strategies are defined behind `QuadraticEnforcementStrategy`:
+Four enforcement strategies are defined behind `QuadraticEnforcementStrategy`. Only `alert_only` is wired into `MessageBus.publish`; the other three are accepted in config and surface in resolution responses, but the per-mode behaviour is not yet implemented.
 
-| Strategy | Behavior |
-|----------|-----------|
-| `alert_only` (default) | Detect and emit `NotificationDispatcher` warnings |
-| `soft_throttle` | Auto-tighten rate limiter on the affected agent group |
-| `hard_block` | Reject new connections when `max_agent_connections` exceeded |
-| `disabled` | No detection or enforcement |
+| Strategy | Status | Behavior |
+|----------|--------|-----------|
+| `alert_only` (default) | Shipped | Detect and emit `NotificationDispatcher` warnings |
+| `soft_throttle` | Planned | Auto-tighten rate limiter on the affected agent group |
+| `hard_block` | Planned | Reject new connections when `max_agent_connections` exceeded |
+| `disabled` | Planned | No detection or enforcement |
 
-`alert_only` is the shipped enforcement strategy. `soft_throttle`, `hard_block`, and `disabled` are defined in config; the dispatch shape is in place but the per-mode behaviour is not yet wired into `MessageBus.publish`. See [Security -> Quadratic Communication Enforcement](security.md#quadratic-communication-enforcement).
+See [Security -> Quadratic Communication Enforcement](security.md#quadratic-communication-enforcement) for the config surface.
 
 ## Configuration Summary
 
