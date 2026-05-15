@@ -149,6 +149,12 @@ class LlmFallbackConfig(BaseModel):
     argument_truncation: ArgumentTruncationStrategy = (
         ArgumentTruncationStrategy.PER_VALUE
     )
+    # Sampling parameters for the security-evaluation completion call.
+    # Pinned to deterministic defaults so verdicts stay reproducible
+    # across runs; operators tuning this MUST re-run the golden eval
+    # suite (``tests/prompts/golden/llm_security_evaluator``).
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    top_p: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
 class SecurityPolicyRule(BaseModel):
