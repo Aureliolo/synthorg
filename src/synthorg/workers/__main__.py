@@ -41,7 +41,10 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_int
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
-from synthorg.workers.executor import TaskExecutionExecutor
+from synthorg.workers.executor import (
+    DEFAULT_HTTP_TIMEOUT_SECONDS,
+    TaskExecutionExecutor,
+)
 from synthorg.workers.worker import TaskExecutor, run_worker_pool
 
 logger = get_logger(__name__)
@@ -230,7 +233,11 @@ def _resolve_executor(
             error=msg,
         )
         raise SystemExit(msg)
-    http_client = httpx.AsyncClient()
+    # Match the executor's per-request timeout at the client level so
+    # the connection-pool defaults line up with the other AsyncClient
+    # call sites in the codebase (every other site passes ``timeout=``
+    # explicitly rather than relying on the 5 s httpx default).
+    http_client = httpx.AsyncClient(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
     executor = TaskExecutionExecutor(
         api_base_url=args.api_base_url,
         auth_token=args.auth_token,

@@ -47,14 +47,16 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_TIMEOUT_SECONDS: Final[float] = 60.0
+DEFAULT_HTTP_TIMEOUT_SECONDS: Final[float] = 60.0
 """Per-request wall-clock timeout for ``POST /tasks/{id}/execute``.
 
 Long enough to cover a single agent step (typical LLM call plus tool
 invocation budget) without holding the JetStream ack-wait window
 indefinitely. The worker's own ``ack_wait`` is the outer bound; this
 inner timeout exists so a server hang surfaces as a retryable
-transport error rather than a silent JetStream redelivery."""
+transport error rather than a silent JetStream redelivery. Exposed
+publicly so the worker entry point can mirror it on the shared
+``httpx.AsyncClient`` baseline."""
 
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "cancelled", "failed"}
@@ -76,7 +78,7 @@ class TaskExecutionExecutor:
             so tests can mount ``MockTransport`` without spinning a
             real backend.
         timeout_seconds: Per-request wall-clock budget. Defaults to
-            :data:`_DEFAULT_TIMEOUT_SECONDS`.
+            :data:`DEFAULT_HTTP_TIMEOUT_SECONDS`.
         clock: Optional clock seam for the diagnostic log timestamps
             (not part of the HTTP envelope). Unused today; reserved so
             future retry/backoff logic stays test-deterministic.
@@ -96,7 +98,7 @@ class TaskExecutionExecutor:
         api_base_url: str,
         auth_token: str,
         http_client: httpx.AsyncClient,
-        timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+        timeout_seconds: float = DEFAULT_HTTP_TIMEOUT_SECONDS,
         clock: Clock | None = None,
     ) -> None:
         if not api_base_url:
