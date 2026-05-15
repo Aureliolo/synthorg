@@ -52,6 +52,9 @@ class _FakeAuditRepo:
         self.records.append(saved)
         return saved
 
+    async def append(self, event: ProviderAuditEvent) -> None:
+        await self.record(event)
+
     async def list(
         self,
         *,
@@ -60,6 +63,18 @@ class _FakeAuditRepo:
         limit: int = 50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
         return ((), False)
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[ProviderAuditEvent, ...]:
+        return ()
+
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
 
     async def purge_before_id(self, *, before_id: int) -> int:
         return 0
@@ -609,6 +624,9 @@ class TestAuditFailureIsolation:
                 msg = "audit backend down"
                 raise RuntimeError(msg)
 
+            async def append(self, event: ProviderAuditEvent) -> None:
+                await self.record(event)
+
             async def list(
                 self,
                 *,
@@ -617,6 +635,18 @@ class TestAuditFailureIsolation:
                 limit: int = 50,
             ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
                 return (), False
+
+            async def query(
+                self,
+                filter_spec: Any,
+                *,
+                limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+                offset: int = 0,
+            ) -> tuple[ProviderAuditEvent, ...]:
+                return ()
+
+            async def purge_before(self, threshold: Any) -> int:
+                return 0
 
             async def purge_before_id(
                 self,
