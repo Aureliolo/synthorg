@@ -7,6 +7,7 @@ import pytest
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.security.timeout.park_service import ParkService
+from synthorg.security.timeout.parked_context import ParkedContext
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 
 pytestmark = pytest.mark.unit
@@ -16,7 +17,9 @@ pytestmark = pytest.mark.unit
 def park_service() -> MagicMock:
     """ParkService mock with a default parked context return value."""
     svc = MagicMock(spec=ParkService)
-    parked = MagicMock()
+    # Type the parked stub so attribute typos surface at test time
+    # instead of silently auto-creating MagicMock children.
+    parked = MagicMock(spec=ParkedContext)
     parked.id = "parked-1"
     parked.approval_id = "approval-1"
     svc.park.return_value = parked
