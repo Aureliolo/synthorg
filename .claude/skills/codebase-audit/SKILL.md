@@ -676,7 +676,7 @@ findings with 80% FP rate.
 
 ### Wave 3: Dead Code & Unused (2 agents -- agent 14 retired 2026-05-15)
 
-**Agent 14 RETIRED**: see Retired Agents table. Replaced by `vulture` in CI.
+**Agent 14 RETIRED**: see Retired Agents table. Replacement (`vulture` + pre-push gate) is planned but not yet wired; the agent stays retired because regex-based detection is unsalvageable.
 
 <!-- ORIGINAL AGENT 14 PROMPT RETAINED FOR REFERENCE; DO NOT LAUNCH
 
