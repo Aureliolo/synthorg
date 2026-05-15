@@ -39,6 +39,7 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTOR_HTTP_INVOKED,
     WORKERS_EXECUTOR_HTTP_RETRY,
     WORKERS_EXECUTOR_HTTP_TERMINAL,
+    WORKERS_EXECUTOR_INVALID_INIT_ARG,
 )
 from synthorg.workers.claim import TaskClaim, TaskClaimStatus
 
@@ -103,12 +104,31 @@ class TaskExecutionExecutor:
     ) -> None:
         if not api_base_url:
             msg = "api_base_url must be non-empty"
+            logger.warning(
+                WORKERS_EXECUTOR_INVALID_INIT_ARG,
+                param="api_base_url",
+                error=msg,
+            )
             raise ValueError(msg)
         if not auth_token:
             msg = "auth_token must be non-empty"
+            # Do NOT log the token value -- only the parameter name and
+            # the canonical error message. The token is a Bearer
+            # credential and would otherwise flow into structured logs.
+            logger.warning(
+                WORKERS_EXECUTOR_INVALID_INIT_ARG,
+                param="auth_token",
+                error=msg,
+            )
             raise ValueError(msg)
         if timeout_seconds <= 0.0:
             msg = "timeout_seconds must be positive"
+            logger.warning(
+                WORKERS_EXECUTOR_INVALID_INIT_ARG,
+                param="timeout_seconds",
+                value=timeout_seconds,
+                error=msg,
+            )
             raise ValueError(msg)
         self._base_url = api_base_url.rstrip("/")
         self._auth_token = auth_token
