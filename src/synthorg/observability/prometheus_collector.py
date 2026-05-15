@@ -354,7 +354,40 @@ class PrometheusCollector(RecordingMixin):
                 utc_midnight,
             )
         await self._refresh_task_metrics(app_state)
+        self._refresh_pg_pool_metrics(app_state)
         logger.debug(METRICS_SCRAPE_COMPLETED)
+
+    def _refresh_pg_pool_metrics(self, app_state: AppState) -> None:
+        """Push Postgres pool size / active gauges from the live pool.
+
+        Skipped silently when the backend is not Postgres or is not
+        yet connected; the pool's ``get_stats`` snapshot is the
+        authoritative source for ``pool_size`` and ``pool_available``.
+        """
+        if not app_state.has_persistence:
+            return
+        backend = app_state.persistence
+        if backend.kind != "postgres":
+            return
+        pool = getattr(backend, "_pool", None)
+        if pool is None:
+            return
+        try:
+            stats = pool.get_stats()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(METRICS_SCRAPE_FAILED, component="pg_pool_stats")
+            return
+        size = stats.get("pool_size")
+        available = stats.get("pool_available")
+        if isinstance(size, int):
+            self.record_pg_pool_size(backend="primary", size=size)
+            if isinstance(available, int):
+                self.record_pg_pool_active(
+                    backend="primary",
+                    active=max(0, size - available),
+                )
 
     async def _rebuild_label_snapshot(
         self,

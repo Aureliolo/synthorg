@@ -680,6 +680,47 @@ async def _setup_connection(
     return channels_plugin, subscriber
 
 
+def _record_ws_connection_opened(socket: WebSocket[Any, Any, Any]) -> None:
+    """Increment the WS active-connection gauge.
+
+    The Prometheus collector lives on ``app_state``; the helper checks
+    presence defensively so a controller running without the
+    observability stack (rare; mostly tests) does not blow up at
+    setup. The gauge total is kept in a small mutable counter on
+    ``app.state`` so the controller does not need to count sockets
+    itself.
+    """
+    app_state = socket.app.state["app_state"]
+    if not app_state.has_prometheus_collector:
+        return
+    state_dict = socket.app.state
+    current = int(state_dict.get("ws_active_connection_count", 0))
+    current += 1
+    state_dict["ws_active_connection_count"] = current
+    app_state.prometheus_collector.set_ws_active_connections(count=current)
+
+
+def _record_ws_connection_closed(
+    socket: WebSocket[Any, Any, Any],
+    *,
+    duration_sec: float,
+) -> None:
+    """Observe the WS lifetime histogram and decrement the active gauge."""
+    app_state = socket.app.state["app_state"]
+    if not app_state.has_prometheus_collector:
+        return
+    state_dict = socket.app.state
+    current = int(state_dict.get("ws_active_connection_count", 0))
+    current = max(0, current - 1)
+    state_dict["ws_active_connection_count"] = current
+    collector = app_state.prometheus_collector
+    collector.record_ws_connection_lifetime(
+        transport="websocket",
+        duration_sec=duration_sec,
+    )
+    collector.set_ws_active_connections(count=current)
+
+
 async def _teardown_connection(
     socket: WebSocket[Any, Any, Any],
     user: AuthenticatedUser,
@@ -771,6 +812,15 @@ async def ws_handler(
         return
     channels_plugin, subscriber = setup
 
+    # Wall-clock start so the teardown path can observe connection
+    # lifetime into the ``synthorg_ws_connection_lifetime_seconds``
+    # histogram. ``time.monotonic`` so a wall-clock NTP step does not
+    # push the bucket bound.
+    import time  # noqa: PLC0415
+
+    connection_started_at = time.monotonic()
+    _record_ws_connection_opened(socket)
+
     # Auto-subscribe to the user's private channel.
     user_ch = user_channel(user.user_id)
     subscribed: set[str] = {user_ch}
@@ -849,6 +899,12 @@ async def ws_handler(
             )
     finally:
         if consumer_task is not None:
+            import time  # noqa: PLC0415
+
+            _record_ws_connection_closed(
+                socket,
+                duration_sec=time.monotonic() - connection_started_at,
+            )
             await _teardown_connection(
                 socket,
                 user,

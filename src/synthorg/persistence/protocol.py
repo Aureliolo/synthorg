@@ -200,6 +200,16 @@ class PersistenceBackend(Protocol):
         custom_rules: Repository for custom signal rule persistence.
     """
 
+    @property
+    def kind(self) -> str:
+        """Return the backend's discriminator string.
+
+        One of ``"sqlite"`` or ``"postgres"``. Used by call sites that
+        need to pick a backend-specific helper (e.g. backup handler
+        factories) without ``isinstance`` checks.
+        """
+        ...
+
     async def connect(self) -> None:
         """Establish connection to the storage backend.
 

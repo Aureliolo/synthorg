@@ -306,6 +306,22 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._oauth_states = None
         self._webhook_receipts = None
 
+    @property
+    def kind(self) -> str:
+        """Return the backend discriminator (``"sqlite"``)."""
+        return "sqlite"
+
+    @property
+    def config(self) -> SQLiteConfig:
+        """Public read-only view of the backend's config.
+
+        Exposed so callers that need backend-specific details (the
+        backup-handler factory walks the path; tests assert against
+        the resolved sqlite path) do not have to reach for the
+        private ``_config`` attribute.
+        """
+        return self._config
+
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
         async with self._lifecycle_lock:

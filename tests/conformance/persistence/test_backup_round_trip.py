@@ -12,6 +12,7 @@ alongside the testcontainers postgres image.
 
 import shutil
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -28,6 +29,29 @@ from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 pytestmark = pytest.mark.integration
 
 
+def _build_handler(
+    backend: PersistenceBackend,
+) -> SQLitePersistenceComponentHandler | PostgresPersistenceComponentHandler:
+    """Pick a backup handler for ``backend`` via its ``kind`` discriminator.
+
+    Uses the public ``backend.kind`` plus ``backend.config`` accessors
+    so the conformance test does not depend on either the backend's
+    concrete class or its private ``_config`` attribute.
+    """
+    if backend.kind == "sqlite":
+        sqlite_backend = cast(SQLitePersistenceBackend, backend)
+        return SQLitePersistenceComponentHandler(
+            db_path=Path(sqlite_backend.config.path),
+        )
+    if backend.kind == "postgres":
+        if shutil.which("pg_dump") is None or shutil.which("pg_restore") is None:
+            pytest.skip("pg_dump / pg_restore binaries are not available on PATH")
+        postgres_backend = cast(PostgresPersistenceBackend, backend)
+        return PostgresPersistenceComponentHandler(config=postgres_backend.config)
+    msg = f"Unknown backend kind: {backend.kind!r}"
+    raise ValueError(msg)
+
+
 async def test_backup_handler_round_trip(
     backend: PersistenceBackend,
     tmp_path: Path,
@@ -36,21 +60,7 @@ async def test_backup_handler_round_trip(
     target_dir = tmp_path / "backup"
     target_dir.mkdir()
 
-    if isinstance(backend, SQLitePersistenceBackend):
-        db_path = Path(backend._config.path)
-        handler: (
-            SQLitePersistenceComponentHandler | PostgresPersistenceComponentHandler
-        ) = SQLitePersistenceComponentHandler(db_path=db_path)
-    elif isinstance(backend, PostgresPersistenceBackend):
-        if shutil.which("pg_dump") is None or shutil.which("pg_restore") is None:
-            pytest.skip("pg_dump / pg_restore binaries are not available on PATH")
-        handler = PostgresPersistenceComponentHandler(
-            config=backend._config,
-        )
-    else:  # pragma: no cover - defensive
-        msg = f"Unknown backend type: {type(backend).__name__}"
-        raise TypeError(msg)
-
+    handler = _build_handler(backend)
     size = await handler.backup(target_dir)
     assert size > 0
     assert await handler.validate_source(target_dir) is True
