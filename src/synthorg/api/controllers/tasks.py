@@ -72,8 +72,22 @@ class TaskController(Controller):
         self,
         state: State,
         status: TaskStatus | None = None,
-        assigned_to: Annotated[str, Parameter(max_length=256)] | None = None,
-        project: Annotated[str, Parameter(max_length=256)] | None = None,
+        assigned_to: Annotated[
+            str,
+            Parameter(
+                max_length=256,
+                description="Filter to tasks assigned to this agent.",
+            ),
+        ]
+        | None = None,
+        project: Annotated[
+            str,
+            Parameter(
+                max_length=256,
+                description="Filter to tasks scoped to this project.",
+            ),
+        ]
+        | None = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Task]:

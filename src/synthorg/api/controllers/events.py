@@ -546,6 +546,7 @@ class EventStreamController(Controller):
             Parameter(
                 max_length=QUERY_MAX_LENGTH,
                 pattern=_SESSION_ID_PATTERN,
+                description="Session ID whose AG-UI stream to subscribe to.",
             ),
         ],
     ) -> ServerSentEvent:
@@ -623,6 +624,7 @@ class InterruptController(Controller):
             Parameter(
                 max_length=QUERY_MAX_LENGTH,
                 pattern=_SESSION_ID_PATTERN,
+                description="Filter to interrupts for this session; omit to list all.",
             ),
         ] = None,
     ) -> ApiResponse[tuple[InterruptResponse, ...]]:

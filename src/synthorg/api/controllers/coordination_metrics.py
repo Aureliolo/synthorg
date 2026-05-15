@@ -89,8 +89,22 @@ class CoordinationMetricsController(Controller):
     async def list_coordination_metrics(  # noqa: PLR0913
         self,
         state: State,
-        task_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
-        agent_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
+        task_id: Annotated[
+            str,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to coordination metrics emitted under this task.",
+            ),
+        ]
+        | None = None,
+        agent_id: Annotated[
+            str,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to coordination metrics emitted by this agent.",
+            ),
+        ]
+        | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
         cursor: CursorParam = None,

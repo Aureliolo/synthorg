@@ -255,7 +255,11 @@ class SubworkflowController(Controller):
         subworkflow_id: PathId,
         version: Annotated[
             str,
-            Parameter(min_length=1, max_length=64),
+            Parameter(
+                min_length=1,
+                max_length=64,
+                description="Subworkflow version to fetch (semver-like, e.g. 1.0.0).",
+            ),
         ],
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Fetch a specific subworkflow version.
@@ -280,7 +284,11 @@ class SubworkflowController(Controller):
         subworkflow_id: PathId,
         version: Annotated[
             str,
-            Parameter(min_length=1, max_length=64),
+            Parameter(
+                min_length=1,
+                max_length=64,
+                description="Subworkflow version pinned by the parent workflows.",
+            ),
         ],
         limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
@@ -351,7 +359,11 @@ class SubworkflowController(Controller):
         subworkflow_id: PathId,
         version: Annotated[
             str,
-            Parameter(min_length=1, max_length=64),
+            Parameter(
+                min_length=1,
+                max_length=64,
+                description="Subworkflow version to delete (parents block).",
+            ),
         ],
     ) -> Response[ApiResponse[None]]:
         """Delete a subworkflow version.

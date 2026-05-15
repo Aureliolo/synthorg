@@ -81,7 +81,13 @@ class CompanyVersionController(Controller):
     async def get_version(
         self,
         state: State,
-        version_num: Annotated[int, Parameter(ge=1)],
+        version_num: Annotated[
+            int,
+            Parameter(
+                ge=1,
+                description="Company version (one-based; 1 = first revision).",
+            ),
+        ],
     ) -> Response[ApiResponse[SnapshotT]]:
         """Get a specific company version snapshot."""
         repo = state.app_state.persistence.company_versions

@@ -516,7 +516,13 @@ class ApprovalsController(Controller):
         state: State,
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        action_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
+        action_type: Annotated[
+            str,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to approvals raised for this action type.",
+            ),
+        ]
         | None = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,

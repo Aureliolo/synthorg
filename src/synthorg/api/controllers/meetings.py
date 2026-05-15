@@ -244,7 +244,13 @@ class MeetingController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
         status: MeetingStatus | None = None,
-        meeting_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
+        meeting_type: Annotated[
+            str,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter by meeting type (STAND_UP, RETRO, etc.).",
+            ),
+        ]
         | None = None,
     ) -> PaginatedResponse[MeetingResponse]:
         """List meeting records with optional filters.

@@ -13138,6 +13138,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource identifier */
                 readonly agent_id: string;
+                /** @description Agent identity version (one-based; 1 = first revision). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -14371,6 +14372,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Budget config version (one-based; 1 = first revision). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -14501,6 +14503,7 @@ export interface operations {
     readonly ApiV1CeremonyPolicyResolvedGetResolvedPolicy: {
         readonly parameters: {
             readonly query?: {
+                /** @description Department to resolve against; omit for project policy. */
                 readonly department?: string | null;
             };
             readonly header?: never;
@@ -14848,6 +14851,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Company version (one-based; 1 = first revision). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -15744,6 +15748,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Evaluation config version (one-based). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -15805,6 +15810,7 @@ export interface operations {
     readonly ApiV1EventsStreamStream: {
         readonly parameters: {
             readonly query: {
+                /** @description Session ID whose AG-UI stream to subscribe to. */
                 readonly session_id: string;
             };
             readonly header?: never;
@@ -16172,6 +16178,7 @@ export interface operations {
     readonly ApiV1InterruptsListInterrupts: {
         readonly parameters: {
             readonly query?: {
+                /** @description Filter to interrupts for this session; omit to list all. */
                 readonly session_id?: string | null;
             };
             readonly header?: never;
@@ -16539,6 +16546,7 @@ export interface operations {
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Minimum deployment count for a pattern to be returned. */
                 readonly min_deployments?: number;
             };
             readonly header?: never;
@@ -18209,6 +18217,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Local provider model id (may contain colons). */
                 readonly model_id: string;
                 /** @description Resource name */
                 readonly name: string;
@@ -18238,6 +18247,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Local provider model whose launch parameters to update. */
                 readonly model_id: string;
                 /** @description Resource name */
                 readonly name: string;
@@ -18883,6 +18893,7 @@ export interface operations {
             readonly header?: never;
             readonly path: {
                 readonly role_name: string;
+                /** @description Role version (one-based; 1 = first revision). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -19959,6 +19970,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource identifier */
                 readonly subworkflow_id: string;
+                /** @description Subworkflow version to fetch (semver-like, e.g. 1.0.0). */
                 readonly version: string;
             };
             readonly cookie?: never;
@@ -19989,6 +20001,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource identifier */
                 readonly subworkflow_id: string;
+                /** @description Subworkflow version to delete (parents block). */
                 readonly version: string;
             };
             readonly cookie?: never;
@@ -20025,6 +20038,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource identifier */
                 readonly subworkflow_id: string;
+                /** @description Subworkflow version pinned by the parent workflows. */
                 readonly version: string;
             };
             readonly cookie?: never;
@@ -21158,6 +21172,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Workflow version (one-based; 1 = first revision). */
                 readonly version_num: number;
                 /** @description Resource identifier */
                 readonly workflow_id: string;

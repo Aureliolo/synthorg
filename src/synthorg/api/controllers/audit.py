@@ -94,17 +94,58 @@ class AuditController(Controller):
     async def list_audit_entries(  # noqa: PLR0913
         self,
         state: State,
-        agent_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
-        tool_name: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
-        action_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
+        agent_id: Annotated[
+            str,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to audit entries emitted for this agent.",
+            ),
+        ]
         | None = None,
-        verdict: Annotated[str, Parameter(max_length=50)] | None = None,
+        tool_name: Annotated[
+            str,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to audit entries emitted for this tool.",
+            ),
+        ]
+        | None = None,
+        action_type: Annotated[
+            str,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to audit entries with this action type.",
+            ),
+        ]
+        | None = None,
+        verdict: Annotated[
+            str,
+            Parameter(
+                max_length=50,
+                description="Filter by verdict (APPROVED / DENIED).",
+            ),
+        ]
+        | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
-        jsonb_contains: Annotated[str, Parameter(max_length=2048)] | None = None,
-        jsonb_key_exists: Annotated[str, Parameter(max_length=256)] | None = None,
+        jsonb_contains: Annotated[
+            str,
+            Parameter(
+                max_length=2048,
+                description="JSONB containment filter (Postgres @>); JSON-encoded.",
+            ),
+        ]
+        | None = None,
+        jsonb_key_exists: Annotated[
+            str,
+            Parameter(
+                max_length=256,
+                description="Filter to entries whose payload has this top-level key.",
+            ),
+        ]
+        | None = None,
     ) -> PaginatedResponse[AuditEntry]:
         """Query audit entries with optional filters.
 

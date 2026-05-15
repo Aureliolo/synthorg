@@ -96,7 +96,13 @@ class WorkflowVersionController(Controller):
         self,
         state: State,
         workflow_id: PathId,
-        version_num: Annotated[int, Parameter(ge=1)],
+        version_num: Annotated[
+            int,
+            Parameter(
+                ge=1,
+                description="Workflow version (one-based; 1 = first revision).",
+            ),
+        ],
     ) -> Response[ApiResponse[SnapshotT]]:
         """Get a specific version snapshot."""
         version = await state.app_state.workflow_version_service.get_version(

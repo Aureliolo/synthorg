@@ -134,6 +134,37 @@ intake strategy contracts.
 
 ---
 
+## Order of Operations
+
+The four quality and approval surfaces (verification stage, review
+pipeline, mid-execution `AUTH_REQUIRED` park, post-completion
+`IN_REVIEW` gate) operate at distinct points in the task lifecycle.
+
+| Phase | Surface | Trigger | Task status during | Exit | Where documented |
+|-------|---------|---------|--------------------|------|------------------|
+| Mid-execution | `AUTH_REQUIRED` park | Agent calls a tool that requires approval at runtime (e.g. `deploy`, `db:admin`). Driven by `ApprovalGate` middleware. | `AUTH_REQUIRED` | Approved: returns to `ASSIGNED`. Denied / timeout: `CANCELLED`. | [Security: Approval Workflow](security.md#approval-workflow) |
+| Agent done | Verification stage | Workflow blueprint has a `VERIFICATION` control-flow node. Runs as a separate evaluator agent with its own context. | `IN_PROGRESS` (engine-internal) | Pass: continue to next node. Fail: regenerate. Refer: hand to human via `VERIFICATION_REFER` edge. | This page, [Workflow Node and Edge Types](#workflow-node-and-edge-types) |
+| Agent done | Review pipeline | Task transitions `IN_PROGRESS` to `IN_REVIEW`. Chain of `ReviewStage` instances runs. | `IN_REVIEW` | First-failing stage returns the task to `IN_PROGRESS`; all-pass moves to `COMPLETED`. | This page, [Review Pipeline](#review-pipeline) |
+
+Key invariants:
+
+- `AUTH_REQUIRED` is the mid-execution park reason and uses the
+  `ApprovalGate` middleware in the agent harness. The review pipeline
+  is the post-completion quality gate and uses `ReviewGateService`.
+  The two are independent: a single task can encounter both (e.g.
+  pause for deploy approval mid-task, then enter `IN_REVIEW` once the
+  agent finishes).
+- The verification stage runs BEFORE the review pipeline when both
+  are configured for the same workflow. Verification is a workflow
+  blueprint construct (a node in the graph); the review pipeline
+  fires on the `IN_PROGRESS` to `IN_REVIEW` transition that happens
+  after the workflow's last node completes.
+- The review pipeline does not mint new `TaskStatus` values; the
+  task stays at `IN_REVIEW` throughout, with stage progress in
+  metadata.
+
+---
+
 ## See Also
 
 - [Task & Workflow Engine](engine.md): task dispatch, state coordination

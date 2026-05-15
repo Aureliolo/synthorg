@@ -61,7 +61,10 @@ class CeremonyPolicyController(Controller):
         state: State,
         department: Annotated[
             NotBlankStr | None,
-            Parameter(max_length=128),
+            Parameter(
+                max_length=128,
+                description="Department to resolve against; omit for project policy.",
+            ),
         ] = None,
     ) -> ApiResponse[ResolvedCeremonyPolicyResponse]:
         """Return the fully resolved ceremony policy with field origins."""

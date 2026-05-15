@@ -114,7 +114,12 @@ class MetaAnalyticsController(Controller):
     async def get_patterns(
         self,
         state: State,
-        min_deployments: int = Parameter(default=3, ge=1, le=100),
+        min_deployments: int = Parameter(
+            default=3,
+            ge=1,
+            le=100,
+            description="Minimum deployment count for a pattern to be returned.",
+        ),
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[AggregatedPattern]:
