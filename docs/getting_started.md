@@ -32,6 +32,16 @@ uv sync
 
 `uv sync` creates a virtual environment in `.venv/` and installs all development dependencies (linters, type checker, test runner, pre-commit, etc.).
 
+## Install external CLI tools (one-time per machine)
+
+Some gates and the docs build rely on external binaries that are not Python packages: `golangci-lint` (Go linter, used by the CLI) and `d2` (architecture diagram renderer). Install them once per development machine:
+
+```bash
+bash scripts/install_cli_tools.sh
+```
+
+The script downloads the pinned versions that match CI (`.github/workflows/cli.yml` and the docs job). Re-run it only after bumping the pinned version; subsequent `uv sync` invocations do NOT re-run the script. CI uses its own action-based install steps, so this is strictly a local-developer convenience.
+
 ## Verify Installation
 
 Run the smoke tests to confirm everything is working:
