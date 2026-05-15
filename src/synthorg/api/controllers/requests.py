@@ -1,9 +1,10 @@
 """Client request lifecycle endpoints at /requests."""
 
-from typing import Any, Final
+from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.channels import CHANNEL_REQUESTS, publish_ws_event
@@ -85,7 +86,10 @@ class RequestController(Controller):
     async def list_requests(
         self,
         state: State,
-        status: RequestStatus | None = None,
+        status: Annotated[
+            RequestStatus | None,
+            Parameter(description="Filter to requests in this status."),
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ClientRequest]:

@@ -590,7 +590,15 @@ class ProviderController(Controller):
         self,
         state: State,
         name: PathName,
-        preset_hint: Annotated[str, Parameter(max_length=64)] | None = None,
+        preset_hint: Annotated[
+            str | None,
+            Parameter(
+                max_length=64,
+                description=(
+                    'Canonical preset hint (e.g. "example-provider", "test-provider").'
+                ),
+            ),
+        ] = None,
     ) -> ApiResponse[DiscoverModelsResponse]:
         """Discover available models from a provider endpoint.
 
@@ -871,7 +879,14 @@ class ProviderController(Controller):
         self,
         state: State,
         name: PathName,
-        model_id: Annotated[str, Parameter(max_length=256, min_length=1)],
+        model_id: Annotated[
+            str,
+            Parameter(
+                max_length=256,
+                min_length=1,
+                description="Local provider model id (may contain colons).",
+            ),
+        ],
     ) -> None:
         """Delete a model from a local provider.
 
@@ -939,7 +954,14 @@ class ProviderController(Controller):
         self,
         state: State,
         name: PathName,
-        model_id: Annotated[str, Parameter(max_length=256, min_length=1)],
+        model_id: Annotated[
+            str,
+            Parameter(
+                max_length=256,
+                min_length=1,
+                description="Local provider model whose launch parameters to update.",
+            ),
+        ],
         data: UpdateModelConfigRequest,
     ) -> ApiResponse[ProviderModelResponse]:
         """Update per-model launch parameters for a local provider.

@@ -19,7 +19,7 @@ SynthOrg is a Python framework for building **synthetic organizations**, autonom
 
 Define your company in YAML. Agents collaborate through a message bus, follow workflows (Kanban, Agile sprints, or custom), track costs against budgets, and produce real artifacts. The framework is provider-agnostic (<!--RS:providers_via_litellm-->2700+<!--/RS--> LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and designed for the full autonomy spectrum, from human approval on every action to fully autonomous operation.
 
-> **Early access.** Core subsystems are built and tested (<!--RS:tests-->29,000+<!--/RS--> tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
+> **Early access.** Core subsystems are built and tested (<!--RS:tests-->30,000+<!--/RS--> tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
 
 ## Why SynthOrg?
 

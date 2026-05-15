@@ -13138,6 +13138,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource identifier */
                 readonly agent_id: string;
+                /** @description Agent identity version (one-based; 1 = first revision). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -13719,12 +13720,15 @@ export interface operations {
     readonly ApiV1ApprovalsListApprovals: {
         readonly parameters: {
             readonly query?: {
+                /** @description Filter to approvals raised for this action type. */
                 readonly action_type?: string | null;
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Filter to approvals at this risk level. */
                 readonly risk_level?: "low" | "medium" | "high" | "critical" | null;
+                /** @description Filter to approvals in this status. */
                 readonly status?: "pending" | "approved" | "rejected" | "expired" | null;
             };
             readonly header?: never;
@@ -14371,6 +14375,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Budget config version (one-based; 1 = first revision). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -14397,11 +14402,13 @@ export interface operations {
     readonly ApiV1BudgetRecordsListCostRecords: {
         readonly parameters: {
             readonly query?: {
+                /** @description Filter to cost records emitted by this agent. */
                 readonly agent_id?: string | null;
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Filter to cost records emitted under this task. */
                 readonly task_id?: string | null;
             };
             readonly header?: never;
@@ -14501,6 +14508,7 @@ export interface operations {
     readonly ApiV1CeremonyPolicyResolvedGetResolvedPolicy: {
         readonly parameters: {
             readonly query?: {
+                /** @description Department to resolve against; omit for project policy. */
                 readonly department?: string | null;
             };
             readonly header?: never;
@@ -14848,6 +14856,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Company version (one-based; 1 = first revision). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -15228,13 +15237,17 @@ export interface operations {
     readonly ApiV1CoordinationMetricsListCoordinationMetrics: {
         readonly parameters: {
             readonly query?: {
+                /** @description Filter to coordination metrics emitted by this agent. */
                 readonly agent_id?: string | null;
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Filter to metrics emitted at or after this ISO timestamp. */
                 readonly since?: string | null;
+                /** @description Filter to coordination metrics emitted under this task. */
                 readonly task_id?: string | null;
+                /** @description Filter to metrics emitted at or before this ISO timestamp. */
                 readonly until?: string | null;
             };
             readonly header?: never;
@@ -15744,6 +15757,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Evaluation config version (one-based). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -15805,6 +15819,7 @@ export interface operations {
     readonly ApiV1EventsStreamStream: {
         readonly parameters: {
             readonly query: {
+                /** @description Session ID whose AG-UI stream to subscribe to. */
                 readonly session_id: string;
             };
             readonly header?: never;
@@ -16172,6 +16187,7 @@ export interface operations {
     readonly ApiV1InterruptsListInterrupts: {
         readonly parameters: {
             readonly query?: {
+                /** @description Filter to interrupts for this session; omit to list all. */
                 readonly session_id?: string | null;
             };
             readonly header?: never;
@@ -16238,7 +16254,9 @@ export interface operations {
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Filter by meeting type (STAND_UP, RETRO, etc.). */
                 readonly meeting_type?: string | null;
+                /** @description Filter to meetings in this status. */
                 readonly status?: "scheduled" | "in_progress" | "completed" | "failed" | "cancelled" | "budget_exhausted" | null;
             };
             readonly header?: never;
@@ -16356,6 +16374,7 @@ export interface operations {
     readonly ApiV1MessagesListMessages: {
         readonly parameters: {
             readonly query?: {
+                /** @description Filter to messages on this channel. */
                 readonly channel?: string | null;
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
@@ -16539,6 +16558,7 @@ export interface operations {
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Minimum deployment count for a pattern to be returned. */
                 readonly min_deployments?: number;
             };
             readonly header?: never;
@@ -17315,6 +17335,7 @@ export interface operations {
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Filter to entity definitions in this tier. */
                 readonly tier?: string | null;
             };
             readonly header?: never;
@@ -17503,6 +17524,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource name */
                 readonly name: string;
+                /** @description Entity definition version to fetch. */
                 readonly version: number;
             };
             readonly cookie?: never;
@@ -18076,6 +18098,7 @@ export interface operations {
     readonly ApiV1ProvidersNameDiscoverModelsDiscoverModels: {
         readonly parameters: {
             readonly query?: {
+                /** @description Canonical preset hint (e.g. "example-provider", "test-provider"). */
                 readonly preset_hint?: string | null;
             };
             readonly header?: never;
@@ -18209,6 +18232,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Local provider model id (may contain colons). */
                 readonly model_id: string;
                 /** @description Resource name */
                 readonly name: string;
@@ -18238,6 +18262,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Local provider model whose launch parameters to update. */
                 readonly model_id: string;
                 /** @description Resource name */
                 readonly name: string;
@@ -18883,6 +18908,7 @@ export interface operations {
             readonly header?: never;
             readonly path: {
                 readonly role_name: string;
+                /** @description Role version (one-based; 1 = first revision). */
                 readonly version_num: number;
             };
             readonly cookie?: never;
@@ -19091,17 +19117,25 @@ export interface operations {
     readonly ApiV1SecurityAuditListAuditEntries: {
         readonly parameters: {
             readonly query?: {
+                /** @description Filter to audit entries with this action type. */
                 readonly action_type?: string | null;
+                /** @description Filter to audit entries emitted for this agent. */
                 readonly agent_id?: string | null;
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
+                /** @description JSONB containment filter (Postgres @>); JSON-encoded. */
                 readonly jsonb_contains?: string | null;
+                /** @description Filter to entries whose payload has this top-level key. */
                 readonly jsonb_key_exists?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Filter to entries emitted at or after this ISO timestamp. */
                 readonly since?: string | null;
+                /** @description Filter to audit entries emitted for this tool. */
                 readonly tool_name?: string | null;
+                /** @description Filter to entries emitted at or before this ISO timestamp. */
                 readonly until?: string | null;
+                /** @description Filter by verdict (APPROVED / DENIED). */
                 readonly verdict?: string | null;
             };
             readonly header?: never;
@@ -19959,6 +19993,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource identifier */
                 readonly subworkflow_id: string;
+                /** @description Subworkflow version to fetch (semver-like, e.g. 1.0.0). */
                 readonly version: string;
             };
             readonly cookie?: never;
@@ -19989,6 +20024,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource identifier */
                 readonly subworkflow_id: string;
+                /** @description Subworkflow version to delete (parents block). */
                 readonly version: string;
             };
             readonly cookie?: never;
@@ -20025,6 +20061,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource identifier */
                 readonly subworkflow_id: string;
+                /** @description Subworkflow version pinned by the parent workflows. */
                 readonly version: string;
             };
             readonly cookie?: never;
@@ -20079,12 +20116,15 @@ export interface operations {
     readonly ApiV1TasksListTasks: {
         readonly parameters: {
             readonly query?: {
+                /** @description Filter to tasks assigned to this agent. */
                 readonly assigned_to?: string | null;
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Filter to tasks scoped to this project. */
                 readonly project?: string | null;
+                /** @description Filter to tasks in this status. */
                 readonly status?: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | null;
             };
             readonly header?: never;
@@ -21158,6 +21198,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Workflow version (one-based; 1 = first revision). */
                 readonly version_num: number;
                 /** @description Resource identifier */
                 readonly workflow_id: string;

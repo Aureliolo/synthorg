@@ -89,10 +89,32 @@ class CoordinationMetricsController(Controller):
     async def list_coordination_metrics(  # noqa: PLR0913
         self,
         state: State,
-        task_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
-        agent_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
-        since: datetime | None = None,
-        until: datetime | None = None,
+        task_id: Annotated[
+            str | None,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to coordination metrics emitted under this task.",
+            ),
+        ] = None,
+        agent_id: Annotated[
+            str | None,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to coordination metrics emitted by this agent.",
+            ),
+        ] = None,
+        since: Annotated[
+            datetime | None,
+            Parameter(
+                description="Filter to metrics emitted at or after this ISO timestamp."
+            ),
+        ] = None,
+        until: Annotated[
+            datetime | None,
+            Parameter(
+                description="Filter to metrics emitted at or before this ISO timestamp."
+            ),
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[CoordinationMetricsRecord]:

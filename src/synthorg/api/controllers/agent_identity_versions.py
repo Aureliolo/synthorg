@@ -178,7 +178,13 @@ class AgentIdentityVersionController(Controller):
         self,
         state: State,
         agent_id: PathId,
-        version_num: Annotated[int, Parameter(ge=1)],
+        version_num: Annotated[
+            int,
+            Parameter(
+                ge=1,
+                description="Agent identity version (one-based; 1 = first revision).",
+            ),
+        ],
     ) -> ApiResponse[SnapshotT]:
         """Get a specific agent identity version snapshot."""
         version = await state.app_state.agent_version_service.get_version(

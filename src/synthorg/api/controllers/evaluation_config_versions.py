@@ -81,7 +81,13 @@ class EvaluationConfigVersionController(Controller):
     async def get_version(
         self,
         state: State,
-        version_num: Annotated[int, Parameter(ge=1)],
+        version_num: Annotated[
+            int,
+            Parameter(
+                ge=1,
+                description="Evaluation config version (one-based).",
+            ),
+        ],
     ) -> Response[ApiResponse[SnapshotT]]:
         """Get a specific evaluation config version snapshot."""
         repo = state.app_state.persistence.evaluation_config_versions

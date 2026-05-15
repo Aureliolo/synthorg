@@ -80,7 +80,13 @@ class RoleVersionController(Controller):
         self,
         state: State,
         role_name: str,
-        version_num: Annotated[int, Parameter(ge=1)],
+        version_num: Annotated[
+            int,
+            Parameter(
+                ge=1,
+                description="Role version (one-based; 1 = first revision).",
+            ),
+        ],
     ) -> Response[ApiResponse[SnapshotT]]:
         """Get a specific role version snapshot."""
         repo = state.app_state.persistence.role_versions

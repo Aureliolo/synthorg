@@ -289,11 +289,11 @@ placeholder factories:
   through `safe_error_description(exc)` (SEC-1) and `domain_code` falls back
   to `exc.domain_code` when present.
 - `not_supported(tool_name, reason)`: stable `status="error"` /
-  `domain_code="not_supported"` envelope for tools whose service facade is
-  not yet wired. Emits the `MCP_HANDLER_NOT_IMPLEMENTED` WARNING event so
-  operators can alert on unwired tools. After META-MCP-2 every tool is
-  wired, so this path only fires for tools registered after PR1 that have
-  not yet been given a concrete handler.
+  `domain_code="not_supported"` envelope for tools whose service facade
+  is not wired. Emits the `MCP_HANDLER_NOT_IMPLEMENTED` WARNING event so
+  operators can alert on unwired tools. Every tool registered today is
+  wired; this path fires only for newly registered tools that have not
+  been given a concrete handler.
 - `service_fallback(tool_name, reason)`: helper retained in `common.py`
   for future surgical use. Emits `MCP_HANDLER_SERVICE_FALLBACK`;
   META-MCP-2 removed every call site and the integration sweep at

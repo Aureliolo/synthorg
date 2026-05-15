@@ -2,7 +2,7 @@
 
 ## Current Status
 
-SynthOrg is in **active development**. The core subsystems are built, tested (<!--RS:tests-->29,000+<!--/RS--> tests in the latest run, 80%+ coverage), and integrated through a REST + WebSocket API, React 19 dashboard, and Go CLI. See the [releases page](https://github.com/Aureliolo/synthorg/releases) for the latest tagged build.
+SynthOrg is in **active development**. The core subsystems are built, tested (<!--RS:tests-->30,000+<!--/RS--> tests in the latest run, 80%+ coverage), and integrated through a REST + WebSocket API, React 19 dashboard, and Go CLI. See the [releases page](https://github.com/Aureliolo/synthorg/releases) for the latest tagged build.
 
 What works today:
 
@@ -14,7 +14,7 @@ What works today:
 - **Memory** with hybrid retrieval (dense + BM25 sparse with RRF fusion), tool-based injection, procedural memory auto-generation from failures, consolidation (LLM Merge, Search-and-Ask), and MVCC snapshot reads on the shared knowledge store
 - **Communication** with message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), meeting protocols, and an A2A gateway for external agent systems
 - **Workflow engine** with Kanban, Agile sprints, ceremony scheduling (8 strategies), visual workflow editor, and workflow execution from graph definitions
-- **Tool ecosystem** with 8+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication) and sandbox security (auth proxy, gVisor, Chainguard packages)
+- **Tool ecosystem** with 12+ categories (file system, code execution, version control, web, database, terminal, design, communication, analytics, deployment, memory, MCP servers) and sandbox security (auth proxy, gVisor, Chainguard packages)
 - **Persistence** with SQLite (single-node default) and PostgreSQL (multi-instance, dual-backend conformance-tested) backends, yoyo-managed schema migrations, and ISO 4217 currency stamping on every cost-bearing row
 - **Distributed runtime** with NATS JetStream message bus and distributed task queue for multi-instance deployments
 - **Web dashboard** (React 19 + shadcn/ui) with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, setup wizard, and WebSocket / SSE resilience
@@ -23,6 +23,7 @@ What works today:
 - **Multi-user access** with HttpOnly cookie sessions, CSRF protection, concurrent session control, JWT auth, and session management
 - **Local model management** for Ollama and LM Studio (browse, pull, delete, configure launch parameters)
 - **Observability** with structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, and OTLP
+- **Notification sinks** with operator alerts via Slack, ntfy, email, and HTTP relay (severity filtering and per-channel routing)
 
 What's not there yet:
 
@@ -34,10 +35,9 @@ What's not there yet:
 Prioritised by dependency order. All work is tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues).
 
 - Operational guides: runtime settings reference, notifications and event subscriptions, workflow API tutorials, agent lifecycle, memory admin API
-- Notification sink MVP for operator alerts (Slack, ntfy, email via HTTP sink relay)
 - OpenAPI TypeScript codegen for the web dashboard
 - REST API and dashboard UI for agent evolution configuration and triggering
-- PostgreSQL performance tuning + TimescaleDB hypertable support for append-only time-series tables
+- TimescaleDB hypertable support for append-only time-series tables
 - Dynamic company scaling across clusters
 - Multi-project support with project-scoped teams and isolated budgets
 - Plugin system and benchmarking suite

@@ -275,7 +275,7 @@ curl "http://localhost:3001/api/v1/budget/records?task_id=${TASK_ID}" \
 
 The response includes `data` (paginated records), `daily_summary` (per-day totals aggregated across ALL matching records, not just the page), and `period_summary` (overall totals + computed `avg_cost`).
 
-Supported query parameters: `agent_id`, `task_id`, `offset`, `limit`. Additional slicing (by provider, model, tag, project, date range) is done client-side from the paginated response today; a dedicated report-generation endpoint is planned but not yet implemented.
+Supported query parameters: `agent_id`, `task_id`, `offset`, `limit`. Additional slicing (by provider, model, tag, project, date range) is done client-side from the paginated response. A dedicated report-generation endpoint with server-side slicing is tracked on the GitHub issue tracker.
 
 ### Budget alert webhook integration
 

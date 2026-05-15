@@ -91,6 +91,7 @@ docs = [
     "mkdocstrings[python]==1.0.4",
     "griffe-pydantic==1.3.1",
     "mkdocs-d2-plugin==1.7.0",
+    "mkdocs-redirects==1.2.2",
     # Used by scripts/patch_sitemap.py to safely parse the built sitemap.
     # Present as a transitive via py-serializable, but declared here so the
     # build script has a stable explicit dependency.

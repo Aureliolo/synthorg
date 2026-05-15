@@ -297,8 +297,20 @@ class BudgetController(Controller):
     async def list_cost_records(
         self,
         state: State,
-        agent_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
-        task_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
+        agent_id: Annotated[
+            str | None,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to cost records emitted by this agent.",
+            ),
+        ] = None,
+        task_id: Annotated[
+            str | None,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to cost records emitted under this task.",
+            ),
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> CostRecordListResponse:

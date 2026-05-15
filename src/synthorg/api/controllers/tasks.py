@@ -71,9 +71,24 @@ class TaskController(Controller):
     async def list_tasks(  # noqa: PLR0913
         self,
         state: State,
-        status: TaskStatus | None = None,
-        assigned_to: Annotated[str, Parameter(max_length=256)] | None = None,
-        project: Annotated[str, Parameter(max_length=256)] | None = None,
+        status: Annotated[
+            TaskStatus | None,
+            Parameter(description="Filter to tasks in this status."),
+        ] = None,
+        assigned_to: Annotated[
+            str | None,
+            Parameter(
+                max_length=256,
+                description="Filter to tasks assigned to this agent.",
+            ),
+        ] = None,
+        project: Annotated[
+            str | None,
+            Parameter(
+                max_length=256,
+                description="Filter to tasks scoped to this project.",
+            ),
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Task]:

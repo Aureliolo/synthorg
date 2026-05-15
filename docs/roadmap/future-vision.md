@@ -6,13 +6,12 @@ The longer-term direction for SynthOrg. Items here are either **planned** (sched
 
 | Feature | Status |
 |---------|--------|
-| PostgreSQL performance tuning + TimescaleDB hypertable support | Planned |
+| TimescaleDB hypertable support for append-only time-series tables | Planned |
 | Multi-project support with project-scoped teams and isolated budgets | Planned |
 | Dynamic company scaling across clusters | Planned |
 | Plugin system | Planned |
 | Benchmarking suite | Planned |
 | REST API and dashboard UI for agent evolution | Planned |
-| Notification sink MVP (Slack, ntfy, HTTP-relay) | Planned |
 | OpenAPI TypeScript codegen for the dashboard | Planned |
 
 ## Backlog (Research Candidates)

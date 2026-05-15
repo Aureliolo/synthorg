@@ -215,6 +215,54 @@ See the [engine design](../design/engine.md#subworkflows) for the full subworkfl
 
 ---
 
+---
+
+## Company-Level Workflow Configuration
+
+The runtime workflow type (Kanban, Agile Kanban, sequential, parallel)
+and its sub-config (board columns, sprint cadence, ceremony policy) is
+configured in the company YAML alongside agents and providers. The
+runtime engine consults the active type only; the inactive
+sub-configs are accepted for convenience but emit a
+`WORKFLOW_CONFIG_UNUSED_SUBCONFIG` warning if customised.
+
+```yaml
+workflow:
+  workflow_type: agile_kanban     # kanban | agile_kanban | sequential | parallel
+  kanban:
+    columns:
+      - name: "To Do"
+        wip_limit: null           # null = unlimited
+      - name: "In Progress"
+        wip_limit: 4
+      - name: "In Review"
+        wip_limit: 2
+      - name: "Done"
+        wip_limit: null
+  sprint:
+    duration_days: 14
+    velocity_calculator: "rolling_average"
+    auto_transition: true
+    ceremonies:
+      planning_strategy: "fixed_start"
+      retro_strategy: "fixed_end"
+```
+
+The active `workflow_type` controls which sub-config blocks the engine
+reads:
+
+| `workflow_type` | Reads `kanban` | Reads `sprint` |
+|------------------|----------------|----------------|
+| `KANBAN` | yes | no |
+| `AGILE_KANBAN` | yes | yes |
+| `SEQUENTIAL` / `PARALLEL` | no | no |
+
+Customising an unused sub-config block does not break anything; the
+engine emits a single advisory warning at company-load time so
+operators can clean the YAML up at their leisure.
+
+---
+
 ## See Also
 
 - [OpenAPI Reference](../openapi/index.md): full schema for every endpoint

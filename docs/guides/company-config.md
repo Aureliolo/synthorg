@@ -188,6 +188,41 @@ Each provider lists its available models under the `models` key:
             alias: "medium"
     ```
 
+=== "Cross-provider Fallback"
+
+    Configure a secondary provider that takes over when the primary
+    rejects, rate-limits, or times out a request. The `degradation`
+    block on the primary names the fallback provider; agents resolve
+    the alias on the secondary when degradation fires.
+
+    ```yaml
+    providers:
+      primary-cloud:
+        auth_type: api_key
+        api_key: "sk-..."
+        degradation:
+          fallback_provider: secondary-cloud
+          trigger_on:
+            - rate_limit
+            - provider_timeout
+            - provider_connection
+        models:
+          - id: "example-large-001"
+            alias: "large"
+          - id: "example-small-001"
+            alias: "small"
+      secondary-cloud:
+        auth_type: api_key
+        api_key: "sk-backup-..."
+        models:
+          # Both providers expose the same alias names so the routing
+          # layer can hand off without reconfiguring agents.
+          - id: "alt-large-001"
+            alias: "large"
+          - id: "alt-small-001"
+            alias: "small"
+    ```
+
 ---
 
 ## Model Routing
@@ -207,7 +242,7 @@ The `routing` section controls how models are selected for agent tasks.
 
 ### Routing Rules
 
-Rules are evaluated in order. Each rule matches by `role_level` and/or `task_type`:
+Rules are evaluated in order. Each rule matches by `role_level` and / or `task_type`. **Validation: at least one of `role_level` or `task_type` MUST be set per rule.** A rule with both fields null is rejected at company-load time with a `ConfigValidationError`.
 
 ```yaml
 routing:
@@ -231,10 +266,6 @@ routing:
 | `task_type` | string | `null` | Task type filter |
 | `preferred_model` | string | *(required)* | Preferred model alias or ID |
 | `fallback` | string | `null` | Fallback model |
-
-!!! note
-
-    At least one of `role_level` or `task_type` must be set per rule.
 
 ---
 
@@ -301,20 +332,27 @@ Operational data persistence (tasks, cost records, messages, workflows, audit en
 persistence:
   backend: "postgres"              # "sqlite" (default) or "postgres"
   sqlite:
-    path: "/data/synthorg.db"    # file path; used when backend == "sqlite"
-  postgres:                        # used when backend == "postgres"
+    path: "/data/synthorg.db"      # file path; used when backend == "sqlite"
+    wal_mode: true                 # enable WAL journal mode (default)
+    journal_size_limit: 67108864   # WAL journal cap in bytes (default 64 MB)
+  postgres:                        # required when backend == "postgres"
     host: "db.internal"
-    port: 5432
+    port: 5432                     # default 5432
     database: "synthorg"
     username: "synthorg_app"
-    password: "${POSTGRES_PASSWORD}"  # SecretStr -- redacted from logs
-    ssl_mode: "verify-full"          # prefer verify-full in production
-    pool_min_size: 1
-    pool_max_size: 10
-    pool_timeout_seconds: 30.0
-    application_name: "synthorg"
-    statement_timeout_ms: 30000
-    connect_timeout_seconds: 10.0
+    password: "${POSTGRES_PASSWORD}"  # SecretStr; redacted from logs
+    ssl_mode: "verify-full"        # default "require"; prefer "verify-full" in prod
+    pool_min_size: 1               # default 1
+    pool_max_size: 10              # default 10; must be >= pool_min_size
+    pool_timeout_seconds: 30.0     # default 30.0
+    application_name: "synthorg"   # appears in pg_stat_activity
+    statement_timeout_ms: 30000    # default 30000 (0 disables)
+    connect_timeout_seconds: 10.0  # default 10.0
+    # TimescaleDB hypertable support (Apache-2.0 features only).
+    # Not available on managed Postgres providers (RDS, Cloud SQL, Azure).
+    enable_timescaledb: false
+    cost_records_chunk_interval: "1 day"
+    audit_entries_chunk_interval: "1 day"
 ```
 
 The Postgres backend requires the optional extra: install with

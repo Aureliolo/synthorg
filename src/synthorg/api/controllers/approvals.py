@@ -514,10 +514,21 @@ class ApprovalsController(Controller):
     async def list_approvals(  # noqa: PLR0913
         self,
         state: State,
-        status: ApprovalStatus | None = None,
-        risk_level: ApprovalRiskLevel | None = None,
-        action_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
-        | None = None,
+        status: Annotated[
+            ApprovalStatus | None,
+            Parameter(description="Filter to approvals in this status."),
+        ] = None,
+        risk_level: Annotated[
+            ApprovalRiskLevel | None,
+            Parameter(description="Filter to approvals at this risk level."),
+        ] = None,
+        action_type: Annotated[
+            str | None,
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to approvals raised for this action type.",
+            ),
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ApprovalResponse]:

@@ -81,7 +81,13 @@ class BudgetConfigVersionController(Controller):
     async def get_version(
         self,
         state: State,
-        version_num: Annotated[int, Parameter(ge=1)],
+        version_num: Annotated[
+            int,
+            Parameter(
+                ge=1,
+                description="Budget config version (one-based; 1 = first revision).",
+            ),
+        ],
     ) -> Response[ApiResponse[SnapshotT]]:
         """Get a specific budget config version snapshot."""
         repo = state.app_state.persistence.budget_config_versions

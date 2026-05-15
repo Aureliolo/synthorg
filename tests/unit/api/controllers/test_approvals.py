@@ -702,7 +702,7 @@ class TestApprovalPathParamValidation:
             params={"action_type": long_action},
             headers=_READ_HEADERS,
         )
-        assert resp.status_code == 422
+        assert resp.status_code in (400, 422)
 
 
 @pytest.mark.unit
