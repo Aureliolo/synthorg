@@ -46,6 +46,9 @@ from synthorg.persistence.postgres.artifact_repo import PostgresArtifactReposito
 from synthorg.persistence.postgres.audit_repository import PostgresAuditRepository
 from synthorg.persistence.postgres.backend_connection import PostgresConnectionMixin
 from synthorg.persistence.postgres.backend_migration import PostgresMigrationMixin
+from synthorg.persistence.postgres.ceremony_scheduler_state_repo import (
+    PostgresCeremonySchedulerStateRepository,
+)
 from synthorg.persistence.postgres.checkpoint_repo import (
     PostgresCheckpointRepository,
 )
@@ -82,6 +85,9 @@ from synthorg.persistence.postgres.lockout_repo import (
 )
 from synthorg.persistence.postgres.mcp_installation_repo import (
     PostgresMcpInstallationRepository,
+)
+from synthorg.persistence.postgres.meeting_cooldown_repo import (
+    PostgresMeetingCooldownRepository,
 )
 from synthorg.persistence.postgres.oauth_state_repo import (
     PostgresOAuthStateRepository,
@@ -138,6 +144,9 @@ from synthorg.persistence.postgres.ssrf_violation_repo import (
 from synthorg.persistence.postgres.subworkflow_repo import (
     PostgresSubworkflowRepository,
 )
+from synthorg.persistence.postgres.tracked_container_repo import (
+    PostgresTrackedContainerRepository,
+)
 from synthorg.persistence.postgres.training_plan_repo import (
     PostgresTrainingPlanRepository,
 )
@@ -177,6 +186,9 @@ if TYPE_CHECKING:
         RefreshTokenRepository,
         SessionRepository,
     )
+    from synthorg.persistence.ceremony_scheduler_state_protocol import (
+        CeremonySchedulerStateRepository,
+    )
     from synthorg.persistence.checkpoint_protocol import (
         CheckpointRepository,
         HeartbeatRepository,
@@ -196,6 +208,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
     from synthorg.persistence.idempotency_protocol import IdempotencyRepository
     from synthorg.persistence.mcp_protocol import McpInstallationRepository
+    from synthorg.persistence.meeting_cooldown_protocol import (
+        MeetingCooldownRepository,
+    )
     from synthorg.persistence.memory_protocol import OrgFactRepository
     from synthorg.persistence.message_protocol import MessageRepository
     from synthorg.persistence.ontology_protocol import (
@@ -221,6 +236,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
     from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
     from synthorg.persistence.task_protocol import TaskRepository
+    from synthorg.persistence.tracked_container_protocol import (
+        TrackedContainerRepository,
+    )
     from synthorg.persistence.training_protocol import (
         TrainingPlanRepository,
         TrainingResultRepository,
@@ -294,6 +312,9 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._risk_overrides: RiskOverrideRepository | None = None
         self._ssrf_violations: SsrfViolationRepository | None = None
         self._circuit_breaker_state: CircuitBreakerStateRepository | None = None
+        self._ceremony_scheduler_state: CeremonySchedulerStateRepository | None = None
+        self._meeting_cooldown: MeetingCooldownRepository | None = None
+        self._tracked_containers: TrackedContainerRepository | None = None
         self._training_plans: PostgresTrainingPlanRepository | None = None
         self._training_results: PostgresTrainingResultRepository | None = None
         self._sessions: PostgresSessionRepository | None = None
@@ -351,6 +372,9 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._risk_overrides = None
         self._ssrf_violations = None
         self._circuit_breaker_state = None
+        self._ceremony_scheduler_state = None
+        self._meeting_cooldown = None
+        self._tracked_containers = None
         self._project_cost_aggregates = None
         self._training_plans = None
         self._training_results = None
@@ -440,6 +464,9 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._risk_overrides = PostgresRiskOverrideRepository(pool)
         self._ssrf_violations = PostgresSsrfViolationRepository(pool)
         self._circuit_breaker_state = PostgresCircuitBreakerStateRepository(pool)
+        self._ceremony_scheduler_state = PostgresCeremonySchedulerStateRepository(pool)
+        self._meeting_cooldown = PostgresMeetingCooldownRepository(pool)
+        self._tracked_containers = PostgresTrackedContainerRepository(pool)
         self._project_cost_aggregates = PostgresProjectCostAggregateRepository(pool)
         self._training_plans = PostgresTrainingPlanRepository(pool)
         self._training_results = PostgresTrainingResultRepository(pool)
@@ -707,6 +734,23 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         return self._require_connected(
             self._circuit_breaker_state, "circuit_breaker_state"
         )
+
+    @property
+    def ceremony_scheduler_state(self) -> CeremonySchedulerStateRepository:
+        """Repository for ceremony scheduler per-sprint state snapshots."""
+        return self._require_connected(
+            self._ceremony_scheduler_state, "ceremony_scheduler_state"
+        )
+
+    @property
+    def meeting_cooldown(self) -> MeetingCooldownRepository:
+        """Repository for meeting cooldown last-triggered timestamps."""
+        return self._require_connected(self._meeting_cooldown, "meeting_cooldown")
+
+    @property
+    def tracked_containers(self) -> TrackedContainerRepository:
+        """Repository for Docker sandbox tracked-container records."""
+        return self._require_connected(self._tracked_containers, "tracked_containers")
 
     @property
     def project_cost_aggregates(self) -> ProjectCostAggregateRepository:

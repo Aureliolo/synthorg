@@ -36,6 +36,9 @@ if TYPE_CHECKING:
         RefreshTokenRepository,
         SessionRepository,
     )
+    from synthorg.persistence.ceremony_scheduler_state_protocol import (
+        CeremonySchedulerStateRepository,
+    )
     from synthorg.persistence.checkpoint_protocol import (
         CheckpointRepository,
         HeartbeatRepository,
@@ -58,6 +61,9 @@ if TYPE_CHECKING:
     )
     from synthorg.persistence.idempotency_protocol import IdempotencyRepository
     from synthorg.persistence.mcp_protocol import McpInstallationRepository
+    from synthorg.persistence.meeting_cooldown_protocol import (
+        MeetingCooldownRepository,
+    )
     from synthorg.persistence.memory_protocol import OrgFactRepository
     from synthorg.persistence.message_protocol import MessageRepository
     from synthorg.persistence.ontology_protocol import (
@@ -85,6 +91,9 @@ if TYPE_CHECKING:
     )
     from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
     from synthorg.persistence.task_protocol import TaskRepository
+    from synthorg.persistence.tracked_container_protocol import (
+        TrackedContainerRepository,
+    )
     from synthorg.persistence.training_protocol import (
         TrainingPlanRepository,
         TrainingResultRepository,
@@ -147,6 +156,9 @@ class _BackendRepositoryAccessors:
     _risk_overrides: RiskOverrideRepository | None
     _ssrf_violations: SsrfViolationRepository | None
     _circuit_breaker_state: CircuitBreakerStateRepository | None
+    _ceremony_scheduler_state: CeremonySchedulerStateRepository | None
+    _meeting_cooldown: MeetingCooldownRepository | None
+    _tracked_containers: TrackedContainerRepository | None
     _connections: ConnectionRepository | None
     _connection_secrets: ConnectionSecretRepository | None
     _oauth_states: OAuthStateRepository | None
@@ -419,6 +431,30 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._circuit_breaker_state,
             "circuit_breaker_state",
+        )
+
+    @property
+    def ceremony_scheduler_state(self) -> CeremonySchedulerStateRepository:
+        """Repository for ceremony scheduler per-sprint state snapshots."""
+        return self._require_connected(
+            self._ceremony_scheduler_state,
+            "ceremony_scheduler_state",
+        )
+
+    @property
+    def meeting_cooldown(self) -> MeetingCooldownRepository:
+        """Repository for meeting cooldown last-triggered timestamps."""
+        return self._require_connected(
+            self._meeting_cooldown,
+            "meeting_cooldown",
+        )
+
+    @property
+    def tracked_containers(self) -> TrackedContainerRepository:
+        """Repository for Docker sandbox tracked-container records."""
+        return self._require_connected(
+            self._tracked_containers,
+            "tracked_containers",
         )
 
     @property

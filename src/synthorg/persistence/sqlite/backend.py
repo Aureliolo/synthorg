@@ -45,6 +45,9 @@ from synthorg.persistence.sqlite.artifact_repo import (
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
+from synthorg.persistence.sqlite.ceremony_scheduler_state_repo import (
+    SQLiteCeremonySchedulerStateRepository,
+)
 from synthorg.persistence.sqlite.checkpoint_repo import (
     SQLiteCheckpointRepository,
 )
@@ -81,6 +84,9 @@ from synthorg.persistence.sqlite.lockout_repo import (
 )
 from synthorg.persistence.sqlite.mcp_installation_repo import (
     SQLiteMcpInstallationRepository,
+)
+from synthorg.persistence.sqlite.meeting_cooldown_repo import (
+    SQLiteMeetingCooldownRepository,
 )
 from synthorg.persistence.sqlite.oauth_state_repo import SQLiteOAuthStateRepository
 from synthorg.persistence.sqlite.ontology_drift_repo import (
@@ -138,6 +144,9 @@ from synthorg.persistence.sqlite.ssrf_violation_repo import (
 )
 from synthorg.persistence.sqlite.subworkflow_repo import (
     SQLiteSubworkflowRepository,
+)
+from synthorg.persistence.sqlite.tracked_container_repo import (
+    SQLiteTrackedContainerRepository,
 )
 from synthorg.persistence.sqlite.training_plan_repo import (
     SQLiteTrainingPlanRepository,
@@ -224,6 +233,11 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._risk_overrides: SQLiteRiskOverrideRepository | None = None
         self._ssrf_violations: SQLiteSsrfViolationRepository | None = None
         self._circuit_breaker_state: SQLiteCircuitBreakerStateRepository | None = None
+        self._ceremony_scheduler_state: (
+            SQLiteCeremonySchedulerStateRepository | None
+        ) = None
+        self._meeting_cooldown: SQLiteMeetingCooldownRepository | None = None
+        self._tracked_containers: SQLiteTrackedContainerRepository | None = None
         self._project_cost_aggregates: SQLiteProjectCostAggregateRepository | None = (
             None
         )
@@ -285,6 +299,9 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._risk_overrides = None
         self._ssrf_violations = None
         self._circuit_breaker_state = None
+        self._ceremony_scheduler_state = None
+        self._meeting_cooldown = None
+        self._tracked_containers = None
         self._project_cost_aggregates = None
         self._fine_tune_checkpoints = None
         self._fine_tune_runs = None
@@ -541,6 +558,18 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._circuit_breaker_state = SQLiteCircuitBreakerStateRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._ceremony_scheduler_state = SQLiteCeremonySchedulerStateRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._meeting_cooldown = SQLiteMeetingCooldownRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._tracked_containers = SQLiteTrackedContainerRepository(
             self._db,
             write_context=self.write_context,
         )
