@@ -899,7 +899,8 @@ A 5-finding list of cited operator-tunable knobs absent from settings is
 worth far more than 57 findings spread across internal constants.
 
 Severity: medium. Cap at 15 findings total per run; if you exceed 15, narrow
-your scope and re-evaluate -- you are likely capturing internal constants.
+your scope by adding more exclusion criteria and re-evaluate from scratch --
+you are likely capturing internal constants rather than operator-tunable knobs.
 
 ```
 
@@ -3808,12 +3809,14 @@ Format per finding (mechanically parseable; synthesizer reads this verbatim):
 ### [original-file]:[line] -- [CONFIRMED|FALSE_POSITIVE|INTENTIONAL]
 **Original**: [description from audit agent]
 **Actual code**:
+
 ```text
 <file:line>
 <2-5 line quote>
 ```
 
 **Verdict**: [reason tying quote to verdict]
+
 ---
 
 ## Per-batch summary at the bottom
