@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
-from synthorg.api.dto_provider_capabilities import PresetOverride
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -18,6 +17,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
 )
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 from synthorg.providers.enums import AuthType
+from synthorg.providers.management.capability_dtos import PresetOverride
 
 if TYPE_CHECKING:
     from synthorg.config.schema import ProviderModelConfig

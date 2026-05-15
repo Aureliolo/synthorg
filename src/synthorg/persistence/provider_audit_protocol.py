@@ -23,8 +23,10 @@ write path.
 
 from typing import Final, Protocol, runtime_checkable
 
-from synthorg.api.dto_provider_capabilities import ProviderAuditEvent  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.providers.management.capability_dtos import (
+    ProviderAuditEvent,  # noqa: TC001
+)
 
 _DEFAULT_LIST_LIMIT_50: Final[int] = 50
 

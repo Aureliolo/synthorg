@@ -6,7 +6,6 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from synthorg.api.dto_provider_capabilities import PresetOverride
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -14,6 +13,7 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._shared import normalize_utc
 from synthorg.providers.enums import AuthType
+from synthorg.providers.management.capability_dtos import PresetOverride
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

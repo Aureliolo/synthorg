@@ -16,8 +16,8 @@ explicitly cleared with ``delete``.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.api.dto_provider_capabilities import PresetOverride  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.providers.management.capability_dtos import PresetOverride  # noqa: TC001
 
 
 @runtime_checkable
