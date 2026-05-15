@@ -345,6 +345,9 @@ class _FakeProviderAuditRepo:
         self._events.append(saved)
         return saved
 
+    async def append(self, event: Any) -> None:
+        await self.record(event)
+
     async def list(
         self,
         *,
@@ -362,6 +365,27 @@ class _FakeProviderAuditRepo:
         page = rows[:limit]
         has_more = len(rows) > limit
         return tuple(page), has_more
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        rows = sorted(
+            (e for e in self._events if e.provider_name == filter_spec.provider_name),
+            key=lambda e: e.id,
+            reverse=True,
+        )
+        if filter_spec.after_id is not None:
+            rows = [e for e in rows if e.id < filter_spec.after_id]
+        return tuple(rows[offset : offset + limit])
+
+    async def purge_before(self, threshold: Any) -> int:
+        before = len(self._events)
+        self._events = [e for e in self._events if e.occurred_at >= threshold]
+        return before - len(self._events)
 
     async def purge_before_id(self, *, before_id: int) -> int:
         before = len(self._events)

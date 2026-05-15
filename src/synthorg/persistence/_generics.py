@@ -35,7 +35,14 @@ layer is uniformly async.
 """
 
 from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import Final, Protocol, TypeVar, runtime_checkable
+
+#: Canonical page size for ``list_items`` / ``query`` across every
+#: repository protocol defined here and every concrete repo that
+#: composes one of them. Pinned in one place so callers and impls
+#: cannot drift apart and so each concrete repo does not need its
+#: own ``# lint-allow: magic-numbers`` opt-out on the default.
+DEFAULT_PAGE_SIZE: Final[int] = 100
 
 T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)
