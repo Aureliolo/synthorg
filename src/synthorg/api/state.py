@@ -113,6 +113,10 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.telemetry.collector import TelemetryCollector  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
+from synthorg.workers.execution_service import (
+    LifecycleAdvancingExecutionService,
+    WorkerExecutionService,
+)
 
 if TYPE_CHECKING:
     from synthorg.a2a.agent_card import AgentCardBuilder
@@ -272,6 +276,7 @@ class AppState(AppStateServicesMixin):
         "_webhook_event_bridge",
         "_webhook_replay_protector",
         "_webhook_service",
+        "_worker_execution_service",
         "_workflow_execution_service",
         "_workflow_rollback_service",
         "_workflow_service",
@@ -394,6 +399,11 @@ class AppState(AppStateServicesMixin):
         self._tunnel_provider = tunnel_provider
         self._webhook_event_bridge = webhook_event_bridge
         self._webhook_replay_protector: object | None = None
+        # Defaults to a lifecycle-advancing implementation wired
+        # against the task engine in lifecycle_builder; production
+        # deployments may swap the implementation to invoke the full
+        # AgentEngine instead of the baseline lifecycle walk.
+        self._worker_execution_service: WorkerExecutionService | None = None
         # Lazily constructed when first accessed via the property; the
         # service wraps ``persistence.idempotency_keys`` and lives only
         # if a persistence backend is configured.
@@ -779,6 +789,37 @@ class AppState(AppStateServicesMixin):
     def set_task_engine(self, engine: TaskEngine) -> None:
         """Attach the task engine (once-only)."""
         self._set_once("_task_engine", engine, "Task engine")
+
+    @property
+    def worker_execution_service(self) -> WorkerExecutionService:
+        """Return the worker-callable execution service or auto-wire the default.
+
+        Lazily constructs the baseline lifecycle-advancing service
+        the first time the worker-callable execute endpoint fires.
+        Deployments that want the full agent-runtime invocation call
+        :meth:`set_worker_execution_service` at startup to swap the
+        implementation before any HTTP traffic arrives.
+        """
+        if self._worker_execution_service is None:
+            self._worker_execution_service = LifecycleAdvancingExecutionService(
+                task_engine=self.task_engine,
+            )
+        return self._worker_execution_service
+
+    def set_worker_execution_service(
+        self,
+        service: WorkerExecutionService,
+    ) -> None:
+        """Attach a worker execution service implementation (once-only).
+
+        Wired before any HTTP traffic so the property's lazy default
+        does not race the explicit assignment.
+        """
+        self._set_once(
+            "_worker_execution_service",
+            service,
+            "Worker execution service",
+        )
 
     @property
     def distributed_task_queue(self) -> JetStreamTaskQueue | None:

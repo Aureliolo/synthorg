@@ -3712,6 +3712,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/tasks/{task_id}/execute": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ExecuteTask */
+        readonly post: operations["ApiV1TasksTaskIdExecuteExecuteTask"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/tasks/{task_id}/transition": {
         readonly parameters: {
             readonly query?: never;
@@ -7433,6 +7450,15 @@ export type components = {
              * @description Signature timestamp
              */
             readonly signed_at: string;
+        };
+        /** ExecuteTaskRequest */
+        readonly ExecuteTaskRequest: {
+            /** @description Per-dispatch idempotency key; backend dedups duplicate executions */
+            readonly idempotency_key: string;
+            /** @description Task status that triggered the dispatch (typically 'assigned' or 'ready') */
+            readonly new_status: string;
+            /** @description Task status before the triggering transition */
+            readonly previous_status?: string | null;
         };
         /** ExpectedArtifact */
         readonly ExpectedArtifact: {
@@ -20330,6 +20356,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_CoordinationResultResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1TasksTaskIdExecuteExecuteTask: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly task_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ExecuteTaskRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

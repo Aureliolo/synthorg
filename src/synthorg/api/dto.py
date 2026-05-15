@@ -432,6 +432,32 @@ class TransitionTaskRequest(BaseModel):
     )
 
 
+class ExecuteTaskRequest(BaseModel):
+    """Payload for the worker-callable ``POST /tasks/{id}/execute`` endpoint.
+
+    Mirrors the ``TaskClaim`` envelope fields the worker carries so the
+    backend's ``WorkerExecutionService`` has the same provenance the
+    dispatcher captured when it built the claim. The endpoint only
+    needs the status pair and the dedup key; the task body is read
+    server-side via the task repository.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    previous_status: NotBlankStr | None = Field(
+        default=None,
+        description="Task status before the triggering transition",
+    )
+    new_status: NotBlankStr = Field(
+        description=(
+            "Task status that triggered the dispatch (typically 'assigned' or 'ready')"
+        ),
+    )
+    idempotency_key: NotBlankStr = Field(
+        description="Per-dispatch idempotency key; backend dedups duplicate executions",
+    )
+
+
 class CancelTaskRequest(BaseModel):
     """Payload for cancelling a task.
 

@@ -199,6 +199,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "tasks.coordinate": (10, 60),
     "tasks.create": (50, 60),
     "tasks.delete": (20, 60),
+    "tasks.execute": (200, 60),
     "tasks.transition": (100, 60),
     "tasks.update": (100, 60),
     # training

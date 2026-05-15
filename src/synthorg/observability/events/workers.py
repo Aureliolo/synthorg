@@ -54,3 +54,14 @@ WORKERS_MAIN_INVALID_WORKER_COUNT: Final[str] = "workers.main.invalid_worker_cou
 WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED: Final[str] = (
     "workers.main.placeholder_executor_invoked"
 )
+
+# HTTP-callback executor events
+WORKERS_EXECUTOR_HTTP_INVOKED: Final[str] = "workers.executor.http_invoked"
+WORKERS_EXECUTOR_HTTP_TERMINAL: Final[str] = "workers.executor.http_terminal"
+WORKERS_EXECUTOR_HTTP_RETRY: Final[str] = "workers.executor.http_retry"
+WORKERS_EXECUTOR_HTTP_FAILED: Final[str] = "workers.executor.http_failed"
+
+# Backend-side execution service events
+WORKERS_EXECUTION_SERVICE_ATTEMPTED: Final[str] = "workers.execution_service.attempted"
+WORKERS_EXECUTION_SERVICE_COMPLETED: Final[str] = "workers.execution_service.completed"
+WORKERS_EXECUTION_SERVICE_NO_OP: Final[str] = "workers.execution_service.no_op"
