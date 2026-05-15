@@ -9,6 +9,7 @@ See ``docs/design/ceremony-scheduling.md`` for the full design.
 """
 
 import asyncio
+from collections.abc import Callable  # noqa: TC003 -- runtime annotation on __init__
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.clock import Clock, SystemClock
@@ -30,6 +31,7 @@ from synthorg.engine.workflow.strategy_migration import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION,
+    SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED,
     SPRINT_CEREMONY_DEACTIVATION_HOOK_FAILED,
     SPRINT_CEREMONY_SCHEDULER_START_FAILED,
     SPRINT_CEREMONY_SCHEDULER_STARTED,
@@ -87,6 +89,7 @@ class CeremonyScheduler:
         "_activation_time",
         "_active_sprint",
         "_active_strategy",
+        "_budget_snapshot",
         "_clock",
         "_completion_counters",
         "_fired_once_triggers",
@@ -103,9 +106,27 @@ class CeremonyScheduler:
         *,
         meeting_scheduler: MeetingScheduler,
         clock: Clock | None = None,
+        budget_snapshot: Callable[[], tuple[float, float]] | None = None,
     ) -> None:
+        """Wire the scheduler against the meeting subsystem.
+
+        Args:
+            meeting_scheduler: The MeetingScheduler that dispatches
+                ceremony meetings.
+            clock: Optional Clock for the activation timestamp seam.
+            budget_snapshot: Optional sync callable returning the
+                current ``(consumed_fraction, remaining)`` pair. When
+                provided, the scheduler threads the values into every
+                CeremonyEvalContext so budget-driven strategies can
+                evaluate against live spend. When ``None`` the context
+                fields fall back to ``(0.0, 0.0)`` and the runtime
+                logs a single ``SPRINT_CEREMONY_BUDGET_BRIDGE_OFF``
+                event at scheduler activation so operators know the
+                strategy is running blind.
+        """
         self._meeting_scheduler = meeting_scheduler
         self._clock = clock or SystemClock()
+        self._budget_snapshot = budget_snapshot
         self._active_strategy: CeremonySchedulingStrategy | None = None
         self._active_sprint: Sprint | None = None
         self._sprint_config: SprintConfig | None = None
@@ -116,6 +137,27 @@ class CeremonyScheduler:
         self._activation_time: float = 0.0
         self._velocity_history: tuple[VelocityRecord, ...] = ()
         self._lock = asyncio.Lock()
+
+    def _resolve_budget_snapshot(self) -> tuple[float, float]:
+        """Return the live budget snapshot, or zeros when none is wired.
+
+        Errors from the snapshot callable are swallowed (with a
+        warning) so a transient budget-service failure cannot break
+        ceremony evaluation. The strategy then evaluates against
+        ``(0.0, 0.0)`` for that one tick.
+        """
+        if self._budget_snapshot is None:
+            return (0.0, 0.0)
+        try:
+            return self._budget_snapshot()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED,
+                error_type=type(exc).__name__,
+            )
+            return (0.0, 0.0)
 
     @property
     def running(self) -> bool:
@@ -521,15 +563,15 @@ class CeremonyScheduler:
         Per-ceremony contexts use ``_build_ceremony_context`` instead.
         """
         total_tasks, _, pct = self._compute_sprint_progress(sprint)
+        consumed_fraction, remaining = self._resolve_budget_snapshot()
 
         return CeremonyEvalContext(
             completions_since_last_trigger=0,
             total_completions_this_sprint=self._total_completions,
             total_tasks_in_sprint=total_tasks,
             elapsed_seconds=self._clock.monotonic() - self._activation_time,
-            # Budget integration is a follow-up.
-            budget_consumed_fraction=0.0,
-            budget_remaining=0.0,
+            budget_consumed_fraction=consumed_fraction,
+            budget_remaining=remaining,
             velocity_history=self._velocity_history,
             external_events=(),
             sprint_percentage_complete=pct,
@@ -544,6 +586,7 @@ class CeremonyScheduler:
     ) -> CeremonyEvalContext:
         """Build context for a specific ceremony (per-ceremony counter)."""
         total_tasks, _, pct = self._compute_sprint_progress(sprint)
+        consumed_fraction, remaining = self._resolve_budget_snapshot()
 
         return CeremonyEvalContext(
             completions_since_last_trigger=self._completion_counters.get(
@@ -553,9 +596,8 @@ class CeremonyScheduler:
             total_completions_this_sprint=self._total_completions,
             total_tasks_in_sprint=total_tasks,
             elapsed_seconds=self._clock.monotonic() - self._activation_time,
-            # Budget integration is a follow-up.
-            budget_consumed_fraction=0.0,
-            budget_remaining=0.0,
+            budget_consumed_fraction=consumed_fraction,
+            budget_remaining=remaining,
             velocity_history=self._velocity_history,
             external_events=(),
             sprint_percentage_complete=pct,

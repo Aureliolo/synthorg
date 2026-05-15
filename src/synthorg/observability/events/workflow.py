@@ -137,6 +137,14 @@ evaluation skipped for this cycle."""
 SPRINT_CEREMONY_TRIGGER_FAILED: str = "workflow.sprint.ceremony_trigger_failed"
 """Ceremony trigger_event call failed (swallowed)."""
 
+SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED: str = (
+    "workflow.sprint.ceremony_budget_snapshot_failed"
+)
+"""Budget snapshot callable raised inside the scheduler; the
+CeremonyEvalContext falls back to (0.0, 0.0) for this evaluation tick
+so a transient budget-service failure cannot block ceremony
+scheduling."""
+
 SPRINT_CEREMONY_EVAL_CONTEXT_INVALID: str = (
     "workflow.sprint.ceremony_eval_context_invalid"
 )
