@@ -110,7 +110,7 @@ class PostgresMeetingCooldownRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
         offset: int = 0,
     ) -> tuple[MeetingCooldownRecord, ...]:
         """List cooldown rows ordered by meeting_type_name ascending."""

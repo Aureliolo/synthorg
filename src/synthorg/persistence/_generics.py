@@ -89,7 +89,12 @@ class IdKeyedRepository(Protocol[T, ID_contra]):
         """Delete an entity by id. Return ``True`` iff a row existed."""
         ...
 
-    async def list_items(self, *, limit: int = 100, offset: int = 0) -> tuple[T, ...]:
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[T, ...]:
         """List entities with pagination, ordered deterministically by id."""
         ...
 
@@ -106,7 +111,7 @@ class FilteredQueryRepository(Protocol[T_co, FilterSpec_contra]):
         self,
         filter_spec: FilterSpec_contra,
         *,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
         offset: int = 0,
     ) -> tuple[T_co, ...]:
         """Return all entities matching the filter spec (paginated).
@@ -139,7 +144,7 @@ class AppendOnlyRepository(Protocol[Event, FilterSpec_contra]):
         self,
         filter_spec: FilterSpec_contra,
         *,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
         offset: int = 0,
     ) -> tuple[Event, ...]:
         """Return events matching the filter spec, newest-first (paginated).

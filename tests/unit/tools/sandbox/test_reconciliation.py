@@ -53,6 +53,15 @@ class _StubRepo:
     ) -> TrackedContainerRecord | None:  # pragma: no cover
         return self._rows.get(container_id)
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[TrackedContainerRecord, ...]:  # pragma: no cover
+        items = sorted(self._rows.values(), key=lambda r: r.container_id)
+        return tuple(items[offset : offset + limit])
+
 
 class _StubDockerClient:
     """Minimal stand-in for ``DockerClientProtocol``."""

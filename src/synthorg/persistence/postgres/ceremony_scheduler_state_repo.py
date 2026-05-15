@@ -142,7 +142,7 @@ ON CONFLICT (sprint_id) DO UPDATE SET
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
         offset: int = 0,
     ) -> tuple[CeremonySchedulerStateRecord, ...]:
         """List snapshots ordered by sprint_id ascending."""
