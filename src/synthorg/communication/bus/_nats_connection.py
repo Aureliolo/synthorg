@@ -15,6 +15,7 @@ from synthorg.communication.bus._nats_utils import (
 )
 from synthorg.communication.bus.errors import (
     BusConnectionError,
+    BusStopTimeoutError,
     BusStreamError,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -185,57 +186,80 @@ async def ensure_kv_bucket(state: _NatsState) -> None:
 async def stop(state: _NatsState) -> None:  # noqa: C901
     """Stop the bus gracefully. Idempotent.
 
-    Cancels outstanding ``receive()`` calls and closes the
-    underlying NATS connection.
+    Per ``docs/reference/lifecycle-sync.md``, holds ``state.lock`` across
+    the full body so a concurrent ``start()`` cannot race the teardown.
+    Cancels outstanding ``receive()`` calls, unsubscribes consumers, and
+    drains the NATS client under a hard deadline. A drain that exceeds
+    ``state.stop_drain_timeout_seconds`` marks the state unrestartable
+    and raises :class:`BusStopTimeoutError`; the operator must construct
+    a fresh state to recover.
     """
     async with state.lock:
         if not state.running:
             return
         state.running = False
-    state.shutdown_event.set()
+        state.shutdown_event.set()
 
-    for task in list(state.in_flight_fetches):
-        task.cancel()
-    if state.in_flight_fetches:
-        await asyncio.gather(
-            *state.in_flight_fetches,
-            return_exceptions=True,
-        )
-    state.in_flight_fetches.clear()
-
-    for key, sub in list(state.subscriptions.items()):
-        try:
-            await sub.unsubscribe()
-        except asyncio.CancelledError:
-            pass
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                COMM_BUS_DISCONNECTED,
-                phase="stop_unsubscribe",
-                subscription=str(key),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+        for task in list(state.in_flight_fetches):
+            task.cancel()
+        if state.in_flight_fetches:
+            await asyncio.gather(
+                *state.in_flight_fetches,
+                return_exceptions=True,
             )
-    state.subscriptions.clear()
+        state.in_flight_fetches.clear()
 
-    if state.client is not None:
-        try:
-            await state.client.drain()
-        except asyncio.CancelledError:
-            pass
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                COMM_BUS_DISCONNECTED,
-                phase="stop_drain",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        state.client = None
-        state.js = None
-        state.kv = None
+        for key, sub in list(state.subscriptions.items()):
+            try:
+                await sub.unsubscribe()
+            except asyncio.CancelledError:
+                pass
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    COMM_BUS_DISCONNECTED,
+                    phase="stop_unsubscribe",
+                    subscription=str(key),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        state.subscriptions.clear()
 
-    logger.info(COMM_BUS_STOPPED, backend="nats")
+        if state.client is not None:
+            try:
+                await asyncio.wait_for(
+                    state.client.drain(),
+                    timeout=state.stop_drain_timeout_seconds,
+                )
+            except TimeoutError as exc:
+                state.stop_failed = True
+                logger.warning(
+                    COMM_BUS_DISCONNECTED,
+                    phase="stop_drain",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    timeout_seconds=state.stop_drain_timeout_seconds,
+                    note="drain exceeded deadline; bus is now unrestartable",
+                )
+                msg = (
+                    f"JetStreamMessageBus.stop() drain exceeded "
+                    f"{state.stop_drain_timeout_seconds}s"
+                )
+                raise BusStopTimeoutError(msg) from exc
+            except asyncio.CancelledError:
+                pass
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    COMM_BUS_DISCONNECTED,
+                    phase="stop_drain",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+            state.client = None
+            state.js = None
+            state.kv = None
+
+        logger.info(COMM_BUS_STOPPED, backend="nats")

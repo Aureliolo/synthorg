@@ -30,6 +30,7 @@ from synthorg.communication.bus import _nats_publish as _pub
 from synthorg.communication.bus import _nats_receive as _recv
 from synthorg.communication.bus._nats_state import create_state
 from synthorg.communication.bus._nats_utils import require_running
+from synthorg.communication.bus.errors import BusUnrestartableError
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig  # noqa: TC001
 from synthorg.communication.enums import ChannelType
@@ -160,12 +161,20 @@ class JetStreamMessageBus:
         """Connect to NATS, create the stream, and register channels.
 
         Raises:
+            BusUnrestartableError: If a prior ``stop()`` exceeded its
+                drain timeout and marked the bus unrestartable.
             MessageBusAlreadyRunningError: If already running.
             BusConnectionError: If connection to NATS fails.
             BusStreamError: If stream or KV bucket setup fails.
         """
         state = self._state
         async with state.lock:
+            if state.stop_failed:
+                msg = (
+                    "JetStreamMessageBus is unrestartable: prior stop() "
+                    "exceeded the drain timeout; construct a fresh instance"
+                )
+                raise BusUnrestartableError(msg)
             if state.running:
                 msg = "Message bus is already running"
                 logger.warning(COMM_BUS_ALREADY_RUNNING)

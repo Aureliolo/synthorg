@@ -55,6 +55,17 @@ class _NatsState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
     running: bool = False
+    # Per docs/reference/lifecycle-sync.md: timed-out stops mark the bus
+    # unrestartable. ``start()`` checks this flag and refuses to attach a
+    # second listener to the durable consumer left behind by a stuck
+    # ``stop()``; recovery is to construct a fresh state via
+    # ``create_state``.
+    stop_failed: bool = False
+    # Hard deadline on the ``client.drain()`` call inside ``stop()``.
+    # Reads from ``NatsConfig`` so deployments can tune it per cluster;
+    # default 30s matches the upstream NATS client's own connection
+    # close grace window.
+    stop_drain_timeout_seconds: float = 30.0
     # Last time (``time.monotonic`` seconds) a subscriber queue-overflow
     # event was emitted for a given ``(channel, subscriber)``. Used to
     # rate-limit overflow emissions on the NATS receive path so a
