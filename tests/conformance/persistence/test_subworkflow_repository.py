@@ -51,8 +51,7 @@ class TestSubworkflowRepository:
         await backend.subworkflows.save(_subworkflow())
 
         fetched = await backend.subworkflows.get(
-            NotBlankStr("sub-001"),
-            NotBlankStr("1.0.0"),
+            (NotBlankStr("sub-001"), NotBlankStr("1.0.0")),
         )
         assert fetched is not None
         assert fetched.id == "sub-001"
@@ -60,8 +59,7 @@ class TestSubworkflowRepository:
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         fetched = await backend.subworkflows.get(
-            NotBlankStr("ghost"),
-            NotBlankStr("1.0.0"),
+            (NotBlankStr("ghost"), NotBlankStr("1.0.0")),
         )
         assert fetched is None
 
@@ -130,22 +128,19 @@ class TestSubworkflowRepository:
         await backend.subworkflows.save(_subworkflow())
 
         deleted = await backend.subworkflows.delete(
-            NotBlankStr("sub-001"),
-            NotBlankStr("1.0.0"),
+            (NotBlankStr("sub-001"), NotBlankStr("1.0.0")),
         )
         assert deleted is True
         assert (
             await backend.subworkflows.get(
-                NotBlankStr("sub-001"),
-                NotBlankStr("1.0.0"),
+                (NotBlankStr("sub-001"), NotBlankStr("1.0.0")),
             )
             is None
         )
 
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         deleted = await backend.subworkflows.delete(
-            NotBlankStr("ghost"),
-            NotBlankStr("1.0.0"),
+            (NotBlankStr("ghost"), NotBlankStr("1.0.0")),
         )
         assert deleted is False
 

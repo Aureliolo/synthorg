@@ -60,16 +60,22 @@ class _FakeCheckpointRepo:
         self.set_active_calls: list[str] = []
         self.deactivate_all_calls: int = 0
 
-    async def save_checkpoint(self, checkpoint: CheckpointRecord) -> None:
-        self._rows[str(checkpoint.id)] = checkpoint
+    async def save(self, entity: CheckpointRecord) -> None:
+        self._rows[str(entity.id)] = entity
 
-    async def get_checkpoint(
+    async def get(self, entity_id: str) -> CheckpointRecord | None:
+        return self._rows.get(str(entity_id))
+
+    async def list_items(
         self,
-        checkpoint_id: str,
-    ) -> CheckpointRecord | None:
-        return self._rows.get(str(checkpoint_id))
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[CheckpointRecord, ...]:
+        values = tuple(self._rows.values())
+        return values[offset : offset + limit]
 
-    async def list_checkpoints(
+    async def list_items_page(
         self,
         *,
         limit: int = 50,
@@ -90,8 +96,8 @@ class _FakeCheckpointRepo:
         for key, row in list(self._rows.items()):
             self._rows[key] = row.model_copy(update={"is_active": False})
 
-    async def delete_checkpoint(self, checkpoint_id: str) -> None:
-        self._rows.pop(str(checkpoint_id), None)
+    async def delete(self, entity_id: str) -> bool:
+        return self._rows.pop(str(entity_id), None) is not None
 
     async def get_active_checkpoint(self) -> CheckpointRecord | None:
         for row in self._rows.values():
@@ -103,25 +109,34 @@ class _FakeCheckpointRepo:
 class _FakeRunRepo:
     """Minimal in-memory ``FineTuneRunRepository`` fake (read-only)."""
 
-    async def save_run(self, run: object) -> None:  # pragma: no cover - unused
+    async def save(self, entity: object) -> None:  # pragma: no cover - unused
         pass
 
-    async def get_run(self, run_id: str) -> None:  # pragma: no cover - unused
+    async def get(self, entity_id: str) -> None:  # pragma: no cover - unused
         return None
+
+    async def delete(self, entity_id: str) -> bool:  # pragma: no cover - unused
+        return False
 
     async def get_active_run(self) -> None:  # pragma: no cover - unused
         return None
 
-    async def list_runs(
+    async def list_items(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[FineTuneRun, ...]:
+        del limit, offset
+        return ()
+
+    async def list_items_page(
         self,
         *,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
-        # Match the ``FineTuneRunRepository`` protocol signature so
-        # mypy strict mode accepts this fake as a Protocol instance;
-        # the tests that touch ``list_runs`` never stage rows, so
-        # returning an empty tuple is enough.
+        del limit, offset
         return (), 0
 
     async def update_run(self, run: object) -> None:  # pragma: no cover - unused
@@ -201,8 +216,8 @@ class TestMemoryServiceCheckpoints:
         one-line tuple rather than a whole new test.
         """
         repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="b"))
+        await repo.save(_checkpoint(checkpoint_id="a"))
+        await repo.save(_checkpoint(checkpoint_id="b"))
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
@@ -219,7 +234,7 @@ class TestMemoryServiceCheckpoints:
             run_repo=_FakeRunRepo(),
             settings_service=None,
         )
-        assert await service.get_checkpoint(NotBlankStr("ghost")) is None
+        assert await service.get(NotBlankStr("ghost")) is None
 
     @pytest.mark.parametrize(
         "operation",
@@ -245,14 +260,14 @@ class TestMemoryServiceCheckpoints:
 
     async def test_delete_existing_delegates_to_repo(self) -> None:
         repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
+        await repo.save(_checkpoint(checkpoint_id="a"))
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
             settings_service=None,
         )
         await service.delete_checkpoint(NotBlankStr("a"))
-        assert await repo.get_checkpoint("a") is None
+        assert await repo.get("a") is None
 
 
 class TestMemoryServiceDeploy:
@@ -260,7 +275,7 @@ class TestMemoryServiceDeploy:
 
     async def test_deploy_without_settings_service_activates_only(self) -> None:
         repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
+        await repo.save(_checkpoint(checkpoint_id="a"))
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
@@ -273,7 +288,7 @@ class TestMemoryServiceDeploy:
 
     async def test_deploy_with_settings_pushes_embedder_config(self) -> None:
         repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
+        await repo.save(_checkpoint(checkpoint_id="a"))
         settings = _FakeSettingsService()
         service = MemoryService(
             checkpoint_repo=repo,
@@ -289,7 +304,7 @@ class TestMemoryServiceDeploy:
         self,
     ) -> None:
         repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
+        await repo.save(_checkpoint(checkpoint_id="a"))
         # No prior value exists for either embedder setting AND the
         # second ``set`` raises -- rollback must explicitly delete
         # ``embedder_model`` so the setting does not remain after
@@ -330,10 +345,10 @@ class TestMemoryServiceDeploy:
         were absent.
         """
         repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(
+        await repo.save(
             _checkpoint(checkpoint_id="prior", is_active=True),
         )
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
+        await repo.save(_checkpoint(checkpoint_id="a"))
         # Track the pre-deploy ``deactivate_all`` count so we can assert
         # the rollback path does not increment it (the prior-exists
         # branch routes through ``set_active(prior.id)`` instead).
@@ -411,7 +426,7 @@ class TestMemoryServiceRollback:
         parametrized test keeps the matrix explicit and the setup DRY.
         """
         repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(
+        await repo.save(
             _checkpoint(checkpoint_id="a", backup_config_json=backup_json),
         )
         service = MemoryService(
@@ -426,7 +441,7 @@ class TestMemoryServiceRollback:
 
     async def test_rollback_with_valid_mapping_restores_settings(self) -> None:
         repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(
+        await repo.save(
             _checkpoint(
                 checkpoint_id="a",
                 backup_config_json='{"embedder_model": "prev-model"}',
@@ -454,7 +469,7 @@ class TestMemoryServiceRollback:
         the normal return path when all artefacts are consistent.
         """
         repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(
+        await repo.save(
             _checkpoint(
                 checkpoint_id="a",
                 backup_config_json='{"embedder_model": "prev"}',
@@ -484,7 +499,7 @@ class TestMemoryServiceReReadFailure:
             ) -> CheckpointRecord | None:
                 if self._vanish_after:
                     return None
-                return await super().get_checkpoint(checkpoint_id)
+                return await super().get(checkpoint_id)
 
             async def set_active(self, checkpoint_id: str) -> None:
                 await super().set_active(checkpoint_id)
@@ -493,7 +508,7 @@ class TestMemoryServiceReReadFailure:
                 self._vanish_after = True
 
         repo = _VanishingRepo()
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
+        await repo.save(_checkpoint(checkpoint_id="a"))
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),

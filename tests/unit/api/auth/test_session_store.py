@@ -114,7 +114,7 @@ class TestSessionStoreCreate:
         store: SessionStore,
     ) -> None:
         session = _make_session()
-        await store.create(session)
+        await store.save(session)
         result = await store.get("sess-1")
         assert result is not None
         assert result.session_id == "sess-1"
@@ -132,8 +132,8 @@ class TestSessionStoreCreate:
 
 class TestSessionStoreList:
     async def test_list_by_user(self, store: SessionStore) -> None:
-        await store.create(_make_session(session_id="s1"))
-        await store.create(
+        await store.save(_make_session(session_id="s1"))
+        await store.save(
             _make_session(
                 session_id="s2",
                 user_id="user-2",
@@ -141,7 +141,7 @@ class TestSessionStoreList:
                 role=HumanRole.MANAGER,
             ),
         )
-        await store.create(_make_session(session_id="s3"))
+        await store.save(_make_session(session_id="s3"))
 
         with _patch_now():
             result = await store.list_by_user("user-1")
@@ -153,8 +153,8 @@ class TestSessionStoreList:
         self,
         store: SessionStore,
     ) -> None:
-        await store.create(_make_session(session_id="s1"))
-        await store.create(_make_session(session_id="s2"))
+        await store.save(_make_session(session_id="s1"))
+        await store.save(_make_session(session_id="s2"))
         await store.revoke("s1")
 
         with _patch_now():
@@ -166,8 +166,8 @@ class TestSessionStoreList:
         self,
         store: SessionStore,
     ) -> None:
-        await store.create(_make_session(session_id="s1"))
-        await store.create(
+        await store.save(_make_session(session_id="s1"))
+        await store.save(
             _make_session(
                 session_id="s2",
                 created_at=_NOW - timedelta(hours=2),
@@ -181,8 +181,8 @@ class TestSessionStoreList:
         assert result[0].session_id == "s1"
 
     async def test_list_all(self, store: SessionStore) -> None:
-        await store.create(_make_session(session_id="s1"))
-        await store.create(
+        await store.save(_make_session(session_id="s1"))
+        await store.save(
             _make_session(
                 session_id="s2",
                 user_id="user-2",
@@ -201,7 +201,7 @@ class TestSessionStoreRevoke:
         self,
         store: SessionStore,
     ) -> None:
-        await store.create(_make_session())
+        await store.save(_make_session())
         assert store.is_revoked("sess-1") is False
 
         result = await store.revoke("sess-1")
@@ -219,7 +219,7 @@ class TestSessionStoreRevoke:
         self,
         store: SessionStore,
     ) -> None:
-        await store.create(_make_session())
+        await store.save(_make_session())
         await store.revoke("sess-1")
         result = await store.revoke("sess-1")
         assert result is False
@@ -228,9 +228,9 @@ class TestSessionStoreRevoke:
         self,
         store: SessionStore,
     ) -> None:
-        await store.create(_make_session(session_id="s1"))
-        await store.create(_make_session(session_id="s2"))
-        await store.create(
+        await store.save(_make_session(session_id="s1"))
+        await store.save(_make_session(session_id="s2"))
+        await store.save(
             _make_session(
                 session_id="s3",
                 user_id="user-2",
@@ -258,7 +258,7 @@ class TestSessionStoreRevoke:
         store: SessionStore,
     ) -> None:
         """is_revoked is sync and O(1) for the middleware hot path."""
-        await store.create(_make_session())
+        await store.save(_make_session())
         assert store.is_revoked("sess-1") is False
         await store.revoke("sess-1")
         assert store.is_revoked("sess-1") is True
@@ -269,14 +269,14 @@ class TestSessionStoreCleanup:
         self,
         store: SessionStore,
     ) -> None:
-        await store.create(
+        await store.save(
             _make_session(
                 session_id="expired",
                 created_at=_NOW - timedelta(hours=2),
                 expires_at=_NOW - timedelta(hours=1),
             ),
         )
-        await store.create(_make_session(session_id="active"))
+        await store.save(_make_session(session_id="active"))
 
         with _patch_now():
             removed = await store.cleanup_expired()
@@ -288,7 +288,7 @@ class TestSessionStoreCleanup:
         self,
         store: SessionStore,
     ) -> None:
-        await store.create(
+        await store.save(
             _make_session(
                 session_id="expired",
                 created_at=_NOW - timedelta(hours=2),
@@ -311,7 +311,7 @@ class TestSessionStoreEnforceLimit:
     ) -> None:
         """When user exceeds the limit, oldest sessions are revoked."""
         for i in range(5):
-            await store.create(
+            await store.save(
                 _make_session(
                     session_id=f"s{i}",
                     created_at=_NOW + timedelta(minutes=i),
@@ -335,7 +335,7 @@ class TestSessionStoreEnforceLimit:
     ) -> None:
         """max_sessions=0 means unlimited -- no revocations."""
         for i in range(10):
-            await store.create(
+            await store.save(
                 _make_session(session_id=f"s{i}"),
             )
 
@@ -348,8 +348,8 @@ class TestSessionStoreEnforceLimit:
         store: SessionStore,
     ) -> None:
         """No revocations when session count is at or below the limit."""
-        await store.create(_make_session(session_id="s0"))
-        await store.create(_make_session(session_id="s1"))
+        await store.save(_make_session(session_id="s0"))
+        await store.save(_make_session(session_id="s1"))
 
         with _patch_now():
             revoked = await store.enforce_session_limit("user-1", 5)
@@ -361,10 +361,10 @@ class TestSessionStoreEnforceLimit:
     ) -> None:
         """Sessions from other users are not revoked."""
         for i in range(3):
-            await store.create(
+            await store.save(
                 _make_session(session_id=f"u1-s{i}"),
             )
-        await store.create(
+        await store.save(
             _make_session(
                 session_id="u2-s0",
                 user_id="user-2",

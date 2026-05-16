@@ -249,18 +249,18 @@ class TestFineTuneCheckpointRepository:
         assert await backend.fine_tune_checkpoints.get_active_checkpoint() is None
 
     async def test_eval_metrics_round_trip(self, backend: PersistenceBackend) -> None:
-        await backend.fine_tune_runs.save_run(_run())
+        await backend.fine_tune_runs.save(_run())
         metrics = EvalMetrics(
             ndcg_at_10=0.6,
             recall_at_10=0.7,
             base_ndcg_at_10=0.5,
             base_recall_at_10=0.6,
         )
-        await backend.fine_tune_checkpoints.save_checkpoint(
+        await backend.fine_tune_checkpoints.save(
             _checkpoint(eval_metrics=metrics),
         )
 
-        fetched = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        fetched = await backend.fine_tune_checkpoints.get("cp-1")
         assert fetched is not None
         assert fetched.eval_metrics is not None
         assert fetched.eval_metrics.ndcg_at_10 == 0.6
@@ -277,19 +277,19 @@ class TestFineTuneCheckpointRepository:
         # the driver error as QueryError.
         cp = _checkpoint(run_id="run-ghost")
         with pytest.raises(QueryError):
-            await backend.fine_tune_checkpoints.save_checkpoint(cp)
+            await backend.fine_tune_checkpoints.save(cp)
         # Partial insert must not leak.
-        assert await backend.fine_tune_checkpoints.get_checkpoint(cp.id) is None
+        assert await backend.fine_tune_checkpoints.get(cp.id) is None
 
     async def test_list_checkpoints_clamps_limit_and_offset(
         self, backend: PersistenceBackend
     ) -> None:
         # Mirrors the run-repo clamping test: limit=0 must clamp up to 1;
         # offset=-1 must clamp up to 0.
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
 
-        rows, total = await backend.fine_tune_checkpoints.list_checkpoints(
+        rows, total = await backend.fine_tune_checkpoints.list_items_page(
             limit=0, offset=-1
         )
         assert total == 1
@@ -302,12 +302,12 @@ class TestFineTuneCheckpointRepository:
         # The repository must accept a JSON string from the model and
         # return the same JSON string after a round-trip.
         payload = '{"deployed_at": "2026-01-01T00:00:00Z", "version": 7}'
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(
             _checkpoint(backup_config_json=payload),
         )
 
-        fetched = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        fetched = await backend.fine_tune_checkpoints.get("cp-1")
         assert fetched is not None
         assert fetched.backup_config_json is not None
         # Compare as JSON (Postgres JSONB normalises whitespace + key
@@ -338,12 +338,12 @@ class TestFineTuneCheckpointRepository:
         # model verbatim, which is not valid JSON text and broke any
         # ``json.loads()`` consumer (``MemoryService.rollback_checkpoint``
         # in particular).
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(
             _checkpoint(backup_config_json=payload),
         )
 
-        fetched = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        fetched = await backend.fine_tune_checkpoints.get("cp-1")
         assert fetched is not None
         assert fetched.backup_config_json is not None
         # The round-tripped string must itself parse as valid JSON

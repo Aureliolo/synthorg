@@ -155,7 +155,7 @@ async def test_create_executes_insert() -> None:
     pool = _FakePool(conn)
     store = PostgresSessionStore(pool)  # type: ignore[arg-type]
 
-    await store.create(_make_session())
+    await store.save(_make_session())
 
     assert len(cursor.executed) == 1
     sql, _params = cursor.executed[0]

@@ -172,6 +172,37 @@ class SessionRepository(
         """
         ...
 
+    async def list_all(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+    ) -> tuple[Session, ...]:
+        """List sessions including revoked, ordered by created_at DESC.
+
+        Bespoke D7: callers needing the full history (revoked + active)
+        for audit dashboards bypass the IdKeyed list_items active-only
+        ordering invariant.
+        """
+        ...
+
+    async def list_by_user(
+        self,
+        user_id: NotBlankStr,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+    ) -> tuple[Session, ...]:
+        """List sessions for a user, newest-first (bespoke D7 alternate-key)."""
+        ...
+
+    async def revoke(self, session_id: NotBlankStr) -> bool:
+        """Mark a session as revoked. Returns True iff it existed.
+
+        Bespoke D7: state transition with cache-coherence side-effect
+        (updates load_revoked-backed in-memory set) that the generic
+        save cannot express.
+        """
+        ...
+
     async def revoke_all_for_user(self, user_id: NotBlankStr) -> int:
         """Revoke every active session for a user; return the count.
 
