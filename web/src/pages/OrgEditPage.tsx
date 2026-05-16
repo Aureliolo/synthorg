@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Tabs } from '@base-ui/react/tabs'
 import { ArrowLeft, Building2, Settings, Users } from 'lucide-react'
 import { companyVersionsClient } from '@/api/endpoints/version-history'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { WsConnectionBanner } from '@/components/ui/ws-connection-banner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ToggleField } from '@/components/ui/toggle-field'
@@ -11,7 +12,6 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import type { UpdateCompanyRequest } from '@/api/types/org'
 import { useOrgEditData } from '@/hooks/useOrgEditData'
-import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
 import { OrgEditSkeleton } from './org-edit/OrgEditSkeleton'
 import { GeneralTab } from './org-edit/GeneralTab'
@@ -42,7 +42,6 @@ export default function OrgEditPage() {
     error,
     saving,
     saveError,
-    wsConnected,
     wsSetupError,
     updateCompany,
     createDepartment,
@@ -60,14 +59,6 @@ export default function OrgEditPage() {
     optimisticReorderDepartments,
     optimisticReorderAgents,
   } = useOrgEditData()
-
-  // Only surface the offline banner once the WS has connected at least
-  // once; otherwise the first render flashes a false-positive warning
-  // before the handshake completes.
-  const wasConnectedRef = useRef(false)
-  useEffect(() => {
-    if (wsConnected) wasConnectedRef.current = true
-  }, [wsConnected])
 
   const rawTab = searchParams.get('tab') ?? 'general'
   const activeTab: TabValue = isTabValue(rawTab) ? rawTab : 'general'
@@ -88,29 +79,26 @@ export default function OrgEditPage() {
   )
 
   const handleYamlSave = useCallback(
-    async (parsed: Record<string, unknown>) => {
-      try {
-        await updateCompany({
-          company_name: typeof parsed.company_name === 'string' ? parsed.company_name : undefined,
-          // Preserve ``undefined`` when YAML omits the key so the
-          // existing value is not silently cleared on every save;
-          // ``null`` only when the YAML explicitly sets the key to
-          // null (the user-intentional "clear" path).
-          autonomy_level: typeof parsed.autonomy_level === 'string'
-            ? (parsed.autonomy_level as Exclude<UpdateCompanyRequest['autonomy_level'], undefined>)
-            : parsed.autonomy_level === null
-              ? null
-              : undefined,
-          budget_monthly: typeof parsed.budget_monthly === 'number' ? parsed.budget_monthly : undefined,
-          communication_pattern: typeof parsed.communication_pattern === 'string'
-            ? parsed.communication_pattern
+    async (parsed: Record<string, unknown>): Promise<boolean> => {
+      // ``updateCompany`` already owns the toast UX (success +
+      // "Failed to update company" copy). The boolean return is used
+      // here so the YAML editor knows whether to clear its dirty flag.
+      return updateCompany({
+        company_name: typeof parsed.company_name === 'string' ? parsed.company_name : undefined,
+        // Preserve ``undefined`` when YAML omits the key so the
+        // existing value is not silently cleared on every save;
+        // ``null`` only when the YAML explicitly sets the key to
+        // null (the user-intentional "clear" path).
+        autonomy_level: typeof parsed.autonomy_level === 'string'
+          ? (parsed.autonomy_level as Exclude<UpdateCompanyRequest['autonomy_level'], undefined>)
+          : parsed.autonomy_level === null
+            ? null
             : undefined,
-        })
-        useToastStore.getState().add({ variant: 'success', title: 'Configuration saved' })
-      } catch (err) {
-        useToastStore.getState().add({ variant: 'error', title: 'Failed to save configuration' })
-        throw err
-      }
+        budget_monthly: typeof parsed.budget_monthly === 'number' ? parsed.budget_monthly : undefined,
+        communication_pattern: typeof parsed.communication_pattern === 'string'
+          ? parsed.communication_pattern
+          : undefined,
+      })
     },
     [updateCompany],
   )
@@ -159,14 +147,9 @@ export default function OrgEditPage() {
         />
       )}
 
-      {/* WS disconnect warning */}
-      {!wsConnected && !loading && (wasConnectedRef.current || Boolean(wsSetupError)) && (
-        <ErrorBanner
-          variant="offline"
-          title="Real-time updates disconnected"
-          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
-        />
-      )}
+      <WsConnectionBanner
+        description={wsSetupError ?? 'Edits may not sync until the connection recovers.'}
+      />
 
       {/* Content: YAML or tabbed GUI */}
       {yamlMode ? (

@@ -19,7 +19,7 @@ Run this after squash-merging a PR to clean up the local repo.
    First check which branches are gone using the plumbing command:
 
    ```bash
-   git for-each-ref --format='%(refname:short) %(upstream:track,gone)' refs/heads | grep '\[gone\]$'
+   git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads | grep '\[gone\]$'
    ```
 
    If no gone branches exist, skip this step. Otherwise, delete each one individually:

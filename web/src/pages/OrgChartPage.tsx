@@ -55,6 +55,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { LiveRegion } from '@/components/ui/live-region'
+import { WsConnectionBanner } from '@/components/ui/ws-connection-banner'
 import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
 import { useLiveEdgeActivity } from '@/hooks/useLiveEdgeActivity'
 import { AgentNode } from './org/AgentNode'
@@ -545,6 +546,8 @@ export default function OrgChartPage() {
           <Link to={ROUTES.ORG_EDIT}>Edit Organization</Link>
         </Button>
       </div>
+
+      <WsConnectionBanner description="Live edge activity may be stale until the connection recovers." />
 
       <ErrorBoundary level="section">
         <ReactFlowProvider>

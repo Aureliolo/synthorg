@@ -9,6 +9,7 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { WsConnectionBanner } from '@/components/ui/ws-connection-banner'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { useConnectionsStore } from '@/stores/connections'
@@ -76,6 +77,8 @@ export default function ConnectionsPage() {
       {error && (
         <ErrorBanner severity="error" title="Could not load connections" description={error} />
       )}
+
+      <WsConnectionBanner />
 
       <TunnelCard />
 

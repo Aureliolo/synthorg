@@ -312,10 +312,19 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       eventType === 'memory.fine_tune.completed' ||
       eventType === 'memory.fine_tune.failed'
     ) {
-      // Refresh all data on completion/failure.
-      void get().fetchStatus()
-      void get().fetchCheckpoints()
-      void get().fetchRuns()
+      // Refresh all data on completion/failure. Each fetch sets its
+      // own ``error`` slot on the store so the page banner picks
+      // refetch failures up; no toast (WS-driven refetches are not
+      // user-initiated actions).
+      get().fetchStatus().catch((err: unknown) => {
+        log.warn('fine-tune ws fetchStatus failed', sanitizeForLog(err))
+      })
+      get().fetchCheckpoints().catch((err: unknown) => {
+        log.warn('fine-tune ws fetchCheckpoints failed', sanitizeForLog(err))
+      })
+      get().fetchRuns().catch((err: unknown) => {
+        log.warn('fine-tune ws fetchRuns failed', sanitizeForLog(err))
+      })
     }
   },
 }))

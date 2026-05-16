@@ -35,18 +35,18 @@ export interface UseOrgEditDataReturn {
   // failure. Callers must check the boolean result rather than
   // try/catch.
   updateCompany: (data: UpdateCompanyRequest) => Promise<boolean>
-  createDepartment: (data: CreateDepartmentRequest) => Promise<Department>
-  updateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department>
-  deleteDepartment: (name: string) => Promise<void>
-  reorderDepartments: (orderedNames: string[]) => Promise<void>
-  createAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig>
-  updateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
-  deleteAgent: (name: string) => Promise<void>
-  reorderAgents: (deptName: string, orderedIds: string[]) => Promise<void>
-  createTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig>
-  updateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
-  deleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<void>
-  reorderTeams: (deptName: string, orderedNames: string[]) => Promise<void>
+  createDepartment: (data: CreateDepartmentRequest) => Promise<Department | null>
+  updateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department | null>
+  deleteDepartment: (name: string) => Promise<boolean>
+  reorderDepartments: (orderedNames: string[]) => Promise<boolean>
+  createAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig | null>
+  updateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
+  deleteAgent: (name: string) => Promise<boolean>
+  reorderAgents: (deptName: string, orderedIds: string[]) => Promise<boolean>
+  createTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig | null>
+  updateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>
+  deleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<boolean>
+  reorderTeams: (deptName: string, orderedNames: string[]) => Promise<boolean>
   optimisticReorderDepartments: (orderedNames: string[]) => () => void
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
 }

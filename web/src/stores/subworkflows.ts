@@ -136,6 +136,8 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
   },
 
   updateFromWsEvent() {
-    void get().fetchSubworkflows()
+    get().fetchSubworkflows().catch((err: unknown) => {
+      log.warn('subworkflows ws refetch failed', sanitizeForLog(err))
+    })
   },
 }))

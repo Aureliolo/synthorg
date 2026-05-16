@@ -107,25 +107,41 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
       const rollback = store.optimisticReassignAgent(agentName, newDeptName)
       const existingAgent = store.config?.agents.find((a) => a.name === agentName)
 
-      useCompanyStore.getState().updateAgent(agentName, {
-        department: newDeptName,
-        autonomy_level: existingAgent?.autonomy_level ?? null,
-        level: existingAgent?.level ?? null,
-      })
-        .then(() => {
+      // ``updateAgent`` now returns ``null`` on failure and owns the
+      // error toast itself. We branch on the sentinel: roll the
+      // optimistic reorder back and announce the rollback so screen
+      // readers know the move did not stick. On success the store
+      // emits its own "Agent X updated" toast already, but a drag-and-
+      // drop move is a distinct user action that deserves its own
+      // verbal cue, so the success branch keeps the "Moved" toast.
+      // Store mutation owns its own error UX and never throws
+      // (sentinel-return contract: ``updateAgent`` returns ``null`` on
+      // failure). The caller MUST NOT wrap it in try/catch/.catch;
+      // failure is handled via the ``result === null`` branch below.
+      // ``void`` marks the fire-and-forget intent for
+      // @typescript-eslint/no-floating-promises.
+      void useCompanyStore
+        .getState()
+        .updateAgent(agentName, {
+          department: newDeptName,
+          autonomy_level: existingAgent?.autonomy_level ?? null,
+          level: existingAgent?.level ?? null,
+        })
+        .then((result) => {
+          if (result === null) {
+            rollback()
+            const currentDept = useCompanyStore
+              .getState()
+              .config?.agents.find((a) => a.name === agentName)?.department
+            if (currentDept === originalDept) {
+              announce(`Failed to move ${agentName}, returned to ${originalDept}`)
+            } else {
+              announce(`Failed to move ${agentName}`)
+            }
+            return
+          }
           announce(`Moved ${agentName} to ${newDept}`)
           addToast({ variant: 'success', title: `Moved ${agentName} to ${newDept}` })
-        })
-        .catch((err: unknown) => {
-          rollback()
-          const msg = err instanceof Error ? err.message : 'Unknown error'
-          const currentDept = useCompanyStore.getState().config?.agents.find((a) => a.name === agentName)?.department
-          if (currentDept === originalDept) {
-            announce(`Failed to move ${agentName}, returned to ${originalDept}`)
-          } else {
-            announce(`Failed to move ${agentName}`)
-          }
-          addToast({ variant: 'error', title: 'Reassignment failed', description: msg })
         })
     },
     [deptBounds, addToast, announce],

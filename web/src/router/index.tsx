@@ -42,6 +42,7 @@ const WebhookReceiptsPage = lazy(() => import('@/pages/WebhookReceiptsPage'))
 const CoordinationMetricsPage = lazy(() => import('@/pages/CoordinationMetricsPage'))
 const MetaAnalyticsPage = lazy(() => import('@/pages/MetaAnalyticsPage'))
 const PersonalitiesAdminPage = lazy(() => import('@/pages/PersonalitiesAdminPage'))
+const AdminAuditLogPage = lazy(() => import('@/pages/AdminAuditLogPage'))
 const BudgetVersionsPage = lazy(() => import('@/pages/BudgetVersionsPage'))
 const CompanyVersionsPage = lazy(() => import('@/pages/CompanyVersionsPage'))
 const EvaluationVersionsPage = lazy(() => import('@/pages/EvaluationVersionsPage'))
@@ -165,6 +166,7 @@ export const router = createBrowserRouter([
               { path: 'analytics/coordination', element: <CoordinationMetricsPage /> },
               { path: 'analytics/meta', element: <MetaAnalyticsPage /> },
               { path: 'admin/personalities', element: <PersonalitiesAdminPage /> },
+              { path: ROUTES.ADMIN_AUDIT_LOG.slice(1), element: <AdminAuditLogPage /> },
               { path: 'budget/versions', element: <BudgetVersionsPage /> },
               { path: 'org/versions', element: <CompanyVersionsPage /> },
               { path: 'evaluation/versions', element: <EvaluationVersionsPage /> },

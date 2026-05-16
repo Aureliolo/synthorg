@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router'
 import { useProviderDetailData } from '@/hooks/useProviderDetailData'
 import { useProvidersData } from '@/hooks/useProvidersData'
 import { useProvidersStore } from '@/stores/providers'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -107,6 +108,12 @@ export default function ProviderDetailPage() {
 
   return (
     <div className="flex flex-col gap-section-gap">
+      <Breadcrumbs
+        items={[
+          { label: 'Providers', to: ROUTES.PROVIDERS },
+          { label: provider.name },
+        ]}
+      />
       <DetailNavBar
         canPrev={nav.canPrev}
         canNext={nav.canNext}

@@ -58,7 +58,7 @@ const meta = {
     health: mockHealth,
     config: mockConfig,
     onUpdate: async () => mockDept,
-    onDelete: async () => {},
+    onDelete: async () => true,
     onCreateTeam: async (_d, data) => ({
       name: data.name ?? 'New Team',
       lead: data.lead ?? 'Unassigned',
@@ -69,8 +69,8 @@ const meta = {
       lead: data.lead ?? 'Unassigned',
       members: data.members ?? [],
     }),
-    onDeleteTeam: async () => {},
-    onReorderTeams: async () => {},
+    onDeleteTeam: async () => true,
+    onReorderTeams: async () => true,
     saving: false,
   },
 } satisfies Meta<typeof DepartmentEditDrawer>

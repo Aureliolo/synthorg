@@ -457,12 +457,19 @@ class TestSetupComplete:
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
 
-    def test_complete_succeeds_even_if_bootstrap_fails(
+    def test_complete_blocks_when_bootstrap_fails(
         self,
         test_client: TestClient[Any],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Setup completion returns 201 even if agent bootstrap raises."""
+        """Bootstrap failure leaves ``setup_complete`` unset for retry.
+
+        Bootstrap is part of the strict reinit path: if agent bootstrap
+        raises, the completion flag must stay false so the operator
+        sees a clear error and can retry after fixing the underlying
+        issue, rather than landing on a half-configured dashboard
+        labelled "complete".
+        """
         app_state = test_client.app.state.app_state
         repo = app_state.persistence._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -475,7 +482,6 @@ class TestSetupComplete:
             {"test-provider": stub},
         )
 
-        # Make bootstrap_agents raise to simulate failure.
         failing_bootstrap = AsyncMock(side_effect=RuntimeError("boom"))
         monkeypatch.setattr(
             "synthorg.api.bootstrap.bootstrap_agents",
@@ -484,10 +490,9 @@ class TestSetupComplete:
 
         try:
             resp = test_client.post("/api/v1/setup/complete")
-            # Must succeed despite bootstrap failure (non-fatal).
-            assert resp.status_code == 201
-            assert resp.json()["data"]["setup_complete"] is True
+            assert resp.status_code >= 500
             failing_bootstrap.assert_awaited_once()
+            assert ("api", "setup_complete") not in repo._store
         finally:
             app_state._provider_registry = original_registry
             repo._store.pop(("company", "company_name"), None)
@@ -555,12 +560,18 @@ class TestSetupComplete:
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
 
-    def test_complete_bootstraps_even_when_provider_reload_fails(
+    def test_complete_keeps_flag_false_when_reinit_raises(
         self,
         test_client: TestClient[Any],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Agent bootstrap runs even when provider reload raises."""
+        """A reinit failure blocks ``setup_complete=true`` so the operator can retry.
+
+        ``post_setup_reinit`` propagates errors and the controller
+        persists the completion flag ONLY after reinit returns clean;
+        otherwise the frontend would believe setup succeeded while the
+        runtime is half-configured.
+        """
         app_state = test_client.app.state.app_state
         repo = app_state.persistence._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -585,29 +596,19 @@ class TestSetupComplete:
             {"test-provider": stub},
         )
 
-        # Make provider config loading raise to simulate reload failure.
+        async def _failing_reinit(_state: object) -> None:
+            msg = "provider config broken"
+            raise RuntimeError(msg)
+
         monkeypatch.setattr(
-            "synthorg.providers.registry.ProviderRegistry.from_config",
-            MagicMock(
-                spec=ProviderRegistry.from_config,
-                side_effect=RuntimeError("provider config broken"),
-            ),
+            "synthorg.api.controllers.setup_controller._post_setup_reinit",
+            _failing_reinit,
         )
 
         try:
             resp = test_client.post("/api/v1/setup/complete")
-            assert resp.status_code == 201
-            assert resp.json()["data"]["setup_complete"] is True
-            # Agent bootstrap should still have run despite provider
-            # reload failure -- the two operations are independent.
-            loop = asyncio.new_event_loop()
-            try:
-                agent_count = loop.run_until_complete(
-                    app_state.agent_registry.agent_count(),
-                )
-            finally:
-                loop.close()
-            assert agent_count >= 1
+            assert resp.status_code >= 500
+            assert ("api", "setup_complete") not in repo._store
         finally:
             app_state._provider_registry = original_registry
             repo._store.pop(("company", "company_name"), None)

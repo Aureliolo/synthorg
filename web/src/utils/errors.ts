@@ -3,7 +3,50 @@
 import axios, { type AxiosError } from 'axios'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import type { ErrorCode, ErrorDetail } from '@/api/types/errors'
+import { ErrorCategory, ErrorCode, type ErrorDetail } from '@/api/types/errors'
+
+/**
+ * Format a millisecond duration as user-facing British English copy
+ * for "try again in X" toasts. The granularity ladder is hour /
+ * minute / second; sub-second waits round up to "a few seconds" so the
+ * toast does not promise a precision the user cannot react to.
+ */
+function formatRetryAfter(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return 'a few seconds'
+  const seconds = Math.max(1, Math.round(ms / 1000))
+  if (seconds < 60) {
+    if (seconds < 5) return 'a few seconds'
+    return `${seconds} seconds`
+  }
+  if (seconds < 3600) {
+    const minutes = Math.round(seconds / 60)
+    return minutes === 1 ? '1 minute' : `${minutes} minutes`
+  }
+  const hours = Math.round(seconds / 3600)
+  return hours === 1 ? '1 hour' : `${hours} hours`
+}
+
+/**
+ * Read the ``Retry-After`` HTTP header value from an axios error
+ * response and return the wait duration in milliseconds (or ``null``
+ * when the header is absent or unparseable). Distinct from
+ * ``parseRetryAfterMs`` in ``@/utils/retry-after``: that helper caps
+ * the result against the auto-retry budget and returns a sentinel,
+ * which is the wrong contract for user-facing toast copy where we
+ * want the literal wait duration even when it exceeds the budget.
+ */
+function readRetryAfterHeaderMs(error: AxiosError): number | null {
+  const raw = error.response?.headers?.['retry-after']
+  if (typeof raw !== 'string' || raw.trim() === '') return null
+  const trimmed = raw.trim()
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number.parseInt(trimmed, 10)
+    return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null
+  }
+  const parsedDate = Date.parse(trimmed)
+  if (!Number.isFinite(parsedDate)) return null
+  return Math.max(0, parsedDate - Date.now())
+}
 
 const log = createLogger('errors')
 
@@ -53,6 +96,56 @@ export function getErrorMessage(error: unknown): string {
       | { error?: string; error_detail?: ErrorDetail; success?: boolean }
       | undefined
 
+    // 409 / 429 / 503 are differentiated BEFORE the generic
+    // data.error early-return so a backend that always populates
+    // data.error does not flatten the structured copy below into a
+    // single uninformative line. 422 is excluded for the same reason
+    // (its structured error_detail.detail wins inside the switch).
+    if (status === 429) {
+      const ms = readRetryAfterHeaderMs(error)
+      // Backend rate limits are per-operation (per_op_rate_limit_from_policy),
+      // not global; call out which operation hit the cap so the operator
+      // does not assume the whole dashboard is throttled.
+      const url = error.config?.url ?? ''
+      const opHint = url.includes('/setup/complete')
+        ? 'Too many setup completion attempts'
+        : 'Too many requests for this operation'
+      if (ms !== null && ms > 0) {
+        return `${opHint}. Try again in ${formatRetryAfter(ms)}.`
+      }
+      return `${opHint}. Try again in a few seconds.`
+    }
+    if (status === 503) {
+      const ms = readRetryAfterHeaderMs(error)
+      if (ms !== null) {
+        return `The service is restarting. Try again in ${formatRetryAfter(ms)}.`
+      }
+      return 'The service is unavailable. Contact the operator if this persists.'
+    }
+    if (status === 409) {
+      // Branch on the structured error_code so duplicate /
+      // version-conflict / generic-conflict cases each get actionable
+      // copy. Falls through to the existing generic message when the
+      // envelope did not carry a code.
+      const code = data?.error_detail?.error_code
+      if (code === ErrorCode.DUPLICATE_RECORD || code === ErrorCode.ONTOLOGY_DUPLICATE) {
+        return 'A resource with this name already exists. Pick a different name.'
+      }
+      if (code === ErrorCode.VERSION_CONFLICT || code === ErrorCode.TASK_VERSION_CONFLICT) {
+        return 'This resource was edited by someone else. Reload to see the latest version, then retry.'
+      }
+      // Setup completion is the most common 409 with no structured
+      // code (RESOURCE_CONFLICT) -- the backend rejects a second
+      // /setup/complete after the flag is already set. Surface that
+      // case with copy that points operators at the right next step
+      // instead of the generic resource-state message.
+      const url = error.config?.url ?? ''
+      if (url.includes('/setup/complete')) {
+        return 'Setup is already complete. Reload to see the current dashboard.'
+      }
+      return 'The resource state changed. Refresh the page and try again.'
+    }
+
     // For 4xx errors, surface the backend's validation message.
     // 422 is excluded so the structured ``error_detail.detail`` branch
     // below can prefer the field-specific RFC 9457 detail over the
@@ -76,33 +169,40 @@ export function getErrorMessage(error: unknown): string {
         return 'You do not have permission to perform this action.'
       case 404:
         return 'The requested resource was not found.'
-      case 409:
-        // 409 covers optimistic-concurrency races, duplicate-resource
-        // attempts, and version-mismatch conflicts. The earlier copy
-        // assumed concurrency only, which misled users when the cause
-        // was a duplicate or version skew.
-        return 'The resource state changed. Refresh the page and try again.'
       case 422: {
         // Prefer the structured ``error_detail.detail`` envelope (RFC
         // 9457) over the plain ``data.error`` string so the user sees
-        // the specific field or rule that failed when the backend
-        // sends both.
+        // the curated message the backend chose for THIS validation
+        // failure rather than the raw Pydantic surface.
         const structuredDetail = data?.error_detail?.detail
         if (typeof structuredDetail === 'string' && structuredDetail.trim() !== '') {
           return structuredDetail
         }
+        // Fall back to ``data.error`` only when it does NOT look like a
+        // raw Pydantic ValueError string. Pydantic emits patterns like
+        // "1 validation error for X: field required" / "value is not a
+        // valid X" which leak internal type / field names and read as
+        // developer copy. When we detect those shapes, prefer the
+        // generic message; otherwise the backend wrote a clean string
+        // and we surface it verbatim.
         if (typeof data?.error === 'string' && data.error.trim() !== '') {
-          return data.error
+          const raw = data.error
+          // Pydantic v2 standardises on "Input should be ...",
+          // "String should have at least/most N ...", "List should
+          // ...", "Dict should ..." in addition to the v1-era
+          // "field required" / "value is not a valid" / "string too
+          // short|long" phrasings. Catch the whole family so none of
+          // them leak verbatim to end users.
+          const looksPydanticy =
+            /validation error for /i.test(raw)
+            || /(field required|value is not a valid|string too (short|long)|input should|string should|list should|dict should)/i.test(raw)
+          if (!looksPydanticy) return raw
         }
-        return 'Validation error. Please check your input.'
+        return 'Validation error. Please check the highlighted fields and try again.'
       }
-      case 429:
-        return 'Too many requests. Please try again in a moment.'
       case 502:
       case 504:
         return 'Temporary connectivity issue. Please retry shortly.'
-      case 503:
-        return 'The service is temporarily unavailable. Try again in a moment.'
       default:
         break
     }
@@ -206,21 +306,35 @@ export function getCrudErrorTitle(
   if (status === 403) return { title: 'Permission denied' }
   const detail = getErrorDetail(error)
   if (detail) {
+    // Match against the exported ``ErrorCategory`` constants
+    // (re-exported from the generated ``error-codes.gen.ts``) instead
+    // of raw string literals so a backend rename surfaces as a
+    // TypeScript error in lockstep with the contract.
     switch (detail.error_category) {
-      case 'auth':
+      case ErrorCategory.AUTH:
         return { title: 'Authentication failed' }
-      case 'validation':
+      case ErrorCategory.VALIDATION:
         return { title: 'Validation failed' }
-      case 'conflict':
+      case ErrorCategory.CONFLICT:
         return { title: 'Resource conflict' }
-      case 'rate_limit':
+      case ErrorCategory.RATE_LIMIT:
         return { title: 'Rate limit reached' }
-      case 'not_found':
+      case ErrorCategory.NOT_FOUND:
         return { title: 'Not found' }
-      case 'budget_exhausted':
+      case ErrorCategory.BUDGET_EXHAUSTED:
         return { title: 'Budget exhausted' }
-      default:
+      case ErrorCategory.PROVIDER_ERROR:
+        return { title: 'Provider error' }
+      case ErrorCategory.INTERNAL:
+        // Fall through to the HTTP-status / caller-fallback branches
+        // below; 5xx-class internal failures get a more specific
+        // status-based message than the generic category copy.
         break
+      default:
+        // Exhaustiveness guard: a new ErrorCategory added to the
+        // backend without a matching arm here breaks the build instead
+        // of silently falling through to the caller's generic fallback.
+        ((_: never) => _)(detail.error_category)
     }
   }
   if (status !== undefined) {

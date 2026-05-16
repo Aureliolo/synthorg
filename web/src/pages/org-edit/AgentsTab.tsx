@@ -20,7 +20,6 @@ import type {
   UpdateAgentOrgRequest,
 } from '@/api/types/org'
 import { toRuntimeStatus } from '@/utils/agents'
-import { useToastStore } from '@/stores/toast'
 import { AgentCard } from '@/components/ui/agent-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -32,10 +31,10 @@ import { AgentEditDrawer } from './AgentEditDrawer'
 export interface AgentsTabProps {
   config: CompanyConfig | null
   saving: boolean
-  onCreateAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig>
-  onUpdateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
-  onDeleteAgent: (name: string) => Promise<void>
-  onReorderAgents: (deptName: string, orderedIds: string[]) => Promise<void>
+  onCreateAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig | null>
+  onUpdateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
+  onDeleteAgent: (name: string) => Promise<boolean>
+  onReorderAgents: (deptName: string, orderedIds: string[]) => Promise<boolean>
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
 }
 
@@ -173,16 +172,12 @@ export function AgentsTab({
       const orderedIds = reordered.map((a) => a.id ?? a.name)
 
       const rollback = optimisticReorderAgents(draggedAgent.department, orderedIds)
-      try {
-        await onReorderAgents(draggedAgent.department, orderedIds)
-      } catch {
+      // ``onReorderAgents`` returns false on failure (store owns the
+      // toast UX); callers must not wrap store mutations in try/catch.
+      // Roll back when the store reports failure.
+      const ok = await onReorderAgents(draggedAgent.department, orderedIds)
+      if (!ok) {
         rollback()
-        useToastStore.getState().add({
-          variant: 'error',
-          title: 'Could not reorder agents',
-          description:
-            'The order may have changed. Refresh the page and try again.',
-        })
       }
     },
     [config, agentsByDept, optimisticReorderAgents, onReorderAgents],

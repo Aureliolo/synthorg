@@ -58,6 +58,7 @@ const defaultHookReturn: UseDashboardDataReturn = {
   orgHealthPercent: null,
   loading: false,
   error: null,
+  isRefetching: false,
   wsConnected: true,
   wsSetupError: null,
 }

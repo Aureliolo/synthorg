@@ -16,6 +16,7 @@ import type {
   UpdateAgentNameRequest,
   UpdateAgentPersonalityRequest,
 } from '../types/setup'
+import type { SetupCompleteResponse } from '@/api/types'
 
 export async function getSetupStatus(): Promise<SetupStatusResponse> {
   const response = await apiClient.get<ApiResponse<SetupStatusResponse>>('/setup/status')
@@ -128,7 +129,7 @@ export async function saveNameLocales(data: SetupNameLocalesRequest): Promise<Se
   return unwrap(response)
 }
 
-export async function completeSetup(): Promise<{ setup_complete: true }> {
-  const response = await apiClient.post<ApiResponse<{ setup_complete: true }>>('/setup/complete')
+export async function completeSetup(): Promise<SetupCompleteResponse> {
+  const response = await apiClient.post<ApiResponse<SetupCompleteResponse>>('/setup/complete')
   return unwrap(response)
 }

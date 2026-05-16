@@ -411,8 +411,33 @@ class SetupCompleteResponse(BaseModel):
 
     Attributes:
         setup_complete: Always True on success.
+        embedder_selected: True when ``auto_select_embedder`` succeeded
+            and persisted an ``memory.embedder_model`` choice. False
+            when auto-selection failed (no LMEB-ranked model available,
+            persistence error). The wizard's post-completion guidance
+            uses this flag to surface a warning instead of silently
+            shipping the operator to a half-configured memory backend.
+        embedder_failure_reason: Short human-readable reason when
+            auto-selection failed. ``None`` on success.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     setup_complete: Literal[True]
+    embedder_selected: bool = True
+    embedder_failure_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_embedder_state_consistency(self) -> SetupCompleteResponse:
+        if self.embedder_selected and self.embedder_failure_reason is not None:
+            msg = "embedder_failure_reason must be None when embedder_selected=True"
+            raise ValueError(msg)
+        if not self.embedder_selected and not (
+            self.embedder_failure_reason and self.embedder_failure_reason.strip()
+        ):
+            msg = (
+                "embedder_failure_reason must be a non-empty string when"
+                " embedder_selected=False"
+            )
+            raise ValueError(msg)
+        return self

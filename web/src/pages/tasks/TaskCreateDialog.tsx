@@ -165,7 +165,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
         <Dialog.Popup
           className={cn(
-            'fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
+            'fixed top-1/2 left-1/2 z-50 w-full max-w-lg md:max-w-2xl -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border-bright bg-surface p-card-tight sm:p-card md:p-card-roomy shadow-[var(--so-shadow-card-hover)]',
             'transition-[opacity,translate,scale] duration-200 ease-out',
             'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',

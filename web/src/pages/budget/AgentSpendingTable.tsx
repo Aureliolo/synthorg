@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { cn, FOCUS_RING } from '@/lib/utils'
+import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -118,6 +119,7 @@ const SpendingRow = memo(function SpendingRow({ row, currency }: SpendingRowProp
 function AgentSpendingTableInner({ rows, currency }: AgentSpendingTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('totalCost')
   const [sortDir, setSortDir] = useState<SortDirection>('desc')
+  const [searchQuery, setSearchQuery] = useState('')
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -128,9 +130,15 @@ function AgentSpendingTableInner({ rows, currency }: AgentSpendingTableProps) {
     }
   }, [sortKey])
 
+  const filteredRows = useMemo(() => {
+    const trimmed = searchQuery.trim().toLowerCase()
+    if (trimmed === '') return rows
+    return rows.filter((r) => r.agentName.toLowerCase().includes(trimmed))
+  }, [rows, searchQuery])
+
   const sorted = useMemo(
-    () => [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDir)),
-    [rows, sortKey, sortDir],
+    () => [...filteredRows].sort((a, b) => compareRows(a, b, sortKey, sortDir)),
+    [filteredRows, sortKey, sortDir],
   )
 
   return (
@@ -142,25 +150,39 @@ function AgentSpendingTableInner({ rows, currency }: AgentSpendingTableProps) {
           description="Cost records will appear as agents consume tokens"
         />
       ) : (
-        // Outer overflow-x-auto so on narrow viewports (phones, tight
-        // dashboard splits) the table scrolls instead of overflowing
-        // the section card. The inner min-w sizes the row to its
-        // natural width so the proportional column widths still hold.
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <div className="md:min-w-[40rem]">
-            <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
-              {COLUMNS.map((col) => (
-                <ColumnHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-              ))}
-            </div>
+        <div className="space-y-grid-gap">
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search agents by name"
+            ariaLabel="Search agent spending"
+          />
+          {/* Outer overflow-x-auto so on narrow viewports (phones, tight
+              dashboard splits) the table scrolls instead of overflowing
+              the section card. The inner min-w sizes the row to its
+              natural width so the proportional column widths still hold. */}
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <div className="md:min-w-[40rem]">
+              <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
+                {COLUMNS.map((col) => (
+                  <ColumnHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                ))}
+              </div>
 
-            <StaggerGroup className="divide-y divide-border">
-              {sorted.map((row) => (
-                <StaggerItem key={row.agentId}>
-                  <SpendingRow row={row} currency={currency} />
-                </StaggerItem>
-              ))}
-            </StaggerGroup>
+              {sorted.length === 0 ? (
+                <div className="px-4 py-6 text-center text-sm text-text-secondary">
+                  No agents match the current search.
+                </div>
+              ) : (
+                <StaggerGroup className="divide-y divide-border">
+                  {sorted.map((row) => (
+                    <StaggerItem key={row.agentId}>
+                      <SpendingRow row={row} currency={currency} />
+                    </StaggerItem>
+                  ))}
+                </StaggerGroup>
+              )}
+            </div>
           </div>
         </div>
       )}

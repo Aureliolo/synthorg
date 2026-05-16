@@ -4,7 +4,7 @@ import { useThemeStore } from '@/stores/theme'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-import { initialStepsCompleted } from './navigation'
+import { initialStepsCompleted, initialStepsNeedRevalidation } from './navigation'
 import { DEFAULT_THEME } from './theme'
 import type { CompletionSlice, SliceCreator, ThemeSettings } from './types'
 
@@ -34,6 +34,7 @@ function getInitialState() {
     currentStep: 'mode' as const,
     stepOrder: ['mode', 'template', 'providers', 'company', 'agents', 'theme', 'complete'] as const,
     stepsCompleted: initialStepsCompleted(),
+    stepsNeedRevalidation: initialStepsNeedRevalidation(),
     direction: 'forward' as const,
     needsAdmin: false,
     accountCreated: false,
@@ -75,26 +76,39 @@ function getInitialState() {
 
     completing: false,
     completionError: null,
+    completionWarning: null,
   }
 }
 
 export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) => ({
   completing: false,
   completionError: null,
+  completionWarning: null,
 
   async completeSetup() {
     const startedAt = Date.now()
-    set({ completing: true, completionError: null })
+    set({ completing: true, completionError: null, completionWarning: null })
     try {
-      await completeSetup()
+      const response = await completeSetup()
       // Forward the wizard's collected theme into the persistent
       // theme store so the dashboard renders the chosen palette /
       // density / animation / sidebar mode immediately after the
       // wizard hands off, instead of reverting to the system default.
       persistWizardTheme(get().themeSettings)
-      set({ completing: false })
+      // The completion succeeded, but the backend may still report a
+      // non-fatal warning (embedder auto-selection produced no ranked
+      // model, persistence error for embedder choice). Surface it as
+      // ``completionWarning`` so the post-completion step can render
+      // an inline notice without claiming the whole setup failed.
+      const warning =
+        !response.embedder_selected
+          ? (response.embedder_failure_reason
+            ?? 'Embedder auto-selection did not pick a model. Configure one in Settings.')
+          : null
+      set({ completing: false, completionWarning: warning })
       log.debug('setup_wizard.completed', {
         duration_ms: Date.now() - startedAt,
+        embedder_selected: response.embedder_selected,
       })
     } catch (err) {
       // Resolve the formatted error once: getErrorMessage emits a
@@ -108,8 +122,12 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) =
         duration_ms: Date.now() - startedAt,
         error: sanitizeForLog(message),
       })
+      // Store owns the error UX: surface the failure via
+      // ``completionError`` and do NOT re-throw. Callers branch off
+      // ``completionError`` / ``completionWarning`` after the await
+      // (the store-mutation contract: callers must not wrap this in
+      // try/catch).
       set({ completionError: message, completing: false })
-      throw err
     }
   },
 

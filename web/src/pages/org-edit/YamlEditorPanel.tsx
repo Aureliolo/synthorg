@@ -5,7 +5,13 @@ import { serializeToYaml, parseYaml, validateCompanyYaml } from '@/utils/yaml'
 
 export interface YamlEditorPanelProps {
   config: CompanyConfig | null
-  onSave: (parsed: Record<string, unknown>) => Promise<void>
+  /**
+   * Persist the parsed YAML. Resolves to ``true`` on success and
+   * ``false`` on failure; the page's store-backed mutation already
+   * owns the toast UX, so this panel just uses the boolean to decide
+   * whether to clear ``dirty`` state.
+   */
+  onSave: (parsed: Record<string, unknown>) => Promise<boolean>
   saving: boolean
 }
 
@@ -38,8 +44,8 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
         setParseError(validationError)
         return
       }
-      await onSave(parsed)
-      setDirty(false)
+      const ok = await onSave(parsed)
+      if (ok) setDirty(false)
     } catch (err) {
       setParseError(err instanceof Error ? err.message : 'Failed to parse YAML')
     }

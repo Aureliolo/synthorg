@@ -16,6 +16,17 @@ const defaultStepsCompleted: Record<WizardStep, boolean> = {
   complete: false,
 }
 
+const defaultStepsNeedRevalidation: Record<WizardStep, boolean> = {
+  account: false,
+  mode: false,
+  template: false,
+  company: false,
+  providers: false,
+  agents: false,
+  theme: false,
+  complete: false,
+}
+
 describe('WizardProgress', () => {
   it('renders all step labels', () => {
     render(
@@ -23,6 +34,7 @@ describe('WizardProgress', () => {
         stepOrder={stepOrder}
         currentStep="template"
         stepsCompleted={defaultStepsCompleted}
+        stepsNeedRevalidation={defaultStepsNeedRevalidation}
         canNavigateTo={() => false}
         onStepClick={() => {}}
       />,
@@ -41,6 +53,7 @@ describe('WizardProgress', () => {
         stepOrder={stepOrder}
         currentStep="company"
         stepsCompleted={defaultStepsCompleted}
+        stepsNeedRevalidation={defaultStepsNeedRevalidation}
         canNavigateTo={() => true}
         onStepClick={() => {}}
       />,
@@ -58,6 +71,7 @@ describe('WizardProgress', () => {
         stepOrder={stepOrder}
         currentStep="template"
         stepsCompleted={defaultStepsCompleted}
+        stepsNeedRevalidation={defaultStepsNeedRevalidation}
         canNavigateTo={(step) => step === 'template'}
         onStepClick={handleClick}
       />,
@@ -76,6 +90,7 @@ describe('WizardProgress', () => {
         stepOrder={stepOrder}
         currentStep="template"
         stepsCompleted={defaultStepsCompleted}
+        stepsNeedRevalidation={defaultStepsNeedRevalidation}
         canNavigateTo={(step) => step === 'template'}
         onStepClick={() => {}}
       />,
@@ -91,6 +106,7 @@ describe('WizardProgress', () => {
         stepOrder={stepOrder}
         currentStep="company"
         stepsCompleted={{ ...defaultStepsCompleted, template: true }}
+        stepsNeedRevalidation={defaultStepsNeedRevalidation}
         canNavigateTo={() => true}
         onStepClick={() => {}}
       />,
@@ -102,6 +118,40 @@ describe('WizardProgress', () => {
     expect(templateButton.querySelector('svg')).toBeInTheDocument()
   })
 
+  it('renders a warning indicator on a complete step that needs revalidation', () => {
+    render(
+      <WizardProgress
+        stepOrder={stepOrder}
+        currentStep="theme"
+        stepsCompleted={{ ...defaultStepsCompleted, agents: true }}
+        stepsNeedRevalidation={{ ...defaultStepsNeedRevalidation, agents: true }}
+        canNavigateTo={() => true}
+        onStepClick={() => {}}
+      />,
+    )
+    const buttons = screen.getAllByRole('button')
+    const agentsButton = buttons.find((b) => b.textContent?.includes('Agents'))!
+    // The sr-only revalidation hint is referenced via aria-describedby.
+    expect(agentsButton).toHaveAttribute('aria-describedby', 'agents-needs-revalidation')
+    expect(screen.getByText(/Needs review/i)).toBeInTheDocument()
+  })
+
+  it('does NOT render the warning indicator on the active step (the user is fixing it)', () => {
+    render(
+      <WizardProgress
+        stepOrder={stepOrder}
+        currentStep="agents"
+        stepsCompleted={{ ...defaultStepsCompleted, agents: true }}
+        stepsNeedRevalidation={{ ...defaultStepsNeedRevalidation, agents: true }}
+        canNavigateTo={() => true}
+        onStepClick={() => {}}
+      />,
+    )
+    const buttons = screen.getAllByRole('button')
+    const agentsButton = buttons.find((b) => b.textContent?.includes('Agents'))!
+    expect(agentsButton).not.toHaveAttribute('aria-describedby')
+  })
+
   it('renders with account step when included in stepOrder', () => {
     const withAccount: WizardStep[] = ['account', ...stepOrder]
     render(
@@ -109,6 +159,7 @@ describe('WizardProgress', () => {
         stepOrder={withAccount}
         currentStep="account"
         stepsCompleted={defaultStepsCompleted}
+        stepsNeedRevalidation={defaultStepsNeedRevalidation}
         canNavigateTo={() => false}
         onStepClick={() => {}}
       />,

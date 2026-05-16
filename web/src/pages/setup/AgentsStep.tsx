@@ -6,7 +6,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { resolveAgentModels } from '@/utils/setup-validation'
-import { useStepCompletionSync } from './_hooks'
+import { useClearStepRevalidationOnMount, useStepCompletionSync } from './_hooks'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentCard } from './SetupAgentCard'
 import { Users } from 'lucide-react'
@@ -73,8 +73,16 @@ export function AgentsStep() {
   // Single source of truth for step completion: reads the same
   // unresolvedAgents value that drives the user-visible banner so the
   // wizard nav and the page never disagree about whether the step can
-  // advance.
-  useStepCompletionSync('agents', agents.length > 0 && unresolvedAgents.length === 0)
+  // advance. ``forwardOnly`` so the step does not silently uncomplete
+  // when an upstream Providers edit invalidates an agent's model ref;
+  // the progress-bar revalidation glyph plus the ErrorBanner below
+  // carry that signal instead.
+  useStepCompletionSync(
+    'agents',
+    agents.length > 0 && unresolvedAgents.length === 0,
+    { forwardOnly: true },
+  )
+  useClearStepRevalidationOnMount('agents')
 
   if (agentsLoading) {
     return (

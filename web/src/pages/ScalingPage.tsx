@@ -22,6 +22,7 @@ export default function ScalingPage() {
     loading,
     error,
     evaluating,
+    isRefetching,
     wsConnected,
     evaluateNow,
   } = useScalingData()
@@ -59,6 +60,7 @@ export default function ScalingPage() {
     <div className="flex flex-col gap-section-gap">
       <ListHeader
         title="Dynamic Scaling"
+        refreshing={isRefetching}
         primaryAction={
           <Button onClick={handleEvaluateNow} disabled={evaluating}>
             {evaluating ? 'Evaluating...' : 'Evaluate Now'}

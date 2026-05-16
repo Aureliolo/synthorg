@@ -137,8 +137,8 @@ const meta = {
     saving: false,
     onCreateAgent: async () => mockAgents[0]!,
     onUpdateAgent: async () => mockAgents[0]!,
-    onDeleteAgent: async () => {},
-    onReorderAgents: async () => {},
+    onDeleteAgent: async () => true,
+    onReorderAgents: async () => true,
     optimisticReorderAgents: () => () => {},
   },
 } satisfies Meta<typeof AgentsTab>
