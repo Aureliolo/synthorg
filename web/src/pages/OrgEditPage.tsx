@@ -42,7 +42,6 @@ export default function OrgEditPage() {
     error,
     saving,
     saveError,
-    wsConnected,
     wsSetupError,
     updateCompany,
     createDepartment,
@@ -151,13 +150,6 @@ export default function OrgEditPage() {
       <WsConnectionBanner
         description={wsSetupError ?? 'Edits may not sync until the connection recovers.'}
       />
-      {wsSetupError && wsConnected && (
-        <ErrorBanner
-          severity="warning"
-          title="Connection setup warning"
-          description={wsSetupError}
-        />
-      )}
 
       {/* Content: YAML or tabbed GUI */}
       {yamlMode ? (

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { useWebSocketStore } from '@/stores/websocket'
 
@@ -19,14 +20,21 @@ export interface WsConnectionBannerProps {
  * Page-level WebSocket-offline banner. Reads the connection state
  * directly from the websocket store so callers do not need to wire a
  * channel subscription just to surface the offline signal. Renders
- * nothing while the socket is connected; emits an offline
- * ``<ErrorBanner>`` when it is not.
+ * nothing while the socket is connected, AND suppresses the banner
+ * before the first successful connect to avoid a false-positive flash
+ * during the initial handshake (the WS store boots at
+ * ``connected: false``).
  */
 export function WsConnectionBanner({
   title = 'Real-time updates disconnected',
   description = 'Data may be stale until the connection recovers.',
 }: WsConnectionBannerProps = {}) {
   const connected = useWebSocketStore((s) => s.connected)
+  const everConnectedRef = useRef(false)
+  useEffect(() => {
+    if (connected) everConnectedRef.current = true
+  }, [connected])
   if (connected) return null
+  if (!everConnectedRef.current) return null
   return <ErrorBanner variant="offline" title={title} description={description} />
 }

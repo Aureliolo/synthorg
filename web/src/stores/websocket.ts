@@ -8,12 +8,14 @@
 import { create } from 'zustand'
 import { AxiosError } from 'axios'
 import { openSseFallback } from '@/api/sse/client'
-import { WS_CHANNELS } from '@/api/types/websocket'
+import { WS_CHANNELS, WS_EVENT_TYPE_VALUES } from '@/api/types/websocket'
 import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types/websocket'
 import { getWsTicket } from '@/api/endpoints/auth'
 import {
   LOG_SANITIZE_MAX_LENGTH,
   WS_HEARTBEAT_INTERVAL_MS,
+  WS_HEARTBEAT_JITTER_MAX,
+  WS_HEARTBEAT_JITTER_MIN,
   WS_MAX_MESSAGE_SIZE,
   WS_MAX_RECONNECT_ATTEMPTS,
   WS_PONG_TIMEOUT_MS,
@@ -46,7 +48,7 @@ function subscriptionKey(channels: WsChannel[], filters?: Record<string, string>
 let socket: WebSocket | null = null
 let reconnectAttempts = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+let heartbeatTimer: ReturnType<typeof setTimeout> | null = null
 let pongTimer: ReturnType<typeof setTimeout> | null = null
 let intentionalClose = false
 let shouldBeConnected = false
@@ -130,6 +132,15 @@ interface WebSocketState {
 /** Known valid WsChannel values for runtime validation (derived from types.ts). */
 const VALID_WS_CHANNELS: ReadonlySet<string> = new Set(WS_CHANNELS)
 
+/**
+ * Known valid event_type values for runtime validation (defence-in-depth
+ * mirror of WS_EVENT_TYPE_VALUES). A future server roll-out that emits an
+ * event_type the client does not know about gets dropped here with a
+ * structured warning instead of slipping into the dispatch loop. Mirrors
+ * the SSE fallback's ``AGUI_EVENT_MAP`` allowlist semantics.
+ */
+const VALID_WS_EVENT_TYPES: ReadonlySet<string> = new Set(WS_EVENT_TYPE_VALUES)
+
 /** WS close codes that indicate auth failure (do not reconnect). */
 const WS_AUTH_FAILURE_CODES = new Set([4001, 4003])
 
@@ -143,7 +154,9 @@ function getWsUrl(): string {
 function isWsEvent(msg: Record<string, unknown>): msg is Record<string, unknown> & WsEvent {
   return (
     typeof msg.event_type === 'string' &&
+    VALID_WS_EVENT_TYPES.has(msg.event_type) &&
     typeof msg.channel === 'string' &&
+    VALID_WS_CHANNELS.has(msg.channel) &&
     typeof msg.timestamp === 'string' &&
     typeof msg.payload === 'object' &&
     msg.payload !== null &&
@@ -187,12 +200,25 @@ function dispatchEvent(event: WsEvent) {
 // ── Store ───────────────────────────────────────────────────
 
 /**
+/**
+ * Pick a heartbeat delay in
+ * `WS_HEARTBEAT_INTERVAL_MS * [WS_HEARTBEAT_JITTER_MIN, WS_HEARTBEAT_JITTER_MAX]`
+ * so a fleet of long-lived dashboards does not ping the server in
+ * lockstep.
+ */
+function jitteredHeartbeatDelay(): number {
+  const span = WS_HEARTBEAT_JITTER_MAX - WS_HEARTBEAT_JITTER_MIN
+  const factor = WS_HEARTBEAT_JITTER_MIN + Math.random() * span
+  return WS_HEARTBEAT_INTERVAL_MS * factor
+}
+
+/**
  * Stop any in-flight heartbeat / pong-timeout timers. Idempotent and
  * safe to call from any teardown path (reconnect, disconnect, close).
  */
 function stopHeartbeat() {
   if (heartbeatTimer) {
-    clearInterval(heartbeatTimer)
+    clearTimeout(heartbeatTimer)
     heartbeatTimer = null
   }
   if (pongTimer) {
@@ -212,7 +238,7 @@ function stopHeartbeat() {
  */
 function startHeartbeat(target: WebSocket) {
   stopHeartbeat()
-  heartbeatTimer = setInterval(() => {
+  const tick = () => {
     if (socket !== target || target.readyState !== WebSocket.OPEN) {
       stopHeartbeat()
       return
@@ -232,7 +258,11 @@ function startHeartbeat(target: WebSocket) {
         target.close()
       }
     }, WS_PONG_TIMEOUT_MS)
-  }, WS_HEARTBEAT_INTERVAL_MS)
+    // Re-arm with a freshly jittered delay so each ping sits in a
+    // slightly different phase, smearing aggregate server load.
+    heartbeatTimer = setTimeout(tick, jitteredHeartbeatDelay())
+  }
+  heartbeatTimer = setTimeout(tick, jitteredHeartbeatDelay())
 }
 
 function queueSubscriptionForReconnect(

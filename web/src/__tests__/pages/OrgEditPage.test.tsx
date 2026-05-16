@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseOrgEditDataReturn } from '@/hooks/useOrgEditData'
+import { useWebSocketStore } from '@/stores/websocket'
 import { makeCompanyConfig, makeDepartmentHealth } from '../helpers/factories'
 
 const noopAsync = vi.fn().mockResolvedValue(undefined)
@@ -54,6 +55,10 @@ function renderPage(initialPath = '/org/edit') {
 describe('OrgEditPage', () => {
   beforeEach(() => {
     hookReturn = { ...defaultHookReturn }
+    // WsConnectionBanner reads connected state from the WS store
+    // directly; reset to a fresh disconnected baseline each test so
+    // the "ever-connected" suppression behaves predictably.
+    useWebSocketStore.setState({ connected: false })
     vi.clearAllMocks()
   })
 
@@ -93,13 +98,14 @@ describe('OrgEditPage', () => {
   })
 
   it('renders WS disconnect warning after a prior connection drops', () => {
-    // Start connected so wasConnectedRef flips to true, then drop the
-    // connection. The banner must only show after a real disconnect, not
-    // during the initial handshake.
-    hookReturn = { ...defaultHookReturn, wsConnected: true }
+    // Start connected so WsConnectionBanner's internal "ever-connected"
+    // ref flips to true; then drop the WS store's connected flag and
+    // assert the banner now renders. The "ever-connected" gate is the
+    // mechanism that suppresses the false-positive flash on initial
+    // handshake (see the sibling test below).
+    useWebSocketStore.setState({ connected: true })
     const { rerender } = renderPage()
-    // Disconnected with no prior connect: banner must stay hidden.
-    hookReturn = { ...defaultHookReturn, wsConnected: false }
+    useWebSocketStore.setState({ connected: false })
     rerender(
       <MemoryRouter initialEntries={['/org/edit']}>
         <OrgEditPage />
@@ -109,16 +115,26 @@ describe('OrgEditPage', () => {
   })
 
   it('does not render WS disconnect warning during initial handshake', () => {
-    // First render: never connected, no setup error. Banner must stay hidden
-    // to avoid the false-positive flash before the WS finishes connecting.
-    hookReturn = { ...defaultHookReturn, wsConnected: false }
+    // Fresh mount with connected=false from the start (never connected):
+    // banner must stay hidden to avoid the false-positive flash before
+    // the WS finishes connecting.
+    useWebSocketStore.setState({ connected: false })
     renderPage()
     expect(screen.queryByText(/disconnected/i)).not.toBeInTheDocument()
   })
 
   it('renders custom WS setup error', () => {
-    hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'Auth failed' }
-    renderPage()
+    // wsSetupError surfaces through the connection banner's description
+    // slot when the socket has never connected.
+    useWebSocketStore.setState({ connected: true })
+    const { rerender } = renderPage()
+    hookReturn = { ...defaultHookReturn, wsSetupError: 'Auth failed' }
+    useWebSocketStore.setState({ connected: false })
+    rerender(
+      <MemoryRouter initialEntries={['/org/edit']}>
+        <OrgEditPage />
+      </MemoryRouter>,
+    )
     expect(screen.getByText('Auth failed')).toBeInTheDocument()
   })
 

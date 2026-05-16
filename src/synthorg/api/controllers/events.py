@@ -98,10 +98,40 @@ async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
 # control-character session IDs reaching the hub.
 _SESSION_ID_PATTERN = r"^[a-zA-Z0-9_-]{1,128}$"
 
-# Maximum consecutive revalidation failures (transient persistence
-# blips) before the SSE stream terminates so the client can reconnect
-# against a healthy replica.
-_SSE_REVALIDATE_MAX_FAILURES: int = 3
+# Fallback for ``api.sse_revalidate_max_failures`` when the settings
+# chain is unavailable (test harness, anonymous boot, resolver outage).
+# Mirrors the registry default in
+# ``src/synthorg/settings/definitions/api.py``.
+_SSE_REVALIDATE_MAX_FAILURES_FALLBACK: int = 3
+
+
+async def _resolve_sse_revalidate_max_failures(app_state: AppState | None) -> int:
+    """Resolve the SSE revalidation failure tolerance through settings.
+
+    Falls back to :data:`_SSE_REVALIDATE_MAX_FAILURES_FALLBACK` when no
+    :class:`ConfigResolver` is wired (test harness, anonymous boot) or
+    when the resolver itself raises -- a transient settings outage
+    must not collapse the failure ceiling to zero.
+    """
+    if app_state is None or not getattr(app_state, "has_config_resolver", False):
+        return _SSE_REVALIDATE_MAX_FAILURES_FALLBACK
+    try:
+        return await app_state.config_resolver.get_int(
+            "api", "sse_revalidate_max_failures"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            EVENT_STREAM_PROJECTION_FAILED,
+            note="failed to resolve api.sse_revalidate_max_failures; using fallback",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback=_SSE_REVALIDATE_MAX_FAILURES_FALLBACK,
+        )
+        return _SSE_REVALIDATE_MAX_FAILURES_FALLBACK
 
 
 async def _user_revocation_reason(
@@ -116,7 +146,7 @@ async def _user_revocation_reason(
     must kick a live SSE stream within one revalidation interval).
 
     ``ok`` is False when the persistence call itself failed (transient
-    backend error). Callers tolerate ``_SSE_REVALIDATE_MAX_FAILURES``
+    backend error). Callers tolerate ``api.sse_revalidate_max_failures``
     consecutive ``ok=False`` ticks before tearing down the stream.
     """
     try:
@@ -346,6 +376,7 @@ async def _run_revalidation_tick(
     app_state: AppState,
     user: AuthenticatedUser,
     consecutive_failures: int,
+    max_failures: int,
 ) -> _RevalidationVerdict:
     """Execute one revalidation check and return what the loop should do.
 
@@ -353,6 +384,10 @@ async def _run_revalidation_tick(
     decision tree so :func:`_sse_event_stream` does not exceed the
     McCabe complexity ceiling. The caller advances its
     ``next_revalidate_ts`` regardless of the verdict.
+
+    ``max_failures`` is the resolved ``api.sse_revalidate_max_failures``
+    setting; the loop tolerates this many consecutive transient
+    persistence errors before yielding a ``revoked`` frame.
     """
     reason, ok = await _user_revocation_reason(
         app_state,
@@ -361,7 +396,7 @@ async def _run_revalidation_tick(
     )
     if not ok:
         new_failures = consecutive_failures + 1
-        if new_failures >= _SSE_REVALIDATE_MAX_FAILURES:
+        if new_failures >= max_failures:
             return _RevalidationVerdict(
                 consecutive_failures=new_failures,
                 revoked_event={
@@ -394,8 +429,8 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
     independent revalidation deadline (``SSE_REVALIDATE_INTERVAL_SECONDS``)
     and fires it even on busy streams that never hit a keepalive
     timeout. On revocation, yields a final ``revoked`` event
-    and terminates the stream. Tolerates ``_SSE_REVALIDATE_MAX_FAILURES``
-    transient persistence errors before escalating.
+    and terminates the stream. Tolerates ``api.sse_revalidate_max_failures``
+    consecutive transient persistence errors before escalating.
     """
     consecutive_failures = 0
     # Track the disconnect reason by exit path so the
@@ -420,6 +455,7 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
         )
         revalidation_armed = app_state is not None and user is not None
         keepalive_seconds = await _resolve_sse_keepalive_seconds(app_state)
+        revalidate_max_failures = await _resolve_sse_revalidate_max_failures(app_state)
         # Use ``app_state.clock.monotonic()`` so tests inject FakeClock
         # rather than monkey-patching ``asyncio.get_event_loop().time``.
         # The bare loop timer is still acceptable for async waits below.
@@ -469,6 +505,7 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
                     app_state=app_state,
                     user=user,
                     consecutive_failures=consecutive_failures,
+                    max_failures=revalidate_max_failures,
                 )
                 consecutive_failures = verdict.consecutive_failures
                 if verdict.revoked_event is not None:
