@@ -63,6 +63,7 @@ import { agentsHandlers } from './agents'
 import { analyticsHandlers } from './analytics'
 import { approvalsHandlers } from './approvals'
 import { artifactsHandlers } from './artifacts'
+import { auditHandlers } from './audit'
 import { authHandlers } from './auth'
 import { backupHandlers } from './backup'
 import { budgetHandlers } from './budget'
@@ -113,6 +114,7 @@ export const defaultHandlers = [
   ...analyticsHandlers,
   ...approvalsHandlers,
   ...artifactsHandlers,
+  ...auditHandlers,
   ...authHandlers,
   ...backupHandlers,
   ...budgetHandlers,
@@ -160,6 +162,7 @@ export {
   analyticsHandlers,
   approvalsHandlers,
   artifactsHandlers,
+  auditHandlers,
   authHandlers,
   backupHandlers,
   budgetHandlers,

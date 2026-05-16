@@ -40,6 +40,7 @@ export const ROUTES = {
   COORDINATION_METRICS: '/analytics/coordination',
   META_ANALYTICS: '/analytics/meta',
   PERSONALITIES_ADMIN: '/admin/personalities',
+  ADMIN_AUDIT_LOG: '/admin/audit',
   BUDGET_VERSIONS: '/budget/versions',
   COMPANY_VERSIONS: '/org/versions',
   EVALUATION_VERSIONS: '/evaluation/versions',
