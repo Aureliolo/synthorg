@@ -62,13 +62,13 @@ ENDJSON
 
 # An explicit, NON-zero worker count is always wrong: pyproject
 # addopts already applies -n=8 --dist=loadfile. Omit the flag.
-if echo "$COMMAND" | grep -qE '(^|[[:space:]])(-n[[:space:]]*([1-9][0-9]*|auto|logical)|--numprocesses[[:space:]]+([1-9][0-9]*|auto|logical))(\b|$)'; then
+if echo "$COMMAND" | grep -qE '(^|[[:space:]])(-n([[:space:]]*|=)([1-9][0-9]*|auto|logical)|--numprocesses([[:space:]]+|=)([1-9][0-9]*|auto|logical))(\b|$)'; then
     deny "BLOCKED: do not pass an explicit -n/--numprocesses. pyproject addopts already pins -n=8 --dist=loadfile; the only correct form is NO -n flag (the default governs). Remove it."
 fi
 
 # xdist-disable: only legitimate to read ONE test's full log, so
 # require a node id. A bare directory/suite run with -n0 is blocked.
-if echo "$COMMAND" | grep -qE '(^|[[:space:]])(-n[[:space:]]*0|--numprocesses[[:space:]]+0|--dist[[:space:]]+no|-p[[:space:]]+no:xdist)(\b|$)'; then
+if echo "$COMMAND" | grep -qE '(^|[[:space:]])(-n([[:space:]]*|=)0|--numprocesses([[:space:]]+|=)0|--dist([[:space:]]+|=)no|-p[[:space:]]+no:xdist)(\b|$)'; then
     if echo "$COMMAND" | grep -qE '::'; then
         exit 0
     fi

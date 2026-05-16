@@ -68,7 +68,7 @@ Some conventions are also enforced *before* the file lands on disk so the offend
 - `check_pre_pr_review_triage_gate.sh`: blocks `Edit` / `Write` outside `_audit/` while a `/pre-pr-review` triage table is pending user approval.
 - `check_mock_spec_ratchet.py`: blocks `Edit` / `Write` to `tests/*.py` that would raise the mock-spec gate's CATCH count for the touched file, and blocks `Edit` / `Write` to `scripts/check_mock_spec.py` that would remove `_Verdict.CATCH` branches. Drives drive-by tightening: every edit reduces or holds the residual.
 - `check_no_pr_create.sh`: blocks `Bash` `gh pr create` (use `/pre-pr-review`).
-- `check_no_cd_prefix.sh`: blocks a `Bash` command that *starts with* `cd ` (poisons the tool cwd); `bash -c "cd <dir> && ..."` and native `-C`/`--prefix`/`--project` are allowed.
+- `check_no_cd_prefix.sh`: blocks a `Bash` command that *starts with* `cd` followed by a space (poisons the tool cwd); `bash -c "cd <dir> && ..."` and native `-C`/`--prefix`/`--project` are allowed.
 - `check_no_local_coverage.sh`: blocks `Bash` pytest `--cov` / `coverage run` (coverage is a CI-only concern).
 - `check_enforce_parallel_tests.sh`: blocks `Bash` pytest with any explicit `-n`/`--numprocesses` (pyproject `addopts` pins `-n=8 --dist=loadfile`; omit it) and blocks xdist-disable (`-n0`/`--dist no`/`-p no:xdist`) unless the run targets a single `path::test` node id; benchmarks/`--codspeed` exempt.
 - `check_no_bulk_edit.py`: blocks only shell in-place bulk rewrites (`sed -i`, `perl -pi`, redirect-overwrite of a tracked source file). The native `Edit` (incl. `replace_all`) and `Write` tools are intentionally not blocked: they surface a reviewable atomic diff.

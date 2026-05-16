@@ -27,11 +27,12 @@
  *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
  *   PostToolUse (Bash): scripts/record_push_throttle.sh
  *
- * The former .claude/hookify.*.md rules were migrated to the committed
- * scripts above (block-pr-create -> check_no_pr_create.sh, no-cd-prefix
- * -> check_no_cd_prefix.sh, no-local-coverage -> check_no_local_coverage.sh,
- * enforce-parallel-tests -> check_enforce_parallel_tests.sh) so OpenCode
- * and Claude Code share one source of truth.
+ * These committed scripts are the single source of truth for the
+ * shared hook rules, so OpenCode (this plugin) and Claude Code
+ * (.claude/settings.json) enforce identical gates: block-pr-create via
+ * check_no_pr_create.sh, no-cd-prefix via check_no_cd_prefix.sh,
+ * no-local-coverage via check_no_local_coverage.sh, and
+ * enforce-parallel-tests via check_enforce_parallel_tests.sh.
  */
 
 import type { Plugin } from "@opencode-ai/plugin";

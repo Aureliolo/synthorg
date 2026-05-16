@@ -845,8 +845,12 @@ def _tracked_dirty_paths() -> set[str]:
         if not line or line.startswith("??"):
             continue
         # Porcelain v1: 2 status chars, a space, then the path(s).
+        # Only rename/copy entries carry an ``orig -> new`` payload; a
+        # plain filename containing the literal `` -> `` substring must
+        # not be misparsed as one (it would record non-existent paths).
+        status = line[:2]
         payload = line[3:]
-        if " -> " in payload:
+        if ("R" in status or "C" in status) and " -> " in payload:
             old, new = payload.split(" -> ", 1)
             paths.add(old.strip())
             paths.add(new.strip())

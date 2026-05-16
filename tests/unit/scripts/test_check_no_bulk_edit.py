@@ -131,3 +131,20 @@ def test_malformed_json_fails_closed() -> None:
     )
     assert result.returncode == 2
     assert "malformed" in result.stderr.lower()
+
+
+@pytest.mark.parametrize("payload", ["[]", '"a string"', "42", "true", "null"])
+def test_non_object_json_fails_closed(payload: str) -> None:
+    # Valid JSON that is not an object would make ``payload.get(...)``
+    # raise AttributeError and crash the guard instead of failing
+    # closed. A non-dict envelope is just as malformed as garbage input.
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, str(_SCRIPT)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+    )
+    assert result.returncode == 2
+    assert "malformed" in result.stderr.lower()

@@ -121,11 +121,19 @@ def test_local_coverage_allows_plain(command: str) -> None:
         "pytest tests/ -n4",
         "pytest tests/ --numprocesses 2",
         "pytest tests/ -n auto",
+        # Equals-sign forms must not bypass the gate.
+        "pytest tests/ -n=4",
+        "pytest tests/ --numprocesses=2",
+        "pytest tests/ --numprocesses=auto",
         # xdist-disable on a suite/directory run (no ::) is blocked.
         "uv run python -m pytest tests/ -n0",
         "uv run python -m pytest tests/ -n 0",
         "pytest tests/ --dist no",
         "pytest tests/ -p no:xdist",
+        # Equals-sign disable forms must not bypass the gate either.
+        "uv run python -m pytest tests/ -n=0",
+        "pytest tests/ --numprocesses=0",
+        "pytest tests/ --dist=no",
     ],
 )
 def test_parallel_tests_blocks(command: str) -> None:

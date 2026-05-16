@@ -65,6 +65,19 @@ def main() -> int:
         )
         return 2
 
+    # ``json.loads`` happily returns a list/str/number for a valid but
+    # non-object payload; ``.get()`` below would then raise
+    # ``AttributeError`` and the gate would crash instead of failing
+    # closed. A non-dict envelope is just as malformed as unparseable
+    # input -- treat it the same way.
+    if not isinstance(payload, dict):
+        print(
+            "BLOCKED: malformed PreToolUse JSON envelope (expected object, "
+            f"got {type(payload).__name__}); check_no_bulk_edit fails closed.",
+            file=sys.stderr,
+        )
+        return 2
+
     tool_name = payload.get("tool_name", "")
     tool_input = payload.get("tool_input") or {}
 
