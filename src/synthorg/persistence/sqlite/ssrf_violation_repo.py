@@ -1,5 +1,6 @@
 """SQLite repository implementation for SSRF violation records."""
 
+import contextlib
 import sqlite3
 from typing import TYPE_CHECKING, Any
 
@@ -12,6 +13,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     DEFAULT_LIST_LIMIT,
     coerce_row_timestamp,
@@ -159,6 +161,66 @@ class SQLiteSsrfViolationRepository:
                 error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[SsrfViolation, ...]:
+        """List violations ordered by id ascending (generic IdKeyed surface)."""
+        try:
+            cursor = await self._db.execute(
+                f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
+                "ORDER BY id LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list SSRF violations"
+            logger.warning(
+                PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise PersistenceError(msg) from exc
+
+        results: list[SsrfViolation] = []
+        for row in rows:
+            try:
+                results.append(_row_to_violation(row))
+            except (ValueError, ValidationError, TypeError) as exc:
+                msg = "Failed to deserialize SSRF violation row"
+                logger.warning(
+                    PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
+        return tuple(results)
+
+    async def delete(self, violation_id: NotBlankStr) -> bool:
+        """Delete a violation by ID."""
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM ssrf_violations WHERE id = ?",
+                    (violation_id,),
+                )
+                deleted = cursor.rowcount > 0
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to delete SSRF violation {violation_id!r}"
+                logger.warning(
+                    PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                    violation_id=violation_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
+        return deleted
 
     async def list_violations(
         self,

@@ -17,6 +17,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, normalize_utc
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
@@ -135,6 +136,68 @@ class PostgresSsrfViolationRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[SsrfViolation, ...]:
+        """List violations ordered by id ascending (generic IdKeyed surface)."""
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
+                    "ORDER BY id LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list SSRF violations"
+            logger.warning(
+                PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        results: list[SsrfViolation] = []
+        for row in rows:
+            try:
+                results.append(_row_to_violation(row))
+            except (ValueError, ValidationError, TypeError) as exc:
+                msg = "Failed to deserialize SSRF violation row"
+                logger.warning(
+                    PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return tuple(results)
+
+    async def delete(self, violation_id: NotBlankStr) -> bool:
+        """Delete a violation by ID."""
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM ssrf_violations WHERE id = %s",
+                    (violation_id,),
+                )
+                deleted = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to delete SSRF violation {violation_id!r}"
+            logger.warning(
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                violation_id=violation_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return deleted
 
     async def list_violations(
         self,

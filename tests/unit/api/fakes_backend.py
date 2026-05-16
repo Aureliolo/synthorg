@@ -75,6 +75,15 @@ class FakeRiskOverrideRepository:
     ) -> RiskTierOverride | None:
         return self._overrides.get(override_id)
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[RiskTierOverride, ...]:
+        ordered = sorted(self._overrides.values(), key=lambda o: o.id)
+        return tuple(ordered[offset : offset + limit])
+
     async def list_active(
         self,
         *,
@@ -84,6 +93,9 @@ class FakeRiskOverrideRepository:
         active = [o for o in self._overrides.values() if o.is_active]
         active.sort(key=lambda o: o.created_at, reverse=True)
         return tuple(active[:limit])
+
+    async def delete(self, override_id: NotBlankStr) -> bool:
+        return self._overrides.pop(override_id, None) is not None
 
     async def revoke(
         self,
@@ -118,6 +130,18 @@ class FakeSsrfViolationRepository:
         violation_id: NotBlankStr,
     ) -> SsrfViolation | None:
         return self._violations.get(violation_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[SsrfViolation, ...]:
+        ordered = sorted(self._violations.values(), key=lambda v: v.id)
+        return tuple(ordered[offset : offset + limit])
+
+    async def delete(self, violation_id: NotBlankStr) -> bool:
+        return self._violations.pop(violation_id, None) is not None
 
     async def list_violations(
         self,

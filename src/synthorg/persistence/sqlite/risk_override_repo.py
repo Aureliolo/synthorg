@@ -14,6 +14,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
@@ -151,6 +152,68 @@ class SQLiteRiskOverrideRepository:
         if row is None:
             return None
         return _row_to_override(row)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[RiskTierOverride, ...]:
+        """List overrides ordered by id ascending (generic IdKeyed surface)."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
+        )
+        try:
+            cursor = await self._db.execute(
+                f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
+                "ORDER BY id LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list risk overrides"
+            logger.warning(
+                PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise PersistenceError(msg) from exc
+        results: list[RiskTierOverride] = []
+        for row in rows:
+            try:
+                results.append(_row_to_override(row))
+            except (ValueError, ValidationError, TypeError) as exc:
+                row_id = row[0] if row else "unknown"
+                msg = f"Failed to deserialize risk override row {row_id!r}"
+                logger.warning(
+                    PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
+                    row_id=row_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
+        return tuple(results)
+
+    async def delete(self, override_id: NotBlankStr) -> bool:
+        """Delete an override by ID."""
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM risk_overrides WHERE id = ?",
+                    (override_id,),
+                )
+                deleted = cursor.rowcount > 0
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._rollback_quietly()
+                msg = f"Failed to delete risk override {override_id!r}"
+                logger.warning(
+                    PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise PersistenceError(msg) from exc
+        return deleted
 
     async def list_active(
         self,
