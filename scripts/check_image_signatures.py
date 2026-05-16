@@ -196,10 +196,12 @@ def mint_pull_token(repo_path: str, ghcr_token: str | None) -> str | None:
         f"https://{GHCR_REGISTRY}/token?service={GHCR_REGISTRY}"
         f"&scope=repository:{safe_repo}:pull"
     )
-    req = urllib.request.Request(  # noqa: S310 -- URL is constructed from constants + percent-encoded repo path
+    req = urllib.request.Request(
         url,
         headers={"Authorization": f"Basic {_basic_auth('x-access-token', ghcr_token)}"},
     )
+    # S310: URL is built from constants + a percent-encoded repo path,
+    # so the scheme is always https (no file:/custom-scheme surface).
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:  # noqa: S310
         body = json.loads(resp.read().decode())
     token = body.get("token")
