@@ -25,6 +25,7 @@ import { SelectField } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { useToastStore } from '@/stores/toast'
+import { paginateAll } from '@/api/client'
 import {
   createAdminPreset,
   deleteAdminPreset,
@@ -71,7 +72,14 @@ export default function PersonalitiesAdminPage() {
   const refresh = useCallback(async () => {
     setError(null)
     try {
-      const rows = await listAdminPresets()
+      // ``listAdminPresets`` is single-page (cursor-aware) per the
+      // MANDATORY pagination convention. This page does client-side
+      // search/sort/filter, so it walks every page via ``paginateAll``
+      // at the call site (capped internally to PAGINATE_ALL_MAX_PAGES)
+      // to materialise the full set for the local index.
+      const rows = await paginateAll<PresetSummaryResponse>((cursor) =>
+        listAdminPresets({ cursor }),
+      )
       setPresets(rows)
     } catch (err) {
       const message = getErrorMessage(err)

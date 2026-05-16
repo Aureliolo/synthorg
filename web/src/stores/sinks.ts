@@ -148,7 +148,7 @@ export const useSinksStore = create<SinksState>((set, get) => ({
       }
       await get().fetchSinks()
       useToastStore.getState().add({
-        variant: sink.is_default ? 'success' : 'success',
+        variant: 'success',
         title: sink.is_default ? 'Sink overrides cleared' : 'Sink deleted',
       })
       return true

@@ -3,12 +3,13 @@ import type {
   createAdminPreset,
   getAdminPreset,
   listAdminPresets,
+  updateAdminPreset,
 } from '@/api/endpoints/personalities'
 import type {
   PresetDetailResponse,
   PresetSummaryResponse,
 } from '@/api/types/dtos.gen'
-import { apiSuccess, paginatedEnvelopeFor, successFor } from './helpers'
+import { apiSuccess, paginatedFor, successFor, voidSuccess } from './helpers'
 
 function summary(overrides: Partial<PresetSummaryResponse> = {}): PresetSummaryResponse {
   return {
@@ -21,20 +22,44 @@ function summary(overrides: Partial<PresetSummaryResponse> = {}): PresetSummaryR
 }
 
 function detail(overrides: Partial<PresetDetailResponse> = {}): PresetDetailResponse {
+  // ``satisfies`` (not ``as``) so missing / renamed fields on
+  // PresetDetailResponse surface as TypeScript errors at build time
+  // rather than letting the mock drift silently out of lockstep with
+  // the contract. Every required field on the DTO is spelled out
+  // explicitly below; ``overrides`` then narrows / replaces.
   return {
-    name: overrides.name ?? 'builtin-default',
-    source: overrides.source ?? 'builtin',
-    description: overrides.description ?? 'A personality preset.',
-    created_at: overrides.created_at ?? '2026-01-01T00:00:00Z',
-    updated_at: overrides.updated_at ?? '2026-01-01T00:00:00Z',
+    name: 'builtin-default',
+    source: 'builtin',
+    description: 'A personality preset.',
+    traits: ['curious'],
+    agreeableness: 0.5,
+    conscientiousness: 0.5,
+    extraversion: 0.5,
+    openness: 0.5,
+    stress_response: 0.5,
+    communication_style: 'neutral',
+    verbosity: 'balanced',
+    collaboration: 'team',
+    creativity: 'medium',
+    decision_making: 'analytical',
+    conflict_approach: 'collaborate',
+    risk_tolerance: 'medium',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
-  } as PresetDetailResponse
+  } satisfies PresetDetailResponse
 }
 
 export const personalitiesHandlers = [
   http.get('/api/v1/personalities/presets', () =>
     HttpResponse.json(
-      paginatedEnvelopeFor<typeof listAdminPresets>([summary()]),
+      paginatedFor<typeof listAdminPresets>({
+        data: [summary()],
+        limit: 200,
+        nextCursor: null,
+        hasMore: false,
+        pagination: { limit: 200, next_cursor: null, has_more: false },
+      }),
     ),
   ),
   http.get('/api/v1/personalities/presets/:name', ({ params }) =>
@@ -53,12 +78,19 @@ export const personalitiesHandlers = [
   }),
   http.put('/api/v1/personalities/presets/:name', ({ params }) =>
     HttpResponse.json(
-      apiSuccess(detail({ name: String(params.name), source: 'custom' })),
+      successFor<typeof updateAdminPreset>(
+        detail({ name: String(params.name), source: 'custom' }),
+      ),
     ),
   ),
   http.delete('/api/v1/personalities/presets/:name', () =>
-    HttpResponse.json(apiSuccess(null)),
+    HttpResponse.json(voidSuccess()),
   ),
+  // ``/personalities/schema`` has no corresponding endpoint helper in
+  // ``web/src/api/endpoints/personalities.ts``, so there is no
+  // ``Fn`` to type ``successFor<typeof Fn>`` against. The mock falls
+  // back to ``apiSuccess`` (the underlying primitive that
+  // ``successFor`` wraps) until the endpoint helper is added.
   http.get('/api/v1/personalities/schema', () =>
     HttpResponse.json(apiSuccess({})),
   ),

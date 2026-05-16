@@ -157,7 +157,11 @@ export default function RequestQueuePage() {
       return (
         r.request_id.toLowerCase().includes(trimmed)
         || r.client_id.toLowerCase().includes(trimmed)
-        || (typeof r.requirement === 'object'
+        // ``typeof null === 'object'`` in JS, so the null guard must
+        // come first or the ``'description' in r.requirement`` check
+        // below throws at runtime.
+        || (r.requirement !== null
+          && typeof r.requirement === 'object'
           && 'description' in r.requirement
           && typeof r.requirement.description === 'string'
           && r.requirement.description.toLowerCase().includes(trimmed))

@@ -28,7 +28,6 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
-import { useToastStore } from '@/stores/toast'
 import { DepartmentCreateDialog } from './DepartmentCreateDialog'
 import { DepartmentEditDrawer } from './DepartmentEditDrawer'
 import { PackSelectionDialog } from './PackSelectionDialog'
@@ -175,11 +174,12 @@ export function DepartmentsTab({
       const orderedNames = reordered.map((d) => d.name)
 
       const rollback = optimisticReorderDepartments(orderedNames)
-      try {
-        await onReorderDepartments(orderedNames)
-      } catch {
+      // ``onReorderDepartments`` returns false on failure (store owns
+      // the toast UX); callers must not wrap store mutations in
+      // try/catch. Roll back when the store reports failure.
+      const ok = await onReorderDepartments(orderedNames)
+      if (!ok) {
         rollback()
-        useToastStore.getState().add({ variant: 'error', title: 'Failed to reorder departments' })
       }
     },
     [config, optimisticReorderDepartments, onReorderDepartments],

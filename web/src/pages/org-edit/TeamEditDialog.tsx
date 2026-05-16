@@ -72,27 +72,30 @@ export function TeamEditDialog({
     const trimmedMembers = members.map((m) => m.trim()).filter(Boolean)
 
     setSaving(true)
-    let result: unknown
-    if (mode === 'create') {
-      result = await onCreateTeam({
-        name: trimmedName,
-        lead: trimmedLead,
-        members: trimmedMembers,
-      })
-    } else if (team) {
-      result = await onUpdateTeam(team.name, {
-        name: trimmedName,
-        lead: trimmedLead,
-        members: trimmedMembers,
-      })
+    try {
+      let result: unknown
+      if (mode === 'create') {
+        result = await onCreateTeam({
+          name: trimmedName,
+          lead: trimmedLead,
+          members: trimmedMembers,
+        })
+      } else if (team) {
+        result = await onUpdateTeam(team.name, {
+          name: trimmedName,
+          lead: trimmedLead,
+          members: trimmedMembers,
+        })
+      }
+      // Store owns the toast UX; keep the dialog open on failure so
+      // the user can see what they typed.
+      if (result === null) return
+      onOpenChange(false)
+    } finally {
+      // ``finally`` (not the happy path only) so an unexpected reject
+      // from the store never leaves the dialog locked.
+      setSaving(false)
     }
-    setSaving(false)
-    if (result === null) {
-      // Store owns the toast UX; keep the dialog open so the user can
-      // see what they typed.
-      return
-    }
-    onOpenChange(false)
   }, [name, lead, members, mode, team, onCreateTeam, onUpdateTeam, onOpenChange])
 
   const busy = saving || disabled

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { useWebSocketStore } from '@/stores/websocket'
 
@@ -19,14 +19,22 @@ export interface WsConnectionBannerProps {
 const DEFAULT_TITLE = 'Real-time updates disconnected'
 const DEFAULT_DESCRIPTION = 'Data may be stale until the connection recovers.'
 
+// Grace window during which the initial-handshake transition is
+// allowed to stay silent. A session that starts offline and never
+// connects will still surface the banner once this timer elapses --
+// previously the ``everConnectedRef`` suppression kept it hidden
+// indefinitely, which masked the exact failure mode this banner
+// exists to communicate.
+const INITIAL_HANDSHAKE_GRACE_MS = 5000
+
 /**
  * Page-level WebSocket-offline banner. Reads the connection state
  * directly from the websocket store so callers do not need to wire a
  * channel subscription just to surface the offline signal. Renders
- * nothing while the socket is connected, AND suppresses the banner
- * before the first successful connect to avoid a false-positive flash
- * during the initial handshake (the WS store boots at
- * ``connected: false``).
+ * nothing while the socket is connected. The banner is suppressed
+ * only during the brief initial-handshake window (the WS store boots
+ * at ``connected: false``); after that window, or after the first
+ * successful connect, an offline state always surfaces.
  */
 export function WsConnectionBanner({
   title = DEFAULT_TITLE,
@@ -34,10 +42,21 @@ export function WsConnectionBanner({
 }: WsConnectionBannerProps = {}) {
   const connected = useWebSocketStore((s) => s.connected)
   const everConnectedRef = useRef(false)
+  const [initialGraceElapsed, setInitialGraceElapsed] = useState(false)
+
+  useEffect(() => {
+    const id = window.setTimeout(
+      () => setInitialGraceElapsed(true),
+      INITIAL_HANDSHAKE_GRACE_MS,
+    )
+    return () => window.clearTimeout(id)
+  }, [])
+
   useEffect(() => {
     if (connected) everConnectedRef.current = true
   }, [connected])
+
   if (connected) return null
-  if (!everConnectedRef.current) return null
+  if (!everConnectedRef.current && !initialGraceElapsed) return null
   return <ErrorBanner variant="offline" title={title} description={description} />
 }

@@ -6,7 +6,7 @@
  * the full CRUD shape over /personalities/presets so operators can
  * create / update / delete custom personality presets.
  */
-import { apiClient, paginateAll, unwrap, unwrapPaginated } from '../client'
+import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   CreatePresetRequest,
@@ -15,15 +15,30 @@ import type {
   UpdatePresetRequest,
 } from '../types/dtos.gen'
 
-export async function listAdminPresets(): Promise<readonly PresetSummaryResponse[]> {
-  return paginateAll<PresetSummaryResponse>(async (cursor) => {
-    const query = new URLSearchParams()
-    if (cursor) query.set('cursor', cursor)
-    const qs = query.toString()
-    const url = qs ? `/personalities/presets?${qs}` : '/personalities/presets'
-    const response = await apiClient.get<PaginatedResponse<PresetSummaryResponse>>(url)
-    return unwrapPaginated(response)
-  })
+export interface ListAdminPresetsParams {
+  readonly cursor?: string | null
+  readonly limit?: number | null
+}
+
+/**
+ * Single-page admin preset listing.
+ *
+ * Returns the raw cursor metadata (``nextCursor`` / ``hasMore``) so
+ * callers can paginate per the project's MANDATORY cursor-pagination
+ * convention. The previous shape eagerly materialised every page via
+ * ``paginateAll``, which lost the cursor envelope and forced
+ * client-side pagination on top of an already-paginated server.
+ */
+export async function listAdminPresets(
+  params: ListAdminPresetsParams = {},
+): Promise<PaginatedResult<PresetSummaryResponse>> {
+  const query = new URLSearchParams()
+  if (params.cursor) query.set('cursor', params.cursor)
+  if (params.limit != null) query.set('limit', String(params.limit))
+  const qs = query.toString()
+  const url = qs ? `/personalities/presets?${qs}` : '/personalities/presets'
+  const response = await apiClient.get<PaginatedResponse<PresetSummaryResponse>>(url)
+  return unwrapPaginated(response)
 }
 
 export async function getAdminPreset(name: string): Promise<PresetDetailResponse> {

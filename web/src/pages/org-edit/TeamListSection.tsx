@@ -135,10 +135,16 @@ export function TeamListSection({
 
   const handleDeleteConfirm = useCallback(async (teamName: string, reassignTo?: string) => {
     setDeleting(true)
-    const ok = await onDeleteTeam(teamName, reassignTo)
-    setDeleting(false)
-    if (ok) {
-      setDeleteTeam(null)
+    try {
+      const ok = await onDeleteTeam(teamName, reassignTo)
+      if (ok) {
+        setDeleteTeam(null)
+      }
+    } finally {
+      // ``finally`` (not the happy path only) so an unexpected reject
+      // from the store never leaves the confirm dialog stuck in
+      // loading state.
+      setDeleting(false)
     }
   }, [onDeleteTeam])
 

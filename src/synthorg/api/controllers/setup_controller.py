@@ -149,7 +149,11 @@ async def _validate_completion_prereqs(
         raise ValidationError(msg)
 
     # Quick Setup mode allows zero agents -- log a note but do not raise.
-    has_agents = await _check_has_agents(settings_svc)
+    # ``strict=True`` so a parse/read failure raises instead of silently
+    # collapsing to ``False`` (which would skip the persisted-agent
+    # validation below and let a corrupted ``company.agents`` blob pass
+    # completion as a Quick Setup).
+    has_agents = await _check_has_agents(settings_svc, strict=True)
     if not has_agents:
         logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
 
@@ -381,34 +385,46 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
         tmpl_res = _resolve_template(data.template_name)
         description = normalize_description(data.description)
 
-        await _persist_company_settings(
-            settings_svc,
-            data.company_name,
-            description,
-            tmpl_res.departments_json,
-        )
-
-        agent_summaries: tuple[SetupAgentSummary, ...] = ()
-        if tmpl_res.template is not None:
-            agent_summaries = await _auto_create_template_agents(
-                tmpl_res.template,
-                app_state,
+        # Serialise the whole check / persist / agents-write sequence
+        # under _COMPLETE_LOCK so a concurrent ``/setup/complete``
+        # (which holds the same lock) cannot reinit against a
+        # half-written ``company.agents`` array. _AGENT_LOCK is NOT
+        # acquired at this outer scope: ``_auto_create_template_agents``
+        # acquires _AGENT_LOCK internally and ``asyncio.Lock`` is not
+        # reentrant, so holding it here would self-deadlock. The
+        # leaf agents-writes take _AGENT_LOCK at their own narrow scope
+        # instead -- the lock order across the module stays
+        # _COMPLETE_LOCK -> _AGENT_LOCK.
+        async with _COMPLETE_LOCK:
+            await _check_setup_not_complete(settings_svc)
+            await _persist_company_settings(
                 settings_svc,
+                data.company_name,
+                description,
+                tmpl_res.departments_json,
             )
-            logger.info(
-                SETUP_AGENTS_AUTO_CREATED,
-                count=len(agent_summaries),
-                template=tmpl_res.template_applied,
-            )
-        else:
-            # Blank path: clear any agents persisted by a previous
-            # template selection so GET /setup/agents returns empty.
-            await settings_svc.set("company", "agents", "[]")
+
+            agent_summaries: tuple[SetupAgentSummary, ...] = ()
+            if tmpl_res.template is not None:
+                agent_summaries = await _auto_create_template_agents(
+                    tmpl_res.template,
+                    app_state,
+                    settings_svc,
+                )
+                logger.info(
+                    SETUP_AGENTS_AUTO_CREATED,
+                    count=len(agent_summaries),
+                    template=tmpl_res.template_applied,
+                )
+            else:
+                # Blank path: clear any agents persisted by a previous
+                # template selection so GET /setup/agents returns empty.
+                async with _AGENT_LOCK:
+                    await settings_svc.set("company", "agents", "[]")
 
         logger.info(
             SETUP_COMPANY_CREATED,
@@ -472,10 +488,13 @@ class SetupController(Controller):
             custom_presets=custom_presets,
         )
 
-        async with _AGENT_LOCK:
-            # Re-check setup_complete inside the lock so a concurrent
-            # /setup/complete cannot slip between an outside check and
-            # the agents write.
+        # Lock order across this module is _COMPLETE_LOCK -> _AGENT_LOCK
+        # (matches ``complete_setup``). Acquiring _AGENT_LOCK alone
+        # would let an in-flight ``/setup/complete`` slip in between
+        # ``_check_setup_not_complete`` and the ``settings_svc.set``
+        # call below, leaving the runtime bootstrap out of sync with
+        # persisted agents.
+        async with _COMPLETE_LOCK, _AGENT_LOCK:
             await _check_setup_not_complete(settings_svc)
             existing_agents = await get_existing_agents(settings_svc)
             updated_agents = [*existing_agents, agent_config]
@@ -579,10 +598,8 @@ class SetupController(Controller):
         providers = await app_state.provider_management.list_providers()
         validate_model_assignment(providers, data)
 
-        async with _AGENT_LOCK:
-            # Re-check setup_complete inside the lock so a concurrent
-            # /setup/complete cannot slip between the validation above
-            # and the agents write below.
+        # Lock order: _COMPLETE_LOCK -> _AGENT_LOCK (see create_agent).
+        async with _COMPLETE_LOCK, _AGENT_LOCK:
             await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
@@ -644,9 +661,8 @@ class SetupController(Controller):
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
 
-        async with _AGENT_LOCK:
-            # Re-check setup_complete inside the lock so a concurrent
-            # /setup/complete cannot slip in before the agents write.
+        # Lock order: _COMPLETE_LOCK -> _AGENT_LOCK (see create_agent).
+        async with _COMPLETE_LOCK, _AGENT_LOCK:
             await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
@@ -708,9 +724,8 @@ class SetupController(Controller):
 
         locales = await _read_name_locales(settings_svc)
 
-        async with _AGENT_LOCK:
-            # Re-check setup_complete inside the lock so a concurrent
-            # /setup/complete cannot slip in before the agents write.
+        # Lock order: _COMPLETE_LOCK -> _AGENT_LOCK (see create_agent).
+        async with _COMPLETE_LOCK, _AGENT_LOCK:
             await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)

@@ -200,7 +200,6 @@ function dispatchEvent(event: WsEvent) {
 // ── Store ───────────────────────────────────────────────────
 
 /**
-/**
  * Pick a heartbeat delay in
  * `WS_HEARTBEAT_INTERVAL_MS * [WS_HEARTBEAT_JITTER_MIN, WS_HEARTBEAT_JITTER_MAX]`
  * so a fleet of long-lived dashboards does not ping the server in

@@ -3,7 +3,7 @@
 import axios, { type AxiosError } from 'axios'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { ErrorCode, type ErrorDetail } from '@/api/types/errors'
+import { ErrorCategory, ErrorCode, type ErrorDetail } from '@/api/types/errors'
 
 /**
  * Format a millisecond duration as user-facing British English copy
@@ -300,22 +300,26 @@ export function getCrudErrorTitle(
   if (status === 403) return { title: 'Permission denied' }
   const detail = getErrorDetail(error)
   if (detail) {
+    // Match against the exported ``ErrorCategory`` constants
+    // (re-exported from the generated ``error-codes.gen.ts``) instead
+    // of raw string literals so a backend rename surfaces as a
+    // TypeScript error in lockstep with the contract.
     switch (detail.error_category) {
-      case 'auth':
+      case ErrorCategory.AUTH:
         return { title: 'Authentication failed' }
-      case 'validation':
+      case ErrorCategory.VALIDATION:
         return { title: 'Validation failed' }
-      case 'conflict':
+      case ErrorCategory.CONFLICT:
         return { title: 'Resource conflict' }
-      case 'rate_limit':
+      case ErrorCategory.RATE_LIMIT:
         return { title: 'Rate limit reached' }
-      case 'not_found':
+      case ErrorCategory.NOT_FOUND:
         return { title: 'Not found' }
-      case 'budget_exhausted':
+      case ErrorCategory.BUDGET_EXHAUSTED:
         return { title: 'Budget exhausted' }
-      case 'provider_error':
+      case ErrorCategory.PROVIDER_ERROR:
         return { title: 'Provider error' }
-      case 'internal':
+      case ErrorCategory.INTERNAL:
         // Fall through to the HTTP-status / caller-fallback branches
         // below; 5xx-class internal failures get a more specific
         // status-based message than the generic category copy.

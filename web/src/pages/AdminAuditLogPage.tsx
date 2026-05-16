@@ -7,7 +7,7 @@
  * Built for admin operators who need to investigate "why was tool X
  * denied for agent Y" without reaching for the database.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Shield } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -22,17 +22,25 @@ import type { AuditEntry } from '@/api/types/dtos.gen'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
+import { formatDateTime } from '@/utils/format'
 
 const log = createLogger('AdminAuditLogPage')
 
 const DEFAULT_PAGE_SIZE = 50
 
-type VerdictFilter = '' | 'APPROVED' | 'DENIED'
+// Mirrors the backend ``AuditEntry.verdict`` enum on
+// ``web/src/api/types/openapi.gen.ts``. The empty string is the
+// "any verdict" sentinel used by the SelectField; every other value
+// MUST stay in lockstep with the OpenAPI schema or the filter silently
+// returns zero rows on a previously-valid verdict.
+type VerdictFilter = '' | 'allow' | 'deny' | 'escalate' | 'output_scan'
 
 const VERDICT_OPTIONS: ReadonlyArray<{ value: VerdictFilter; label: string }> = [
   { value: '', label: 'Any verdict' },
-  { value: 'APPROVED', label: 'Approved' },
-  { value: 'DENIED', label: 'Denied' },
+  { value: 'allow', label: 'Allow' },
+  { value: 'deny', label: 'Deny' },
+  { value: 'escalate', label: 'Escalate' },
+  { value: 'output_scan', label: 'Output scan' },
 ]
 
 interface PageState {
@@ -52,6 +60,12 @@ export default function AdminAuditLogPage() {
   const [toolFilter, setToolFilter] = useState('')
   const [actionTypeFilter, setActionTypeFilter] = useState('')
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>('')
+  // Monotonic request id: typing into a filter field re-fires
+  // ``fetchFirstPage`` faster than the network can answer, and a
+  // slower in-flight response would otherwise clobber the freshest
+  // filter's result. Capture the id at call time and bail if the ref
+  // has advanced past it.
+  const requestSeqRef = useRef(0)
 
   const filterParams = useMemo(
     () => ({
@@ -65,44 +79,53 @@ export default function AdminAuditLogPage() {
   )
 
   const fetchFirstPage = useCallback(async () => {
+    const seq = ++requestSeqRef.current
     setError(null)
     setLoading(true)
     try {
       const result = await listAuditEntries(filterParams)
+      if (seq !== requestSeqRef.current) return
       setState({
         entries: result.data,
         nextCursor: result.nextCursor,
         hasMore: result.hasMore,
       })
     } catch (err) {
+      if (seq !== requestSeqRef.current) return
       const message = getErrorMessage(err)
       log.error('listAuditEntries failed', { error: sanitizeForLog(message) })
       setError(message)
       setState(EMPTY_STATE)
     } finally {
-      setLoading(false)
+      if (seq === requestSeqRef.current) setLoading(false)
     }
   }, [filterParams])
 
   const handleLoadMore = useCallback(async () => {
     if (!state.hasMore || !state.nextCursor || loadingMore) return
+    // Bind the load-more to the current filter generation; a stale
+    // page must not be appended after the user has changed filters.
+    const seq = requestSeqRef.current
+    setError(null)
     setLoadingMore(true)
     try {
       const result = await listAuditEntries({
         ...filterParams,
         cursor: state.nextCursor,
       })
+      if (seq !== requestSeqRef.current) return
       setState((prev) => ({
         entries: [...prev.entries, ...result.data],
         nextCursor: result.nextCursor,
         hasMore: result.hasMore,
       }))
     } catch (err) {
+      if (seq !== requestSeqRef.current) return
       const message = getErrorMessage(err)
       log.error('listAuditEntries load-more failed', { error: sanitizeForLog(message) })
       setError(message)
     } finally {
-      setLoadingMore(false)
+      if (seq === requestSeqRef.current) setLoadingMore(false)
     }
   }, [state.hasMore, state.nextCursor, loadingMore, filterParams])
 
@@ -183,7 +206,7 @@ export default function AdminAuditLogPage() {
                 {state.entries.map((entry) => (
                   <tr key={entry.id} className="align-top">
                     <td className="px-3 py-2 font-mono text-micro text-text-secondary">
-                      {entry.timestamp}
+                      {formatDateTime(entry.timestamp)}
                     </td>
                     <td className="px-3 py-2">
                       <span

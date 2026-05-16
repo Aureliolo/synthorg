@@ -58,11 +58,35 @@ export function usePolling(
   const fnRef = useRef(fn)
   const skipIfFreshRef = useRef(options.skipIfFresh)
   const runIdRef = useRef(0)
+  // True while a poll-function invocation is awaiting. Used by the
+  // visibility-resume handler to avoid scheduling a 0ms tick that
+  // would race the in-flight ``fnRef.current()`` call.
+  const inFlightRef = useRef(false)
+  // Set by the visibility handler when it cannot schedule directly
+  // because a poll was already in flight. The currently-running
+  // tick consumes the flag on completion and arms one extra tick.
+  const pendingResumeRef = useRef(false)
   fnRef.current = fn
   skipIfFreshRef.current = options.skipIfFresh
 
   // Validate at start, not during render
   const isValidInterval = Number.isFinite(intervalMs) && intervalMs >= MIN_POLL_INTERVAL
+
+  // Wraps the caller-supplied freshness gate so a throw from the
+  // user's callback cannot bubble past the scheduling code and leave
+  // the timer un-armed. Returning false on error means "treat as not
+  // fresh" -- erring on the side of polling so we never silently
+  // freeze the loop.
+  const shouldSkipIfFresh = useCallback((): boolean => {
+    if (!skipIfFreshRef.current) return false
+    try {
+      return Boolean(skipIfFreshRef.current())
+    } catch (err) {
+      setError(getErrorMessage(err))
+      log.error('Polling freshness gate threw:', err)
+      return false
+    }
+  }, [])
 
   const scheduleTick = useCallback((runId: number, delayMs: number = intervalMs) => {
     if (!activeRef.current || runId !== runIdRef.current) return
@@ -76,10 +100,11 @@ export function usePolling(
       }
       // WS-driven freshness: skip when the caller's recent-update
       // gate says we already have fresh state.
-      if (skipIfFreshRef.current?.()) {
+      if (shouldSkipIfFresh()) {
         scheduleTick(runId)
         return
       }
+      inFlightRef.current = true
       setIsRefetching(true)
       try {
         await fnRef.current()
@@ -88,12 +113,21 @@ export function usePolling(
         setError(getErrorMessage(err))
         log.error('Polling error:', err)
       } finally {
+        inFlightRef.current = false
         setIsRefetching(false)
+      }
+      // Visibility resume deferred a tick because we were in-flight:
+      // honour it now with a 0ms reschedule, then clear the flag so
+      // the catch-up only fires once per pending resume.
+      if (pendingResumeRef.current) {
+        pendingResumeRef.current = false
+        scheduleTick(runId, 0)
+        return
       }
       scheduleTick(runId)
     }
     timerRef.current = setTimeout(() => { void tick() }, delayMs)
-  }, [intervalMs])
+  }, [intervalMs, shouldSkipIfFresh])
 
   const start = useCallback(() => {
     if (!isValidInterval) {
@@ -113,10 +147,11 @@ export function usePolling(
         scheduleTick(runId)
         return
       }
-      if (skipIfFreshRef.current?.()) {
+      if (shouldSkipIfFresh()) {
         scheduleTick(runId)
         return
       }
+      inFlightRef.current = true
       setIsRefetching(true)
       try {
         await fnRef.current()
@@ -124,6 +159,7 @@ export function usePolling(
         setError(getErrorMessage(err))
         log.error('Polling error:', err)
       } finally {
+        inFlightRef.current = false
         setIsRefetching(false)
       }
       scheduleTick(runId)
@@ -140,12 +176,13 @@ export function usePolling(
       setError(getErrorMessage(err))
       log.error('Polling initial run failed:', err)
     })
-  }, [scheduleTick, isValidInterval, intervalMs])
+  }, [scheduleTick, shouldSkipIfFresh, isValidInterval, intervalMs])
 
   const stop = useCallback(() => {
     activeRef.current = false
     setActive(false)
     runIdRef.current++
+    pendingResumeRef.current = false
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
@@ -167,10 +204,20 @@ export function usePolling(
     const handler = () => {
       if (document.hidden) return
       if (!activeRef.current) return
-      // Cancel the in-flight scheduled timer and arm a 0ms tick on
-      // the SAME run generation. Bumping the generation would race
-      // any in-progress await; we instead let the current tick run
-      // through but pre-empt the wait.
+      // Defer the resume tick if a poll-function call is currently
+      // awaiting; scheduling a new 0ms tick alongside an in-flight
+      // call would let two ``fn()`` invocations interleave and
+      // produce out-of-order store writes. The currently-running
+      // tick consumes ``pendingResumeRef`` on completion.
+      if (inFlightRef.current) {
+        pendingResumeRef.current = true
+        return
+      }
+      // No poll in flight: cancel any armed scheduled tick and arm a
+      // 0ms tick on the same run generation so the resume runs
+      // immediately. Bumping the generation would race any future
+      // tick; reusing it is safe because we just confirmed nothing
+      // is awaiting.
       if (timerRef.current) {
         clearTimeout(timerRef.current)
         timerRef.current = null

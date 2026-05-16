@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseOrgEditDataReturn } from '@/hooks/useOrgEditData'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -117,25 +117,32 @@ describe('OrgEditPage', () => {
   it('does not render WS disconnect warning during initial handshake', () => {
     // Fresh mount with connected=false from the start (never connected):
     // banner must stay hidden to avoid the false-positive flash before
-    // the WS finishes connecting.
+    // the WS finishes connecting. The grace timer is real, so a
+    // synchronous render lands inside the suppression window.
     useWebSocketStore.setState({ connected: false })
     renderPage()
     expect(screen.queryByText(/disconnected/i)).not.toBeInTheDocument()
   })
 
-  it('renders custom WS setup error', () => {
-    // wsSetupError surfaces through the connection banner's description
-    // slot when the socket has never connected.
-    useWebSocketStore.setState({ connected: true })
-    const { rerender } = renderPage()
-    hookReturn = { ...defaultHookReturn, wsSetupError: 'Auth failed' }
-    useWebSocketStore.setState({ connected: false })
-    rerender(
-      <MemoryRouter initialEntries={['/org/edit']}>
-        <OrgEditPage />
-      </MemoryRouter>,
-    )
-    expect(screen.getByText('Auth failed')).toBeInTheDocument()
+  it('renders custom WS setup error on the "never connected" path', () => {
+    // Truly exercises the never-connected branch: socket starts
+    // (and stays) disconnected, ``wsSetupError`` is set, and we
+    // advance past the initial-handshake grace window so the banner
+    // surfaces with the supplied error in its description slot.
+    vi.useFakeTimers()
+    try {
+      hookReturn = { ...defaultHookReturn, wsSetupError: 'Auth failed' }
+      useWebSocketStore.setState({ connected: false })
+      renderPage()
+      // Past the 5s initial-handshake grace; the banner should now
+      // be visible with the wsSetupError text.
+      act(() => {
+        vi.advanceTimersByTime(5001)
+      })
+      expect(screen.getByText('Auth failed')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('renders YAML toggle', () => {

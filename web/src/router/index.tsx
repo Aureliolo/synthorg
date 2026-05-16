@@ -166,7 +166,7 @@ export const router = createBrowserRouter([
               { path: 'analytics/coordination', element: <CoordinationMetricsPage /> },
               { path: 'analytics/meta', element: <MetaAnalyticsPage /> },
               { path: 'admin/personalities', element: <PersonalitiesAdminPage /> },
-              { path: 'admin/audit', element: <AdminAuditLogPage /> },
+              { path: ROUTES.ADMIN_AUDIT_LOG.slice(1), element: <AdminAuditLogPage /> },
               { path: 'budget/versions', element: <BudgetVersionsPage /> },
               { path: 'org/versions', element: <CompanyVersionsPage /> },
               { path: 'evaluation/versions', element: <EvaluationVersionsPage /> },
