@@ -94,8 +94,14 @@ runs:
         # installation lookup; without them the action walks every
         # installation the App is authorised for, which opens the door
         # to token minting for a forked install if one is ever created.
+        # `repositories` is a literal value (not `${{ github.event.repository.name }}`)
+        # so zizmor's `github-app` audit can statically verify the scope
+        # is narrow; the dynamic expression would otherwise be flagged
+        # as "token granted access to all repositories for this owner".
+        # Every caller of this composite is fork-gated at the workflow
+        # level, so this composite never executes outside synthorg.
         owner: ${{ github.repository_owner }}
-        repositories: ${{ github.event.repository.name }}
+        repositories: synthorg
         # Per-call scope passthrough: empty values mean the action skips
         # requesting that permission, so the minted token carries exactly
         # the union of what each caller declares.

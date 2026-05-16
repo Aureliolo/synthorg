@@ -68,7 +68,12 @@ jobs:
           client-id: ${{ secrets.APKO_BOT_APP_CLIENT_ID }}
           private-key: ${{ secrets.APKO_BOT_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
+          # Literal repo name (not `${{ github.event.repository.name }}`)
+          # so zizmor's `github-app` audit can statically verify the scope
+          # is narrow. This workflow is scheduled-only + workflow_dispatch
+          # on the `apko-lock` environment whose branch policy admits only
+          # main, so the repo context is always synthorg.
+          repositories: synthorg
           # Least-privilege scope per the env-comment above: Contents:write
           # + PRs:write + Metadata:read is what the apko-bot install carries
           # and what this workflow's `createCommitOnBranch` + `gh pr create`
