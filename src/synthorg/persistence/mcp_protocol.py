@@ -7,7 +7,7 @@ stay in ``synthorg.integrations.mcp_catalog``.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -15,16 +15,24 @@ if TYPE_CHECKING:
 
 
 @runtime_checkable
-class McpInstallationRepository(Protocol):
-    """CRUD interface for MCP catalog installations."""
+class McpInstallationRepository(
+    IdKeyedRepository["McpInstallation", "NotBlankStr"],
+    Protocol,
+):
+    """CRUD interface for MCP catalog installations.
 
-    async def save(self, installation: McpInstallation) -> None:
+    Composes :class:`IdKeyedRepository` (ADR-0001) with
+    ``catalog_entry_id`` as the natural key. ``list_items`` is the
+    only listing surface; no bespoke filtered query is needed.
+    """
+
+    async def save(self, entity: McpInstallation) -> None:
         """Upsert an installation (idempotent on catalog_entry_id)."""
         ...
 
     async def get(
         self,
-        catalog_entry_id: NotBlankStr,
+        entity_id: NotBlankStr,
     ) -> McpInstallation | None:
         """Fetch an installation by catalog entry id."""
         ...
@@ -32,7 +40,7 @@ class McpInstallationRepository(Protocol):
     async def list_items(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
         """List recorded installations, optionally paginated.
@@ -44,6 +52,6 @@ class McpInstallationRepository(Protocol):
         """
         ...
 
-    async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete an installation.  Return ``True`` if a row was deleted."""
         ...
