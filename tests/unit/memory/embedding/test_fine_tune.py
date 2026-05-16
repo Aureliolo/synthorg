@@ -3,12 +3,13 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Protocol, cast
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
+from synthorg.memory.embedding import fine_tune as fine_tune_module
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import (
     _PASSAGE_MAX_LENGTH,
@@ -27,8 +28,19 @@ from synthorg.memory.errors import (
 )
 
 
+class _FakeSentenceTransformersModule(Protocol):
+    """Shape of the patched ``sentence_transformers`` module returned by the factory."""
+
+    def SentenceTransformer(self, name: str) -> _RecordingEncoder: ...  # noqa: N802
+
+
 class _RecordingEncoder:
-    """Fake SentenceTransformer that records every encode() call."""
+    """Fake ``SentenceTransformer`` that records every ``encode()`` call.
+
+    ``encode_query`` and ``encode_document`` raise so the test fails loudly
+    if production code switches to those alternate sentence-transformers APIs;
+    these tests assert that the project calls ``encode()`` exclusively.
+    """
 
     _EMBED_DIM = 8
 
@@ -37,17 +49,55 @@ class _RecordingEncoder:
         self._calls = calls
 
     def encode(self, texts: list[str], **kwargs: Any) -> np.ndarray:
-        self._calls.append({"model": self.name, "texts": list(texts), "kwargs": kwargs})
+        self._calls.append(
+            {"model": self.name, "texts": list(texts), "kwargs": kwargs},
+        )
+        # ``max(len(texts), 1)`` guards against the degenerate ``np.eye(0, dim)``
+        # shape; the trailing slice produces the correct ``(len(texts), dim)``.
         return np.eye(max(len(texts), 1), self._EMBED_DIM, dtype=np.float32)[
             : len(texts)
         ]
 
+    def encode_query(self, *_args: Any, **_kwargs: Any) -> np.ndarray:
+        msg = (
+            "Production code must call encode() with processing_kwargs, "
+            "not encode_query()."
+        )
+        raise AssertionError(msg)
 
-def _make_fake_st_module(calls: list[dict[str, Any]]) -> SimpleNamespace:
-    """Build a SimpleNamespace fake of the sentence_transformers module."""
-    return SimpleNamespace(
+    def encode_document(self, *_args: Any, **_kwargs: Any) -> np.ndarray:
+        msg = (
+            "Production code must call encode() with processing_kwargs, "
+            "not encode_document()."
+        )
+        raise AssertionError(msg)
+
+
+def _make_fake_st_module(
+    calls: list[dict[str, Any]],
+) -> _FakeSentenceTransformersModule:
+    """Build a ``SimpleNamespace`` fake of the ``sentence_transformers`` module."""
+    fake = SimpleNamespace(
         SentenceTransformer=lambda name: _RecordingEncoder(name, calls),
     )
+    return cast("_FakeSentenceTransformersModule", fake)
+
+
+def _expected_encode_kwargs(*, max_length: int) -> dict[str, Any]:
+    """Return the full kwargs dict the production code should pass to ``encode``."""
+    return {
+        "show_progress_bar": False,
+        "processing_kwargs": {
+            "text": {"max_length": max_length, "truncation": True},
+        },
+    }
+
+
+def _index_calls(
+    calls: list[dict[str, Any]],
+) -> dict[tuple[str, tuple[str, ...]], dict[str, Any]]:
+    """Index encode calls by ``(model_name, texts)`` for order-independent lookup."""
+    return {(call["model"], tuple(call["texts"])): call for call in calls}
 
 
 @pytest.mark.unit
@@ -257,17 +307,56 @@ class TestMineHardNegatives:
                 output_dir=str(tmp_path / "out"),
             )
 
-        # First encode = passages, second = queries.
         assert len(calls) == 2
-        passage_call, query_call = calls
-        assert passage_call["texts"] == ["p1", "p2"]
-        assert passage_call["kwargs"]["processing_kwargs"] == {
-            "text": {"max_length": _PASSAGE_MAX_LENGTH, "truncation": True},
-        }
-        assert query_call["texts"] == ["q1", "q2"]
-        assert query_call["kwargs"]["processing_kwargs"] == {
-            "text": {"max_length": _QUERY_MAX_LENGTH, "truncation": True},
-        }
+        indexed = _index_calls(calls)
+        query_key = ("test-small-001", ("q1", "q2"))
+        passage_key = ("test-small-001", ("p1", "p2"))
+        assert query_key in indexed
+        assert passage_key in indexed
+        assert indexed[query_key]["kwargs"] == _expected_encode_kwargs(
+            max_length=_QUERY_MAX_LENGTH,
+        )
+        assert indexed[passage_key]["kwargs"] == _expected_encode_kwargs(
+            max_length=_PASSAGE_MAX_LENGTH,
+        )
+
+    async def test_emits_truncation_warning_for_long_query(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.memory.embedding.fine_tune import (
+            mine_hard_negatives,
+        )
+
+        long_query = " ".join(["word"] * 200)
+        train = tmp_path / "train.jsonl"
+        train.write_text(
+            json.dumps({"query": long_query, "positive_passage": "p1"}) + "\n",
+        )
+        calls: list[dict[str, Any]] = []
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=_make_fake_st_module(calls),
+            ),
+            patch.object(fine_tune_module, "logger") as mock_logger,
+        ):
+            await mine_hard_negatives(
+                training_data_path=str(train),
+                base_model="test-small-001",
+                output_dir=str(tmp_path / "out"),
+            )
+
+        truncation_events = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if call.args
+            and call.args[0] == "memory.fine_tune.encode_truncation_likely"
+            and call.kwargs.get("role") == "query"
+        ]
+        assert truncation_events, (
+            "expected a truncation-likely warning for the long query input"
+        )
 
 
 # -- Stage 3: Contrastive fine-tuning (mock-based) -------------------
@@ -382,24 +471,54 @@ class TestEvaluateCheckpoint:
                 output_dir=str(tmp_path / "out"),
             )
 
-        # Order: ft.encode(queries), ft.encode(passages),
-        #        base.encode(queries), base.encode(passages).
         assert len(calls) == 4
-        ft_q, ft_p, base_q, base_p = calls
-        query_kwargs = {
-            "text": {"max_length": _QUERY_MAX_LENGTH, "truncation": True},
-        }
-        passage_kwargs = {
-            "text": {"max_length": _PASSAGE_MAX_LENGTH, "truncation": True},
-        }
-        assert ft_q["texts"] == ["q1", "q2"]
-        assert ft_q["kwargs"]["processing_kwargs"] == query_kwargs
-        assert ft_p["texts"] == ["p1", "p2"]
-        assert ft_p["kwargs"]["processing_kwargs"] == passage_kwargs
-        assert base_q["texts"] == ["q1", "q2"]
-        assert base_q["kwargs"]["processing_kwargs"] == query_kwargs
-        assert base_p["texts"] == ["p1", "p2"]
-        assert base_p["kwargs"]["processing_kwargs"] == passage_kwargs
+        indexed = _index_calls(calls)
+        query_kwargs = _expected_encode_kwargs(max_length=_QUERY_MAX_LENGTH)
+        passage_kwargs = _expected_encode_kwargs(max_length=_PASSAGE_MAX_LENGTH)
+        for model_name in (str(cp), "test-small-001"):
+            assert indexed[(model_name, ("q1", "q2"))]["kwargs"] == query_kwargs
+            assert indexed[(model_name, ("p1", "p2"))]["kwargs"] == passage_kwargs
+
+    async def test_emits_truncation_warning_for_long_passage(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.memory.embedding.fine_tune import (
+            evaluate_checkpoint,
+        )
+
+        long_passage = " ".join(["word"] * 500)
+        val = tmp_path / "val.jsonl"
+        val.write_text(
+            json.dumps({"query": "q1", "positive_passage": long_passage}) + "\n",
+        )
+        cp = tmp_path / "checkpoint"
+        cp.mkdir()
+        calls: list[dict[str, Any]] = []
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=_make_fake_st_module(calls),
+            ),
+            patch.object(fine_tune_module, "logger") as mock_logger,
+        ):
+            await evaluate_checkpoint(
+                checkpoint_path=str(cp),
+                base_model="test-small-001",
+                validation_data_path=str(val),
+                output_dir=str(tmp_path / "out"),
+            )
+
+        truncation_events = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if call.args
+            and call.args[0] == "memory.fine_tune.encode_truncation_likely"
+            and call.kwargs.get("role") == "passage"
+        ]
+        assert truncation_events, (
+            "expected truncation-likely warning for the long passage input"
+        )
 
 
 # -- Stage 5: Deploy checkpoint ---------------------------------------

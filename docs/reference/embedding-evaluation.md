@@ -182,6 +182,10 @@ graph LR
   non-positive passages (with margin filter to avoid false negatives)
 - Output: `(query, positive, [hard_negative_1, ..., hard_negative_k])` triples
 - GPU required (40 GB VRAM for embedding)
+- Encoding constraints: per-call `processing_kwargs={"text": {"max_length": N, "truncation": True}}`
+  with `_QUERY_MAX_LENGTH = 128` for queries and `_PASSAGE_MAX_LENGTH = 512` for passages.
+  Inputs whose word count likely exceeds the token limit emit a
+  `memory.fine_tune.encode_truncation_likely` WARNING log.
 
 **Stage 3: Contrastive Fine-Tuning**
 
@@ -190,6 +194,8 @@ graph LR
 - Key hyperparameters: 3 epochs, lr=1e-5, batch size 128, 5 passages per query (1 positive + 4 hard negatives)
 - GPU required (80 GB VRAM for training, or reduced batch size on smaller GPUs)
 - Duration: 1-2 hours for typical org corpus (~500 documents)
+- Evaluation (NDCG@10, Recall@10) re-applies the same query (128) / passage (512) token caps
+  with truncation enabled, so eval embeddings are tokenisation-consistent with mining.
 
 **Stage 4: Deploy**
 

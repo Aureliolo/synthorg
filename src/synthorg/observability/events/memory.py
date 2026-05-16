@@ -113,6 +113,10 @@ MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED: Final[str] = (
 )
 MEMORY_FINE_TUNE_WS_EMIT_FAILED: Final[str] = "memory.fine_tune.ws_emit_failed"
 MEMORY_FINE_TUNE_PERSIST_FAILED: Final[str] = "memory.fine_tune.persist_failed"
+MEMORY_FINE_TUNE_ENCODE_INVOKED: Final[str] = "memory.fine_tune.encode_invoked"
+MEMORY_FINE_TUNE_ENCODE_TRUNCATION_LIKELY: Final[str] = (
+    "memory.fine_tune.encode_truncation_likely"
+)
 MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
     "memory.embedder.settings_read_failed"
 )

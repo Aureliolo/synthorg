@@ -265,12 +265,15 @@ The pipeline requires no manual annotation and runs on a single GPU.
 
 1. **Synthetic data generation**: LLM generates query-document pairs from org documents
    (policies, ADRs, procedures, coding standards)
-2. **Hard negative mining**: base model embeds all passages; top-k semantically similar
-   but non-matching passages become hard negatives
+2. **Hard negative mining**: base model embeds all passages (max_length=512) and queries
+   (max_length=128) with truncation enabled; top-k semantically similar but non-matching
+   passages become hard negatives. Inputs that overflow the token cap surface a
+   `memory.fine_tune.encode_truncation_likely` WARNING so silent quality loss is visible
 3. **Contrastive fine-tuning**: biencoder training with InfoNCE loss (tau=0.02, 3 epochs,
    lr=1e-5). Single GPU, 1-2 hours for ~500 documents
 4. **Evaluation**: NDCG@10 and Recall@10 comparison of the fine-tuned checkpoint against
-   the base model on held-out validation data
+   the base model on held-out validation data, re-using the Stage 2 query / passage token
+   caps so eval embeddings are tokenisation-consistent with mining
 5. **Deploy**: save checkpoint; update `Mem0EmbedderConfig` to point to fine-tuned model
 
 **Integration design:** fine-tuning is an offline pipeline triggered via
