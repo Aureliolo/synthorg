@@ -10,6 +10,10 @@ from pydantic import ValidationError
 if TYPE_CHECKING:
     import aiosqlite
 
+    from synthorg.persistence.workflow_definition_protocol import (
+        WorkflowDefinitionFilterSpec,
+    )
+
 from synthorg.core.enums import WorkflowType
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
@@ -32,8 +36,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_LISTED,
     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
@@ -460,45 +464,46 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
         )
         return definition
 
-    async def list_definitions(
+    async def query(
         self,
+        filter_spec: WorkflowDefinitionFilterSpec,
         *,
-        workflow_type: WorkflowType | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
-        """List workflow definitions with optional filters.
+        """List workflow definitions matching the filter spec.
 
         Args:
-            workflow_type: Filter by workflow type.
-            limit: Maximum definitions to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            filter_spec: Carries optional ``workflow_type`` filter.
+            limit: Maximum definitions to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Matching definitions as a tuple, capped at *limit* rows.
+            Matching definitions, ordered by ``updated_at`` descending.
 
         Raises:
             QueryError: If the database query, deserialization, or
                 pagination validation fails.
         """
         limit = validate_pagination_args(
-            limit, 0, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
+            limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
         )
         conditions: list[str] = []
         params: list[object] = []
 
-        if workflow_type is not None:
+        if filter_spec.workflow_type is not None:
             conditions.append("workflow_type = ?")
-            params.append(workflow_type.value)
+            params.append(filter_spec.workflow_type.value)
 
         where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
-        query = (
+        sql = (
             f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions"  # noqa: S608
-            f"{where_clause} ORDER BY updated_at DESC LIMIT ?"
+            f"{where_clause} ORDER BY updated_at DESC LIMIT ? OFFSET ?"
         )
-        params.append(limit)
+        params.extend([limit, offset])
 
         try:
-            cursor = await self._db.execute(query, params)
+            cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list workflow definitions"
@@ -517,6 +522,48 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             count=len(definitions),
         )
         return definitions
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        """List workflow definitions in id order (generic IdKeyed)."""
+        from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
+            WorkflowDefinitionFilterSpec,
+        )
+
+        return await self.query(
+            WorkflowDefinitionFilterSpec(),
+            limit=limit,
+            offset=offset,
+        )
+
+    async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
+        """Count workflow definitions matching the filter spec."""
+        conditions: list[str] = []
+        params: list[object] = []
+        if filter_spec.workflow_type is not None:
+            conditions.append("workflow_type = ?")
+            params.append(filter_spec.workflow_type.value)
+        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        sql = (
+            f"SELECT COUNT(*) FROM workflow_definitions"  # noqa: S608
+            f"{where_clause}"
+        )
+        try:
+            cursor = await self._db.execute(sql, params)
+            row = await cursor.fetchone()
+        except sqlite3.Error as exc:
+            msg = "Failed to count workflow definitions"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return int(row[0]) if row else 0
 
     async def delete(self, definition_id: NotBlankStr) -> bool:
         """Delete a workflow definition by primary key.

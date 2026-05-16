@@ -79,7 +79,7 @@ def fake_app_state() -> SimpleNamespace:
     dummy_task = _sync_dumped({"id": "task-1", "title": "x"})
 
     defrepo = AsyncMock()
-    defrepo.list_definitions.return_value = ()
+    defrepo.query.return_value = ()
     defrepo.get.return_value = None
     defrepo.delete.return_value = False
     from synthorg.persistence.fine_tune_protocol import (

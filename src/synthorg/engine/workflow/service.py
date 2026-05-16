@@ -161,8 +161,12 @@ class WorkflowService:
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`) so an
         unauth'd caller cannot materialise the full table.
         """
-        return await self._definitions.list_definitions(
-            workflow_type=workflow_type,
+        from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
+            WorkflowDefinitionFilterSpec,
+        )
+
+        return await self._definitions.query(
+            WorkflowDefinitionFilterSpec(workflow_type=workflow_type),
             limit=limit,
         )
 

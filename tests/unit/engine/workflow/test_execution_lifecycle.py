@@ -68,14 +68,28 @@ class FakeDefinitionRepo:
         stored = self._store.get(definition_id)
         return copy.deepcopy(stored) if stored is not None else None
 
-    async def list_definitions(
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        del filter_spec, limit, offset
+        return tuple(self._store.values())
+
+    async def list_items(
         self,
         *,
-        workflow_type: object = None,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
-        del workflow_type, limit
+        del limit, offset
         return tuple(self._store.values())
+
+    async def count(self, filter_spec: object) -> int:
+        del filter_spec
+        return len(self._store)
 
     async def delete(self, definition_id: str) -> bool:
         return self._store.pop(definition_id, None) is not None

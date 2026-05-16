@@ -79,7 +79,11 @@ async def _fetch_workflow_definitions(
         wf_repo = getattr(persistence, "workflow_definitions", None)
         if wf_repo is None:
             return frozenset()
-        definitions = await wf_repo.list_definitions()
+        from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
+            WorkflowDefinitionFilterSpec,
+        )
+
+        definitions = await wf_repo.query(WorkflowDefinitionFilterSpec())
     except MemoryError, RecursionError:
         raise
     except Exception:

@@ -1,7 +1,7 @@
 """In-memory fake workflow repositories for API unit tests."""
 
 import copy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from packaging.version import InvalidVersion, Version
 
@@ -16,7 +16,6 @@ from synthorg.engine.workflow.subworkflow_models import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import WorkflowType
     from synthorg.core.types import NotBlankStr
     from synthorg.engine.workflow.definition import WorkflowDefinition
     from synthorg.engine.workflow.execution_models import WorkflowExecution
@@ -48,16 +47,32 @@ class FakeWorkflowDefinitionRepository:
         stored = self._definitions.get(definition_id)
         return copy.deepcopy(stored) if stored is not None else None
 
-    async def list_definitions(
+    async def query(
         self,
+        filter_spec: Any,
         *,
-        workflow_type: WorkflowType | None = None,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
         result = list(self._definitions.values())
-        if workflow_type is not None:
-            result = [d for d in result if d.workflow_type == workflow_type]
-        return tuple(copy.deepcopy(d) for d in result[:limit])
+        if filter_spec.workflow_type is not None:
+            result = [d for d in result if d.workflow_type == filter_spec.workflow_type]
+        return tuple(copy.deepcopy(d) for d in result[offset : offset + limit])
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        result = sorted(self._definitions.values(), key=lambda d: d.id)
+        return tuple(copy.deepcopy(d) for d in result[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        result = list(self._definitions.values())
+        if filter_spec.workflow_type is not None:
+            result = [d for d in result if d.workflow_type == filter_spec.workflow_type]
+        return len(result)
 
     async def delete(self, definition_id: str) -> bool:
         return self._definitions.pop(definition_id, None) is not None
