@@ -63,6 +63,20 @@ class TestParkedContextRepository:
         ids = {r.id for r in alice_rows}
         assert ids == {"p1", "p2"}
 
+    async def test_list_items_returns_all_in_id_order(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.parked_contexts.save(
+            _parked(parked_id="list-b", approval_id="appr-list-b"),
+        )
+        await backend.parked_contexts.save(
+            _parked(parked_id="list-a", approval_id="appr-list-a"),
+        )
+
+        results = await backend.parked_contexts.list_items()
+        scoped = [r.id for r in results if r.id.startswith("list-")]
+        assert scoped == ["list-a", "list-b"]
+
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.parked_contexts.save(_parked())
 

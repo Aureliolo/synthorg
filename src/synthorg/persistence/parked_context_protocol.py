@@ -2,33 +2,64 @@
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.security.timeout.parked_context import ParkedContext  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
+from synthorg.security.timeout.parked_context import ParkedContext
 
 
 @runtime_checkable
-class ParkedContextRepository(Protocol):
-    """CRUD interface for parked agent execution contexts."""
+class ParkedContextRepository(
+    IdKeyedRepository[ParkedContext, NotBlankStr],
+    Protocol,
+):
+    """CRUD interface for parked agent execution contexts.
 
-    async def save(self, context: ParkedContext) -> None:
+    Composes :class:`IdKeyedRepository` (ADR-0001). Bespoke per D7:
+    :meth:`get_by_approval` is a unique-key lookup (each approval has
+    at most one parked context) and :meth:`get_by_agent` returns rows
+    ordered ``parked_at`` DESC, both of which are simpler/cheaper than
+    routing through a ``FilteredQueryRepository.query`` call.
+    """
+
+    async def save(self, entity: ParkedContext) -> None:
         """Persist a parked context.
 
         Args:
-            context: The parked context to persist.
+            entity: The parked context to persist.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def get(self, parked_id: NotBlankStr) -> ParkedContext | None:
+    async def get(self, entity_id: NotBlankStr) -> ParkedContext | None:
         """Retrieve a parked context by ID.
 
         Args:
-            parked_id: The parked context identifier.
+            entity_id: The parked context identifier.
 
         Returns:
             The parked context, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        """List parked contexts in id order.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Parked contexts in ascending id order.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -56,18 +87,18 @@ class ParkedContextRepository(Protocol):
             agent_id: The agent identifier.
 
         Returns:
-            Parked contexts for the agent.
+            Parked contexts for the agent, ordered by ``parked_at`` DESC.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def delete(self, parked_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a parked context by ID.
 
         Args:
-            parked_id: The parked context identifier.
+            entity_id: The parked context identifier.
 
         Returns:
             ``True`` if deleted, ``False`` if not found.

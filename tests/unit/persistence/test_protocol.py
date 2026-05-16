@@ -221,6 +221,15 @@ class _FakeParkedContextRepository:
     async def get(self, parked_id: str) -> ParkedContext | None:
         return None
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        del limit, offset
+        return ()
+
     async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
         return None
 

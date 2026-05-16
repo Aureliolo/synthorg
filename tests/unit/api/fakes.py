@@ -275,6 +275,15 @@ class FakeParkedContextRepository:
     async def get(self, parked_id: str) -> ParkedContext | None:
         return self._contexts.get(parked_id)
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        ordered = sorted(self._contexts.values(), key=lambda c: c.id)
+        return tuple(ordered[offset : offset + limit])
+
     async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
         for ctx in self._contexts.values():
             if ctx.approval_id == approval_id:
