@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Literal
 import pytest
 
 from synthorg.core.auth.roles import HumanRole
-from synthorg.core.enums import WorkflowExecutionStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.hr.persistence_protocol import (
@@ -57,7 +56,9 @@ from synthorg.persistence.user_protocol import (
 from synthorg.persistence.workflow_definition_protocol import (
     WorkflowDefinitionRepository,
 )
-from synthorg.persistence.workflow_execution_protocol import WorkflowExecutionRepository
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionRepository,
+)
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -550,32 +551,37 @@ class _FakeWorkflowDefinitionRepository:
 
 
 class _FakeWorkflowExecutionRepository:
-    async def save(self, execution: WorkflowExecution) -> None:
+    async def save(self, entity: WorkflowExecution) -> None:
         pass
 
     async def get(
         self,
-        execution_id: NotBlankStr,
+        entity_id: NotBlankStr,
     ) -> WorkflowExecution | None:
         return None
 
-    async def list_by_definition(
+    async def list_items(
         self,
-        definition_id: NotBlankStr,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        del definition_id, limit
+        del limit, offset
         return ()
 
-    async def list_by_status(
+    async def query(
         self,
-        status: WorkflowExecutionStatus,
+        filter_spec: Any,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        del status, limit
+        del filter_spec, limit, offset
         return ()
+
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
+        return 0
 
     async def find_by_task_id(
         self,
@@ -583,7 +589,7 @@ class _FakeWorkflowExecutionRepository:
     ) -> WorkflowExecution | None:
         return None
 
-    async def delete(self, execution_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         return False
 
 

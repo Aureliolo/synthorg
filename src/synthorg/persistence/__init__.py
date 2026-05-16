@@ -45,6 +45,10 @@ from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
     UserRepository,
 )
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionFilterSpec,
+    WorkflowExecutionRepository,
+)
 
 __all__ = [
     "AgentStateRepository",
@@ -77,5 +81,7 @@ __all__ = [
     "TaskRepository",
     "UserRepository",
     "WebhookReceiptRepository",
+    "WorkflowExecutionFilterSpec",
+    "WorkflowExecutionRepository",
     "create_backend",
 ]

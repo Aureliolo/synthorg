@@ -38,11 +38,14 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_LISTED,
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
 )
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionFilterSpec,  # noqa: TC001
+)
 
 logger = get_logger(__name__)
 
@@ -370,47 +373,40 @@ WHERE id = ? AND version = ?""",
         )
         return execution
 
-    async def list_by_definition(
+    async def list_items(
         self,
-        definition_id: NotBlankStr,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        """List executions for a given workflow definition.
+        """List all executions with pagination.
 
         Args:
-            definition_id: The source definition identifier.
-            limit: Maximum executions to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Matching executions ordered by ``updated_at`` descending,
-            capped at *limit* rows.
+            Executions ordered by id ascending.
 
         Raises:
             QueryError: If the database query or pagination validation
                 fails.
         """
-        # This repository uses limit-only pagination; offset=0 is a
-        # deliberate placeholder so the shared validator runs its
-        # type-check and bounds-check on the limit value.
         limit = validate_pagination_args(
-            limit, offset=0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
+            limit, offset=offset, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
-                " WHERE definition_id = ?"
-                " ORDER BY updated_at DESC, id ASC LIMIT ?",
-                (definition_id, effective_limit),
+                " ORDER BY id ASC LIMIT ? OFFSET ?",
+                (effective_limit, offset),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
-            msg = f"Failed to list executions for definition {definition_id!r}"
+            msg = "Failed to list executions"
             logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
-                definition_id=definition_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -421,52 +417,66 @@ WHERE id = ? AND version = ?""",
         )
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_LISTED,
-            definition_id=definition_id,
             count=len(executions),
         )
         return executions
 
-    async def list_by_status(
+    async def query(
         self,
-        status: WorkflowExecutionStatus,
+        filter_spec: WorkflowExecutionFilterSpec,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        """List executions with a given status.
+        """List executions matching the filter spec.
 
         Args:
-            status: The execution status to filter by.
-            limit: Maximum executions to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            filter_spec: Carries optional filters for definition_id and
+                status.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Matching executions ordered by ``updated_at`` descending,
-            capped at *limit* rows.
+            Matching executions ordered by updated_at descending, then id
+            ascending.
 
         Raises:
             QueryError: If the database query or pagination validation
                 fails.
         """
-        # This repository uses limit-only pagination; offset=0 is a
-        # deliberate placeholder so the shared validator runs its
-        # type-check and bounds-check on the limit value.
         limit = validate_pagination_args(
-            limit, offset=0, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
+            limit, offset=offset, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
+
+        where_clauses = []
+        params: list[object] = []
+
+        if filter_spec.definition_id is not None:
+            where_clauses.append("definition_id = ?")
+            params.append(filter_spec.definition_id)
+
+        if filter_spec.status is not None:
+            where_clauses.append("status = ?")
+            params.append(filter_spec.status.value)
+
+        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
+        params.extend([effective_limit, offset])
+
         try:
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
-                " WHERE status = ?"
-                " ORDER BY updated_at DESC, id ASC LIMIT ?",
-                (status.value, effective_limit),
+                f" WHERE {where_clause}"
+                " ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?",
+                params,
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
-            msg = f"Failed to list executions with status {status.value!r}"
+            msg = "Failed to query executions"
             logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
-                status=status.value,
+                definition_id=filter_spec.definition_id,
+                status=filter_spec.status.value if filter_spec.status else None,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -477,10 +487,55 @@ WHERE id = ? AND version = ?""",
         )
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_LISTED,
-            status=status.value,
+            definition_id=filter_spec.definition_id,
+            status=filter_spec.status.value if filter_spec.status else None,
             count=len(executions),
         )
         return executions
+
+    async def count(self, filter_spec: WorkflowExecutionFilterSpec) -> int:
+        """Count executions matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters.
+
+        Returns:
+            Total number of matching executions.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        where_clauses = []
+        params = []
+
+        if filter_spec.definition_id is not None:
+            where_clauses.append("definition_id = ?")
+            params.append(filter_spec.definition_id)
+
+        if filter_spec.status is not None:
+            where_clauses.append("status = ?")
+            params.append(filter_spec.status.value)
+
+        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+        try:
+            cursor = await self._db.execute(
+                f"SELECT COUNT(*) FROM workflow_executions"  # noqa: S608
+                f" WHERE {where_clause}",
+                params,
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+        except sqlite3.Error as exc:
+            msg = "Failed to count executions"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
+                definition_id=filter_spec.definition_id,
+                status=filter_spec.status.value if filter_spec.status else None,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def find_by_task_id(
         self,
