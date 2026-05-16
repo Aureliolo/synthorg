@@ -194,10 +194,16 @@ graph LR
 - Key hyperparameters: 3 epochs, lr=1e-5, batch size 128, 5 passages per query (1 positive + 4 hard negatives)
 - GPU required (80 GB VRAM for training, or reduced batch size on smaller GPUs)
 - Duration: 1-2 hours for typical org corpus (~500 documents)
-- Evaluation (NDCG@10, Recall@10) re-applies the same query (128) / passage (512) token caps
-  with truncation enabled, so eval embeddings are tokenisation-consistent with mining.
 
-**Stage 4: Deploy**
+**Stage 4: Evaluation**
+
+- Input: held-out validation pairs + fine-tuned checkpoint and base model
+- Process: encode queries and passages with both models and compute NDCG@10 and Recall@10
+- Re-applies the same query (128) / passage (512) token caps with truncation enabled, so
+  eval embeddings are tokenisation-consistent with mining
+- Output: `EvalMetrics` snapshot (per-model NDCG@10 / Recall@10) persisted alongside the checkpoint
+
+**Stage 5: Deploy**
 
 - Save fine-tuned model checkpoint to configured path
 - Update `Mem0EmbedderConfig` to point to the fine-tuned model (via custom Mem0 provider or

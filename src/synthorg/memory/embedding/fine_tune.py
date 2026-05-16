@@ -459,7 +459,7 @@ async def _mine_negatives_from_pairs(  # noqa: PLR0913
         model_name=model_name,
         queries=queries,
         passages=passages,
-        cancellation=None,
+        cancellation=cancellation,
     )
     return await _select_hard_negatives(
         queries=queries,
