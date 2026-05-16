@@ -396,7 +396,11 @@ async def _run_revalidation_tick(
     )
     if not ok:
         new_failures = consecutive_failures + 1
-        if new_failures >= max_failures:
+        # Strictly greater-than: the docstring contract is to tolerate
+        # ``max_failures`` consecutive transient errors and revoke only
+        # once that ceiling is exceeded (failure max_failures+1), not on
+        # the max_failures-th failure itself.
+        if new_failures > max_failures:
             return _RevalidationVerdict(
                 consecutive_failures=new_failures,
                 revoked_event={

@@ -432,7 +432,9 @@ class SetupCompleteResponse(BaseModel):
         if self.embedder_selected and self.embedder_failure_reason is not None:
             msg = "embedder_failure_reason must be None when embedder_selected=True"
             raise ValueError(msg)
-        if not self.embedder_selected and not self.embedder_failure_reason:
+        if not self.embedder_selected and not (
+            self.embedder_failure_reason and self.embedder_failure_reason.strip()
+        ):
             msg = (
                 "embedder_failure_reason must be a non-empty string when"
                 " embedder_selected=False"

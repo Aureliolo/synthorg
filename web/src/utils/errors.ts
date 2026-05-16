@@ -187,9 +187,15 @@ export function getErrorMessage(error: unknown): string {
         // and we surface it verbatim.
         if (typeof data?.error === 'string' && data.error.trim() !== '') {
           const raw = data.error
+          // Pydantic v2 standardises on "Input should be ...",
+          // "String should have at least/most N ...", "List should
+          // ...", "Dict should ..." in addition to the v1-era
+          // "field required" / "value is not a valid" / "string too
+          // short|long" phrasings. Catch the whole family so none of
+          // them leak verbatim to end users.
           const looksPydanticy =
             /validation error for /i.test(raw)
-            || /(field required|value is not a valid|string too (short|long))/i.test(raw)
+            || /(field required|value is not a valid|string too (short|long)|input should|string should|list should|dict should)/i.test(raw)
           if (!looksPydanticy) return raw
         }
         return 'Validation error. Please check the highlighted fields and try again.'

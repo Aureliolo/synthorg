@@ -186,6 +186,68 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
       }
     },
 
+    /**
+     * Delete multiple providers in one operation, emitting a single
+     * aggregate toast instead of one per provider. Owns the API loop
+     * + error UX so the page stays a thin caller (the per-provider
+     * ``deleteProvider`` action would stack N success toasts on a
+     * bulk selection).
+     */
+    bulkDeleteProviders: async (names: readonly string[]): Promise<void> => {
+      if (names.length === 0) return
+      beginMutation(set)
+      let succeeded = 0
+      const failed: string[] = []
+      try {
+        for (const name of names) {
+          try {
+            await apiDeleteProvider(name)
+            if (get().selectedProvider?.name === name) {
+              get().clearDetail()
+            }
+            set((state) => ({
+              providers: state.providers.filter((p) => p.name !== name),
+              healthMap: Object.fromEntries(
+                Object.entries(state.healthMap).filter(([k]) => k !== name),
+              ),
+            }))
+            succeeded += 1
+          } catch (err) {
+            failed.push(name)
+            log.error('bulkDeleteProviders: delete failed', {
+              name: sanitizeForLog(name),
+              error: sanitizeForLog(getErrorMessage(err)),
+            })
+          }
+        }
+        if (failed.length === 0) {
+          useToastStore.getState().add({
+            variant: 'success',
+            title: `${succeeded} provider${succeeded === 1 ? '' : 's'} deleted`,
+          })
+        } else if (succeeded > 0) {
+          useToastStore.getState().add({
+            variant: 'warning',
+            title: `${succeeded} deleted; ${failed.length} failed`,
+          })
+        } else {
+          useToastStore.getState().add({
+            variant: 'error',
+            title: `Failed to delete ${failed.length} provider${
+              failed.length === 1 ? '' : 's'
+            }`,
+          })
+        }
+        // Resync against the server when anything failed so the list
+        // reflects true state rather than the optimistic removals.
+        if (failed.length > 0) {
+          await get().fetchProviders()
+        }
+      } finally {
+        endMutation(set)
+      }
+    },
+
     testConnection: async (name: string, data?: TestConnectionRequest) => {
       const targetProvider = name
       set({ testingConnection: true, testConnectionResult: null })

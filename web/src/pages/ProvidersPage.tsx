@@ -13,7 +13,6 @@ import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
-import { useToastStore } from '@/stores/toast'
 import { formatNumber } from '@/utils/format'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
@@ -47,7 +46,7 @@ export default function ProvidersPage() {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
-  const deleteProvider = useProvidersStore((s) => s.deleteProvider)
+  const bulkDeleteProviders = useProvidersStore((s) => s.bulkDeleteProviders)
 
   const handleToggleSelect = useCallback((name: string) => {
     setSelectedIds((prev) => {
@@ -184,27 +183,18 @@ export default function ProvidersPage() {
   const selectedCount = visibleSelected.size
 
   const handleBulkDelete = useCallback(async () => {
+    // Page owns only UI state; the store action owns the API loop +
+    // aggregate toast (callers must not wrap store mutations in
+    // try/catch or duplicate the toast UX).
     setBulkDeleting(true)
-    let succeeded = 0
-    let failed = 0
-    for (const name of visibleSelected) {
-      const ok = await deleteProvider(name)
-      if (ok) succeeded += 1
-      else failed += 1
+    try {
+      await bulkDeleteProviders([...visibleSelected])
+    } finally {
+      setBulkDeleting(false)
+      setBulkDeleteOpen(false)
+      clearSelection()
     }
-    setBulkDeleting(false)
-    setBulkDeleteOpen(false)
-    clearSelection()
-    if (succeeded > 0) {
-      useToastStore.getState().add({
-        variant: failed === 0 ? 'success' : 'warning',
-        title:
-          failed === 0
-            ? `${succeeded} provider${succeeded === 1 ? '' : 's'} deleted`
-            : `${succeeded} deleted; ${failed} failed`,
-      })
-    }
-  }, [visibleSelected, deleteProvider, clearSelection])
+  }, [visibleSelected, bulkDeleteProviders, clearSelection])
 
   return (
     <div className="space-y-section-gap">

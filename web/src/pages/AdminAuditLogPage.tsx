@@ -18,7 +18,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { listAuditEntries } from '@/api/endpoints/audit'
-import type { AuditEntry } from '@/api/types/dtos.gen'
+import type { AuditEntry } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
@@ -28,12 +28,13 @@ const log = createLogger('AdminAuditLogPage')
 
 const DEFAULT_PAGE_SIZE = 50
 
-// Mirrors the backend ``AuditEntry.verdict`` enum on
-// ``web/src/api/types/openapi.gen.ts``. The empty string is the
-// "any verdict" sentinel used by the SelectField; every other value
-// MUST stay in lockstep with the OpenAPI schema or the filter silently
-// returns zero rows on a previously-valid verdict.
-type VerdictFilter = '' | 'allow' | 'deny' | 'escalate' | 'output_scan'
+// Derived from the generated ``AuditEntry.verdict`` enum so a new
+// backend verdict surfaces as a type error here instead of silently
+// breaking the filter. The empty string is the "any verdict"
+// sentinel used by the SelectField. The VERDICT_OPTIONS literal
+// below stays explicit on purpose: option labels are user-visible
+// copy, not something to auto-derive from the schema.
+type VerdictFilter = '' | AuditEntry['verdict']
 
 const VERDICT_OPTIONS: ReadonlyArray<{ value: VerdictFilter; label: string }> = [
   { value: '', label: 'Any verdict' },

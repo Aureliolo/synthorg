@@ -12,8 +12,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.controllers.events import _user_revocation_reason
-from synthorg.core.auth.models import User
+from synthorg.api.controllers.events import (
+    _run_revalidation_tick,
+    _user_revocation_reason,
+)
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
 
 pytestmark = pytest.mark.unit
@@ -177,3 +180,48 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
             break
         assert iterations < iteration_cap
     assert saw_revoked, "SSE stream never emitted the revoked event"
+
+
+def _make_auth_user() -> AuthenticatedUser:
+    return AuthenticatedUser(
+        user_id="u-001",
+        username="alice",
+        role=HumanRole.CEO,
+        auth_method=AuthMethod.JWT,
+    )
+
+
+async def test_revalidation_tick_tolerates_up_to_max_failures() -> None:
+    """The Nth consecutive transient failure (N == max_failures) is
+    tolerated, not revoked: the docstring contract is to allow
+    ``max_failures`` failures and only revoke once that ceiling is
+    exceeded."""
+    state = _FakeAppState(persisted_user=None, raise_on_get=True)
+    verdict = await _run_revalidation_tick(
+        app_state=state,  # type: ignore[arg-type]
+        user=_make_auth_user(),
+        consecutive_failures=2,
+        max_failures=3,
+    )
+    assert verdict.consecutive_failures == 3
+    assert verdict.revoked_event is None
+
+
+async def test_revalidation_tick_revokes_after_exceeding_max_failures() -> None:
+    """The (max_failures + 1)th consecutive transient failure revokes
+    the stream with a backend-unavailable frame."""
+    import json
+
+    state = _FakeAppState(persisted_user=None, raise_on_get=True)
+    verdict = await _run_revalidation_tick(
+        app_state=state,  # type: ignore[arg-type]
+        user=_make_auth_user(),
+        consecutive_failures=3,
+        max_failures=3,
+    )
+    assert verdict.consecutive_failures == 4
+    assert verdict.revoked_event is not None
+    assert verdict.revoked_event["event"] == "revoked"
+    assert json.loads(verdict.revoked_event["data"])["reason"] == (
+        "backend_unavailable"
+    )

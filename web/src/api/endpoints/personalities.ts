@@ -74,3 +74,16 @@ export async function deleteAdminPreset(name: string): Promise<void> {
     `/personalities/presets/${encodeURIComponent(name)}`,
   )
 }
+
+/**
+ * Fetch the personality-preset JSON schema (Big-Five axes,
+ * behavioural enums, constraints) used by the create / edit forms to
+ * render and validate inputs. The backend returns an opaque
+ * ``dict[str, Any]`` envelope.
+ */
+export async function getPersonalitiesSchema(): Promise<Record<string, unknown>> {
+  const response = await apiClient.get<ApiResponse<Record<string, unknown>>>(
+    '/personalities/schema',
+  )
+  return unwrap(response)
+}

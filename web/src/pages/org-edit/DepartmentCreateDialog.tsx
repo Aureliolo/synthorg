@@ -50,19 +50,25 @@ export function DepartmentCreateDialog({ open, onOpenChange, onCreate }: Departm
     if (Object.keys(next).length > 0) return
 
     setSubmitting(true)
-    const result = await onCreate({
-      name: form.name.trim(),
-      budget_percent: pct,
-    })
-    setSubmitting(false)
-    if (result === null) {
-      // Store owns the toast UX; the dialog stays open so the user can
-      // see their input. The shared ``saveError`` already populates the
-      // page-level banner so an inline message would duplicate it.
-      return
+    try {
+      const result = await onCreate({
+        name: form.name.trim(),
+        budget_percent: pct,
+      })
+      if (result === null) {
+        // Store owns the toast UX; the dialog stays open so the user can
+        // see their input. The shared ``saveError`` already populates the
+        // page-level banner so an inline message would duplicate it.
+        return
+      }
+      setForm(INITIAL_FORM)
+      onOpenChange(false)
+    } finally {
+      // ``finally`` (not the happy path only) so an unexpected reject
+      // from the store never leaves the dialog locked open
+      // (onOpenChange is gated on !submitting).
+      setSubmitting(false)
     }
-    setForm(INITIAL_FORM)
-    onOpenChange(false)
   }, [form, onCreate, onOpenChange])
 
   return (

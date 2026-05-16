@@ -59,6 +59,28 @@ class TestSetupDTOs:
         with pytest.raises(ValidationError):
             resp.needs_admin = False  # type: ignore[misc]
 
+    def test_setup_complete_response_rejects_whitespace_failure_reason(
+        self,
+    ) -> None:
+        from synthorg.api.controllers.setup_models import SetupCompleteResponse
+
+        with pytest.raises(ValidationError):
+            SetupCompleteResponse(
+                setup_complete=True,
+                embedder_selected=False,
+                embedder_failure_reason="   ",
+            )
+
+    def test_setup_complete_response_accepts_real_failure_reason(self) -> None:
+        from synthorg.api.controllers.setup_models import SetupCompleteResponse
+
+        resp = SetupCompleteResponse(
+            setup_complete=True,
+            embedder_selected=False,
+            embedder_failure_reason="no embedding-capable model available",
+        )
+        assert resp.embedder_failure_reason == ("no embedding-capable model available")
+
     @pytest.mark.parametrize(
         ("level", "model_provider", "model_id"),
         [

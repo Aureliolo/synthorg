@@ -567,12 +567,10 @@ class TestSetupComplete:
     ) -> None:
         """A reinit failure blocks ``setup_complete=true`` so the operator can retry.
 
-        Replaces an earlier test that asserted the inverse (bootstrap
-        runs through provider failures). ``post_setup_reinit`` now
-        propagates errors and the controller persists the completion
-        flag ONLY after reinit returns clean -- otherwise the frontend
-        would believe setup succeeded while the runtime is
-        half-configured.
+        ``post_setup_reinit`` propagates errors and the controller
+        persists the completion flag ONLY after reinit returns clean;
+        otherwise the frontend would believe setup succeeded while the
+        runtime is half-configured.
         """
         app_state = test_client.app.state.app_state
         repo = app_state.persistence._settings_repo

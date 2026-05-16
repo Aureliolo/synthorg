@@ -16,7 +16,7 @@ import type {
   UpdateAgentNameRequest,
   UpdateAgentPersonalityRequest,
 } from '../types/setup'
-import type { SetupCompleteResponse } from '../types/dtos.gen'
+import type { SetupCompleteResponse } from '@/api/types'
 
 export async function getSetupStatus(): Promise<SetupStatusResponse> {
   const response = await apiClient.get<ApiResponse<SetupStatusResponse>>('/setup/status')
