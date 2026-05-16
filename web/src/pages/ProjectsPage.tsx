@@ -8,6 +8,8 @@ import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { formatNumber } from '@/utils/format'
 import { ProjectsSkeleton } from './projects/ProjectsSkeleton'
 import { ProjectFilters } from './projects/ProjectFilters'
@@ -27,6 +29,15 @@ export default function ProjectsPage() {
     wsConnected,
     wsSetupError,
   } = useProjectsData()
+
+  const {
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems: pagedProjects,
+    setPage,
+    setPageSize,
+  } = useListPagination({ items: filteredProjects, namespace: 'projects' })
 
   const handleToggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -97,9 +108,16 @@ export default function ProjectsPage() {
 
       <ProjectFilters />
       <ProjectGridView
-        projects={filteredProjects}
+        projects={pagedProjects}
         onToggleSelect={handleToggleSelect}
         selectedIds={visibleSelected}
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
       />
 
       <AnimatePresence>

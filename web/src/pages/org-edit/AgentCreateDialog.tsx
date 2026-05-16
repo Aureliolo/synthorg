@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
-import { getErrorMessage } from '@/utils/errors'
 import type { AgentConfig } from '@/api/types/agents'
 import { SENIORITY_LEVEL_VALUES, type SeniorityLevel } from '@/api/types/enums'
 import type { CreateAgentOrgRequest, Department } from '@/api/types/org'
@@ -14,7 +13,7 @@ export interface AgentCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   departments: readonly Department[]
-  onCreate: (data: CreateAgentOrgRequest) => Promise<AgentConfig>
+  onCreate: (data: CreateAgentOrgRequest) => Promise<AgentConfig | null>
 }
 
 interface FormState {
@@ -37,20 +36,17 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const prevOpenRef = useRef(open)
   if (!open && prevOpenRef.current) {
     setForm(INITIAL_FORM)
     setErrors({})
-    setSubmitError(null)
   }
   prevOpenRef.current = open
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
     setErrors((prev) => ({ ...prev, [key]: undefined }))
-    setSubmitError(null)
   }
 
   const handleSubmit = useCallback(async () => {
@@ -62,19 +58,24 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
     if (Object.keys(next).length > 0) return
 
     setSubmitting(true)
-    setSubmitError(null)
     try {
-      await onCreate({
+      const result = await onCreate({
         name: form.name.trim(),
         role: form.role.trim(),
         department: form.department as CreateAgentOrgRequest['department'],
         level: form.level,
       })
+      if (result === null) {
+        // Store owns the toast UX; the dialog stays open so the user can
+        // amend their input.
+        return
+      }
       setForm(INITIAL_FORM)
       onOpenChange(false)
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
     } finally {
+      // ``finally`` (not the happy path only) so an unexpected reject
+      // never leaves the dialog locked (onOpenChange is gated on
+      // !submitting).
       setSubmitting(false)
     }
   }, [form, onCreate, onOpenChange])
@@ -151,10 +152,6 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
               value={form.level}
               onChange={(value) => updateField('level', value as SeniorityLevel)}
             />
-
-            {submitError && (
-              <p className="text-xs text-danger">{submitError}</p>
-            )}
 
             <div className="flex justify-end gap-3 pt-2">
               <Dialog.Close

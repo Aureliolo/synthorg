@@ -5,6 +5,7 @@ import { ErrorCategory, ErrorCode, type ErrorDetail } from '@/api/types/errors'
 function makeAxiosError(
   status: number | undefined,
   data?: Record<string, unknown>,
+  headers: Record<string, string> = {},
 ): AxiosError {
   const error = new AxiosError(
     'Request failed',
@@ -15,7 +16,7 @@ function makeAxiosError(
       ? {
           status,
           data,
-          headers: {},
+          headers,
           statusText: 'Error',
           config: {} as AxiosResponse['config'],
         } as AxiosResponse
@@ -66,12 +67,42 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(error)).toBe('The requested resource was not found.')
   })
 
-  it('returns a refresh-and-retry message for 409', () => {
-    // 409 covers concurrency races, duplicate-resource, and version-
-    // mismatch; the refreshed copy avoids implying it is always a
-    // concurrency conflict.
+  it('returns a refresh-and-retry message for 409 with no structured code', () => {
+    // 409 without a structured error_code falls through to the
+    // generic concurrency copy.
     const error = makeAxiosError(409)
     expect(getErrorMessage(error)).toMatch(/refresh/i)
+  })
+
+  it('returns duplicate-name copy for 409 + DUPLICATE_RECORD', () => {
+    const detail: ErrorDetail = {
+      detail: 'name already taken',
+      error_code: ErrorCode.DUPLICATE_RECORD,
+      error_category: ErrorCategory.CONFLICT,
+      retryable: false,
+      retry_after: null,
+      instance: 'req-409',
+      title: 'Conflict',
+      type: 'https://docs.example.com/errors/conflict',
+    }
+    const error = makeAxiosError(409, { error_detail: detail })
+    expect(getErrorMessage(error)).toContain('already exists')
+    expect(getErrorMessage(error)).toContain('different name')
+  })
+
+  it('returns version-conflict copy for 409 + VERSION_CONFLICT', () => {
+    const detail: ErrorDetail = {
+      detail: 'version mismatch',
+      error_code: ErrorCode.VERSION_CONFLICT,
+      error_category: ErrorCategory.CONFLICT,
+      retryable: false,
+      retry_after: null,
+      instance: 'req-409v',
+      title: 'Conflict',
+      type: 'https://docs.example.com/errors/conflict',
+    }
+    const error = makeAxiosError(409, { error_detail: detail })
+    expect(getErrorMessage(error)).toContain('edited by someone else')
   })
 
   it('returns validation message for 422 when no detail is present', () => {
@@ -94,14 +125,29 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(error)).toBe('currency: invalid_code')
   })
 
-  it('returns rate limit message for 429', () => {
+  it('returns rate limit message for 429 with no Retry-After header', () => {
     const error = makeAxiosError(429)
     expect(getErrorMessage(error)).toContain('Too many requests')
   })
 
-  it('returns unavailable message for 503', () => {
+  it('surfaces Retry-After duration in 429 toast copy when header is present', () => {
+    // Retry-After delta-seconds is formatted with British English
+    // "X minutes" granularity, capped at the readable ceiling.
+    const error = makeAxiosError(429, undefined, { 'retry-after': '90' })
+    expect(getErrorMessage(error)).toContain('Try again in')
+    expect(getErrorMessage(error)).toContain('2 minutes')
+  })
+
+  it('returns transient-503 copy when Retry-After is present', () => {
+    const error = makeAxiosError(503, undefined, { 'retry-after': '15' })
+    expect(getErrorMessage(error)).toContain('restarting')
+    expect(getErrorMessage(error)).toContain('15 seconds')
+  })
+
+  it('returns sustained-503 copy when Retry-After is absent', () => {
     const error = makeAxiosError(503)
-    expect(getErrorMessage(error)).toContain('temporarily unavailable')
+    expect(getErrorMessage(error)).toContain('unavailable')
+    expect(getErrorMessage(error)).toContain('operator')
   })
 
   it('does NOT leak 5xx error body', () => {

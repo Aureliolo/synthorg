@@ -21,15 +21,10 @@ export function CompleteStep() {
   const currency = useSetupWizardStore((s) => s.currency)
   const completing = useSetupWizardStore((s) => s.completing)
   const completionError = useSetupWizardStore((s) => s.completionError)
+  const completionWarning = useSetupWizardStore((s) => s.completionWarning)
   const wizardCompleteSetup = useSetupWizardStore((s) => s.completeSetup)
 
-  const handleComplete = useCallback(async () => {
-    try {
-      await wizardCompleteSetup()
-    } catch {
-      // Error stored in completionError by the store action and rendered below.
-      return
-    }
+  const finishAndNavigate = useCallback(() => {
     useSetupStore.setState({ setupComplete: true })
     useToastStore.getState().add({
       variant: 'success',
@@ -46,7 +41,30 @@ export function CompleteStep() {
     }
     setConfirmOpen(false)
     void navigate('/')
-  }, [wizardCompleteSetup, companyResponse, navigate])
+  }, [companyResponse, navigate])
+
+  const handleComplete = useCallback(async () => {
+    // Store owns the error UX: ``completeSetup`` sets
+    // ``completionError`` and does not throw, so the caller must not
+    // wrap it in try/catch. Branch off store state after it resolves.
+    await wizardCompleteSetup()
+    const wizardState = useSetupWizardStore.getState()
+    if (wizardState.completionError !== null) {
+      // Failure: the error is rendered below from store state. Keep
+      // the confirm dialog as-is so the user can retry.
+      return
+    }
+    // Hold the wizard open if the backend reported a non-fatal warning
+    // (e.g. embedder auto-selection failed; provider health degraded
+    // mid-setup). The user clicks ``Continue to dashboard`` after
+    // reading the notice so a half-configured runtime does not
+    // silently land on the dashboard.
+    if (wizardState.completionWarning !== null) {
+      setConfirmOpen(false)
+      return
+    }
+    finishAndNavigate()
+  }, [wizardCompleteSetup, finishAndNavigate])
 
   if (!companyResponse) {
     return <SkipWizardForm />
@@ -88,16 +106,41 @@ export function CompleteStep() {
         />
       )}
 
+      {completionWarning && !completionError && (
+        // Non-fatal warning surface: setup did persist, but the
+        // backend reported a runtime caveat (embedder auto-selection
+        // failed, provider health degraded mid-setup). Holding the
+        // wizard open here avoids the previous behaviour of
+        // navigating to a half-configured dashboard with no notice.
+        <ErrorBanner
+          variant="section"
+          severity="warning"
+          title="Setup complete with a warning"
+          description={`${completionWarning} You can continue to the dashboard and resolve this from Settings.`}
+        />
+      )}
+
       {/* Complete button */}
-      <Button
-        onClick={() => setConfirmOpen(true)}
-        disabled={completing}
-        className="w-full gap-2"
-        size="lg"
-      >
-        <CheckCircle className="size-4" />
-        {completing ? 'Completing Setup...' : 'Complete Setup'}
-      </Button>
+      {completionWarning && !completionError ? (
+        <Button
+          onClick={finishAndNavigate}
+          className="w-full gap-2"
+          size="lg"
+        >
+          <CheckCircle className="size-4" />
+          Continue to dashboard
+        </Button>
+      ) : (
+        <Button
+          onClick={() => setConfirmOpen(true)}
+          disabled={completing}
+          className="w-full gap-2"
+          size="lg"
+        >
+          <CheckCircle className="size-4" />
+          {completing ? 'Completing Setup...' : 'Complete Setup'}
+        </Button>
+      )}
 
       <ConfirmDialog
         open={confirmOpen}

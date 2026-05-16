@@ -4,6 +4,7 @@ import { Activity, ArrowLeft, Plus } from 'lucide-react'
 import type { SinkInfo } from '@/api/types/settings'
 import type { WsEvent } from '@/api/types/websocket'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -25,10 +26,13 @@ export default function SettingsSinksPage() {
   const error = useSinksStore((s) => s.error)
   const fetchSinks = useSinksStore((s) => s.fetchSinks)
   const saveSink = useSinksStore((s) => s.saveSink)
+  const deleteSink = useSinksStore((s) => s.deleteSink)
   const testConfig = useSinksStore((s) => s.testConfig)
   const [editSinkId, setEditSinkId] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [isNewSink, setIsNewSink] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<SinkInfo | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const editSink = editSinkId ? sinks.find((s) => s.identifier === editSinkId) ?? null : null
 
   useEffect(() => {
@@ -76,6 +80,18 @@ export default function SettingsSinksPage() {
     }
   }, [saveSink])
 
+  const handleDelete = useCallback((sink: SinkInfo) => {
+    setDeleteTarget(sink)
+  }, [])
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    const ok = await deleteSink(deleteTarget)
+    setDeleting(false)
+    if (ok) setDeleteTarget(null)
+  }, [deleteSink, deleteTarget])
+
   return (
     <div className="space-y-section-gap">
       <div className="flex items-center gap-grid-gap">
@@ -117,7 +133,7 @@ export default function SettingsSinksPage() {
         <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
           {sinks.map((sink) => (
             <StaggerItem key={sink.identifier}>
-              <SinkCard sink={sink} onEdit={handleEdit} />
+              <SinkCard sink={sink} onEdit={handleEdit} onDelete={handleDelete} />
             </StaggerItem>
           ))}
         </StaggerGroup>
@@ -131,6 +147,25 @@ export default function SettingsSinksPage() {
         isNew={isNewSink}
         onTest={testConfig}
         onSave={handleSave}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null) }}
+        title={
+          deleteTarget?.is_default
+            ? `Reset overrides for ${deleteTarget.identifier}?`
+            : `Delete sink ${deleteTarget?.identifier ?? ''}?`
+        }
+        description={
+          deleteTarget?.is_default
+            ? 'This restores the sink to its built-in defaults. The sink itself stays registered with the runtime.'
+            : 'This removes the sink from the runtime. Logs routed to this sink will stop being written. This cannot be undone.'
+        }
+        confirmLabel={deleteTarget?.is_default ? 'Reset' : 'Delete'}
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleDeleteConfirm}
       />
     </div>
   )

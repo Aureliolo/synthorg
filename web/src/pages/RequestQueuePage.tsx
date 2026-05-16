@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Inbox } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 
@@ -13,7 +13,10 @@ import {
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
 import { RequestCard } from '@/components/ui/request-card'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
+import { SelectField } from '@/components/ui/select-field'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import { createLogger } from '@/lib/logger'
@@ -55,6 +58,8 @@ export default function RequestQueuePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<Record<string, boolean>>({})
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<RequestStatus | 'all'>('all')
 
   const refresh = useCallback(async () => {
     try {
@@ -142,6 +147,28 @@ export default function RequestQueuePage() {
     void refresh()
   }, [refresh, capLoading, capabilities.requests])
 
+  // useMemo must run on every render (rules-of-hooks); compute the
+  // filtered list before any early-return branch below.
+  const filteredRequests = useMemo(() => {
+    const trimmed = searchQuery.trim().toLowerCase()
+    return requests.filter((r) => {
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false
+      if (trimmed === '') return true
+      return (
+        r.request_id.toLowerCase().includes(trimmed)
+        || r.client_id.toLowerCase().includes(trimmed)
+        // ``typeof null === 'object'`` in JS, so the null guard must
+        // come first or the ``'description' in r.requirement`` check
+        // below throws at runtime.
+        || (r.requirement !== null
+          && typeof r.requirement === 'object'
+          && 'description' in r.requirement
+          && typeof r.requirement.description === 'string'
+          && r.requirement.description.toLowerCase().includes(trimmed))
+      )
+    })
+  }, [requests, searchQuery, statusFilter])
+
   if (!capLoading && capError !== null) {
     return (
       <div className="space-y-section-gap">
@@ -191,7 +218,7 @@ export default function RequestQueuePage() {
 
   const grouped = STATUS_ORDER.map((status) => ({
     status,
-    entries: requests.filter((r) => r.status === status),
+    entries: filteredRequests.filter((r) => r.status === status),
   }))
 
   return (
@@ -210,6 +237,30 @@ export default function RequestQueuePage() {
 
       {error && (
         <ErrorBanner severity="error" title="Could not load request queue" description={error} />
+      )}
+
+      {requests.length > 0 && (
+        <SearchFilterSort
+          search={
+            <SearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search by request id, summary, or client"
+              ariaLabel="Search requests"
+            />
+          }
+          filters={
+            <SelectField
+              label="Status"
+              value={statusFilter}
+              onChange={(value) => setStatusFilter(value as RequestStatus | 'all')}
+              options={[
+                { value: 'all', label: 'All statuses' },
+                ...STATUS_ORDER.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+              ]}
+            />
+          }
+        />
       )}
 
       {requests.length === 0 ? (

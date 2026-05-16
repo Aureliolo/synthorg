@@ -15,6 +15,7 @@ export interface UseSettingsDataReturn {
   error: string | null
   saving: boolean
   saveError: string | null
+  isRefetching: boolean
   wsConnected: boolean
   wsSetupError: string | null
   updateSetting: (
@@ -74,6 +75,7 @@ export function useSettingsData(): UseSettingsDataReturn {
     error,
     saving: savingKeys.size > 0,
     saveError,
+    isRefetching: polling.isRefetching,
     wsConnected,
     wsSetupError,
     updateSetting,

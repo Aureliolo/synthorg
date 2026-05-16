@@ -76,6 +76,65 @@ describe('setup wizard store', () => {
       expect(useSetupWizardStore.getState().stepsCompleted.template).toBe(false)
     })
 
+    it('initialises stepsNeedRevalidation to all-false', () => {
+      const state = useSetupWizardStore.getState()
+      for (const step of state.stepOrder) {
+        expect(state.stepsNeedRevalidation[step]).toBe(false)
+      }
+    })
+
+    it('markStepNeedsRevalidation flips only the target step', () => {
+      useSetupWizardStore.getState().markStepNeedsRevalidation('agents')
+      const state = useSetupWizardStore.getState()
+      expect(state.stepsNeedRevalidation.agents).toBe(true)
+      expect(state.stepsNeedRevalidation.providers).toBe(false)
+    })
+
+    it('clearStepRevalidationFlag clears only the target step', () => {
+      useSetupWizardStore.getState().markStepNeedsRevalidation('agents')
+      useSetupWizardStore.getState().markStepNeedsRevalidation('providers')
+      useSetupWizardStore.getState().clearStepRevalidationFlag('agents')
+      const state = useSetupWizardStore.getState()
+      expect(state.stepsNeedRevalidation.agents).toBe(false)
+      expect(state.stepsNeedRevalidation.providers).toBe(true)
+    })
+
+    it('recomputeAgentsRevalidation is a no-op when agents step is incomplete', () => {
+      const agentFixture = {
+        name: 'X',
+        role: '',
+        department: '',
+        level: 'mid',
+        model_provider: 'missing-provider',
+        model_id: 'm',
+        personality_preset: 'pragmatist',
+        tier: 'medium',
+      } as unknown as ReturnType<typeof useSetupWizardStore.getState>['agents'][number]
+      useSetupWizardStore.setState({ agents: [agentFixture], providers: {} })
+      // stepsCompleted.agents is still false -> recompute must keep flag clear.
+      useSetupWizardStore.getState().recomputeAgentsRevalidation()
+      expect(useSetupWizardStore.getState().stepsNeedRevalidation.agents).toBe(false)
+    })
+
+    it('recomputeAgentsRevalidation flips the flag on when agents are complete but unresolved', () => {
+      const agentFixture = {
+        name: 'X',
+        role: '',
+        department: '',
+        level: 'mid',
+        model_provider: 'missing-provider',
+        model_id: 'm',
+        personality_preset: 'pragmatist',
+        tier: 'medium',
+      } as unknown as ReturnType<typeof useSetupWizardStore.getState>['agents'][number]
+      useSetupWizardStore.setState({ agents: [agentFixture], providers: {} })
+      useSetupWizardStore.getState().markStepComplete('agents')
+      useSetupWizardStore.getState().recomputeAgentsRevalidation()
+      // Step stays complete; only the revalidation flag flips.
+      expect(useSetupWizardStore.getState().stepsCompleted.agents).toBe(true)
+      expect(useSetupWizardStore.getState().stepsNeedRevalidation.agents).toBe(true)
+    })
+
     it('canNavigateTo returns true for first step', () => {
       expect(useSetupWizardStore.getState().canNavigateTo('mode')).toBe(true)
     })
@@ -1076,6 +1135,100 @@ describe('setup wizard store', () => {
       const state = useSetupWizardStore.getState()
       expect(state.probeGlobalError).not.toBeNull()
       expect(state.probing).toBe(false)
+    })
+  })
+
+  describe('completeSetup', () => {
+    it('marks completing=false and clears warning on a clean response', async () => {
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              setup_complete: true,
+              embedder_selected: true,
+              embedder_failure_reason: null,
+            }),
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().completeSetup()
+      const state = useSetupWizardStore.getState()
+      expect(state.completing).toBe(false)
+      expect(state.completionError).toBeNull()
+      expect(state.completionWarning).toBeNull()
+    })
+
+    it('sets completionWarning from embedder_failure_reason on a 200 with warning', async () => {
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              setup_complete: true,
+              embedder_selected: false,
+              embedder_failure_reason: 'no ranked model available',
+            }),
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().completeSetup()
+      const state = useSetupWizardStore.getState()
+      expect(state.completing).toBe(false)
+      expect(state.completionError).toBeNull()
+      expect(state.completionWarning).toContain('no ranked model available')
+    })
+
+    it('sets completionError on a 409 (already complete) failure', async () => {
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(apiError('Setup already complete'), { status: 409 }),
+        ),
+      )
+      // Store owns the error UX: completeSetup sets completionError
+      // and does NOT throw (callers branch off store state).
+      await useSetupWizardStore.getState().completeSetup()
+      const state = useSetupWizardStore.getState()
+      expect(state.completing).toBe(false)
+      expect(state.completionError).not.toBeNull()
+    })
+
+    it('sets completionError on a 422 validation failure', async () => {
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(
+            apiError('Validation failed'),
+            { status: 422 },
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().completeSetup()
+      const state = useSetupWizardStore.getState()
+      expect(state.completing).toBe(false)
+      expect(state.completionError).not.toBeNull()
+    })
+
+    it('clears completionError on a subsequent successful retry', async () => {
+      // First attempt fails.
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(apiError('Validation failed'), { status: 422 }),
+        ),
+      )
+      await useSetupWizardStore.getState().completeSetup()
+      expect(useSetupWizardStore.getState().completionError).not.toBeNull()
+      // Replace with a happy-path handler and retry.
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              setup_complete: true,
+              embedder_selected: true,
+              embedder_failure_reason: null,
+            }),
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().completeSetup()
+      expect(useSetupWizardStore.getState().completionError).toBeNull()
     })
   })
 })

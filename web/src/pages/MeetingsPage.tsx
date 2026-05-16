@@ -7,6 +7,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useMeetingsData } from '@/hooks/useMeetingsData'
 import { filterMeetings, type MeetingPageFilters } from '@/utils/meetings'
 import { MEETING_STATUS_VALUES, type MeetingStatus } from '@/api/types/meetings'
@@ -77,6 +78,26 @@ export default function MeetingsPage() {
 
   const hasFilters = !!(filters.status || filters.meetingType)
 
+  // Centralise the "no data ever" vs "no data after filter" branching
+  // via useEmptyStateProps so the discriminator matches the dashboard's
+  // canonical empty-state derivation pattern (see web/CLAUDE.md).
+  const emptyStateProps = useEmptyStateProps({
+    filteredCount: filtered.length,
+    totalCount: meetings.length,
+    filterActive: hasFilters,
+    icon: Video,
+    empty: {
+      title: 'No meetings yet',
+      description: "When meetings are scheduled or triggered, they'll appear here.",
+      action: { label: 'Trigger Meeting', onClick: () => setTriggerOpen(true) },
+    },
+    filtered: {
+      title: 'No matching meetings',
+      description: 'Try adjusting your filters.',
+      action: { label: 'Clear filters', onClick: () => handleFiltersChange({}) },
+    },
+  })
+
   // Loading state
   if (loading && meetings.length === 0) {
     return <MeetingsSkeleton />
@@ -128,23 +149,7 @@ export default function MeetingsPage() {
         </ErrorBoundary>
       )}
 
-      {filtered.length === 0 && !hasFilters && !error && (
-        <EmptyState
-          icon={Video}
-          title="No meetings yet"
-          description="When meetings are scheduled or triggered, they'll appear here."
-          action={{ label: 'Trigger Meeting', onClick: () => setTriggerOpen(true) }}
-        />
-      )}
-
-      {filtered.length === 0 && hasFilters && !error && (
-        <EmptyState
-          icon={Video}
-          title="No matching meetings"
-          description="Try adjusting your filters."
-          action={{ label: 'Clear filters', onClick: () => handleFiltersChange({}) }}
-        />
-      )}
+      {emptyStateProps && !error && <EmptyState {...emptyStateProps} />}
 
       <TriggerMeetingDialog
         open={triggerOpen}

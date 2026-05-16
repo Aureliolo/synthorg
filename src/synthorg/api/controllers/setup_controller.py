@@ -20,6 +20,9 @@ from synthorg.api.controllers.setup.agent_helpers import (
     AGENT_LOCK as _AGENT_LOCK,
 )
 from synthorg.api.controllers.setup.agent_helpers import (
+    COMPLETE_LOCK as _COMPLETE_LOCK,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
     auto_create_template_agents as _auto_create_template_agents,
 )
 from synthorg.api.controllers.setup.agent_helpers import (
@@ -74,6 +77,7 @@ from synthorg.api.controllers.setup_agents import (
     get_existing_agents,
     normalize_description,
     validate_model_assignment,
+    validate_persisted_agents_against_providers,
     validate_provider_and_model,
 )
 from synthorg.api.controllers.setup_models import (
@@ -120,6 +124,94 @@ from synthorg.observability.events.setup import (
 )
 
 logger = get_logger(__name__)
+
+
+async def _validate_completion_prereqs(
+    app_state: AppState,
+    settings_svc: SettingsService,
+) -> bool:
+    """Verify company / providers / agent provider+model pairs.
+
+    Extracted from ``complete_setup`` so the controller method stays
+    under the 50-line limit. Returns ``has_agents`` so the caller can
+    decide whether to log the quick-setup note (already logged here
+    too, but kept stable in the return so future callers can chain).
+
+    Raises:
+        ValidationError: If company is missing, no provider is
+            configured, or a persisted agent references a now-absent
+            provider / model.
+    """
+    has_company = await _check_has_company(settings_svc, strict=True)
+    if not has_company:
+        msg = "A company must be created before completing setup"
+        logger.warning(SETUP_NO_COMPANY)
+        raise ValidationError(msg)
+
+    # Quick Setup mode allows zero agents -- log a note but do not raise.
+    # ``strict=True`` so a parse/read failure raises instead of silently
+    # collapsing to ``False`` (which would skip the persisted-agent
+    # validation below and let a corrupted ``company.agents`` blob pass
+    # completion as a Quick Setup).
+    has_agents = await _check_has_agents(settings_svc, strict=True)
+    if not has_agents:
+        logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
+
+    if not app_state.has_provider_registry or len(app_state.provider_registry) == 0:
+        msg = "At least one provider must be configured before completing setup"
+        logger.warning(SETUP_NO_PROVIDERS)
+        raise ValidationError(msg)
+
+    # Cross-check persisted agents against provider_management config so
+    # an agent whose provider/model was deleted between agent creation
+    # and setup completion cannot pass through as ``complete``. Skip
+    # when provider_management is empty: in-process test fixtures
+    # populate the runtime registry without seeding the config, but
+    # production always has both populated together.
+    if has_agents:
+        persisted_agents = await get_existing_agents(settings_svc)
+        providers_map = await app_state.provider_management.list_providers()
+        if providers_map:
+            validate_persisted_agents_against_providers(
+                providers_map,
+                persisted_agents,
+            )
+    return has_agents
+
+
+async def _run_embedder_auto_select(
+    app_state: AppState,
+    settings_svc: SettingsService,
+) -> str | None:
+    """Best-effort embedder auto-selection. Returns failure reason or None.
+
+    Extracted from ``complete_setup`` for the same line-budget reason
+    as :func:`_validate_completion_prereqs`. Unexpected exceptions are
+    logged at WARNING and folded into the failure reason rather than
+    re-raised, so the completion flow continues to the reinit step
+    (which is the gate that actually blocks completion on failure).
+    """
+    provider_names = app_state.provider_registry.list_providers()
+    provider_preset_name = provider_names[0] if provider_names else None
+    has_gpu = await _read_has_gpu_setting(settings_svc)
+    try:
+        model_ids = await _collect_model_ids(app_state)
+        return await auto_select_embedder(
+            settings_svc=settings_svc,
+            available_model_ids=model_ids,
+            provider_preset_name=provider_preset_name,
+            has_gpu=has_gpu,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            SETUP_COMPLETE_CHECK_ERROR,
+            check="auto_select_embedder",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return "Embedder auto-selection raised an unexpected error."
 
 
 async def _read_has_gpu_setting(settings_svc: SettingsService) -> bool | None:
@@ -293,34 +385,46 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
         tmpl_res = _resolve_template(data.template_name)
         description = normalize_description(data.description)
 
-        await _persist_company_settings(
-            settings_svc,
-            data.company_name,
-            description,
-            tmpl_res.departments_json,
-        )
-
-        agent_summaries: tuple[SetupAgentSummary, ...] = ()
-        if tmpl_res.template is not None:
-            agent_summaries = await _auto_create_template_agents(
-                tmpl_res.template,
-                app_state,
+        # Serialise the whole check / persist / agents-write sequence
+        # under _COMPLETE_LOCK so a concurrent ``/setup/complete``
+        # (which holds the same lock) cannot reinit against a
+        # half-written ``company.agents`` array. _AGENT_LOCK is NOT
+        # acquired at this outer scope: ``_auto_create_template_agents``
+        # acquires _AGENT_LOCK internally and ``asyncio.Lock`` is not
+        # reentrant, so holding it here would self-deadlock. The
+        # leaf agents-writes take _AGENT_LOCK at their own narrow scope
+        # instead -- the lock order across the module stays
+        # _COMPLETE_LOCK -> _AGENT_LOCK.
+        async with _COMPLETE_LOCK:
+            await _check_setup_not_complete(settings_svc)
+            await _persist_company_settings(
                 settings_svc,
+                data.company_name,
+                description,
+                tmpl_res.departments_json,
             )
-            logger.info(
-                SETUP_AGENTS_AUTO_CREATED,
-                count=len(agent_summaries),
-                template=tmpl_res.template_applied,
-            )
-        else:
-            # Blank path: clear any agents persisted by a previous
-            # template selection so GET /setup/agents returns empty.
-            await settings_svc.set("company", "agents", "[]")
+
+            agent_summaries: tuple[SetupAgentSummary, ...] = ()
+            if tmpl_res.template is not None:
+                agent_summaries = await _auto_create_template_agents(
+                    tmpl_res.template,
+                    app_state,
+                    settings_svc,
+                )
+                logger.info(
+                    SETUP_AGENTS_AUTO_CREATED,
+                    count=len(agent_summaries),
+                    template=tmpl_res.template_applied,
+                )
+            else:
+                # Blank path: clear any agents persisted by a previous
+                # template selection so GET /setup/agents returns empty.
+                async with _AGENT_LOCK:
+                    await settings_svc.set("company", "agents", "[]")
 
         logger.info(
             SETUP_COMPANY_CREATED,
@@ -369,7 +473,6 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
         from synthorg.templates.preset_service import (  # noqa: PLC0415
             fetch_custom_presets_map,
@@ -385,7 +488,14 @@ class SetupController(Controller):
             custom_presets=custom_presets,
         )
 
-        async with _AGENT_LOCK:
+        # Lock order across this module is _COMPLETE_LOCK -> _AGENT_LOCK
+        # (matches ``complete_setup``). Acquiring _AGENT_LOCK alone
+        # would let an in-flight ``/setup/complete`` slip in between
+        # ``_check_setup_not_complete`` and the ``settings_svc.set``
+        # call below, leaving the runtime bootstrap out of sync with
+        # persisted agents.
+        async with _COMPLETE_LOCK, _AGENT_LOCK:
+            await _check_setup_not_complete(settings_svc)
             existing_agents = await get_existing_agents(settings_svc)
             updated_agents = [*existing_agents, agent_config]
             await settings_svc.set(
@@ -483,13 +593,14 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
         # Validate provider/model before acquiring the lock.
         providers = await app_state.provider_management.list_providers()
         validate_model_assignment(providers, data)
 
-        async with _AGENT_LOCK:
+        # Lock order: _COMPLETE_LOCK -> _AGENT_LOCK (see create_agent).
+        async with _COMPLETE_LOCK, _AGENT_LOCK:
+            await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
@@ -549,9 +660,10 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
-        async with _AGENT_LOCK:
+        # Lock order: _COMPLETE_LOCK -> _AGENT_LOCK (see create_agent).
+        async with _COMPLETE_LOCK, _AGENT_LOCK:
+            await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
@@ -609,11 +721,12 @@ class SetupController(Controller):
 
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
         locales = await _read_name_locales(settings_svc)
 
-        async with _AGENT_LOCK:
+        # Lock order: _COMPLETE_LOCK -> _AGENT_LOCK (see create_agent).
+        async with _COMPLETE_LOCK, _AGENT_LOCK:
+            await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
@@ -780,62 +893,30 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
-        # Verify company has been created (strict: propagate unexpected errors).
-        has_company = await _check_has_company(settings_svc, strict=True)
-        if not has_company:
-            msg = "A company must be created before completing setup"
-            logger.warning(SETUP_NO_COMPANY)
-            raise ValidationError(msg)
-
-        # Verify at least one agent exists (warn-only, not required).
-        # Quick Setup mode skips agent configuration -- users add agents
-        # later in Settings.
-        has_agents = await _check_has_agents(settings_svc)
-        if not has_agents:
-            logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
-
-        # Verify at least one provider is configured.
-        if not app_state.has_provider_registry or len(app_state.provider_registry) == 0:
-            msg = "At least one provider must be configured before completing setup"
-            logger.warning(SETUP_NO_PROVIDERS)
-            raise ValidationError(msg)
-
-        # Auto-select embedding model from configured providers.
-        # Best-effort: does not block setup completion on failure.
-        # The preset hint comes from the first registered provider
-        # (when operators use preset names verbatim as provider names,
-        # which is the wizard default); ``has_gpu`` is an operator-
-        # owned boolean read from the api/setup_has_gpu setting.  Both
-        # are optional hints for ``infer_deployment_tier`` and degrade
-        # gracefully when absent.
-        provider_names = app_state.provider_registry.list_providers()
-        provider_preset_name = provider_names[0] if provider_names else None
-        has_gpu = await _read_has_gpu_setting(settings_svc)
-        try:
-            model_ids = await _collect_model_ids(app_state)
-            await auto_select_embedder(
-                settings_svc=settings_svc,
-                available_model_ids=model_ids,
-                provider_preset_name=provider_preset_name,
-                has_gpu=has_gpu,
+        # Serialise the entire check / validate / reinit / persist flow
+        # so two concurrent /setup/complete requests cannot both observe
+        # ``setup_complete=false`` and race on reinit + flag write.
+        async with _COMPLETE_LOCK:
+            await _check_setup_not_complete(settings_svc)
+            has_agents = await _validate_completion_prereqs(app_state, settings_svc)
+            embedder_failure_reason = await _run_embedder_auto_select(
+                app_state, settings_svc
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                SETUP_COMPLETE_CHECK_ERROR,
-                check="auto_select_embedder",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            # Reload providers + bootstrap agents BEFORE persisting the
+            # completion flag. ``_post_setup_reinit`` propagates failures
+            # so a broken provider config or bootstrap error leaves the
+            # flag at ``false``; the operator fixes the underlying issue
+            # and retries. Without this ordering, the frontend would
+            # believe setup succeeded while the runtime is half-configured.
+            del has_agents
+            await _post_setup_reinit(app_state)
+            await settings_svc.set("api", "setup_complete", "true")
+            logger.info(SETUP_COMPLETED)
+            return ApiResponse(
+                data=SetupCompleteResponse(
+                    setup_complete=True,
+                    embedder_selected=embedder_failure_reason is None,
+                    embedder_failure_reason=embedder_failure_reason,
+                ),
             )
-
-        await settings_svc.set("api", "setup_complete", "true")
-
-        logger.info(SETUP_COMPLETED)
-
-        # Re-initialize: reload providers + bootstrap agents into runtime.
-        await _post_setup_reinit(app_state)
-
-        return ApiResponse(data=SetupCompleteResponse(setup_complete=True))

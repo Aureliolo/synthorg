@@ -21,6 +21,7 @@ export interface UseApprovalsDataReturn {
   loadingDetail: boolean
   error: string | null
   detailError: string | null
+  isRefetching: boolean
   wsConnected: boolean
   wsSetupError: string | null
   fetchApproval: (id: string) => Promise<void>
@@ -101,6 +102,7 @@ export function useApprovalsData(): UseApprovalsDataReturn {
     loadingDetail,
     error,
     detailError,
+    isRefetching: polling.isRefetching,
     wsConnected,
     wsSetupError,
     fetchApproval,

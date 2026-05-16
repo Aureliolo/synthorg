@@ -274,7 +274,11 @@ describe('useCompanyStore', () => {
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
-      expect(toasts[0]!.title).toBe('Failed to update company')
+      // updateCompany routes through getCrudErrorTitle so a 403 lands
+      // on the dedicated "Permission denied" title rather than the
+      // generic fallback. Other CRUD tests assert similar specialised
+      // titles for their distinct categories.
+      expect(toasts[0]!.title).toBe('Permission denied')
     })
   })
 
@@ -295,18 +299,25 @@ describe('useCompanyStore', () => {
       expect(useCompanyStore.getState().config!.departments).toHaveLength(2)
     })
 
-    it('throws on failure without modifying config', async () => {
+    it('returns null on failure, emits toast, and leaves config untouched', async () => {
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
       server.use(
         http.post('/api/v1/departments', () =>
-          HttpResponse.json(apiError('Conflict')),
+          HttpResponse.json(apiError('Conflict'), { status: 409 }),
         ),
       )
       useCompanyStore.setState({ config: mockConfig })
 
-      await expect(
-        useCompanyStore.getState().createDepartment({ name: 'x', autonomy_level: null, budget_percent: 0 }),
-      ).rejects.toThrow('Conflict')
+      const result = await useCompanyStore
+        .getState()
+        .createDepartment({ name: 'x', autonomy_level: null, budget_percent: 0 })
+      expect(result).toBeNull()
       expect(useCompanyStore.getState().config!.departments).toHaveLength(1)
+      // The sentinel contract pairs with an error toast; assert it surfaced.
+      const toasts = useToastStore.getState().toasts
+      expect(toasts.length).toBeGreaterThan(0)
+      expect(toasts[0]!.variant).toBe('error')
     })
   })
 
@@ -326,8 +337,9 @@ describe('useCompanyStore', () => {
       const result = await useCompanyStore
         .getState()
         .updateDepartment('engineering', { budget_percent: 50, autonomy_level: null })
-      expect(result.name).toBe('engineering')
-      expect(result.budget_percent).toBe(50)
+      expect(result).not.toBeNull()
+      expect(result!.name).toBe('engineering')
+      expect(result!.budget_percent).toBe(50)
       expect(useCompanyStore.getState().config!.departments[0]!.name).toBe(
         'engineering',
       )
@@ -369,19 +381,18 @@ describe('useCompanyStore', () => {
       )
     })
 
-    it('sets saveError on failure', async () => {
+    it('returns false sentinel + sets saveError on failure', async () => {
       server.use(
         http.post('/api/v1/company/reorder-departments', () =>
-          HttpResponse.json(apiError('Reorder denied')),
+          HttpResponse.json(apiError('Reorder denied'), { status: 400 }),
         ),
       )
       useCompanyStore.setState({ config: mockConfig })
 
-      await expect(
-        useCompanyStore
-          .getState()
-          .reorderDepartments(['product', 'engineering']),
-      ).rejects.toThrow('Reorder denied')
+      const result = await useCompanyStore
+        .getState()
+        .reorderDepartments(['product', 'engineering'])
+      expect(result).toBe(false)
       expect(useCompanyStore.getState().saveError).toBe('Reorder denied')
       expect(useCompanyStore.getState().savingCount).toBe(0)
     })
@@ -424,7 +435,8 @@ describe('useCompanyStore', () => {
       const result = await useCompanyStore
         .getState()
         .updateAgent('alice', { role: 'Senior Dev', autonomy_level: null, level: null })
-      expect(result.role).toBe('Senior Dev')
+      expect(result).not.toBeNull()
+      expect(result!.role).toBe('Senior Dev')
     })
   })
 
@@ -472,19 +484,18 @@ describe('useCompanyStore', () => {
       expect(configFetched).toBe(true)
     })
 
-    it('sets saveError on failure', async () => {
+    it('returns false sentinel + sets saveError on failure', async () => {
       server.use(
         http.post('/api/v1/departments/:name/reorder-agents', () =>
-          HttpResponse.json(apiError('Reorder failed')),
+          HttpResponse.json(apiError('Reorder failed'), { status: 400 }),
         ),
       )
       useCompanyStore.setState({ config: mockConfig })
 
-      await expect(
-        useCompanyStore
-          .getState()
-          .reorderAgents('engineering', ['a-2', 'a-1']),
-      ).rejects.toThrow('Reorder failed')
+      const result = await useCompanyStore
+        .getState()
+        .reorderAgents('engineering', ['a-2', 'a-1'])
+      expect(result).toBe(false)
       expect(useCompanyStore.getState().saveError).toBe('Reorder failed')
       expect(useCompanyStore.getState().savingCount).toBe(0)
     })

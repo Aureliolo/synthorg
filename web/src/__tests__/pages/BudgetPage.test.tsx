@@ -66,6 +66,7 @@ const defaultHookReturn: UseBudgetDataReturn = {
   loading: false,
   error: null,
   pollingError: null,
+  isRefetching: false,
   wsConnected: true,
   wsSetupError: null,
 }
@@ -94,7 +95,15 @@ function renderBudget() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  hookReturn = { ...defaultHookReturn }
+  // Re-allocate the Map fields explicitly so they cannot reference-
+  // share with mutations from a previous test. A blanket
+  // structuredClone would not work here -- defaultHookReturn carries
+  // vi.fn handlers that are not cloneable.
+  hookReturn = {
+    ...defaultHookReturn,
+    agentNameMap: new Map(defaultHookReturn.agentNameMap),
+    agentDeptMap: new Map(defaultHookReturn.agentDeptMap),
+  }
 })
 
 describe('BudgetPage', () => {

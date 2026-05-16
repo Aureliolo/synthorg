@@ -186,6 +186,82 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
       }
     },
 
+    /**
+     * Delete multiple providers in one operation, emitting a single
+     * aggregate toast instead of one per provider. Owns the API loop
+     * + error UX so the page stays a thin caller (the per-provider
+     * ``deleteProvider`` action would stack N success toasts on a
+     * bulk selection).
+     */
+    bulkDeleteProviders: async (
+      names: readonly string[],
+    ): Promise<boolean> => {
+      if (names.length === 0) return true
+      beginMutation(set)
+      let succeeded = 0
+      const failed: string[] = []
+      // First per-name failure, threaded into the all-failed error
+      // toast so a 409 conflict keeps its distinct title instead of
+      // the generic fallback (store-mutation contract: every error
+      // toast goes through getCrudErrorTitle).
+      let firstError: unknown = null
+      try {
+        for (const name of names) {
+          try {
+            await apiDeleteProvider(name)
+            if (get().selectedProvider?.name === name) {
+              get().clearDetail()
+            }
+            set((state) => ({
+              providers: state.providers.filter((p) => p.name !== name),
+              healthMap: Object.fromEntries(
+                Object.entries(state.healthMap).filter(([k]) => k !== name),
+              ),
+            }))
+            succeeded += 1
+          } catch (err) {
+            firstError ??= err
+            failed.push(name)
+            log.error('bulkDeleteProviders: delete failed', {
+              name: sanitizeForLog(name),
+              error: sanitizeForLog(getErrorMessage(err)),
+            })
+          }
+        }
+        if (failed.length === 0) {
+          useToastStore.getState().add({
+            variant: 'success',
+            title: `${succeeded} provider${succeeded === 1 ? '' : 's'} deleted`,
+          })
+          return true
+        }
+        if (succeeded > 0) {
+          useToastStore.getState().add({
+            variant: 'warning',
+            title: `${succeeded} deleted; ${failed.length} failed`,
+          })
+        } else {
+          useToastStore.getState().add({
+            variant: 'error',
+            ...getCrudErrorTitle(
+              firstError,
+              `Failed to delete ${failed.length} provider${
+                failed.length === 1 ? '' : 's'
+              }`,
+            ),
+          })
+        }
+        // Resync against the server when anything failed so the list
+        // reflects true state rather than the optimistic removals.
+        await get().fetchProviders()
+        // Sentinel-return contract: any failure in the batch yields
+        // ``false`` so callers can detect it without try/catch.
+        return false
+      } finally {
+        endMutation(set)
+      }
+    },
+
     testConnection: async (name: string, data?: TestConnectionRequest) => {
       const targetProvider = name
       set({ testingConnection: true, testConnectionResult: null })

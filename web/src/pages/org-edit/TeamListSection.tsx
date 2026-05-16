@@ -19,21 +19,17 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import type { CreateTeamRequest, TeamConfig, UpdateTeamRequest } from '@/api/types/org'
 import { Button } from '@/components/ui/button'
-import { createLogger } from '@/lib/logger'
 import { StatPill } from '@/components/ui/stat-pill'
-import { useToastStore } from '@/stores/toast'
 import { TeamEditDialog } from './TeamEditDialog'
 import { TeamDeleteConfirmDialog } from './TeamDeleteConfirmDialog'
-
-const log = createLogger('TeamListSection')
 
 export interface TeamListSectionProps {
   teams: readonly TeamConfig[]
   saving: boolean
-  onCreateTeam: (data: CreateTeamRequest) => Promise<TeamConfig>
-  onUpdateTeam: (teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
-  onDeleteTeam: (teamName: string, reassignTo?: string) => Promise<void>
-  onReorderTeams: (orderedNames: string[]) => Promise<void>
+  onCreateTeam: (data: CreateTeamRequest) => Promise<TeamConfig | null>
+  onUpdateTeam: (teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>
+  onDeleteTeam: (teamName: string, reassignTo?: string) => Promise<boolean>
+  onReorderTeams: (orderedNames: string[]) => Promise<boolean>
 }
 
 function SortableTeamCard({
@@ -130,29 +126,24 @@ export function TeamListSection({
     if (oldIndex === -1 || newIndex === -1) return
 
     const reordered = arrayMove(names, oldIndex, newIndex)
-    try {
-      await onReorderTeams(reordered)
-    } catch (err) {
-      log.error('Failed to reorder teams', { active: active.id, over: over.id, reordered }, err)
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Failed to reorder teams',
-      })
-    }
+    // Store owns the toast UX; the sentinel return is for callers
+    // that need to roll back local optimistic state, which this view
+    // does not maintain (the company store updates ``config``
+    // directly).
+    await onReorderTeams(reordered)
   }, [teams, onReorderTeams])
 
   const handleDeleteConfirm = useCallback(async (teamName: string, reassignTo?: string) => {
     setDeleting(true)
     try {
-      await onDeleteTeam(teamName, reassignTo)
-      setDeleteTeam(null)
-    } catch (err) {
-      log.error('Failed to delete team', { teamName, reassignTo }, err)
-      useToastStore.getState().add({
-        variant: 'error',
-        title: `Failed to delete team "${teamName}"`,
-      })
+      const ok = await onDeleteTeam(teamName, reassignTo)
+      if (ok) {
+        setDeleteTeam(null)
+      }
     } finally {
+      // ``finally`` (not the happy path only) so an unexpected reject
+      // from the store never leaves the confirm dialog stuck in
+      // loading state.
       setDeleting(false)
     }
   }, [onDeleteTeam])

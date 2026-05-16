@@ -63,6 +63,7 @@ import { agentsHandlers } from './agents'
 import { analyticsHandlers } from './analytics'
 import { approvalsHandlers } from './approvals'
 import { artifactsHandlers } from './artifacts'
+import { auditHandlers } from './audit'
 import { authHandlers } from './auth'
 import { backupHandlers } from './backup'
 import { budgetHandlers } from './budget'
@@ -84,6 +85,7 @@ import { messagesHandlers } from './messages'
 import { metaHandlers } from './meta'
 import { oauthDefaultHandlers } from './oauth'
 import { ontologyHandlers } from './ontology'
+import { personalitiesHandlers } from './personalities'
 import { projectsHandlers } from './projects'
 import { providersHandlers } from './providers'
 import { qualityHandlers } from './quality'
@@ -112,6 +114,7 @@ export const defaultHandlers = [
   ...analyticsHandlers,
   ...approvalsHandlers,
   ...artifactsHandlers,
+  ...auditHandlers,
   ...authHandlers,
   ...backupHandlers,
   ...budgetHandlers,
@@ -133,6 +136,7 @@ export const defaultHandlers = [
   ...metaHandlers,
   ...oauthDefaultHandlers,
   ...ontologyHandlers,
+  ...personalitiesHandlers,
   ...projectsHandlers,
   ...providersHandlers,
   ...qualityHandlers,
@@ -158,6 +162,7 @@ export {
   analyticsHandlers,
   approvalsHandlers,
   artifactsHandlers,
+  auditHandlers,
   authHandlers,
   backupHandlers,
   budgetHandlers,
@@ -179,6 +184,7 @@ export {
   metaHandlers,
   oauthDefaultHandlers,
   ontologyHandlers,
+  personalitiesHandlers,
   projectsHandlers,
   providersHandlers,
   qualityHandlers,

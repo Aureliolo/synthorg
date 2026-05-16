@@ -28,8 +28,28 @@ export const WS_RECONNECT_JITTER_MAX = 1.2
  * enforced server-side and is intentionally tighter than this inbound cap.
  */
 export const WS_MAX_MESSAGE_SIZE = 32_768
+/**
+ * Max OUTBOUND control-message size (client -> server: subscribe /
+ * unsubscribe / auth / ping). Mirrors the server's
+ * `_MAX_WS_MESSAGE_BYTES` in `src/synthorg/api/controllers/ws.py`.
+ * Tighter than the inbound cap because the client never legitimately
+ * sends large payloads on this socket; the server hard-closes anything
+ * over this size as a DoS guard.
+ */
+export const WS_MAX_OUTBOUND_MESSAGE_SIZE = 4_096
 /** Heartbeat interval. 20s sits comfortably under the typical 60s proxy idle close. */
 export const WS_HEARTBEAT_INTERVAL_MS = 20_000
+/**
+ * +/-5% randomised jitter applied to the heartbeat interval so a
+ * fleet of long-lived dashboards does not ping the server in lockstep.
+ * Each tick samples a uniform delay in
+ * `WS_HEARTBEAT_INTERVAL_MS * [WS_HEARTBEAT_JITTER_MIN, WS_HEARTBEAT_JITTER_MAX]`,
+ * matching the reconnect-backoff jitter pattern but with a tighter
+ * band (5%) because heartbeat timing has stricter pong-deadline
+ * coupling than reconnect.
+ */
+export const WS_HEARTBEAT_JITTER_MIN = 0.95
+export const WS_HEARTBEAT_JITTER_MAX = 1.05
 /** Max wait for a pong reply before treating the socket as dead and reconnecting. */
 export const WS_PONG_TIMEOUT_MS = 10_000
 /**

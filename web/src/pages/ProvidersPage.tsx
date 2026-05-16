@@ -2,10 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { probeLocal } from '@/api/endpoints/providers'
 import { useProvidersData } from '@/hooks/useProvidersData'
 import { useProvidersStore } from '@/stores/providers'
+import { AnimatePresence } from 'motion/react'
+import { Trash2 } from 'lucide-react'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
+import { formatNumber } from '@/utils/format'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import { ProviderGridView } from './providers/ProviderGridView'
@@ -25,7 +33,7 @@ const log = createLogger('providers-page')
  * -- there is no separate dialog-launching button.
  */
 export default function ProvidersPage() {
-  const { filteredProviders, healthMap, loading, error, providers } = useProvidersData()
+  const { filteredProviders, healthMap, loading, error, providers, isRefetching } = useProvidersData()
   const presets = useProvidersStore((s) => s.presets)
   const presetsLoading = useProvidersStore((s) => s.presetsLoading)
   const presetsError = useProvidersStore((s) => s.presetsError)
@@ -35,6 +43,20 @@ export default function ProvidersPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalPreset, setModalPreset] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const bulkDeleteProviders = useProvidersStore((s) => s.bulkDeleteProviders)
+
+  const handleToggleSelect = useCallback((name: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }, [])
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
   const [probeResults, setProbeResults] = useState<
     Readonly<Partial<Record<string, ProbePresetResponse>>>
@@ -139,12 +161,48 @@ export default function ProvidersPage() {
 
   const hasData = filteredProviders.length > 0 || providers.length > 0
 
+  // URL-persisted pagination over the filtered providers list, matching
+  // the dashboard-wide pattern.
+  const {
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems: pagedProviders,
+    setPage,
+    setPageSize,
+  } = useListPagination({ items: filteredProviders, namespace: 'providers' })
+
+  const visibleSelected = useMemo(() => {
+    const visible = new Set(filteredProviders.map((p) => p.name))
+    const next = new Set<string>()
+    for (const name of selectedIds) {
+      if (visible.has(name)) next.add(name)
+    }
+    return next
+  }, [selectedIds, filteredProviders])
+  const selectedCount = visibleSelected.size
+
+  const handleBulkDelete = useCallback(async () => {
+    // Page owns only UI state; the store action owns the API loop +
+    // aggregate toast (callers must not wrap store mutations in
+    // try/catch or duplicate the toast UX).
+    setBulkDeleting(true)
+    try {
+      await bulkDeleteProviders([...visibleSelected])
+    } finally {
+      setBulkDeleting(false)
+      setBulkDeleteOpen(false)
+      clearSelection()
+    }
+  }, [visibleSelected, bulkDeleteProviders, clearSelection])
+
   return (
     <div className="space-y-section-gap">
       <ListHeader
         title="Providers"
         description="Configured LLM providers and presets your agents call."
         count={providers.length}
+        refreshing={isRefetching}
       />
 
       {error && (
@@ -162,12 +220,54 @@ export default function ProvidersPage() {
       ) : (
         <ErrorBoundary level="section">
           <ProviderGridView
-            providers={filteredProviders}
+            providers={pagedProviders}
             healthMap={healthMap}
             onAddProvider={handleConfigureManually}
+            selectedIds={visibleSelected}
+            onToggleSelect={handleToggleSelect}
+          />
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
           />
         </ErrorBoundary>
       )}
+
+      <AnimatePresence>
+        {selectedCount > 0 && (
+          <BulkActionBar
+            selectedCount={selectedCount}
+            onClear={clearSelection}
+            loading={bulkDeleting}
+            ariaLabel="Provider bulk actions"
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
+              onClick={() => setBulkDeleteOpen(true)}
+              disabled={bulkDeleting}
+            >
+              <Trash2 className="size-3.5" />
+              Delete {formatNumber(selectedCount)}
+            </Button>
+          </BulkActionBar>
+        )}
+      </AnimatePresence>
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(open) => { if (!open && !bulkDeleting) setBulkDeleteOpen(false) }}
+        title={`Delete ${formatNumber(selectedCount)} provider${selectedCount === 1 ? '' : 's'}?`}
+        description="Each provider is removed via its individual delete endpoint. Agents bound to these providers will fail until reassigned. This cannot be undone."
+        confirmLabel={`Delete ${formatNumber(selectedCount)}`}
+        variant="destructive"
+        loading={bulkDeleting}
+        onConfirm={handleBulkDelete}
+      />
 
       <section
         aria-labelledby="add-provider-heading"

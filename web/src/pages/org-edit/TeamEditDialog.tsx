@@ -5,15 +5,14 @@ import type { CreateTeamRequest, TeamConfig, UpdateTeamRequest } from '@/api/typ
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { TagInput } from '@/components/ui/tag-input'
-import { getErrorMessage } from '@/utils/errors'
 
 export interface TeamEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   mode: 'create' | 'edit'
   team?: TeamConfig
-  onCreateTeam: (data: CreateTeamRequest) => Promise<TeamConfig>
-  onUpdateTeam: (teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
+  onCreateTeam: (data: CreateTeamRequest) => Promise<TeamConfig | null>
+  onUpdateTeam: (teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>
   disabled?: boolean
 }
 
@@ -74,23 +73,27 @@ export function TeamEditDialog({
 
     setSaving(true)
     try {
+      let result: unknown
       if (mode === 'create') {
-        await onCreateTeam({
+        result = await onCreateTeam({
           name: trimmedName,
           lead: trimmedLead,
           members: trimmedMembers,
         })
       } else if (team) {
-        await onUpdateTeam(team.name, {
+        result = await onUpdateTeam(team.name, {
           name: trimmedName,
           lead: trimmedLead,
           members: trimmedMembers,
         })
       }
+      // Store owns the toast UX; keep the dialog open on failure so
+      // the user can see what they typed.
+      if (result === null) return
       onOpenChange(false)
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
     } finally {
+      // ``finally`` (not the happy path only) so an unexpected reject
+      // from the store never leaves the dialog locked.
       setSaving(false)
     }
   }, [name, lead, members, mode, team, onCreateTeam, onUpdateTeam, onOpenChange])

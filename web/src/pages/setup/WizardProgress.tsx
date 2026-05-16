@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { AlertTriangle, Check } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import type { WizardStep } from '@/stores/setup-wizard'
 
@@ -23,6 +23,7 @@ interface StepIndicatorProps {
   index: number
   isActive: boolean
   isComplete: boolean
+  needsRevalidation: boolean
   isAccessible: boolean
   isLast: boolean
   onStepClick: (step: WizardStep) => void
@@ -33,10 +34,17 @@ function StepIndicator({
   index,
   isActive,
   isComplete,
+  needsRevalidation,
   isAccessible,
   isLast,
   onStepClick,
 }: StepIndicatorProps) {
+  // Revalidation only renders when the step is also complete: an
+  // incomplete step's empty circle already telegraphs "you have work
+  // to do here", so the warning glyph would be redundant noise. The
+  // active step never carries the warning either, so the user does
+  // not see the alert on the screen they are about to fix.
+  const showWarning = isComplete && needsRevalidation && !isActive
   return (
     <div className="flex items-center">
       <button
@@ -44,6 +52,7 @@ function StepIndicator({
         onClick={() => onStepClick(step.key)}
         disabled={!isAccessible}
         aria-current={isActive ? 'step' : undefined}
+        aria-describedby={showWarning ? `${step.key}-needs-revalidation` : undefined}
         className={cn(
           'flex flex-col items-center gap-1',
           FOCUS_RING,
@@ -56,11 +65,14 @@ function StepIndicator({
           className={cn(
             'flex size-8 items-center justify-center rounded-full text-xs font-semibold transition-colors',
             isActive && 'bg-accent text-accent-foreground',
-            isComplete && !isActive && 'bg-success/20 text-success',
+            isComplete && !isActive && !showWarning && 'bg-success/20 text-success',
+            showWarning && 'bg-warning/20 text-warning',
             !isActive && !isComplete && 'bg-card text-muted-foreground border border-border',
           )}
         >
-          {isComplete ? (
+          {showWarning ? (
+            <AlertTriangle className="size-4" aria-hidden="true" />
+          ) : isComplete ? (
             <Check className="size-4" aria-hidden="true" />
           ) : (
             index + 1
@@ -70,11 +82,17 @@ function StepIndicator({
           className={cn(
             'text-compact',
             isActive && 'font-semibold text-foreground',
-            !isActive && 'text-muted-foreground',
+            !isActive && !showWarning && 'text-muted-foreground',
+            showWarning && 'text-warning',
           )}
         >
           {step.label}
         </span>
+        {showWarning && (
+          <span id={`${step.key}-needs-revalidation`} className="sr-only">
+            Needs review: upstream changes may have invalidated this step.
+          </span>
+        )}
       </button>
       {!isLast && (
         <div
@@ -93,6 +111,7 @@ export interface WizardProgressProps {
   stepOrder: readonly WizardStep[]
   currentStep: WizardStep
   stepsCompleted: Record<WizardStep, boolean>
+  stepsNeedRevalidation: Record<WizardStep, boolean>
   canNavigateTo: (step: WizardStep) => boolean
   onStepClick: (step: WizardStep) => void
 }
@@ -101,6 +120,7 @@ export function WizardProgress({
   stepOrder,
   currentStep,
   stepsCompleted,
+  stepsNeedRevalidation,
   canNavigateTo,
   onStepClick,
 }: WizardProgressProps) {
@@ -118,6 +138,7 @@ export function WizardProgress({
           index={index}
           isActive={step.key === currentStep}
           isComplete={stepsCompleted[step.key]}
+          needsRevalidation={stepsNeedRevalidation[step.key]}
           isAccessible={canNavigateTo(step.key)}
           isLast={index === steps.length - 1}
           onStepClick={onStepClick}

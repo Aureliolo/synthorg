@@ -92,8 +92,8 @@ const meta = {
     saving: false,
     onCreateDepartment: async () => mockConfig.departments[0]!,
     onUpdateDepartment: async () => mockConfig.departments[0]!,
-    onDeleteDepartment: async () => {},
-    onReorderDepartments: async () => {},
+    onDeleteDepartment: async () => true,
+    onReorderDepartments: async () => true,
     optimisticReorderDepartments: () => () => {},
     onCreateTeam: async (_d, data) => ({
       name: data.name ?? 'New Team',
@@ -105,8 +105,8 @@ const meta = {
       lead: data.lead ?? 'Unassigned',
       members: data.members ?? [data.lead ?? 'Unassigned'],
     }),
-    onDeleteTeam: async () => {},
-    onReorderTeams: async () => {},
+    onDeleteTeam: async () => true,
+    onReorderTeams: async () => true,
   },
 } satisfies Meta<typeof DepartmentsTab>
 

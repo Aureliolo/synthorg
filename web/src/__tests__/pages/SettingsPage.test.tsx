@@ -90,6 +90,7 @@ const defaultHookReturn: UseSettingsDataReturn = {
   error: null,
   saving: false,
   saveError: null,
+  isRefetching: false,
   wsConnected: true,
   wsSetupError: null,
   updateSetting: mockUpdateSetting,

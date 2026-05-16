@@ -205,4 +205,104 @@ describe('usePolling', () => {
     })
     expect(fn).toHaveBeenCalledTimes(3)
   })
+
+  it('sets error state on first-tick failure', async () => {
+    const fn = vi.fn().mockRejectedValueOnce(new Error('initial poll failed'))
+    const { result } = renderHook(() => usePolling(fn, 1000))
+
+    await act(async () => {
+      result.current.start()
+      // The first tick runs inside an async microtask; flush enough
+      // time for both the microtask queue and the setError commit to
+      // settle so we read post-render state.
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result.current.error).toContain('initial poll failed')
+  })
+
+  it('exposes isRefetching during in-flight fn and clears it after', async () => {
+    let resolveFn: () => void
+    const pending = new Promise<void>((resolve) => { resolveFn = resolve })
+    const fn = vi.fn().mockImplementationOnce(() => pending).mockResolvedValue(undefined)
+    const { result } = renderHook(() => usePolling(fn, 1000))
+
+    await act(async () => {
+      result.current.start()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result.current.isRefetching).toBe(true)
+
+    await act(async () => {
+      resolveFn!()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result.current.isRefetching).toBe(false)
+
+    // Drain the next scheduled tick so the active-handle gate sees no leak.
+    await act(async () => {
+      result.current.stop()
+    })
+  })
+
+  it('skips ticks when skipIfFresh returns true', async () => {
+    const fn = vi.fn().mockResolvedValue(undefined)
+    let fresh = true
+    const { result } = renderHook(() =>
+      usePolling(fn, 1000, { skipIfFresh: () => fresh }),
+    )
+
+    await act(async () => {
+      result.current.start()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(fn).toHaveBeenCalledTimes(0)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(fn).toHaveBeenCalledTimes(0)
+
+    fresh = false
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      result.current.stop()
+    })
+  })
+
+  it('skips ticks while document.hidden is true', async () => {
+    const fn = vi.fn().mockResolvedValue(undefined)
+    const hiddenDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden')
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      get: () => true,
+    })
+    try {
+      const { result } = renderHook(() => usePolling(fn, 1000))
+      await act(async () => {
+        result.current.start()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      // Hidden tab: the immediate run is also gated; no calls.
+      expect(fn).toHaveBeenCalledTimes(0)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+      expect(fn).toHaveBeenCalledTimes(0)
+
+      await act(async () => {
+        result.current.stop()
+      })
+    } finally {
+      if (hiddenDescriptor) {
+        Object.defineProperty(document, 'hidden', hiddenDescriptor)
+      } else {
+        Reflect.deleteProperty(document, 'hidden')
+      }
+    }
+  })
 })

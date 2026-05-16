@@ -354,6 +354,8 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     // Every other event type (creation, update, status change, ...) falls
     // through to a full refetch. Incremental updates for those are not
     // worth the complexity given the 30s poll backing store.
-    void useProjectsStore.getState().fetchProjects()
+    useProjectsStore.getState().fetchProjects().catch((err: unknown) => {
+      log.warn('projects ws refetch failed', sanitizeForLog(err))
+    })
   },
 }))

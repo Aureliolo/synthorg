@@ -127,7 +127,7 @@ export function AddManualModelDialog({
     >
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 bg-overlay backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-popup w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-md border border-border bg-card p-card-tight sm:p-card md:p-card-roomy shadow-card-hover">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-popup w-full max-w-lg md:max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-md border border-border bg-card p-card-tight sm:p-card md:p-card-roomy shadow-card-hover">
           <Dialog.Title className="text-lg font-semibold text-foreground">
             Add model manually
           </Dialog.Title>

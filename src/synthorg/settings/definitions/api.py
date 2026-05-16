@@ -588,6 +588,25 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="sse_revalidate_max_failures",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "Number of consecutive revalidation persistence failures the"
+            " AG-UI SSE stream tolerates before terminating, so the client"
+            " can reconnect against a healthy replica. Lower values fail"
+            " over faster; higher values absorb more transient DB blips."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=20,
+    )
+)
+
 # ── Query limits (controller clamps) ─────────────────────────────
 
 _r.register(

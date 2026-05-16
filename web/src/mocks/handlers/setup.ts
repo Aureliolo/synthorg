@@ -173,7 +173,11 @@ export const setupHandlers = [
   }),
   http.post('/api/v1/setup/complete', () =>
     HttpResponse.json(
-      successFor<typeof completeSetup>({ setup_complete: true }),
+      successFor<typeof completeSetup>({
+        setup_complete: true,
+        embedder_selected: true,
+        embedder_failure_reason: null,
+      }),
     ),
   ),
 ]

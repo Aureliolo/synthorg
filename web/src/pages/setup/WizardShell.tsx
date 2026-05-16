@@ -42,6 +42,7 @@ export function WizardShell() {
   const currentStep = useSetupWizardStore((s) => s.currentStep)
   const stepOrder = useSetupWizardStore((s) => s.stepOrder)
   const stepsCompleted = useSetupWizardStore((s) => s.stepsCompleted)
+  const stepsNeedRevalidation = useSetupWizardStore((s) => s.stepsNeedRevalidation)
   const setStep = useSetupWizardStore((s) => s.setStep)
   const canNavigateTo = useSetupWizardStore((s) => s.canNavigateTo)
   const companyResponse = useSetupWizardStore((s) => s.companyResponse)
@@ -151,6 +152,7 @@ export function WizardShell() {
               stepOrder={progressSteps}
               currentStep={currentStep}
               stepsCompleted={stepsCompleted}
+              stepsNeedRevalidation={stepsNeedRevalidation}
               canNavigateTo={canNavigateTo}
               onStepClick={handleStepClick}
             />

@@ -70,6 +70,7 @@ const defaultHookReturn: UseBudgetDataReturn = {
   loading: false,
   error: null,
   pollingError: null,
+  isRefetching: false,
   wsConnected: true,
   wsSetupError: null,
 }
@@ -181,9 +182,13 @@ describe('BudgetForecastPage', () => {
       forecast: { ...mockForecast, confidence: NaN },
     }
     renderWithRouter()
-    // Confidence metric card should display '--' for NaN
-    const dashElements = screen.getAllByText('--')
-    expect(dashElements.length).toBeGreaterThanOrEqual(1)
+    // Scope to the MetricCard root by walking up from the label span
+    // to the nearest ancestor with the card-shell class. MetricCard
+    // wraps its content in a ``rounded-lg border ... bg-card p-card``
+    // div which is the unambiguous root for the assertion.
+    const labels = screen.getAllByText(/^CONFIDENCE$/i)
+    const cardRoot = labels[0]?.closest('[class*="bg-card"]')
+    expect(cardRoot?.textContent ?? '').toContain('--')
   })
 
   it('shows "--" for confidence when value is undefined', () => {
@@ -196,9 +201,9 @@ describe('BudgetForecastPage', () => {
       forecast: { ...mockForecast, confidence: undefined },
     }
     renderWithRouter()
-    // Confidence metric card should display '--' for undefined
-    const dashElements = screen.getAllByText('--')
-    expect(dashElements.length).toBeGreaterThanOrEqual(1)
+    const labels = screen.getAllByText(/^CONFIDENCE$/i)
+    const cardRoot = labels[0]?.closest('[class*="bg-card"]')
+    expect(cardRoot?.textContent ?? '').toContain('--')
   })
 
   it('shows "N/A" for days until exhausted when null', () => {
@@ -207,9 +212,9 @@ describe('BudgetForecastPage', () => {
       forecast: { ...mockForecast, days_until_exhausted: null },
     }
     renderWithRouter()
-    // The DAYS UNTIL EXHAUSTED metric card should show N/A
-    const metricCards = screen.getAllByText('N/A')
-    expect(metricCards.length).toBeGreaterThanOrEqual(1)
+    const labels = screen.getAllByText(/DAYS UNTIL EXHAUSTED/i)
+    const cardRoot = labels[0]?.closest('[class*="bg-card"]')
+    expect(cardRoot?.textContent ?? '').toContain('N/A')
   })
 
   it('does not show empty state when error is present and forecast is null', () => {

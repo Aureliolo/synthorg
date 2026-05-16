@@ -28,7 +28,6 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
-import { useToastStore } from '@/stores/toast'
 import { DepartmentCreateDialog } from './DepartmentCreateDialog'
 import { DepartmentEditDrawer } from './DepartmentEditDrawer'
 import { PackSelectionDialog } from './PackSelectionDialog'
@@ -37,15 +36,15 @@ export interface DepartmentsTabProps {
   config: CompanyConfig | null
   departmentHealths: readonly DepartmentHealth[]
   saving: boolean
-  onCreateDepartment: (data: CreateDepartmentRequest) => Promise<Department>
-  onUpdateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department>
-  onDeleteDepartment: (name: string) => Promise<void>
-  onReorderDepartments: (orderedNames: string[]) => Promise<void>
+  onCreateDepartment: (data: CreateDepartmentRequest) => Promise<Department | null>
+  onUpdateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department | null>
+  onDeleteDepartment: (name: string) => Promise<boolean>
+  onReorderDepartments: (orderedNames: string[]) => Promise<boolean>
   optimisticReorderDepartments: (orderedNames: string[]) => () => void
-  onCreateTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig>
-  onUpdateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
-  onDeleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<void>
-  onReorderTeams: (deptName: string, orderedNames: string[]) => Promise<void>
+  onCreateTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig | null>
+  onUpdateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>
+  onDeleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<boolean>
+  onReorderTeams: (deptName: string, orderedNames: string[]) => Promise<boolean>
 }
 
 function SortableDepartmentCard({
@@ -175,11 +174,12 @@ export function DepartmentsTab({
       const orderedNames = reordered.map((d) => d.name)
 
       const rollback = optimisticReorderDepartments(orderedNames)
-      try {
-        await onReorderDepartments(orderedNames)
-      } catch {
+      // ``onReorderDepartments`` returns false on failure (store owns
+      // the toast UX); callers must not wrap store mutations in
+      // try/catch. Roll back when the store reports failure.
+      const ok = await onReorderDepartments(orderedNames)
+      if (!ok) {
         rollback()
-        useToastStore.getState().add({ variant: 'error', title: 'Failed to reorder departments' })
       }
     },
     [config, optimisticReorderDepartments, onReorderDepartments],
@@ -329,7 +329,7 @@ export function DepartmentsTab({
 
         <DragOverlay>
           {activeDept && (
-            <div className="rounded-lg border border-accent bg-card p-card" style={{ boxShadow: 'var(--so-shadow-card-hover)' }}>
+            <div className="rounded-lg border border-accent bg-card p-card shadow-card-hover">
               <p className="text-sm font-semibold text-foreground">{activeDept.display_name ?? activeDept.name}</p>
             </div>
           )}

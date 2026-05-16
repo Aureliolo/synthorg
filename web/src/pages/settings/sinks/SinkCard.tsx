@@ -1,4 +1,4 @@
-import { FileText, Monitor, Pencil } from 'lucide-react'
+import { FileText, Monitor, Pencil, Trash2 } from 'lucide-react'
 import type { SinkInfo } from '@/api/types/settings'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -6,6 +6,12 @@ import { Button } from '@/components/ui/button'
 export interface SinkCardProps {
   sink: SinkInfo
   onEdit: (sink: SinkInfo) => void
+  /**
+   * Optional delete handler. When absent (legacy contexts /
+   * read-only previews) the Delete button is suppressed so the
+   * card still renders without a wire-up.
+   */
+  onDelete?: (sink: SinkInfo) => void
 }
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -16,7 +22,7 @@ const LEVEL_COLORS: Record<string, string> = {
   CRITICAL: 'bg-danger/10 text-danger',
 }
 
-export function SinkCard({ sink, onEdit }: SinkCardProps) {
+export function SinkCard({ sink, onEdit, onDelete }: SinkCardProps) {
   const levelColor = LEVEL_COLORS[sink.level] ?? 'bg-border text-text-muted'
 
   return (
@@ -73,11 +79,23 @@ export function SinkCard({ sink, onEdit }: SinkCardProps) {
         )}
       </div>
 
-      <div className="border-t border-border p-card flex justify-end">
+      <div className="border-t border-border p-card flex justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={() => onEdit(sink)}>
           <Pencil className="mr-1.5 size-3" aria-hidden />
           Edit
         </Button>
+        {onDelete && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-danger hover:bg-danger/10"
+            onClick={() => onDelete(sink)}
+            aria-label={sink.is_default ? `Reset ${sink.identifier} overrides` : `Delete ${sink.identifier}`}
+          >
+            <Trash2 className="mr-1.5 size-3" aria-hidden />
+            {sink.is_default ? 'Reset' : 'Delete'}
+          </Button>
+        )}
       </div>
     </div>
   )

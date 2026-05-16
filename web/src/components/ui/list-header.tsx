@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { formatNumber } from '@/utils/format'
@@ -13,6 +14,14 @@ export interface ListHeaderProps {
   primaryAction?: ReactNode
   /** Secondary slot for search/filter/sort controls rendered below the title row on narrow viewports, inline on wide ones. */
   secondaryActions?: ReactNode
+  /**
+   * Quiet in-progress indicator surfaced inline with the title. Use
+   * to signal "background refresh of already-rendered data" (e.g. a
+   * scheduled poll tick) without competing with the page's full-page
+   * loading skeleton. The icon is decorative; an sr-only label gives
+   * AT users the "Refreshing" cue.
+   */
+  refreshing?: boolean
   className?: string
 }
 
@@ -31,6 +40,7 @@ export function ListHeader({
   description,
   primaryAction,
   secondaryActions,
+  refreshing = false,
   className,
 }: ListHeaderProps) {
   const countText =
@@ -46,6 +56,15 @@ export function ListHeader({
             {countText && (
               <span className="shrink-0 font-mono text-sm text-muted-foreground">
                 {countText}
+              </span>
+            )}
+            {refreshing && (
+              <span
+                aria-live="polite"
+                className="shrink-0 text-muted-foreground"
+              >
+                <RefreshCw className="size-3 animate-spin" aria-hidden="true" />
+                <span className="sr-only">{`Refreshing ${title}`}</span>
               </span>
             )}
           </div>

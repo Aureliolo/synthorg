@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
+import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -37,6 +38,7 @@ export default function DashboardPage() {
     orgHealthPercent,
     loading,
     error,
+    isRefetching,
   } = useDashboardData()
 
   if (loading && !overview) {
@@ -58,7 +60,7 @@ export default function DashboardPage() {
     <div className="space-y-section-gap">
       {showGuidance && <PostSetupGuidanceCard onDismiss={dismissGuidance} />}
 
-      <h1 className="text-lg font-semibold text-foreground">Overview</h1>
+      <ListHeader title="Overview" refreshing={isRefetching} />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load dashboard" description={error} />
