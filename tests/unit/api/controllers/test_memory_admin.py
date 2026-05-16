@@ -374,6 +374,43 @@ class TestCheckFineTuneSidecarHealth:
         monkeypatch.setattr(urllib.request, "urlopen", raise_runtime)
         assert _check_fine_tune_sidecar_health() is False
 
+    def test_reraises_memory_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``MemoryError`` is re-raised, never swallowed by the catch-all.
+
+        The helper has an explicit ``except MemoryError, RecursionError:
+        raise`` clause before the broad ``except Exception``; a system
+        error must propagate so the process is not left limping.
+        """
+        import urllib.request
+
+        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+
+        def raise_memory_error(*_args: object, **_kwargs: object) -> object:
+            raise MemoryError
+
+        monkeypatch.setattr(urllib.request, "urlopen", raise_memory_error)
+        with pytest.raises(MemoryError):
+            _check_fine_tune_sidecar_health()
+
+    def test_reraises_recursion_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``RecursionError`` propagates rather than being swallowed."""
+        import urllib.request
+
+        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+
+        def raise_recursion_error(*_args: object, **_kwargs: object) -> object:
+            raise RecursionError
+
+        monkeypatch.setattr(urllib.request, "urlopen", raise_recursion_error)
+        with pytest.raises(RecursionError):
+            _check_fine_tune_sidecar_health()
+
 
 @pytest.mark.unit
 class TestDeleteMemoryEntryEndpoint:
