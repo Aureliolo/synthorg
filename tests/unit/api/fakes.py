@@ -14,7 +14,6 @@ from synthorg.core.auth.models import ApiKey
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ExecutionStatus,
-    ProjectStatus,
     TaskStatus,
 )
 from synthorg.core.persistence_errors import (
@@ -628,19 +627,40 @@ class FakeProjectRepository:
     async def get(self, project_id: NotBlankStr) -> Project | None:
         return self._projects.get(project_id)
 
-    async def list_projects(
+    async def list_items(
         self,
         *,
-        status: ProjectStatus | None = None,
-        lead: NotBlankStr | None = None,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[Project, ...]:
         result = sorted(self._projects.values(), key=lambda p: p.id)
+        return tuple(result[offset : offset + limit])
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Project, ...]:
+        result = sorted(self._projects.values(), key=lambda p: p.id)
+        status = getattr(filter_spec, "status", None)
+        lead = getattr(filter_spec, "lead", None)
         if status is not None:
             result = [p for p in result if p.status == status]
         if lead is not None:
             result = [p for p in result if p.lead == lead]
-        return tuple(result[:limit])
+        return tuple(result[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        status = getattr(filter_spec, "status", None)
+        lead = getattr(filter_spec, "lead", None)
+        result = list(self._projects.values())
+        if status is not None:
+            result = [p for p in result if p.status == status]
+        if lead is not None:
+            result = [p for p in result if p.lead == lead]
+        return len(result)
 
     async def delete(self, project_id: NotBlankStr) -> bool:
         return self._projects.pop(project_id, None) is not None

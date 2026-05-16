@@ -9,6 +9,7 @@ second returns ``None`` and logs ``API_APPROVAL_CONFLICT`` with
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -80,6 +81,16 @@ class GatedRepo:
         action_type: str | None = None,
     ) -> tuple[ApprovalItem, ...]:
         del status, risk_level, action_type
+        return tuple(self.items.values())
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]:
+        del filter_spec, limit, offset
         return tuple(self.items.values())
 
 
@@ -479,6 +490,18 @@ class _LostRaceRepo:
         rows = tuple(self.items.values())
         return rows[offset : offset + limit]
 
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]:
+        del filter_spec
+        self.list_calls += 1
+        rows = tuple(self.items.values())
+        return rows[offset : offset + limit]
+
     async def expire_if_pending(
         self,
         ids: tuple[str, ...],
@@ -540,16 +563,14 @@ class TestLostRaceBatchFetch:
         }
 
         class SnapshotRepo(_LostRaceRepo):
-            async def list_items(
+            async def query(  # type: ignore[override]
                 self,
+                filter_spec: Any,
                 *,
-                status: ApprovalStatus | None = None,
-                risk_level: ApprovalRiskLevel | None = None,
-                action_type: str | None = None,
                 limit: int = 100,
                 offset: int = 0,
             ) -> tuple[ApprovalItem, ...]:
-                del status, risk_level, action_type
+                del filter_spec
                 self.list_calls += 1
                 rows = tuple(page_snapshot.values())
                 return rows[offset : offset + limit]

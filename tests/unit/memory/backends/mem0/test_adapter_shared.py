@@ -175,7 +175,7 @@ class TestSearchShared:
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
     ) -> None:
-        mock_client.list_items.return_value = mem0_search_result(
+        mock_client.get_all.return_value = mem0_search_result(
             [
                 {
                     "id": "shared-1",
@@ -192,7 +192,7 @@ class TestSearchShared:
         entries = await backend.search_shared(query)
 
         assert len(entries) == 1
-        mock_client.list_items.assert_called_once()
+        mock_client.get_all.assert_called_once()
 
     async def test_search_shared_exclude_agent(
         self,

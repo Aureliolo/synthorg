@@ -3,20 +3,18 @@
 import re
 from pathlib import Path
 
-# repo.set.<method> -> repo.save.<method>
-SET_TO_SAVE = (
-    r"\brepo\.set\.(assert_|await_|call_args|return_value)",
-    r"repo.save.\1",
-)
 
-
-def fix_repo_set_assertions(text: str) -> str:
-    return re.sub(*SET_TO_SAVE, text)
+def rename_connections_list_all(text: str) -> str:
+    return re.sub(
+        r"\bconnections(?:_repo)?\.list_all\b",
+        lambda m: m.group(0).replace("list_all", "list_items"),
+        text,
+    )
 
 
 TARGETS = {
-    "tests/unit/settings/test_new_registry_entries.py": fix_repo_set_assertions,
-    "tests/unit/settings/test_readonly_init_settings.py": fix_repo_set_assertions,
+    "tests/unit/api/test_webhook_receipt_cleanup_loop.py": rename_connections_list_all,
+    "tests/unit/api/test_kill_switches.py": rename_connections_list_all,
 }
 
 

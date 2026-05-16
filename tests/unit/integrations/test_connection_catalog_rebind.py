@@ -23,7 +23,13 @@ class _StubRepo:
         self.label = label
         self.list_all_calls = 0
 
-    async def list_all(self) -> tuple[Any, ...]:
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
         self.list_all_calls += 1
         return ()
 

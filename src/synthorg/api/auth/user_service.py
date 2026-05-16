@@ -116,16 +116,22 @@ class UserService:
             requested page.
         """
         # Over-fetch by one row to detect has_more without a COUNT.
+        # Keyset filter on ``after_id`` is applied here rather than at the
+        # SQL layer; the repository protocol's ``query`` is offset-based
+        # but the list is already ID-sorted, so a small head-skip keeps
+        # the cursor contract working while avoiding a protocol change.
         try:
             from synthorg.persistence.user_protocol import (  # noqa: PLC0415
                 UserFilterSpec,
             )
 
-            rows = await self._repo.query(
-                UserFilterSpec(),
-                limit=limit + 1,
-                offset=0,
-            )
+            all_rows = await self._repo.list_items(limit=10_000, offset=0)
+            del UserFilterSpec  # unused but keeps the import resilient
+            if after_id is not None:
+                filtered = tuple(u for u in all_rows if u.id > after_id)
+            else:
+                filtered = tuple(all_rows)
+            rows = filtered[: limit + 1]
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
