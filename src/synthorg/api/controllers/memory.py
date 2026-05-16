@@ -887,7 +887,7 @@ def _check_fine_tune_sidecar_health() -> bool:
     import urllib.request  # noqa: PLC0415
 
     try:
-        req = urllib.request.Request(_FINE_TUNE_SIDECAR_HEALTH_URL)  # noqa: S310
+        req = urllib.request.Request(_FINE_TUNE_SIDECAR_HEALTH_URL)
         with urllib.request.urlopen(  # noqa: S310
             req,
             timeout=_FINE_TUNE_SIDECAR_HEALTH_TIMEOUT_S,

@@ -190,6 +190,8 @@ line-length = 88
 src = ["src", "tests"]
 
 [tool.ruff.lint]
+preview = true
+explicit-preview-rules = true  # only opt-in to preview rules listed in extend-select
 select = [
     "F",      # pyflakes
     "E", "W", # pycodestyle
@@ -243,6 +245,9 @@ ignore = [
     # for triage without the leak. Enforced by
     # scripts/check_logger_exception_str_exc.py instead.
     "TRY400",
+]
+extend-select = [
+    "TID255",  # lazy-import-immediately-resolved; pre-emptive gate for PEP 690 lazy imports
 ]
 
 [tool.ruff.lint.pydocstyle]
