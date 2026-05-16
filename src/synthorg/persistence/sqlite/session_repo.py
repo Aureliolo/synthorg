@@ -282,7 +282,13 @@ class SQLiteSessionRepository:
                 )
                 raise QueryError(msg) from exc
             else:
-                return cursor.rowcount > 0
+                if cursor.rowcount > 0:
+                    # Otherwise ``is_revoked`` keeps reporting a
+                    # deleted session as revoked until the next
+                    # ``load_revoked``.
+                    self._revoked.discard(entity_id)
+                    return True
+                return False
 
     async def revoke(self, session_id: str) -> bool:
         """Revoke a session by ID."""

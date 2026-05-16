@@ -206,11 +206,16 @@ class SQLiteProviderAuditRepo:
             raise QueryError(msg)
         sql = _LIST_BASE_SQL
         params: list[object] = [filter_spec.provider_name]
+        effective_offset = offset
         if filter_spec.after_id is not None:
+            # ``after_id`` and ``offset`` are mutually exclusive paging
+            # modes; the cursor predicate positions the window, so
+            # ``offset`` is forced to 0 to avoid skipping rows.
             sql += " AND id < ?"
             params.append(filter_spec.after_id)
+            effective_offset = 0
         sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
+        params.extend([limit, effective_offset])
         try:
             cursor = await self._db.execute(sql, params)
             rows = list(await cursor.fetchall())

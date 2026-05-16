@@ -15,7 +15,7 @@ from synthorg.persistence._generics import (
 
 
 class ProjectFilterSpec(BaseModel):
-    """Filter spec for ``ProjectRepository.query`` (ADR-0001).
+    """Filter spec for ``ProjectRepository.query``.
 
     All fields are optional; an empty spec matches all projects.
     """
@@ -42,11 +42,10 @@ class ProjectRepository(
     "persist regardless of prior state" semantics (migration / import
     paths); production CRUD must go through the explicit pair.
 
-    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). Bespoke per D7: ``create`` and ``update`` are atomic
-    lifecycle transitions that the generic ``save`` (upsert) cannot
-    distinguish; they preserve separate create-vs-update audit semantics
-    that the service layer depends on.
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`.
+    ``create`` and ``update`` are atomic lifecycle transitions that the
+    generic ``save`` (upsert) cannot distinguish; they preserve separate
+    create-vs-update audit semantics that the service layer depends on.
     """
 
     async def create(self, project: Project) -> None:

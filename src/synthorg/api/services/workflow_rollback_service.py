@@ -40,12 +40,11 @@ from synthorg.versioning import VersioningService
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from synthorg.api.dto_workflow import RollbackWorkflowRequest
     from synthorg.persistence.version_protocol import VersionRepository
     from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
-    from synthorg.versioning.models import VersionSnapshot
+    from synthorg.versioning.models import RollbackWorkflowRequest, VersionSnapshot
 
 logger = get_logger(__name__)
 

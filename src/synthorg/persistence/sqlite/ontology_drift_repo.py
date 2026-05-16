@@ -70,10 +70,7 @@ class SQLiteOntologyDriftReportRepository:
         self._write_context = write_context
 
     async def append(self, event: DriftReport) -> None:
-        """Append one drift report (write-only; reports are immutable once written).
-
-        Per ADR-0001 generic AppendOnlyRepository surface.
-        """
+        """Append one drift report (write-only; immutable once written)."""
         agents_json = json.dumps(
             [
                 {
@@ -111,20 +108,29 @@ class SQLiteOntologyDriftReportRepository:
 
     async def query(
         self,
-        filter_spec: DriftReportFilterSpec,  # noqa: ARG002
+        filter_spec: DriftReportFilterSpec,
         *,
-        limit: int = DEFAULT_PAGE_SIZE,  # noqa: ARG002
-        offset: int = 0,  # noqa: ARG002
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[DriftReport, ...]:
-        """Query drift reports (currently returns empty; filter_spec unused).
+        """Filtered drift-report query (not implemented).
 
-        Per ADR-0001 generic AppendOnlyRepository surface.
+        Drift consumers use :meth:`get_latest` / :meth:`get_all_latest`;
+        the generic filtered ``query`` surface is unimplemented and
+        raises rather than silently returning an empty tuple, which
+        would mask the missing functionality from a caller.
         """
-        return ()
+        msg = "OntologyDriftReportRepository.query is not implemented"
+        raise NotImplementedError(msg)
 
-    async def purge_before(self, threshold: Any) -> int:  # noqa: ARG002
-        """Delete drift reports older than threshold (not yet implemented)."""
-        return 0
+    async def purge_before(self, threshold: Any) -> int:
+        """Retention purge of drift reports (not implemented).
+
+        Raises rather than silently reporting zero deletions, which
+        would let a retention caller believe a sweep ran.
+        """
+        msg = "OntologyDriftReportRepository.purge_before is not implemented"
+        raise NotImplementedError(msg)
 
     async def get_latest(
         self,

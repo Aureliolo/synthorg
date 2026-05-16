@@ -86,6 +86,20 @@ class TestUserRepository:
         assert len(users) >= 1
         assert all(u.role != HumanRole.SYSTEM for u in users)
 
+    async def test_list_after_id_keyset_pages(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for idx in range(5):
+            await backend.users.save(_make_user(f"user_{idx:02d}", f"name_{idx}"))
+        first = await backend.users.list_after_id(after_id=None, limit=2)
+        assert [u.id for u in first] == ["user_00", "user_01"]
+        second = await backend.users.list_after_id(
+            after_id=NotBlankStr("user_01"), limit=2
+        )
+        assert [u.id for u in second] == ["user_02", "user_03"]
+        # Excludes the system user like list_items.
+        assert all(u.role != HumanRole.SYSTEM for u in first + second)
+
     async def test_count(self, backend: PersistenceBackend) -> None:
         await backend.users.save(_make_user("u1", "one"))
         await backend.users.save(_make_user("u2", "two"))

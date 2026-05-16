@@ -557,30 +557,49 @@ class PostgresApprovalRepository:
         entity_id: NotBlankStr,
         from_state: ApprovalStatus,
         to_state: ApprovalStatus,
-        **updates: object,  # noqa: ARG002
+        **updates: object,
     ) -> bool:
-        """Atomic compare-and-set for approval state transitions (ADR-0001 D7).
+        """Atomic compare-and-set for approval state transitions.
 
         Transitions the approval from ``from_state`` to ``to_state`` iff
         the current persisted status matches ``from_state``. Returns ``True``
         iff the state transition succeeded.
 
-        ``**updates`` is ignored for now; future versions may support
-        ``expired_at`` and other status-correlated fields.
+        Decision metadata (``decided_at`` / ``decided_by`` /
+        ``decision_json``) is governed by a table CHECK constraint that
+        requires the full triple together, so partial writes through
+        this method are rejected rather than silently dropped: pass an
+        empty ``updates`` and persist the decision triple via the
+        dedicated decision path.
 
         Args:
             entity_id: The approval id.
             from_state: Expected current status.
             to_state: Target status.
-            **updates: Status-correlated fields (reserved, currently unused).
+            **updates: Must be empty; any keys raise ``QueryError``.
 
         Returns:
             ``True`` iff the transition succeeded, ``False`` on state
             mismatch or when no row exists.
 
         Raises:
-            QueryError: On database errors.
+            QueryError: On database errors, or if ``updates`` is
+                non-empty (status-correlated writes are not supported
+                through this CAS path).
         """
+        if updates:
+            msg = (
+                "transition_if does not persist decision metadata "
+                f"(got keys {sorted(updates)!r}); the approvals CHECK "
+                "constraint requires the full decision triple, so use "
+                "the dedicated decision path instead"
+            )
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                approval_id=entity_id,
+                error=msg,
+            )
+            raise QueryError(msg)
         sql = "UPDATE approvals SET status = %s WHERE id = %s AND status = %s"
         params = (to_state.value, entity_id, from_state.value)
         try:

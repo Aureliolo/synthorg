@@ -12,7 +12,7 @@ from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 class MessageFilterSpec(BaseModel):
-    """Filter spec for ``MessageRepository.query`` (ADR-0001)."""
+    """Filter spec for ``MessageRepository.query``."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -29,7 +29,7 @@ class MessageRepository(
 ):
     """Write + history query interface for Message persistence.
 
-    Composes :class:`AppendOnlyRepository` (ADR-0001). Bespoke per D7:
+    Composes :class:`AppendOnlyRepository`.
 
     * ``get_history`` returns newest-first within one channel with the
       project's canonical limit default; it is the dashboard hot path
@@ -87,7 +87,7 @@ class MessageRepository(
         *,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[Message, ...]:
-        """Retrieve message history for a channel (bespoke per ADR D7).
+        """Retrieve message history for a channel (dashboard hot path).
 
         Args:
             channel: Channel name to query.
@@ -102,7 +102,7 @@ class MessageRepository(
         ...
 
     async def delete(self, message_id: NotBlankStr) -> bool:
-        """Delete a message by id (bespoke per ADR D7, moderation).
+        """Delete a message by id (moderation / redaction).
 
         Args:
             message_id: The unique message identifier.

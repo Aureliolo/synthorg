@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.persistence.protocol import PersistenceBackend
@@ -36,6 +37,17 @@ class TestCheckpointRepository:
         assert result is not None
         assert result.id == "cp-001"
         assert result.turn_number == 1
+
+    async def test_append_duplicate_id_raises(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Append-only contract: a repeated id is a contract violation,
+        # not a silent overwrite (no INSERT OR REPLACE / ON CONFLICT).
+        await backend.checkpoints.append(_checkpoint(checkpoint_id="dup"))
+        with pytest.raises(DuplicateRecordError):
+            await backend.checkpoints.append(
+                _checkpoint(checkpoint_id="dup", turn_number=2)
+            )
 
     async def test_get_latest_missing_returns_none(
         self, backend: PersistenceBackend

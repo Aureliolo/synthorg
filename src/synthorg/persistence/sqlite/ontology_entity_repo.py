@@ -258,10 +258,7 @@ class SQLiteOntologyEntityRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
-        """List all entity definitions in name order.
-
-        Per ADR-0001 generic IdKeyedRepository surface.
-        """
+        """List all entity definitions in name order."""
         cursor = await self._db.execute(
             """SELECT * FROM entity_definitions
                ORDER BY name ASC

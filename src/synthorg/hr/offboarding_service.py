@@ -37,6 +37,7 @@ from synthorg.persistence.task_protocol import TaskFilterSpec
 if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.core.agent import AgentIdentity
+    from synthorg.core.task import Task
     from synthorg.hr.reassignment_protocol import TaskReassignmentStrategy
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.memory.consolidation.archival import ArchivalStore
@@ -191,7 +192,7 @@ class OffboardingService:
             return ()
 
         try:
-            collected = []
+            collected: list[Task] = []
             offset = 0
             while True:
                 page = await self._task_repository.query(

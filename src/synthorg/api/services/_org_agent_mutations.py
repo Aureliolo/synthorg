@@ -29,7 +29,7 @@ from synthorg.observability.events.api import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.dto_org import (
+    from synthorg.organization.models import (
         CreateAgentOrgRequest,
         ReorderAgentsRequest,
         UpdateAgentOrgRequest,

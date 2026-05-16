@@ -93,6 +93,24 @@ class TestOntologyEntityRepository:
         assert fetched is not None
         assert fetched.definition == "revised"
 
+    async def test_save_is_idempotent_upsert(self, backend: PersistenceBackend) -> None:
+        # save() must upsert: a first save inserts, a repeated save
+        # for the same name updates rather than raising
+        # OntologyDuplicateError (the insert-only register() path).
+        entity = _entity("Upsertable", definition="v1")
+        await backend.ontology_entities.save(entity)
+        await backend.ontology_entities.save(
+            entity.model_copy(
+                update={
+                    "definition": "v2",
+                    "updated_at": datetime.now(UTC),
+                },
+            ),
+        )
+        fetched = await backend.ontology_entities.get("Upsertable")
+        assert fetched is not None
+        assert fetched.definition == "v2"
+
     async def test_update_missing_raises(self, backend: PersistenceBackend) -> None:
         with pytest.raises(OntologyNotFoundError):
             await backend.ontology_entities.update(_entity("NoSuchEntity"))
@@ -252,6 +270,18 @@ class TestOntologyDriftReportRepository:
             )
         rows = await backend.ontology_drift.get_latest(NotBlankStr("Repeated"), limit=2)
         assert len(rows) <= 2
+
+    async def test_query_not_implemented(self, backend: PersistenceBackend) -> None:
+        # The generic filtered query / retention purge are not
+        # implemented; they raise rather than silently masking the gap.
+        from synthorg.persistence.ontology_protocol import (
+            DriftReportFilterSpec,
+        )
+
+        with pytest.raises(NotImplementedError):
+            await backend.ontology_drift.query(DriftReportFilterSpec())
+        with pytest.raises(NotImplementedError):
+            await backend.ontology_drift.purge_before(datetime(2026, 1, 1, tzinfo=UTC))
 
     async def test_get_latest_missing_entity_empty(
         self, backend: PersistenceBackend

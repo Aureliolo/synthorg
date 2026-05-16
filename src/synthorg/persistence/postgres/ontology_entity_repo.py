@@ -235,10 +235,7 @@ class PostgresOntologyEntityRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
-        """List all entity definitions in name order.
-
-        Per ADR-0001 generic IdKeyedRepository surface.
-        """
+        """List all entity definitions in name order."""
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,

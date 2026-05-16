@@ -97,6 +97,40 @@ class TestSessionRepository:
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.sessions.get("missing") is None
 
+    async def test_save_upserts_existing_session(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # save() is a true upsert: a second save for the same
+        # session_id updates the row instead of raising.
+        session = await _make_session(backend, "sess_up")
+        await backend.sessions.save(session)
+        updated = session.model_copy(update={"user_agent": "pytest-v2"})
+        await backend.sessions.save(updated)
+        fetched = await backend.sessions.get("sess_up")
+        assert fetched is not None
+        assert fetched.user_agent == "pytest-v2"
+
+    async def test_save_unrevoked_clears_revocation_cache(
+        self, backend: PersistenceBackend
+    ) -> None:
+        revoked = await _make_session(backend, "sess_rs", revoked=True)
+        await backend.sessions.save(revoked)
+        assert backend.sessions.is_revoked("sess_rs") is True
+        # Re-saving with revoked=False must clear the in-memory cache.
+        await backend.sessions.save(revoked.model_copy(update={"revoked": False}))
+        assert backend.sessions.is_revoked("sess_rs") is False
+
+    async def test_delete_clears_revocation_cache(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.sessions.save(
+            await _make_session(backend, "sess_del", revoked=True)
+        )
+        assert backend.sessions.is_revoked("sess_del") is True
+        assert await backend.sessions.delete("sess_del") is True
+        # is_revoked must not keep reporting a deleted session.
+        assert backend.sessions.is_revoked("sess_del") is False
+
     async def test_list_by_user(self, backend: PersistenceBackend) -> None:
         await backend.sessions.save(
             await _make_session(backend, "sess_a", "user_bob", "bob"),

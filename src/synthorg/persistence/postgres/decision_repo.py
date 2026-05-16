@@ -410,7 +410,7 @@ class PostgresDecisionRepository:
         )
         raise DuplicateRecordError(msg) from last_exc
 
-    async def append(self, event) -> None:  # type: ignore[no-untyped-def]
+    async def append(self, event: DecisionRecord) -> None:
         """Append a decision record with a precomputed version.
 
         This method is the append interface from
@@ -489,7 +489,7 @@ class PostgresDecisionRepository:
         *,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
-    ) -> tuple:  # type: ignore[type-arg]
+    ) -> tuple[DecisionRecord, ...]:
         """Query decision records with optional filters and pagination.
 
         When only task_id is specified, results are oldest-first
@@ -847,7 +847,7 @@ class PostgresDecisionRepository:
             )
             raise QueryError(msg) from exc
 
-    async def purge_before(self, threshold) -> int:  # type: ignore[no-untyped-def]
+    async def purge_before(self, threshold: AwareDatetime) -> int:
         """Delete decision records older than threshold (retention).
 
         Args:

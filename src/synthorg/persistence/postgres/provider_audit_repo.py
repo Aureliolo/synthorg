@@ -186,17 +186,25 @@ class PostgresProviderAuditRepo:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ProviderAuditEvent, ...]:
-        """Offset-paginated query (generic AppendOnly surface)."""
+        """Offset-paginated query (generic AppendOnly surface).
+
+        ``after_id`` and ``offset`` are mutually exclusive paging
+        modes: when ``after_id`` is set the cursor predicate already
+        positions the window, so ``offset`` is forced to 0 to avoid
+        skipping rows relative to the cursor.
+        """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
             raise QueryError(msg)
         sql = _LIST_BASE_SQL
         params: list[Any] = [filter_spec.provider_name]
+        effective_offset = offset
         if filter_spec.after_id is not None:
             sql += " AND id < %s"
             params.append(filter_spec.after_id)
+            effective_offset = 0
         sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
-        params.extend([limit, offset])
+        params.extend([limit, effective_offset])
         try:
             async with (
                 self._pool.connection() as conn,

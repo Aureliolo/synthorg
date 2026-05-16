@@ -183,7 +183,7 @@ class OntologyEntityRepository(
     ) -> tuple[EntityDefinition, ...]:
         """Substring search against entity name and definition text.
 
-        Bespoke per D7: full-text search is a domain-specific operation.
+        Full-text search is a domain-specific operation.
 
         Args:
             query: Search string to match against name or definition.
@@ -198,7 +198,7 @@ class OntologyEntityRepository(
     async def get_version_manifest(self) -> dict[NotBlankStr, int]:
         """Return the latest version number for each entity.
 
-        Bespoke per D7: version manifest is a domain-specific aggregate.
+        Version manifest is a domain-specific aggregate.
 
         Returns:
             Mapping of entity name to latest version number.
@@ -220,12 +220,12 @@ class OntologyDriftReportRepository(
 ):
     """Storage protocol for drift detection reports.
 
-    Composes :class:`AppendOnlyRepository` (ADR-0001). Bespoke per D7:
-    :meth:`get_latest` (per-entity most recent) and :meth:`get_all_latest`
-    (latest per entity across all entities) are domain-specific aggregates
-    beyond the generic ``query`` surface and are optimised with specialised
-    SQL (indexes on ``(entity_name, id DESC)`` and ``DISTINCT ON`` subqueries
-    for fast per-entity selection).
+    Composes :class:`AppendOnlyRepository`. :meth:`get_latest`
+    (per-entity most recent) and :meth:`get_all_latest` (latest per
+    entity across all entities) are domain-specific aggregates beyond
+    the generic ``query`` surface and are optimised with specialised
+    SQL (indexes on ``(entity_name, id DESC)`` and ``DISTINCT ON``
+    subqueries for fast per-entity selection).
     """
 
     async def append(self, event: DriftReport) -> None:
@@ -244,7 +244,7 @@ class OntologyDriftReportRepository(
     ) -> tuple[DriftReport, ...]:
         """Return most recent drift reports for an entity.
 
-        Bespoke per D7: optimised query for per-entity most-recent reports.
+        Optimised query for per-entity most-recent reports.
 
         Args:
             entity_name: Entity to retrieve reports for.
@@ -262,8 +262,8 @@ class OntologyDriftReportRepository(
     ) -> tuple[DriftReport, ...]:
         """Return the most recent drift report for each entity.
 
-        Bespoke per D7: optimised query for per-entity latest across
-        all entities. Returns one report per distinct entity.
+        Optimised query for per-entity latest across all entities.
+        Returns one report per distinct entity.
 
         Args:
             limit: Maximum entities to return (default 100).

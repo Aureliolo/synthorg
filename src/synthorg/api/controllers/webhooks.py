@@ -772,20 +772,21 @@ class WebhooksController(Controller):
             )
             msg = f"Webhook receipt {receipt_id!r} not found"
             raise NotFoundError(msg)
-        _assert_receipt_retryable(receipt)
-
-        payload = _load_payload_from_receipt(receipt)
         bus = state["app_state"].message_bus
-        # Snapshot the payload mapping so a re-invocation of the
-        # idempotency callback cannot observe a mutated capture.
-        payload_snapshot: Mapping[str, object] = dict(payload)
 
         async def _do_retry() -> dict[str, object]:
+            # Validate retryability INSIDE the idempotent claim. The
+            # first request flips the row out of ``failed``; a
+            # duplicate/manual retry must resolve through the same
+            # claim's cached result rather than getting a 409 from a
+            # pre-claim retryability check against the now-mutated row.
+            _assert_receipt_retryable(receipt)
+            payload = _load_payload_from_receipt(receipt)
             return await _retry_publish_and_transition(
                 persistence=persistence,
                 bus=bus,
                 receipt=receipt,
-                payload=payload_snapshot,
+                payload=dict(payload),
             )
 
         scope = NotBlankStr("webhooks:retry")

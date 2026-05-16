@@ -11,7 +11,7 @@ persistence layer creates a layering cycle.
 The gate scans ``*.py`` files under:
 
 * ``src/synthorg/persistence/``
-* ``src/synthorg/service/`` (if it exists)
+* ``src/synthorg/api/services/`` (the service layer)
 
 and flags any ``from synthorg.api.dto_<name> import ...`` or
 ``import synthorg.api.dto_<name>`` statement. ``synthorg.api`` imports
@@ -52,8 +52,14 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
 _SCOPED_DIRS: Final[tuple[Path, ...]] = (
     _REPO_ROOT / "src" / "synthorg" / "persistence",
-    _REPO_ROOT / "src" / "synthorg" / "service",
+    _REPO_ROOT / "src" / "synthorg" / "api" / "services",
 )
+
+# ``from synthorg.api import dto_capability`` reaches the same DTO
+# module as ``from synthorg.api.dto_capability import ...`` but the
+# imported *name* (not the module) carries the ``dto_`` prefix.
+_API_PACKAGE: Final[str] = "synthorg.api"
+_DTO_NAME_PREFIX: Final[str] = "dto_"
 
 
 def _iter_import_violations(tree: ast.AST, path: Path) -> Iterable[str]:
@@ -68,6 +74,16 @@ def _iter_import_violations(tree: ast.AST, path: Path) -> Iterable[str]:
                     f"`from {module} import {names}` "
                     f"(persistence/service must not import api.dto_*)"
                 )
+            elif module == _API_PACKAGE:
+                # ``from synthorg.api import dto_capability`` -- the
+                # forbidden DTO is the imported name, not the module.
+                for alias in node.names:
+                    if alias.name.startswith(_DTO_NAME_PREFIX):
+                        yield (
+                            f"{path}:{node.lineno}: forbidden import "
+                            f"`from {module} import {alias.name}` "
+                            f"(persistence/service must not import api.dto_*)"
+                        )
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name.startswith(_DTO_MODULE_PREFIX):

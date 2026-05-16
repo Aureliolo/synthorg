@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import Literal
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -203,12 +204,13 @@ class TestAuditRepositoryConformance:
     async def test_query_until_before_since_raises(
         self, backend: PersistenceBackend
     ) -> None:
-        with pytest.raises(QueryError):
-            await backend.audit_entries.query(
-                AuditFilterSpec(
-                    since=datetime(2026, 1, 2, tzinfo=UTC),
-                    until=datetime(2026, 1, 1, tzinfo=UTC),
-                ),
+        # An inverted window is rejected at the filter-spec boundary
+        # (model_validator) rather than deferred to query() time, so
+        # callers cannot construct an invalid spec at all.
+        with pytest.raises(ValidationError):
+            AuditFilterSpec(
+                since=datetime(2026, 1, 2, tzinfo=UTC),
+                until=datetime(2026, 1, 1, tzinfo=UTC),
             )
 
     async def test_purge_before_removes_old_rows(

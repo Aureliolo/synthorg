@@ -1,9 +1,8 @@
 """Audit repository protocol."""
 
-from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -20,7 +19,7 @@ __all__ = [
 
 
 class AuditFilterSpec(BaseModel):
-    """Filter spec for ``AuditRepository.query`` (ADR-0001)."""
+    """Filter spec for ``AuditRepository.query``."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -40,14 +39,26 @@ class AuditFilterSpec(BaseModel):
         default=None,
         description="Filter by risk level",
     )
-    since: datetime | None = Field(
+    since: AwareDatetime | None = Field(
         default=None,
         description="Only return entries at or after this timestamp",
     )
-    until: datetime | None = Field(
+    until: AwareDatetime | None = Field(
         default=None,
         description="Only return entries at or before this timestamp",
     )
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> AuditFilterSpec:
+        """Reject an inverted ``since``/``until`` window at the boundary."""
+        if (
+            self.since is not None
+            and self.until is not None
+            and self.until < self.since
+        ):
+            msg = f"until ({self.until}) must be >= since ({self.since})"
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable
@@ -57,9 +68,9 @@ class AuditRepository(
 ):
     """Append-only persistence + query interface for AuditEntry.
 
-    Composes :class:`AppendOnlyRepository` (ADR-0001). Audit entries
-    are immutable records of security evaluations. No update operations
-    are provided to preserve audit integrity.
+    Composes :class:`AppendOnlyRepository`. Audit entries are immutable
+    records of security evaluations. No update operations are provided
+    to preserve audit integrity.
 
     The single delete-style operation is :meth:`purge_before`, the
     retention sweeper used to enforce the operator-configurable
@@ -105,7 +116,7 @@ class AuditRepository(
         """
         ...
 
-    async def purge_before(self, cutoff: datetime) -> int:
+    async def purge_before(self, cutoff: AwareDatetime) -> int:
         """Delete audit entries older than *cutoff* (CFG-1 audit).
 
         This is the one exception to the append-only rule: it powers
