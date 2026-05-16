@@ -68,7 +68,6 @@ if TYPE_CHECKING:
     from synthorg.core.auth.models import ApiKey, User
     from synthorg.core.enums import (
         ApprovalRiskLevel,
-        ArtifactType,
         ProjectStatus,
         TaskStatus,
         WorkflowType,
@@ -426,22 +425,36 @@ class _FakeSettingsRepository:
 
 
 class _FakeArtifactRepository:
-    async def save(self, artifact: Artifact) -> bool:
+    async def save(self, entity: Artifact) -> None:
+        pass
+
+    async def save_returning_outcome(self, artifact: Artifact) -> bool:
         return True
 
-    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
+    async def get(self, entity_id: NotBlankStr) -> Artifact | None:
         return None
 
-    async def list_artifacts(
+    async def list_items(
         self,
         *,
-        task_id: NotBlankStr | None = None,
-        created_by: NotBlankStr | None = None,
-        artifact_type: ArtifactType | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Artifact, ...]:
         return ()
 
-    async def delete(self, artifact_id: NotBlankStr) -> bool:
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Artifact, ...]:
+        return ()
+
+    async def count(self, filter_spec: object) -> int:
+        return 0
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         return False
 
 

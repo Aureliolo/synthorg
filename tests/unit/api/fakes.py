@@ -13,7 +13,6 @@ from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.enums import (
     ApprovalRiskLevel,
-    ArtifactType,
     ExecutionStatus,
     ProjectStatus,
     TaskStatus,
@@ -436,35 +435,68 @@ class FakeArtifactRepository:
     def __init__(self) -> None:
         self._artifacts: dict[str, Artifact] = {}
 
-    async def save(self, artifact: Artifact) -> bool:
+    async def save(self, entity: Artifact) -> None:
+        self._artifacts[entity.id] = entity
+
+    async def save_returning_outcome(self, artifact: Artifact) -> bool:
         created = artifact.id not in self._artifacts
         self._artifacts[artifact.id] = artifact
         return created
 
-    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
-        return self._artifacts.get(artifact_id)
+    async def get(self, entity_id: NotBlankStr) -> Artifact | None:
+        return self._artifacts.get(entity_id)
 
-    async def list_artifacts(
+    async def list_items(
         self,
         *,
-        task_id: NotBlankStr | None = None,
-        created_by: NotBlankStr | None = None,
-        artifact_type: ArtifactType | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Artifact, ...]:
+        from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
+
+        return await self.query(
+            ArtifactFilterSpec(),
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Artifact, ...]:
         result = list(self._artifacts.values())
-        if task_id is not None:
-            result = [a for a in result if a.task_id == task_id]
-        if created_by is not None:
-            result = [a for a in result if a.created_by == created_by]
-        if artifact_type is not None:
-            result = [a for a in result if a.type == artifact_type]
+        if hasattr(filter_spec, "task_id") and filter_spec.task_id is not None:
+            result = [a for a in result if a.task_id == filter_spec.task_id]
+        if hasattr(filter_spec, "created_by") and filter_spec.created_by is not None:
+            result = [a for a in result if a.created_by == filter_spec.created_by]
+        if (
+            hasattr(filter_spec, "artifact_type")
+            and filter_spec.artifact_type is not None
+        ):
+            result = [a for a in result if a.type == filter_spec.artifact_type]
         # Match the SQLite repo contract (``ORDER BY id``) so tests
         # asserting list order do not depend on dict insertion order.
         result.sort(key=lambda a: a.id)
-        return tuple(result)
+        return tuple(result[offset : offset + limit])
 
-    async def delete(self, artifact_id: NotBlankStr) -> bool:
-        return self._artifacts.pop(artifact_id, None) is not None
+    async def count(self, filter_spec: object) -> int:
+        result = list(self._artifacts.values())
+        if hasattr(filter_spec, "task_id") and filter_spec.task_id is not None:
+            result = [a for a in result if a.task_id == filter_spec.task_id]
+        if hasattr(filter_spec, "created_by") and filter_spec.created_by is not None:
+            result = [a for a in result if a.created_by == filter_spec.created_by]
+        if (
+            hasattr(filter_spec, "artifact_type")
+            and filter_spec.artifact_type is not None
+        ):
+            result = [a for a in result if a.type == filter_spec.artifact_type]
+        return len(result)
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._artifacts.pop(entity_id, None) is not None
 
 
 class FakeProjectRepository:
