@@ -6,8 +6,14 @@ are in ``hr_repositories.py`` within this package.
 
 import json
 import sqlite3
+from typing import TYPE_CHECKING
 
 import aiosqlite
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from synthorg.persistence.message_protocol import MessageFilterSpec
 from pydantic import BaseModel, ValidationError
 
 from synthorg.budget.cost_record import CostRecord
@@ -40,6 +46,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_LISTED,
     PERSISTENCE_TASK_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
@@ -546,8 +553,8 @@ class SQLiteMessageRepository:
                 rollback_failed=True,
             )
 
-    async def save(self, message: Message) -> None:
-        """Persist a message."""
+    async def append(self, message: Message) -> None:
+        """Persist a message (append-only per AppendOnlyRepository)."""
         data = message.model_dump(mode="json")
         msg_id = str(message.id)
 
@@ -670,8 +677,62 @@ ORDER BY timestamp DESC"""
         )
         return messages
 
+    async def query(
+        self,
+        filter_spec: MessageFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Message, ...]:
+        """Return messages matching the filter spec, newest first."""
+        if limit < 1:
+            msg = f"limit must be a positive integer, got {limit}"
+            raise QueryError(msg)
+        sql = """\
+SELECT id, timestamp, sender, "to", type, priority,
+       channel, content, attachments, metadata
+FROM messages"""
+        params: list[object] = []
+        if filter_spec.channel is not None:
+            sql += " WHERE channel = ?"
+            params.append(filter_spec.channel)
+        sql += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        try:
+            cursor = await self._db.execute(sql, params)
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to query messages"
+            logger.warning(
+                PERSISTENCE_MESSAGE_HISTORY_FAILED,
+                channel=filter_spec.channel,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(self._row_to_message(row) for row in rows)
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete messages with ``timestamp < threshold`` (retention)."""
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM messages WHERE timestamp < ?",
+                    (threshold.isoformat(),),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = "Failed to purge messages by threshold"
+                logger.warning(
+                    PERSISTENCE_MESSAGE_DELETE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return cursor.rowcount
+
     async def delete(self, message_id: NotBlankStr) -> bool:
-        """Delete a single message by id.
+        """Delete a single message by id (bespoke per ADR D7, moderation).
 
         Returns ``True`` when a row was removed, ``False`` when the id
         did not exist. Concurrent writes are serialized through the

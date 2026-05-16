@@ -259,7 +259,7 @@ class TestNativePostgresTypes:
             content="payload",
             metadata=metadata,
         )
-        await postgres_backend.messages.save(msg)
+        await postgres_backend.messages.append(msg)
 
         history = await postgres_backend.messages.get_history("jsonb-chan")
         assert len(history) == 1

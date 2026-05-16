@@ -142,7 +142,7 @@ class _FakeCostRecordRepository:
 
 
 class _FakeMessageRepository:
-    async def save(self, message: Message) -> None:
+    async def append(self, message: Message) -> None:
         pass
 
     async def get_history(
@@ -152,6 +152,18 @@ class _FakeMessageRepository:
         limit: int | None = None,
     ) -> tuple[Message, ...]:
         return ()
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Message, ...]:
+        return ()
+
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
 
     async def delete(self, message_id: str) -> bool:
         return False

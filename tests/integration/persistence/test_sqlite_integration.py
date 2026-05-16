@@ -90,7 +90,7 @@ class TestSQLiteOnDisk:
         await backend.cost_records.save(record)
 
         # Save message
-        await backend.messages.save(make_message(channel="test-channel"))
+        await backend.messages.append(make_message(channel="test-channel"))
 
         # Verify all persist
         tasks = await backend.tasks.list_tasks()

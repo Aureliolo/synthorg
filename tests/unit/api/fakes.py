@@ -131,7 +131,7 @@ class FakeMessageRepository:
     def __init__(self) -> None:
         self._messages: list[Message] = []
 
-    async def save(self, message: Message) -> None:
+    async def append(self, message: Message) -> None:
         if any(m.id == message.id for m in self._messages):
             msg = f"Message {message.id} already exists"
             raise DuplicateRecordError(msg)
@@ -154,6 +154,27 @@ class FakeMessageRepository:
         if limit is not None:
             result = result[:limit]
         return tuple(result)
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Message, ...]:
+        result = sorted(
+            self._messages,
+            key=lambda m: m.timestamp,
+            reverse=True,
+        )
+        if filter_spec.channel is not None:
+            result = [m for m in result if m.channel == filter_spec.channel]
+        return tuple(result[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        before = len(self._messages)
+        self._messages = [m for m in self._messages if m.timestamp >= threshold]
+        return before - len(self._messages)
 
     async def delete(self, message_id: str) -> bool:
         for i, m in enumerate(self._messages):

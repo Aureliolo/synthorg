@@ -188,15 +188,15 @@ class TestCostRecordRepository:
 
 @pytest.mark.integration
 class TestMessageRepository:
-    async def test_save_and_get_history(self, backend: PersistenceBackend) -> None:
+    async def test_append_and_get_history(self, backend: PersistenceBackend) -> None:
         msg = make_message(msg_id=uuid4(), channel="chan1", content="hello")
-        await backend.messages.save(msg)
+        await backend.messages.append(msg)
         history = await backend.messages.get_history("chan1")
         assert len(history) == 1
 
     async def test_get_history_newest_first(self, backend: PersistenceBackend) -> None:
         for i in range(3):
-            await backend.messages.save(
+            await backend.messages.append(
                 make_message(
                     msg_id=uuid4(),
                     channel="chan1",
@@ -212,7 +212,7 @@ class TestMessageRepository:
 
     async def test_get_history_limit(self, backend: PersistenceBackend) -> None:
         for i in range(5):
-            await backend.messages.save(
+            await backend.messages.append(
                 make_message(
                     msg_id=uuid4(),
                     channel="chan1",
@@ -225,8 +225,8 @@ class TestMessageRepository:
     async def test_get_history_filters_by_channel(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.messages.save(make_message(msg_id=uuid4(), channel="chan1"))
-        await backend.messages.save(make_message(msg_id=uuid4(), channel="chan2"))
+        await backend.messages.append(make_message(msg_id=uuid4(), channel="chan1"))
+        await backend.messages.append(make_message(msg_id=uuid4(), channel="chan2"))
         assert len(await backend.messages.get_history("chan1")) == 1
         assert len(await backend.messages.get_history("chan2")) == 1
 
@@ -234,7 +234,7 @@ class TestMessageRepository:
         self, backend: PersistenceBackend
     ) -> None:
         msg_id = uuid4()
-        await backend.messages.save(
+        await backend.messages.append(
             make_message(msg_id=msg_id, channel="chan1"),
         )
         assert len(await backend.messages.get_history("chan1")) == 1
@@ -251,7 +251,7 @@ class TestMessageRepository:
 
     async def test_delete_is_idempotent(self, backend: PersistenceBackend) -> None:
         msg_id = uuid4()
-        await backend.messages.save(
+        await backend.messages.append(
             make_message(msg_id=msg_id, channel="chan1"),
         )
 
@@ -273,7 +273,7 @@ class TestMessageRepository:
         import asyncio
 
         msg_id = uuid4()
-        await backend.messages.save(
+        await backend.messages.append(
             make_message(msg_id=msg_id, channel="chan1"),
         )
 
