@@ -57,7 +57,9 @@ from synthorg.persistence.workflow_definition_protocol import (
     WorkflowDefinitionFilterSpec,
     WorkflowDefinitionRepository,
 )
-from synthorg.persistence.workflow_execution_protocol import WorkflowExecutionRepository
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionRepository,
+)
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime

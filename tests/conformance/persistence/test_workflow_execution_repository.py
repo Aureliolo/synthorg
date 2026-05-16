@@ -30,6 +30,9 @@ from synthorg.engine.workflow.execution_models import (
     WorkflowNodeExecution,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionFilterSpec,
+)
 
 
 def _make_workflow_definition(
@@ -182,7 +185,9 @@ class TestWorkflowExecutionRepository:
         await exec_repo.save(exec1)
         await exec_repo.save(exec2)
 
-        executions = await exec_repo.list_by_definition("wf-001")
+        executions = await exec_repo.query(
+            WorkflowExecutionFilterSpec(definition_id="wf-001")
+        )
         assert len(executions) >= 2
         ids = {e.id for e in executions}
         assert "exec-def-001" in ids
@@ -216,7 +221,9 @@ class TestWorkflowExecutionRepository:
         await exec_repo.save(running)
         await exec_repo.save(completed)
 
-        running_only = await exec_repo.list_by_status(WorkflowExecutionStatus.RUNNING)
+        running_only = await exec_repo.query(
+            WorkflowExecutionFilterSpec(status=WorkflowExecutionStatus.RUNNING)
+        )
         assert len(running_only) >= 1
         assert any(e.id == "exec-running" for e in running_only)
 
@@ -237,7 +244,10 @@ class TestWorkflowExecutionRepository:
                 ),
             )
 
-        rows = await exec_repo.list_by_definition("wf-lim", limit=3)
+        rows = await exec_repo.query(
+            WorkflowExecutionFilterSpec(definition_id="wf-lim"),
+            limit=3,
+        )
         assert len(rows) == 3
 
     async def test_list_by_status_respects_limit(
@@ -257,7 +267,10 @@ class TestWorkflowExecutionRepository:
                 ),
             )
 
-        rows = await exec_repo.list_by_status(WorkflowExecutionStatus.PENDING, limit=3)
+        rows = await exec_repo.query(
+            WorkflowExecutionFilterSpec(status=WorkflowExecutionStatus.PENDING),
+            limit=3,
+        )
         assert len(rows) == 3
 
     async def test_find_by_task_id(

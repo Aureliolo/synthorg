@@ -2,6 +2,8 @@
 
 from typing import Protocol, runtime_checkable
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from synthorg.core.enums import WorkflowExecutionStatus  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.execution_models import (
@@ -10,17 +12,44 @@ from synthorg.engine.workflow.execution_models import (
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
+class WorkflowExecutionFilterSpec(BaseModel):
+    """Filter spec for ``WorkflowExecutionRepository.query``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    definition_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by workflow definition ID",
+    )
+    status: WorkflowExecutionStatus | None = Field(
+        default=None,
+        description="Filter by execution status",
+    )
+
+
 @runtime_checkable
 class WorkflowExecutionRepository(Protocol):
-    """CRUD interface for workflow execution persistence.
+    """CRUD + query interface for workflow execution persistence.
 
-    Workflow executions are runtime instances of activated
-    workflow definitions, tracking per-node execution state
-    and mapping to concrete tasks.
+    Workflow executions are runtime instances of activated workflow
+    definitions, tracking per-node execution state and mapping to concrete
+    tasks.
+
+    **Note on save semantics**: The :meth:`save` method retains optimistic-
+    concurrency checking (``PersistenceVersionConflictError`` on version
+    mismatch), which differs from the typical idempotent upsert contract.
+    Callers must respect the version increment and handle conflicts
+    explicitly; this divergence is documented here because it is domain-
+    driven (workflow execution state machines require atomic transitions)
+    and permanent.
     """
 
     async def save(self, execution: WorkflowExecution) -> None:
         """Persist a workflow execution (insert or update).
+
+        Optimistic concurrency: if the execution's version does not match
+        the stored row's version + 1, raises
+        ``PersistenceVersionConflictError``.
 
         Args:
             execution: The workflow execution to persist.
@@ -28,9 +57,9 @@ class WorkflowExecutionRepository(Protocol):
         Raises:
             DuplicateRecordError: If inserting a duplicate ID.
             PersistenceVersionConflictError: If the row exists but its
-                stored version differs from ``execution.version - 1``.
-            RecordNotFoundError: If updating a row that no longer
-                exists (delete race between read and update).
+                stored version does not match execution.version - 1.
+            RecordNotFoundError: If updating a row that no longer exists
+                (delete race between read and update).
             PersistenceError: If the operation fails.
         """
         ...
@@ -52,44 +81,58 @@ class WorkflowExecutionRepository(Protocol):
         """
         ...
 
-    async def list_by_definition(
+    async def list_items(
         self,
-        definition_id: NotBlankStr,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        """List executions for a given workflow definition.
+        """List all workflow executions with pagination.
 
         Args:
-            definition_id: The source definition identifier.
-            limit: Maximum executions to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Matching executions as a tuple, ordered by
-            ``updated_at`` descending, capped at *limit* rows.
+            Executions ordered by id ascending.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def list_by_status(
+    async def query(
         self,
-        status: WorkflowExecutionStatus,
+        filter_spec: WorkflowExecutionFilterSpec,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        """List executions with a given status.
+        """List executions matching the filter spec.
 
         Args:
-            status: The execution status to filter by.
-            limit: Maximum executions to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            filter_spec: Carries optional filters for definition_id and
+                status.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Matching executions as a tuple, ordered by
-            ``updated_at`` descending, capped at *limit* rows.
+            Matching executions ordered by updated_at descending, then id
+            ascending.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def count(self, filter_spec: WorkflowExecutionFilterSpec) -> int:
+        """Count executions matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters.
+
+        Returns:
+            Total number of matching executions.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -102,12 +145,15 @@ class WorkflowExecutionRepository(Protocol):
     ) -> WorkflowExecution | None:
         """Find a RUNNING execution containing a node with the given task ID.
 
+        This is a bespoke alternate-key lookup via JSON probe,
+        not expressible via a generic filter interface.
+
         Args:
             task_id: The concrete task identifier to search for.
 
         Returns:
-            The matching execution, or ``None`` if no running
-            execution contains this task ID.
+            The matching execution, or ``None`` if no running execution
+            contains this task ID.
 
         Raises:
             QueryError: If the operation fails.

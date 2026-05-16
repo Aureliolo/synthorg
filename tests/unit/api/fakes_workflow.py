@@ -14,6 +14,9 @@ from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionFilterSpec,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -109,31 +112,52 @@ class FakeWorkflowExecutionRepository:
         stored = self._executions.get(execution_id)
         return copy.deepcopy(stored) if stored is not None else None
 
-    async def list_by_definition(
+    async def list_items(
         self,
-        definition_id: str,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        result = sorted(
-            [e for e in self._executions.values() if e.definition_id == definition_id],
-            key=lambda e: e.updated_at,
-            reverse=True,
+        executions = sorted(
+            self._executions.values(),
+            key=lambda e: e.id,
         )
-        return tuple(copy.deepcopy(e) for e in result[:limit])
+        return tuple(copy.deepcopy(e) for e in executions[offset : offset + limit])
 
-    async def list_by_status(
+    async def query(
         self,
-        status: WorkflowExecutionStatus,
+        filter_spec: WorkflowExecutionFilterSpec,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
+        result = list(self._executions.values())
+
+        if filter_spec.definition_id is not None:
+            result = [e for e in result if e.definition_id == filter_spec.definition_id]
+
+        if filter_spec.status is not None:
+            result = [e for e in result if e.status == filter_spec.status]
+
         result = sorted(
-            [e for e in self._executions.values() if e.status == status],
-            key=lambda e: e.updated_at,
-            reverse=True,
+            result,
+            key=lambda e: (e.updated_at, e.id),
+            reverse=False,
         )
-        return tuple(copy.deepcopy(e) for e in result[:limit])
+        result.reverse()  # Sort by updated_at DESC then id ASC
+
+        return tuple(copy.deepcopy(e) for e in result[offset : offset + limit])
+
+    async def count(self, filter_spec: WorkflowExecutionFilterSpec) -> int:
+        result = list(self._executions.values())
+
+        if filter_spec.definition_id is not None:
+            result = [e for e in result if e.definition_id == filter_spec.definition_id]
+
+        if filter_spec.status is not None:
+            result = [e for e in result if e.status == filter_spec.status]
+
+        return len(result)
 
     async def find_by_task_id(
         self,

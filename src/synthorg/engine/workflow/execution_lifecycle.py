@@ -44,7 +44,8 @@ from synthorg.observability.events.workflow_execution import (
 from synthorg.observability.metrics_hub import record_workflow_execution
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-from synthorg.persistence.workflow_execution_protocol import (  # noqa: TC001
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionFilterSpec,
     WorkflowExecutionRepository,
 )
 
@@ -98,7 +99,10 @@ async def list_executions(
     limit: int = DEFAULT_LIST_LIMIT,
 ) -> tuple[WorkflowExecution, ...]:
     """List executions for a workflow definition (bounded by *limit*)."""
-    return await repo.list_by_definition(definition_id, limit=limit)
+    return await repo.query(
+        WorkflowExecutionFilterSpec(definition_id=definition_id),
+        limit=limit,
+    )
 
 
 async def cancel_execution(
