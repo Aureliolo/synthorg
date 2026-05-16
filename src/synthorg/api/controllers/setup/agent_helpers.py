@@ -72,9 +72,14 @@ def validate_agent_index(
 async def post_setup_reinit(app_state: AppState) -> None:
     """Reload providers and bootstrap agents after setup completion.
 
-    Both operations are non-fatal: setup completion must succeed
-    even if re-init partially fails (the user can restart the
-    server to pick up changes).
+    Raises on failure so the caller can keep ``setup_complete=false``
+    when reinit cannot finish; a half-configured runtime presenting
+    itself as "complete" is worse than a clear error the operator can
+    retry after fixing the underlying provider config.
+
+    The matching call site in
+    :func:`SetupController.complete_setup` only persists the completion
+    flag when this function returns without raising.
 
     Args:
         app_state: Application state containing services.
@@ -92,11 +97,13 @@ async def post_setup_reinit(app_state: AppState) -> None:
             app_state.swap_provider_registry(new_registry)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             SETUP_PROVIDER_RELOAD_FAILED,
-            error="Provider reload failed after setup (non-fatal)",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
+        raise
 
     # 2. Bootstrap agents into runtime registry.
     if app_state.has_agent_registry:
@@ -111,11 +118,13 @@ async def post_setup_reinit(app_state: AppState) -> None:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 SETUP_AGENT_BOOTSTRAP_FAILED,
-                error="Agent bootstrap failed (non-fatal)",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
+            raise
 
 
 async def check_needs_admin(

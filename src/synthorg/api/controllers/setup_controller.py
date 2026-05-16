@@ -831,12 +831,12 @@ class SetupController(Controller):
                 error=safe_error_description(exc),
             )
 
-        # Re-initialize first: reload providers + bootstrap agents into
-        # runtime. Setting ``setup_complete=true`` BEFORE reinit would
-        # leave the frontend believing setup succeeded if reinit then
-        # failed, stranding the user with a half-configured runtime
-        # and no obvious retry surface. With this ordering, a reinit
-        # failure leaves the flag false and the operator can retry.
+        # Reload providers + bootstrap agents BEFORE persisting the
+        # completion flag. ``_post_setup_reinit`` propagates failures
+        # so a broken provider config or bootstrap error leaves the
+        # flag at ``false``; the operator fixes the underlying issue
+        # and retries. Without this ordering, the frontend would
+        # believe setup succeeded while the runtime is half-configured.
         await _post_setup_reinit(app_state)
 
         await settings_svc.set("api", "setup_complete", "true")
