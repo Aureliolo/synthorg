@@ -7,14 +7,12 @@ identifier from the YAML packs) and carries a ``restored_from`` field
 recording the rollback operation that produced it for forensic audit.
 """
 
-from datetime import datetime  # noqa: TC003 -- runtime default in protocol signature
-from typing import Final, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-
-_DEFAULT_LIST_LIMIT_100: Final[int] = 100
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
 
 class PrincipleOverride(BaseModel):
@@ -36,8 +34,13 @@ class PrincipleOverride(BaseModel):
 
 
 @runtime_checkable
-class PrincipleOverrideRepository(Protocol):
+class PrincipleOverrideRepository(
+    IdKeyedRepository[PrincipleOverride, NotBlankStr],
+    Protocol,
+):
     """CRUD interface for principle overrides.
+
+    Composes :class:`IdKeyedRepository` (ADR-0001). No bespoke methods.
 
     Implementations live under
     ``synthorg.persistence.{sqlite,postgres}.principle_override_repo``
@@ -45,37 +48,33 @@ class PrincipleOverrideRepository(Protocol):
     access.
     """
 
-    async def save(
-        self,
-        scope: NotBlankStr,
-        text: NotBlankStr,
-        *,
-        restored_from: NotBlankStr,
-        now: datetime | None = None,
-    ) -> None:
+    async def save(self, entity: PrincipleOverride) -> None:
         """Insert or update the override at ``scope``.
 
         Args:
-            scope: Principle scope identifier.
-            text: Override text.
-            restored_from: Provenance of the override.
-            now: Optional clock injection for tests (defaults to UTC now).
+            entity: The principle override to persist.
 
         Raises:
             PersistenceError: If the write fails.
         """
         ...
 
-    async def get(self, scope: NotBlankStr) -> PrincipleOverride | None:
+    async def get(self, entity_id: NotBlankStr) -> PrincipleOverride | None:
         """Retrieve the override at ``scope``.
+
+        Args:
+            entity_id: The principle scope identifier.
 
         Returns:
             The override if present, ``None`` otherwise.
         """
         ...
 
-    async def delete(self, scope: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Remove the override at ``scope``.
+
+        Args:
+            entity_id: The principle scope identifier.
 
         Returns:
             ``True`` if a row was removed, ``False`` if no override existed.
@@ -85,8 +84,16 @@ class PrincipleOverrideRepository(Protocol):
     async def list_items(
         self,
         *,
-        limit: int = _DEFAULT_LIST_LIMIT_100,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[PrincipleOverride, ...]:
-        """List all overrides, ordered by ``scope`` ascending."""
+        """List all overrides, ordered by ``scope`` ascending.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Overrides in ascending ``scope`` order.
+        """
         ...

@@ -606,40 +606,45 @@ class _FakeWorkflowDefinitionRepository:
 
 
 class _FakeWorkflowExecutionRepository:
-    async def save(self, execution: WorkflowExecution) -> None:
-        pass
+    async def save(self, entity: WorkflowExecution) -> None:
+        del entity
 
-    async def get(
-        self,
-        execution_id: NotBlankStr,
-    ) -> WorkflowExecution | None:
+    async def get(self, entity_id: NotBlankStr) -> WorkflowExecution | None:
+        del entity_id
         return None
 
-    async def list_by_definition(
+    async def list_items(
         self,
-        definition_id: NotBlankStr,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        del definition_id, limit
+        del limit, offset
         return ()
 
-    async def list_by_status(
+    async def query(
         self,
-        status: WorkflowExecutionStatus,
+        filter_spec: Any,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        del status, limit
+        del filter_spec, limit, offset
         return ()
+
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
+        return 0
 
     async def find_by_task_id(
         self,
         task_id: NotBlankStr,
     ) -> WorkflowExecution | None:
+        del task_id
         return None
 
-    async def delete(self, execution_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
         return False
 
 
@@ -726,22 +731,15 @@ class _FakeIdempotencyRepository:
 class _FakePrincipleOverrideRepository:
     """Minimal PrincipleOverrideRepository conforming to the protocol shape."""
 
-    async def save(
-        self,
-        scope: NotBlankStr,
-        text: NotBlankStr,
-        *,
-        restored_from: NotBlankStr,
-        now: Any = None,
-    ) -> None:
-        del scope, text, restored_from, now
+    async def save(self, entity: Any) -> None:
+        del entity
 
-    async def get(self, scope: NotBlankStr) -> Any:
-        del scope
+    async def get(self, entity_id: NotBlankStr) -> Any:
+        del entity_id
         return None
 
-    async def delete(self, scope: NotBlankStr) -> bool:
-        del scope
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
         return False
 
     async def list_items(
