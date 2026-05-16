@@ -10580,6 +10580,9 @@ export type components = {
         };
         /** SetupCompleteResponse */
         readonly SetupCompleteResponse: {
+            readonly embedder_failure_reason: string | null;
+            /** @default true */
+            readonly embedder_selected: boolean;
             /** @constant */
             readonly setup_complete: true;
         };

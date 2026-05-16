@@ -76,26 +76,39 @@ function getInitialState() {
 
     completing: false,
     completionError: null,
+    completionWarning: null,
   }
 }
 
 export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) => ({
   completing: false,
   completionError: null,
+  completionWarning: null,
 
   async completeSetup() {
     const startedAt = Date.now()
-    set({ completing: true, completionError: null })
+    set({ completing: true, completionError: null, completionWarning: null })
     try {
-      await completeSetup()
+      const response = await completeSetup()
       // Forward the wizard's collected theme into the persistent
       // theme store so the dashboard renders the chosen palette /
       // density / animation / sidebar mode immediately after the
       // wizard hands off, instead of reverting to the system default.
       persistWizardTheme(get().themeSettings)
-      set({ completing: false })
+      // The completion succeeded, but the backend may still report a
+      // non-fatal warning (embedder auto-selection produced no ranked
+      // model, persistence error for embedder choice). Surface it as
+      // ``completionWarning`` so the post-completion step can render
+      // an inline notice without claiming the whole setup failed.
+      const warning =
+        !response.embedder_selected
+          ? (response.embedder_failure_reason
+            ?? 'Embedder auto-selection did not pick a model. Configure one in Settings.')
+          : null
+      set({ completing: false, completionWarning: warning })
       log.debug('setup_wizard.completed', {
         duration_ms: Date.now() - startedAt,
+        embedder_selected: response.embedder_selected,
       })
     } catch (err) {
       // Resolve the formatted error once: getErrorMessage emits a

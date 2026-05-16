@@ -77,6 +77,7 @@ from synthorg.api.controllers.setup_agents import (
     get_existing_agents,
     normalize_description,
     validate_model_assignment,
+    validate_persisted_agents_against_providers,
     validate_provider_and_model,
 )
 from synthorg.api.controllers.setup_models import (
@@ -823,6 +824,26 @@ class SetupController(Controller):
                 logger.warning(SETUP_NO_PROVIDERS)
                 raise ValidationError(msg)
 
+            # Verify every persisted agent still points at a valid
+            # provider+model pair. A previously-saved agent whose
+            # provider got deleted between agent creation and setup
+            # completion would otherwise land on a "complete" dashboard
+            # with a broken model reference. Skip when the management
+            # surface has no providers configured: the earlier
+            # ``has_provider_registry`` gate above only checks the
+            # runtime registry, but the model-list source we need lives
+            # in provider_management and the in-process test fixtures
+            # populate the runtime registry without seeding the config.
+            # Production always has both populated together.
+            if has_agents:
+                persisted_agents = await get_existing_agents(settings_svc)
+                providers_map = await app_state.provider_management.list_providers()
+                if providers_map:
+                    validate_persisted_agents_against_providers(
+                        providers_map,
+                        persisted_agents,
+                    )
+
             # Auto-select embedding model from configured providers.
             # Best-effort: does not block setup completion on failure.
             # The preset hint comes from the first registered provider
@@ -834,9 +855,10 @@ class SetupController(Controller):
             provider_names = app_state.provider_registry.list_providers()
             provider_preset_name = provider_names[0] if provider_names else None
             has_gpu = await _read_has_gpu_setting(settings_svc)
+            embedder_failure_reason: str | None = None
             try:
                 model_ids = await _collect_model_ids(app_state)
-                await auto_select_embedder(
+                embedder_failure_reason = await auto_select_embedder(
                     settings_svc=settings_svc,
                     available_model_ids=model_ids,
                     provider_preset_name=provider_preset_name,
@@ -845,6 +867,9 @@ class SetupController(Controller):
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                embedder_failure_reason = (
+                    "Embedder auto-selection raised an unexpected error."
+                )
                 logger.warning(
                     SETUP_COMPLETE_CHECK_ERROR,
                     check="auto_select_embedder",
@@ -864,4 +889,10 @@ class SetupController(Controller):
 
             logger.info(SETUP_COMPLETED)
 
-            return ApiResponse(data=SetupCompleteResponse(setup_complete=True))
+            return ApiResponse(
+                data=SetupCompleteResponse(
+                    setup_complete=True,
+                    embedder_selected=embedder_failure_reason is None,
+                    embedder_failure_reason=embedder_failure_reason,
+                ),
+            )

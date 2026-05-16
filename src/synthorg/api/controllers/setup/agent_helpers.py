@@ -354,7 +354,7 @@ async def auto_select_embedder(
     available_model_ids: tuple[str, ...],
     provider_preset_name: str | None = None,
     has_gpu: bool | None = None,
-) -> None:
+) -> str | None:
     """Auto-select an embedding model and persist the choice.
 
     Best-effort: logs a warning but does not raise on failure.
@@ -387,13 +387,14 @@ async def auto_select_embedder(
         # Try without tier filter as fallback.
         ranking = select_embedding_model(available_model_ids)
     if ranking is None:
+        reason = "no ranked embedding model available for configured providers"
         logger.warning(
             MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
             available_models=len(available_model_ids),
             tier=tier.value,
-            reason="no LMEB-ranked model in available models",
+            reason=reason,
         )
-        return
+        return reason
     logger.info(
         MEMORY_EMBEDDER_AUTO_SELECTED,
         model_id=ranking.model_id,
@@ -415,7 +416,10 @@ async def auto_select_embedder(
     except MemoryError, RecursionError:
         raise
     except Exception:
+        reason = "failed to persist embedder settings"
         logger.warning(
             MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
-            reason="failed to persist embedder settings",
+            reason=reason,
         )
+        return reason
+    return None

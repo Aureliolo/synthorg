@@ -213,6 +213,15 @@ export interface ThemeSlice {
 export interface CompletionSlice {
   completing: boolean
   completionError: string | null
+  /**
+   * Warning surfaced after a successful completion when the backend
+   * succeeded with ``setup_complete=true`` but reported a non-fatal
+   * post-completion warning (e.g. embedder auto-selection produced no
+   * ranked model). Distinct from ``completionError`` which represents
+   * a HARD failure that left ``setup_complete=false``. Cleared when
+   * the wizard is reset.
+   */
+  completionWarning: string | null
   completeSetup: () => Promise<void>
   reset: () => void
 }

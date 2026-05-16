@@ -411,8 +411,18 @@ class SetupCompleteResponse(BaseModel):
 
     Attributes:
         setup_complete: Always True on success.
+        embedder_selected: True when ``auto_select_embedder`` succeeded
+            and persisted an ``memory.embedder_model`` choice. False
+            when auto-selection failed (no LMEB-ranked model available,
+            persistence error). The wizard's post-completion guidance
+            uses this flag to surface a warning instead of silently
+            shipping the operator to a half-configured memory backend.
+        embedder_failure_reason: Short human-readable reason when
+            auto-selection failed. ``None`` on success.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     setup_complete: Literal[True]
+    embedder_selected: bool = True
+    embedder_failure_reason: str | None = None
