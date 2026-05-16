@@ -319,6 +319,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
+      # --cov-fail-under=0 overrides pyproject's [tool.coverage.report]
+      # fail_under=80, which pytest-cov otherwise applies at end-of-session
+      # even with an empty --cov-report=. A single marker slice never reaches
+      # 80% alone; the gate belongs solely to test-coverage-aggregate. Every
+      # per-suite arm below carries the same override for the same reason.
       - name: Run unit tests
         run: |
           uv run python -m pytest tests/ \
@@ -326,6 +331,7 @@ jobs:
             -n auto \
             --cov=synthorg \
             --cov-report= \
+            --cov-fail-under=0 \
             --junitxml=junit-unit.xml \
             --durations=20 \
             --durations-min=1.0
@@ -400,6 +406,7 @@ jobs:
             -n auto \
             --cov=synthorg \
             --cov-report= \
+            --cov-fail-under=0 \
             --junitxml=junit-integration.xml \
             --durations=20 \
             --durations-min=1.0
@@ -465,6 +472,7 @@ jobs:
             -n auto \
             --cov=synthorg \
             --cov-report= \
+            --cov-fail-under=0 \
             --junitxml=junit-e2e.xml \
             --durations=20 \
             --durations-min=1.0
@@ -519,6 +527,7 @@ jobs:
             -n auto \
             --cov=synthorg \
             --cov-report= \
+            --cov-fail-under=0 \
             --junitxml=junit-conformance-sqlite.xml \
             --durations=20 \
             --durations-min=1.0
