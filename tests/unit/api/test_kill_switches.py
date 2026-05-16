@@ -297,7 +297,7 @@ class TestWebhookCleanupKillSwitch:
         resolver.get_bool.return_value = False
         resolver.get_float.return_value = 86_400.0
         connections_repo = AsyncMock(spec=ConnectionRepository)
-        connections_repo.list_all.return_value = ()
+        connections_repo.list_items.return_value = ()
         persistence = SimpleNamespace(connections=connections_repo)
         app_state = cast(
             AppState,
@@ -333,7 +333,7 @@ class TestWebhookCleanupKillSwitch:
         resolver.get_int.return_value = 30
         resolver.get_float.return_value = 86_400.0
         connections_repo = AsyncMock(spec=ConnectionRepository)
-        connections_repo.list_all.return_value = ()
+        connections_repo.list_items.return_value = ()
         persistence = SimpleNamespace(connections=connections_repo)
         app_state = cast(
             AppState,

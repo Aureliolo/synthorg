@@ -452,7 +452,7 @@ class TestListRunsPagination:
         runs = [_run(run_id=f"r-{i}") for i in range(3)]
         service = _service(runs=runs)
 
-        items, total = await service.list_runs(limit=50, offset=0)
+        items, total = await service.list_items_page(limit=50, offset=0)
 
         assert total == 3
         assert len(items) == 3

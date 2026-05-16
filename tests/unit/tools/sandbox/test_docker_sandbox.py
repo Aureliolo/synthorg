@@ -37,7 +37,7 @@ def _make_mock_docker() -> MagicMock:
     # create() returns a container object with .id property
     mock_created_container = MagicMock()
     mock_created_container.id = "abc123def456"
-    mock_containers.create = AsyncMock(
+    mock_containers.save = AsyncMock(
         return_value=mock_created_container,
     )
 
@@ -280,7 +280,7 @@ class TestDockerSandboxExecute:
         tmp_path: Path,
     ) -> None:
         mock_docker = _make_mock_docker()
-        mock_docker.containers.create = AsyncMock(
+        mock_docker.containers.save = AsyncMock(
             side_effect=Exception("image not found"),
         )
         sandbox = DockerSandbox(workspace=tmp_path)
@@ -705,7 +705,7 @@ def _make_mock_docker_with_sidecar() -> MagicMock:
     sandbox_container.delete = AsyncMock()
 
     # create() returns sidecar first, then sandbox.
-    mock_docker.containers.create = AsyncMock(
+    mock_docker.containers.save = AsyncMock(
         side_effect=[sidecar_container, sandbox_container],
     )
 
@@ -760,7 +760,7 @@ class TestSidecarLifecycle:
         sidecar_container.delete = AsyncMock()
 
         mock_docker2 = _make_mock_docker()
-        mock_docker2.containers.create = AsyncMock(
+        mock_docker2.containers.save = AsyncMock(
             return_value=sidecar_container,
         )
         mock_docker2.containers.container = MagicMock(
@@ -796,7 +796,7 @@ class TestSidecarLifecycle:
         sidecar_container.delete = AsyncMock()
 
         mock_docker = _make_mock_docker()
-        mock_docker.containers.create = AsyncMock(
+        mock_docker.containers.save = AsyncMock(
             return_value=sidecar_container,
         )
         mock_docker.containers.container = MagicMock(
@@ -847,7 +847,7 @@ class TestSidecarLifecycle:
         tmp_path: Path,
     ) -> None:
         mock_docker = _make_mock_docker()
-        mock_docker.containers.create = AsyncMock(
+        mock_docker.containers.save = AsyncMock(
             side_effect=RuntimeError("image not found"),
         )
 
@@ -876,7 +876,7 @@ class TestSidecarLifecycle:
         sidecar_container.delete = AsyncMock()
 
         mock_docker = _make_mock_docker()
-        mock_docker.containers.create = AsyncMock(
+        mock_docker.containers.save = AsyncMock(
             return_value=sidecar_container,
         )
         mock_docker.containers.container = MagicMock(
@@ -921,7 +921,7 @@ class TestSidecarLifecycle:
         sandbox_container.delete = AsyncMock()
 
         mock_docker = _make_mock_docker()
-        mock_docker.containers.create = AsyncMock(
+        mock_docker.containers.save = AsyncMock(
             side_effect=[sidecar_container, sandbox_container],
         )
 

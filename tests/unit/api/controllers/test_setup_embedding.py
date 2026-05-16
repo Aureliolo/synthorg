@@ -10,7 +10,7 @@ from synthorg.memory.embedding.rankings import LMEB_RANKINGS
 
 def _mock_settings_svc() -> AsyncMock:
     svc = AsyncMock()
-    svc.set = AsyncMock()
+    svc.save = AsyncMock()
     return svc
 
 

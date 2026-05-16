@@ -10,7 +10,6 @@ from synthorg.api.auth.system_user import is_system_user
 from synthorg.core.auth.models import OrgRole, User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
-from synthorg.core.types import NotBlankStr
 from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
@@ -111,33 +110,42 @@ class FakeUserRepository:
                 return copy.deepcopy(user)
         return None
 
-    async def list_users(
+    async def list_items(
         self,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[User, ...]:
-        limit = validate_pagination_args(limit, offset=0, event="fake.list_users")
-        humans = tuple(
-            copy.deepcopy(u) for u in self._users.values() if u.role != HumanRole.SYSTEM
-        )
-        return humans[:limit]
-
-    async def list_users_paginated(
-        self,
-        *,
-        after_id: NotBlankStr | None,
-        limit: int,
-    ) -> tuple[User, ...]:
-        all_humans = sorted(
+        limit = validate_pagination_args(limit, offset=offset, event="fake.list_items")
+        humans = sorted(
             (u for u in self._users.values() if u.role != HumanRole.SYSTEM),
             key=lambda u: u.id,
         )
-        if after_id is not None:
-            all_humans = [u for u in all_humans if u.id > after_id]
-        return tuple(copy.deepcopy(u) for u in all_humans[:limit])
+        sliced = humans[offset : offset + limit]
+        return tuple(copy.deepcopy(u) for u in sliced)
 
-    async def count(self) -> int:
-        return sum(1 for u in self._users.values() if u.role != HumanRole.SYSTEM)
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
+    ) -> tuple[User, ...]:
+        humans = sorted(
+            (u for u in self._users.values() if u.role != HumanRole.SYSTEM),
+            key=lambda u: u.id,
+        )
+        role = getattr(filter_spec, "role", None)
+        if role is not None:
+            humans = [u for u in humans if u.role == role]
+        return tuple(copy.deepcopy(u) for u in humans[offset : offset + limit])
+
+    async def count(self, filter_spec: object | None = None) -> int:
+        humans = [u for u in self._users.values() if u.role != HumanRole.SYSTEM]
+        role = getattr(filter_spec, "role", None) if filter_spec is not None else None
+        if role is not None:
+            humans = [u for u in humans if u.role == role]
+        return len(humans)
 
     async def count_by_role(self, role: HumanRole) -> int:
         return sum(1 for u in self._users.values() if u.role == role)

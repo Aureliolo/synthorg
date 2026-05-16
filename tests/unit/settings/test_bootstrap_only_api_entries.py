@@ -54,7 +54,7 @@ def service(monkeypatch: pytest.MonkeyPatch) -> SettingsService:
         "read_only_post_init keys must not consult the persistence layer"
     )
     repo.get_namespace.return_value = ()
-    repo.get_all.return_value = ()
+    repo.list_items.return_value = ()
     return SettingsService(
         repository=repo,
         registry=get_registry(),

@@ -163,7 +163,7 @@ def _connection_state() -> dict[str, MagicMock]:
     replacing the spec'd method with a bare AsyncMock.
     """
     catalog = MagicMock(spec=ConnectionCatalog)
-    catalog.create.return_value = _make_conn()
+    catalog.save.return_value = _make_conn()
     catalog.update.return_value = _make_conn()
     catalog.delete.return_value = None
     catalog.get_credentials.return_value = {"client_secret": "real-secret-value"}
@@ -307,7 +307,7 @@ class TestCustomRuleAuditChainCoverage:
         """Stub ``CustomRulesService`` so controller calls hit our mock."""
         rule = _make_rule()
         service = MagicMock(spec=CustomRulesService)
-        service.create.return_value = rule
+        service.save.return_value = rule
         service.update.return_value = rule
         service.toggle.return_value = _make_rule(enabled=False)
         service.delete.return_value = None

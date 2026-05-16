@@ -61,7 +61,7 @@ class TestConnectionsController:
         from synthorg.api.controllers.connections import ConnectionsController
 
         catalog = MagicMock()
-        catalog.list_all = AsyncMock(return_value=(_make_conn("a"), _make_conn("b")))
+        catalog.list_items = AsyncMock(return_value=(_make_conn("a"), _make_conn("b")))
         state = {"app_state": MagicMock(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
@@ -108,7 +108,7 @@ class TestConnectionsController:
         )
 
         catalog = MagicMock()
-        catalog.create = AsyncMock(
+        catalog.save = AsyncMock(
             side_effect=DuplicateConnectionError("dup"),
         )
         state = {"app_state": MagicMock(connection_catalog=catalog)}
@@ -265,7 +265,7 @@ class TestConnectionAuditEvents:
         )
 
         catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.create.return_value = _make_conn()
+        catalog.save.return_value = _make_conn()
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with structlog.testing.capture_logs() as events:
@@ -554,7 +554,7 @@ class TestIntegrationHealthController:
         conn2 = _make_conn("c2")
 
         catalog = MagicMock()
-        catalog.list_all = AsyncMock(return_value=(conn1, conn2))
+        catalog.list_items = AsyncMock(return_value=(conn1, conn2))
         catalog.get_or_raise = AsyncMock(
             side_effect=lambda name: conn1 if name == "c1" else conn2
         )
@@ -613,7 +613,7 @@ class TestIntegrationHealthController:
             _make_conn("c2"),
         )
         catalog = MagicMock()
-        catalog.list_all = AsyncMock(return_value=conns)
+        catalog.list_items = AsyncMock(return_value=conns)
 
         probe_calls: list[str] = []
 
@@ -1164,7 +1164,7 @@ class TestControllerHttpLayer:
 
     async def test_list_connections_returns_200(self) -> None:
         catalog = MagicMock()
-        catalog.list_all = AsyncMock(return_value=(_make_conn(),))
+        catalog.list_items = AsyncMock(return_value=(_make_conn(),))
         client = self._build_client(catalog)
         with client as http:
             resp = http.get("/api/v1/connections")

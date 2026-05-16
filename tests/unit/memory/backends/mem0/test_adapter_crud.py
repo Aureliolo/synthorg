@@ -171,7 +171,7 @@ class TestRetrieve:
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
     ) -> None:
-        mock_client.get_all.return_value = mem0_search_result(
+        mock_client.list_items.return_value = mem0_search_result(
             [
                 {
                     "id": "mem-001",
@@ -186,7 +186,7 @@ class TestRetrieve:
         entries = await backend.retrieve("test-agent-001", query)
 
         assert len(entries) == 1
-        mock_client.get_all.assert_called_once()
+        mock_client.list_items.assert_called_once()
 
     async def test_retrieve_applies_post_filters(
         self,
@@ -521,7 +521,7 @@ class TestCount:
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
     ) -> None:
-        mock_client.get_all.return_value = {
+        mock_client.list_items.return_value = {
             "results": [
                 {"id": "m1", "memory": "a", "metadata": {}},
                 {"id": "m2", "memory": "b", "metadata": {}},
@@ -536,7 +536,7 @@ class TestCount:
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
     ) -> None:
-        mock_client.get_all.return_value = {
+        mock_client.list_items.return_value = {
             "results": [
                 {
                     "id": "m1",
@@ -568,7 +568,7 @@ class TestCount:
         mock_client: MagicMock,
     ) -> None:
         """Invalid category in stored data defaults to WORKING."""
-        mock_client.get_all.return_value = {
+        mock_client.list_items.return_value = {
             "results": [
                 {
                     "id": "m1",
@@ -614,7 +614,7 @@ class TestCount:
         mock_client: MagicMock,
     ) -> None:
         """Count returns 0 for empty results."""
-        mock_client.get_all.return_value = {"results": []}
+        mock_client.list_items.return_value = {"results": []}
         count = await backend.count("test-agent-001")
         assert count == 0
 
@@ -629,7 +629,7 @@ class TestCount:
             {"id": f"m{i}", "memory": f"content-{i}", "metadata": {}}
             for i in range(100)
         ]
-        mock_client.get_all.return_value = {"results": items}
+        mock_client.list_items.return_value = {"results": items}
 
         count = await backend.count("test-agent-001")
         # Truncation should still return a valid count

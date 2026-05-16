@@ -40,7 +40,7 @@ def service() -> SettingsService:
     repo = AsyncMock(spec=SettingsRepository)
     repo.get = AsyncMock(return_value=None)
     repo.get_namespace = AsyncMock(return_value=())
-    repo.get_all = AsyncMock(return_value=())
+    repo.list_items = AsyncMock(return_value=())
     registry = SettingsRegistry()
     registry.register(_definition())
     return SettingsService(
@@ -101,7 +101,7 @@ async def test_db_source_logged() -> None:
     repo = AsyncMock(spec=SettingsRepository)
     repo.get = AsyncMock(return_value=("error", "2026-04-27T00:00:00Z"))
     repo.get_namespace = AsyncMock(return_value=())
-    repo.get_all = AsyncMock(return_value=())
+    repo.list_items = AsyncMock(return_value=())
     registry = SettingsRegistry()
     registry.register(_definition())
     svc = SettingsService(
@@ -120,7 +120,7 @@ async def test_env_source_logged(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = AsyncMock(spec=SettingsRepository)
     repo.get = AsyncMock(return_value=None)
     repo.get_namespace = AsyncMock(return_value=())
-    repo.get_all = AsyncMock(return_value=())
+    repo.list_items = AsyncMock(return_value=())
     registry = SettingsRegistry()
     registry.register(_definition())
     svc = SettingsService(
@@ -140,7 +140,7 @@ async def test_default_source_logged(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = AsyncMock(spec=SettingsRepository)
     repo.get = AsyncMock(return_value=None)
     repo.get_namespace = AsyncMock(return_value=())
-    repo.get_all = AsyncMock(return_value=())
+    repo.list_items = AsyncMock(return_value=())
     registry = SettingsRegistry()
     registry.register(_definition())
     svc = SettingsService(

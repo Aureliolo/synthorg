@@ -203,7 +203,7 @@ class TestLifecycle:
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
     ) -> None:
-        mock_client.get_all.return_value = {"results": []}
+        mock_client.list_items.return_value = {"results": []}
         assert await backend.health_check() is True
 
     async def test_health_check_disconnected(

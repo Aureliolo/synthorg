@@ -121,7 +121,7 @@ def _service_with(definition: SettingDefinition) -> tuple[SettingsService, Async
     repo = AsyncMock(spec=SettingsRepository)
     repo.get = AsyncMock(return_value=None)
     repo.get_namespace = AsyncMock(return_value=())
-    repo.get_all = AsyncMock(return_value=())
+    repo.list_items = AsyncMock(return_value=())
     registry = SettingsRegistry()
     registry.register(definition)
     svc = SettingsService(

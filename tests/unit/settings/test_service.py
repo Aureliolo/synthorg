@@ -10,8 +10,9 @@ from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.communication.bus_protocol import MessageBus
+from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
-from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import (
     SettingNamespace,
@@ -42,6 +43,21 @@ class _FakeConfig(BaseModel):
 
 
 _UNSET = object()
+
+
+def _row(
+    value: str,
+    updated_at: str,
+    *,
+    namespace: str = "budget",
+    key: str = "total_monthly",
+) -> SettingRow:
+    return SettingRow(
+        namespace=NotBlankStr(namespace),
+        key=NotBlankStr(key),
+        value=value,
+        updated_at=updated_at,
+    )
 
 
 def _make_definition(  # noqa: PLR0913
@@ -92,11 +108,12 @@ def registry() -> SettingsRegistry:
 def mock_repo() -> Any:
     repo = mock_of[SettingsRepository](
         get=AsyncMock(return_value=None),
-        set=AsyncMock(),
+        save=AsyncMock(),
+        set_if_unchanged=AsyncMock(return_value=True),
         delete=AsyncMock(return_value=True),
     )
     repo.get_namespace = AsyncMock(return_value=())
-    repo.get_all = AsyncMock(return_value=())
+    repo.list_items = AsyncMock(return_value=())
     repo.delete_namespace = AsyncMock(return_value=0)
     repo.delete_namespace_returning_keys = AsyncMock(return_value=())
     return repo
@@ -127,7 +144,7 @@ class TestResolutionOrder:
     async def test_resolves_from_db(
         self, service: SettingsService, mock_repo: AsyncMock
     ) -> None:
-        mock_repo.get.return_value = ("200.0", "2026-03-16T10:00:00Z")
+        mock_repo.get.return_value = _row("200.0", "2026-03-16T10:00:00Z")
         result = await service.get("budget", "total_monthly")
         assert result.value == "200.0"
         assert result.source == SettingSource.DATABASE
@@ -169,7 +186,7 @@ class TestResolutionOrder:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("SYNTHORG_BUDGET_TOTAL_MONTHLY", "500.0")
-        mock_repo.get.return_value = ("200.0", "2026-03-16T10:00:00Z")
+        mock_repo.get.return_value = _row("200.0", "2026-03-16T10:00:00Z")
         result = await service.get("budget", "total_monthly")
         assert result.source == SettingSource.DATABASE
 
@@ -197,7 +214,7 @@ class TestCache:
     async def test_cache_hit(
         self, service: SettingsService, mock_repo: AsyncMock
     ) -> None:
-        mock_repo.get.return_value = ("200.0", "2026-03-16T10:00:00Z")
+        mock_repo.get.return_value = _row("200.0", "2026-03-16T10:00:00Z")
         await service.get("budget", "total_monthly")
         await service.get("budget", "total_monthly")
         # Only one DB call -- second was cached
@@ -206,10 +223,10 @@ class TestCache:
     async def test_cache_invalidated_on_set(
         self, service: SettingsService, mock_repo: AsyncMock
     ) -> None:
-        mock_repo.get.return_value = ("200.0", "2026-03-16T10:00:00Z")
+        mock_repo.get.return_value = _row("200.0", "2026-03-16T10:00:00Z")
         await service.get("budget", "total_monthly")
         await service.set("budget", "total_monthly", "300.0")
-        mock_repo.get.return_value = ("300.0", "2026-03-16T11:00:00Z")
+        mock_repo.get.return_value = _row("300.0", "2026-03-16T11:00:00Z")
         result = await service.get("budget", "total_monthly")
         assert result.value == "300.0"
         assert mock_repo.get.call_count == 2
@@ -217,7 +234,7 @@ class TestCache:
     async def test_cache_invalidated_on_delete(
         self, service: SettingsService, mock_repo: AsyncMock
     ) -> None:
-        mock_repo.get.return_value = ("200.0", "2026-03-16T10:00:00Z")
+        mock_repo.get.return_value = _row("200.0", "2026-03-16T10:00:00Z")
         await service.get("budget", "total_monthly")
         await service.delete("budget", "total_monthly")
         mock_repo.get.return_value = None
@@ -284,7 +301,7 @@ class TestValidation:
         entry = await service.set("budget", "total_monthly", "200.0")
         assert entry.value == "200.0"
         assert entry.source == SettingSource.DATABASE
-        mock_repo.set.assert_called_once()
+        mock_repo.save.assert_called_once()
 
 
 # ── Sensitive Settings Tests ─────────────────────────────────────
@@ -313,8 +330,8 @@ class TestSensitiveSettings:
         )
         await svc.set("budget", "api_key", "secret123")
         # The stored value should be encrypted, not plaintext
-        call_args = mock_repo.set.call_args
-        stored_value = call_args[0][2]
+        call_args = mock_repo.save.call_args
+        stored_value = call_args[0][0].value
         assert stored_value != "secret123"
         assert enc.decrypt(stored_value) == "secret123"
 
@@ -336,7 +353,7 @@ class TestSensitiveSettings:
             encryptor=enc,
         )
         ciphertext = enc.encrypt("secret123")
-        mock_repo.get.return_value = (ciphertext, "2026-03-16T10:00:00Z")
+        mock_repo.get.return_value = _row(ciphertext, "2026-03-16T10:00:00Z")
         result = await svc.get("budget", "api_key")
         assert result.value == "secret123"
 
@@ -358,7 +375,7 @@ class TestSensitiveSettings:
             encryptor=enc,
         )
         ciphertext = enc.encrypt("secret123")
-        mock_repo.get.return_value = (ciphertext, "2026-03-16T10:00:00Z")
+        mock_repo.get.return_value = _row(ciphertext, "2026-03-16T10:00:00Z")
         entry = await svc.get_entry("budget", "api_key")
         assert entry.value == "********"
 
@@ -455,7 +472,7 @@ class TestDeleteNamespace:
         self, service: SettingsService, mock_repo: AsyncMock
     ) -> None:
         """Every cached entry under the namespace is dropped."""
-        mock_repo.get.return_value = ("100.0", "2026-04-25T10:00:00Z")
+        mock_repo.get.return_value = _row("100.0", "2026-04-25T10:00:00Z")
         await service.get("budget", "total_monthly")
         assert mock_repo.get.call_count == 1
 
@@ -590,9 +607,7 @@ class TestBulkOperations:
     async def test_get_namespace_returns_entries(
         self, service: SettingsService, mock_repo: AsyncMock
     ) -> None:
-        mock_repo.get_namespace.return_value = (
-            ("total_monthly", "200.0", "2026-03-16T10:00:00Z"),
-        )
+        mock_repo.get_namespace.return_value = (_row("200.0", "2026-03-16T10:00:00Z"),)
         entries = await service.get_namespace("budget")
         assert len(entries) == 1
         assert entries[0].definition.key == "total_monthly"
@@ -611,8 +626,16 @@ class TestBulkOperations:
     async def test_get_all_returns_entries(
         self, service: SettingsService, mock_repo: AsyncMock
     ) -> None:
-        mock_repo.get_all.return_value = (
-            ("budget", "total_monthly", "300.0", "2026-03-16T10:00:00Z"),
+        from synthorg.core.types import NotBlankStr
+        from synthorg.persistence.settings_protocol import SettingRow
+
+        mock_repo.list_items.return_value = (
+            SettingRow(
+                namespace=NotBlankStr("budget"),
+                key=NotBlankStr("total_monthly"),
+                value="300.0",
+                updated_at="2026-03-16T10:00:00Z",
+            ),
         )
         entries = await service.get_all()
         assert len(entries) == 1
@@ -621,10 +644,10 @@ class TestBulkOperations:
     async def test_get_all_uses_batch_method(
         self, service: SettingsService, mock_repo: AsyncMock
     ) -> None:
-        """get_all should call repository.get_all, not individual gets."""
-        mock_repo.get_all.return_value = ()
+        """get_all should call repository.list_items, not individual gets."""
+        mock_repo.list_items.return_value = ()
         await service.get_all()
-        mock_repo.get_all.assert_called_once()
+        mock_repo.list_items.assert_called_once()
         # Should NOT call individual get()
         mock_repo.get.assert_not_called()
 
@@ -655,7 +678,7 @@ class TestSensitiveReadWithoutEncryptor:
             encryptor=enc,
         )
         ciphertext = enc.encrypt("secret123")
-        mock_repo.get.return_value = (ciphertext, "2026-03-16T10:00:00Z")
+        mock_repo.get.return_value = _row(ciphertext, "2026-03-16T10:00:00Z")
         await svc.get("budget", "api_key")
         # Second call should hit DB again (not cached)
         await svc.get("budget", "api_key")
@@ -796,7 +819,7 @@ class TestCiphertextLeakGuard:
             registry=registry,
             encryptor=None,
         )
-        mock_repo.get.return_value = ("ciphertext", "2026-01-01T00:00:00Z")
+        mock_repo.get.return_value = _row("ciphertext", "2026-01-01T00:00:00Z")
         with pytest.raises(SettingsEncryptionError, match="no encryptor"):
             await svc.get("budget", "api_key")
 
@@ -814,7 +837,7 @@ class TestCiphertextLeakGuard:
         )
         ciphertext = enc.encrypt("secret123")
         mock_repo.get_namespace.return_value = (
-            ("api_key", ciphertext, "2026-01-01T00:00:00Z"),
+            _row(ciphertext, "2026-01-01T00:00:00Z", key="api_key"),
         )
         # Service without encryptor -- batch should mask, not leak
         svc = SettingsService(
@@ -842,7 +865,7 @@ class TestCiphertextLeakGuard:
         other_enc = SettingsEncryptor(Fernet.generate_key())
         bad_ciphertext = other_enc.encrypt("secret")
         mock_repo.get_namespace.return_value = (
-            ("api_key", bad_ciphertext, "2026-01-01T00:00:00Z"),
+            _row(bad_ciphertext, "2026-01-01T00:00:00Z", key="api_key"),
         )
         svc = SettingsService(
             repository=mock_repo,

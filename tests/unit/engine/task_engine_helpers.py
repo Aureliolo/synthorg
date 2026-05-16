@@ -23,35 +23,45 @@ class FakeTaskRepository:
     def __init__(self) -> None:
         self._tasks: dict[str, Task] = {}
 
-    async def save(self, task: Task) -> None:
-        self._tasks[task.id] = copy.deepcopy(task)
+    async def save(self, entity: Task) -> None:
+        self._tasks[entity.id] = copy.deepcopy(entity)
 
-    async def get(self, task_id: str) -> Task | None:
-        task = self._tasks.get(task_id)
+    async def get(self, entity_id: str) -> Task | None:
+        task = self._tasks.get(entity_id)
         return copy.deepcopy(task) if task is not None else None
 
-    async def list_tasks(
+    async def list_items(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
-        result = self._filtered(status, assigned_to, project)
-        if limit is None:
-            return tuple(result[offset:])
+        result = sorted(self._tasks.values(), key=lambda t: t.id)
+        sliced = result[offset : offset + limit]
+        return tuple(copy.deepcopy(t) for t in sliced)
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Task, ...]:
+        result = self._filtered(
+            getattr(filter_spec, "status", None),
+            getattr(filter_spec, "assigned_to", None),
+            getattr(filter_spec, "project", None),
+        )
         return tuple(result[offset : offset + limit])
 
-    async def count_tasks(
-        self,
-        *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-    ) -> int:
-        return len(self._filtered(status, assigned_to, project))
+    async def count(self, filter_spec: object) -> int:
+        return len(
+            self._filtered(
+                getattr(filter_spec, "status", None),
+                getattr(filter_spec, "assigned_to", None),
+                getattr(filter_spec, "project", None),
+            )
+        )
 
     def _filtered(
         self,
@@ -68,8 +78,8 @@ class FakeTaskRepository:
             result = [t for t in result if t.project == project]
         return [copy.deepcopy(t) for t in result]
 
-    async def delete(self, task_id: str) -> bool:
-        return self._tasks.pop(task_id, None) is not None
+    async def delete(self, entity_id: str) -> bool:
+        return self._tasks.pop(entity_id, None) is not None
 
 
 class FakePersistence:

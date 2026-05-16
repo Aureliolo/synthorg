@@ -28,7 +28,7 @@ def service() -> SettingsService:
     repo = AsyncMock(spec=SettingsRepository)
     repo.get.return_value = None
     repo.get_namespace.return_value = ()
-    repo.get_all.return_value = ()
+    repo.list_items.return_value = ()
     return SettingsService(
         repository=repo,
         registry=get_registry(),

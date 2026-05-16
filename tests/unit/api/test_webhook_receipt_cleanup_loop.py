@@ -71,7 +71,7 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
     if list_all_side_effect is not None:
         connections_repo.list_all.side_effect = list_all_side_effect
     else:
-        connections_repo.list_all.return_value = tuple(connections or [])
+        connections_repo.list_items.return_value = tuple(connections or [])
     webhook_repo = AsyncMock(spec=WebhookReceiptRepository)
 
     side_effects = cleanup_side_effects or {}

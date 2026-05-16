@@ -69,11 +69,11 @@ def repo() -> AsyncMock:
     # fresh ``AsyncMock`` (the prior pattern was redundant).
     repo = AsyncMock(spec=SettingsRepository)
     repo.get.return_value = None
-    repo.set.return_value = True
+    repo.save.return_value = True
     repo.set_many.return_value = True
     repo.delete.return_value = True
     repo.get_namespace.return_value = ()
-    repo.get_all.return_value = ()
+    repo.list_items.return_value = ()
     repo.delete_namespace_returning_keys.return_value = ("log_directory",)
     return repo
 

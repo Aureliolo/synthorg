@@ -131,7 +131,7 @@ def test_concrete_stores_expose_protocol_shape() -> None:
     # refactor accident where one silently loses a method via alias).
     for method_name in (
         "load_revoked",
-        "create",
+        "save",
         "get",
         "list_by_user",
         "list_all",

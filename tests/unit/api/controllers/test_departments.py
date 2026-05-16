@@ -170,7 +170,7 @@ class TestDepartmentCeremonyPolicyCas:
                 raise VersionConflictError(msg)
             return await original_set(*args, **kwargs)
 
-        settings_service.set = AsyncMock(  # type: ignore[method-assign]
+        settings_service.save = AsyncMock(  # type: ignore[method-assign]
             side_effect=flaky_set,
         )
 

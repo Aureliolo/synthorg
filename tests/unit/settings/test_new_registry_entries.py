@@ -40,7 +40,7 @@ def service() -> SettingsService:
     repo = AsyncMock(spec=SettingsRepository)
     repo.get = AsyncMock(return_value=None)
     repo.get_namespace = AsyncMock(return_value=())
-    repo.get_all = AsyncMock(return_value=())
+    repo.list_items = AsyncMock(return_value=())
     return SettingsService(
         repository=repo,
         registry=get_registry(),
@@ -95,7 +95,7 @@ async def test_log_level_console_set_succeeds(service: SettingsService) -> None:
     # Mutable; the regex validator accepts the empty string and the
     # five canonical levels (case-insensitive).
     repo: AsyncMock = service._repository  # type: ignore[assignment]
-    repo.set = AsyncMock(return_value=True)
+    repo.save = AsyncMock(return_value=True)
     await service.set("observability", "log_level_console", "debug")
     repo.set.assert_awaited_once()
 

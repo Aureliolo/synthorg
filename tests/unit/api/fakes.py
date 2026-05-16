@@ -74,11 +74,13 @@ class FakeTaskRepository:
         return tuple(result[offset : offset + limit])
 
     async def count(self, filter_spec: object) -> int:
-        return len(self._filtered(
-            getattr(filter_spec, "status", None),
-            getattr(filter_spec, "assigned_to", None),
-            getattr(filter_spec, "project", None),
-        ))
+        return len(
+            self._filtered(
+                getattr(filter_spec, "status", None),
+                getattr(filter_spec, "assigned_to", None),
+                getattr(filter_spec, "project", None),
+            )
+        )
 
     def _filtered(
         self,
@@ -772,34 +774,59 @@ class FakeSettingsRepository:
     """In-memory namespaced settings repository for tests."""
 
     def __init__(self) -> None:
+        from synthorg.persistence.settings_protocol import SettingRow
+
+        self._SettingRow = SettingRow
         self._store: dict[tuple[str, str], tuple[str, str]] = {}
 
-    async def get(self, namespace: str, key: str) -> tuple[str, str] | None:
-        return self._store.get((namespace, key))
+    def _row(self, namespace: str, key: str, value: str, ts: str) -> Any:
+        return self._SettingRow(
+            namespace=NotBlankStr(namespace),
+            key=NotBlankStr(key),
+            value=value,
+            updated_at=ts,
+        )
 
-    async def get_namespace(self, namespace: str) -> tuple[tuple[str, str, str], ...]:
-        result = [
-            (k, v, ts)
+    async def get(self, entity_id: tuple[str, str]) -> Any:
+        namespace, key = entity_id
+        existing = self._store.get((namespace, key))
+        if existing is None:
+            return None
+        value, ts = existing
+        return self._row(namespace, key, value, ts)
+
+    async def get_namespace(self, namespace: str) -> tuple[Any, ...]:
+        return tuple(
+            self._row(ns, k, v, ts)
             for (ns, k), (v, ts) in sorted(self._store.items())
             if ns == namespace
-        ]
-        return tuple(result)
+        )
 
-    async def get_all(self) -> tuple[tuple[str, str, str, str], ...]:
-        result = [(ns, k, v, ts) for (ns, k), (v, ts) in sorted(self._store.items())]
-        return tuple(result)
-
-    async def set(
+    async def list_items(
         self,
-        namespace: str,
-        key: str,
-        value: str,
-        updated_at: str,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        rows = [
+            self._row(ns, k, v, ts) for (ns, k), (v, ts) in sorted(self._store.items())
+        ]
+        return tuple(rows[offset : offset + limit])
+
+    async def save(self, entity: Any) -> None:
+        self._store = {
+            **self._store,
+            (entity.namespace, entity.key): (entity.value, entity.updated_at),
+        }
+
+    async def set_if_unchanged(
+        self,
+        entity: Any,
         *,
         expected_updated_at: str | None = None,
     ) -> bool:
         if expected_updated_at is not None:
-            current = self._store.get((namespace, key))
+            current = self._store.get((entity.namespace, entity.key))
             if current is None:
                 if expected_updated_at != "":
                     return False
@@ -807,13 +834,13 @@ class FakeSettingsRepository:
                 return False
         self._store = {
             **self._store,
-            (namespace, key): (value, updated_at),
+            (entity.namespace, entity.key): (entity.value, entity.updated_at),
         }
         return True
 
     async def set_many(
         self,
-        items: Sequence[tuple[str, str, str, str]],
+        items: Sequence[Any],
         *,
         expected_updated_at_map: Mapping[tuple[str, str], str] | None = None,
     ) -> bool:
@@ -821,24 +848,22 @@ class FakeSettingsRepository:
             return True
         cas_map = expected_updated_at_map or {}
         draft = dict(self._store)
-        for namespace, key, value, updated_at in items:
-            expected = cas_map.get((namespace, key))
+        for row in items:
+            expected = cas_map.get((row.namespace, row.key))
             if expected is not None:
-                current = draft.get((namespace, key))
+                current = draft.get((row.namespace, row.key))
                 if current is None:
                     if expected != "":
                         return False
                 elif current[1] != expected:
                     return False
-            draft[(namespace, key)] = (value, updated_at)
+            draft[(row.namespace, row.key)] = (row.value, row.updated_at)
         self._store = draft
         return True
 
-    async def delete(self, namespace: str, key: str) -> bool:
-        if (namespace, key) in self._store:
-            self._store = {
-                k: v for k, v in self._store.items() if k != (namespace, key)
-            }
+    async def delete(self, entity_id: tuple[str, str]) -> bool:
+        if entity_id in self._store:
+            self._store = {k: v for k, v in self._store.items() if k != entity_id}
             return True
         return False
 

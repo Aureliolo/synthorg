@@ -33,7 +33,7 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 def settings_service() -> SettingsService:
     service = create_autospec(SettingsService, instance=True, spec_set=True)
-    service.set = AsyncMock()
+    service.save = AsyncMock()
     return cast("SettingsService", service)
 
 
