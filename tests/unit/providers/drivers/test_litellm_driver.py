@@ -726,12 +726,31 @@ class TestGetModelCapabilities:
         assert caps.model_id == "test-model-001"
         assert caps.max_output_tokens == 4096
 
-    async def test_streaming_capability_from_model_info(self) -> None:
-        """supports_streaming reads from model info, not hard-coded."""
+    @pytest.mark.parametrize(
+        (
+            "supports_native_streaming",
+            "supports_function_calling",
+            "expected_streaming",
+            "expected_streaming_tool_calls",
+        ),
+        [
+            pytest.param(False, True, False, False, id="streaming_false"),
+            pytest.param(True, False, True, False, id="tools_false"),
+            pytest.param(None, True, True, True, id="streaming_none_defaults_true"),
+        ],
+    )
+    async def test_streaming_capabilities(
+        self,
+        supports_native_streaming: bool | None,
+        supports_function_calling: bool,
+        expected_streaming: bool,
+        expected_streaming_tool_calls: bool,
+    ) -> None:
+        """supports_streaming follows model_info; None is treated as unknown."""
         driver = _make_driver()
         model_info = {
-            "supports_native_streaming": False,
-            "supports_function_calling": True,
+            "supports_native_streaming": supports_native_streaming,
+            "supports_function_calling": supports_function_calling,
         }
 
         with patch(
@@ -740,42 +759,8 @@ class TestGetModelCapabilities:
         ):
             caps = await driver.get_model_capabilities("medium")
 
-        assert caps.supports_streaming is False
-        assert caps.supports_streaming_tool_calls is False
-
-    async def test_streaming_tool_calls_requires_both(self) -> None:
-        """supports_streaming_tool_calls needs streaming AND tools."""
-        driver = _make_driver()
-        model_info = {
-            "supports_native_streaming": True,
-            "supports_function_calling": False,
-        }
-
-        with patch(
-            _PATCH_MODEL_INFO,
-            return_value=model_info,
-        ):
-            caps = await driver.get_model_capabilities("medium")
-
-        assert caps.supports_streaming is True
-        assert caps.supports_streaming_tool_calls is False
-
-    async def test_streaming_defaults_true_when_litellm_returns_none(self) -> None:
-        """None means unknown (LiteLLM's own convention); default to True."""
-        driver = _make_driver()
-        model_info = {
-            "supports_native_streaming": None,
-            "supports_function_calling": True,
-        }
-
-        with patch(
-            _PATCH_MODEL_INFO,
-            return_value=model_info,
-        ):
-            caps = await driver.get_model_capabilities("medium")
-
-        assert caps.supports_streaming is True
-        assert caps.supports_streaming_tool_calls is True
+        assert caps.supports_streaming is expected_streaming
+        assert caps.supports_streaming_tool_calls is expected_streaming_tool_calls
 
     async def test_max_output_capped_at_context(self) -> None:
         config = make_provider_config(
