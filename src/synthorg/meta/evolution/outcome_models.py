@@ -24,7 +24,7 @@ class EvolutionOutcomeRecord(BaseModel):
             :class:`~synthorg.meta.models.ProposalAltitude` values).
         applied: ``True`` when the proposal was applied and did not
             roll back; ``False`` for rejected / rolled-back / failed.
-        proposed_at: When the proposal was originally generated.
+        proposed_at: When the proposal was generated.
         recorded_at: When the terminal outcome was recorded. Must be
             greater than or equal to ``proposed_at`` -- an outcome can
             only be recorded at or after the proposal was made.

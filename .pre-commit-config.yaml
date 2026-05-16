@@ -28,12 +28,16 @@ ci:
   #     check-no-modify-migration:
   #     rebase / migration state checks meaningful only on the pushing
   #     developer's clone, not in an ephemeral cloud runner.
-  # ``no-release-please-token``, ``workflow-shell-git-commits``,
-  # ``no-review-origin-in-code`` and ``no-migration-framing`` are
-  # deliberately NOT skipped: all four are pure-Python, zero-dependency
+  # ``no-release-please-token`` and ``workflow-shell-git-commits`` are
+  # deliberately NOT skipped: both are pure-Python, zero-dependency
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
-  # them closes the gap where a PR from a contributor who skipped local
-  # hooks would otherwise introduce a regression unchecked.
+  # them at the pre-commit stage closes the gap where a PR from a
+  # contributor who skipped local hooks would otherwise introduce a
+  # regression unchecked. ``no-review-origin-in-code`` and
+  # ``no-migration-framing`` run at ``stages: [pre-push]`` (the
+  # local-only pre-push hook surface) so pre-commit.ci does not pick
+  # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
+  # which runs the same scripts on every PR.
   skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
@@ -452,7 +456,12 @@ repos:
         # script / baseline) cannot bypass the check.
         files: ^(src/synthorg/.*\.py|scripts/check_domain_error_hierarchy\.py|scripts/domain_error_hierarchy_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        stages: [pre-commit, pre-push]
+        # Full-repo AST walk: ~2.7s on every commit becomes noticeable
+        # on focused-edit cycles where a developer commits multiple
+        # times in a row. Move to pre-push so each commit stays
+        # interactive while the gate still fires before code leaves
+        # the machine.
+        stages: [pre-push]
 
       - id: no-controller-response-for-domain-errors
         name: no-controller-response-for-domain-errors gate (raise typed errors, never build local Response envelopes)
@@ -618,10 +627,11 @@ repos:
         # the script's internal allowlist would immediately skip.
         files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_review_origin_in_code\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        # pre-commit covers pre-commit.ci (catches GitHub-UI edits and
-        # contributors who skip local hooks); pre-push remains the
-        # primary developer-machine enforcement point.
-        stages: [pre-commit, pre-push]
+        # Full-repo scan is ~14s wall-clock; running it on every commit
+        # made focused-edit cycles painful. pre-push still catches
+        # everything before code leaves the machine, and pre-commit.ci
+        # is a separate hook surface (uses its own stage selection).
+        stages: [pre-push]
 
       - id: no-migration-framing
         name: no migration / origin / phase-N framing in code
@@ -635,4 +645,6 @@ repos:
         # files the script's internal allowlist would immediately skip.
         files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_migration_framing\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        stages: [pre-commit, pre-push]
+        # ~13s wall-clock on the full repo; same cost trade-off as
+        # no-review-origin-in-code above. Moved to pre-push.
+        stages: [pre-push]

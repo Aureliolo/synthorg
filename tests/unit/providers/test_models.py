@@ -323,7 +323,7 @@ class TestCompletionConfig:
         assert cfg.temperature is None
         assert cfg.max_tokens is None
         assert cfg.stop_sequences == ()
-        assert cfg.top_p is None
+        assert cfg.top_p == 1.0
         assert cfg.timeout is None
 
     def test_temperature_range(self) -> None:

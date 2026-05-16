@@ -86,6 +86,29 @@ logger = get_logger(__name__)
 _DEFAULT_TIMEOUT_SEC: Final[float] = 5.0
 
 
+def _current_trace_ids() -> tuple[str | None, str | None]:
+    """Return ``(trace_id, span_id)`` from the active OTel span, or ``(None, None)``.
+
+    The OpenTelemetry API import is local because the project keeps
+    ``opentelemetry`` as an optional surface and the enforcer must
+    still emit the warning even when tracing is unconfigured. Both
+    ids are returned as hex strings so structured log sinks can route
+    them through the existing trace-correlation pipeline.
+    """
+    try:
+        from opentelemetry import trace as _otel_trace  # noqa: PLC0415
+    except ImportError:
+        return (None, None)
+    span = _otel_trace.get_current_span()
+    span_ctx = span.get_span_context()
+    if not span_ctx.is_valid:
+        return (None, None)
+    return (
+        f"{span_ctx.trace_id:032x}",
+        f"{span_ctx.span_id:016x}",
+    )
+
+
 class BudgetEnforcer(BudgetEnforcerRiskMixin):
     """Budget enforcement: pre-flight, in-flight, and auto-downgrade.
 
@@ -459,12 +482,15 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         )
 
         if monthly_cost >= hard_stop_limit:
+            trace_id, span_id = _current_trace_ids()
             logger.warning(
                 BUDGET_HARD_STOP_EXCEEDED,
                 agent_id=agent_id,
                 total_cost=monthly_cost,
                 monthly_budget=cfg.total_monthly,
                 hard_stop_limit=hard_stop_limit,
+                trace_id=trace_id,
+                span_id=span_id,
             )
             _fmt = format_cost
             _cur = cfg.currency

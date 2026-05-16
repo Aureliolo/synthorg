@@ -453,12 +453,92 @@ class TestPatternParametrized:
             ("we used to", '"""we used to dispatch from this module."""\n'),
             ("Phase N", "# Phase 4: typed-args refactor\n"),
             ("Round-N", '"""Round-7 review surfaced this."""\n'),
+            (
+                "previously lived",
+                '"""Loop that previously lived in every mutation method."""\n',
+            ),
+            (
+                "previously inlined",
+                '"""Helpers that were previously inlined in app.py."""\n',
+            ),
+            (
+                "previously duplicated",
+                '"""Validation that was previously duplicated across files."""\n',
+            ),
+            (
+                "previously scattered",
+                '"""Used to be scattered across 15 handlers."""\n',
+            ),
+            (
+                "were previously owned",
+                '"""Helpers that were previously owned by the bus module."""\n',
+            ),
+            (
+                "were previously emitted",
+                '"""Events that were previously emitted by the legacy hook."""\n',
+            ),
+            (
+                "were previously wrapped",
+                '"""Calls that were previously wrapped in retry shims."""\n',
+            ),
+            (
+                "used to be",
+                '"""These checks used to be tolerated in per-agent fan-out."""\n',
+            ),
+            (
+                "originally generated",
+                '"""proposed_at: When the proposal was originally generated."""\n',
+            ),
+            (
+                "originally promised",
+                '"""length matches the bytes the inner app originally promised."""\n',
+            ),
+            (
+                "originally-claimed",
+                '"""Passes the originally-claimed record to unregister."""\n',
+            ),
         ],
     )
     def test_pattern_fires(self, src_dir: Path, label: str, fixture: str) -> None:
         """A representative line for *label* is flagged by the gate."""
         issues = _scan(src_dir, "src/synthorg/x.py", fixture)
         assert issues, (label, issues)
+
+    @pytest.mark.parametrize(
+        ("label", "fixture"),
+        [
+            (
+                "runtime previously stored",
+                '"""Rotating the key orphans all previously stored ciphertext."""\n',
+            ),
+            (
+                "runtime previously applied",
+                '"""Reject a row whose content changed since previously applied."""\n',
+            ),
+            (
+                "runtime previously compacted",
+                '"""Reject a conversation that was previously compacted upstream."""\n',
+            ),
+            (
+                "runtime previously completed",
+                '"""If the task was previously completed, skip the re-run."""\n',
+            ),
+        ],
+    )
+    def test_runtime_state_descriptions_not_flagged(
+        self,
+        src_dir: Path,
+        label: str,
+        fixture: str,
+    ) -> None:
+        """Runtime-state descriptions are not migration framing.
+
+        Bare ``previously`` plus a runtime verb (``stored ciphertext``,
+        ``compacted conversation``) describes program state, not a
+        code-move. The targeted verb lists must NOT catch these.
+        """
+        issues = _scan(src_dir, "src/synthorg/x.py", fixture)
+        assert not issues, (label, issues)
 
 
 class TestMarkerHelpers:

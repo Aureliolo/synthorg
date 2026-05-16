@@ -1,8 +1,15 @@
 # Typed Boundaries
 
-The six security-sensitive API entry points listed below validate
-inbound payloads through a single helper,
-`synthorg.api.boundary.parse_typed`. The helper replaces the legacy
+The security-sensitive API entry points listed below split into two
+groups. The **parse_typed-enforced** boundaries (`jwt`,
+`settings.security`, `ws.control`, `audit_chain`, `a2a.jsonrpc`,
+`mcp.tool`: the original six) validate inbound payloads through a
+single helper, `synthorg.api.boundary.parse_typed`. The
+**informational/lenient** entries (`provider.tool_call`,
+`webhook.payload`, `mcp.tool.dual_path`) are documented in the same
+table for discoverability but are NOT gated by `parse_typed`; the
+table's `Model` column marks them explicitly (`no Pydantic`,
+`extra="allow"`, dual-path helpers). The helper replaces the legacy
 `dict[str, Any]` contract that let a typo or rename slip silently
 through dict access at the auth, agent tool plane, audit trail, RPC,
 and settings surfaces.
@@ -54,6 +61,9 @@ Behaviour:
 | `audit_chain`        | `src/synthorg/observability/audit_chain/sink.py`  | `emit`                    | `synthorg.observability.audit_chain.payloads.AuditChainEventPayload` |
 | `a2a.jsonrpc`        | `src/synthorg/a2a/rpc_params.py`                  | `parse_rpc_params`        | `synthorg.a2a.rpc_params.A2ARpcParams` (TypeAdapter)    |
 | `mcp.tool`           | `src/synthorg/meta/mcp/invoker.py`                | `invoke`                  | Per-tool `MCPToolDef.args_model`                        |
+| `provider.tool_call` | `src/synthorg/providers/drivers/mappers.py`       | `extract_tool_calls`      | (no Pydantic; lenient dict/object extraction)           |
+| `webhook.payload`    | `src/synthorg/api/controllers/_webhooks_wiring.py`| `parse_payload`           | `WebhookEventPayload` (extra="allow")                   |
+| `mcp.tool.dual_path` | `src/synthorg/meta/mcp/invoker.py`                | `invoke`                  | Per-tool `args_model` OR `common_args` handler helpers  |
 
 ## Per-boundary notes
 
@@ -147,6 +157,120 @@ before dispatch. A malformed payload returns the
 on the wire. Tools without an `args_model` fall through to the
 deepcopy path and continue to validate via `common_args` helpers in
 the handler; this gate fires whenever a tool opts into typed args.
+
+### Provider tool-call extraction (`provider.tool_call`)
+
+LiteLLM provider drivers return tool-call payloads in heterogeneous
+shapes: some completions parse to plain dicts, others surface objects
+with attribute access (`item.function.arguments`). The provider layer
+has no control over the upstream payload shape, so this boundary is
+deliberately **lenient**: it does NOT run `parse_typed`. Instead,
+`extract_tool_calls` (`src/synthorg/providers/drivers/mappers.py:131`)
+walks the raw list and rescues whatever it can.
+
+- Wire shape: `list[dict] | list[object]` (or `None` for completions
+  that emitted no tool calls).
+- Field access: `_get(item, "id"/"function", ...)` uses
+  `dict.get` for mappings and `getattr` for objects; the helper
+  centralises the lenient access so each call site does not branch.
+- Failure modes:
+  - Missing `function` block: skip the entry; emit
+    `provider.tool_call.missing_function` warning with
+    `item_type=type(item).__name__`.
+  - Empty `id` or `name`: skip the entry; emit
+    `provider.tool_call.incomplete` warning carrying whatever fields
+    were recoverable.
+  - Malformed `arguments` JSON: fall back to `{}` so the handler can
+    apply its own validation (the alternative, rejecting the entire
+    completion, would discard one good tool call because a sibling
+    arrived malformed).
+- Why lenient: provider variability dominates. A strict
+  `parse_typed` here would surface a hard 5xx on every novel
+  upstream shape, blocking the whole completion path. The warning
+  logs preserve observability without coupling the wire contract to
+  any single provider.
+
+Each skipped entry is logged so a provider regression surfaces in
+the event stream rather than disappearing silently. The handler that
+consumes the returned `tuple[ToolCall, ...]` re-validates field
+shape via the typed Pydantic `ToolCall` model.
+
+### Webhook payload envelope (`webhook.payload`)
+
+External webhook providers send arbitrary JSON keys (each integration
+has its own schema). The boundary uses a Pydantic model with
+`ConfigDict(extra="allow")` to enforce envelope shape only:
+
+```python
+class WebhookEventPayload(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="allow")
+```
+
+(`src/synthorg/api/controllers/_webhooks_wiring.py:39`).
+
+- Wire shape: any JSON object. Arrays, scalars, and non-JSON bodies
+  are rejected at `parse_typed("webhook.payload", ...)` time and
+  surface as HTTP 400.
+- Provider keys flow through unchanged via `extra="allow"`. The
+  controller routes the typed envelope to the integration-specific
+  handler, which validates the inner payload against its own schema.
+- Why `extra="allow"` and NOT `extra="forbid"`: flipping the config
+  would break every integration the moment a provider added a new
+  optional field. `frozen=True` still prevents mutation; the only
+  relaxation is on unknown-key rejection.
+
+The envelope-only validation closes the silent `{"raw": ...}`
+fallback the controller carried before typed boundaries existed: a
+non-object payload now fails fast instead of routing as a
+single-key dict.
+
+### MCP tool-execution dual paths (`mcp.tool.dual_path`)
+
+The MCP invoker (`src/synthorg/meta/mcp/invoker.py:149`) routes tool
+arguments through one of two validation paths depending on whether
+the tool declares an `args_model`:
+
+```python
+if tool_def.args_model is not None:
+    # Typed-args path.
+    validated = parse_typed("mcp.tool", arguments, tool_def.args_model)
+    handler_arguments = deepcopy(validated.model_dump(mode="python"))
+else:
+    # Per-field path.
+    handler_arguments = deepcopy(arguments)
+```
+
+- **Typed-args path** (`args_model` declared): the raw dict goes
+  through `parse_typed`, which emits
+  `api.boundary.validation_failed` on rejection and re-raises. The
+  invoker catches the `PydanticValidationError`, records
+  `record_mcp_handler_outcome(outcome="validation_error", ...)`,
+  and returns an `ArgumentValidationError` envelope with
+  `domain_code=invalid_argument` to the client. The validated
+  `model_dump(mode="python")` is deep-copied so handlers receive a
+  fresh mutable dict.
+- **Per-field path** (no `args_model`): the raw dict is deep-copied
+  unchanged and handed to the handler. The handler validates each
+  field through `common_args` helpers (`require_arg`,
+  `require_non_blank`, `require_dict`, etc. in
+  `src/synthorg/meta/mcp/handlers/common_args.py`), which raise
+  `ArgumentValidationError` directly on missing or malformed
+  inputs.
+
+Both paths converge on the same wire envelope
+(`domain_code=invalid_argument` on validation failure) and the same
+observability surface (`MCP_SERVER_INVOKE_FAILED` warning,
+`record_mcp_handler_outcome` with the `validation_error` outcome).
+The typed-args path provides typed validation at construction time;
+the per-field path provides field-level validation at call time.
+Validation surface area is equivalent; opting a tool into
+`args_model` is a code-quality refactor, not a security upgrade.
+
+Pre-mapping shape check: the typed-args path rejects non-mapping
+payloads (`isinstance(raw_arguments, dict)`) before invoking
+`parse_typed`. A JSON array would otherwise survive `dict(...)`
+coercion and reach Pydantic, broadening the contract beyond what
+MCP expects.
 
 ## Lint guard (Phase 3)
 

@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import pytest
 
@@ -699,6 +699,10 @@ class _FakePrincipleOverrideRepository:
 
 
 class _FakeBackend:
+    @property
+    def kind(self) -> Literal["sqlite", "postgres"]:
+        return "sqlite"
+
     async def connect(self) -> None:
         pass
 

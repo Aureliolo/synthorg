@@ -5,12 +5,13 @@ from typing import Annotated, Final
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
-from litestar.status_codes import HTTP_204_NO_CONTENT
+from litestar.status_codes import HTTP_200_OK, HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import (
     ApiResponse,
     CancelTaskRequest,
     CreateTaskRequest,
+    ExecuteTaskRequest,
     PaginatedResponse,
     TransitionTaskRequest,
     UpdateTaskRequest,
@@ -320,6 +321,54 @@ class TaskController(Controller):
             requested_by=_extract_requester(state),
         )
         logger.info(API_TASK_DELETED, task_id=task_id)
+
+    @post(
+        "/{task_id:str}/execute",
+        # The endpoint mutates the existing task, not creates a new
+        # resource. Override Litestar's default 201 with 200 so the
+        # worker's ACK/NACK contract reads the success class directly
+        # instead of treating "Created" as a special case.
+        status_code=HTTP_200_OK,
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("tasks.execute", key="user"),
+        ],
+    )
+    async def execute_task(
+        self,
+        state: State,
+        task_id: PathId,
+        data: ExecuteTaskRequest,
+    ) -> ApiResponse[Task]:
+        """Execute one step of a task on behalf of a worker.
+
+        Called by the distributed worker (``synthorg.workers.executor``)
+        when a JetStream claim arrives. The endpoint delegates to
+        ``WorkerExecutionService.execute_once`` so the agent-runtime
+        invocation is configurable per deployment; the controller
+        itself only routes auth + HTTP envelope.
+
+        The response carries the task at its post-execution status so
+        the worker can map the outcome (terminal status -> ACK,
+        non-terminal -> NACK / RETRY).
+        """
+        app_state: AppState = state.app_state
+        requester = _extract_requester(state)
+        task = await app_state.worker_execution_service.execute_once(
+            task_id=task_id,
+            previous_status=data.previous_status,
+            new_status=data.new_status,
+            idempotency_key=data.idempotency_key,
+            requested_by=requester,
+        )
+        logger.info(
+            TASK_STATUS_CHANGED,
+            task_id=task_id,
+            from_status=data.previous_status,
+            to_status=task.status.value,
+            triggered_by="worker_executor",
+        )
+        return ApiResponse(data=task)
 
     @post(
         "/{task_id:str}/cancel",

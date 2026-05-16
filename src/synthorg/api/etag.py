@@ -350,9 +350,9 @@ async def _emit_passthrough(
 
     The captured ``Content-Length`` (if any) is replaced with
     ``len(body)`` because the truncation-fallback path may have
-    captured fewer bytes than the inner app originally promised; an
-    unmatched length would produce an invalid response on the very
-    cleanup path this helper exists to make safe.
+    captured fewer bytes than the inner app declared; an unmatched
+    length would produce an invalid response on the very cleanup path
+    this helper exists to make safe.
     """
     headers_value = captured_start.get("headers", [])
     headers: list[tuple[bytes, bytes]] = (

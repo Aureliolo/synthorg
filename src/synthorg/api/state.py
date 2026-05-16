@@ -64,6 +64,8 @@ from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: 
 from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
+from synthorg.experiments import ExperimentService
+from synthorg.experiments.in_memory_repository import InMemoryExperimentRepository
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
@@ -113,6 +115,10 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.telemetry.collector import TelemetryCollector  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
+from synthorg.workers.execution_service import (
+    LifecycleAdvancingExecutionService,
+    WorkerExecutionService,
+)
 
 if TYPE_CHECKING:
     from synthorg.a2a.agent_card import AgentCardBuilder
@@ -195,11 +201,13 @@ class AppState(AppStateServicesMixin):
         "_evaluation_version_service",
         "_event_stream_hub",
         "_events_read_service",
+        "_experiment_service",
         "_fine_tune_orchestrator",
         "_health_prober_service",
         "_idempotency_service",
         "_integration_health_facade_service",
         "_interrupt_store",
+        "_lazy_service_lock",
         "_lockout_store",
         "_mcp_catalog_facade_service",
         "_mcp_catalog_service",
@@ -272,6 +280,7 @@ class AppState(AppStateServicesMixin):
         "_webhook_event_bridge",
         "_webhook_replay_protector",
         "_webhook_service",
+        "_worker_execution_service",
         "_workflow_execution_service",
         "_workflow_rollback_service",
         "_workflow_service",
@@ -394,6 +403,21 @@ class AppState(AppStateServicesMixin):
         self._tunnel_provider = tunnel_provider
         self._webhook_event_bridge = webhook_event_bridge
         self._webhook_replay_protector: object | None = None
+        # Defaults to a lifecycle-advancing implementation wired
+        # against the task engine in lifecycle_builder; production
+        # deployments may swap the implementation to invoke the full
+        # AgentEngine instead of the baseline lifecycle walk.
+        self._worker_execution_service: WorkerExecutionService | None = None
+        # Guards the double-checked locking on first-access lazy wiring
+        # of worker_execution_service / experiment_service. Both
+        # properties may be invoked from concurrent request handlers
+        # before any explicit ``set_*`` call, so the bare None check
+        # without a lock could construct two instances and lose state.
+        self._lazy_service_lock: threading.Lock = threading.Lock()
+        # Lazily constructed against an in-memory repository so the
+        # ``/experiments`` controller works out of the box; deployments
+        # swap in a durable repository via ``set_experiment_service``.
+        self._experiment_service: ExperimentService | None = None
         # Lazily constructed when first accessed via the property; the
         # service wraps ``persistence.idempotency_keys`` and lives only
         # if a persistence backend is configured.
@@ -779,6 +803,66 @@ class AppState(AppStateServicesMixin):
     def set_task_engine(self, engine: TaskEngine) -> None:
         """Attach the task engine (once-only)."""
         self._set_once("_task_engine", engine, "Task engine")
+
+    @property
+    def worker_execution_service(self) -> WorkerExecutionService:
+        """Return the worker-callable execution service or auto-wire the default.
+
+        Lazily constructs the baseline lifecycle-advancing service
+        the first time the worker-callable execute endpoint fires.
+        Deployments that want the full agent-runtime invocation call
+        :meth:`set_worker_execution_service` at startup to swap the
+        implementation before any HTTP traffic arrives.
+        """
+        if self._worker_execution_service is None:
+            with self._lazy_service_lock:
+                if self._worker_execution_service is None:
+                    self._worker_execution_service = LifecycleAdvancingExecutionService(
+                        task_engine=self.task_engine,
+                    )
+        return self._worker_execution_service
+
+    def set_worker_execution_service(
+        self,
+        service: WorkerExecutionService,
+    ) -> None:
+        """Attach a worker execution service implementation (once-only).
+
+        Wired before any HTTP traffic so the property's lazy default
+        does not race the explicit assignment.
+        """
+        self._set_once(
+            "_worker_execution_service",
+            service,
+            "Worker execution service",
+        )
+
+    @property
+    def experiment_service(self) -> ExperimentService:
+        """Return the A/B experiment service, auto-wiring the default.
+
+        Lazy construction uses the in-memory repository so the
+        ``/experiments`` controller works in dev / smoke-test runs
+        without a persistence backend. Production deployments call
+        :meth:`set_experiment_service` at startup with a durable
+        repository before any HTTP traffic arrives.
+        """
+        if self._experiment_service is None:
+            with self._lazy_service_lock:
+                if self._experiment_service is None:
+                    self._experiment_service = ExperimentService(
+                        repository=InMemoryExperimentRepository(),
+                        clock=self.clock,
+                    )
+        return self._experiment_service
+
+    def set_experiment_service(self, service: ExperimentService) -> None:
+        """Attach the experiment service (once-only)."""
+        self._set_once(
+            "_experiment_service",
+            service,
+            "Experiment service",
+        )
 
     @property
     def distributed_task_queue(self) -> JetStreamTaskQueue | None:

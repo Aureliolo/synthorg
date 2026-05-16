@@ -318,21 +318,18 @@ class TestDrainTimeout:
         eng._queue.put_nowait(envelope)
 
         # The processing loop is genuinely stuck on ``block.wait()``, so
-        # ``_drain_processing`` will reliably hit its inner ``wait_for``
+        # the processing-drain stage will hit its inner ``wait_for``
         # timeout, cancel the processing task, and fail queued futures
         # before returning. ``stop()`` then returns cleanly.
         #
-        # Budget choice: ``stop(timeout=T)`` adds an outer hard-deadline
-        # at ``2 * T`` (see ``TaskEngine.stop``). If cleanup overruns
-        # that hard deadline, ``TimeoutError`` propagates to the caller
-        # and the engine is marked unrestartable. The original 50 ms
-        # budget left only ~50 ms for cancellation + future-cleanup,
-        # which intermittently raced under xdist load on CI runners
-        # and surfaced as ``TimeoutError`` escaping ``stop()``. 500 ms
-        # gives a 500 ms cleanup margin -- comfortably above the few
-        # milliseconds the cleanup actually needs even under heavy
-        # contention -- without lengthening the test meaningfully (the
-        # inner drain still fires after 500 ms, not 1 s).
+        # Budget choice: ``stop(timeout=T)`` splits ``T`` evenly between
+        # the processing-drain and observer-drain stages (see
+        # ``_drain_all``) so each stage has ``T/2`` whether or not the
+        # other stage runs long. With ``T=0.5`` each stage gets 250 ms,
+        # which is well above the few ms cancellation/cleanup actually
+        # needs even under xdist contention. The outer hard deadline of
+        # ``2*T`` therefore never fires on a healthy drain, and the test
+        # is deterministic regardless of CI load.
         await eng.stop(timeout=0.5)
 
         # The queued envelope (not yet processed) must be failed

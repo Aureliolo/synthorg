@@ -124,3 +124,20 @@ class InMemoryMcpInstallationRepository:
                 backend="in_memory",
             )
         return removed
+
+    async def clear(self) -> int:
+        """Drop every installation; return the number of rows removed.
+
+        Used by tests between scenarios and by the dev-mode reset
+        endpoint. Production deployments use the durable backends so
+        this method is never reachable in serious environments.
+        """
+        async with self._get_lock():
+            removed = len(self._store)
+            self._store.clear()
+        return removed
+
+    async def size(self) -> int:
+        """Return the count of installations currently held in memory."""
+        async with self._get_lock():
+            return len(self._store)

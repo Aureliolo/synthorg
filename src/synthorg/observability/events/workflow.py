@@ -42,6 +42,13 @@ SPRINT_CREATED: str = "workflow.sprint.created"
 SPRINT_LIFECYCLE_TRANSITION: str = "workflow.sprint.lifecycle_transition"
 """Sprint transitioned between lifecycle statuses."""
 
+SPRINT_STATUS_TRANSITIONED: str = "workflow.sprint.status_transitioned"
+"""Sprint row in the store now carries the new status (emitted by the
+caller AFTER persistence write). ``with_transition`` is a pure
+constructor so the SPRINT_LIFECYCLE_TRANSITION event from the state
+machine covers transition *intent*; this event records the persisted
+state-of-record."""
+
 SPRINT_LIFECYCLE_TRANSITION_INVALID: str = (
     "workflow.sprint.lifecycle_transition_invalid"
 )
@@ -129,6 +136,14 @@ evaluation skipped for this cycle."""
 
 SPRINT_CEREMONY_TRIGGER_FAILED: str = "workflow.sprint.ceremony_trigger_failed"
 """Ceremony trigger_event call failed (swallowed)."""
+
+SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED: str = (
+    "workflow.sprint.ceremony_budget_snapshot_failed"
+)
+"""Budget snapshot callable raised inside the scheduler; the
+CeremonyEvalContext falls back to (0.0, 0.0) for this evaluation tick
+so a transient budget-service failure cannot block ceremony
+scheduling."""
 
 SPRINT_CEREMONY_EVAL_CONTEXT_INVALID: str = (
     "workflow.sprint.ceremony_eval_context_invalid"

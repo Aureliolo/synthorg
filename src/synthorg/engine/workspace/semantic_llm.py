@@ -169,6 +169,7 @@ class LlmSemanticAnalyzer:
         tool_def = build_semantic_review_tool()
         comp_config = CompletionConfig(
             temperature=self._config.llm_temperature,
+            top_p=self._config.llm_top_p,
             max_tokens=self._config.llm_max_tokens,
         )
         return messages, tool_def, comp_config

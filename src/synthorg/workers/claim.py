@@ -24,6 +24,8 @@ from synthorg.communication.bus.errors import (
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
+    WORKERS_QUEUE_NOT_RUNNING,
+    WORKERS_QUEUE_START_REJECTED,
     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
     WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
     WORKERS_TASK_QUEUE_CONNECT_FAILED,
@@ -156,6 +158,10 @@ class JetStreamTaskQueue:
                 client is drained before the exception propagates.
         """
         if self._running:
+            logger.warning(
+                WORKERS_QUEUE_START_REJECTED,
+                reason="already_running",
+            )
             msg = "JetStreamTaskQueue.start() called while already running"
             raise RuntimeError(msg)
         try:
@@ -346,6 +352,11 @@ class JetStreamTaskQueue:
             claim: The task claim to enqueue.
         """
         if self._js is None:
+            logger.warning(
+                WORKERS_QUEUE_NOT_RUNNING,
+                operation="publish_claim",
+                task_id=claim.task_id,
+            )
             msg = "Task queue is not running"
             raise BusStreamError(msg)
         subject = f"{self._queue_config.ready_subject_prefix}.{claim.task_id}"
@@ -365,6 +376,10 @@ class JetStreamTaskQueue:
         from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
 
         if self._sub is None:
+            logger.warning(
+                WORKERS_QUEUE_NOT_RUNNING,
+                operation="next_claim",
+            )
             msg = "Task queue is not running"
             raise BusStreamError(msg)
         try:

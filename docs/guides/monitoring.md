@@ -101,6 +101,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | `synthorg_audit_chain_appends_total` | Counter | `status` | Audit chain append operations (`status` bounded to `signed` / `fallback` / `error`). | `Audit & Security` |
 | `synthorg_audit_chain_depth` | Gauge | - | Current hash chain length. | `Audit & Security` |
 | `synthorg_audit_chain_last_append_timestamp_seconds` | Gauge | - | Unix timestamp of the most recent append. | `Audit & Security` |
+| `synthorg_security_audit_log_fill_ratio` | Gauge | - | Security audit log occupancy as a fraction of `max_entries` (0.0 empty, 1.0 full). Alert at 0.9: increase retention or archive older entries before the ring buffer wraps and overwrites unread evidence. | `Audit & Security` |
 
 ### OTLP export health
 
@@ -222,6 +223,61 @@ rate(synthorg_audit_chain_appends_total{status="error"}[5m])
 
 # Seconds since last append (flat line for > 5m is suspicious)
 time() - synthorg_audit_chain_last_append_timestamp_seconds
+
+# Audit log fill ratio (alert when the ring buffer is near capacity).
+# At >0.9 the next bursts of activity overwrite the oldest entries
+# before an operator can read them; rotate retention or archive.
+synthorg_security_audit_log_fill_ratio
+```
+
+### Audit log fill ratio
+
+The `synthorg_security_audit_log_fill_ratio` gauge reports the
+occupancy of the in-memory security audit log as a fraction of its
+configured `max_entries` capacity. The log is a ring buffer: once
+full, the oldest entries are overwritten as new audit events land.
+A sustained value above 0.9 means the buffer is about to wrap; any
+unread evidence beyond that point is permanently lost.
+
+Recommended alert rule:
+
+```yaml
+- alert: SynthorgSecurityAuditLogNearCapacity
+  expr: synthorg_security_audit_log_fill_ratio > 0.9
+  for: 10m
+  labels: {severity: warning}
+  annotations:
+    summary: "Security audit log is {{ $value | humanizePercentage }} full"
+    runbook: "increase max_entries, archive entries to long-term storage, or shorten retention"
+```
+
+Grafana panel definition (drop into the `Audit & Security` row of
+`monitoring/grafana/synthorg-overview.json`):
+
+```json
+{
+  "title": "Security audit log fill ratio",
+  "type": "gauge",
+  "datasource": "${DS_PROMETHEUS}",
+  "fieldConfig": {
+    "defaults": {
+      "min": 0,
+      "max": 1,
+      "unit": "percentunit",
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {"color": "green", "value": null},
+          {"color": "yellow", "value": 0.75},
+          {"color": "red", "value": 0.9}
+        ]
+      }
+    }
+  },
+  "targets": [
+    {"expr": "synthorg_security_audit_log_fill_ratio", "refId": "A"}
+  ]
+}
 ```
 
 ### OTLP export health
@@ -258,7 +314,7 @@ The dashboard organises 30+ panels into seven collapsible rows. Only `Health & S
 | `Workflows` | collapsed | Workflow duration p50/p95, workflow execution rate by status, top-N workflow definitions |
 | `Tools & Providers` | collapsed | Tool invocation rate, tool duration p95 by `tool_name`, provider tokens, provider cost, provider errors by class |
 | `Cost & Budget` | collapsed | `synthorg_cost_total`, monthly cost, daily used %, top-25 per-agent cost, agent budget used % |
-| `Audit & Security` | collapsed | Audit chain append rate, depth, last-append age, security verdicts, agent identity version changes, API error categories |
+| `Audit & Security` | collapsed | Audit chain append rate, depth, last-append age, audit-log fill-ratio gauge, security verdicts, agent identity version changes, API error categories |
 | `Client Health` | collapsed | Client disconnects by transport+reason, API request rate by status class, OTLP export batches, OTLP dropped records, cache hit rate, app info |
 
 To install via the Grafana UI: `Dashboards → New → Import → Upload JSON file`. Via the provisioning API: `POST /api/dashboards/db` with `{"dashboard": <file>, "overwrite": true, "inputs": [...]}`.

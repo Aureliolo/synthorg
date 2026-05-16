@@ -331,3 +331,57 @@ class PushMetrics:
             ["outcome"],
             registry=registry,
         )
+
+        # -- WS lifetime / revalidation / concurrent connections -----
+        # Wall-time histogram of WS connection lifetimes; alerts on
+        # truncated tail (clients dropping shortly after auth) and on
+        # silent long-lived hangs.
+        self.ws_connection_lifetime = Histogram(
+            f"{prefix}_ws_connection_lifetime_seconds",
+            "WebSocket connection lifetime in seconds, by transport",
+            ["transport"],
+            buckets=(1.0, 5.0, 30.0, 60.0, 300.0, 1800.0, 3600.0, 14400.0),
+            registry=registry,
+        )
+        self.ws_revalidation_outcomes = PromCounter(
+            f"{prefix}_ws_revalidation_total",
+            ("Per-frame WS revalidation outcomes (pass / fail / budget_exhausted)"),
+            ["outcome"],
+            registry=registry,
+        )
+        self.ws_active_connections = Gauge(
+            f"{prefix}_ws_active_connections",
+            "Currently-open WebSocket connections",
+            registry=registry,
+        )
+
+        # -- Postgres connection pool metrics ------------------------
+        # ``backend`` label allows multiple Postgres pools to coexist
+        # (primary read-write + read-only replicas). The pool's
+        # ``stats()`` snapshot drives the gauges; the counter ticks on
+        # every saturation event.
+        self.pg_pool_size = Gauge(
+            f"{prefix}_pg_pool_size",
+            "Configured Postgres connection pool size",
+            ["backend"],
+            registry=registry,
+        )
+        self.pg_pool_active_connections = Gauge(
+            f"{prefix}_pg_pool_active_connections",
+            "Active connections currently checked out of the pool",
+            ["backend"],
+            registry=registry,
+        )
+        self.pg_pool_acquire_duration = Histogram(
+            f"{prefix}_pg_pool_acquire_duration_seconds",
+            "Wall time spent waiting for a Postgres connection",
+            ["backend"],
+            buckets=(0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0),
+            registry=registry,
+        )
+        self.pg_pool_exhausted = PromCounter(
+            f"{prefix}_pg_pool_exhausted_total",
+            "Pool acquisition timed out (no connection available)",
+            ["backend"],
+            registry=registry,
+        )

@@ -35,6 +35,7 @@ MAX_LIMIT: int = 200
 
 _MAX_METADATA_KEYS: int = 20
 _MAX_METADATA_STR_LEN: int = 256
+_MAX_SELECTION_WEIGHT: int = 1000
 
 
 # ── Structured error detail (RFC 9457) ─────────────────────────
@@ -432,6 +433,56 @@ class TransitionTaskRequest(BaseModel):
     )
 
 
+class RegisterExperimentVariantRequest(BaseModel):
+    """Payload for registering an A/B experiment variant."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    variant: NotBlankStr = Field(description="Variant name within the experiment")
+    weight: int = Field(
+        ge=1,
+        le=_MAX_SELECTION_WEIGHT,
+        description="Relative selection weight",
+    )
+    description: str = Field(default="", description="Operator notes")
+
+
+class AssignExperimentRequest(BaseModel):
+    """Payload for requesting a deterministic variant assignment."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    subject_id: NotBlankStr = Field(
+        description="Subject identifier (agent id, user id, project id, ...)",
+    )
+
+
+class ExecuteTaskRequest(BaseModel):
+    """Payload for the worker-callable ``POST /tasks/{id}/execute`` endpoint.
+
+    Mirrors the ``TaskClaim`` envelope fields the worker carries so the
+    backend's ``WorkerExecutionService`` has the same provenance the
+    dispatcher captured when it built the claim. The endpoint only
+    needs the status pair and the dedup key; the task body is read
+    server-side via the task repository.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    previous_status: NotBlankStr | None = Field(
+        default=None,
+        description="Task status before the triggering transition",
+    )
+    new_status: NotBlankStr = Field(
+        description=(
+            "Task status that triggered the dispatch (typically 'assigned' or 'ready')"
+        ),
+    )
+    idempotency_key: NotBlankStr = Field(
+        description="Per-dispatch idempotency key; backend dedups duplicate executions",
+    )
+
+
 class CancelTaskRequest(BaseModel):
     """Payload for cancelling a task.
 
@@ -706,6 +757,7 @@ class RollbackAgentIdentityRequest(BaseModel):
 __all__ = [
     "ApiResponse",
     "ApproveRequest",
+    "AssignExperimentRequest",
     "CancelTaskRequest",
     "CoordinateTaskRequest",
     "CoordinationPhaseResponse",
@@ -718,12 +770,14 @@ __all__ = [
     "CreateTaskRequest",
     "DiscoverModelsResponse",
     "ErrorDetail",
+    "ExecuteTaskRequest",
     "PaginatedResponse",
     "PaginationMeta",
     "ProbeLocalResponse",
     "ProbePresetResponse",
     "ProblemDetail",
     "ProviderResponse",
+    "RegisterExperimentVariantRequest",
     "RejectRequest",
     "RollbackAgentIdentityRequest",
     "TestConnectionRequest",

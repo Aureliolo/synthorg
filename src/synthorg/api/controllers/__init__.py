@@ -43,6 +43,7 @@ from synthorg.api.controllers.events import (
     EventStreamController,
     InterruptController,
 )
+from synthorg.api.controllers.experiments import ExperimentsController
 from synthorg.api.controllers.health import (
     LivenessController,
     ReadinessController,
@@ -111,6 +112,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     DepartmentController,
     ProjectController,
     TaskController,
+    ExperimentsController,
     MessageController,
     MeetingController,
     ArtifactController,
@@ -222,6 +224,7 @@ __all__ = [
     "EscalationsController",
     "EvaluationConfigVersionController",
     "EventStreamController",
+    "ExperimentsController",
     "IntegrationHealthController",
     "InterruptController",
     "LivenessController",

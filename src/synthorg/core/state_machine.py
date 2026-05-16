@@ -47,8 +47,9 @@ class StateMachine[S: _HasValue]:
 
     Pre-validates the transition table at construction: every enum
     member referenced by the enumerated state type must appear as a
-    key, mirroring the ``_missing`` checks previously duplicated
-    across four modules.
+    key. Centralising the ``_missing``-style completeness check here
+    means callers cannot accidentally ship a partial table that
+    silently routes an unknown state to the default branch.
 
     The transition table is deep-copied and wrapped in a
     ``MappingProxyType`` at construction so mutations of the caller's

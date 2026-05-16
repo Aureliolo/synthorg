@@ -3,13 +3,22 @@
 Launched from the Go CLI via ``synthorg worker start`` (see
 ``cli/cmd/worker_start.go``). Wires a :class:`JetStreamTaskQueue`
 against the current ``NatsConfig`` and runs a pool of
-:class:`Worker` instances with a placeholder executor.
+:class:`Worker` instances against the HTTP-callback executor
+(:class:`~synthorg.workers.executor.TaskExecutionExecutor`).
 
-The placeholder executor acks each claim as ``SUCCESS`` after
-logging it. Wiring the real agent runtime (``agent_engine``) and
-the HTTP transition callback is a follow-up; this module exists so
-the ``synthorg worker start`` command has something to exec while
-the task queue plumbing lands incrementally.
+The executor POSTs to ``/api/v1/tasks/{task_id}/execute`` on the
+backend; the backend dispatches to a pluggable
+:class:`WorkerExecutionService` so the agent-runtime invocation is
+configurable per deployment. The default
+:class:`LifecycleAdvancingExecutionService` walks the task one
+lifecycle step forward, which is sufficient for end-to-end claim
+round-trip tests; production deployments override the service to
+invoke the full agent engine.
+
+The legacy ``_placeholder_executor`` is kept as an opt-in fallback
+(``--executor placeholder``) so the dispatch plumbing can still be
+smoke-tested without a running backend (e.g. NATS-only conformance
+runs).
 """
 
 import argparse
@@ -18,9 +27,12 @@ import os
 import sys
 from typing import Final
 
+import httpx
+
 from synthorg.communication.config import NatsConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.workers import (
+    WORKERS_MAIN_INVALID_EXECUTOR_CONFIG,
     WORKERS_MAIN_INVALID_WORKER_COUNT,
     WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
 )
@@ -29,7 +41,11 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_int
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
-from synthorg.workers.worker import run_worker_pool
+from synthorg.workers.executor import (
+    DEFAULT_HTTP_TIMEOUT_SECONDS,
+    TaskExecutionExecutor,
+)
+from synthorg.workers.worker import TaskExecutor, run_worker_pool
 
 logger = get_logger(__name__)
 
@@ -37,9 +53,10 @@ logger = get_logger(__name__)
 async def _placeholder_executor(claim: TaskClaim) -> TaskClaimStatus:
     """Acknowledge the claim without executing any task logic.
 
-    Real agent runtime integration lands in a follow-up; this
-    placeholder exists so operators can smoke-test the dispatch
-    path end-to-end (engine -> NATS -> worker -> ack).
+    Smoke-test fallback for the dispatch path; only used when the
+    operator explicitly passes ``--executor placeholder``. A missing
+    backend URL is handled by ``_resolve_executor()`` exiting with
+    ``SystemExit`` rather than silently falling back to this executor.
     """
     logger.info(
         WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
@@ -80,6 +97,33 @@ def _build_parser() -> argparse.ArgumentParser:
         "--stream-prefix",
         default=os.environ.get("SYNTHORG_NATS_STREAM_PREFIX", "SYNTHORG"),
         help="JetStream stream name prefix (default: SYNTHORG).",
+    )
+    parser.add_argument(
+        "--api-base-url",
+        default=os.environ.get("SYNTHORG_API_BASE_URL"),
+        help=(
+            "Backend base URL for the HTTP-callback executor "
+            "(default: env SYNTHORG_API_BASE_URL)."
+        ),
+    )
+    parser.add_argument(
+        "--auth-token",
+        default=os.environ.get("SYNTHORG_WORKER_AUTH_TOKEN"),
+        help=(
+            "Bearer token sent to the backend execute endpoint "
+            "(default: env SYNTHORG_WORKER_AUTH_TOKEN)."
+        ),
+    )
+    parser.add_argument(
+        "--executor",
+        default="http",
+        choices=("http", "placeholder"),
+        help=(
+            "Executor implementation. ``http`` (default) calls the "
+            "backend's /tasks/{id}/execute endpoint; ``placeholder`` "
+            "acks every claim without any backend interaction "
+            "(NATS-only smoke tests)."
+        ),
     )
     return parser
 
@@ -126,21 +170,80 @@ async def _async_main(argv: list[str]) -> int:
         stream_name_prefix=args.stream_prefix,
     )
 
+    # Resolve the executor BEFORE starting the queue so a missing-config
+    # SystemExit from ``_resolve_executor`` does not leak a started
+    # JetStream consumer (the queue's stop() in the finally below would
+    # never run because the SystemExit unwinds straight past the try).
+    executor, http_client = _resolve_executor(args)
     task_queue = JetStreamTaskQueue(
         queue_config=queue_config,
         nats_config=nats_config,
     )
-    await task_queue.start()
+    # ``queue_started`` gates the ``task_queue.stop()`` call so a
+    # ``start()`` failure does not call ``stop()`` on a queue that
+    # never bound the consumer, and a flag-flip lets the owned
+    # ``http_client`` close cleanly regardless of which stage failed.
+    queue_started = False
     try:
+        await task_queue.start()
+        queue_started = True
         await run_worker_pool(
             queue_config=queue_config,
             task_queue=task_queue,
-            executor=_placeholder_executor,
+            executor=executor,
             worker_count=args.workers,
         )
     finally:
-        await task_queue.stop()
+        if http_client is not None:
+            await http_client.aclose()
+        if queue_started:
+            await task_queue.stop()
     return 0
+
+
+def _resolve_executor(
+    args: argparse.Namespace,
+) -> tuple[TaskExecutor, httpx.AsyncClient | None]:
+    """Build the configured executor and (if HTTP) the owned client.
+
+    The HTTP executor owns an :class:`httpx.AsyncClient` for the
+    lifetime of the worker pool so connection pooling persists
+    across claims. The caller closes the client in the ``finally``
+    block to drain in-flight requests at shutdown.
+    """
+    if args.executor == "placeholder":
+        return _placeholder_executor, None
+    if not args.api_base_url:
+        msg = "--executor http requires --api-base-url (or SYNTHORG_API_BASE_URL)"
+        logger.error(
+            WORKERS_MAIN_INVALID_EXECUTOR_CONFIG,
+            executor=args.executor,
+            missing_flag="--api-base-url",
+            missing_env="SYNTHORG_API_BASE_URL",
+            error=msg,
+        )
+        raise SystemExit(msg)
+    if not args.auth_token:
+        msg = "--executor http requires --auth-token (or SYNTHORG_WORKER_AUTH_TOKEN)"
+        logger.error(
+            WORKERS_MAIN_INVALID_EXECUTOR_CONFIG,
+            executor=args.executor,
+            missing_flag="--auth-token",
+            missing_env="SYNTHORG_WORKER_AUTH_TOKEN",
+            error=msg,
+        )
+        raise SystemExit(msg)
+    # Match the executor's per-request timeout at the client level so
+    # the connection-pool defaults line up with the other AsyncClient
+    # call sites in the codebase (every other site passes ``timeout=``
+    # explicitly rather than relying on the 5 s httpx default).
+    http_client = httpx.AsyncClient(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
+    executor = TaskExecutionExecutor(
+        api_base_url=args.api_base_url,
+        auth_token=args.auth_token,
+        http_client=http_client,
+    )
+    return executor, http_client
 
 
 def main(argv: list[str] | None = None) -> int:

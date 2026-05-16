@@ -36,6 +36,8 @@ WORKERS_DISPATCHER_CLAIM_ENQUEUED: Final[str] = "workers.dispatcher.claim_enqueu
 
 # Task queue client
 WORKERS_TASK_QUEUE_CONNECT_FAILED: Final[str] = "workers.task_queue.connect_failed"
+WORKERS_QUEUE_START_REJECTED: Final[str] = "workers.task_queue.start_rejected"
+WORKERS_QUEUE_NOT_RUNNING: Final[str] = "workers.task_queue.not_running"
 WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED: Final[str] = (
     "workers.task_queue.unsubscribe_failed"
 )
@@ -49,6 +51,21 @@ WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED: Final[str] = (
 
 # Main entry point
 WORKERS_MAIN_INVALID_WORKER_COUNT: Final[str] = "workers.main.invalid_worker_count"
+WORKERS_MAIN_INVALID_EXECUTOR_CONFIG: Final[str] = (
+    "workers.main.invalid_executor_config"
+)
 WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED: Final[str] = (
     "workers.main.placeholder_executor_invoked"
 )
+
+# HTTP-callback executor events
+WORKERS_EXECUTOR_HTTP_INVOKED: Final[str] = "workers.executor.http_invoked"
+WORKERS_EXECUTOR_HTTP_TERMINAL: Final[str] = "workers.executor.http_terminal"
+WORKERS_EXECUTOR_HTTP_RETRY: Final[str] = "workers.executor.http_retry"
+WORKERS_EXECUTOR_HTTP_FAILED: Final[str] = "workers.executor.http_failed"
+WORKERS_EXECUTOR_INVALID_INIT_ARG: Final[str] = "workers.executor.invalid_init_arg"
+
+# Backend-side execution service events
+WORKERS_EXECUTION_SERVICE_ATTEMPTED: Final[str] = "workers.execution_service.attempted"
+WORKERS_EXECUTION_SERVICE_COMPLETED: Final[str] = "workers.execution_service.completed"
+WORKERS_EXECUTION_SERVICE_NO_OP: Final[str] = "workers.execution_service.no_op"

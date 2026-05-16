@@ -17,7 +17,7 @@ import asyncio
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from psycopg.rows import dict_row
 from pydantic import BaseModel
@@ -494,6 +494,21 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
     def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier."""
         return NotBlankStr("postgres")
+
+    @property
+    def kind(self) -> Literal["sqlite", "postgres"]:
+        """Return the backend discriminator (``"postgres"``)."""
+        return "postgres"
+
+    @property
+    def config(self) -> PostgresConfig:
+        """Public read-only view of the backend's Postgres config.
+
+        Exposed so callers needing the connection details (the
+        backup-handler factory) do not have to reach for the
+        private ``_config`` attribute.
+        """
+        return self._config
 
     def _require_connected[T](self, repo: T | None, name: str) -> T:
         """Return *repo* or raise if the backend is not connected.

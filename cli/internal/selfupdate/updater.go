@@ -512,6 +512,43 @@ func Replace(binaryData []byte) error {
 	return ReplaceAt(binaryData, execPath)
 }
 
+// ProbeInstallDirWritable verifies the directory holding the current
+// executable is writable BEFORE a download is started. The probe
+// creates and removes a short-named tempfile so a permission error
+// surfaces in microseconds instead of after the user has already
+// waited through a multi-MB download. Returns nil when writable.
+func ProbeInstallDirWritable() error {
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding executable path: %w", err)
+	}
+	return ProbeInstallDirWritableAt(execPath)
+}
+
+// ProbeInstallDirWritableAt is the testable core of
+// ProbeInstallDirWritable: it accepts the executable path explicitly
+// so unit tests can target an arbitrary directory.
+func ProbeInstallDirWritableAt(execPath string) error {
+	resolved, err := filepath.EvalSymlinks(execPath)
+	if err != nil {
+		return fmt.Errorf("resolving symlinks for write probe: %w", err)
+	}
+	dir := filepath.Dir(resolved)
+	f, err := os.CreateTemp(dir, ".synthorg-write-probe.*.tmp")
+	if err != nil {
+		return fmt.Errorf("install directory %s is not writable: %w", dir, err)
+	}
+	tmpPath := f.Name()
+	if cerr := f.Close(); cerr != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("closing write-probe file: %w", cerr)
+	}
+	if rerr := os.Remove(tmpPath); rerr != nil {
+		return fmt.Errorf("removing write-probe file %s: %w", tmpPath, rerr)
+	}
+	return nil
+}
+
 // ReplaceAt swaps the binary at the given path with new content.
 // This is the testable core of Replace.
 func ReplaceAt(binaryData []byte, execPath string) error {

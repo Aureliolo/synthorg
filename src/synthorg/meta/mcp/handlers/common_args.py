@@ -1,9 +1,10 @@
-"""Centralized argument-validation helpers for MCP tool handlers.
+"""Centralised argument-validation helpers for MCP tool handlers.
 
-Single source of truth for every argument extraction / coercion routine
-that handlers reach for. Used to be scattered across 15 domain handlers
-under ``_require_non_blank`` / ``_actor_id`` / ``_get_str`` / etc.; the
-duplicates now live exactly here.
+Single source of truth for every argument extraction / coercion
+routine that handlers reach for: ``_require_non_blank``,
+``_actor_id``, ``_get_str`` and their siblings live here so each
+domain handler imports the same validators instead of carrying its
+own near-identical copy.
 
 The module groups its helpers in three buckets:
 

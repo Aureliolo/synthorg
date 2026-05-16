@@ -35,6 +35,7 @@ __all__ = [
     "VALID_MCP_HANDLER_OUTCOMES",
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
+    "VALID_PG_BACKENDS",
     "VALID_PROVIDER_ERROR_CLASSES",
     "VALID_SETTINGS_NAMESPACES",
     "VALID_STATUS_CLASSES",
@@ -43,6 +44,8 @@ __all__ = [
     "VALID_TOOL_OUTCOMES",
     "VALID_VERDICTS",
     "VALID_WORKFLOW_EXECUTION_STATUSES",
+    "VALID_WS_REVALIDATION_OUTCOMES",
+    "VALID_WS_TRANSPORTS",
     "_LabelSnapshot",
     "_reset_label_snapshot_for_tests",
     "_reset_mcp_tool_names_for_tests",
@@ -325,6 +328,11 @@ VALID_BUDGET_QUERY_TYPES: Final[frozenset[str]] = frozenset(
 VALID_AUDIT_VERIFICATION_OUTCOMES: Final[frozenset[str]] = frozenset(
     {"valid", "broken"}
 )
+VALID_WS_TRANSPORTS: Final[frozenset[str]] = frozenset({"websocket", "sse"})
+VALID_WS_REVALIDATION_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"pass", "fail", "budget_exhausted"}
+)
+VALID_PG_BACKENDS: Final[frozenset[str]] = frozenset({"primary", "replica"})
 
 
 # -- Snapshot-backed registry-bound label validation -----------------------

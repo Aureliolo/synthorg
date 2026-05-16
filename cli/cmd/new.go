@@ -35,6 +35,15 @@ Available kinds:
   synthorg new controller ping`,
 	GroupID: "core",
 	Args:    cobra.NoArgs,
+	// Render the help text when the user runs ``synthorg new`` with no
+	// subcommand, then exit with the usage error code so the parent
+	// shell can detect that a kind/domain was required. Without the
+	// explicit ExitUsage, the bare ``synthorg new`` would print help
+	// and exit 0, indistinguishable from a successful operation.
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		_ = cmd.Help()
+		return NewExitError(ExitUsage, nil)
+	},
 }
 
 var newServiceCmd = newKindCmd(scaffold.KindService, "service")

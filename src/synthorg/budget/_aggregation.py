@@ -1,8 +1,8 @@
 """Shared aggregation helpers for cost-record analyses.
 
-Consolidates the ``defaultdict(list)`` + ``math.fsum`` + cost-per-1k
-idiom that previously lived in both ``_tracker_helpers`` and
-``_optimizer_helpers``.  Pure functions, no I/O.
+The ``defaultdict(list)`` plus ``math.fsum`` plus cost-per-1k
+aggregation idiom used across ``_tracker_helpers`` and
+``_optimizer_helpers`` lives here as pure functions with no I/O.
 
 Same-currency enforcement: :func:`sum_cost` calls
 ``assert_currencies_match`` itself so it is safe by construction;

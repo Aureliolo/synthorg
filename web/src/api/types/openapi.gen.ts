@@ -1605,6 +1605,58 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/experiments/{experiment}/assign": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Assign */
+        readonly post: operations["ApiV1ExperimentsAssignAssign"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/experiments/{experiment}/assignments": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListAssignments */
+        readonly get: operations["ApiV1ExperimentsAssignmentsListAssignments"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/experiments/{experiment}/variants": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListVariants */
+        readonly get: operations["ApiV1ExperimentsVariantsListVariants"];
+        readonly put?: never;
+        /** RegisterVariant */
+        readonly post: operations["ApiV1ExperimentsVariantsRegisterVariant"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/healthz": {
         readonly parameters: {
             readonly query?: never;
@@ -3712,6 +3764,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/tasks/{task_id}/execute": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ExecuteTask */
+        readonly post: operations["ApiV1TasksTaskIdExecuteExecuteTask"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/tasks/{task_id}/transition": {
         readonly parameters: {
             readonly query?: never;
@@ -4816,6 +4885,22 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[ExperimentAssignment] */
+        readonly ApiResponse_ExperimentAssignment_: {
+            readonly data: components["schemas"]["ExperimentAssignment"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[ExperimentVariant] */
+        readonly ApiResponse_ExperimentVariant_: {
+            readonly data: components["schemas"]["ExperimentVariant"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[FineTuneStatus] */
         readonly ApiResponse_FineTuneStatus_: {
             readonly data: components["schemas"]["FineTuneStatus"] | null;
@@ -5216,6 +5301,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[tuple[ExperimentVariant, ...]] */
+        readonly "ApiResponse_tuple_ExperimentVariant_..._": {
+            readonly data: readonly components["schemas"]["ExperimentVariant"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[tuple[InterruptResponse, ...]] */
         readonly "ApiResponse_tuple_InterruptResponse_..._": {
             readonly data: readonly components["schemas"]["InterruptResponse"][] | null;
@@ -5550,6 +5643,11 @@ export type components = {
          * @enum {string}
          */
         readonly ArtifactType: "code" | "tests" | "documentation";
+        /** AssignExperimentRequest */
+        readonly AssignExperimentRequest: {
+            /** @description Subject identifier (agent id, user id, project id, ...) */
+            readonly subject_id: string;
+        };
         /** AuditEntry */
         readonly AuditEntry: {
             readonly action_type: string;
@@ -7434,6 +7532,15 @@ export type components = {
              */
             readonly signed_at: string;
         };
+        /** ExecuteTaskRequest */
+        readonly ExecuteTaskRequest: {
+            /** @description Per-dispatch idempotency key; backend dedups duplicate executions */
+            readonly idempotency_key: string;
+            /** @description Task status that triggered the dispatch (typically 'assigned' or 'ready') */
+            readonly new_status: string;
+            /** @description Task status before the triggering transition */
+            readonly previous_status?: string | null;
+        };
         /** ExpectedArtifact */
         readonly ExpectedArtifact: {
             /** @description File or directory path for the artifact */
@@ -7467,6 +7574,39 @@ export type components = {
             /** @default 0.2 */
             readonly trust_weight: number;
             /** @default 0.2 */
+            readonly weight: number;
+        };
+        /** ExperimentAssignment */
+        readonly ExperimentAssignment: {
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly assigned_at: string;
+            /** @description Experiment key */
+            readonly experiment: string;
+            /** @description Subject identifier */
+            readonly subject_id: string;
+            /** @description Variant the subject was assigned to */
+            readonly variant: string;
+        };
+        /** ExperimentVariant */
+        readonly ExperimentVariant: {
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            /**
+             * @description Operator notes
+             * @default
+             */
+            readonly description: string;
+            /** @description Experiment key (kebab-case) */
+            readonly experiment: string;
+            /** @description Variant name within the experiment */
+            readonly variant: string;
+            /** @description Relative selection weight */
             readonly weight: number;
         };
         /** FilePart */
@@ -8659,6 +8799,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[ExperimentAssignment] */
+        readonly PaginatedResponse_ExperimentAssignment_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["ExperimentAssignment"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[FineTuneRun] */
         readonly PaginatedResponse_FineTuneRun_: {
             /** @default [] */
@@ -9764,6 +9919,18 @@ export type components = {
             readonly sample_count: number;
             /** @description Mean redundancy */
             readonly value: number;
+        };
+        /** RegisterExperimentVariantRequest */
+        readonly RegisterExperimentVariantRequest: {
+            /**
+             * @description Operator notes
+             * @default
+             */
+            readonly description: string;
+            /** @description Variant name within the experiment */
+            readonly variant: string;
+            /** @description Relative selection weight */
+            readonly weight: number;
         };
         /** RejectDecision */
         readonly RejectDecision: {
@@ -15844,6 +16011,139 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1ExperimentsAssignAssign: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly experiment: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AssignExperimentRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ExperimentAssignment_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ExperimentsAssignmentsListAssignments: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly experiment: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ExperimentAssignment_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ExperimentsVariantsListVariants: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly experiment: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_ExperimentVariant_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ExperimentsVariantsRegisterVariant: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly experiment: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RegisterExperimentVariantRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ExperimentVariant_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1HealthzLiveness: {
         readonly parameters: {
             readonly query?: never;
@@ -20330,6 +20630,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_CoordinationResultResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1TasksTaskIdExecuteExecuteTask: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly task_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ExecuteTaskRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

@@ -18,6 +18,19 @@ import (
 
 const stateFileName = "config.json"
 
+// Sentinel errors for Load failure modes, classified so callers can
+// branch on shape (errors.Is) rather than on error.Error() prefix. The
+// shapes are mutually exclusive: at most one wraps any given Load
+// error.
+var (
+	// ErrReading is wrapped when the persisted config file exists but
+	// cannot be read (filesystem permissions, I/O error, etc.).
+	ErrReading = errors.New("reading config")
+	// ErrParsing is wrapped when the config file is present and
+	// readable but its bytes do not decode as valid JSON.
+	ErrParsing = errors.New("parsing config")
+)
+
 // Fine-tune variant identifiers persisted in State.FineTuningVariant and
 // used to construct image service names (e.g. "synthorg-fine-tune-gpu").
 const (
@@ -267,12 +280,12 @@ func Load(dataDir string) (State, error) {
 			defaults.Sandbox = false
 			return defaults, nil
 		}
-		return State{}, fmt.Errorf("reading config %s: %w", path, err)
+		return State{}, fmt.Errorf("%w %s: %w", ErrReading, path, err)
 	}
 	// Unmarshal onto defaults so missing fields retain default values.
 	s := DefaultState()
 	if err := json.Unmarshal(data, &s); err != nil {
-		return State{}, fmt.Errorf("parsing config %s: %w", path, err)
+		return State{}, fmt.Errorf("%w %s: %w", ErrParsing, path, err)
 	}
 	if err := s.validate(); err != nil {
 		return State{}, fmt.Errorf("config %s: %w", path, err)

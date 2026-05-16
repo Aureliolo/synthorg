@@ -105,9 +105,11 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	// CLI update (unless --images-only).
 	if !updateImagesOnly {
-		if err := updateCLI(cmd, state.AutoUpdateCLI); errors.Is(err, errReexec) {
+		err := updateCLI(cmd, state.AutoUpdateCLI)
+		if errors.Is(err, errReexec) {
 			return reexecUpdate(cmd)
-		} else if err != nil {
+		}
+		if err != nil {
 			return fmt.Errorf("updating CLI binary: %w", err)
 		}
 	}
@@ -233,6 +235,16 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 	}
 	if !ok {
 		return nil
+	}
+
+	// Surface a permission error in the install directory before the
+	// download starts; otherwise the user waits through a multi-MB
+	// transfer only to fail at the final ``Replace`` step.
+	if err := selfupdate.ProbeInstallDirWritable(); err != nil {
+		return fmt.Errorf(
+			"cannot update CLI in place; re-run as an administrator "+
+				"or move the binary to a writable directory: %w", err,
+		)
 	}
 
 	out.Step("Downloading...")

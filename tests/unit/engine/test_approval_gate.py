@@ -1,12 +1,15 @@
 """Tests for ApprovalGate service."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.security.timeout.park_service import ParkService
+from synthorg.security.timeout.parked_context import ParkedContext
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 
 pytestmark = pytest.mark.unit
@@ -16,17 +19,29 @@ pytestmark = pytest.mark.unit
 def park_service() -> MagicMock:
     """ParkService mock with a default parked context return value."""
     svc = MagicMock(spec=ParkService)
-    parked = MagicMock()
-    parked.id = "parked-1"
-    parked.approval_id = "approval-1"
+    # Construct a real ``ParkedContext`` rather than a mock at the
+    # typed boundary: ``ParkedContext`` is a Pydantic model whose
+    # fields are not class-level attributes, so ``create_autospec`` (the
+    # spec_set=True path ``mock_of[T]`` uses) cannot see them and would
+    # refuse the ``id`` / ``approval_id`` overrides. A real instance
+    # carries the same fields the test needs without any mocking
+    # plumbing.
+    parked = ParkedContext(
+        id=NotBlankStr("parked-1"),
+        execution_id=NotBlankStr("exec-1"),
+        agent_id=NotBlankStr("agent-1"),
+        approval_id=NotBlankStr("approval-1"),
+        parked_at=datetime(2026, 5, 15, tzinfo=UTC),
+        context_json="{}",
+    )
     svc.park.return_value = parked
     return svc
 
 
 @pytest.fixture
-def parked_mock(park_service: MagicMock) -> MagicMock:
+def parked_mock(park_service: MagicMock) -> ParkedContext:
     """The default parked context returned by park_service.park()."""
-    result: MagicMock = park_service.park.return_value
+    result: ParkedContext = park_service.park.return_value
     return result
 
 

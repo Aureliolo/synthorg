@@ -11,6 +11,24 @@ recurring shapes:
   ``we used to`` -- forensic prose that names a past state of the
   code. ``moved`` alone is fine; only the ``moved here in`` shape
   signals migration narrative ("once upon a time...").
+* ``previously <verb>`` where ``<verb>`` is one of the migration
+  shapes (``lived``, ``inlined``, ``extracted``, ``duplicated``,
+  ``scattered``, ``routed``, ``emitted``, ``wrapped``, ``owned``).
+  Bare ``previously`` is left alone so legitimate runtime prose
+  ("previously stored ciphertext", "previously compacted
+  conversation") is not flagged.
+* ``were previously inlined`` / ``was previously inlined`` and the
+  same shape with ``duplicated`` / ``extracted`` / ``scattered`` /
+  ``owned`` / ``emitted`` / ``wrapped`` -- copular variants of the
+  ``previously <verb>`` rule above.
+* ``used to be`` -- variant of ``we used to`` that names a past
+  shape of the code as a fact ("used to be scattered across N
+  handlers").
+* ``originally <verb>`` (and ``originally-<verb>``) where ``<verb>``
+  is one of ``generated``, ``promised``, ``claimed``, ``owned``,
+  ``wrapped``, ``emitted``, ``inlined``, ``extracted``, ``routed``,
+  ``handled`` -- "as originally promised" framing that pins prose to
+  a long-gone earlier version of the code.
 * ``Phase \\d+`` and ``phase \\d+`` -- ordinal pipeline numbering
   couples to a specific shape; semantic names (``decompose``,
   ``route``, ``dispatch``) survive insertions / reorders.
@@ -67,6 +85,51 @@ _FRAMING_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     (
         "Round-N fix/review",
         re.compile(r"\bround-\d+\s+(?:fix|review|fix:|review:)", re.IGNORECASE),
+    ),
+    # Code-migration "previously <verb>" shapes. The verb list is
+    # deliberately code-migration specific: ``lived``, ``inlined``,
+    # ``extracted``, ``duplicated``, ``scattered`` describe where the
+    # code USED TO LIVE. Bare ``previously`` matches plenty of
+    # legitimate runtime prose (``previously compacted conversation``,
+    # ``previously stored ciphertext``) and is not enforced.
+    (
+        "previously <verb>",
+        re.compile(
+            r"\bpreviously\s+(?:lived|inlined|extracted|duplicated|"
+            r"scattered|routed|emitted|wrapped|owned)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "were previously inlined",
+        re.compile(
+            r"\bwere\s+previously\s+(?:inlined|duplicated|scattered|"
+            r"extracted|owned|emitted|wrapped)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "was previously inlined",
+        re.compile(
+            r"\bwas\s+previously\s+(?:inlined|duplicated|extracted|"
+            r"scattered|owned|emitted|wrapped)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "used to be",
+        re.compile(r"\bused\s+to\s+be\b", re.IGNORECASE),
+    ),
+    # ``originally <verb>``: targeted code-migration verb list.
+    # Compound form ``originally-claimed`` is the same narrative shape
+    # and matches via the ``[-\s]`` alternation.
+    (
+        "originally <verb>",
+        re.compile(
+            r"\boriginally[-\s](?:generated|promised|claimed|owned|"
+            r"wrapped|emitted|inlined|extracted|routed|handled)\b",
+            re.IGNORECASE,
+        ),
     ),
 )
 

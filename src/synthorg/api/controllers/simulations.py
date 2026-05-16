@@ -155,7 +155,7 @@ async def _rollback_register_if_absent(
     request handler, not a coroutine guarding against external
     cancellation.
 
-    Passes the originally-claimed ``record`` to ``unregister`` so the
+    Passes the claimed ``record`` to ``unregister`` so the
     compare-and-delete semantics protect a fresh retry that might have
     won the slot between the failure and this rollback running.
     """

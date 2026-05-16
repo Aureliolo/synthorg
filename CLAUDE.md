@@ -23,6 +23,7 @@ Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (use `go -C cli`, never `cd c
 ```bash
 uv sync                                             # all deps
 uv sync --group docs                                # docs toolchain (zensical + D2)
+bash scripts/install_cli_tools.sh                   # one-time per-machine: golangci-lint only (CI installs separately; install d2 via docs/getting_started.md)
 uv run ruff check src/ tests/ --fix                 # lint + auto-fix
 uv run ruff format src/ tests/                      # format
 uv run mypy src/ tests/                             # strict type-check

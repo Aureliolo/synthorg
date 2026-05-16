@@ -83,7 +83,31 @@ func runStart(cmd *cobra.Command, _ []string) error {
 
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		// config.Load(...) returns DefaultState silently when the file
+		// is absent, so a non-nil error here means the file exists but
+		// is unreadable, malformed, or fails schema validation.
+		// Distinguish each shape via typed sentinels so the operator
+		// knows whether to repair the file or check permissions
+		// instead of guessing from a generic ``loading config:``
+		// wrapper.
+		switch {
+		case errors.Is(err, config.ErrParsing):
+			return fmt.Errorf(
+				"config file is malformed (invalid JSON); "+
+					"edit it manually or remove it and re-run "+
+					"'synthorg init': %w", err,
+			)
+		case errors.Is(err, config.ErrReading):
+			return fmt.Errorf(
+				"config file is unreadable (check filesystem "+
+					"permissions): %w", err,
+			)
+		default:
+			// Anything else (validation / DataDir canonicalisation) is
+			// surfaced as-is with a ``config:`` prefix so the operator
+			// reads the wrapped detail directly.
+			return fmt.Errorf("config: %w", err)
+		}
 	}
 	safeDir, err := safeStateDir(state)
 	if err != nil {

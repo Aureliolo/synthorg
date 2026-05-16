@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import aiosqlite
 from pydantic import BaseModel
@@ -305,6 +305,22 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._connection_secrets = None
         self._oauth_states = None
         self._webhook_receipts = None
+
+    @property
+    def kind(self) -> Literal["sqlite", "postgres"]:
+        """Return the backend discriminator (``"sqlite"``)."""
+        return "sqlite"
+
+    @property
+    def config(self) -> SQLiteConfig:
+        """Public read-only view of the backend's config.
+
+        Exposed so callers that need backend-specific details (the
+        backup-handler factory walks the path; tests assert against
+        the resolved sqlite path) do not have to reach for the
+        private ``_config`` attribute.
+        """
+        return self._config
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""

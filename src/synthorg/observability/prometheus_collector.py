@@ -39,6 +39,9 @@ from synthorg.observability.prometheus_labels import (
 )
 from synthorg.observability.prometheus_push_metrics import PushMetrics
 from synthorg.observability.prometheus_recording import RecordingMixin
+from synthorg.observability.prometheus_recording_streams import (
+    StreamRecordingMixin,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -145,7 +148,7 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         return None
 
 
-class PrometheusCollector(RecordingMixin):
+class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     """Collects business metrics from SynthOrg services for Prometheus.
 
     Uses a dedicated ``CollectorRegistry`` to avoid polluting the global
@@ -161,7 +164,7 @@ class PrometheusCollector(RecordingMixin):
         prefix: Metric name prefix (default ``"synthorg"``).
     """
 
-    def __init__(self, *, prefix: str = "synthorg") -> None:
+    def __init__(self, *, prefix: str = "synthorg") -> None:  # noqa: PLR0915 -- single-shot wiring of every metric family
         self._prefix = prefix
         self.registry = CollectorRegistry()
 
@@ -280,6 +283,13 @@ class PrometheusCollector(RecordingMixin):
         self._mcp_handler_duration = self._push.mcp_handler_duration
         self._budget_query_duration = self._push.budget_query_duration
         self._audit_chain_verifications = self._push.audit_chain_verifications
+        self._ws_connection_lifetime = self._push.ws_connection_lifetime
+        self._ws_revalidation_outcomes = self._push.ws_revalidation_outcomes
+        self._ws_active_connections = self._push.ws_active_connections
+        self._pg_pool_size = self._push.pg_pool_size
+        self._pg_pool_active_connections = self._push.pg_pool_active_connections
+        self._pg_pool_acquire_duration = self._push.pg_pool_acquire_duration
+        self._pg_pool_exhausted = self._push.pg_pool_exhausted
 
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
@@ -347,7 +357,40 @@ class PrometheusCollector(RecordingMixin):
                 utc_midnight,
             )
         await self._refresh_task_metrics(app_state)
+        self._refresh_pg_pool_metrics(app_state)
         logger.debug(METRICS_SCRAPE_COMPLETED)
+
+    def _refresh_pg_pool_metrics(self, app_state: AppState) -> None:
+        """Push Postgres pool size / active gauges from the live pool.
+
+        Skipped silently when the backend is not Postgres or is not
+        yet connected; the pool's ``get_stats`` snapshot is the
+        authoritative source for ``pool_size`` and ``pool_available``.
+        """
+        if not app_state.has_persistence:
+            return
+        backend = app_state.persistence
+        if backend.kind != "postgres":
+            return
+        pool = getattr(backend, "_pool", None)
+        if pool is None:
+            return
+        try:
+            stats = pool.get_stats()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(METRICS_SCRAPE_FAILED, component="pg_pool_stats")
+            return
+        size = stats.get("pool_size")
+        available = stats.get("pool_available")
+        if isinstance(size, int):
+            self.record_pg_pool_size(backend="primary", size=size)
+            if isinstance(available, int):
+                self.record_pg_pool_active(
+                    backend="primary",
+                    active=max(0, size - available),
+                )
 
     async def _rebuild_label_snapshot(
         self,

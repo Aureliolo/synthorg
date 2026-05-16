@@ -311,9 +311,14 @@ describe('useArtifactsStore', () => {
       }
       useArtifactsStore.getState().updateFromWsEvent(event)
 
-      // The store debounces/schedules the refetch; allow microtasks to flush.
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      expect(fetchCount).toBeGreaterThan(0)
+      // The store schedules the refetch on the microtask queue. Use
+      // ``vi.waitFor`` so the assertion polls the queue deterministically
+      // rather than racing a fixed ``setTimeout(resolve, 0)`` against
+      // the scheduler. ``waitFor`` flushes microtasks on each tick and
+      // bails out as soon as the expectation passes.
+      await vi.waitFor(() => {
+        expect(fetchCount).toBeGreaterThan(0)
+      })
     })
   })
 

@@ -21,8 +21,17 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import synthorg.workers.claim as claim_module
+from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.config import NatsConfig
-from synthorg.workers.claim import _MAX_CLAIM_PAYLOAD_BYTES, JetStreamTaskQueue
+from synthorg.observability.events.workers import (
+    WORKERS_QUEUE_NOT_RUNNING,
+    WORKERS_QUEUE_START_REJECTED,
+)
+from synthorg.workers.claim import (
+    _MAX_CLAIM_PAYLOAD_BYTES,
+    JetStreamTaskQueue,
+    TaskClaim,
+)
 from synthorg.workers.config import QueueConfig
 
 
@@ -302,3 +311,67 @@ async def test_next_claim_oversize_payload_re_raises_memory_error() -> None:
 
     with pytest.raises(MemoryError):
         await queue.next_claim(timeout=1.0)
+
+
+@pytest.mark.unit
+async def test_start_when_running_logs_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second ``start()`` while already running logs the rejection event."""
+    spy = _patch_logger(monkeypatch)
+    queue = _make_queue()
+    queue._running = True
+
+    with pytest.raises(RuntimeError, match="already running"):
+        await queue.start()
+
+    assert spy.warning.called
+    matched = [
+        c
+        for c in spy.warning.call_args_list
+        if c.args and c.args[0] == WORKERS_QUEUE_START_REJECTED
+    ]
+    assert len(matched) == 1
+    assert matched[0].kwargs["reason"] == "already_running"
+
+
+@pytest.mark.unit
+async def test_publish_claim_before_start_logs_not_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``publish_claim`` before ``start()`` logs the not-running event."""
+    spy = _patch_logger(monkeypatch)
+    queue = _make_queue()
+    claim = TaskClaim(task_id="task-A", new_status="assigned")
+
+    with pytest.raises(BusStreamError, match="not running"):
+        await queue.publish_claim(claim)
+
+    matched = [
+        c
+        for c in spy.warning.call_args_list
+        if c.args and c.args[0] == WORKERS_QUEUE_NOT_RUNNING
+    ]
+    assert len(matched) == 1
+    assert matched[0].kwargs["operation"] == "publish_claim"
+    assert matched[0].kwargs["task_id"] == "task-A"
+
+
+@pytest.mark.unit
+async def test_next_claim_before_start_logs_not_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``next_claim`` before ``start()`` logs the not-running event."""
+    spy = _patch_logger(monkeypatch)
+    queue = _make_queue()
+
+    with pytest.raises(BusStreamError, match="not running"):
+        await queue.next_claim(timeout=1.0)
+
+    matched = [
+        c
+        for c in spy.warning.call_args_list
+        if c.args and c.args[0] == WORKERS_QUEUE_NOT_RUNNING
+    ]
+    assert len(matched) == 1
+    assert matched[0].kwargs["operation"] == "next_claim"

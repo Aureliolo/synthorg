@@ -329,7 +329,7 @@ class LLMCriteriaDecomposer:
                 messages=messages,
                 model=self._model_id,
                 tools=[tool],
-                config=CompletionConfig(temperature=0.0, max_tokens=2048),
+                config=CompletionConfig(temperature=0.0, top_p=1.0, max_tokens=2048),
             )
 
     def _extract_raw_probes(

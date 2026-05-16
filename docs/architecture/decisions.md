@@ -129,6 +129,13 @@ All significant design and architecture decisions in force today, organized by d
 
 **Mitigation plan:** (1) File upstream PR against `nats-io/nats.py` with the one-line `inspect.iscoroutinefunction` fix; upstream PR status is tracked in the project issue queue (search `nats-py` label); the scoped `filterwarnings` entry in `pyproject.toml` remains the active workaround until a fixed upstream release is available. (2) If upstream is unresponsive by **2026-06-10** (60 days from the 2026-04-11 review), maintain a local monkey-patch in `bus/_nats_compat.py`. (3) Monitor `nats-core` for future JetStream support.
 
+**Verification checkpoint (2026-06-10):** on this date run the checklist below and update this section with the outcome (mark each item Done / Not done / Outcome).
+
+1. Inspect `nats-io/nats.py` open PRs and recent releases on GitHub for the `inspect.iscoroutinefunction` fix.
+2. If a fixed release is available: bump the `nats-py` pin in `pyproject.toml`, drop the matching `filterwarnings` entry, run `uv run python -m pytest tests/ -m integration -k nats` to confirm warnings are gone, and replace this checkpoint section with the resolution outcome.
+3. If no fixed release exists: implement the local monkey-patch in `src/synthorg/communication/bus/_nats_compat.py` (one-line `nats.aio.client.iscoroutinefunction = inspect.iscoroutinefunction`), import it at bus initialisation, and extend this section with the patch landing date.
+4. Re-evaluate `nats-core` JetStream support: a maintained alternative removes the entire mitigation requirement.
+
 ## Overarching Pattern
 
 Nearly every decision follows the same architecture: a pluggable protocol interface with one initial implementation shipped, and alternative strategies documented for future extension. This is consistent with the project's protocol-driven design philosophy.

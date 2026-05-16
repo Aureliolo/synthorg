@@ -1,16 +1,19 @@
 """Compare-and-set retry loop for optimistic-concurrency mutations.
 
-Centralizes the read-modify-write cycle that mutation services run
-under optimistic concurrency.  Callers provide a ``read`` closure that
-performs the read + validation + new-value construction (returning a
-``(new_value, version)`` pair) and a ``write`` callable that persists
-the new value guarded by the version.  The handler retries up to
-``max_attempts`` on :class:`VersionConflictError`, emitting structured
-``API_CONCURRENCY_CONFLICT`` logs at DEBUG on each retry and at
-WARNING on the final exhausted attempt before re-raising.
+Centralises the read-modify-write cycle that mutation services run
+under optimistic concurrency. Callers provide a ``read`` closure that
+performs the read plus validation plus new-value construction
+(returning a ``(new_value, version)`` pair) and a ``write`` callable
+that persists the new value guarded by the version. The handler
+retries up to ``max_attempts`` on :class:`VersionConflictError`,
+emitting structured ``API_CONCURRENCY_CONFLICT`` logs at DEBUG on
+each retry and at WARNING on the final exhausted attempt before
+re-raising.
 
-Replaces the inline ``for attempt in range(_MAX_CAS_ATTEMPTS)`` loops
-that previously lived in every mutation method.
+Centralising the loop here keeps the retry policy (attempt count,
+log severity transition, exception surface) consistent across every
+mutation method without each one carrying its own
+``for attempt in range(_MAX_CAS_ATTEMPTS)`` block.
 """
 
 from typing import TYPE_CHECKING, Final, TypeVar

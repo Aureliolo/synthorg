@@ -1,7 +1,9 @@
 """Startup/shutdown lifecycle builder for the Litestar application.
 
-Contains the two-phase (construct + on_startup) wiring helpers that
-were previously inlined in ``api/app.py``.
+The two-phase wiring helpers live here so ``api/app.py`` stays a
+thin entry point: construct-phase wires synchronous services
+(registries, factories) while ``on_startup`` wires services that
+require a connected persistence backend.
 """
 
 import asyncio
