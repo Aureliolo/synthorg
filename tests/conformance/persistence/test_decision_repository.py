@@ -189,17 +189,11 @@ class TestDecisionRepository:
         self, backend: PersistenceBackend
     ) -> None:
         with pytest.raises(QueryError):
-            await backend.decision_records.query(
-                DecisionFilterSpec(), limit=0
-            )
+            await backend.decision_records.query(DecisionFilterSpec(), limit=0)
         with pytest.raises(QueryError):
-            await backend.decision_records.query(
-                DecisionFilterSpec(), offset=-1
-            )
+            await backend.decision_records.query(DecisionFilterSpec(), offset=-1)
 
-    async def test_append_generic_surface(
-        self, backend: PersistenceBackend
-    ) -> None:
+    async def test_append_generic_surface(self, backend: PersistenceBackend) -> None:
         await _seed_task(backend, "ap")
         event = DecisionRecord(
             id=NotBlankStr("ap1"),

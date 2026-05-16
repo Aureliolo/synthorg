@@ -194,9 +194,7 @@ class TestApiKeyRepository:
         assert fetched is not None
         assert fetched.revoked is True
 
-    async def test_list_items_and_count(
-        self, backend: PersistenceBackend
-    ) -> None:
+    async def test_list_items_and_count(self, backend: PersistenceBackend) -> None:
         await backend.users.save(_make_user())
         for i in range(3):
             await backend.api_keys.save(_make_api_key(f"lk_{i}"))

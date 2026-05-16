@@ -305,9 +305,7 @@ class TestMessageRepository:
         assert sum(1 for r in results if not r) == 1
         assert len(await backend.messages.get_history("chan1")) == 0
 
-    async def test_attachments_round_trip(
-        self, backend: PersistenceBackend
-    ) -> None:
+    async def test_attachments_round_trip(self, backend: PersistenceBackend) -> None:
         """Non-empty attachments survive a persist + read cycle.
 
         Exercises the attachments serialize/deserialize path on both
@@ -338,9 +336,7 @@ class TestMessageRepository:
         uris = {p.uri for p in restored.attachments if isinstance(p, FilePart)}
         assert uris == {"file:///tmp/report.pdf", "file:///tmp/data.csv"}
 
-    async def test_empty_attachments_default(
-        self, backend: PersistenceBackend
-    ) -> None:
+    async def test_empty_attachments_default(self, backend: PersistenceBackend) -> None:
         msg_id = uuid4()
         await backend.messages.append(
             make_message(msg_id=msg_id, channel="noatt"),
