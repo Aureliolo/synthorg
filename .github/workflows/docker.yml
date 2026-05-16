@@ -532,6 +532,7 @@ jobs:
           base-image-digest: ${{ needs.build-backend-base-publish.outputs.digest }}
           base-image-artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
           base-image-tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
+          trivy-version: ${{ env.TRIVY_VERSION }}
           # ``LOGFIRE_PROJECT_TOKEN`` is the GHA repo secret; the
           # Dockerfile's ``embed_logfire_token.py`` step writes it
           # into ``_embedded_token.py`` before ``uv sync`` packages
@@ -810,35 +811,36 @@ jobs:
         run: echo "ref=ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Report image size
-        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Web"
+        env:
+          SCAN_REF: ${{ steps.scan-ref.outputs.ref }}
+        run: scripts/report-image-size.sh "${SCAN_REF}" "Web"
+
+      - name: Install Trivy
+        env:
+          TRIVY_VERSION: ${{ env.TRIVY_VERSION }}
+        run: |
+          curl -sfL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sfL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
+          (cd /tmp && grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy_checksums.txt | sha256sum -c -)
+          tar -xzf "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
 
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: json
-          output: trivy-web.json
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-          # renovate: datasource=github-releases depName=aquasecurity/trivy
-          version: v0.70.0
+        env:
+          SCAN_REF: ${{ steps.scan-ref.outputs.ref }}
+        run: |
+          trivy image "${SCAN_REF}" --format json --output trivy-web.json \
+            --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
       - name: Evaluate Trivy results
         run: scripts/evaluate-scan.sh --verbose trivy-web.json "Web"
 
       - name: Trivy SARIF scan (web)
         if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: sarif
-          output: trivy-web.sarif
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-          # renovate: datasource=github-releases depName=aquasecurity/trivy
-          version: v0.70.0
+        env:
+          SCAN_REF: ${{ steps.scan-ref.outputs.ref }}
+        run: |
+          trivy image "${SCAN_REF}" --format sarif --output trivy-web.sarif \
+            --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
       - name: Upload SARIF to GitHub Security (web)
         if: always()
@@ -948,6 +950,7 @@ jobs:
           base-image-digest: ${{ needs.build-sandbox-base-publish.outputs.digest }}
           base-image-artifact-name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
           base-image-tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
+          trivy-version: ${{ env.TRIVY_VERSION }}
 
   build-sandbox-publish:
     name: Publish Sandbox
@@ -1010,6 +1013,7 @@ jobs:
           base-image-digest: ${{ needs.build-sidecar-base-publish.outputs.digest }}
           base-image-artifact-name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
           base-image-tarball-name: ${{ needs.build-sidecar-base.outputs.tarball-name }}
+          trivy-version: ${{ env.TRIVY_VERSION }}
 
   build-sidecar-publish:
     name: Publish Sidecar
@@ -1096,6 +1100,7 @@ jobs:
           enable-arm64: "false"
           cache-scope: fine-tune-${{ matrix.variant }}
           free-disk-space: "true"
+          trivy-version: ${{ env.TRIVY_VERSION }}
 
   build-fine-tune-publish:
     name: Publish Fine-Tune
