@@ -7,6 +7,9 @@ export default defineMain({
     '@storybook/addon-docs',
     '@storybook/addon-a11y',
   ],
+  features: {
+    changeDetection: true,
+  },
   async viteFinal(config) {
     const { default: tailwindcss } = await import('@tailwindcss/vite')
     config.plugins = [...(config.plugins ?? []), tailwindcss()]
