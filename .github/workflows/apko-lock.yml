@@ -63,17 +63,22 @@ jobs:
       # action walks every installation the App is authorised for.
       - name: Mint repo-bot App token
         id: app-token
+        # zizmor: ignore[github-app] -- false positive in zizmor v1.25.0
+        # (bundled with zizmorcore/zizmor-action v0.5.4): the audit checks
+        # for the YAML key `repository` (singular) instead of
+        # `repositories` (plural), so this callsite is flagged despite
+        # passing the correct plural key. Fixed upstream in zizmor
+        # v1.25.2; remove this ignore once zizmor-action ships v1.25.2+.
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ secrets.APKO_BOT_APP_CLIENT_ID }}
           private-key: ${{ secrets.APKO_BOT_APP_PRIVATE_KEY }}
-          # Both `owner` and `repositories` are literal values so zizmor's
-          # `github-app` audit can statically verify the scope is narrow.
-          # Expression-based values (e.g. `${{ github.repository_owner }}`)
-          # would be flagged regardless of `repositories:` content. This
-          # workflow is scheduled-only + workflow_dispatch on the
-          # `apko-lock` environment whose branch policy admits only main,
-          # so the repo context is always `Aureliolo/synthorg`.
+          # Both `owner` and `repositories` are literal values so the
+          # scope is statically verifiable as narrow once the v1.25.0
+          # key-name bug above is fixed. This workflow is scheduled-only
+          # + workflow_dispatch on the `apko-lock` environment whose
+          # branch policy admits only main, so the repo context is
+          # always `Aureliolo/synthorg`.
           owner: Aureliolo
           repositories: synthorg
           # Least-privilege scope per the env-comment above: Contents:write
