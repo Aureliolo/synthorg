@@ -26,7 +26,10 @@ from synthorg.ontology.models import (
     EntityTier,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -260,6 +263,9 @@ class PostgresOntologyEntityRepository:
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """List all entity definitions in name order."""
+        limit = validate_pagination_args(
+            limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
+        )
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,

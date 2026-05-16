@@ -105,14 +105,20 @@ class SessionRepository(
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List all sessions with pagination.
+        """List every persisted session, paginated.
+
+        Canonical universe for this repository: **all** sessions,
+        active and revoked alike. No active-only filtering is applied
+        here -- callers that want only active sessions filter via
+        :meth:`query` with ``revoked=False``.
 
         Args:
             limit: Maximum rows to return.
             offset: Rows to skip before the window.
 
         Returns:
-            Sessions ordered by session_id ascending.
+            Sessions ordered by session_id ascending (the stable
+            generic ``IdKeyedRepository`` ordering).
 
         Raises:
             PersistenceError: If the operation fails.
@@ -175,11 +181,14 @@ class SessionRepository(
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List sessions including revoked, ordered by created_at DESC.
+        """List sessions newest-first (audit/history ordering).
 
-        Callers needing the full history (revoked + active) for audit
-        dashboards bypass the IdKeyed ``list_items`` active-only
-        ordering invariant.
+        Same universe as :meth:`list_items` (all sessions, active and
+        revoked) -- this is purely an alternate ordering
+        (``created_at`` DESC instead of ``session_id`` ASC) for audit
+        dashboards that need most-recent-first history. It is not an
+        active-only vs all-sessions distinction; both methods return
+        the full set.
         """
         ...
 

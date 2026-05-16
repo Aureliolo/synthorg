@@ -34,7 +34,15 @@ fi
 # substrings inside paths or commit messages).
 BYPASS_RE='(--no-verify([[:space:]=]|$)|--no-gpg-sign([[:space:]=]|$)|-c[[:space:]]+commit\.gpgsign=false|-c[[:space:]]+core\.hooksPath=)'
 
-if echo "$COMMAND" | grep -qE "$BYPASS_RE"; then
+# Short-form ``-n`` is ``--no-verify`` on ``git commit`` (and the
+# documented bypass surface for ``git push``); the long-form regex
+# above does not see it. Match ``-n`` only as a standalone token after
+# a ``commit``/``push`` subcommand so we don't trip on ``-n`` embedded
+# in a path or commit message.
+SHORT_NO_VERIFY_RE='git[[:space:]]([^|;&]*[[:space:]])?(commit|push)([[:space:]][^|;&]*)?[[:space:]]-n([[:space:]]|$)'
+
+if echo "$COMMAND" | grep -qE "$BYPASS_RE" \
+    || echo "$COMMAND" | grep -qE "$SHORT_NO_VERIFY_RE"; then
     cat <<'ENDJSON'
 {
   "hookSpecificOutput": {

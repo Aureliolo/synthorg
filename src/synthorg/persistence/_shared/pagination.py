@@ -68,7 +68,15 @@ async def paginate[PageItemT](
     Yields:
         Each non-empty page in offset order. The final (short) page is
         yielded before iteration terminates.
+
+    Raises:
+        QueryError: If ``page_size`` is not a positive int. A
+            non-positive step makes ``itertools.count`` never advance,
+            so a non-empty backend would page forever.
     """
+    if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
+        msg = f"page_size must be a positive int, got {page_size!r}"
+        raise QueryError(msg)
     for offset in count(0, page_size):
         page = await fetch(page_size, offset)
         if not page:

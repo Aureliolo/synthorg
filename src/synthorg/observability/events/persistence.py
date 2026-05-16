@@ -494,6 +494,9 @@ PERSISTENCE_WEBHOOK_RECEIPT_LISTED: Final[str] = "persistence.webhook_receipt.li
 PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED: Final[str] = (
     "persistence.webhook_receipt.list_failed"
 )
+PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED: Final[str] = (
+    "persistence.webhook_receipt.delete_failed"
+)
 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP: Final[str] = "persistence.webhook_receipt.cleanup"
 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED: Final[str] = (
     "persistence.webhook_receipt.cleanup_failed"

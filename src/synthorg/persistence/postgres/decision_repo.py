@@ -858,8 +858,22 @@ class PostgresDecisionRepository:
             Number of rows removed.
 
         Raises:
+            ValueError: If ``threshold`` is a naive datetime. Rejected
+                explicitly (mirroring ``append_with_next_version``) so
+                the backend never silently reinterprets it in the
+                session timezone.
             QueryError: If the operation fails.
         """
+        if threshold.tzinfo is None:
+            msg = (
+                f"threshold must be timezone-aware, got a naive datetime {threshold!r}"
+            )
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error_type="NaiveDatetimeRejected",
+                error=msg,
+            )
+            raise ValueError(msg)
         try:
             async with (
                 self._pool.connection() as conn,

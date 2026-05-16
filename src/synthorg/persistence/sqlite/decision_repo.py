@@ -513,6 +513,22 @@ class SQLiteDecisionRepository:
                     sqlite_errorname=exc.sqlite_errorname,
                 )
                 raise DuplicateRecordError(msg) from exc
+            if _is_structural_constraint_error(exc):
+                # CHECK / FOREIGN KEY / NOT NULL / trigger violations
+                # are schema-level programming errors -- log with full
+                # context and re-raise the original IntegrityError so
+                # callers see the structural failure rather than a
+                # generic QueryError that could be mistaken for a
+                # transient persistence hiccup.
+                logger.warning(
+                    PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                    record_id=event.id,
+                    error_type=type(exc).__name__,
+                    violation_category="StructuralConstraintViolation",
+                    error=safe_error_description(exc),
+                    sqlite_errorname=exc.sqlite_errorname,
+                )
+                raise
             msg = f"Failed to append decision record {event.id!r}"
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,

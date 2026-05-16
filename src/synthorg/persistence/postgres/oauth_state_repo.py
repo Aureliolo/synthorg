@@ -227,7 +227,7 @@ class PostgresOAuthStateRepository:
             raise QueryError(msg) from exc
         try:
             return tuple(_row_to_state(row) for row in rows)
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, KeyError) as exc:
             msg = "Failed to deserialize oauth_state rows"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_FETCH_FAILED,

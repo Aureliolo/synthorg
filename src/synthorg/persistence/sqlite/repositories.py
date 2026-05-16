@@ -418,6 +418,9 @@ INSERT INTO cost_records (
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Query cost records matching filter spec with pagination."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_COST_RECORD_QUERY_FAILED
+        )
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.agent_id is not None:
@@ -434,9 +437,8 @@ FROM cost_records"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
-        effective_offset = max(0, int(offset))
         sql += " LIMIT ? OFFSET ?"
-        params.extend([int(limit), effective_offset])
+        params.extend([limit, offset])
 
         try:
             cursor = await self._db.execute(sql, params)
@@ -641,7 +643,7 @@ INSERT INTO messages (
                         "priority": data["priority"],
                         "channel": data["channel"],
                         "content": json.dumps(data["parts"]),
-                        "attachments": "[]",
+                        "attachments": json.dumps(data.get("attachments", [])),
                         "metadata": json.dumps(data["metadata"]),
                     },
                 )
@@ -680,7 +682,8 @@ INSERT INTO messages (
             data["from"] = data.pop("sender")
             # Parts are stored as JSON in the content column.
             data["parts"] = json.loads(data.pop("content"))
-            data.pop("attachments", None)
+            raw_attachments = data.get("attachments")
+            data["attachments"] = json.loads(raw_attachments) if raw_attachments else []
             data["metadata"] = json.loads(data["metadata"])
             return Message.model_validate(data)
         except (
