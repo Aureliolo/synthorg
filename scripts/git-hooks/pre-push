@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Thin dispatcher: see scripts/git-hooks/_run-hook.sh for the rationale.
+# Git runs hooks with cwd at the working-tree root, so the sibling path
+# resolves regardless of which worktree invoked this.
+set -euo pipefail
+exec "$(dirname "$0")/_run-hook.sh" pre-push "$@"

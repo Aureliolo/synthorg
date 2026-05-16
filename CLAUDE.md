@@ -34,6 +34,7 @@ uv run python -m pytest tests/ --ignore=tests/benchmarks/ --cov=synthorg --cov-f
 uv run python -m pytest tests/benchmarks/ --codspeed -n0
 HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -k properties
 HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit --timeout=0
+bash scripts/install_git_hooks.sh                   # one-time per clone: wire core.hooksPath -> scripts/git-hooks (NOT pre-commit install)
 uv run pre-commit run --all-files
 uv run python scripts/check_schema_drift_revisions.py --backend sqlite  # or --backend postgres
 PYTHONPATH=. uv run zensical build                  # docs

@@ -47,16 +47,6 @@
         ]
       },
       {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 scripts/check_no_bulk_edit.py",
-            "timeout": 5000
-          }
-        ]
-      },
-      {
         "matcher": "Edit|Write",
         "hooks": [
           {

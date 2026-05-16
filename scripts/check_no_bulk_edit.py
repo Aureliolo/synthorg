@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: block bulk-edit operations that need explicit user approval.
+"""PreToolUse hook: block shell-driven bulk-edit shortcuts.
 
-Blocks:
-  1. Edit tool with `replace_all: true` -- bulk replacement across a single file
-     (the user must approve every bulk edit explicitly).
-  2. Bash commands using `sed -i`, `sed --in-place`, `awk -i inplace`,
-     `perl -i`, `perl -pi`, or shell-redirect overwrites that bulk-rewrite
-     a file (`> file`, `>> file` to existing tracked files via piped sed/awk
-     output) -- common bulk-edit shortcuts that bypass per-line review.
+The native Edit tool (including `replace_all: true`) and the Write tool
+are intentionally NOT blocked: they produce a reviewable, atomic diff
+the user sees and approves through the normal tool-permission flow.
 
-The user has explicitly stated that bulk edits must always be approved
-before applying. See the `feedback_no_bulk_edit_without_approval` memory.
+Blocks only shell in-place bulk rewrites that bypass that per-diff
+review:
+  - `sed -i` / `sed --in-place` (also `gsed`)
+  - `awk -i inplace` / `gawk -i inplace`
+  - `perl -i` / `perl -pi` / `perl -pie`
+  - shell-redirect overwrite of an existing tracked source file
+    (`> path/foo.py`, `>> path/foo.md`) -- the common
+    `echo ... > file` / piped-sed-output overwrite shortcut.
+
+These shell forms apply sweeping changes with no diff surfaced for
+approval, so they still require an explicit go-ahead. See the archived
+`feedback_no_bulk_edit_without_approval` memory for the policy history.
 """
 
 import json
@@ -52,19 +58,6 @@ def main() -> int:
 
     tool_name = payload.get("tool_name", "")
     tool_input = payload.get("tool_input") or {}
-
-    if tool_name == "Edit" and tool_input.get("replace_all") is True:
-        print(
-            "BLOCKED: Edit with replace_all=true is a bulk edit. "
-            "The user must explicitly approve every bulk edit before it runs. "
-            "Either ask the user to confirm bulk replacement of "
-            f"`{tool_input.get('old_string', '<old_string>')}` in "
-            f"`{tool_input.get('file_path', '<file>')}`, or do per-occurrence edits "
-            "with replace_all=false (one Edit call per occurrence with enough "
-            "context to make old_string unique).",
-            file=sys.stderr,
-        )
-        return 2
 
     if tool_name == "Bash":
         command = tool_input.get("command", "") or ""
