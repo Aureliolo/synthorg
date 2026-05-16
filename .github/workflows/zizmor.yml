@@ -35,10 +35,3 @@ jobs:
         with:
           config: .github/.zizmor.yml
           advanced-security: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-          # zizmor-action v0.5.4 defaults to zizmor v1.25.0, which has
-          # a bug in the github-app audit: it checks for the YAML key
-          # `repository` (singular) instead of `repositories` (plural),
-          # so every actions/create-github-app-token call that uses the
-          # correct plural key still gets flagged. Fixed in v1.25.2.
-          # renovate: datasource=github-releases depName=zizmorcore/zizmor
-          version: v1.25.2

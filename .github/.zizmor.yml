@@ -16,3 +16,17 @@ rules:
       # steps.scan-ref.outputs.ref is set by echo in the same job (not
       # user-controllable). zizmor flags it at Low confidence.
       - docker.yml
+
+  github-app:
+    ignore:
+      # zizmor v1.25.0 (bundled with zizmorcore/zizmor-action v0.5.4) has a
+      # bug where the `github-app` audit checks for the YAML key
+      # `repository` (singular) instead of `repositories` (plural), so every
+      # actions/create-github-app-token callsite that uses the correct
+      # plural key still gets flagged. Fixed upstream in zizmor v1.25.2.
+      # Remove this ignore block once zizmor-action ships v1.25.2+.
+      # Our callsites pass a literal `owner: Aureliolo`, a literal
+      # `repositories: synthorg`, and explicit `permission-*` inputs --
+      # the scope is genuinely narrow.
+      - apko-lock.yml
+      - release-runner-setup/action.yml
