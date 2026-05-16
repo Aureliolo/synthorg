@@ -1183,7 +1183,9 @@ describe('setup wizard store', () => {
           HttpResponse.json(apiError('Setup already complete'), { status: 409 }),
         ),
       )
-      await expect(useSetupWizardStore.getState().completeSetup()).rejects.toThrow()
+      // Store owns the error UX: completeSetup sets completionError
+      // and does NOT throw (callers branch off store state).
+      await useSetupWizardStore.getState().completeSetup()
       const state = useSetupWizardStore.getState()
       expect(state.completing).toBe(false)
       expect(state.completionError).not.toBeNull()
@@ -1198,7 +1200,7 @@ describe('setup wizard store', () => {
           ),
         ),
       )
-      await expect(useSetupWizardStore.getState().completeSetup()).rejects.toThrow()
+      await useSetupWizardStore.getState().completeSetup()
       const state = useSetupWizardStore.getState()
       expect(state.completing).toBe(false)
       expect(state.completionError).not.toBeNull()
@@ -1211,7 +1213,7 @@ describe('setup wizard store', () => {
           HttpResponse.json(apiError('Validation failed'), { status: 422 }),
         ),
       )
-      await expect(useSetupWizardStore.getState().completeSetup()).rejects.toThrow()
+      await useSetupWizardStore.getState().completeSetup()
       expect(useSetupWizardStore.getState().completionError).not.toBeNull()
       // Replace with a happy-path handler and retry.
       server.use(

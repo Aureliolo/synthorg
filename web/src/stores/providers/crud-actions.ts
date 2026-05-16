@@ -200,6 +200,11 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
       beginMutation(set)
       let succeeded = 0
       const failed: string[] = []
+      // First per-name failure, threaded into the all-failed error
+      // toast so a 409 conflict keeps its distinct title instead of
+      // the generic fallback (store-mutation contract: every error
+      // toast goes through getCrudErrorTitle).
+      let firstError: unknown = null
       try {
         for (const name of names) {
           try {
@@ -215,6 +220,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
             }))
             succeeded += 1
           } catch (err) {
+            firstError ??= err
             failed.push(name)
             log.error('bulkDeleteProviders: delete failed', {
               name: sanitizeForLog(name),
@@ -237,9 +243,12 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         } else {
           useToastStore.getState().add({
             variant: 'error',
-            title: `Failed to delete ${failed.length} provider${
-              failed.length === 1 ? '' : 's'
-            }`,
+            ...getCrudErrorTitle(
+              firstError,
+              `Failed to delete ${failed.length} provider${
+                failed.length === 1 ? '' : 's'
+              }`,
+            ),
           })
         }
         // Resync against the server when anything failed so the list

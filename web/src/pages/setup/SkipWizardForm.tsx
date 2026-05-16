@@ -6,7 +6,6 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 
 export function SkipWizardForm() {
   const navigate = useNavigate()
@@ -28,23 +27,33 @@ export function SkipWizardForm() {
     setLoading(true)
     setError(null)
     setCompanyNameStore(trimmed)
+    // Both store mutations own their error UX and do not throw
+    // (``submitCompany`` sets ``companyError``; ``completeSetup`` sets
+    // ``completionError``). The caller must not wrap them in
+    // try/catch; the try/finally here exists ONLY to guarantee the
+    // ``loading`` flag is cleared, never to swallow store errors.
     try {
-      // submitCompany handles its own errors in the store (sets
-      // companyError instead of throwing). Read the durable
-      // companyResponse from the store after the call to detect a
-      // creation failure -- a try/catch around submitCompany alone
-      // would never fire. Only wizardCompleteSetup can throw, so
-      // the catch block below is reserved for that path.
       await submitCompany()
-      const wizardState = useSetupWizardStore.getState()
-      if (wizardState.companyResponse === null) {
+      const afterCompany = useSetupWizardStore.getState()
+      if (afterCompany.companyResponse === null) {
         setError(
-          wizardState.companyError
+          afterCompany.companyError
             ?? 'Company creation failed. Please try again.',
         )
         return
       }
       await wizardCompleteSetup()
+      const afterComplete = useSetupWizardStore.getState()
+      if (afterComplete.completionError !== null) {
+        // Partial success: the company exists (companyResponse is
+        // non-null by construction here) but completion failed. Keep
+        // the distinct partial-success message so the operator knows
+        // not to recreate the company on retry.
+        setError(
+          `Company '${trimmed}' was created, but setup completion failed: ${afterComplete.completionError}. Open the wizard's Complete step or reload the page to retry.`,
+        )
+        return
+      }
       useSetupStore.setState({ setupComplete: true })
       useToastStore.getState().add({
         variant: 'success',
@@ -52,15 +61,6 @@ export function SkipWizardForm() {
         description: 'Setup complete. Configure everything else in Settings.',
       })
       void navigate('/')
-    } catch (err) {
-      // The catch path now only runs for wizardCompleteSetup throws
-      // (submitCompany never throws -- see above). companyResponse
-      // is by construction non-null here, so the error is always a
-      // partial-success: company exists, completion failed.
-      const baseMessage = getErrorMessage(err)
-      setError(
-        `Company '${trimmed}' was created, but setup completion failed: ${baseMessage}. Open the wizard's Complete step or reload the page to retry.`,
-      )
     } finally {
       setLoading(false)
     }

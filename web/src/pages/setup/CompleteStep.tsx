@@ -44,10 +44,14 @@ export function CompleteStep() {
   }, [companyResponse, navigate])
 
   const handleComplete = useCallback(async () => {
-    try {
-      await wizardCompleteSetup()
-    } catch {
-      // Error stored in completionError by the store action and rendered below.
+    // Store owns the error UX: ``completeSetup`` sets
+    // ``completionError`` and does not throw, so the caller must not
+    // wrap it in try/catch. Branch off store state after it resolves.
+    await wizardCompleteSetup()
+    const wizardState = useSetupWizardStore.getState()
+    if (wizardState.completionError !== null) {
+      // Failure: the error is rendered below from store state. Keep
+      // the confirm dialog as-is so the user can retry.
       return
     }
     // Hold the wizard open if the backend reported a non-fatal warning
@@ -55,7 +59,7 @@ export function CompleteStep() {
     // mid-setup). The user clicks ``Continue to dashboard`` after
     // reading the notice so a half-configured runtime does not
     // silently land on the dashboard.
-    if (useSetupWizardStore.getState().completionWarning !== null) {
+    if (wizardState.completionWarning !== null) {
       setConfirmOpen(false)
       return
     }

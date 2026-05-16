@@ -122,8 +122,12 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) =
         duration_ms: Date.now() - startedAt,
         error: sanitizeForLog(message),
       })
+      // Store owns the error UX: surface the failure via
+      // ``completionError`` and do NOT re-throw. Callers branch off
+      // ``completionError`` / ``completionWarning`` after the await
+      // (the store-mutation contract: callers must not wrap this in
+      // try/catch).
       set({ completionError: message, completing: false })
-      throw err
     }
   },
 
