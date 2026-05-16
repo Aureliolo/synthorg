@@ -127,6 +127,15 @@ export function getErrorMessage(error: unknown): string {
       if (code === ErrorCode.VERSION_CONFLICT || code === ErrorCode.TASK_VERSION_CONFLICT) {
         return 'This resource was edited by someone else. Reload to see the latest version, then retry.'
       }
+      // Setup completion is the most common 409 with no structured
+      // code (RESOURCE_CONFLICT) -- the backend rejects a second
+      // /setup/complete after the flag is already set. Surface that
+      // case with copy that points operators at the right next step
+      // instead of the generic resource-state message.
+      const url = error.config?.url ?? ''
+      if (url.includes('/setup/complete')) {
+        return 'Setup is already complete. Reload to see the current dashboard.'
+      }
       return 'The resource state changed. Refresh the page and try again.'
     }
 

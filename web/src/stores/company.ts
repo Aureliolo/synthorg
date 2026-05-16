@@ -173,7 +173,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       }))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to update company',
+        ...getCrudErrorTitle(err, 'Failed to update company'),
         description: getErrorMessage(err),
       })
       return false

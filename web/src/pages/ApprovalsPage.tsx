@@ -62,12 +62,14 @@ export default function ApprovalsPage() {
   const [batchComment, setBatchComment] = useState('')
   const [batchReason, setBatchReason] = useState('')
   const [batchLoading, setBatchLoading] = useState(false)
-  const [wasConnected, setWasConnected] = useState(false)
-
-  // Track whether WS was ever connected to avoid flash on initial load
-  if (wsConnected && !wasConnected) {
-    setWasConnected(true)
-  }
+  // Track whether WS was ever connected to avoid flash on initial
+  // load. A ref + effect avoids the setState-in-render anti-pattern
+  // that would otherwise trigger a redundant render and a Strict-Mode
+  // warning in dev.
+  const wasConnectedRef = useRef(false)
+  useEffect(() => {
+    if (wsConnected) wasConnectedRef.current = true
+  }, [wsConnected])
 
   // URL-synced filters
   const filters: ApprovalPageFilters = useMemo(() => {
@@ -274,7 +276,7 @@ export default function ApprovalsPage() {
         <ErrorBanner severity="error" title="Could not load approvals" description={error} />
       )}
 
-      {(wsSetupError || (wasConnected && !wsConnected)) && !loading && (
+      {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
         <ErrorBanner
           variant="offline"
           title="Real-time updates disconnected"

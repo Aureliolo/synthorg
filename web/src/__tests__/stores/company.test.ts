@@ -274,7 +274,11 @@ describe('useCompanyStore', () => {
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
-      expect(toasts[0]!.title).toBe('Failed to update company')
+      // updateCompany routes through getCrudErrorTitle so a 403 lands
+      // on the dedicated "Permission denied" title rather than the
+      // generic fallback. Other CRUD tests assert similar specialised
+      // titles for their distinct categories.
+      expect(toasts[0]!.title).toBe('Permission denied')
     })
   })
 

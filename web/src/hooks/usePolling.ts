@@ -133,6 +133,10 @@ export function usePolling(
       // rejected ``fn()`` into a setError + log; this catch only
       // fires if scheduleTick itself rejects, which should never
       // happen. Belt-and-braces so an unexpected throw cannot leak.
+      // Guard against a stale start/stop cycle: if the run generation
+      // has already moved on, the error belongs to a discarded run
+      // and must not clobber the active state.
+      if (!activeRef.current || runId !== runIdRef.current) return
       setError(getErrorMessage(err))
       log.error('Polling initial run failed:', err)
     })
