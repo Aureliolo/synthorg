@@ -121,7 +121,7 @@ class ConnectionCatalog:
         async with self._cache_lock:
             # Re-check under lock (double-checked locking)
             if not self._cache_valid:
-                all_conns = await self._repo.list_all()
+                all_conns = await self._repo.list_items(limit=10_000)
                 self._cache = {c.name: c for c in all_conns}
                 self._cache_valid = True
 

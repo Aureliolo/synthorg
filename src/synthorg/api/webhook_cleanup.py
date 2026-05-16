@@ -245,7 +245,9 @@ async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
         return
     default_days = await _resolve_webhook_receipt_retention(app_state)
     try:
-        connections = await app_state.persistence.connections.list_all()
+        connections = await app_state.persistence.connections.list_items(
+            limit=10_000,
+        )
     except asyncio.CancelledError:
         raise
     except MemoryError, RecursionError:

@@ -22,6 +22,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_OAUTH_STATE_FETCH_FAILED,
     PERSISTENCE_OAUTH_STATE_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
 
 if TYPE_CHECKING:
@@ -185,6 +186,46 @@ class PostgresOAuthStateRepository:
             )
             raise QueryError(msg) from exc
         return deleted
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[OAuthState, ...]:
+        """List all OAuth states with pagination."""
+        if limit is not None and limit <= 0:
+            return ()
+        sql = f"SELECT {_SELECT_COLS} FROM oauth_states ORDER BY created_at DESC"  # noqa: S608
+        params: tuple[object, ...] = ()
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params = (int(limit), max(0, int(offset)))
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, params)
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list oauth_states"
+            logger.warning(
+                PERSISTENCE_OAUTH_STATE_FETCH_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            return tuple(_row_to_state(row) for row in rows)
+        except (ValueError, TypeError) as exc:
+            msg = "Failed to deserialize oauth_state rows"
+            logger.warning(
+                PERSISTENCE_OAUTH_STATE_FETCH_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def mark_consumed(
         self,

@@ -32,7 +32,6 @@ from synthorg.persistence.connection_protocol import (
 )
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import (
-    DecisionFilterSpec,
     DecisionRepository,
     DecisionRole,
 )
@@ -70,7 +69,6 @@ __all__ = [
     "ConnectionRepository",
     "ConnectionSecretRepository",
     "CostRecordRepository",
-    "DecisionFilterSpec",
     "DecisionRepository",
     "DecisionRole",
     "DuplicateRecordError",

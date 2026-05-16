@@ -818,8 +818,8 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         Raises:
             PersistenceConnectionError: If not connected.
         """
-        result = await self.settings.get(NotBlankStr("_system"), key)
-        return result[0] if result is not None else None
+        result = await self.settings.get((NotBlankStr("_system"), key))
+        return result.value if result is not None else None
 
     async def set_setting(self, key: NotBlankStr, value: str) -> None:
         """Store a setting value (upsert) in the ``_system`` namespace.
@@ -829,10 +829,14 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         Raises:
             PersistenceConnectionError: If not connected.
         """
+        from synthorg.persistence.settings_protocol import SettingRow  # noqa: PLC0415
+
         updated_at = datetime.now(UTC).isoformat()
-        await self.settings.set(
-            NotBlankStr("_system"),
-            key,
-            value,
-            updated_at,
+        await self.settings.save(
+            SettingRow(
+                namespace=NotBlankStr("_system"),
+                key=key,
+                value=value,
+                updated_at=updated_at,
+            ),
         )

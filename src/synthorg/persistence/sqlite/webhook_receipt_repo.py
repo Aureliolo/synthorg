@@ -22,8 +22,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
-    DEFAULT_LIST_LIMIT,
     coerce_row_timestamp,
     format_iso_utc,
 )
@@ -75,8 +75,9 @@ class SQLiteWebhookReceiptRepository:
         self._db = db
         self._write_context = write_context
 
-    async def log(self, receipt: WebhookReceipt) -> None:
-        """Append a webhook receipt row (idempotent on receipt id)."""
+    async def save(self, entity: WebhookReceipt) -> None:
+        """Persist a webhook receipt (idempotent on receipt id)."""
+        receipt = entity
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -243,11 +244,75 @@ class SQLiteWebhookReceiptRepository:
             else:
                 return cursor.rowcount > 0
 
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WebhookReceipt, ...]:
+        """List all webhook receipts with pagination."""
+        if limit <= 0:
+            return ()
+        sql = (
+            "SELECT "
+            "    id, connection_name, event_type, status, "
+            "    received_at, processed_at, payload_json, error "
+            "FROM webhook_receipts ORDER BY received_at DESC"
+        )
+        params: tuple[object, ...] = ()
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params = (int(limit), max(0, int(offset)))
+        try:
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list webhook receipts"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            return tuple(_row_to_receipt(row) for row in rows)
+        except (ValueError, TypeError) as exc:
+            msg = "Failed to deserialize webhook receipt rows"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        """Delete a webhook receipt by ID."""
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM webhook_receipts WHERE id = ?",
+                    (str(entity_id),),
+                )
+                deleted = cursor.rowcount > 0
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to delete webhook receipt {entity_id!r}"
+                logger.warning(
+                    PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                    receipt_id=str(entity_id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return deleted
+
     async def get_by_connection(
         self,
         connection_name: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List receipts for *connection_name*, newest-first up to *limit*."""
