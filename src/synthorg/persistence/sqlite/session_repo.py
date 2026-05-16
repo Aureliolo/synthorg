@@ -22,11 +22,13 @@ from synthorg.observability.events.api import (
     API_SESSION_CREATE_FAILED,
     API_SESSION_REVOKE_FAILED,
 )
-from synthorg.persistence._shared import (
-    DEFAULT_LIST_LIMIT,
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.datetime_marshaller import (
     coerce_row_timestamp,
     format_iso_utc,
 )
+from synthorg.persistence._shared.pagination import DEFAULT_LIST_LIMIT
+from synthorg.persistence.auth_protocol import SessionFilterSpec  # noqa: TC001
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -97,8 +99,9 @@ class SQLiteSessionRepository:
         rows = await cursor.fetchall()
         self._revoked = {row["session_id"] for row in rows}
 
-    async def create(self, session: Session) -> None:
-        """Persist a new session."""
+    async def save(self, entity: Session) -> None:
+        """Persist a session (insert or update by session_id)."""
+        session = entity
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -135,14 +138,68 @@ class SQLiteSessionRepository:
                 )
                 raise QueryError(msg) from exc
 
-    async def get(self, session_id: str) -> Session | None:
+    async def get(self, entity_id: str) -> Session | None:
         """Look up a session by ID."""
         cursor = await self._db.execute(
             "SELECT * FROM sessions WHERE session_id = ?",
-            (session_id,),
+            (entity_id,),
         )
         row = await cursor.fetchone()
         return _row_to_session(row) if row else None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
+        """List all sessions with pagination."""
+        sql = "SELECT * FROM sessions ORDER BY session_id ASC"
+        params: tuple[object, ...] = ()
+        effective_offset = max(0, int(offset))
+        sql += " LIMIT ? OFFSET ?"
+        params = (*params, int(limit), effective_offset)
+        cursor = await self._db.execute(sql, params)
+        rows = await cursor.fetchall()
+        return tuple(_row_to_session(r) for r in rows)
+
+    async def query(
+        self,
+        filter_spec: SessionFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
+        """List sessions matching the filter spec."""
+        sql = "SELECT * FROM sessions WHERE 1=1"
+        params: list[object] = []
+        if filter_spec.user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(filter_spec.user_id)
+        if filter_spec.revoked is not None:
+            sql += " AND revoked = ?"
+            params.append(int(filter_spec.revoked))
+        sql += " ORDER BY session_id ASC"
+        effective_offset = max(0, int(offset))
+        sql += " LIMIT ? OFFSET ?"
+        params = [*params, int(limit), effective_offset]
+        cursor = await self._db.execute(sql, tuple(params))
+        rows = await cursor.fetchall()
+        return tuple(_row_to_session(r) for r in rows)
+
+    async def count(self, filter_spec: SessionFilterSpec) -> int:
+        """Count sessions matching the filter spec."""
+        sql = "SELECT COUNT(*) AS cnt FROM sessions WHERE 1=1"
+        params: list[object] = []
+        if filter_spec.user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(filter_spec.user_id)
+        if filter_spec.revoked is not None:
+            sql += " AND revoked = ?"
+            params.append(int(filter_spec.revoked))
+        cursor = await self._db.execute(sql, tuple(params))
+        row = await cursor.fetchone()
+        return row["cnt"] if row else 0
 
     async def list_by_user(
         self,
@@ -187,6 +244,29 @@ class SQLiteSessionRepository:
         cursor = await self._db.execute(sql, params)
         rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
+
+    async def delete(self, entity_id: str) -> bool:
+        """Delete a session by ID."""
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM sessions WHERE session_id = ?",
+                    (entity_id,),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to delete session {entity_id!r}"
+                logger.warning(
+                    API_SESSION_REVOKE_FAILED,
+                    session_id=entity_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            else:
+                return cursor.rowcount > 0
 
     async def revoke(self, session_id: str) -> bool:
         """Revoke a session by ID."""

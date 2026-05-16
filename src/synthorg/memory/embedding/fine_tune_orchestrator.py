@@ -145,7 +145,7 @@ class FineTuneOrchestrator:
                 started_at=now,
                 updated_at=now,
             )
-            await self._run_repo.save_run(run)
+            await self._run_repo.save(run)
             self._current_run = run
             logger.info(
                 MEMORY_FINE_TUNE_STARTED,
@@ -180,7 +180,7 @@ class FineTuneOrchestrator:
             if self.is_running:
                 msg = "A fine-tuning run is already active"
                 raise RuntimeError(msg)
-            run = await self._run_repo.get_run(run_id)
+            run = await self._run_repo.get(run_id)
             if run is None:
                 msg = f"Run {run_id} not found"
                 raise ValueError(msg)
@@ -198,7 +198,7 @@ class FineTuneOrchestrator:
                     "completed_at": None,
                 },
             )
-            await self._run_repo.save_run(resumed)
+            await self._run_repo.save(resumed)
             self._current_run = resumed
             logger.info(
                 MEMORY_FINE_TUNE_STARTED,
@@ -255,7 +255,7 @@ class FineTuneOrchestrator:
                 error=self._current_run.error,
             )
         # Check DB for most recent run.
-        runs, _ = await self._run_repo.list_runs(limit=1)
+        runs, _ = await self._run_repo.list_items_page(limit=1)
         if runs:
             r = runs[0]
             return FineTuneStatus(
@@ -281,7 +281,7 @@ class FineTuneOrchestrator:
                     "completed_at": now,
                 },
             )
-            await self._run_repo.save_run(run)
+            await self._run_repo.save(run)
             self._current_run = run
             logger.info(
                 MEMORY_FINE_TUNE_COMPLETED,
@@ -511,7 +511,7 @@ class FineTuneOrchestrator:
                 backup_config_json=backup_json,
             )
             await self._checkpoint_repo.deactivate_all()
-            await self._checkpoint_repo.save_checkpoint(record)
+            await self._checkpoint_repo.save(record)
             run = await self._complete_stage(run, "deploying")
 
         return run
@@ -532,7 +532,7 @@ class FineTuneOrchestrator:
                 "updated_at": now,
             },
         )
-        await self._run_repo.save_run(run)
+        await self._run_repo.save(run)
         self._current_run = run
         logger.info(
             MEMORY_FINE_TUNE_STAGE_ENTERED,
@@ -562,7 +562,7 @@ class FineTuneOrchestrator:
                 ),
             },
         )
-        await self._run_repo.save_run(run)
+        await self._run_repo.save(run)
         self._current_run = run
         return run
 
@@ -582,7 +582,7 @@ class FineTuneOrchestrator:
                 "completed_at": now,
             },
         )
-        await self._run_repo.save_run(run)
+        await self._run_repo.save(run)
         self._current_run = run
 
     # -- Progress + WebSocket helpers ---------------------------------

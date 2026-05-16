@@ -172,7 +172,7 @@ class SQLiteLockoutRepository:
                 count = row["cnt"] if row else 0
                 now_locked = count >= self._threshold
                 await self._db.commit()
-            except MemoryError, RecursionError:
+            except MemoryError, RecursionError:  # PEP758 exception syntax
                 raise
             except Exception:
                 await self._db.rollback()
@@ -213,7 +213,7 @@ class SQLiteLockoutRepository:
                     (username,),
                 )
                 await self._db.commit()
-            except MemoryError, RecursionError:
+            except MemoryError, RecursionError:  # PEP758 exception syntax
                 raise
             except Exception:
                 await self._db.rollback()

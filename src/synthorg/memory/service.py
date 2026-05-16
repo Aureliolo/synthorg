@@ -342,7 +342,7 @@ class MemoryService:
             unfiltered count the repository would return for an
             unpaginated query.
         """
-        return await self._require_checkpoints().list_checkpoints(
+        return await self._require_checkpoints().list_items_page(
             limit=limit,
             offset=offset,
         )
@@ -352,7 +352,7 @@ class MemoryService:
         checkpoint_id: NotBlankStr,
     ) -> CheckpointRecord | None:
         """Fetch a single checkpoint by id."""
-        return await self._require_checkpoints().get_checkpoint(checkpoint_id)
+        return await self._require_checkpoints().get(checkpoint_id)
 
     async def deploy_checkpoint(
         self,
@@ -374,7 +374,7 @@ class MemoryService:
         """
         checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
-            cp = await checkpoints.get_checkpoint(checkpoint_id)
+            cp = await checkpoints.get(checkpoint_id)
             if cp is None:
                 logger.warning(
                     MEMORY_CHECKPOINT_NOT_FOUND,
@@ -394,7 +394,7 @@ class MemoryService:
                     prior=prior,
                 )
 
-            updated = await checkpoints.get_checkpoint(checkpoint_id)
+            updated = await checkpoints.get(checkpoint_id)
             if updated is None:
                 logger.error(
                     MEMORY_CHECKPOINT_REREAD_FAILED,
@@ -428,7 +428,7 @@ class MemoryService:
         """
         checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
-            cp = await checkpoints.get_checkpoint(checkpoint_id)
+            cp = await checkpoints.get(checkpoint_id)
             if cp is None:
                 logger.warning(
                     MEMORY_CHECKPOINT_NOT_FOUND,
@@ -478,7 +478,7 @@ class MemoryService:
                     await self._settings.set("memory", key, str(value))
 
             await checkpoints.deactivate_all()
-            updated = await checkpoints.get_checkpoint(checkpoint_id)
+            updated = await checkpoints.get(checkpoint_id)
             if updated is None:
                 logger.error(
                     MEMORY_CHECKPOINT_REREAD_FAILED,
@@ -515,7 +515,7 @@ class MemoryService:
         """
         checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
-            existing = await checkpoints.get_checkpoint(checkpoint_id)
+            existing = await checkpoints.get(checkpoint_id)
             if existing is None:
                 logger.warning(
                     MEMORY_CHECKPOINT_NOT_FOUND,
@@ -524,7 +524,7 @@ class MemoryService:
                 )
                 msg = f"Checkpoint {checkpoint_id} not found"
                 raise CheckpointNotFoundError(msg)
-            await checkpoints.delete_checkpoint(checkpoint_id)
+            await checkpoints.delete(checkpoint_id)
 
     async def list_runs(
         self,
@@ -561,7 +561,7 @@ class MemoryService:
             )
             msg = f"limit must be >= 1, got {limit}"
             raise ValueError(msg)
-        return await self._require_runs().list_runs(limit=limit, offset=offset)
+        return await self._require_runs().list_items_page(limit=limit, offset=offset)
 
     # ── Fine-tune lifecycle ────────────────────────────────────────
 
@@ -642,7 +642,7 @@ class MemoryService:
         orchestrator = self._require_orchestrator()
         if run_id is None:
             return await orchestrator.get_status()
-        run = await self._require_runs().get_run(str(run_id))
+        run = await self._require_runs().get(str(run_id))
         if run is None:
             logger.warning(
                 MEMORY_FINE_TUNE_INVALID_REQUEST,

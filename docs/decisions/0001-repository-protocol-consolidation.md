@@ -156,8 +156,8 @@ Migrated by category recipe, one commit per protocol:
 |---|---|
 | AppendOnly | EscalationQueueRepository, WebhookReceiptRepository, OntologyDriftReportRepository, IdempotencyRepository (outcome events) |
 | Singleton or composite-singleton | AgentStateRepository, PrincipleOverrideRepository, RiskOverrideRepository, ParkedContextRepository, OAuthStateRepository, SeenClaimsRepository, CircuitBreakerStateRepository, HeartbeatRepository |
-| IdKeyed + FilteredQuery | ArtifactRepository, ConnectionRepository, CustomRuleRepository, McpInstallationRepository, SubworkflowRepository, TrainingPlanRepository, TrainingResultRepository, SessionRepository, OntologyEntityRepository, WorkflowExecutionRepository, PersonalityPresetRepository, VersionRepository[T] |
-| Auth | LockoutRepository, RefreshTokenRepository, ConnectionSecretRepository |
+| IdKeyed + FilteredQuery | ArtifactRepository, ConnectionRepository, CustomRuleRepository, McpInstallationRepository, SubworkflowRepository, TrainingPlanRepository, TrainingResultRepository, ~~SessionRepository~~, OntologyEntityRepository, WorkflowExecutionRepository, PersonalityPresetRepository, VersionRepository[T] |
+| Auth (bespoke D7) | ~~LockoutRepository~~, ~~RefreshTokenRepository~~, ConnectionSecretRepository |
 | Stateful | FineTuneCheckpointRepository, DecisionRepository |
 
 ## Migration mechanics

@@ -16,7 +16,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.pagination import DEFAULT_LIST_LIMIT
+from synthorg.persistence.auth_protocol import SessionFilterSpec  # noqa: TC001
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -81,8 +83,9 @@ class PostgresSessionRepository:
             rows = await cur.fetchall()
         self._revoked = {row["session_id"] for row in rows}
 
-    async def create(self, session: Session) -> None:
-        """Persist a new session."""
+    async def save(self, entity: Session) -> None:
+        """Persist a session (insert or update by session_id)."""
+        session = entity
         async with self._pool.connection() as conn, conn.cursor() as cur:
             await cur.execute(
                 "INSERT INTO sessions "
@@ -106,7 +109,7 @@ class PostgresSessionRepository:
         if session.revoked:
             self._revoked.add(session.session_id)
 
-    async def get(self, session_id: str) -> Session | None:
+    async def get(self, entity_id: str) -> Session | None:
         """Look up a session by ID."""
         dict_row = self._dict_row
 
@@ -116,10 +119,82 @@ class PostgresSessionRepository:
         ):
             await cur.execute(
                 "SELECT * FROM sessions WHERE session_id = %s",
-                (session_id,),
+                (entity_id,),
             )
             row = await cur.fetchone()
         return _row_to_session(row) if row else None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
+        """List all sessions with pagination."""
+        dict_row = self._dict_row
+
+        sql = "SELECT * FROM sessions ORDER BY session_id ASC"
+        params: tuple[object, ...] = ()
+        effective_offset = max(0, int(offset))
+        sql += " LIMIT %s OFFSET %s"
+        params = (*params, int(limit), effective_offset)
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
+            await cur.execute(sql, params)
+            rows = await cur.fetchall()
+        return tuple(_row_to_session(r) for r in rows)
+
+    async def query(
+        self,
+        filter_spec: SessionFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
+        """List sessions matching the filter spec."""
+        dict_row = self._dict_row
+
+        sql = "SELECT * FROM sessions WHERE TRUE"
+        params: list[object] = []
+        if filter_spec.user_id is not None:
+            sql += " AND user_id = %s"
+            params.append(filter_spec.user_id)
+        if filter_spec.revoked is not None:
+            sql += " AND revoked = %s"
+            params.append(filter_spec.revoked)
+        sql += " ORDER BY session_id ASC"
+        effective_offset = max(0, int(offset))
+        sql += " LIMIT %s OFFSET %s"
+        params = [*params, int(limit), effective_offset]
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
+            await cur.execute(sql, tuple(params))
+            rows = await cur.fetchall()
+        return tuple(_row_to_session(r) for r in rows)
+
+    async def count(self, filter_spec: SessionFilterSpec) -> int:
+        """Count sessions matching the filter spec."""
+        dict_row = self._dict_row
+
+        sql = "SELECT COUNT(*) AS cnt FROM sessions WHERE TRUE"
+        params: list[object] = []
+        if filter_spec.user_id is not None:
+            sql += " AND user_id = %s"
+            params.append(filter_spec.user_id)
+        if filter_spec.revoked is not None:
+            sql += " AND revoked = %s"
+            params.append(filter_spec.revoked)
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
+            await cur.execute(sql, tuple(params))
+            row = await cur.fetchone()
+        return row["cnt"] if row else 0
 
     async def list_by_user(
         self,
@@ -176,6 +251,16 @@ class PostgresSessionRepository:
             await cur.execute(sql, params)
             rows = await cur.fetchall()
         return tuple(_row_to_session(r) for r in rows)
+
+    async def delete(self, entity_id: str) -> bool:
+        """Delete a session by ID."""
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM sessions WHERE session_id = %s",
+                (entity_id,),
+            )
+            count = cur.rowcount
+        return count > 0
 
     async def revoke(self, session_id: str) -> bool:
         """Revoke a session by ID."""

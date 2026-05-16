@@ -87,7 +87,7 @@ async def _make_session(  # noqa: PLR0913 -- scenario builder wants full control
 class TestSessionRepository:
     async def test_create_and_get(self, backend: PersistenceBackend) -> None:
         session = await _make_session(backend)
-        await backend.sessions.create(session)
+        await backend.sessions.save(session)
         fetched = await backend.sessions.get("sess_1")
         assert fetched is not None
         assert fetched.session_id == "sess_1"
@@ -98,21 +98,21 @@ class TestSessionRepository:
         assert await backend.sessions.get("missing") is None
 
     async def test_list_by_user(self, backend: PersistenceBackend) -> None:
-        await backend.sessions.create(
+        await backend.sessions.save(
             await _make_session(backend, "sess_a", "user_bob", "bob"),
         )
-        await backend.sessions.create(
+        await backend.sessions.save(
             await _make_session(backend, "sess_b", "user_bob", "bob"),
         )
-        await backend.sessions.create(
+        await backend.sessions.save(
             await _make_session(backend, "sess_c", "user_eve", "eve"),
         )
         rows = await backend.sessions.list_by_user("user_bob")
         assert {s.session_id for s in rows} == {"sess_a", "sess_b"}
 
     async def test_list_all_active(self, backend: PersistenceBackend) -> None:
-        await backend.sessions.create(await _make_session(backend, "sess_x"))
-        await backend.sessions.create(
+        await backend.sessions.save(await _make_session(backend, "sess_x"))
+        await backend.sessions.save(
             await _make_session(backend, "sess_y", "user_b", "bea"),
         )
         rows = await backend.sessions.list_all()
@@ -126,7 +126,7 @@ class TestSessionRepository:
         for i in range(4):
             sess = await _make_session(backend, f"sess_pg_{i}")
             sess = sess.model_copy(update={"created_at": now - timedelta(seconds=i)})
-            await backend.sessions.create(sess)
+            await backend.sessions.save(sess)
 
         # newest-first: sess_pg_0, sess_pg_1, sess_pg_2, sess_pg_3
         page = await backend.sessions.list_all(limit=2, offset=1)
@@ -143,7 +143,7 @@ class TestSessionRepository:
                 "carol",
             )
             sess = sess.model_copy(update={"created_at": now - timedelta(seconds=i)})
-            await backend.sessions.create(sess)
+            await backend.sessions.save(sess)
 
         page = await backend.sessions.list_by_user(
             "user_carol",
@@ -154,7 +154,7 @@ class TestSessionRepository:
         assert [s.session_id for s in page] == ["sess_user_0", "sess_user_1"]
 
     async def test_revoke_marks_session(self, backend: PersistenceBackend) -> None:
-        await backend.sessions.create(await _make_session(backend, "sess_r"))
+        await backend.sessions.save(await _make_session(backend, "sess_r"))
         assert backend.sessions.is_revoked("sess_r") is False
         assert await backend.sessions.revoke("sess_r") is True
         assert backend.sessions.is_revoked("sess_r") is True
@@ -165,13 +165,13 @@ class TestSessionRepository:
         assert await backend.sessions.revoke("never_existed") is False
 
     async def test_revoke_all_for_user(self, backend: PersistenceBackend) -> None:
-        await backend.sessions.create(
+        await backend.sessions.save(
             await _make_session(backend, "sess_u1", "user_mass", "mallory"),
         )
-        await backend.sessions.create(
+        await backend.sessions.save(
             await _make_session(backend, "sess_u2", "user_mass", "mallory"),
         )
-        await backend.sessions.create(
+        await backend.sessions.save(
             await _make_session(backend, "sess_keep", "user_other", "oscar"),
         )
         count = await backend.sessions.revoke_all_for_user("user_mass")
@@ -184,7 +184,7 @@ class TestSessionRepository:
         self, backend: PersistenceBackend
     ) -> None:
         # Persist a revoked session, clear in-memory cache, reload.
-        await backend.sessions.create(
+        await backend.sessions.save(
             await _make_session(backend, "sess_rv", revoked=True),
         )
         backend.sessions._revoked.clear()
@@ -207,7 +207,7 @@ class TestSessionRepository:
                 last_active_at=_now() + timedelta(minutes=idx),
                 expires_at=_now() + timedelta(hours=1),
             )
-            await backend.sessions.create(session)
+            await backend.sessions.save(session)
         revoked = await backend.sessions.enforce_session_limit(
             "user_limit", max_sessions=2
         )
@@ -231,7 +231,7 @@ class TestSessionRepository:
             last_active_at=past,
             expires_at=past + timedelta(minutes=5),
         )
-        await backend.sessions.create(expired)
+        await backend.sessions.save(expired)
         count = await backend.sessions.cleanup_expired()
         assert count >= 1
         assert await backend.sessions.get("sess_exp") is None
@@ -248,7 +248,7 @@ async def _seed_session(
 ) -> None:
     """Insert the parent session row refresh tokens FK-reference."""
     session = await _make_session(backend, session_id, user_id, username)
-    await backend.sessions.create(session)
+    await backend.sessions.save(session)
 
 
 class TestRefreshTokenRepository:

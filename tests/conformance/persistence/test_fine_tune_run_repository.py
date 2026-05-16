@@ -49,9 +49,9 @@ def _run(
 class TestFineTuneRunRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
         run = _run()
-        await backend.fine_tune_runs.save_run(run)
+        await backend.fine_tune_runs.save(run)
 
-        fetched = await backend.fine_tune_runs.get_run("run-1")
+        fetched = await backend.fine_tune_runs.get("run-1")
         assert fetched is not None
         assert fetched.id == "run-1"
         assert fetched.stage is FineTuneStage.GENERATING_DATA
@@ -62,29 +62,29 @@ class TestFineTuneRunRepository:
         assert fetched.stages_completed == ()
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
-        assert await backend.fine_tune_runs.get_run("ghost") is None
+        assert await backend.fine_tune_runs.get("ghost") is None
 
     async def test_save_run_upsert(self, backend: PersistenceBackend) -> None:
         run = _run(progress=0.1)
-        await backend.fine_tune_runs.save_run(run)
+        await backend.fine_tune_runs.save(run)
 
         updated = run.model_copy(update={"progress": 0.5})
-        await backend.fine_tune_runs.save_run(updated)
+        await backend.fine_tune_runs.save(updated)
 
-        fetched = await backend.fine_tune_runs.get_run("run-1")
+        fetched = await backend.fine_tune_runs.get("run-1")
         assert fetched is not None
         assert fetched.progress == 0.5
-        runs, total = await backend.fine_tune_runs.list_runs()
+        runs, total = await backend.fine_tune_runs.list_items_page()
         assert total == 1
         assert len(runs) == 1
 
     async def test_get_active_run_returns_only_active(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-active", FineTuneStage.TRAINING),
         )
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-done", FineTuneStage.COMPLETE),
         )
 
@@ -95,10 +95,10 @@ class TestFineTuneRunRepository:
     async def test_get_active_run_none_when_only_terminal(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-done", FineTuneStage.COMPLETE),
         )
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-fail", FineTuneStage.FAILED),
         )
 
@@ -119,47 +119,47 @@ class TestFineTuneRunRepository:
             FineTuneStage.EVALUATING,
             started_at=datetime(2026, 1, 1, 14, 0, tzinfo=UTC),
         )
-        await backend.fine_tune_runs.save_run(older)
-        await backend.fine_tune_runs.save_run(newer)
+        await backend.fine_tune_runs.save(older)
+        await backend.fine_tune_runs.save(newer)
 
         active = await backend.fine_tune_runs.get_active_run()
         assert active is not None
         assert active.id == "r-new"
 
     async def test_list_runs_empty(self, backend: PersistenceBackend) -> None:
-        runs, total = await backend.fine_tune_runs.list_runs()
+        runs, total = await backend.fine_tune_runs.list_items_page()
         assert runs == ()
         assert total == 0
 
     async def test_list_runs_orders_by_started_at_desc(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-old", started_at=datetime(2026, 1, 1, tzinfo=UTC)),
         )
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-mid", started_at=datetime(2026, 2, 1, tzinfo=UTC)),
         )
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-new", started_at=datetime(2026, 3, 1, tzinfo=UTC)),
         )
 
-        runs, total = await backend.fine_tune_runs.list_runs()
+        runs, total = await backend.fine_tune_runs.list_items_page()
         assert total == 3
         assert [r.id for r in runs] == ["r-new", "r-mid", "r-old"]
 
     async def test_list_runs_pagination(self, backend: PersistenceBackend) -> None:
         for i in range(5):
-            await backend.fine_tune_runs.save_run(
+            await backend.fine_tune_runs.save(
                 _run(
                     f"r{i}",
                     started_at=datetime(2026, 1, i + 1, tzinfo=UTC),
                 ),
             )
 
-        page1, total = await backend.fine_tune_runs.list_runs(limit=2, offset=0)
-        page2, _ = await backend.fine_tune_runs.list_runs(limit=2, offset=2)
-        page3, _ = await backend.fine_tune_runs.list_runs(limit=2, offset=4)
+        page1, total = await backend.fine_tune_runs.list_items_page(limit=2, offset=0)
+        page2, _ = await backend.fine_tune_runs.list_items_page(limit=2, offset=2)
+        page3, _ = await backend.fine_tune_runs.list_items_page(limit=2, offset=4)
         assert total == 5
         assert [r.id for r in page1] == ["r4", "r3"]
         assert [r.id for r in page2] == ["r2", "r1"]
@@ -168,10 +168,10 @@ class TestFineTuneRunRepository:
     async def test_list_runs_clamps_limit_and_offset(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(_run("r1"))
+        await backend.fine_tune_runs.save(_run("r1"))
 
         # limit=0 must clamp up to 1; offset=-1 must clamp up to 0.
-        runs, total = await backend.fine_tune_runs.list_runs(limit=0, offset=-1)
+        runs, total = await backend.fine_tune_runs.list_items_page(limit=0, offset=-1)
         assert total == 1
         assert len(runs) == 1
 
@@ -179,7 +179,7 @@ class TestFineTuneRunRepository:
         self, backend: PersistenceBackend
     ) -> None:
         run = _run()
-        await backend.fine_tune_runs.save_run(run)
+        await backend.fine_tune_runs.save(run)
 
         updated = run.model_copy(
             update={
@@ -194,7 +194,7 @@ class TestFineTuneRunRepository:
         )
         await backend.fine_tune_runs.update_run(updated)
 
-        fetched = await backend.fine_tune_runs.get_run("run-1")
+        fetched = await backend.fine_tune_runs.get("run-1")
         assert fetched is not None
         assert fetched.stage is FineTuneStage.TRAINING
         assert fetched.progress == 0.42
@@ -208,7 +208,7 @@ class TestFineTuneRunRepository:
         self, backend: PersistenceBackend
     ) -> None:
         run = _run()
-        await backend.fine_tune_runs.save_run(run)
+        await backend.fine_tune_runs.save(run)
 
         terminal = run.model_copy(
             update={
@@ -225,7 +225,7 @@ class TestFineTuneRunRepository:
         )
         await backend.fine_tune_runs.update_run(terminal)
 
-        fetched = await backend.fine_tune_runs.get_run("run-1")
+        fetched = await backend.fine_tune_runs.get("run-1")
         assert fetched is not None
         assert fetched.stage is FineTuneStage.COMPLETE
         assert fetched.completed_at == datetime(2026, 7, 1, tzinfo=UTC)
@@ -234,30 +234,30 @@ class TestFineTuneRunRepository:
     async def test_mark_interrupted_transitions_active_runs(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-train", FineTuneStage.TRAINING),
         )
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-eval", FineTuneStage.EVALUATING),
         )
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-done", FineTuneStage.COMPLETE),
         )
 
         count = await backend.fine_tune_runs.mark_interrupted()
         assert count == 2
 
-        train = await backend.fine_tune_runs.get_run("r-train")
+        train = await backend.fine_tune_runs.get("r-train")
         assert train is not None
         assert train.stage is FineTuneStage.FAILED
         assert train.error == "interrupted by restart"
         assert train.completed_at is not None
 
-        ev = await backend.fine_tune_runs.get_run("r-eval")
+        ev = await backend.fine_tune_runs.get("r-eval")
         assert ev is not None
         assert ev.stage is FineTuneStage.FAILED
 
-        done = await backend.fine_tune_runs.get_run("r-done")
+        done = await backend.fine_tune_runs.get("r-done")
         assert done is not None
         assert done.stage is FineTuneStage.COMPLETE
 
@@ -269,17 +269,17 @@ class TestFineTuneRunRepository:
         # the update ran inside one atomic transaction.  A per-row loop
         # (which would race with a concurrent mark_interrupted) would
         # fail this assertion.
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-train", FineTuneStage.TRAINING),
         )
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-eval", FineTuneStage.EVALUATING),
         )
 
         await backend.fine_tune_runs.mark_interrupted()
 
-        train = await backend.fine_tune_runs.get_run("r-train")
-        ev = await backend.fine_tune_runs.get_run("r-eval")
+        train = await backend.fine_tune_runs.get("r-train")
+        ev = await backend.fine_tune_runs.get("r-eval")
         assert train is not None
         assert ev is not None
         assert train.updated_at == ev.updated_at
@@ -289,7 +289,7 @@ class TestFineTuneRunRepository:
     async def test_mark_interrupted_idempotent(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(
+        await backend.fine_tune_runs.save(
             _run("r-train", FineTuneStage.TRAINING),
         )
 
@@ -314,9 +314,9 @@ class TestFineTuneRunRepository:
                 "training",
             ),
         )
-        await backend.fine_tune_runs.save_run(run)
+        await backend.fine_tune_runs.save(run)
 
-        fetched = await backend.fine_tune_runs.get_run("run-1")
+        fetched = await backend.fine_tune_runs.get("run-1")
         assert fetched is not None
         assert fetched.stages_completed == (
             "generating_data",
@@ -340,8 +340,8 @@ class TestFineTuneRunRepository:
             validation_split=0.2,
         )
         run = _run(config=cfg)
-        await backend.fine_tune_runs.save_run(run)
+        await backend.fine_tune_runs.save(run)
 
-        fetched = await backend.fine_tune_runs.get_run("run-1")
+        fetched = await backend.fine_tune_runs.get("run-1")
         assert fetched is not None
         assert fetched.config == cfg
