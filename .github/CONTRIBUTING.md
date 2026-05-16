@@ -72,7 +72,7 @@ Run these before pushing:
 ```bash
 uv run ruff check src/ tests/              # lint
 uv run ruff format --check src/ tests/     # format check
-uv run mypy src/                           # type check
+uv run mypy --num-workers=4 src/ tests/    # type check
 ```
 
 Auto-fix lint and formatting issues:

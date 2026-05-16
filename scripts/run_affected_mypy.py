@@ -164,7 +164,7 @@ def _affected_mypy_paths(changed: list[str]) -> tuple[list[str], bool]:
 
 def _run_mypy(paths: list[str]) -> int:
     """Run mypy with the given paths."""
-    cmd = [sys.executable, "-m", "mypy", *paths]
+    cmd = [sys.executable, "-m", "mypy", "--num-workers=4", *paths]
     result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False)
     return result.returncode
 

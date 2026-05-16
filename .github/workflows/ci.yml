@@ -277,7 +277,7 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - name: mypy
-        run: uv run mypy src/ tests/
+        run: uv run mypy --num-workers=4 src/ tests/
 
   # ── Python: OpenAPI Liveness ──
   openapi-liveness:
