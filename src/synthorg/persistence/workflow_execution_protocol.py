@@ -4,12 +4,18 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import WorkflowExecutionStatus  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.workflow.execution_models import (
-    WorkflowExecution,  # noqa: TC001
+from synthorg.core.enums import (
+    WorkflowExecutionStatus,  # noqa: TC001 -- runtime in FilterSpec
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.execution_models import (
+    WorkflowExecution,
+)
+from synthorg.persistence._generics import (
+    DEFAULT_PAGE_SIZE,
+    FilteredQueryRepository,
+    IdKeyedRepository,
+)
 
 
 class WorkflowExecutionFilterSpec(BaseModel):
@@ -28,12 +34,15 @@ class WorkflowExecutionFilterSpec(BaseModel):
 
 
 @runtime_checkable
-class WorkflowExecutionRepository(Protocol):
+class WorkflowExecutionRepository(
+    IdKeyedRepository[WorkflowExecution, NotBlankStr],
+    FilteredQueryRepository[WorkflowExecution, "WorkflowExecutionFilterSpec"],
+    Protocol,
+):
     """CRUD + query interface for workflow execution persistence.
 
-    Workflow executions are runtime instances of activated workflow
-    definitions, tracking per-node execution state and mapping to concrete
-    tasks.
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
+    (ADR-0001). Entity is keyed by ``id`` field.
 
     **Note on save semantics**: The :meth:`save` method retains optimistic-
     concurrency checking (``PersistenceVersionConflictError`` on version
@@ -42,6 +51,11 @@ class WorkflowExecutionRepository(Protocol):
     explicitly; this divergence is documented here because it is domain-
     driven (workflow execution state machines require atomic transitions)
     and permanent.
+
+    **Bespoke method per ADR-0001 D7**: :meth:`find_by_task_id` encodes an
+    alternate-key lookup (JSON node array probe) not expressible via the
+    generic filter interface. This is a real domain invariant and
+    perf-sensitive operation.
     """
 
     async def save(self, execution: WorkflowExecution) -> None:
@@ -84,7 +98,7 @@ class WorkflowExecutionRepository(Protocol):
     async def list_items(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
         """List all workflow executions with pagination.
@@ -105,7 +119,7 @@ class WorkflowExecutionRepository(Protocol):
         self,
         filter_spec: WorkflowExecutionFilterSpec,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
         """List executions matching the filter spec.
