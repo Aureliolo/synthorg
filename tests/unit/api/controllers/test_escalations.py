@@ -82,7 +82,7 @@ class TestEscalationsController:
     ) -> None:
         store = test_client.app.state.app_state.escalation_store
         assert store is not None
-        await store.save(_make_escalation(escalation_id="escalation-list-01"))
+        await store.create(_make_escalation(escalation_id="escalation-list-01"))
         resp = test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
@@ -108,7 +108,7 @@ class TestEscalationsController:
         assert registry is not None
 
         escalation = _make_escalation(escalation_id="escalation-winner-01")
-        await store.save(escalation)
+        await store.create(escalation)
         future = await registry.register(escalation.id)
 
         resp = test_client.post(
@@ -139,7 +139,7 @@ class TestEscalationsController:
         store = app_state.escalation_store
         assert store is not None
         escalation = _make_escalation(escalation_id="escalation-reject-01")
-        await store.save(escalation)
+        await store.create(escalation)
 
         resp = test_client.post(
             f"{_BASE}/{escalation.id}/decision",
@@ -168,7 +168,7 @@ class TestEscalationsController:
         assert store is not None
         assert registry is not None
         escalation = _make_escalation(escalation_id="escalation-double-01")
-        await store.save(escalation)
+        await store.create(escalation)
         await registry.register(escalation.id)
 
         body = {
@@ -203,7 +203,7 @@ class TestEscalationsController:
         assert store is not None
         assert registry is not None
         escalation = _make_escalation(escalation_id="escalation-cancel-01")
-        await store.save(escalation)
+        await store.create(escalation)
         future = await registry.register(escalation.id)
 
         resp = test_client.post(
@@ -229,7 +229,7 @@ class TestEscalationsController:
 
         for i in range(31):
             escalation = _make_escalation(escalation_id=f"escalation-rl-{i:02d}")
-            await store.save(escalation)
+            await store.create(escalation)
             await registry.register(escalation.id)
 
         saw_429 = False

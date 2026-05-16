@@ -13,8 +13,9 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
-from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
 from synthorg.settings.enums import SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import SettingsRegistry
@@ -99,7 +100,14 @@ async def test_concurrent_first_reads_emit_info_at_most_once(
 
 async def test_db_source_logged() -> None:
     repo = AsyncMock(spec=SettingsRepository)
-    repo.get = AsyncMock(return_value=("error", "2026-04-27T00:00:00Z"))
+    repo.get = AsyncMock(
+        return_value=SettingRow(
+            namespace=NotBlankStr("observability"),
+            key=NotBlankStr("root_log_level"),
+            value="error",
+            updated_at="2026-04-27T00:00:00Z",
+        )
+    )
     repo.get_namespace = AsyncMock(return_value=())
     repo.list_items = AsyncMock(return_value=())
     registry = SettingsRegistry()

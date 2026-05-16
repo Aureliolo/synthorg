@@ -97,7 +97,7 @@ async def test_log_level_console_set_succeeds(service: SettingsService) -> None:
     repo: AsyncMock = service._repository  # type: ignore[assignment]
     repo.save = AsyncMock(return_value=True)
     await service.set("observability", "log_level_console", "debug")
-    repo.set.assert_awaited_once()
+    repo.save.assert_awaited_once()
 
 
 async def test_log_level_console_validator_rejects_garbage(

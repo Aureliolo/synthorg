@@ -186,8 +186,8 @@ class TestSweeperRunLoop:
         stale = _make_escalation(escalation_id="esc-stale", expires_at=past)
         future_deadline = datetime.now(UTC) + timedelta(seconds=3600)
         live = _make_escalation(escalation_id="esc-live", expires_at=future_deadline)
-        await store.save(stale)
-        await store.save(live)
+        await store.create(stale)
+        await store.create(live)
 
         first_sweep_done = asyncio.Event()
         original = store.mark_expired
@@ -262,7 +262,7 @@ class TestSweeperRunLoop:
             escalation_id="esc-orphan",
             expires_at=past,
         )
-        await store.save(orphan)
+        await store.create(orphan)
         # No registry, no Future -- only the row in the store.
 
         first_sweep_done = asyncio.Event()

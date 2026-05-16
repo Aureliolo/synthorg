@@ -1,48 +1,35 @@
-"""One-off script: rewrite test files to use new persistence protocol surfaces.
-
-Run once. Inspect git diff. Delete this script after.
-"""
+"""One-off script: rewrite test files to use new persistence protocol surfaces."""
 
 import re
 from pathlib import Path
 
-TESTS_DIR = Path("tests")
+# repo.set.<method> -> repo.save.<method>
+SET_TO_SAVE = (
+    r"\brepo\.set\.(assert_|await_|call_args|return_value)",
+    r"repo.save.\1",
+)
 
-# Per-file targeted reverts where earlier mechanical script over-renamed.
-TARGETED_REVERTS: dict[str, list[tuple[str, str]]] = {
-    # TaskRepository moved list_tasks/count_tasks -> query/count
-    # under ADR-0001. The engine now calls .query()/.count() but
-    # the test still spies on the old names.
-    "tests/unit/engine/test_task_engine_mutations.py": [
-        (r"persistence\.tasks\.list_tasks", "persistence.tasks.query"),
-        (r"persistence\.tasks\.count_tasks", "persistence.tasks.count"),
-    ],
+
+def fix_repo_set_assertions(text: str) -> str:
+    return re.sub(*SET_TO_SAVE, text)
+
+
+TARGETS = {
+    "tests/unit/settings/test_new_registry_entries.py": fix_repo_set_assertions,
+    "tests/unit/settings/test_readonly_init_settings.py": fix_repo_set_assertions,
 }
 
 
-def apply(path: Path, patterns: list[tuple[str, str]]) -> bool:
-    text = path.read_text(encoding="utf-8")
-    new = text
-    for pattern, replacement in patterns:
-        new = re.sub(pattern, replacement, new)
-    if new != text:
-        path.write_text(new, encoding="utf-8")
-        return True
-    return False
-
-
 def main() -> None:
-    changed: list[Path] = []
-    for rel, patterns in TARGETED_REVERTS.items():
+    for rel, fn in TARGETS.items():
         p = Path(rel)
         if not p.exists():
-            print(f"skip (not found): {rel}")
             continue
-        if apply(p, patterns):
-            changed.append(p)
-    print(f"Reverted {len(changed)} files")
-    for p in changed:
-        print(f"  {p.as_posix()}")
+        text = p.read_text(encoding="utf-8")
+        new = fn(text)
+        if new != text:
+            p.write_text(new, encoding="utf-8")
+            print(f"  rewrote {rel}")
 
 
 if __name__ == "__main__":
