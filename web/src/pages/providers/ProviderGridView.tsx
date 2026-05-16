@@ -11,23 +11,43 @@ import type { ProviderWithName } from '@/utils/providers'
 interface ProviderGridItemProps {
   provider: ProviderWithName
   health: ProviderHealthSummary | null
+  selected?: boolean
+  onToggleSelect?: (name: string) => void
 }
 
 const ProviderGridItem = memo(function ProviderGridItem({
   provider,
   health,
+  selected,
+  onToggleSelect,
 }: ProviderGridItemProps) {
   return (
     <StaggerItem>
-      <Link
-        to={ROUTES.PROVIDER_DETAIL.replace(
-          ':providerName',
-          encodeURIComponent(provider.name),
+      <div className="relative">
+        {onToggleSelect && (
+          <label
+            className="absolute left-2 top-2 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-border bg-card shadow-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={selected ?? false}
+              onChange={() => onToggleSelect(provider.name)}
+              aria-label={`Select provider ${provider.name}`}
+              className="h-4 w-4 cursor-pointer accent-accent"
+            />
+          </label>
         )}
-        className="block"
-      >
-        <ProviderCard provider={provider} health={health} />
-      </Link>
+        <Link
+          to={ROUTES.PROVIDER_DETAIL.replace(
+            ':providerName',
+            encodeURIComponent(provider.name),
+          )}
+          className="block"
+        >
+          <ProviderCard provider={provider} health={health} />
+        </Link>
+      </div>
     </StaggerItem>
   )
 })
@@ -36,12 +56,16 @@ interface ProviderGridViewProps {
   providers: readonly ProviderWithName[]
   healthMap: Record<string, ProviderHealthSummary>
   onAddProvider?: () => void
+  selectedIds?: ReadonlySet<string>
+  onToggleSelect?: (name: string) => void
 }
 
 export function ProviderGridView({
   providers,
   healthMap,
   onAddProvider,
+  selectedIds,
+  onToggleSelect,
 }: ProviderGridViewProps) {
   if (providers.length === 0) {
     return (
@@ -61,6 +85,8 @@ export function ProviderGridView({
           key={provider.name}
           provider={provider}
           health={healthMap[provider.name] ?? null}
+          selected={selectedIds?.has(provider.name)}
+          onToggleSelect={onToggleSelect}
         />
       ))}
     </StaggerGroup>

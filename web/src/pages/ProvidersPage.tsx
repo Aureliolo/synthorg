@@ -2,12 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { probeLocal } from '@/api/endpoints/providers'
 import { useProvidersData } from '@/hooks/useProvidersData'
 import { useProvidersStore } from '@/stores/providers'
+import { AnimatePresence } from 'motion/react'
+import { Trash2 } from 'lucide-react'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
+import { useToastStore } from '@/stores/toast'
+import { formatNumber } from '@/utils/format'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import { ProviderGridView } from './providers/ProviderGridView'
@@ -37,6 +44,20 @@ export default function ProvidersPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalPreset, setModalPreset] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const deleteProvider = useProvidersStore((s) => s.deleteProvider)
+
+  const handleToggleSelect = useCallback((name: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }, [])
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
   const [probeResults, setProbeResults] = useState<
     Readonly<Partial<Record<string, ProbePresetResponse>>>
@@ -152,6 +173,39 @@ export default function ProvidersPage() {
     setPageSize,
   } = useListPagination({ items: filteredProviders, namespace: 'providers' })
 
+  const visibleSelected = useMemo(() => {
+    const visible = new Set(filteredProviders.map((p) => p.name))
+    const next = new Set<string>()
+    for (const name of selectedIds) {
+      if (visible.has(name)) next.add(name)
+    }
+    return next
+  }, [selectedIds, filteredProviders])
+  const selectedCount = visibleSelected.size
+
+  const handleBulkDelete = useCallback(async () => {
+    setBulkDeleting(true)
+    let succeeded = 0
+    let failed = 0
+    for (const name of visibleSelected) {
+      const ok = await deleteProvider(name)
+      if (ok) succeeded += 1
+      else failed += 1
+    }
+    setBulkDeleting(false)
+    setBulkDeleteOpen(false)
+    clearSelection()
+    if (succeeded > 0) {
+      useToastStore.getState().add({
+        variant: failed === 0 ? 'success' : 'warning',
+        title:
+          failed === 0
+            ? `${succeeded} provider${succeeded === 1 ? '' : 's'} deleted`
+            : `${succeeded} deleted; ${failed} failed`,
+      })
+    }
+  }, [visibleSelected, deleteProvider, clearSelection])
+
   return (
     <div className="space-y-section-gap">
       <ListHeader
@@ -179,6 +233,8 @@ export default function ProvidersPage() {
             providers={pagedProviders}
             healthMap={healthMap}
             onAddProvider={handleConfigureManually}
+            selectedIds={visibleSelected}
+            onToggleSelect={handleToggleSelect}
           />
           <Pagination
             page={page}
@@ -189,6 +245,39 @@ export default function ProvidersPage() {
           />
         </ErrorBoundary>
       )}
+
+      <AnimatePresence>
+        {selectedCount > 0 && (
+          <BulkActionBar
+            selectedCount={selectedCount}
+            onClear={clearSelection}
+            loading={bulkDeleting}
+            ariaLabel="Provider bulk actions"
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
+              onClick={() => setBulkDeleteOpen(true)}
+              disabled={bulkDeleting}
+            >
+              <Trash2 className="size-3.5" />
+              Delete {formatNumber(selectedCount)}
+            </Button>
+          </BulkActionBar>
+        )}
+      </AnimatePresence>
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(open) => { if (!open && !bulkDeleting) setBulkDeleteOpen(false) }}
+        title={`Delete ${formatNumber(selectedCount)} provider${selectedCount === 1 ? '' : 's'}?`}
+        description="Each provider is removed via its individual delete endpoint. Agents bound to these providers will fail until reassigned. This cannot be undone."
+        confirmLabel={`Delete ${formatNumber(selectedCount)}`}
+        variant="destructive"
+        loading={bulkDeleting}
+        onConfirm={handleBulkDelete}
+      />
 
       <section
         aria-labelledby="add-provider-heading"
