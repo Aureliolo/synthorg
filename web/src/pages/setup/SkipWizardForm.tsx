@@ -54,6 +54,14 @@ export function SkipWizardForm() {
         )
         return
       }
+      if (afterComplete.completionWarning !== null) {
+        // Completion succeeded with a non-fatal warning (e.g. embedder
+        // auto-selection failed). Do NOT mark setup complete or
+        // navigate: companyResponse is now non-null, so CompleteStep
+        // re-renders its main UI (no longer SkipWizardForm) and
+        // surfaces the warning with an explicit continue CTA.
+        return
+      }
       useSetupStore.setState({ setupComplete: true })
       useToastStore.getState().add({
         variant: 'success',

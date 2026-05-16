@@ -6,10 +6,21 @@ import { server } from '@/test-setup'
 import type { WsEvent } from '@/api/types/websocket'
 import {
   WS_HEARTBEAT_INTERVAL_MS,
+  WS_HEARTBEAT_JITTER_MAX,
   WS_MAX_RECONNECT_ATTEMPTS,
   WS_PONG_TIMEOUT_MS,
   WS_RECONNECT_BASE_DELAY,
 } from '@/utils/constants'
+
+// The heartbeat scheduler arms its timer at a jittered delay in
+// ``WS_HEARTBEAT_INTERVAL_MS * [JITTER_MIN, JITTER_MAX]``. A test that
+// advances exactly ``WS_HEARTBEAT_INTERVAL_MS`` misses the first tick
+// whenever the random factor exceeds 1.0. Advancing the worst-case
+// jittered delay guarantees the tick has fired regardless of
+// ``Math.random()``, eliminating that race deterministically.
+const WS_HEARTBEAT_MAX_DELAY_MS = Math.ceil(
+  WS_HEARTBEAT_INTERVAL_MS * WS_HEARTBEAT_JITTER_MAX,
+)
 
 // Shared ticket-exchange controller: tests set `ticketMode` before
 // triggering connect() to decide whether the handler returns a
@@ -676,25 +687,26 @@ const handler = vi.fn()
       return ws
     }
 
-    // Heartbeat tests share a structural race with MSW's undici-backed
-    // ticket fetch: the response chain settles on REAL microtasks +
+    // ``retry`` here covers ONLY the residual MSW/undici macrotask
+    // race: MSW's ticket fetch settles on REAL microtasks +
     // setImmediate hops (queueMicrotask is intentionally excluded from
     // ``toFake`` so undici can flush; see beforeEach). When the FAKE
     // heartbeat interval fires inside ``advanceTimersByTimeAsync``,
     // a stale macrotask from a prior test's ticket chain can preempt
     // and call ``close()`` on the brand-new socket, fooling identity
     // guards. The teardown-first afterEach in ``test-setup.tsx`` plus
-    // the generation-bumping ``teardown()`` action cut this race
-    // dramatically (50% -> ~5%) but cannot fully eliminate it without
-    // refactoring the heartbeat scheduler or replacing MSW for these
-    // tests. ``retry`` mirrors the existing precedent on
-    // ``first-message auth`` (line 533) which carries the same kind of
-    // race comment.
+    // the generation-bumping ``teardown()`` action bound this to ~5%;
+    // it cannot be fully eliminated without replacing MSW for these
+    // tests. The separate (and previously dominant) jitter race --
+    // advancing exactly ``WS_HEARTBEAT_INTERVAL_MS`` while the timer
+    // is armed at a jittered delay up to ``* JITTER_MAX`` -- is now
+    // eliminated deterministically by advancing
+    // ``WS_HEARTBEAT_MAX_DELAY_MS``; ``retry`` no longer covers it.
     it('sends a ping every 20s after auth_ok', { retry: 3 }, async () => {
       const ws = await connectAndAuth()
       const beforePings = ws.sentMessages.length
 
-      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS)
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_MAX_DELAY_MS)
 
       const pings = ws.sentMessages.slice(beforePings).filter((m) => {
         const parsed = JSON.parse(m) as { action?: string }
@@ -720,11 +732,13 @@ const handler = vi.fn()
       expect(pings).toHaveLength(0)
     })
 
-    // Same MSW-vs-fake-timer race as ``sends a ping`` above; see comment
-    // on that test for the rationale behind ``retry``.
+    // Same residual MSW-vs-fake-timer race as ``sends a ping`` above;
+    // see that comment for the ``retry`` rationale. Advance the
+    // worst-case jittered delay so the ping has deterministically
+    // fired (the pong-timeout timer is only armed after the tick).
     it('clears pong timeout when pong arrives in time', { retry: 3 }, async () => {
       const ws = await connectAndAuth()
-      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS)
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_MAX_DELAY_MS)
       ws.simulateMessage({ action: 'pong' })
       // Advance past the pong timeout window; if the timer was cleared
       // the socket stays open.
@@ -733,12 +747,16 @@ const handler = vi.fn()
       expect(ws.closed).toBe(false)
     })
 
-    // Same MSW-vs-fake-timer race as ``sends a ping`` above; see comment
-    // on that test for the rationale behind ``retry``.
+    // Same residual MSW-vs-fake-timer race as ``sends a ping`` above;
+    // see that comment for the ``retry`` rationale. The previously
+    // dominant jitter race (advancing exactly the interval while the
+    // timer is jittered up to ``* JITTER_MAX``) is gone: advancing
+    // ``WS_HEARTBEAT_MAX_DELAY_MS`` guarantees the ping has fired and
+    // the pong-timeout timer is armed before the second advance.
     it('closes the socket when no pong arrives within 10s', { retry: 3 }, async () => {
       const ws = await connectAndAuth()
 
-      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS) // ping fired
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_MAX_DELAY_MS) // ping fired
       await vi.advanceTimersByTimeAsync(WS_PONG_TIMEOUT_MS) // pong timeout
 
       // After the pong timeout the socket is closed and the store is
