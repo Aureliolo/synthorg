@@ -442,7 +442,7 @@ class TestSQLiteMessageRepository:
             migrated_db, write_context=make_private_write_context()
         )
         msg = make_message()
-        await repo.save(msg)
+        await repo.append(msg)
 
         history = await repo.get_history("general")
         assert len(history) == 1
@@ -462,8 +462,8 @@ class TestSQLiteMessageRepository:
             timestamp=datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
             content="second",
         )
-        await repo.save(msg1)
-        await repo.save(msg2)
+        await repo.append(msg1)
+        await repo.append(msg2)
 
         history = await repo.get_history("general")
         assert len(history) == 2
@@ -475,7 +475,7 @@ class TestSQLiteMessageRepository:
             migrated_db, write_context=make_private_write_context()
         )
         for i in range(5):
-            await repo.save(
+            await repo.append(
                 make_message(
                     timestamp=datetime(2026, 3, 1, i, 0, 0, tzinfo=UTC),
                     content=f"msg-{i}",
@@ -491,8 +491,8 @@ class TestSQLiteMessageRepository:
         repo = SQLiteMessageRepository(
             migrated_db, write_context=make_private_write_context()
         )
-        await repo.save(make_message(channel="general"))
-        await repo.save(make_message(channel="engineering"))
+        await repo.append(make_message(channel="general"))
+        await repo.append(make_message(channel="engineering"))
 
         general = await repo.get_history("general")
         assert len(general) == 1
@@ -506,10 +506,10 @@ class TestSQLiteMessageRepository:
         )
         fixed_id = uuid4()
         msg = make_message(msg_id=fixed_id)
-        await repo.save(msg)
+        await repo.append(msg)
 
         with pytest.raises(DuplicateRecordError, match="already exists"):
-            await repo.save(make_message(msg_id=fixed_id))
+            await repo.append(make_message(msg_id=fixed_id))
 
     async def test_round_trip_alias_from_field(
         self, migrated_db: aiosqlite.Connection
@@ -519,7 +519,7 @@ class TestSQLiteMessageRepository:
             migrated_db, write_context=make_private_write_context()
         )
         msg = make_message(sender="charlie")
-        await repo.save(msg)
+        await repo.append(msg)
 
         history = await repo.get_history("general")
         assert history[0].sender == "charlie"
@@ -540,7 +540,7 @@ class TestSQLiteMessageRepository:
         repo = SQLiteMessageRepository(
             migrated_db, write_context=make_private_write_context()
         )
-        await repo.save(msg)
+        await repo.append(msg)
 
         history = await repo.get_history("general")
         result = history[0]
@@ -557,7 +557,7 @@ class TestSQLiteMessageRepository:
         )
         msg = make_message()
         original_id = msg.id
-        await repo.save(msg)
+        await repo.append(msg)
 
         history = await repo.get_history("general")
         assert history[0].id == original_id
