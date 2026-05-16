@@ -66,11 +66,11 @@ jobs:
       # key `repository` (singular) instead of `repositories` (plural),
       # so this callsite is flagged despite passing the correct plural
       # key. Fixed upstream in zizmor v1.25.2; remove the inline ignore
-      # on the `with:` line below once zizmor-action ships v1.25.2+.
+      # on `owner:` below once zizmor-action ships v1.25.2+.
       - name: Mint repo-bot App token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with: # zizmor: ignore[github-app]
+        with:
           client-id: ${{ secrets.APKO_BOT_APP_CLIENT_ID }}
           private-key: ${{ secrets.APKO_BOT_APP_PRIVATE_KEY }}
           # Both `owner` and `repositories` are literal values so the
@@ -79,7 +79,7 @@ jobs:
           # + workflow_dispatch on the `apko-lock` environment whose
           # branch policy admits only main, so the repo context is
           # always `Aureliolo/synthorg`.
-          owner: Aureliolo
+          owner: Aureliolo # zizmor: ignore[github-app]
           repositories: synthorg
           # Least-privilege scope per the env-comment above: Contents:write
           # + PRs:write + Metadata:read is what the apko-bot install carries
