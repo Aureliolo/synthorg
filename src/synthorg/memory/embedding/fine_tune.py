@@ -143,6 +143,8 @@ async def _encode_query_passage_pair(
     cancellation: CancellationToken | None,
 ) -> tuple[object, object]:
     """Encode queries and passages, honouring cancellation between the two calls."""
+    if cancellation is not None:
+        cancellation.check()
     q_embs = await _encode_with_observability(
         model=model,
         texts=queries,
@@ -164,6 +166,9 @@ async def _encode_query_passage_pair(
     return q_embs, p_embs
 
 
+_REQUIRED_PAIR_FIELDS: Final[tuple[str, ...]] = ("query", "positive_passage")
+
+
 async def _load_query_passage_pairs(
     path: str,
     *,
@@ -174,8 +179,38 @@ async def _load_query_passage_pairs(
     if require_non_empty and not pairs:
         msg = "Validation data is empty"
         raise ValueError(msg)
-    queries = [p["query"] for p in pairs]
-    passages = [p["positive_passage"] for p in pairs]
+    queries: list[str] = []
+    passages: list[str] = []
+    for idx, pair in enumerate(pairs):
+        missing = [f for f in _REQUIRED_PAIR_FIELDS if f not in pair]
+        if missing:
+            msg = (
+                f"Invalid JSONL record at index {idx}: missing field(s) "
+                f"{missing} (expected {list(_REQUIRED_PAIR_FIELDS)})"
+            )
+            logger.warning(
+                MEMORY_FINE_TUNE_VALIDATION_FAILED,
+                field="training_record",
+                record_index=idx,
+                missing_fields=missing,
+            )
+            raise ValueError(msg)
+        query = pair["query"]
+        passage = pair["positive_passage"]
+        if not isinstance(query, str) or not isinstance(passage, str):
+            msg = (
+                f"Invalid JSONL record at index {idx}: query and "
+                "positive_passage must be strings"
+            )
+            logger.warning(
+                MEMORY_FINE_TUNE_VALIDATION_FAILED,
+                field="training_record",
+                record_index=idx,
+                reason="non_string_field",
+            )
+            raise TypeError(msg)
+        queries.append(query)
+        passages.append(passage)
     return queries, passages
 
 

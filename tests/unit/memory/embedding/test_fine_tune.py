@@ -358,6 +358,61 @@ class TestMineHardNegatives:
             "expected a truncation-likely warning for the long query input"
         )
 
+    async def test_rejects_jsonl_record_missing_required_field(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.memory.embedding.fine_tune import (
+            mine_hard_negatives,
+        )
+
+        train = tmp_path / "train.jsonl"
+        train.write_text(
+            json.dumps({"query": "q1", "positive_passage": "p1"})
+            + "\n"
+            + json.dumps({"query": "q2"})
+            + "\n",
+        )
+        calls: list[dict[str, Any]] = []
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=_make_fake_st_module(calls),
+            ),
+            pytest.raises(ValueError, match="index 1"),
+        ):
+            await mine_hard_negatives(
+                training_data_path=str(train),
+                base_model="test-small-001",
+                output_dir=str(tmp_path / "out"),
+            )
+
+    async def test_rejects_jsonl_record_with_non_string_field(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.memory.embedding.fine_tune import (
+            mine_hard_negatives,
+        )
+
+        train = tmp_path / "train.jsonl"
+        train.write_text(
+            json.dumps({"query": "q1", "positive_passage": 42}) + "\n",
+        )
+        calls: list[dict[str, Any]] = []
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=_make_fake_st_module(calls),
+            ),
+            pytest.raises(TypeError, match="index 0"),
+        ):
+            await mine_hard_negatives(
+                training_data_path=str(train),
+                base_model="test-small-001",
+                output_dir=str(tmp_path / "out"),
+            )
+
 
 # -- Stage 3: Contrastive fine-tuning (mock-based) -------------------
 
