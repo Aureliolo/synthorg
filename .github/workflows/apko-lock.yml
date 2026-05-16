@@ -21,7 +21,7 @@ concurrency:
 
 env:
   # renovate: datasource=github-releases depName=chainguard-dev/apko
-  APKO_VERSION: "v1.2.11"
+  APKO_VERSION: "v1.2.12"
 
 jobs:
   update-lockfiles:
@@ -61,14 +61,34 @@ jobs:
       # `owner` + `repositories` pin the installation lookup so the
       # token is bound to this single-repo install -- without them the
       # action walks every installation the App is authorised for.
+      # zizmor v1.25.0 (bundled with zizmorcore/zizmor-action v0.5.4) has
+      # a false positive in the github-app audit: it checks for the YAML
+      # key `repository` (singular) instead of `repositories` (plural),
+      # so this callsite is flagged despite passing the correct plural
+      # key. Fixed upstream in zizmor v1.25.2; remove the inline ignore
+      # on `owner:` below once zizmor-action ships v1.25.2+.
       - name: Mint repo-bot App token
         id: app-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ secrets.APKO_BOT_APP_CLIENT_ID }}
           private-key: ${{ secrets.APKO_BOT_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
+          # Both `owner` and `repositories` are literal values so the
+          # scope is statically verifiable as narrow once the v1.25.0
+          # key-name bug above is fixed. This workflow is scheduled-only
+          # + workflow_dispatch on the `apko-lock` environment whose
+          # branch policy admits only main, so the repo context is
+          # always `Aureliolo/synthorg`.
+          owner: Aureliolo # zizmor: ignore[github-app]
+          repositories: synthorg
+          # Least-privilege scope per the env-comment above: Contents:write
+          # + PRs:write + Metadata:read is what the apko-bot install carries
+          # and what this workflow's `createCommitOnBranch` + `gh pr create`
+          # flow exercises. zizmor 1.25's `github-app` audit requires at
+          # least one explicit `permission-*` input on every callsite.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-metadata: read
 
       - name: Set up apko
         uses: ./.github/actions/setup-apko

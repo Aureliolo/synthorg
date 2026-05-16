@@ -127,11 +127,16 @@ runs:
         output: trivy-${{ inputs.image-name }}-base.sarif
         exit-code: "0"
         severity: CRITICAL,HIGH
+        # Pin trivy version as a literal so zizmor's `unpinned-tools`
+        # audit recognises the pin. Keep in sync with TRIVY_VERSION env
+        # vars used by the curl-install steps in this composite.
+        # renovate: datasource=github-releases depName=aquasecurity/trivy
+        version: v0.70.0
         trivyignores: .github/.trivyignore.yaml
 
     - name: Upload SARIF to GitHub Security
       if: always()
-      uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
+      uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
       with: # zizmor: ignore[template-injection]
         sarif_file: trivy-${{ inputs.image-name }}-base.sarif
         category: trivy-${{ inputs.image-name }}-base
