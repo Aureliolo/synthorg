@@ -64,7 +64,7 @@ export function ListHeader({
                 className="shrink-0 text-muted-foreground"
               >
                 <RefreshCw className="size-3 animate-spin" aria-hidden="true" />
-                <span className="sr-only">Refreshing</span>
+                <span className="sr-only">{`Refreshing ${title}`}</span>
               </span>
             )}
           </div>

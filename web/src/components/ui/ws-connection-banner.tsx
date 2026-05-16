@@ -16,6 +16,9 @@ export interface WsConnectionBannerProps {
   description?: string
 }
 
+const DEFAULT_TITLE = 'Real-time updates disconnected'
+const DEFAULT_DESCRIPTION = 'Data may be stale until the connection recovers.'
+
 /**
  * Page-level WebSocket-offline banner. Reads the connection state
  * directly from the websocket store so callers do not need to wire a
@@ -26,8 +29,8 @@ export interface WsConnectionBannerProps {
  * ``connected: false``).
  */
 export function WsConnectionBanner({
-  title = 'Real-time updates disconnected',
-  description = 'Data may be stale until the connection recovers.',
+  title = DEFAULT_TITLE,
+  description = DEFAULT_DESCRIPTION,
 }: WsConnectionBannerProps = {}) {
   const connected = useWebSocketStore((s) => s.connected)
   const everConnectedRef = useRef(false)
