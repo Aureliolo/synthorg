@@ -46,7 +46,7 @@ env:
   # renovate: datasource=github-releases depName=aquasecurity/trivy
   TRIVY_VERSION: "0.70.0"
   # renovate: datasource=github-releases depName=chainguard-dev/apko
-  APKO_VERSION: "v1.2.11"
+  APKO_VERSION: "v1.2.12"
 
 jobs:
   # Detect which domains changed so docs-only PRs skip backend/sandbox builds
@@ -689,7 +689,7 @@ jobs:
         uses: chainguard-dev/actions/setup-melange@c69a264ec2a5934c3186c618f368fc1c86f16cff # v1.6.19
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
-          version: v0.50.5
+          version: v0.50.6
 
       - name: Generate melange signing key
         run: melange keygen
@@ -838,7 +838,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security (web)
         if: always()
-        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           sarif_file: trivy-web.sarif
           category: trivy-web
@@ -1435,7 +1435,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: "3.14.4"
+          python-version: "3.14.5"
 
       - name: Verify cosign signatures for every pushed (image, tag)
         env:
