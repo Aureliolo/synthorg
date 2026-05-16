@@ -55,6 +55,7 @@ from synthorg.persistence.user_protocol import (
     UserRepository,
 )
 from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionFilterSpec,
     WorkflowDefinitionRepository,
 )
 from synthorg.persistence.workflow_execution_protocol import WorkflowExecutionRepository
@@ -71,7 +72,6 @@ if TYPE_CHECKING:
         ArtifactType,
         ProjectStatus,
         TaskStatus,
-        WorkflowType,
     )
     from synthorg.core.project import Project
     from synthorg.core.task import Task
@@ -560,14 +560,28 @@ class _FakeWorkflowDefinitionRepository:
     async def get(self, definition_id: NotBlankStr) -> WorkflowDefinition | None:
         return None
 
-    async def list_definitions(
+    async def list_items(
         self,
         *,
-        workflow_type: WorkflowType | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
-        del workflow_type, limit
+        del limit, offset
         return ()
+
+    async def query(
+        self,
+        filter_spec: WorkflowDefinitionFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
+        del filter_spec
+        return 0
 
     async def delete(self, definition_id: NotBlankStr) -> bool:
         return False
