@@ -115,13 +115,20 @@ def test_local_coverage_allows_plain(command: str) -> None:
 @pytest.mark.parametrize(
     "command",
     [
+        # Any explicit non-zero -n is wrong: addopts already pins -n=8.
+        "uv run python -m pytest tests/ -m unit -n 8",
+        "uv run python -m pytest tests/ -n 2",
+        "pytest tests/ -n4",
+        "pytest tests/ --numprocesses 2",
+        "pytest tests/ -n auto",
+        # xdist-disable on a suite/directory run (no ::) is blocked.
         "uv run python -m pytest tests/ -n0",
         "uv run python -m pytest tests/ -n 0",
         "pytest tests/ --dist no",
         "pytest tests/ -p no:xdist",
     ],
 )
-def test_parallel_tests_blocks_explicit_xdist_disable(command: str) -> None:
+def test_parallel_tests_blocks(command: str) -> None:
     _assert_blocked(_run("check_enforce_parallel_tests.sh", command))
 
 
@@ -129,13 +136,17 @@ def test_parallel_tests_blocks_explicit_xdist_disable(command: str) -> None:
 @pytest.mark.parametrize(
     "command",
     [
-        "uv run python -m pytest tests/ -m unit",  # addopts applies -n=8
+        "uv run python -m pytest tests/ -m unit",  # no -n: addopts -n=8
         "uv run python -m pytest tests/benchmarks/ --codspeed -n0",
-        "uv run python -m pytest tests/ -m unit -n 8",
+        # -n0 allowed ONLY for a single test node id (read full log).
+        "uv run python -m pytest tests/unit/x.py::test_y -n0",
+        "pytest tests/unit/a.py::test_b -n 0",
         "git status",
     ],
 )
-def test_parallel_tests_allows_default_and_benchmarks(command: str) -> None:
+def test_parallel_tests_allows_default_benchmarks_and_single_test(
+    command: str,
+) -> None:
     _assert_allowed(_run("check_enforce_parallel_tests.sh", command))
 
 

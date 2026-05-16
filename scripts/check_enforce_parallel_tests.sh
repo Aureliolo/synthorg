@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# PreToolUse(Bash) hook: keep the unit suite running under xdist.
+# PreToolUse(Bash) hook: the unit suite always runs under the pinned
+# xdist default; explicit -n is a smell.
 #
-# pyproject ``addopts`` already applies ``-n=8 --dist=loadfile``, so a
-# plain ``pytest tests/ -m unit`` IS parallel and must NOT be blocked
-# (the inert .claude/hookify.enforce-parallel-tests.md rule's literal
-# "must contain -n 8" would have blocked the documented command -- a
-# bug; this gate enforces the actual intent instead).
+# pyproject ``addopts`` pins ``-n=8 --dist=loadfile``. The ONLY
+# sanctioned form is therefore NO ``-n`` flag at all -- the default
+# governs. Rules:
 #
-# Blocks only an EXPLICIT xdist-disable (`-n 0` / `-n0` /
-# `--numprocesses 0` / `-p no:xdist` / `--dist no`) because that
-# silently drops the loadfile isolation the 3.14+Windows event-loop
-# teardown race depends on. Benchmark / CodSpeed runs legitimately use
-# ``-n0`` (single-process timing) and are exempt.
+#   * No -n / --numprocesses / --dist / -p no:xdist  -> OK
+#   * Any explicit non-zero -n / --numprocesses
+#     (-n 2, -n 8, -n auto, ...)                      -> BLOCK
+#     (never a reason to hand-pick a worker count; omit it)
+#   * xdist-disable (-n 0 / -n0 / --numprocesses 0 /
+#     --dist no / -p no:xdist)                        -> BLOCK,
+#     UNLESS the command targets a single test (a ``::`` node id) --
+#     single-process is valid only to read one test's full log.
+#   * Benchmark / CodSpeed runs (--codspeed / tests/benchmarks)
+#     are single-process by design                    -> OK
 #
 # Modes: JSON stdin -> inspect command; no stdin -> pass.
 set -euo pipefail
@@ -34,15 +38,32 @@ if echo "$COMMAND" | grep -qE '(--codspeed|tests/benchmarks)'; then
     exit 0
 fi
 
-if echo "$COMMAND" | grep -qE '(^|[[:space:]])(-n[[:space:]]*0|--numprocesses[[:space:]]+0|-p[[:space:]]+no:xdist|--dist[[:space:]]+no)(\b|$)'; then
-    cat <<'ENDJSON'
+deny() {
+    cat <<ENDJSON
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
-    "permissionDecisionReason": "BLOCKED: this pytest run explicitly disables xdist. The unit suite must run under `-n` (pyproject addopts applies -n=8 --dist=loadfile; loadfile isolation guards the 3.14+Windows event-loop teardown race). Drop the -n0/--dist no override. Benchmarks (--codspeed / tests/benchmarks) are exempt."
+    "permissionDecisionReason": "$1"
   }
 }
 ENDJSON
     exit 2
+}
+
+# An explicit, NON-zero worker count is always wrong: pyproject
+# addopts already applies -n=8 --dist=loadfile. Omit the flag.
+if echo "$COMMAND" | grep -qE '(^|[[:space:]])(-n[[:space:]]*([1-9][0-9]*|auto|logical)|--numprocesses[[:space:]]+([1-9][0-9]*|auto|logical))(\b|$)'; then
+    deny "BLOCKED: do not pass an explicit -n/--numprocesses. pyproject addopts already pins -n=8 --dist=loadfile; the only correct form is NO -n flag (the default governs). Remove it."
 fi
+
+# xdist-disable: only legitimate to read ONE test's full log, so
+# require a node id. A bare directory/suite run with -n0 is blocked.
+if echo "$COMMAND" | grep -qE '(^|[[:space:]])(-n[[:space:]]*0|--numprocesses[[:space:]]+0|--dist[[:space:]]+no|-p[[:space:]]+no:xdist)(\b|$)'; then
+    if echo "$COMMAND" | grep -qE '::'; then
+        exit 0
+    fi
+    deny "BLOCKED: single-process pytest (-n0 / --dist no / -p no:xdist) is allowed ONLY for a single test (a path::test_name node id) to read its full log. For any suite/directory run, omit -n entirely so the pinned -n=8 --dist=loadfile default applies."
+fi
+
+exit 0

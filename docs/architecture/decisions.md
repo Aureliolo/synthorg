@@ -136,6 +136,37 @@ All significant design and architecture decisions in force today, organized by d
 3. If no fixed release exists: implement the local monkey-patch in `src/synthorg/communication/bus/_nats_compat.py` (one-line `nats.aio.client.iscoroutinefunction = inspect.iscoroutinefunction`), import it at bus initialisation, and extend this section with the patch landing date.
 4. Re-evaluate `nats-core` JetStream support: a maintained alternative removes the entire mitigation requirement.
 
+## Tooling & Developer Enforcement
+
+**Decision:** Per-worktree git-hook isolation via a repo-committed,
+venv-agnostic wrapper plus a *relative* `core.hooksPath`
+(`scripts/git-hooks`). Hookify-style rules are enforced through
+guaranteed-firing gates (`.claude/settings.json` PreToolUse for
+tool-shaped rules, `.pre-commit-config.yaml` for code-content rules),
+not declarative `.claude/hookify.*.md` files.
+
+**Context:** All worktrees shared one `core.hooksPath`; pre-commit's
+generated wrappers baked one worktree's venv into `INSTALL_PYTHON`, so
+a venv change or worktree deletion broke every other worktree's
+push/commit (observed on PR #1945). The in-repo `.claude/hookify.*.md`
+rules had no dispatcher and were inert.
+
+| Topic | Decision | Rationale | Alternatives considered |
+|----|----------|-----------|------------------------|
+| Hook isolation | Committed `scripts/git-hooks/{_run-hook.sh,pre-commit,pre-push,commit-msg}`; relative `core.hooksPath`; wrapper runs `uv run --frozen --project "$(git rev-parse --show-toplevel)" python -m pre_commit hook-impl ...`; `UV_FROZEN=1` exported | Git resolves a relative `core.hooksPath` from each worktree's working-tree root (verified on Git-for-Windows + linked worktrees), so each worktree runs its own wrapper against its own venv with zero per-worktree setup; deletion-safe by construction; removes the hardcoded-path failure class entirely | `extensions.worktreeConfig` + per-worktree `pre-commit install` (rejected: repo-wide flag flip, keeps the baked path, depends on never forgetting the install step) |
+| Hookify enforcement | Migrate important rules to script gates, delete the 9 inert `.md` | Matches the repo's proven settings.json + `scripts/check_*` pattern; deterministic blocking; no new framework duplicating the external hookify plugin | In-repo hookify dispatcher (rejected: duplicates installed plugin; rules were warn-only) |
+| `pytest-unit` "files were modified" | `UV_FROZEN`/`--frozen` in the wrapper (covers every inner `uv run` hook) + a pre/post `git status` reconcile guard in `scripts/run_affected_tests.py` that reverts only run-induced tracked changes | Leading cause is `uv run` rewriting `uv.lock` on stale lock / parallel-worktree race; `--frozen` removes it structurally, the guard is a root-cause-independent backstop that never silently passes | Script-only restore without `UV_FROZEN` (rejected: leaves the churn source in place) |
+| `long-running-loops` failure | No code-loop change; root cause was collateral of the shared-hooks band-aid + `uv.lock` churn (gate is read-only and passes cleanly on the rebased branch). Structurally fixed by the per-worktree venv + `UV_FROZEN`; interpreter invariant pinned by `tests/unit/scripts/test_git_hooks_wrapper.py` | The gate cannot itself trip "files modified"; destabilising the whole pre-push run did | Treating it as an independent gate bug (rejected: no evidence; gate green with zero loop edits) |
+| `pep758-except`, `function-length` | Advisory only; `.md` deleted, NO hard gate | 902 pre-existing `except (A, B):` sites means the `except A, B:` style is not actually practiced; a hard gate (or 902-entry baseline) is wrong and far outside scope. `function-length` ("<50 lines") is proxied by ruff `PLR0915`. Both were warn-only/inert | Hard gate + mass baseline (rejected: buries signal, scope explosion) |
+| `enforce-parallel-tests` semantics | Block any explicit non-zero `-n`/`--numprocesses`; block xdist-disable (`-n0`/`--dist no`/`-p no:xdist`) unless a single `path::test` node id is present; benchmarks/`--codspeed` exempt | The literal hookify rule ("must contain `-n 8`") would have blocked the documented `pytest tests/ -m unit` (pyproject `addopts` already pins `-n=8 --dist=loadfile`). The only correct form is no `-n` flag; single-process is valid solely to read one test's full log | Faithful port of the inert rule (rejected: workflow-breaking bug) |
+| Bulk-edit guard scope | `scripts/check_no_bulk_edit.py` blocks only shell in-place rewrites (`sed -i`, `perl -pi`, redirect-overwrite); native `Edit`/`Write` (incl. `replace_all`) allowed | User decision after weighing the `replace_all` empty-`new_string` newline-collapse footgun: the atomic reviewable diff is the safeguard; shell forms surface no diff | Block all `Edit replace_all` (rejected by user); in-repo dispatcher (n/a) |
+
+MSW worker drift (`web/public/mockServiceWorker.js`) is handled
+structurally (option C): the codegen file is gitignored and
+regenerated by a guarded `web` `postinstall`, removing Renovate from
+the loop. The complementary CI drift-guard is owned separately
+(#1938).
+
 ## Overarching Pattern
 
 Nearly every decision follows the same architecture: a pluggable protocol interface with one initial implementation shipped, and alternative strategies documented for future extension. This is consistent with the project's protocol-driven design philosophy.
