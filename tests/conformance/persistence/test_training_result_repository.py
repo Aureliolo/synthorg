@@ -108,3 +108,57 @@ class TestTrainingResultRepository:
 
     async def test_get_latest_missing(self, backend: PersistenceBackend) -> None:
         assert await backend.training_results.get_latest(NotBlankStr("ghost")) is None
+
+    async def test_get_by_id(self, backend: PersistenceBackend) -> None:
+        await _seed_plan(backend, "plan-001")
+        await backend.training_results.save(_result())
+
+        fetched = await backend.training_results.get(NotBlankStr("res-001"))
+        assert fetched is not None
+        assert fetched.new_agent_id == "agent-new-001"
+
+    async def test_get_by_id_missing(self, backend: PersistenceBackend) -> None:
+        assert await backend.training_results.get(NotBlankStr("ghost")) is None
+
+    async def test_delete(self, backend: PersistenceBackend) -> None:
+        await _seed_plan(backend, "plan-001")
+        await backend.training_results.save(_result())
+
+        deleted = await backend.training_results.delete(NotBlankStr("res-001"))
+        assert deleted is True
+
+        fetched = await backend.training_results.get(NotBlankStr("res-001"))
+        assert fetched is None
+
+    async def test_delete_missing_returns_false(
+        self, backend: PersistenceBackend
+    ) -> None:
+        deleted = await backend.training_results.delete(NotBlankStr("ghost"))
+        assert deleted is False
+
+    async def test_list_items_ordered_by_id(self, backend: PersistenceBackend) -> None:
+        await _seed_plan(backend, "plan-001")
+        await backend.training_results.save(_result(result_id="c-res"))
+        await backend.training_results.save(_result(result_id="a-res"))
+        await backend.training_results.save(_result(result_id="b-res"))
+
+        rows = await backend.training_results.list_items()
+        ids = [r.id for r in rows]
+        assert ids == ["a-res", "b-res", "c-res"]
+
+    async def test_list_items_with_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await _seed_plan(backend, "plan-001")
+        for i in range(5):
+            await backend.training_results.save(
+                _result(result_id=f"res-{i:02d}"),
+            )
+
+        page1 = await backend.training_results.list_items(limit=2, offset=0)
+        page2 = await backend.training_results.list_items(limit=2, offset=2)
+        page3 = await backend.training_results.list_items(limit=2, offset=4)
+
+        assert len(page1) == 2
+        assert len(page2) == 2
+        assert len(page3) == 1

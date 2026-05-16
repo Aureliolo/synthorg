@@ -12,6 +12,7 @@ from synthorg.hr.training.models import (
     TrainingPlanStatus,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
 
 pytestmark = pytest.mark.integration
 
@@ -126,3 +127,85 @@ class TestTrainingPlanRepository:
         )
         ids = [r.id for r in rows]
         assert ids == ["newer", "older"]
+
+    async def test_delete(self, backend: PersistenceBackend) -> None:
+        await backend.training_plans.save(_plan())
+        deleted = await backend.training_plans.delete(NotBlankStr("plan-001"))
+        assert deleted is True
+
+        fetched = await backend.training_plans.get(NotBlankStr("plan-001"))
+        assert fetched is None
+
+    async def test_delete_missing_returns_false(
+        self, backend: PersistenceBackend
+    ) -> None:
+        deleted = await backend.training_plans.delete(NotBlankStr("ghost"))
+        assert deleted is False
+
+    async def test_list_items_ordered_by_id(self, backend: PersistenceBackend) -> None:
+        await backend.training_plans.save(_plan(plan_id="c-plan"))
+        await backend.training_plans.save(_plan(plan_id="a-plan"))
+        await backend.training_plans.save(_plan(plan_id="b-plan"))
+
+        rows = await backend.training_plans.list_items()
+        ids = [r.id for r in rows]
+        assert ids == ["a-plan", "b-plan", "c-plan"]
+
+    async def test_list_items_with_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for i in range(5):
+            await backend.training_plans.save(
+                _plan(plan_id=f"plan-{i:02d}"),
+            )
+
+        page1 = await backend.training_plans.list_items(limit=2, offset=0)
+        page2 = await backend.training_plans.list_items(limit=2, offset=2)
+        page3 = await backend.training_plans.list_items(limit=2, offset=4)
+
+        assert len(page1) == 2
+        assert len(page2) == 2
+        assert len(page3) == 1
+
+    async def test_query_by_agent_id(self, backend: PersistenceBackend) -> None:
+        await backend.training_plans.save(_plan(agent_id="agent-1"))
+        await backend.training_plans.save(_plan(agent_id="agent-2"))
+
+        spec = TrainingPlanFilterSpec(agent_id=NotBlankStr("agent-1"))
+        rows = await backend.training_plans.query(spec)
+        assert len(rows) == 1
+        assert rows[0].new_agent_id == "agent-1"
+
+    async def test_query_by_status(self, backend: PersistenceBackend) -> None:
+        await backend.training_plans.save(
+            _plan(plan_id="pending-1", status=TrainingPlanStatus.PENDING),
+        )
+        await backend.training_plans.save(
+            _plan(
+                plan_id="exec-1",
+                status=TrainingPlanStatus.EXECUTED,
+                executed_at=_NOW + timedelta(hours=1),
+            ),
+        )
+
+        spec = TrainingPlanFilterSpec(status="pending")
+        rows = await backend.training_plans.query(spec)
+        assert len(rows) == 1
+        assert rows[0].id == "pending-1"
+
+    async def test_count_all(self, backend: PersistenceBackend) -> None:
+        for i in range(3):
+            await backend.training_plans.save(_plan(plan_id=f"plan-{i}"))
+
+        spec = TrainingPlanFilterSpec()
+        count = await backend.training_plans.count(spec)
+        assert count == 3
+
+    async def test_count_filtered(self, backend: PersistenceBackend) -> None:
+        await backend.training_plans.save(_plan(agent_id="agent-1"))
+        await backend.training_plans.save(_plan(agent_id="agent-1"))
+        await backend.training_plans.save(_plan(agent_id="agent-2"))
+
+        spec = TrainingPlanFilterSpec(agent_id=NotBlankStr("agent-1"))
+        count = await backend.training_plans.count(spec)
+        assert count == 2

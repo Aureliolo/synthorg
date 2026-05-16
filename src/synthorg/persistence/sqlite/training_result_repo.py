@@ -23,6 +23,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -238,6 +239,110 @@ class SQLiteTrainingResultRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
+
+    async def get(
+        self,
+        result_id: NotBlankStr,
+    ) -> TrainingResult | None:
+        """Retrieve a training result by ID.
+
+        Args:
+            result_id: Training result identifier.
+
+        Returns:
+            The result, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        try:
+            cursor = await self._db.execute(
+                "SELECT * FROM training_results WHERE id = ?",
+                (str(result_id),),
+            )
+            row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to fetch training result {result_id!r}"
+            logger.warning(
+                HR_TRAINING_PERSISTENCE_ERROR,
+                result_id=str(result_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        return _row_to_result(row)
+
+    async def delete(
+        self,
+        result_id: NotBlankStr,
+    ) -> bool:
+        """Delete a training result by ID.
+
+        Args:
+            result_id: Training result identifier.
+
+        Returns:
+            ``True`` if a row was deleted, ``False`` if not found.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM training_results WHERE id = ?",
+                    (str(result_id),),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to delete training result {result_id!r}"
+                logger.warning(
+                    HR_TRAINING_PERSISTENCE_ERROR,
+                    result_id=str(result_id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            else:
+                return cursor.rowcount > 0
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[TrainingResult, ...]:
+        """List training results with pagination (ADR-0001).
+
+        Args:
+            limit: Maximum results to return (must be >= 1).
+            offset: Rows to skip before the window.
+
+        Returns:
+            Tuple of results ordered by id ascending.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        try:
+            cursor = await self._db.execute(
+                "SELECT * FROM training_results ORDER BY id ASC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list training results"
+            logger.warning(
+                HR_TRAINING_PERSISTENCE_ERROR,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(_row_to_result(row) for row in rows)
 
     async def get_by_plan(
         self,

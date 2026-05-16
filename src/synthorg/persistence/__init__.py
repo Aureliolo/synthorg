@@ -24,6 +24,7 @@ from synthorg.persistence.checkpoint_protocol import (
 )
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.connection_protocol import (
+    ConnectionFilterSpec,
     ConnectionRepository,
     ConnectionSecretRepository,
     OAuthStateRepository,
@@ -31,6 +32,7 @@ from synthorg.persistence.connection_protocol import (
 )
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import (
+    DecisionFilterSpec,
     DecisionRepository,
     DecisionRole,
 )
@@ -39,8 +41,17 @@ from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.persistence.settings_protocol import (
+    SettingRow,
+    SettingRowKey,
+    SettingsRepository,
+)
 from synthorg.persistence.task_protocol import TaskRepository
+from synthorg.persistence.training_protocol import (
+    TrainingPlanFilterSpec,
+    TrainingPlanRepository,
+    TrainingResultRepository,
+)
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
     UserRepository,
@@ -55,9 +66,11 @@ __all__ = [
     "ArtifactTooLargeError",
     "AuditRepository",
     "CheckpointRepository",
+    "ConnectionFilterSpec",
     "ConnectionRepository",
     "ConnectionSecretRepository",
     "CostRecordRepository",
+    "DecisionFilterSpec",
     "DecisionRepository",
     "DecisionRole",
     "DuplicateRecordError",
@@ -74,8 +87,13 @@ __all__ = [
     "QueryError",
     "RecordNotFoundError",
     "SQLiteConfig",
+    "SettingRow",
+    "SettingRowKey",
     "SettingsRepository",
     "TaskRepository",
+    "TrainingPlanFilterSpec",
+    "TrainingPlanRepository",
+    "TrainingResultRepository",
     "UserRepository",
     "VersionRepository",
     "WebhookReceiptRepository",
