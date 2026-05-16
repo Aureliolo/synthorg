@@ -5,8 +5,11 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.enums import DecisionOutcome, TaskType
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decisions import DecisionRecord
+from synthorg.persistence.decision_protocol import DecisionFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration
@@ -146,3 +149,114 @@ class TestDecisionRepository:
         assert len(as_exec) == 1
         assert len(as_rev) == 0
         assert len(bob_as_rev) == 1
+
+    async def test_query_filters_and_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await _seed_task(backend, "qt")
+        for idx in range(5):
+            await backend.decision_records.append_with_next_version(
+                record_id=NotBlankStr(f"q{idx}"),
+                task_id=NotBlankStr("qt"),
+                approval_id=None,
+                executing_agent_id=NotBlankStr("ex"),
+                reviewer_agent_id=NotBlankStr("rv"),
+                decision=DecisionOutcome.APPROVED,
+                reason=None,
+                criteria_snapshot=(),
+                recorded_at=_NOW,
+            )
+        by_task = await backend.decision_records.query(
+            DecisionFilterSpec(task_id=NotBlankStr("qt")),
+        )
+        assert len(by_task) == 5
+        page = await backend.decision_records.query(
+            DecisionFilterSpec(task_id=NotBlankStr("qt")),
+            limit=2,
+            offset=2,
+        )
+        assert len(page) == 2
+        by_agent = await backend.decision_records.query(
+            DecisionFilterSpec(agent_id=NotBlankStr("ex"), role="executor"),
+        )
+        assert len(by_agent) == 5
+        none_match = await backend.decision_records.query(
+            DecisionFilterSpec(task_id=NotBlankStr("ghost")),
+        )
+        assert none_match == ()
+
+    async def test_query_rejects_invalid_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.decision_records.query(
+                DecisionFilterSpec(), limit=0
+            )
+        with pytest.raises(QueryError):
+            await backend.decision_records.query(
+                DecisionFilterSpec(), offset=-1
+            )
+
+    async def test_append_generic_surface(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await _seed_task(backend, "ap")
+        event = DecisionRecord(
+            id=NotBlankStr("ap1"),
+            task_id=NotBlankStr("ap"),
+            approval_id=None,
+            executing_agent_id=NotBlankStr("ex"),
+            reviewer_agent_id=NotBlankStr("rv"),
+            decision=DecisionOutcome.APPROVED,
+            reason=None,
+            criteria_snapshot=(),
+            recorded_at=_NOW,
+            version=1,
+        )
+        await backend.decision_records.append(event)
+        rows = await backend.decision_records.list_by_task(NotBlankStr("ap"))
+        assert len(rows) == 1
+        assert rows[0].task_id == "ap"
+
+    async def test_purge_before(self, backend: PersistenceBackend) -> None:
+        await _seed_task(backend, "pt")
+        old = datetime(2020, 1, 1, tzinfo=UTC)
+        await backend.decision_records.append_with_next_version(
+            record_id=NotBlankStr("old1"),
+            task_id=NotBlankStr("pt"),
+            approval_id=None,
+            executing_agent_id=NotBlankStr("ex"),
+            reviewer_agent_id=NotBlankStr("rv"),
+            decision=DecisionOutcome.APPROVED,
+            reason=None,
+            criteria_snapshot=(),
+            recorded_at=old,
+        )
+        await backend.decision_records.append_with_next_version(
+            record_id=NotBlankStr("new1"),
+            task_id=NotBlankStr("pt"),
+            approval_id=None,
+            executing_agent_id=NotBlankStr("ex"),
+            reviewer_agent_id=NotBlankStr("rv"),
+            decision=DecisionOutcome.APPROVED,
+            reason=None,
+            criteria_snapshot=(),
+            recorded_at=_NOW,
+        )
+        removed = await backend.decision_records.purge_before(
+            datetime(2025, 1, 1, tzinfo=UTC),
+        )
+        assert removed == 1
+        remaining = await backend.decision_records.list_by_task(
+            NotBlankStr("pt"),
+        )
+        assert len(remaining) == 1
+        assert remaining[0].id == "new1"
+
+    async def test_purge_before_rejects_naive(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises((ValueError, QueryError)):
+            await backend.decision_records.purge_before(
+                datetime(2025, 1, 1),  # noqa: DTZ001 -- naive on purpose
+            )

@@ -751,9 +751,9 @@ ORDER BY timestamp DESC"""
         offset: int = 0,
     ) -> tuple[Message, ...]:
         """Return messages matching the filter spec, newest first."""
-        if limit < 1:
-            msg = f"limit must be a positive integer, got {limit}"
-            raise QueryError(msg)
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_MESSAGE_HISTORY_FAILED
+        )
         sql = """\
 SELECT id, timestamp, sender, "to", type, priority,
        channel, content, attachments, metadata

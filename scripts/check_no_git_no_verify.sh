@@ -41,8 +41,11 @@ BYPASS_RE='(--no-verify([[:space:]=]|$)|--no-gpg-sign([[:space:]=]|$)|-c[[:space
 # in a path or commit message.
 SHORT_NO_VERIFY_RE='git[[:space:]]([^|;&]*[[:space:]])?(commit|push)([[:space:]][^|;&]*)?[[:space:]]-n([[:space:]]|$)'
 
-if echo "$COMMAND" | grep -qE "$BYPASS_RE" \
-    || echo "$COMMAND" | grep -qE "$SHORT_NO_VERIFY_RE"; then
+# Case-insensitive: git config keys are case-insensitive, so
+# ``-c core.hookspath=`` / ``-c commit.gpgSign=false`` are accepted by
+# git and must be caught the same as their canonical-case spellings.
+if echo "$COMMAND" | grep -qiE "$BYPASS_RE" \
+    || echo "$COMMAND" | grep -qiE "$SHORT_NO_VERIFY_RE"; then
     cat <<'ENDJSON'
 {
   "hookSpecificOutput": {

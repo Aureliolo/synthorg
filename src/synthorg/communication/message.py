@@ -296,6 +296,15 @@ class Message(BaseModel):
         min_length=1,
         description="Ordered content parts (text, data, files, URIs)",
     )
+    attachments: tuple[Part, ...] = Field(
+        default=(),
+        description=(
+            "Out-of-band parts attached to the message (files, data "
+            "blobs, URIs) that are not part of the primary content "
+            "flow. Persisted alongside the message and round-tripped "
+            "by both backends."
+        ),
+    )
     metadata: MessageMetadata = Field(
         default_factory=MessageMetadata,
         description="Optional message metadata",

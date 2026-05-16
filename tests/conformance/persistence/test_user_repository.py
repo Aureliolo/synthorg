@@ -193,3 +193,55 @@ class TestApiKeyRepository:
         fetched = await backend.api_keys.get(NotBlankStr("key_1"))
         assert fetched is not None
         assert fetched.revoked is True
+
+    async def test_list_items_and_count(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.users.save(_make_user())
+        for i in range(3):
+            await backend.api_keys.save(_make_api_key(f"lk_{i}"))
+        items = await backend.api_keys.list_items(limit=10)
+        assert len({k.id for k in items}) >= 3
+        total = await backend.api_keys.count(ApiKeyFilterSpec())
+        assert total >= 3
+        scoped = await backend.api_keys.count(
+            ApiKeyFilterSpec(user_id=NotBlankStr("user_alice")),
+        )
+        assert scoped >= 3
+
+    async def test_query_rejects_invalid_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.api_keys.query(ApiKeyFilterSpec(), limit=0)
+        with pytest.raises(QueryError):
+            await backend.api_keys.query(ApiKeyFilterSpec(), offset=-1)
+
+
+@pytest.mark.integration
+class TestUserRepositoryQueryCount:
+    async def test_query_count_and_count_by_role(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.users.save(
+            _make_user(user_id="u_mgr", username="mgr", role=HumanRole.MANAGER),
+        )
+        await backend.users.save(
+            _make_user(user_id="u_dev", username="dev", role=HumanRole.OBSERVER),
+        )
+        managers = await backend.users.query(
+            UserFilterSpec(role=HumanRole.MANAGER),
+        )
+        assert all(u.role == HumanRole.MANAGER for u in managers)
+        total = await backend.users.count(UserFilterSpec())
+        assert total >= 2
+        mgr_count = await backend.users.count_by_role(HumanRole.MANAGER)
+        assert mgr_count >= 1
+
+    async def test_query_rejects_invalid_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.users.query(UserFilterSpec(), limit=0)
+        with pytest.raises(QueryError):
+            await backend.users.query(UserFilterSpec(), offset=-1)
