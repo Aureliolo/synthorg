@@ -45,6 +45,7 @@ from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
     UserRepository,
 )
+from synthorg.persistence.version_protocol import VersionRepository
 
 __all__ = [
     "AgentStateRepository",
@@ -76,6 +77,7 @@ __all__ = [
     "SettingsRepository",
     "TaskRepository",
     "UserRepository",
+    "VersionRepository",
     "WebhookReceiptRepository",
     "create_backend",
 ]

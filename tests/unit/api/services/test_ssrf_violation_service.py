@@ -65,6 +65,18 @@ class _FakeSsrfViolationRepo:
             rows = [v for v in rows if v.status == status]
         return tuple(list(rows)[:limit])
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[SsrfViolation, ...]:
+        ordered = sorted(self._rows.values(), key=lambda v: v.id)
+        return tuple(ordered[offset : offset + limit])
+
+    async def delete(self, violation_id: NotBlankStr) -> bool:
+        return self._rows.pop(violation_id, None) is not None
+
     async def update_status(
         self,
         violation_id: NotBlankStr,
