@@ -84,6 +84,7 @@ import { messagesHandlers } from './messages'
 import { metaHandlers } from './meta'
 import { oauthDefaultHandlers } from './oauth'
 import { ontologyHandlers } from './ontology'
+import { personalitiesHandlers } from './personalities'
 import { projectsHandlers } from './projects'
 import { providersHandlers } from './providers'
 import { qualityHandlers } from './quality'
@@ -133,6 +134,7 @@ export const defaultHandlers = [
   ...metaHandlers,
   ...oauthDefaultHandlers,
   ...ontologyHandlers,
+  ...personalitiesHandlers,
   ...projectsHandlers,
   ...providersHandlers,
   ...qualityHandlers,
@@ -179,6 +181,7 @@ export {
   metaHandlers,
   oauthDefaultHandlers,
   ontologyHandlers,
+  personalitiesHandlers,
   projectsHandlers,
   providersHandlers,
   qualityHandlers,

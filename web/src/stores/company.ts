@@ -153,7 +153,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       // refresh, and each fetch sets its own error state so the user
       // still sees what failed. Each branch's catch logs the failure
       // for the diagnostic trail.
-      ;(async () => {
+      void (async () => {
         try {
           await store.fetchCompanyData()
         } catch (err) {

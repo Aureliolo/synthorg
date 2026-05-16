@@ -147,6 +147,24 @@ export default function RequestQueuePage() {
     void refresh()
   }, [refresh, capLoading, capabilities.requests])
 
+  // useMemo must run on every render (rules-of-hooks); compute the
+  // filtered list before any early-return branch below.
+  const filteredRequests = useMemo(() => {
+    const trimmed = searchQuery.trim().toLowerCase()
+    return requests.filter((r) => {
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false
+      if (trimmed === '') return true
+      return (
+        r.request_id.toLowerCase().includes(trimmed)
+        || r.client_id.toLowerCase().includes(trimmed)
+        || (typeof r.requirement === 'object'
+          && 'description' in r.requirement
+          && typeof r.requirement.description === 'string'
+          && r.requirement.description.toLowerCase().includes(trimmed))
+      )
+    })
+  }, [requests, searchQuery, statusFilter])
+
   if (!capLoading && capError !== null) {
     return (
       <div className="space-y-section-gap">
@@ -193,22 +211,6 @@ export default function RequestQueuePage() {
       </div>
     )
   }
-
-  const filteredRequests = useMemo(() => {
-    const trimmed = searchQuery.trim().toLowerCase()
-    return requests.filter((r) => {
-      if (statusFilter !== 'all' && r.status !== statusFilter) return false
-      if (trimmed === '') return true
-      return (
-        r.request_id.toLowerCase().includes(trimmed)
-        || r.client_id.toLowerCase().includes(trimmed)
-        || (typeof r.requirement === 'object'
-          && 'description' in r.requirement
-          && typeof r.requirement.description === 'string'
-          && r.requirement.description.toLowerCase().includes(trimmed))
-      )
-    })
-  }, [requests, searchQuery, statusFilter])
 
   const grouped = STATUS_ORDER.map((status) => ({
     status,
