@@ -134,6 +134,11 @@ class CeremonyScheduler:
                 logs a single ``SPRINT_CEREMONY_BUDGET_BRIDGE_OFF``
                 event at scheduler activation so operators know the
                 strategy is running blind.
+            state_repo: Optional persistence repository for ceremony
+                scheduler state snapshots. When supplied the scheduler
+                writes one snapshot per mutation (under its own lock)
+                and rehydrates the four state attributes at sprint
+                activation so trigger position survives restarts.
         """
         self._meeting_scheduler = meeting_scheduler
         self._clock = clock or SystemClock()
