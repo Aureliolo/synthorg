@@ -32,7 +32,7 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
     if not app_state.has_persistence:
         return
     try:
-        users = await app_state.persistence.users.list_users()
+        users = await app_state.persistence.users.list_items()
     except asyncio.CancelledError:
         raise
     except MemoryError, RecursionError:

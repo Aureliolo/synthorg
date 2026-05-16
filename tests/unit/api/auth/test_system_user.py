@@ -78,18 +78,20 @@ class TestEnsureSystemUser:
     async def test_excluded_from_count(
         self, auth_svc: AuthService, fake_persistence: FakePersistenceBackend
     ) -> None:
+        from synthorg.persistence.user_protocol import UserFilterSpec
+
         await ensure_system_user(fake_persistence, auth_svc)
 
         # count() excludes system user
-        assert await fake_persistence.users.count() == 0
+        assert await fake_persistence.users.count(UserFilterSpec()) == 0
 
-    async def test_excluded_from_list_users(
+    async def test_excluded_from_list_items(
         self, auth_svc: AuthService, fake_persistence: FakePersistenceBackend
     ) -> None:
         await ensure_system_user(fake_persistence, auth_svc)
 
-        # list_users() excludes system user
-        users = await fake_persistence.users.list_users()
+        # list_items() excludes system user
+        users = await fake_persistence.users.list_items()
         assert len(users) == 0
 
     async def test_persistence_error_propagates(

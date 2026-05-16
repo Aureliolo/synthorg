@@ -57,7 +57,7 @@ class TestMaybePromoteFirstOwner:
         app_state = await _make_app_state(persistence=backend)
         await _maybe_promote_first_owner(app_state)
         # No users exist, nothing to promote
-        users = await backend.users.list_users()
+        users = await backend.users.list_items()
         assert len(users) == 0
 
     async def test_already_has_owner_is_noop(self) -> None:

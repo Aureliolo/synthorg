@@ -381,11 +381,11 @@ class FakeApiKeyRepository:
     def __init__(self) -> None:
         self._keys: dict[str, ApiKey] = {}
 
-    async def save(self, key: ApiKey) -> None:
-        self._keys[key.id] = key
+    async def save(self, entity: ApiKey) -> None:
+        self._keys[entity.id] = entity
 
-    async def get(self, key_id: str) -> ApiKey | None:
-        return self._keys.get(key_id)
+    async def get(self, entity_id: str) -> ApiKey | None:
+        return self._keys.get(entity_id)
 
     async def get_by_hash(self, key_hash: str) -> ApiKey | None:
         for key in self._keys.values():
@@ -393,11 +393,40 @@ class FakeApiKeyRepository:
                 return key
         return None
 
-    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
-        return tuple(k for k in self._keys.values() if k.user_id == user_id)
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        keys = sorted(self._keys.values(), key=lambda k: k.id)
+        return tuple(keys[offset : offset + limit])
 
-    async def delete(self, key_id: str) -> bool:
-        return self._keys.pop(key_id, None) is not None
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        results = list(self._keys.values())
+        if filter_spec.user_id is not None:
+            results = [k for k in results if k.user_id == filter_spec.user_id]
+        if filter_spec.revoked_only:
+            results = [k for k in results if k.revoked]
+        results.sort(key=lambda k: k.id)
+        return tuple(results[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        results = list(self._keys.values())
+        if filter_spec.user_id is not None:
+            results = [k for k in results if k.user_id == filter_spec.user_id]
+        if filter_spec.revoked_only:
+            results = [k for k in results if k.revoked]
+        return len(results)
+
+    async def delete(self, entity_id: str) -> bool:
+        return self._keys.pop(entity_id, None) is not None
 
 
 class FakeCheckpointRepository:

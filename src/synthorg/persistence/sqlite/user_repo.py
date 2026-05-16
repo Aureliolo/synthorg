@@ -37,8 +37,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
 from synthorg.persistence.constraint_tokens import (
@@ -48,6 +48,10 @@ from synthorg.persistence.constraint_tokens import (
     USERS_USERNAME_UNIQUE,
 )
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.user_protocol import (  # noqa: TC001
+    ApiKeyFilterSpec,
+    UserFilterSpec,
+)
 
 
 def _classify_sqlite_user_error(message: str) -> str | None:
@@ -298,35 +302,31 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-    async def list_users(
+    async def list_items(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[User, ...]:
-        """List human users ordered by creation date.
-
-        The system user (internal CLI identity) is excluded from the
-        result.  Use ``get`` with the system user ID if you need it.
-        For cursor-stable pagination across large user bases use
-        :meth:`list_users_paginated` instead.
+        """List human users (excludes the system user) with pagination.
 
         Args:
-            limit: Maximum users to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum users to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Tuple of human ``User`` records, oldest first, capped at
-            *limit* rows.
+            Human users ordered by id ascending.
 
         Raises:
-            QueryError: If the database query or deserialization fails,
-                or *limit* is non-int / non-positive.
+            QueryError: If the database query or deserialization fails.
         """
-        limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_USER_LIST_FAILED
+        )
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM users WHERE role != ? ORDER BY created_at, id LIMIT ?",
-                (HumanRole.SYSTEM.value, limit),
+                "SELECT * FROM users WHERE role != ? ORDER BY id LIMIT ? OFFSET ?",
+                (HumanRole.SYSTEM.value, limit, offset),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -350,42 +350,41 @@ ON CONFLICT(id) DO UPDATE SET
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users
 
-    async def list_users_paginated(
+    async def query(
         self,
+        filter_spec: UserFilterSpec,
         *,
-        after_id: NotBlankStr | None,
-        limit: int,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[User, ...]:
-        """Return a single keyset page of human users sorted by ``id``.
-
-        ``WHERE id > after_id ORDER BY id LIMIT N`` so cursor pages
-        stay stable under concurrent writes -- offset-based pagination
-        would duplicate or skip rows when items shift in the visible
-        window between page fetches.
+        """List users matching the filter spec.
 
         Args:
-            after_id: ``None`` for the first page; the previous
-                page's last ``id`` for follow-up pages.
-            limit: Page size (rows to return).
+            filter_spec: Carries optional filter for role.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Matching users ordered by id ascending.
 
         Raises:
             QueryError: If the database query or deserialization fails.
         """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_USER_LIST_FAILED
+        )
+        sql = "SELECT * FROM users WHERE role != ?"
+        params: list[object] = [HumanRole.SYSTEM.value]
+        if filter_spec.role is not None:
+            sql += " AND role = ?"
+            params.append(filter_spec.role.value)
+        sql += " ORDER BY id LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
         try:
-            if after_id is None:
-                cursor = await self._db.execute(
-                    "SELECT * FROM users WHERE role != ? ORDER BY id LIMIT ?",
-                    (HumanRole.SYSTEM.value, limit),
-                )
-            else:
-                cursor = await self._db.execute(
-                    "SELECT * FROM users WHERE role != ? AND id > ? "
-                    "ORDER BY id LIMIT ?",
-                    (HumanRole.SYSTEM.value, after_id, limit),
-                )
+            cursor = await self._db.execute(sql, tuple(params))
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to list users (paginated)"
+            msg = "Failed to query users"
             logger.warning(
                 PERSISTENCE_USER_LIST_FAILED,
                 error_type=type(exc).__name__,
@@ -394,14 +393,8 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             users = tuple(_row_to_user(row) for row in rows)
-        except (ValueError, TypeError, ValidationError, KeyError) as exc:
-            # KeyError covers a missing column name in the row factory
-            # output (schema drift between the SQL SELECT and the
-            # ``_row_to_user`` decoder). Matches the Postgres impl's
-            # except tuple so both backends translate the same set of
-            # corruption modes into ``QueryError`` instead of leaking
-            # the raw exception to the API.
-            msg = "Failed to deserialize users (paginated)"
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+            msg = "Failed to deserialize users"
             logger.warning(
                 PERSISTENCE_USER_LIST_FAILED,
                 error_type=type(exc).__name__,
@@ -411,20 +404,25 @@ ON CONFLICT(id) DO UPDATE SET
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users
 
-    async def count(self) -> int:
-        """Return the number of human users (excludes system user).
+    async def count(self, filter_spec: UserFilterSpec) -> int:
+        """Count users matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filter for role.
 
         Returns:
-            Non-negative integer count.
+            Total number of matching users.
 
         Raises:
             QueryError: If the database query fails.
         """
+        sql = "SELECT COUNT(*) FROM users WHERE role != ?"
+        params: list[object] = [HumanRole.SYSTEM.value]
+        if filter_spec.role is not None:
+            sql += " AND role = ?"
+            params.append(filter_spec.role.value)
         try:
-            cursor = await self._db.execute(
-                "SELECT COUNT(*) FROM users WHERE role != ?",
-                (HumanRole.SYSTEM.value,),
-            )
+            cursor = await self._db.execute(sql, tuple(params))
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count users"
@@ -692,47 +690,37 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-    async def list_by_user(
+    async def list_items(
         self,
-        user_id: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
-        """List up to ``limit`` API keys for a user, ordered by creation date.
-
-        Defaults to :data:`DEFAULT_LIST_LIMIT`; callers needing more
-        must paginate with ``offset``.
+        """List API keys with pagination.
 
         Args:
-            user_id: Owner user identifier.
-            limit: Maximum keys to return (must be >= 1).
-            offset: Keys to skip before applying *limit* (must be >= 0).
+            limit: Maximum keys to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Tuple of ``ApiKey`` records, oldest first.
+            API keys ordered by id ascending.
 
         Raises:
             QueryError: If the database query or deserialization fails.
         """
         limit = validate_pagination_args(
-            limit,
-            offset,
-            event=PERSISTENCE_API_KEY_LIST_FAILED,
-            user_id=user_id,
+            limit, offset, event=PERSISTENCE_API_KEY_LIST_FAILED
         )
-        sql = "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at, id"
-        params: tuple[object, ...] = (user_id,)
-        sql += " LIMIT ? OFFSET ?"
-        params = (*params, limit, offset)
         try:
-            cursor = await self._db.execute(sql, params)
+            cursor = await self._db.execute(
+                "SELECT * FROM api_keys ORDER BY id LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to list API keys for user {user_id!r}"
+            msg = "Failed to list API keys"
             logger.warning(
                 PERSISTENCE_API_KEY_LIST_FAILED,
-                user_id=user_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -740,20 +728,107 @@ ON CONFLICT(id) DO UPDATE SET
         try:
             keys = tuple(_row_to_api_key(row) for row in rows)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
-            msg = f"Failed to deserialize API keys for user {user_id!r}"
+            msg = "Failed to deserialize API keys"
             logger.warning(
                 PERSISTENCE_API_KEY_LIST_FAILED,
-                user_id=user_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_API_KEY_LISTED,
-            user_id=user_id,
-            count=len(keys),
-        )
+        logger.debug(PERSISTENCE_API_KEY_LISTED, count=len(keys))
         return keys
+
+    async def query(
+        self,
+        filter_spec: ApiKeyFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        """List API keys matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters for user_id and revoked_only.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Matching API keys ordered by id ascending.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_API_KEY_LIST_FAILED
+        )
+        sql = "SELECT * FROM api_keys WHERE 1=1"
+        params: list[object] = []
+        if filter_spec.user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(filter_spec.user_id)
+        if filter_spec.revoked_only:
+            sql += " AND revoked = ?"
+            params.append(1)
+        sql += " ORDER BY id LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        try:
+            cursor = await self._db.execute(sql, tuple(params))
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to query API keys"
+            logger.warning(
+                PERSISTENCE_API_KEY_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            keys = tuple(_row_to_api_key(row) for row in rows)
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+            msg = "Failed to deserialize API keys"
+            logger.warning(
+                PERSISTENCE_API_KEY_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug(PERSISTENCE_API_KEY_LISTED, count=len(keys))
+        return keys
+
+    async def count(self, filter_spec: ApiKeyFilterSpec) -> int:
+        """Count API keys matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters.
+
+        Returns:
+            Total number of matching API keys.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        sql = "SELECT COUNT(*) FROM api_keys WHERE 1=1"
+        params: list[object] = []
+        if filter_spec.user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(filter_spec.user_id)
+        if filter_spec.revoked_only:
+            sql += " AND revoked = ?"
+            params.append(1)
+        try:
+            cursor = await self._db.execute(sql, tuple(params))
+            row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count API keys"
+            logger.warning(
+                PERSISTENCE_API_KEY_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        result = int(row[0]) if row else 0
+        logger.debug(PERSISTENCE_API_KEY_LISTED, count=result)
+        return result
 
     async def delete(self, key_id: NotBlankStr) -> bool:
         """Delete an API key by primary key.

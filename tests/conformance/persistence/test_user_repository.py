@@ -9,6 +9,7 @@ from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.user_protocol import ApiKeyFilterSpec, UserFilterSpec
 
 
 def _make_user(
@@ -77,18 +78,18 @@ class TestUserRepository:
         assert fetched is not None
         assert fetched.username == "alice_new"
 
-    async def test_list_users_excludes_system(
+    async def test_list_items_excludes_system(
         self, backend: PersistenceBackend
     ) -> None:
         await backend.users.save(_make_user())
-        users = await backend.users.list_users()
+        users = await backend.users.list_items()
         assert len(users) >= 1
         assert all(u.role != HumanRole.SYSTEM for u in users)
 
     async def test_count(self, backend: PersistenceBackend) -> None:
         await backend.users.save(_make_user("u1", "one"))
         await backend.users.save(_make_user("u2", "two"))
-        assert await backend.users.count() == 2
+        assert await backend.users.count(UserFilterSpec()) == 2
 
     async def test_count_by_role(self, backend: PersistenceBackend) -> None:
         await backend.users.save(_make_user("u1", "one", HumanRole.MANAGER))
@@ -133,14 +134,16 @@ class TestApiKeyRepository:
         assert fetched is not None
         assert fetched.id == "key_1"
 
-    async def test_list_by_user(self, backend: PersistenceBackend) -> None:
+    async def test_query_by_user(self, backend: PersistenceBackend) -> None:
         await backend.users.save(_make_user())
         await backend.api_keys.save(_make_api_key("k1"))
         await backend.api_keys.save(_make_api_key("k2"))
-        keys = await backend.api_keys.list_by_user(NotBlankStr("user_alice"))
+        keys = await backend.api_keys.query(
+            ApiKeyFilterSpec(user_id=NotBlankStr("user_alice"))
+        )
         assert len(keys) == 2
 
-    async def test_list_by_user_pagination(self, backend: PersistenceBackend) -> None:
+    async def test_query_by_user_pagination(self, backend: PersistenceBackend) -> None:
         await backend.users.save(_make_user())
         for i in range(4):
             await backend.api_keys.save(_make_api_key(f"key_pg_{i}"))
@@ -148,12 +151,14 @@ class TestApiKeyRepository:
         # Anchor pagination assertions against the actual sort order so
         # the test catches a window-shift regression even if the global
         # order changes.
-        full = await backend.api_keys.list_by_user(NotBlankStr("user_alice"))
+        full = await backend.api_keys.query(
+            ApiKeyFilterSpec(user_id=NotBlankStr("user_alice"))
+        )
         full_ids = [k.id for k in full]
         assert {"key_pg_0", "key_pg_1", "key_pg_2", "key_pg_3"} <= set(full_ids)
 
-        page = await backend.api_keys.list_by_user(
-            NotBlankStr("user_alice"),
+        page = await backend.api_keys.query(
+            ApiKeyFilterSpec(user_id=NotBlankStr("user_alice")),
             limit=2,
             offset=1,
         )

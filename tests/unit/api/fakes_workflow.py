@@ -298,11 +298,24 @@ class FakeSubworkflowRepository:
 
     async def get(
         self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
+        entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> WorkflowDefinition | None:
+        subworkflow_id, version = entity_id
         stored = self._rows.get((subworkflow_id, version))
         return copy.deepcopy(stored) if stored is not None else None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        """List subworkflows by composite key, ordered ascending."""
+        items = sorted(self._rows.items())
+        return tuple(
+            copy.deepcopy(definition)
+            for _, definition in items[offset : offset + limit]
+        )
 
     async def list_versions(
         self,
@@ -354,12 +367,10 @@ class FakeSubworkflowRepository:
 
     async def delete(
         self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
+        entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> bool:
-        key = (subworkflow_id, version)
-        if key in self._rows:
-            del self._rows[key]
+        if entity_id in self._rows:
+            del self._rows[entity_id]
             return True
         return False
 

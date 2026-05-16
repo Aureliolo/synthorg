@@ -10,8 +10,8 @@ semver row.  Parent workflows pin a specific version in their
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.workflow.definition import WorkflowDefinition  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.definition import WorkflowDefinition
 
 # ``ParentReference`` and ``SubworkflowSummary`` appear in protocol
 # method annotations (``find_parents``, ``list_summaries``,
@@ -22,27 +22,40 @@ from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runt
     ParentReference,
     SubworkflowSummary,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
 __all__ = ["SubworkflowRepository"]
 
+SubworkflowKey = tuple[NotBlankStr, NotBlankStr]
+"""Composite primary key: ``(subworkflow_id, semver)``."""
+
 
 @runtime_checkable
-class SubworkflowRepository(Protocol):
+class SubworkflowRepository(
+    IdKeyedRepository[WorkflowDefinition, SubworkflowKey],
+    Protocol,
+):
     """CRUD interface for subworkflow persistence.
 
-    Subworkflows are stored keyed by ``(subworkflow_id, semver)``.
+    Composes :class:`IdKeyedRepository` (ADR-0001) with composite key
+    ``(subworkflow_id, semver)`` per D8. Bespoke per D7:
+    :meth:`list_versions` returns semver strings for a subworkflow;
+    :meth:`list_summaries` aggregates latest-version summaries;
+    :meth:`search` does full-text-like substring matching; and
+    :meth:`delete_if_unreferenced` is an atomic check-and-delete
+    to eliminate TOCTOU races; :meth:`find_parents` scans upstream
+    references with domain logic (scanning nested subworkflows).
     """
 
-    async def save(self, definition: WorkflowDefinition) -> None:
-        """Persist a new subworkflow version.
+    async def save(self, entity: WorkflowDefinition) -> None:
+        """Persist a new subworkflow version (insert-only).
 
-        The definition's ``id`` is interpreted as the ``subworkflow_id``
+        The entity's ``id`` is interpreted as the ``subworkflow_id``
         and its ``version`` (semver) as the version coordinate.  Writing
         the same ``(id, version)`` twice is rejected.
 
         Args:
-            definition: The workflow definition to publish.
+            entity: The workflow definition to publish.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -50,19 +63,48 @@ class SubworkflowRepository(Protocol):
         """
         ...
 
-    async def get(
-        self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
-    ) -> WorkflowDefinition | None:
+    async def get(self, entity_id: SubworkflowKey) -> WorkflowDefinition | None:
         """Fetch a specific subworkflow version.
 
         Args:
-            subworkflow_id: The subworkflow identifier.
-            version: The semver string.
+            entity_id: ``(subworkflow_id, semver)`` tuple.
 
         Returns:
             The definition, or ``None`` if not found.
+        """
+        ...
+
+    async def delete(self, entity_id: SubworkflowKey) -> bool:
+        """Delete a specific subworkflow version.
+
+        Deletion protection (rejecting when a parent pins the version)
+        is enforced at the service layer, not here.
+
+        Args:
+            entity_id: ``(subworkflow_id, semver)`` tuple.
+
+        Returns:
+            ``True`` if a row was deleted, ``False`` if not found.
+        """
+        ...
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        """List entities in ``(subworkflow_id, semver)`` order (paginated).
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Paginated definitions ordered by composite key ascending.
+
+        Raises:
+            PersistenceError: If the query fails.
         """
         ...
 
@@ -70,14 +112,15 @@ class SubworkflowRepository(Protocol):
         self,
         subworkflow_id: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[NotBlankStr, ...]:
         """List semver strings for a subworkflow, newest first.
 
+        Bespoke per ADR-0001 D7.
+
         Args:
             subworkflow_id: The subworkflow identifier.
-            limit: Maximum versions to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum versions to return.
 
         Returns:
             Tuple of semver strings sorted by ``packaging.version``
@@ -89,15 +132,18 @@ class SubworkflowRepository(Protocol):
     async def list_summaries(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[SubworkflowSummary, ...]:
         """Return summaries for unique subworkflows in the registry.
 
-        The summary reflects the latest version of each subworkflow.
+        Bespoke per ADR-0001 D7. The summary reflects the latest version
+        of each subworkflow.
 
         Args:
-            limit: Maximum summaries to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum summaries to return.
+
+        Returns:
+            Summaries for unique subworkflows, sorted by subworkflow_id.
         """
         ...
 
@@ -105,7 +151,10 @@ class SubworkflowRepository(Protocol):
         self,
         query: NotBlankStr,
     ) -> tuple[SubworkflowSummary, ...]:
-        """Search subworkflows by case-insensitive substring in name or description.
+        """Search subworkflows by case-insensitive substring.
+
+        Bespoke per ADR-0001 D7. Matches against name or description
+        fields.
 
         Args:
             query: Search term.
@@ -115,33 +164,15 @@ class SubworkflowRepository(Protocol):
         """
         ...
 
-    async def delete(
-        self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
-    ) -> bool:
-        """Delete a specific subworkflow version.
-
-        Deletion protection (rejecting when a parent pins the version)
-        is enforced at the service layer, not here.
-
-        Args:
-            subworkflow_id: The subworkflow identifier.
-            version: The semver string.
-
-        Returns:
-            ``True`` if a row was deleted, ``False`` if not found.
-        """
-        ...
-
     async def delete_if_unreferenced(
         self,
         subworkflow_id: NotBlankStr,
         version: NotBlankStr,
     ) -> tuple[bool, tuple[ParentReference, ...]]:
-        """Atomically delete a subworkflow version only if no parents pin it.
+        """Atomically delete a subworkflow version if no parents pin it.
 
-        The check-and-delete runs inside a single transaction to
+        Bespoke per ADR-0001 D7. The check-and-delete runs inside a
+        single transaction to
         eliminate the TOCTOU race between ``find_parents`` and
         ``delete``.
 
@@ -164,6 +195,8 @@ class SubworkflowRepository(Protocol):
         version: NotBlankStr | None = None,
     ) -> tuple[ParentReference, ...]:
         """Find parent workflow definitions referencing a subworkflow.
+
+        Bespoke per ADR-0001 D7.
 
         Args:
             subworkflow_id: The subworkflow identifier.

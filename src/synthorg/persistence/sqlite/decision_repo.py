@@ -27,8 +27,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, validate_pagination_args
-from synthorg.persistence.decision_protocol import DecisionRole  # noqa: TC001
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
+from synthorg.persistence.decision_protocol import (  # noqa: TC001
+    DecisionFilterSpec,
+    DecisionRole,
+)
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
     is_unique_constraint_error,
@@ -447,6 +451,164 @@ class SQLiteDecisionRepository:
                 error=safe_error_description(rollback_exc),
             )
 
+    async def append(self, event: DecisionRecord) -> None:
+        """Append a decision record with a precomputed version.
+
+        This method is the append interface from
+        :class:`AppendOnlyRepository`; most callers use
+        ``append_with_next_version`` instead. Version must be set
+        by the caller.
+        """
+        # Deep-copy metadata so nested dicts/lists the caller retains
+        # are never aliased by the stored record.
+        metadata_view: MappingProxyType[str, object] = MappingProxyType(
+            copy.deepcopy(dict(event.metadata or {}))
+        )
+        try:
+            params = _build_insert_params(
+                record_id=event.id,
+                task_id=event.task_id,
+                approval_id=event.approval_id,
+                executing_agent_id=event.executing_agent_id,
+                reviewer_agent_id=event.reviewer_agent_id,
+                decision=event.decision,
+                reason=event.reason,
+                criteria_snapshot=event.criteria_snapshot,
+                recorded_at=event.recorded_at,
+                metadata=dict(metadata_view),
+            )
+        except TypeError:
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                record_id=event.id,
+                task_id=event.task_id,
+                error_type="TypeError",
+            )
+            raise
+        try:
+            async with self._write_context():
+                await self._db.execute(
+                    """\
+                    INSERT INTO decision_records (
+                        id, task_id, approval_id, executing_agent_id,
+                        reviewer_agent_id, decision, reason,
+                        criteria_snapshot, recorded_at, version, metadata
+                    ) VALUES (
+                        :id, :task_id, :approval_id, :executing_agent_id,
+                        :reviewer_agent_id, :decision, :reason,
+                        :criteria_snapshot, :recorded_at, :version, :metadata
+                    )""",
+                    {**params, "version": event.version},
+                )
+                await self._db.commit()
+        except sqlite3.IntegrityError as exc:
+            await self._rollback_quietly()
+            if is_unique_constraint_error(exc):
+                msg = f"Duplicate decision record {event.id!r}"
+                logger.warning(
+                    PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                    record_id=event.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    sqlite_errorname=exc.sqlite_errorname,
+                )
+                raise DuplicateRecordError(msg) from exc
+            msg = f"Failed to append decision record {event.id!r}"
+            raise QueryError(msg) from exc
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._rollback_quietly()
+            msg = f"Failed to append decision record {event.id!r}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                record_id=event.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def query(
+        self,
+        filter_spec: DecisionFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[DecisionRecord, ...]:
+        """Query decision records with optional filters and pagination.
+
+        When only task_id is specified, results are oldest-first
+        (ascending recorded_at). When agent_id and role are specified
+        without task_id, results are newest-first. Mixed filters default
+        to task-oriented (oldest-first) ordering.
+        """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+        )
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
+
+        # Determine ordering and WHERE clause based on filter spec.
+        task_id_filter = filter_spec.task_id
+        agent_id_filter = filter_spec.agent_id
+        role_filter = filter_spec.role
+
+        where_clauses: list[str] = []
+        params: dict[str, object] = {}
+
+        if task_id_filter is not None:
+            where_clauses.append("task_id = :task_id")
+            params["task_id"] = task_id_filter
+
+        if agent_id_filter is not None and role_filter is not None:
+            # Both agent_id and role specified: filter by the role column.
+            if role_filter == "executor":
+                where_clauses.append("executing_agent_id = :agent_id")
+            else:  # "reviewer"
+                where_clauses.append("reviewer_agent_id = :agent_id")
+            params["agent_id"] = agent_id_filter
+        elif agent_id_filter is not None:
+            # Only agent_id: match either role.
+            where_clauses.append(
+                "(executing_agent_id = :agent_id OR reviewer_agent_id = :agent_id)"
+            )
+            params["agent_id"] = agent_id_filter
+
+        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+        # Determine sort order: task-oriented (oldest-first) if task_id
+        # is present, otherwise newest-first.
+        if task_id_filter is not None:
+            order_by = "recorded_at ASC, id ASC"
+        else:
+            order_by = "recorded_at DESC, id DESC"
+
+        try:
+            async with self._write_context():
+                cursor = await self._db.execute(
+                    f"""\
+                    SELECT {_COLS} FROM decision_records
+                    WHERE {where_clause}
+                    ORDER BY {order_by}
+                    LIMIT ? OFFSET ?""",  # noqa: S608
+                    (*params.values(), effective_limit, offset),
+                )
+                rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to query decision records"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        results = tuple(self._row_to_record(dict(row)) for row in rows)
+        logger.debug(
+            PERSISTENCE_DECISION_RECORD_QUERIED,
+            count=len(results),
+        )
+        return results
+
     async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
         """Retrieve a decision record by ID.
 
@@ -478,7 +640,7 @@ class SQLiteDecisionRepository:
         self,
         task_id: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records for a task, oldest first.
@@ -552,7 +714,7 @@ class SQLiteDecisionRepository:
         agent_id: NotBlankStr,
         *,
         role: DecisionRole,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records where the agent acted in the given role.
@@ -745,6 +907,37 @@ class SQLiteDecisionRepository:
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
                 record_id=row.get("id"),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def purge_before(self, threshold) -> int:  # type: ignore[no-untyped-def]
+        """Delete decision records older than threshold (retention).
+
+        Args:
+            threshold: Datetime; records strictly older than this are
+                deleted.
+
+        Returns:
+            Number of rows removed.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        try:
+            async with self._write_context():
+                cursor = await self._db.execute(
+                    "DELETE FROM decision_records WHERE recorded_at < ?",
+                    (threshold,),
+                )
+                await self._db.commit()
+                return cursor.rowcount
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._rollback_quietly()
+            msg = "Failed to purge decision records"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
