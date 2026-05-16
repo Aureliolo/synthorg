@@ -313,7 +313,7 @@ runs:
     # GitHub Security for both arches with distinct categories.
     - name: Trivy scan (amd64)
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
+      with: # zizmor: ignore[unpinned-tools]
         image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
         format: json
         output: trivy-${{ inputs.image-name }}-amd64.json
@@ -331,7 +331,7 @@ runs:
     - name: Trivy scan (arm64)
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
+      with: # zizmor: ignore[unpinned-tools]
         image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
         format: json
         output: trivy-${{ inputs.image-name }}-arm64.json
@@ -359,7 +359,7 @@ runs:
     - name: Trivy SARIF scan (amd64)
       if: always()
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
+      with: # zizmor: ignore[unpinned-tools]
         image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
         format: sarif
         output: trivy-${{ inputs.image-name }}-amd64.sarif
@@ -377,7 +377,7 @@ runs:
     - name: Trivy SARIF scan (arm64)
       if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
+      with: # zizmor: ignore[unpinned-tools]
         image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
         format: sarif
         output: trivy-${{ inputs.image-name }}-arm64.sarif
