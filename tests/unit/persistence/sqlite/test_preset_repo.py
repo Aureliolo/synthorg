@@ -6,6 +6,8 @@ import aiosqlite
 import pytest
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.preset_protocol import Preset, PresetFilterSpec
 from synthorg.persistence.sqlite.preset_repo import (
     SQLitePersonalityPresetRepository,
 )
@@ -48,24 +50,25 @@ class TestSQLitePersonalityPresetRepository:
     async def test_save_and_get(self, repo: SQLitePersonalityPresetRepository) -> None:
         config_json = _sample_config_json()
         await repo.save(
-            "my_preset",
-            config_json,
-            "A friendly preset",
-            "2026-03-31T00:00:00+00:00",
-            "2026-03-31T00:00:00+00:00",
+            Preset(
+                name=NotBlankStr("my_preset"),
+                config_json=config_json,
+                description="A friendly preset",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
         )
-        result = await repo.get("my_preset")
+        result = await repo.get(NotBlankStr("my_preset"))
         assert result is not None
-        cfg_json, description, created_at, updated_at = result
-        assert json.loads(cfg_json) == json.loads(config_json)
-        assert description == "A friendly preset"
-        assert created_at == "2026-03-31T00:00:00+00:00"
-        assert updated_at == "2026-03-31T00:00:00+00:00"
+        assert json.loads(result.config_json) == json.loads(config_json)
+        assert result.description == "A friendly preset"
+        assert result.created_at == "2026-03-31T00:00:00+00:00"
+        assert result.updated_at == "2026-03-31T00:00:00+00:00"
 
     async def test_get_returns_none_for_missing(
         self, repo: SQLitePersonalityPresetRepository
     ) -> None:
-        result = await repo.get("nonexistent")
+        result = await repo.get(NotBlankStr("nonexistent"))
         assert result is None
 
     async def test_save_upsert_updates_existing(
@@ -73,96 +76,126 @@ class TestSQLitePersonalityPresetRepository:
     ) -> None:
         config_json = _sample_config_json()
         await repo.save(
-            "my_preset",
-            config_json,
-            "Original",
-            "2026-03-31T00:00:00+00:00",
-            "2026-03-31T00:00:00+00:00",
+            Preset(
+                name=NotBlankStr("my_preset"),
+                config_json=config_json,
+                description="Original",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
         )
         updated_json = json.dumps({"traits": ["updated"]}, sort_keys=True)
         await repo.save(
-            "my_preset",
-            updated_json,
-            "Updated",
-            "2026-04-01T00:00:00+00:00",
-            "2026-03-31T12:00:00+00:00",
+            Preset(
+                name=NotBlankStr("my_preset"),
+                config_json=updated_json,
+                description="Updated",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T12:00:00+00:00",
+            )
         )
-        result = await repo.get("my_preset")
+        result = await repo.get(NotBlankStr("my_preset"))
         assert result is not None
-        cfg_json, description, created_at, updated_at = result
-        assert json.loads(cfg_json) == {"traits": ["updated"]}
-        assert description == "Updated"
-        assert created_at == "2026-03-31T00:00:00+00:00"
-        assert updated_at == "2026-03-31T12:00:00+00:00"
+        assert json.loads(result.config_json) == {"traits": ["updated"]}
+        assert result.description == "Updated"
+        assert result.created_at == "2026-03-31T00:00:00+00:00"
+        assert result.updated_at == "2026-03-31T12:00:00+00:00"
 
-    async def test_list_all_returns_sorted(
+    async def test_list_items_returns_sorted(
         self, repo: SQLitePersonalityPresetRepository
     ) -> None:
         config_json = _sample_config_json()
         await repo.save(
-            "zebra",
-            config_json,
-            "Z",
-            "2026-03-31T00:00:00+00:00",
-            "2026-03-31T00:00:00+00:00",
+            Preset(
+                name=NotBlankStr("zebra"),
+                config_json=config_json,
+                description="Z",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
         )
         await repo.save(
-            "alpha",
-            config_json,
-            "A",
-            "2026-03-31T00:00:00+00:00",
-            "2026-03-31T00:00:00+00:00",
+            Preset(
+                name=NotBlankStr("alpha"),
+                config_json=config_json,
+                description="A",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
         )
-        result = await repo.list_all()
+        result = await repo.list_items()
         assert len(result) == 2
-        assert result[0][0] == "alpha"
-        assert result[1][0] == "zebra"
+        assert result[0].name == "alpha"
+        assert result[1].name == "zebra"
 
-    async def test_list_all_empty(
+    async def test_list_items_empty(
         self, repo: SQLitePersonalityPresetRepository
     ) -> None:
-        result = await repo.list_all()
+        result = await repo.list_items()
         assert result == ()
+
+    async def test_query_with_empty_spec(
+        self, repo: SQLitePersonalityPresetRepository
+    ) -> None:
+        config_json = _sample_config_json()
+        await repo.save(
+            Preset(
+                name=NotBlankStr("q1"),
+                config_json=config_json,
+                description="Q",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
+        )
+        result = await repo.query(PresetFilterSpec())
+        assert len(result) == 1
+        assert result[0].name == "q1"
 
     async def test_delete_existing(
         self, repo: SQLitePersonalityPresetRepository
     ) -> None:
         config_json = _sample_config_json()
         await repo.save(
-            "my_preset",
-            config_json,
-            "desc",
-            "2026-03-31T00:00:00+00:00",
-            "2026-03-31T00:00:00+00:00",
+            Preset(
+                name=NotBlankStr("my_preset"),
+                config_json=config_json,
+                description="desc",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
         )
-        deleted = await repo.delete("my_preset")
+        deleted = await repo.delete(NotBlankStr("my_preset"))
         assert deleted is True
-        assert await repo.get("my_preset") is None
+        assert await repo.get(NotBlankStr("my_preset")) is None
 
     async def test_delete_nonexistent(
         self, repo: SQLitePersonalityPresetRepository
     ) -> None:
-        deleted = await repo.delete("nonexistent")
+        deleted = await repo.delete(NotBlankStr("nonexistent"))
         assert deleted is False
 
     async def test_count(self, repo: SQLitePersonalityPresetRepository) -> None:
-        assert await repo.count() == 0
+        assert await repo.count(PresetFilterSpec()) == 0
         config_json = _sample_config_json()
         await repo.save(
-            "preset_a",
-            config_json,
-            "A",
-            "2026-03-31T00:00:00+00:00",
-            "2026-03-31T00:00:00+00:00",
+            Preset(
+                name=NotBlankStr("preset_a"),
+                config_json=config_json,
+                description="A",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
         )
         await repo.save(
-            "preset_b",
-            config_json,
-            "B",
-            "2026-03-31T00:00:00+00:00",
-            "2026-03-31T00:00:00+00:00",
+            Preset(
+                name=NotBlankStr("preset_b"),
+                config_json=config_json,
+                description="B",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
         )
-        assert await repo.count() == 2
+        assert await repo.count(PresetFilterSpec()) == 2
 
 
 @pytest.fixture
@@ -183,18 +216,20 @@ class TestSQLitePersonalityPresetRepositoryErrors:
         [
             pytest.param(
                 lambda r: r.save(
-                    "x",
-                    "{}",
-                    "",
-                    "2026-01-01T00:00:00+00:00",
-                    "2026-01-01T00:00:00+00:00",
+                    Preset(
+                        name=NotBlankStr("x"),
+                        config_json="{}",
+                        description="",
+                        created_at="2026-01-01T00:00:00+00:00",
+                        updated_at="2026-01-01T00:00:00+00:00",
+                    )
                 ),
                 id="save",
             ),
-            pytest.param(lambda r: r.get("x"), id="get"),
-            pytest.param(lambda r: r.list_all(), id="list_all"),
-            pytest.param(lambda r: r.delete("x"), id="delete"),
-            pytest.param(lambda r: r.count(), id="count"),
+            pytest.param(lambda r: r.get(NotBlankStr("x")), id="get"),
+            pytest.param(lambda r: r.list_items(), id="list_items"),
+            pytest.param(lambda r: r.delete(NotBlankStr("x")), id="delete"),
+            pytest.param(lambda r: r.count(PresetFilterSpec()), id="count"),
         ],
     )
     async def test_raises_query_error(

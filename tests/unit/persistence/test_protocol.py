@@ -33,8 +33,6 @@ from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,
-    PresetListRow,
-    PresetRow,
 )
 from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
@@ -50,7 +48,9 @@ from synthorg.persistence.training_protocol import (
     TrainingResultRepository,
 )
 from synthorg.persistence.user_protocol import (
+    ApiKeyFilterSpec,
     ApiKeyRepository,
+    UserFilterSpec,
     UserRepository,
 )
 from synthorg.persistence.workflow_definition_protocol import (
@@ -294,6 +294,9 @@ class _FakePresetOverrideRepo:
 
 
 class _FakeDecisionRepository:
+    async def append(self, event: Any) -> None:
+        pass
+
     async def append_with_next_version(
         self,
         **_kwargs: object,
@@ -302,6 +305,16 @@ class _FakeDecisionRepository:
 
     async def get(self, record_id: str) -> DecisionRecord | None:
         return None
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[DecisionRecord, ...]:
+        del limit, offset
+        return ()
 
     async def list_by_task(self, task_id: str) -> tuple[DecisionRecord, ...]:
         return ()
@@ -314,54 +327,78 @@ class _FakeDecisionRepository:
     ) -> tuple[DecisionRecord, ...]:
         return ()
 
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
+
 
 class _FakeUserRepository:
-    async def save(self, user: User) -> None:
+    async def save(self, entity: User) -> None:
         pass
 
-    async def get(self, user_id: str) -> User | None:
+    async def get(self, entity_id: str) -> User | None:
         return None
 
     async def get_by_username(self, username: str) -> User | None:
         return None
 
-    async def list_users(self, *, limit: int = 100) -> tuple[User, ...]:
-        del limit
-        return ()
-
-    async def list_users_paginated(
+    async def list_items(
         self,
         *,
-        after_id: str | None,
-        limit: int,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[User, ...]:
-        del after_id, limit
         return ()
 
-    async def count(self) -> int:
+    async def query(
+        self,
+        filter_spec: UserFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[User, ...]:
+        return ()
+
+    async def count(self, filter_spec: UserFilterSpec) -> int:
         return 0
 
     async def count_by_role(self, role: HumanRole) -> int:
         return 0
 
-    async def delete(self, user_id: str) -> bool:
+    async def delete(self, entity_id: str) -> bool:
         return False
 
 
 class _FakeApiKeyRepository:
-    async def save(self, key: ApiKey) -> None:
+    async def save(self, entity: ApiKey) -> None:
         pass
 
-    async def get(self, key_id: str) -> ApiKey | None:
+    async def get(self, entity_id: str) -> ApiKey | None:
         return None
 
     async def get_by_hash(self, key_hash: str) -> ApiKey | None:
         return None
 
-    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
         return ()
 
-    async def delete(self, key_id: str) -> bool:
+    async def query(
+        self,
+        filter_spec: ApiKeyFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        return ()
+
+    async def count(self, filter_spec: ApiKeyFilterSpec) -> int:
+        return 0
+
+    async def delete(self, entity_id: str) -> bool:
         return False
 
 
@@ -553,30 +590,39 @@ class _FakeSsrfViolationRepository:
 
 
 class _FakePersonalityPresetRepository:
-    async def save(
-        self,
-        name: NotBlankStr,
-        config_json: str,
-        description: str,
-        created_at: str,
-        updated_at: str,
-    ) -> None:
-        pass
+    async def save(self, entity: Any) -> None:
+        del entity
 
-    async def get(
-        self,
-        name: NotBlankStr,
-    ) -> PresetRow | None:
+    async def get(self, entity_id: NotBlankStr) -> Any | None:
+        del entity_id
         return None
 
-    async def list_all(self) -> tuple[PresetListRow, ...]:
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
         return ()
 
-    async def delete(self, name: NotBlankStr) -> bool:
-        return False
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del filter_spec, limit, offset
+        return ()
 
-    async def count(self) -> int:
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
         return 0
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
 
 
 class _FakeWorkflowDefinitionRepository:
