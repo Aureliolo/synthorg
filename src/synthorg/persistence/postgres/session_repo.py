@@ -92,7 +92,16 @@ class PostgresSessionRepository:
                 "(session_id, user_id, username, role, ip_address, "
                 "user_agent, created_at, last_active_at, expires_at, "
                 "revoked) VALUES "
-                "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (session_id) DO UPDATE SET "
+                "user_id = EXCLUDED.user_id, "
+                "username = EXCLUDED.username, "
+                "role = EXCLUDED.role, "
+                "ip_address = EXCLUDED.ip_address, "
+                "user_agent = EXCLUDED.user_agent, "
+                "last_active_at = EXCLUDED.last_active_at, "
+                "expires_at = EXCLUDED.expires_at, "
+                "revoked = EXCLUDED.revoked",
                 (
                     session.session_id,
                     session.user_id,
@@ -108,6 +117,11 @@ class PostgresSessionRepository:
             )
         if session.revoked:
             self._revoked.add(session.session_id)
+        else:
+            # Refresh-via-save (re-issued token, etc.) clears prior
+            # revocation; keep the in-memory cache in lockstep with
+            # the persisted ``revoked`` flag.
+            self._revoked.discard(session.session_id)
 
     async def get(self, entity_id: str) -> Session | None:
         """Look up a session by ID."""
@@ -260,7 +274,12 @@ class PostgresSessionRepository:
                 (entity_id,),
             )
             count = cur.rowcount
-        return count > 0
+        if count > 0:
+            # Otherwise ``is_revoked`` keeps reporting a deleted
+            # session as revoked until the next ``load_revoked``.
+            self._revoked.discard(entity_id)
+            return True
+        return False
 
     async def revoke(self, session_id: str) -> bool:
         """Revoke a session by ID."""

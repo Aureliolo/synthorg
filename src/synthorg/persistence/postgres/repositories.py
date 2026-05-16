@@ -437,7 +437,7 @@ class PostgresCostRecordRepository:
         )
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY timestamp DESC, agent_id ASC"
+        sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
         effective_offset = max(0, int(offset))
         sql += " LIMIT %s OFFSET %s"
         params.extend([int(limit), effective_offset])
@@ -730,7 +730,7 @@ class PostgresMessageRepository:
         if filter_spec.channel is not None:
             sql += " WHERE channel = %s"
             params.append(filter_spec.channel)
-        sql += " ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+        sql += " ORDER BY timestamp DESC, id ASC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
         try:
             async with (

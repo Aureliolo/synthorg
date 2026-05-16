@@ -218,16 +218,13 @@ class PostgresConnectionRepository:
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all connections, sorted by name for determinism."""
-        if limit is not None and limit <= 0:
+        if limit <= 0:
             return ()
         sql = (
             f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
-            "ORDER BY name ASC"
+            "ORDER BY name ASC LIMIT %s OFFSET %s"
         )
-        params: tuple[object, ...] = ()
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (int(limit), max(0, int(offset)))
+        params: tuple[object, ...] = (int(limit), max(0, int(offset)))
         try:
             async with (
                 self._pool.connection() as conn,
@@ -262,17 +259,15 @@ class PostgresConnectionRepository:
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List connections matching the filter spec, sorted by name."""
-        if limit is not None and limit <= 0:
+        if limit <= 0:
             return ()
         sql = f"SELECT {_SELECT_COLS} FROM connections"  # noqa: S608
         params: tuple[object, ...] = ()
         if filter_spec.connection_type is not None:
             sql += " WHERE connection_type = %s"
             params = (filter_spec.connection_type.value,)
-        sql += " ORDER BY name ASC"
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (*params, int(limit), max(0, int(offset)))
+        sql += " ORDER BY name ASC LIMIT %s OFFSET %s"
+        params = (*params, int(limit), max(0, int(offset)))
         try:
             async with (
                 self._pool.connection() as conn,

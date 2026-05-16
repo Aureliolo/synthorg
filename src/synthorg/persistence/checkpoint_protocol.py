@@ -1,6 +1,5 @@
 """Checkpoint and heartbeat repository protocols."""
 
-from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -19,7 +18,7 @@ __all__ = [
 
 
 class CheckpointFilterSpec(BaseModel):
-    """Filter spec for ``CheckpointRepository.query`` (ADR-0001)."""
+    """Filter spec for ``CheckpointRepository.query``."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -40,7 +39,7 @@ class CheckpointRepository(
 ):
     """Append-only persistence interface for checkpoint rows.
 
-    Composes :class:`AppendOnlyRepository` (ADR-0001). Bespoke per D7:
+    Composes :class:`AppendOnlyRepository`.
 
     * ``get_latest`` returns the single newest row by ``turn_number``
       under a filter; the generic ``query`` cannot express the
@@ -71,8 +70,13 @@ class CheckpointRepository(
         """Return checkpoints matching the filter, newest first."""
         ...
 
-    async def purge_before(self, threshold: datetime) -> int:
-        """Delete checkpoints with ``saved_at < threshold``."""
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        """Delete checkpoints with ``saved_at < threshold``.
+
+        ``threshold`` must be timezone-aware UTC; naive datetimes are
+        rejected at the boundary so purge cut-offs do not depend on the
+        caller's local-time assumption.
+        """
         ...
 
     async def get_latest(
@@ -99,7 +103,7 @@ class CheckpointRepository(
         ...
 
     async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
-        """Delete all checkpoints for an execution (bespoke D7).
+        """Delete all checkpoints for an execution.
 
         Args:
             execution_id: The execution identifier.
@@ -117,15 +121,15 @@ class CheckpointRepository(
 class HeartbeatRepository(Protocol):
     """CRUD interface for heartbeat persistence.
 
-    Bespoke per ADR-0001 D7: heartbeats are a "singleton per execution"
-    (one row per ``execution_id``) but the dominant access pattern is
+    Heartbeats are a "singleton per execution" (one row per
+    ``execution_id``) but the dominant access pattern is
     :meth:`get_stale` (range query over ``last_heartbeat_at``), which
     is not expressible in the generic categories. The save/get/delete
     surface looks superficially like :class:`IdKeyedRepository`, but
     composing that protocol would require ``list_items`` pagination
     that no caller needs while still leaving ``get_stale`` outside the
-    generic surface. Keeping the protocol fully bespoke is simpler
-    than splitting awareness across two surfaces.
+    generic surface. A fully bespoke protocol is simpler than splitting
+    awareness across two surfaces.
     """
 
     async def save(self, heartbeat: Heartbeat) -> None:

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.observability import get_logger, safe_error_description
@@ -22,7 +22,11 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    is_unique_constraint_error,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -55,13 +59,18 @@ class SQLiteCheckpointRepository:
         self._write_context = write_context
 
     async def append(self, checkpoint: Checkpoint) -> None:
-        """Persist a checkpoint row (append-only per AppendOnlyRepository)."""
+        """Persist a checkpoint row (append-only per AppendOnlyRepository).
+
+        A duplicate ``id`` is a contract violation, not an update: a
+        plain ``INSERT`` surfaces it as ``DuplicateRecordError`` rather
+        than silently overwriting the immutable record.
+        """
         async with self._write_context():
             try:
                 data = checkpoint.model_dump(mode="json")
                 await self._db.execute(
                     """\
-INSERT OR REPLACE INTO checkpoints (
+INSERT INTO checkpoints (
     id, execution_id, agent_id, task_id, turn_number,
     context_json, created_at
 ) VALUES (
@@ -77,6 +86,15 @@ INSERT OR REPLACE INTO checkpoints (
                 # the next caller.
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
+                if is_unique_constraint_error(exc):
+                    msg = f"Checkpoint {checkpoint.id!r} already exists"
+                    logger.warning(
+                        PERSISTENCE_CHECKPOINT_SAVE_FAILED,
+                        checkpoint_id=checkpoint.id,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise DuplicateRecordError(msg) from exc
                 msg = f"Failed to save checkpoint {checkpoint.id!r}"
                 logger.warning(
                     PERSISTENCE_CHECKPOINT_SAVE_FAILED,
@@ -161,6 +179,9 @@ INSERT OR REPLACE INTO checkpoints (
         offset: int = 0,
     ) -> tuple[Checkpoint, ...]:
         """Return checkpoints matching the filter, newest first."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CHECKPOINT_QUERY_FAILED
+        )
         conditions: list[str] = []
         params: list[object] = []
         if filter_spec.execution_id is not None:
@@ -191,7 +212,19 @@ INSERT OR REPLACE INTO checkpoints (
         return tuple(self._row_to_model(dict(r)) for r in rows)
 
     async def purge_before(self, threshold: datetime) -> int:
-        """Delete checkpoints with ``created_at < threshold``."""
+        """Delete checkpoints with ``created_at < threshold``.
+
+        ``threshold`` must be timezone-aware; a naive value would make
+        the cut-off ambiguous against UTC-formatted stored timestamps.
+        """
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            logger.warning(
+                PERSISTENCE_CHECKPOINT_DELETE_FAILED,
+                error="naive_threshold",
+                error_type="ValueError",
+            )
+            raise QueryError(msg)
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -213,7 +246,7 @@ INSERT OR REPLACE INTO checkpoints (
         return count
 
     async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
-        """Delete all checkpoints for an execution (bespoke D7)."""
+        """Delete all checkpoints for an execution."""
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

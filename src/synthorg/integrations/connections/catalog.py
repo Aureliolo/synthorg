@@ -42,6 +42,7 @@ from synthorg.observability.events.integrations import (
     SECRET_DELETED,
     SECRET_RETRIEVAL_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,  # noqa: TC001
 )
@@ -121,17 +122,22 @@ class ConnectionCatalog:
         async with self._cache_lock:
             # Re-check under lock (double-checked locking)
             if not self._cache_valid:
-                # 10_000 is the per-tenant connection ceiling: an order of
-                # magnitude above any realistic deployment and the soft
-                # cap operators are told about in the integrations design
-                # page. ``list_items`` paginates above this point but the
-                # catalog needs the full set to satisfy synchronous
-                # ``by_name`` lookups, so we ask for the whole tenant
-                # window in one round trip rather than streaming pages.
-                all_conns = await self._repo.list_items(
-                    limit=10_000,  # lint-allow: magic-numbers -- tenant ceiling
-                )
-                self._cache = {c.name: c for c in all_conns}
+                # The catalog needs every persisted connection to
+                # satisfy synchronous ``by_name`` lookups, so page
+                # through the full set: a single capped read would
+                # silently drop connections past the backend page cap.
+                collected: list[Connection] = []
+                offset = 0
+                while True:
+                    page = await self._repo.list_items(
+                        limit=DEFAULT_PAGE_SIZE,
+                        offset=offset,
+                    )
+                    collected.extend(page)
+                    if len(page) < DEFAULT_PAGE_SIZE:
+                        break
+                    offset += DEFAULT_PAGE_SIZE
+                self._cache = {c.name: c for c in collected}
                 self._cache_valid = True
 
     def _invalidate_cache(self) -> None:

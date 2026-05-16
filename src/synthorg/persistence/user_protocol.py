@@ -19,7 +19,7 @@ from synthorg.persistence._generics import (
 
 
 class UserFilterSpec(BaseModel):
-    """Filter spec for ``UserRepository.query`` (ADR-0001)."""
+    """Filter spec for ``UserRepository.query``."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -30,7 +30,7 @@ class UserFilterSpec(BaseModel):
 
 
 class ApiKeyFilterSpec(BaseModel):
-    """Filter spec for ``ApiKeyRepository.query`` (ADR-0001)."""
+    """Filter spec for ``ApiKeyRepository.query``."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -52,10 +52,11 @@ class UserRepository(
 ):
     """CRUD + query interface for User persistence.
 
-    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). Bespoke methods kept per D7:
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`.
+    Bespoke methods:
     - ``get_by_username``: alternate-key lookup on indexed username column
     - ``count_by_role``: domain invariant (callers need role-count aggregate)
+    - ``list_after_id``: keyset cursor pagination for the dashboard
     """
 
     async def save(self, entity: User) -> None:
@@ -111,6 +112,32 @@ class UserRepository(
 
         Returns:
             Human users ordered by id ascending.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_after_id(
+        self,
+        *,
+        after_id: NotBlankStr | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+    ) -> tuple[User, ...]:
+        """Keyset page of human users with ``id > after_id``.
+
+        Pushes the cursor predicate into the SQL layer so dashboard
+        pagination stays O(page) regardless of table size, instead of
+        loading a capped prefix and filtering in memory.
+
+        Args:
+            after_id: Exclusive lower bound on ``id``; ``None`` returns
+                the first page.
+            limit: Maximum users to return (ascending ``id`` order).
+
+        Returns:
+            Up to *limit* human users with ``id`` strictly greater than
+            ``after_id``, excluding the system user.
 
         Raises:
             PersistenceError: If the operation fails.

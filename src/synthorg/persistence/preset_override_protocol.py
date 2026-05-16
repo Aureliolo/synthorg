@@ -17,7 +17,7 @@ explicitly cleared with ``delete``.
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence._generics import IdKeyedRepository
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 from synthorg.providers.management.capability_dtos import PresetOverride
 
 
@@ -80,7 +80,7 @@ class PresetOverrideRepo(
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[PresetOverride, ...]:
         """List overrides ordered by ``preset_name`` ascending.

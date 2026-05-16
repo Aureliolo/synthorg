@@ -201,11 +201,16 @@ class InMemoryMessageBus:
             if not self._running:
                 return
             self._running = False
-        self._shutdown_event.set()
+            # Signal shutdown while still holding the lock so a
+            # concurrent start() cannot clear the event between the
+            # _running flip and the set(), leaving a running bus stuck
+            # in permanent shutdown state.
+            self._shutdown_event.set()
+            queues_signalled = len(self._queues)
         logger.info(COMM_BUS_STOPPED)
         logger.debug(
             COMM_BUS_SHUTDOWN_SIGNAL,
-            queues_signalled=len(self._queues),
+            queues_signalled=queues_signalled,
         )
 
     def _require_running(self) -> None:

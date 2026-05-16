@@ -79,11 +79,25 @@ async def _fetch_workflow_definitions(
         wf_repo = getattr(persistence, "workflow_definitions", None)
         if wf_repo is None:
             return frozenset()
+        from synthorg.persistence._generics import (  # noqa: PLC0415
+            DEFAULT_PAGE_SIZE,
+        )
         from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
             WorkflowDefinitionFilterSpec,
         )
 
-        definitions = await wf_repo.query(WorkflowDefinitionFilterSpec())
+        definitions = []
+        offset = 0
+        while True:
+            page = await wf_repo.query(
+                WorkflowDefinitionFilterSpec(),
+                limit=DEFAULT_PAGE_SIZE,
+                offset=offset,
+            )
+            definitions.extend(page)
+            if len(page) < DEFAULT_PAGE_SIZE:
+                break
+            offset += DEFAULT_PAGE_SIZE
     except MemoryError, RecursionError:
         raise
     except Exception:

@@ -12,7 +12,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.observability import get_logger, safe_error_description
@@ -26,6 +26,7 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -50,6 +51,10 @@ class PostgresCheckpointRepository:
     async def append(self, checkpoint: Checkpoint) -> None:
         """Persist a checkpoint row (append-only per AppendOnlyRepository).
 
+        A duplicate ``id`` is a contract violation, not an update: a
+        plain ``INSERT`` surfaces it as ``DuplicateRecordError`` rather
+        than silently overwriting the immutable record.
+
         ``Checkpoint.context_json`` is a pre-serialized JSON **string**
         at the Python level but the Postgres column is native ``JSONB``.
         psycopg's default string adapter sends ``TEXT`` on the wire and
@@ -69,14 +74,7 @@ INSERT INTO checkpoints (
 ) VALUES (
     %(id)s, %(execution_id)s, %(agent_id)s, %(task_id)s, %(turn_number)s,
     %(context_json)s, %(created_at)s
-)
-ON CONFLICT(id) DO UPDATE SET
-    execution_id=EXCLUDED.execution_id,
-    agent_id=EXCLUDED.agent_id,
-    task_id=EXCLUDED.task_id,
-    turn_number=EXCLUDED.turn_number,
-    context_json=EXCLUDED.context_json,
-    created_at=EXCLUDED.created_at""",
+)""",
                     data,
                 )
                 await conn.commit()
@@ -89,6 +87,15 @@ ON CONFLICT(id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+        except psycopg.errors.UniqueViolation as exc:
+            msg = f"Checkpoint {checkpoint.id!r} already exists"
+            logger.warning(
+                PERSISTENCE_CHECKPOINT_SAVE_FAILED,
+                checkpoint_id=checkpoint.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save checkpoint {checkpoint.id!r}"
             logger.warning(
@@ -185,6 +192,9 @@ ON CONFLICT(id) DO UPDATE SET
         offset: int = 0,
     ) -> tuple[Checkpoint, ...]:
         """Return checkpoints matching the filter, newest first."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CHECKPOINT_QUERY_FAILED
+        )
         conditions: list[str] = []
         params: list[object] = []
         if filter_spec.execution_id is not None:
@@ -220,7 +230,19 @@ ON CONFLICT(id) DO UPDATE SET
         return tuple(self._row_to_model(dict(r)) for r in rows)
 
     async def purge_before(self, threshold: datetime) -> int:
-        """Delete checkpoints with ``created_at < threshold``."""
+        """Delete checkpoints with ``created_at < threshold``.
+
+        ``threshold`` must be timezone-aware; a naive value would make
+        the cut-off depend on the backend's session timezone.
+        """
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            logger.warning(
+                PERSISTENCE_CHECKPOINT_DELETE_FAILED,
+                error="naive_threshold",
+                error_type="ValueError",
+            )
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -240,7 +262,7 @@ ON CONFLICT(id) DO UPDATE SET
         return count
 
     async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
-        """Delete all checkpoints for an execution (bespoke D7)."""
+        """Delete all checkpoints for an execution."""
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

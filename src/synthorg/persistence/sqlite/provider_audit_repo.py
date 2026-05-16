@@ -226,7 +226,24 @@ class SQLiteProviderAuditRepo:
                 offset=offset,
             )
             raise QueryError(msg) from exc
-        return tuple(self._row_to_event(dict(r)) for r in rows)
+        try:
+            return tuple(self._row_to_event(dict(r)) for r in rows)
+        except QueryError:
+            raise
+        except Exception as exc:
+            # Fail closed on a corrupt audit row instead of letting
+            # raw Pydantic / datetime / enum errors escape as 500.
+            msg = "Failed to query provider audit events"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                provider_name=filter_spec.provider_name,
+                after_id=filter_spec.after_id,
+                limit=limit,
+                offset=offset,
+            )
+            raise QueryError(msg) from exc
 
     async def purge_before(self, threshold: datetime) -> int:
         """Delete events with ``occurred_at < threshold`` (generic).

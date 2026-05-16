@@ -235,7 +235,7 @@ class PostgresTrainingPlanRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[TrainingPlan, ...]:
-        """List training plans with pagination (ADR-0001).
+        """List training plans with pagination.
 
         Args:
             limit: Maximum plans to return (must be >= 1).
@@ -247,7 +247,9 @@ class PostgresTrainingPlanRepository:
         Raises:
             QueryError: If the operation fails.
         """
-        limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
+        limit = validate_pagination_args(
+            limit, offset, event=HR_TRAINING_PERSISTENCE_ERROR
+        )
         try:
             async with (
                 self._pool.connection() as conn,
@@ -275,7 +277,7 @@ class PostgresTrainingPlanRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[TrainingPlan, ...]:
-        """Query training plans matching the filter spec (ADR-0001).
+        """Query training plans matching the filter spec.
 
         Args:
             filter_spec: Carries optional filters for agent_id, status.
@@ -288,7 +290,9 @@ class PostgresTrainingPlanRepository:
         Raises:
             QueryError: If the operation fails.
         """
-        limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
+        limit = validate_pagination_args(
+            limit, offset, event=HR_TRAINING_PERSISTENCE_ERROR
+        )
         try:
             where_clauses = []
             params: list[object] = []
@@ -323,7 +327,7 @@ class PostgresTrainingPlanRepository:
         return tuple(_row_to_plan(row) for row in rows)
 
     async def count(self, filter_spec: TrainingPlanFilterSpec) -> int:
-        """Count training plans matching the filter spec (ADR-0001).
+        """Count training plans matching the filter spec.
 
         Args:
             filter_spec: Carries optional filters for agent_id, status.

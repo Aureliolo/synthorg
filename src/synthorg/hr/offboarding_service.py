@@ -31,6 +31,7 @@ from synthorg.observability.events.hr import (
     HR_FIRING_REASSIGNMENT_FAILED,
     HR_FIRING_TEAM_NOTIFIED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
 if TYPE_CHECKING:
@@ -190,9 +191,19 @@ class OffboardingService:
             return ()
 
         try:
-            assigned_tasks = await self._task_repository.query(
-                TaskFilterSpec(assigned_to=NotBlankStr(agent_id)),
-            )
+            collected = []
+            offset = 0
+            while True:
+                page = await self._task_repository.query(
+                    TaskFilterSpec(assigned_to=NotBlankStr(agent_id)),
+                    limit=DEFAULT_PAGE_SIZE,
+                    offset=offset,
+                )
+                collected.extend(page)
+                if len(page) < DEFAULT_PAGE_SIZE:
+                    break
+                offset += DEFAULT_PAGE_SIZE
+            assigned_tasks = tuple(collected)
             active_tasks = tuple(
                 t
                 for t in assigned_tasks

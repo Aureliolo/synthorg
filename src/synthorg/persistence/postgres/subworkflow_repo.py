@@ -294,9 +294,8 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
-            limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
+            limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
         )
-        offset = max(0, offset)
         try:
             async with (
                 self._pool.connection() as conn,

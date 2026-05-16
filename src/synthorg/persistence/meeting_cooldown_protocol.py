@@ -10,19 +10,18 @@ immediately after a deploy that happened during the cooldown window.
 This repository persists one row per meeting type. The scheduler:
 
 * Hydrates the dict at start via :meth:`load_all`.
-* Calls :meth:`upsert` after every trigger with the wall-clock
+* Calls :meth:`save` after every trigger with the wall-clock
   timestamp.
 * Uses wall-clock (``Clock.now()``) rather than ``time.monotonic()`` so
   the persisted value remains meaningful across process boundaries.
 """
 
-from datetime import datetime  # noqa: TC003 -- runtime needed by Pydantic field
 from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence._generics import IdKeyedRepository
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
 
 class MeetingCooldownRecord(BaseModel):
@@ -40,7 +39,7 @@ class MeetingCooldownRecord(BaseModel):
     meeting_type_name: NotBlankStr = Field(
         description="Meeting type whose cooldown we track"
     )
-    last_triggered_at: datetime = Field(
+    last_triggered_at: AwareDatetime = Field(
         description="UTC wall-clock timestamp of the most recent trigger"
     )
 
@@ -52,10 +51,10 @@ class MeetingCooldownRepository(
 ):
     """Persistence interface for meeting cooldown timestamps.
 
-    Composes :class:`IdKeyedRepository` (ADR-0001): the natural key is
+    Composes :class:`IdKeyedRepository`: the natural key is
     ``meeting_type_name``. ``load_all`` is retained as a bespoke perf
-    method (ADR D7) because the scheduler hydrates every row at start
-    and the cardinality matches the static meeting catalogue.
+    method because the scheduler hydrates every row at start and the
+    cardinality matches the static meeting catalogue.
     """
 
     async def save(self, entity: MeetingCooldownRecord) -> None:
@@ -100,7 +99,7 @@ class MeetingCooldownRepository(
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[MeetingCooldownRecord, ...]:
         """List cooldown rows ordered by ``meeting_type_name`` ascending.
@@ -118,7 +117,7 @@ class MeetingCooldownRepository(
         ...
 
     async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
-        """Load every cooldown row in one call (bespoke per ADR-0001 D7).
+        """Load every cooldown row in one call.
 
         Returns:
             All persisted cooldown rows, order unspecified.

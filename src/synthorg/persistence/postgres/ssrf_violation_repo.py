@@ -19,6 +19,7 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 if TYPE_CHECKING:
@@ -144,6 +145,9 @@ class PostgresSsrfViolationRepository:
         offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
         """List violations ordered by id ascending (generic IdKeyed surface)."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,

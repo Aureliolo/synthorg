@@ -194,13 +194,17 @@ class PostgresOAuthStateRepository:
         offset: int = 0,
     ) -> tuple[OAuthState, ...]:
         """List all OAuth states with pagination."""
-        if limit is not None and limit <= 0:
+        if limit <= 0:
             return ()
-        sql = f"SELECT {_SELECT_COLS} FROM oauth_states ORDER BY created_at DESC"  # noqa: S608
-        params: tuple[object, ...] = ()
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (int(limit), max(0, int(offset)))
+        # ``created_at`` is non-unique; ``state_token`` (PK) is the
+        # deterministic tie-breaker so offset paging cannot skip or
+        # duplicate rows that share a timestamp.
+        sql = (
+            f"SELECT {_SELECT_COLS} FROM oauth_states "  # noqa: S608
+            "ORDER BY created_at DESC, state_token ASC"
+        )
+        sql += " LIMIT %s OFFSET %s"
+        params: tuple[object, ...] = (int(limit), max(0, int(offset)))
         try:
             async with (
                 self._pool.connection() as conn,

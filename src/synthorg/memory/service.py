@@ -524,7 +524,18 @@ class MemoryService:
                 )
                 msg = f"Checkpoint {checkpoint_id} not found"
                 raise CheckpointNotFoundError(msg)
-            await checkpoints.delete(checkpoint_id)
+            deleted = await checkpoints.delete(checkpoint_id)
+            if not deleted:
+                # Lost a race with a concurrent cross-process delete
+                # after the pre-check; surface the documented 404
+                # rather than reporting a silent success.
+                logger.warning(
+                    MEMORY_CHECKPOINT_NOT_FOUND,
+                    checkpoint_id=checkpoint_id,
+                    operation="delete",
+                )
+                msg = f"Checkpoint {checkpoint_id} not found"
+                raise CheckpointNotFoundError(msg)
 
     async def list_runs(
         self,

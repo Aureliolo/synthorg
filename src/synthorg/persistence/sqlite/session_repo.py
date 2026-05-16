@@ -27,7 +27,9 @@ from synthorg.persistence._shared.datetime_marshaller import (
     coerce_row_timestamp,
     format_iso_utc,
 )
-from synthorg.persistence._shared.pagination import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+)
 from synthorg.persistence.auth_protocol import SessionFilterSpec  # noqa: TC001
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
@@ -108,7 +110,16 @@ class SQLiteSessionRepository:
                     "INSERT INTO sessions "
                     "(session_id, user_id, username, role, ip_address, "
                     "user_agent, created_at, last_active_at, expires_at, "
-                    "revoked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "revoked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(session_id) DO UPDATE SET "
+                    "user_id = excluded.user_id, "
+                    "username = excluded.username, "
+                    "role = excluded.role, "
+                    "ip_address = excluded.ip_address, "
+                    "user_agent = excluded.user_agent, "
+                    "last_active_at = excluded.last_active_at, "
+                    "expires_at = excluded.expires_at, "
+                    "revoked = excluded.revoked",
                     (
                         session.session_id,
                         session.user_id,
@@ -125,6 +136,11 @@ class SQLiteSessionRepository:
                 await self._db.commit()
                 if session.revoked:
                     self._revoked.add(session.session_id)
+                else:
+                    # Refresh-via-save clears prior revocation; keep
+                    # the in-memory cache in lockstep with the
+                    # persisted ``revoked`` flag.
+                    self._revoked.discard(session.session_id)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()

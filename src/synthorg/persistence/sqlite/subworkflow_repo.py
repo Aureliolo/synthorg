@@ -355,9 +355,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
-            limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
+            limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
         )
-        offset = max(0, offset)
         try:
             cursor = await self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608

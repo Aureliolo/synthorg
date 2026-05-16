@@ -553,30 +553,24 @@ class SQLiteDecisionRepository:
         role_filter = filter_spec.role
 
         where_clauses: list[str] = []
-        params: dict[str, object] = {}
+        params: list[object] = []
 
         if task_id_filter is not None:
-            where_clauses.append("task_id = :task_id")
-            params["task_id"] = task_id_filter
+            where_clauses.append("task_id = ?")
+            params.append(task_id_filter)
 
         if agent_id_filter is not None and role_filter is not None:
-            # Both agent_id and role specified: filter by the role column.
             if role_filter == "executor":
-                where_clauses.append("executing_agent_id = :agent_id")
-            else:  # "reviewer"
-                where_clauses.append("reviewer_agent_id = :agent_id")
-            params["agent_id"] = agent_id_filter
+                where_clauses.append("executing_agent_id = ?")
+            else:
+                where_clauses.append("reviewer_agent_id = ?")
+            params.append(agent_id_filter)
         elif agent_id_filter is not None:
-            # Only agent_id: match either role.
-            where_clauses.append(
-                "(executing_agent_id = :agent_id OR reviewer_agent_id = :agent_id)"
-            )
-            params["agent_id"] = agent_id_filter
+            where_clauses.append("(executing_agent_id = ? OR reviewer_agent_id = ?)")
+            params.extend((agent_id_filter, agent_id_filter))
 
         where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
 
-        # Determine sort order: task-oriented (oldest-first) if task_id
-        # is present, otherwise newest-first.
         if task_id_filter is not None:
             order_by = "recorded_at ASC, id ASC"
         else:
@@ -590,7 +584,7 @@ class SQLiteDecisionRepository:
                     WHERE {where_clause}
                     ORDER BY {order_by}
                     LIMIT ? OFFSET ?""",  # noqa: S608
-                    (*params.values(), effective_limit, offset),
+                    (*params, effective_limit, offset),
                 )
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -912,7 +906,7 @@ class SQLiteDecisionRepository:
             )
             raise QueryError(msg) from exc
 
-    async def purge_before(self, threshold) -> int:  # type: ignore[no-untyped-def]
+    async def purge_before(self, threshold: AwareDatetime) -> int:
         """Delete decision records older than threshold (retention).
 
         Args:

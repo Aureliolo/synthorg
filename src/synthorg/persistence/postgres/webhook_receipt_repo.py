@@ -274,7 +274,7 @@ class PostgresWebhookReceiptRepository:
         sql = (
             "SELECT id, connection_name, event_type, status, "
             "       received_at, processed_at, payload_json, error "
-            "FROM webhook_receipts ORDER BY received_at DESC"
+            "FROM webhook_receipts ORDER BY received_at DESC, id DESC"
         )
         params: tuple[object, ...] = ()
         if limit is not None:

@@ -14,7 +14,9 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CEREMONY_STATE_LOADED,
     PERSISTENCE_CEREMONY_STATE_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRecord,
 )
@@ -142,10 +144,13 @@ ON CONFLICT (sprint_id) DO UPDATE SET
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CeremonySchedulerStateRecord, ...]:
         """List snapshots ordered by sprint_id ascending."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CEREMONY_STATE_LOAD_FAILED
+        )
         sql = (
             "SELECT sprint_id, completion_counters_json, "
             "fired_once_triggers_json, total_completions, "

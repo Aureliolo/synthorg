@@ -380,7 +380,18 @@ class CeremonyScheduler:
             ),
             updated_at=datetime.now(UTC),
         )
-        await self._state_repo.save(record)
+        try:
+            await self._state_repo.save(record)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                SPRINT_CEREMONY_SCHEDULER_START_FAILED,
+                sprint_id=sprint_id,
+                note="state_repo_save_failed",
+                error_type=type(exc).__name__,
+            )
+            raise
 
     def _detect_migration(
         self,

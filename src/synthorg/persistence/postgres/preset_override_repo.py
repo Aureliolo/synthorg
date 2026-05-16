@@ -5,13 +5,18 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
-    PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+    PERSISTENCE_PRESET_OVERRIDE_DELETE_FAILED,
+    PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
+    PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management.capability_dtos import PresetOverride
 
@@ -47,7 +52,7 @@ class PostgresPresetOverrideRepo:
         except psycopg.Error as exc:
             msg = "Failed to read preset override"
             logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 preset_name=preset_name,
@@ -97,7 +102,7 @@ class PostgresPresetOverrideRepo:
         except psycopg.Error as exc:
             msg = "Failed to save preset override"
             logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 preset_name=override.preset_name,
@@ -107,10 +112,13 @@ class PostgresPresetOverrideRepo:
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[PresetOverride, ...]:
         """List overrides ordered by preset_name ascending."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED
+        )
         sql = (
             "SELECT preset_name, default_models, supported_auth_types, "
             "candidate_urls, base_url, updated_at, updated_by "
@@ -127,12 +135,25 @@ class PostgresPresetOverrideRepo:
         except psycopg.Error as exc:
             msg = "Failed to list preset overrides"
             logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(self._row_to_override(r) for r in rows)
+        overrides: list[PresetOverride] = []
+        for row in rows:
+            try:
+                overrides.append(self._row_to_override(row))
+            except (ValidationError, ValueError, TypeError, KeyError) as exc:
+                msg = "Failed to list preset overrides"
+                logger.warning(
+                    PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    preset_name=row.get("preset_name"),
+                )
+                raise QueryError(msg) from exc
+        return tuple(overrides)
 
     async def delete(self, preset_name: NotBlankStr) -> bool:
         """Remove the override for ``preset_name``."""
@@ -147,7 +168,7 @@ class PostgresPresetOverrideRepo:
         except psycopg.Error as exc:
             msg = "Failed to delete preset override"
             logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                PERSISTENCE_PRESET_OVERRIDE_DELETE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 preset_name=preset_name,

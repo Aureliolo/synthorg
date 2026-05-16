@@ -14,10 +14,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MEETING_COOLDOWN_LOADED,
     PERSISTENCE_MEETING_COOLDOWN_UPSERT_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.datetime_marshaller import (
     format_iso_utc,
     parse_iso_utc,
 )
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
@@ -120,10 +122,13 @@ class SQLiteMeetingCooldownRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[MeetingCooldownRecord, ...]:
         """List cooldown rows ordered by meeting_type_name ascending."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT meeting_type_name, last_triggered_at "

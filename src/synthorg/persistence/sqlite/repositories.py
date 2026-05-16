@@ -48,7 +48,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    format_iso_utc,
+    normalize_utc,
+)
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
     is_unique_constraint_error,
@@ -529,12 +533,26 @@ FROM cost_records"""
         return total
 
     async def purge_before(self, threshold: datetime) -> int:
-        """Delete cost records with timestamp before threshold (retention)."""
+        """Delete cost records with timestamp before threshold (retention).
+
+        ``threshold`` must be timezone-aware: a naive value compared
+        against UTC-formatted stored timestamps would silently delete
+        the wrong window.
+        """
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            logger.warning(
+                PERSISTENCE_COST_RECORD_QUERY_FAILED,
+                error="naive_threshold",
+                error_type="ValueError",
+            )
+            raise QueryError(msg)
+        aware_threshold = normalize_utc(threshold)
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM cost_records WHERE timestamp < ?",
-                    (threshold.isoformat(),),
+                    (format_iso_utc(aware_threshold),),
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -751,12 +769,26 @@ FROM messages"""
         return tuple(self._row_to_message(row) for row in rows)
 
     async def purge_before(self, threshold: datetime) -> int:
-        """Delete messages with ``timestamp < threshold`` (retention)."""
+        """Delete messages with ``timestamp < threshold`` (retention).
+
+        ``threshold`` must be timezone-aware: a naive value compared
+        against UTC-formatted stored timestamps would silently delete
+        the wrong window.
+        """
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            logger.warning(
+                PERSISTENCE_MESSAGE_DELETE_FAILED,
+                error="naive_threshold",
+                error_type="ValueError",
+            )
+            raise QueryError(msg)
+        aware_threshold = normalize_utc(threshold)
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM messages WHERE timestamp < ?",
-                    (threshold.isoformat(),),
+                    (format_iso_utc(aware_threshold),),
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:

@@ -21,13 +21,12 @@ scheduler keeps them for late-arriving completions until explicit
 cleanup -- the table is small (one row per sprint, ever).
 """
 
-from datetime import datetime  # noqa: TC003 -- runtime needed by Pydantic field
 from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence._generics import IdKeyedRepository
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
 
 class CeremonySchedulerStateRecord(BaseModel):
@@ -61,7 +60,7 @@ class CeremonySchedulerStateRecord(BaseModel):
     velocity_history_json: str = Field(
         description="JSON array of VelocityRecord JSON-mode dumps"
     )
-    updated_at: datetime = Field(description="UTC timestamp of this snapshot")
+    updated_at: AwareDatetime = Field(description="UTC timestamp of this snapshot")
 
 
 @runtime_checkable
@@ -71,7 +70,7 @@ class CeremonySchedulerStateRepository(
 ):
     """Persistence interface for ceremony scheduler state snapshots.
 
-    Composes :class:`IdKeyedRepository` (ADR-0001): the natural key is
+    Composes :class:`IdKeyedRepository`: the natural key is
     ``sprint_id``. Implementations live under ``persistence/sqlite/``
     and ``persistence/postgres/`` with a shared dual-backend
     conformance suite under ``tests/conformance/persistence/``.
@@ -120,7 +119,7 @@ class CeremonySchedulerStateRepository(
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CeremonySchedulerStateRecord, ...]:
         """List persisted snapshots, ordered by ``sprint_id`` ascending.

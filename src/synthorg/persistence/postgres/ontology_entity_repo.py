@@ -164,11 +164,18 @@ class PostgresOntologyEntityRepository:
         )
 
     async def save(self, entity: EntityDefinition) -> None:
-        """Upsert an entity definition (delegates to register).
+        """Upsert an entity definition by name.
 
-        Per ADR-0001 generic IdKeyedRepository surface.
+        Satisfies the generic ``IdKeyedRepository`` upsert contract:
+        an existing entity is updated rather than raising
+        ``OntologyDuplicateError`` (which ``register`` does for the
+        insert-only path).
         """
-        await self.register(entity)
+        existing = await self.get(entity.name)
+        if existing is None:
+            await self.register(entity)
+        else:
+            await self.update(entity)
 
     async def get(self, name: str) -> EntityDefinition | None:
         """Retrieve an entity definition by name, or None if not found."""

@@ -14,7 +14,9 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MEETING_COOLDOWN_LOADED,
     PERSISTENCE_MEETING_COOLDOWN_UPSERT_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
 
 if TYPE_CHECKING:
@@ -110,10 +112,13 @@ class PostgresMeetingCooldownRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[MeetingCooldownRecord, ...]:
         """List cooldown rows ordered by meeting_type_name ascending."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,

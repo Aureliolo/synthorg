@@ -21,13 +21,12 @@ sandbox lifecycle calls :func:`reconcile_tracked_containers` (in
 5. Keeps rows for containers present in both sources.
 """
 
-from datetime import datetime  # noqa: TC003 -- runtime needed by Pydantic field
 from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence._generics import IdKeyedRepository
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
 
 class TrackedContainerRecord(BaseModel):
@@ -46,7 +45,7 @@ class TrackedContainerRecord(BaseModel):
     sidecar_id: NotBlankStr | None = Field(
         default=None, description="Docker container id of the paired sidecar"
     )
-    created_at: datetime = Field(description="UTC timestamp of container creation")
+    created_at: AwareDatetime = Field(description="UTC timestamp of container creation")
 
 
 @runtime_checkable
@@ -56,10 +55,10 @@ class TrackedContainerRepository(
 ):
     """Persistence interface for tracked Docker sandbox containers.
 
-    Composes :class:`IdKeyedRepository` (ADR-0001): the natural key is
-    ``container_id``. ``load_all`` is retained as a bespoke perf method
-    (ADR D7) because reconciliation reads every row at start; paginated
-    ``list_items`` is also provided to satisfy the generic surface.
+    Composes :class:`IdKeyedRepository`: the natural key is
+    ``container_id``. ``load_all`` is a bespoke perf method because
+    reconciliation reads every row at start; paginated ``list_items``
+    is also provided to satisfy the generic surface.
     """
 
     async def save(self, entity: TrackedContainerRecord) -> None:
@@ -104,7 +103,7 @@ class TrackedContainerRepository(
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[TrackedContainerRecord, ...]:
         """List tracked containers ordered by ``container_id`` ascending.
@@ -124,9 +123,9 @@ class TrackedContainerRepository(
     async def load_all(self) -> tuple[TrackedContainerRecord, ...]:
         """Load every tracking row in one call (called at start).
 
-        Bespoke per ADR-0001 D7: reconciliation needs the full set in
-        one round-trip and the table is small (one row per managed
-        container), so paginating ``list_items`` would be wasteful.
+        Reconciliation needs the full set in one round-trip and the
+        table is small (one row per managed container), so paginating
+        ``list_items`` would be wasteful.
 
         Returns:
             All persisted records, order unspecified.

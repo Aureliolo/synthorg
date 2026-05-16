@@ -24,6 +24,7 @@ from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -316,7 +317,7 @@ class SQLiteTrainingResultRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[TrainingResult, ...]:
-        """List training results with pagination (ADR-0001).
+        """List training results with pagination.
 
         Args:
             limit: Maximum results to return (must be >= 1).
@@ -328,6 +329,9 @@ class SQLiteTrainingResultRepository:
         Raises:
             QueryError: If the operation fails.
         """
+        limit = validate_pagination_args(
+            limit, offset, event=HR_TRAINING_PERSISTENCE_ERROR
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM training_results ORDER BY id ASC LIMIT ? OFFSET ?",

@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -12,17 +12,17 @@ if TYPE_CHECKING:
 
 
 @runtime_checkable
-class SsrfViolationRepository(
-    IdKeyedRepository["SsrfViolation", "NotBlankStr"],
-    Protocol,
-):
-    """CRUD for SSRF violation records.
+class SsrfViolationRepository(Protocol):
+    """Append-and-resolve store for SSRF violation records.
 
-    Composes :class:`IdKeyedRepository` (ADR-0001). ``save`` here
-    diverges from the generic upsert semantics on purpose: violation
-    rows are immutable forensic records, so a second call with the
-    same id raises ``DuplicateRecordError`` instead of silently
-    updating. Bespoke per D7: :meth:`list_violations` filters by
+    A bespoke protocol rather than a composed :class:`IdKeyedRepository`
+    because violation rows are immutable forensic evidence: there is no
+    upsert (``save`` is insert-only and raises ``DuplicateRecordError``
+    on a repeated id) and no runtime ``delete`` (erasing security
+    evidence outside the controlled ``update_status`` flow would break
+    the immutability guarantee). Physical deletion exists only on the
+    concrete repositories for retention/ops tooling and is deliberately
+    kept off this runtime surface. :meth:`list_violations` filters by
     ``status`` ordered by ``timestamp`` DESC for the security review
     queue; :meth:`update_status` is a CAS state transition with
     correlated columns.
@@ -85,10 +85,6 @@ class SsrfViolationRepository(
         Raises:
             ValueError: If *limit* is not positive.
         """
-        ...
-
-    async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a violation by ID."""
         ...
 
     async def update_status(

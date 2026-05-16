@@ -17,6 +17,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
+    PERSISTENCE_RISK_OVERRIDE_DELETE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
@@ -199,7 +200,7 @@ class PostgresRiskOverrideRepository:
         except psycopg.Error as exc:
             msg = f"Failed to delete risk override: {safe_error_description(exc)}"
             logger.warning(
-                PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
+                PERSISTENCE_RISK_OVERRIDE_DELETE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

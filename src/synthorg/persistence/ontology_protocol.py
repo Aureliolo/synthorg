@@ -33,9 +33,9 @@ _DEFAULT_DRIFT_REPORTS_LIMIT: Final[int] = 10
 class DriftReportFilterSpec(BaseModel):
     """Filter specification for drift report queries.
 
-    Placeholder for future drift report filtering. Per ADR-0001, all
-    filtered-query repositories define a frozen Pydantic model for their
-    filter arguments, even when empty.
+    Placeholder for future drift report filtering. All filtered-query
+    repositories define a frozen Pydantic model for their filter
+    arguments, even when empty.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -48,15 +48,13 @@ class OntologyEntityRepository(
 ):
     """CRUD + search interface for entity definitions.
 
-    Composes :class:`IdKeyedRepository` (ADR-0001). Bespoke per D7:
-    :meth:`register` and :meth:`update` encode distinct audit semantics
-    (register fails on duplicate, update fails on missing) that callers
-    depend on and the generic ``save`` cannot express. :meth:`list_entities`,
+    Composes :class:`IdKeyedRepository`. :meth:`register` and
+    :meth:`update` encode distinct audit semantics (register fails on
+    duplicate, update fails on missing) that callers depend on and the
+    generic ``save`` cannot express. :meth:`list_entities`,
     :meth:`search`, and :meth:`get_version_manifest` are domain-specific
     queries beyond generic ``list_items``.
     """
-
-    """CRUD + search interface for entity definitions."""
 
     @property
     def backend_name(self) -> NotBlankStr:
@@ -66,14 +64,16 @@ class OntologyEntityRepository(
     async def save(self, entity: EntityDefinition) -> None:
         """Insert or update an entity (idempotent upsert).
 
-        Delegates to :meth:`register` (raising ``OntologyDuplicateError``
-        on duplicate is acceptable for the generic surface).
+        Implements the :class:`IdKeyedRepository` upsert contract: a
+        repeated ``save`` for an existing entity name updates the row
+        rather than raising. :meth:`register` (insert-only) remains
+        available for callers that need duplicate detection.
 
         Args:
             entity: The entity definition to persist.
 
         Raises:
-            OntologyDuplicateError: If an entity with that name exists.
+            OntologyError: If the underlying write fails.
         """
         ...
 
@@ -126,9 +126,9 @@ class OntologyEntityRepository(
     async def register(self, entity: EntityDefinition) -> None:
         """Register a new entity definition.
 
-        Bespoke per D7: distinct audit semantics from generic ``save``.
-        Callers that need the insert-or-fail semantics (detecting
-        duplicates) use this instead of the generic ``save``.
+        Distinct audit semantics from the generic ``save``: callers
+        that need insert-or-fail semantics (detecting duplicates) use
+        this instead.
 
         Args:
             entity: The entity definition to register.
@@ -141,9 +141,9 @@ class OntologyEntityRepository(
     async def update(self, entity: EntityDefinition) -> None:
         """Update an existing entity definition (matched by name).
 
-        Bespoke per D7: distinct audit semantics from generic ``save``.
-        Callers that need the update-or-fail semantics (detecting
-        missing entities) use this instead of the generic ``save``.
+        Distinct audit semantics from the generic ``save``: callers
+        that need update-or-fail semantics (detecting missing entities)
+        use this instead.
 
         Args:
             entity: The entity definition to update.
@@ -162,7 +162,7 @@ class OntologyEntityRepository(
     ) -> tuple[EntityDefinition, ...]:
         """List all entity definitions, optionally filtered by tier.
 
-        Bespoke per D7: tier-based filtering is a domain invariant.
+        Tier-based filtering is a domain invariant.
 
         Args:
             tier: Optional tier to filter by.

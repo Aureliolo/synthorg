@@ -294,6 +294,49 @@ class PostgresUserRepository:
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users
 
+    async def list_after_id(
+        self,
+        *,
+        after_id: NotBlankStr | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+    ) -> tuple[User, ...]:
+        """Keyset page of human users with ``id > after_id``."""
+        limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
+        sql = "SELECT * FROM users WHERE role != %s"
+        params: list[object] = [HumanRole.SYSTEM.value]
+        if after_id is not None:
+            sql += " AND id > %s"
+            params.append(after_id)
+        sql += " ORDER BY id LIMIT %s"
+        params.append(limit)
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, tuple(params))
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list users"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            users = tuple(_row_to_user(row) for row in rows)
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+            msg = "Failed to deserialize users"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
+        return users
+
     async def query(
         self,
         filter_spec: UserFilterSpec,

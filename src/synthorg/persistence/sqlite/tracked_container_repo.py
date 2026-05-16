@@ -14,10 +14,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TRACKED_CONTAINER_LOADED,
     PERSISTENCE_TRACKED_CONTAINER_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.datetime_marshaller import (
     format_iso_utc,
     parse_iso_utc,
 )
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 from synthorg.persistence.tracked_container_protocol import TrackedContainerRecord
 
@@ -145,10 +147,13 @@ class SQLiteTrackedContainerRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[TrackedContainerRecord, ...]:
         """List tracked containers ordered by container_id ascending."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_TRACKED_CONTAINER_LOAD_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT container_id, sidecar_id, created_at "
@@ -171,7 +176,7 @@ class SQLiteTrackedContainerRepository:
         try:
             row["created_at"] = parse_iso_utc(str(row["created_at"]))
             return TrackedContainerRecord.model_validate(row)
-        except (ValidationError, ValueError) as exc:
+        except (ValidationError, ValueError, TypeError, KeyError) as exc:
             msg = f"corrupt tracked_containers row {row.get('container_id')!r}"
             logger.warning(
                 PERSISTENCE_TRACKED_CONTAINER_LOAD_FAILED,

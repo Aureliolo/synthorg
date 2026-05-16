@@ -17,9 +17,7 @@ from synthorg.persistence._generics import (
     FilteredQueryRepository,
     IdKeyedRepository,
 )
-from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,  # noqa: F401  -- used by bespoke methods
-)
+from synthorg.persistence._shared.pagination import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -38,7 +36,7 @@ __all__ = [
 
 
 class SessionFilterSpec(BaseModel):
-    """Filter spec for ``SessionRepository.query`` (ADR-0001)."""
+    """Filter spec for ``SessionRepository.query``."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -60,10 +58,9 @@ class SessionRepository(
 ):
     """Durable session store with an in-memory revocation cache.
 
-    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). The ``is_revoked`` and ``load_revoked`` methods are
-    bespoke per D7: synchronous O(1) revocation check for the auth hot
-    path and in-memory cache preload at startup.
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`.
+    ``is_revoked`` is a synchronous O(1) revocation check on the auth
+    hot path; ``load_revoked`` preloads the in-memory cache at startup.
 
     Attributes:
         _revoked: In-memory cache of revoked session IDs.  Part of the
@@ -175,13 +172,13 @@ class SessionRepository(
     async def list_all(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List sessions including revoked, ordered by created_at DESC.
 
-        Bespoke D7: callers needing the full history (revoked + active)
-        for audit dashboards bypass the IdKeyed list_items active-only
+        Callers needing the full history (revoked + active) for audit
+        dashboards bypass the IdKeyed ``list_items`` active-only
         ordering invariant.
         """
         ...
@@ -190,10 +187,10 @@ class SessionRepository(
         self,
         user_id: NotBlankStr,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List sessions for a user, newest-first (bespoke D7 alternate-key)."""
+        """List sessions for a user, newest-first (alternate-key view)."""
         ...
 
     async def revoke(self, session_id: NotBlankStr) -> bool:
@@ -236,8 +233,7 @@ class SessionRepository(
 class LockoutRepository(Protocol):
     """Account lockout store with an in-memory lock-cache for the hot path.
 
-    NOT a generic repository per ADR-0001 D7. This is a specialized
-    hot-path failure-tracking cache with custom semantics:
+    Specialised hot-path failure-tracking cache with custom semantics:
     ``record_failure``/``record_success`` track attempts within a sliding
     window and enforce a threshold-based lockout, while ``is_locked`` is
     synchronous O(1) for the auth middleware. No CRUD operations apply
@@ -289,13 +285,13 @@ class LockoutRepository(Protocol):
 class RefreshTokenRepository(Protocol):
     """Refresh-token store with single-use rotation semantics.
 
-    NOT a generic repository per ADR-0001 D7. Although refresh tokens
-    are stored by hash (a primary key), the semantics are not standard
-    CRUD: ``consume()`` is atomic compare-and-set (mark-as-used only if
-    not-yet-used, with session-revocation check), and bulk revocation
-    happens via ``revoke_by_session``/``revoke_by_user`` with no
-    individual delete. The single-use contract and replay detection are
-    domain invariants that require custom operations.
+    Refresh tokens are stored by hash (a primary key), but the
+    semantics are not standard CRUD: ``consume()`` is atomic
+    compare-and-set (mark-as-used only if not-yet-used, with
+    session-revocation check), and bulk revocation happens via
+    ``revoke_by_session``/``revoke_by_user`` with no individual delete.
+    The single-use contract and replay detection are domain invariants
+    that require custom operations.
     """
 
     async def create(

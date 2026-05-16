@@ -34,6 +34,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
 )
+from synthorg.persistence._shared import format_iso_utc
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
@@ -949,7 +950,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
             namespace=NotBlankStr("_system"),
             key=key,
             value=value,
-            updated_at=updated_at.isoformat(),
+            updated_at=format_iso_utc(updated_at),
         )
         await self.settings.save(entity)
 
