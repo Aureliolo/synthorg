@@ -21,6 +21,17 @@ interface SinksState {
    * the sentinel instead.
    */
   saveSink: (sink: SinkInfo) => Promise<boolean>
+  /**
+   * Delete a sink. Built-in (``is_default``) sinks are NOT removed --
+   * they are reset to defaults by clearing their override entry --
+   * because the runtime relies on those identifiers always being
+   * present. Custom (operator-added) sinks are dropped from the
+   * ``custom_sinks`` array entirely.
+   *
+   * Sentinel-return contract: on failure, logs + emits an error toast
+   * + returns ``false``. Callers MUST NOT wrap in try/catch.
+   */
+  deleteSink: (sink: SinkInfo) => Promise<boolean>
   testConfig: (data: { sink_overrides: string; custom_sinks: string }) => Promise<TestSinkResult | null>
 }
 
@@ -97,6 +108,56 @@ export const useSinksStore = create<SinksState>((set, get) => ({
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to save sink',
+        description: getErrorMessage(err),
+      })
+      return false
+    }
+  },
+
+  deleteSink: async (sink) => {
+    const previous = get().sinks
+    set({ error: null })
+    try {
+      if (sink.is_default) {
+        let existingOverrides: Record<string, unknown> = {}
+        const settings = await getNamespaceSettings('observability')
+        const overrideEntry = settings.find((s) => s.definition.key === 'sink_overrides')
+        if (overrideEntry?.value) {
+          const parsed: unknown = JSON.parse(overrideEntry.value)
+          const narrowed = asObjectRecord(parsed)
+          if (narrowed) existingOverrides = narrowed
+        }
+        // For default sinks, deleting means resetting overrides --
+        // the identifier itself stays addressable by the runtime.
+        delete existingOverrides[sink.identifier]
+        await updateSetting('observability', 'sink_overrides', {
+          value: JSON.stringify(existingOverrides),
+        })
+      } else {
+        const customSettings = await getNamespaceSettings('observability')
+        const customEntry = customSettings.find((s) => s.definition.key === 'custom_sinks')
+        let existing: Record<string, unknown>[] = []
+        if (customEntry?.value) {
+          const parsed: unknown = JSON.parse(customEntry.value)
+          existing = asObjectRecordArray(parsed)
+        }
+        const next = existing.filter((s) => s.file_path !== sink.identifier)
+        await updateSetting('observability', 'custom_sinks', {
+          value: JSON.stringify(next),
+        })
+      }
+      await get().fetchSinks()
+      useToastStore.getState().add({
+        variant: sink.is_default ? 'success' : 'success',
+        title: sink.is_default ? 'Sink overrides cleared' : 'Sink deleted',
+      })
+      return true
+    } catch (err) {
+      log.error('Failed to delete sink', sanitizeForLog(err))
+      set({ sinks: previous, error: getErrorMessage(err) })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to delete sink',
         description: getErrorMessage(err),
       })
       return false
