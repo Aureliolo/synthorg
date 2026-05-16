@@ -121,7 +121,7 @@ export default function BudgetPage() {
 
       <ThresholdAlerts zone={thresholdZone} budgetConfig={budgetConfig} overview={overview} />
 
-      <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
+      <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1279px]:grid-cols-3 max-[1023px]:grid-cols-2">
         {metricCards.map((card) => (
           <StaggerItem key={card.label}>
             <MetricCard {...card} />
@@ -129,7 +129,7 @@ export default function BudgetPage() {
         ))}
       </StaggerGroup>
 
-      <div className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-1">
+      <div className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2 max-[767px]:grid-cols-1">
         <ErrorBoundary level="section">
           <BudgetGauge
             usedPercent={overview?.budget_used_percent ?? 0}
