@@ -82,22 +82,19 @@ async def _fetch_workflow_definitions(
         from synthorg.persistence._generics import (  # noqa: PLC0415
             DEFAULT_PAGE_SIZE,
         )
+        from synthorg.persistence._shared import paginate  # noqa: PLC0415
         from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
             WorkflowDefinitionFilterSpec,
         )
 
-        definitions = []
-        offset = 0
-        while True:
-            page = await wf_repo.query(
-                WorkflowDefinitionFilterSpec(),
-                limit=DEFAULT_PAGE_SIZE,
-                offset=offset,
-            )
+        definitions: list[Any] = []
+        async for page in paginate(
+            lambda limit, offset: wf_repo.query(
+                WorkflowDefinitionFilterSpec(), limit=limit, offset=offset
+            ),
+            page_size=DEFAULT_PAGE_SIZE,
+        ):
             definitions.extend(page)
-            if len(page) < DEFAULT_PAGE_SIZE:
-                break
-            offset += DEFAULT_PAGE_SIZE
     except MemoryError, RecursionError:
         raise
     except Exception:

@@ -32,6 +32,7 @@ from synthorg.observability.events.hr import (
     HR_FIRING_TEAM_NOTIFIED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import paginate
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
 if TYPE_CHECKING:
@@ -190,20 +191,19 @@ class OffboardingService:
         """
         if self._task_repository is None:
             return ()
+        task_repo = self._task_repository
 
         try:
             collected: list[Task] = []
-            offset = 0
-            while True:
-                page = await self._task_repository.query(
+            async for page in paginate(
+                lambda limit, offset: task_repo.query(
                     TaskFilterSpec(assigned_to=NotBlankStr(agent_id)),
-                    limit=DEFAULT_PAGE_SIZE,
+                    limit=limit,
                     offset=offset,
-                )
+                ),
+                page_size=DEFAULT_PAGE_SIZE,
+            ):
                 collected.extend(page)
-                if len(page) < DEFAULT_PAGE_SIZE:
-                    break
-                offset += DEFAULT_PAGE_SIZE
             assigned_tasks = tuple(collected)
             active_tasks = tuple(
                 t

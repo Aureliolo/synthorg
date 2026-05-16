@@ -22,6 +22,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED,
 )
+from synthorg.persistence._shared import paginate
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float, registered_default_int
 
@@ -250,16 +251,13 @@ async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
     default_days = await _resolve_webhook_receipt_retention(app_state)
     try:
         collected: list[Connection] = []
-        offset = 0
-        while True:
-            page = await app_state.persistence.connections.list_items(
-                limit=_CONNECTION_SWEEP_PAGE_SIZE,
-                offset=offset,
-            )
+        async for page in paginate(
+            lambda limit, offset: app_state.persistence.connections.list_items(
+                limit=limit, offset=offset
+            ),
+            page_size=_CONNECTION_SWEEP_PAGE_SIZE,
+        ):
             collected.extend(page)
-            if len(page) < _CONNECTION_SWEEP_PAGE_SIZE:
-                break
-            offset += _CONNECTION_SWEEP_PAGE_SIZE
         connections = tuple(collected)
     except asyncio.CancelledError:
         raise

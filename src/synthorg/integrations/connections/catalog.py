@@ -43,6 +43,7 @@ from synthorg.observability.events.integrations import (
     SECRET_RETRIEVAL_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import paginate
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,  # noqa: TC001
 )
@@ -127,16 +128,13 @@ class ConnectionCatalog:
                 # through the full set: a single capped read would
                 # silently drop connections past the backend page cap.
                 collected: list[Connection] = []
-                offset = 0
-                while True:
-                    page = await self._repo.list_items(
-                        limit=DEFAULT_PAGE_SIZE,
-                        offset=offset,
-                    )
+                async for page in paginate(
+                    lambda limit, offset: self._repo.list_items(
+                        limit=limit, offset=offset
+                    ),
+                    page_size=DEFAULT_PAGE_SIZE,
+                ):
                     collected.extend(page)
-                    if len(page) < DEFAULT_PAGE_SIZE:
-                        break
-                    offset += DEFAULT_PAGE_SIZE
                 self._cache = {c.name: c for c in collected}
                 self._cache_valid = True
 

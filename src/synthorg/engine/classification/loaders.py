@@ -16,6 +16,7 @@ from synthorg.observability.events.classification import (
     CONTEXT_LOADER_ERROR,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import paginate
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
 if TYPE_CHECKING:
@@ -134,17 +135,13 @@ class TaskTreeLoader:
         """
         try:
             collected: list[Task] = []
-            offset = 0
-            while True:
-                page = await self._task_repo.query(
-                    TaskFilterSpec(),
-                    limit=DEFAULT_PAGE_SIZE,
-                    offset=offset,
-                )
+            async for page in paginate(
+                lambda limit, offset: self._task_repo.query(
+                    TaskFilterSpec(), limit=limit, offset=offset
+                ),
+                page_size=DEFAULT_PAGE_SIZE,
+            ):
                 collected.extend(page)
-                if len(page) < DEFAULT_PAGE_SIZE:
-                    break
-                offset += DEFAULT_PAGE_SIZE
             all_tasks: tuple[Task, ...] = tuple(collected)
         except MemoryError, RecursionError:
             raise
