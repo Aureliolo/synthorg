@@ -426,3 +426,16 @@ class SetupCompleteResponse(BaseModel):
     setup_complete: Literal[True]
     embedder_selected: bool = True
     embedder_failure_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_embedder_state_consistency(self) -> SetupCompleteResponse:
+        if self.embedder_selected and self.embedder_failure_reason is not None:
+            msg = "embedder_failure_reason must be None when embedder_selected=True"
+            raise ValueError(msg)
+        if not self.embedder_selected and not self.embedder_failure_reason:
+            msg = (
+                "embedder_failure_reason must be a non-empty string when"
+                " embedder_selected=False"
+            )
+            raise ValueError(msg)
+        return self

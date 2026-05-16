@@ -69,7 +69,7 @@ export function CategoryBreakdown({ ratio, currency }: CategoryBreakdownProps) {
               <div
                 key={cat.key}
                 style={{ width: `${ratio[cat.key].percent}%` }}
-                className={`${cat.barClass} transition-all duration-500`}
+                className={`${cat.barClass} transition-all duration-[var(--so-transition-slow)]`}
                 data-testid={`bar-${cat.key}`}
               />
             ))}

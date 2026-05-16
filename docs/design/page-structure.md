@@ -243,7 +243,18 @@ Full-page authentication. JWT-based. On success, redirects to `/` (Dashboard) or
 
 #### Setup Wizard (`/setup`)
 
-Multi-step first-run flow. After account creation (conditional), a mode selection gate asks the user to choose **Guided Setup** (recommended, full wizard) or **Quick Setup** (minimal: provider + company name, configure rest later in Settings). Guided mode steps: account (conditional), mode selection, template selection, provider setup, company creation, agent configuration, theme customization, and completion. Quick mode steps: account (conditional), mode selection, provider setup, company creation, and completion. Providers are configured before company creation and agents so model assignment is available downstream. Each step is URL-addressable (`/setup/{step}`). The mode selection step is hidden from the progress bar. Redirects to `/` if setup is already complete.
+Multi-step first-run flow. After account creation (conditional), a mode selection gate asks the user to choose **Guided Setup** (recommended, full wizard) or **Quick Setup** (minimal: provider + company name, configure rest later in Settings). Providers are configured before company creation and agents so model assignment is available downstream. Each step is URL-addressable (`/setup/{step}`). The mode selection step is hidden from the progress bar. Redirects to `/` if setup is already complete.
+
+| Step | Route | Guided | Quick |
+|------|-------|--------|-------|
+| Account | `/setup/account` | conditional | conditional |
+| Mode selection | `/setup/mode` | yes (hidden from progress) | yes (hidden from progress) |
+| Template | `/setup/template` | yes | no |
+| Providers | `/setup/providers` | yes | yes |
+| Company | `/setup/company` | yes | yes |
+| Agents | `/setup/agents` | yes | no |
+| Theme | `/setup/theme` | yes | no |
+| Complete | `/setup/complete` | yes | yes |
 
 **Provider step layout** (`web/src/pages/setup/ProvidersStep.tsx`): a three-section picker reused on both the wizard and the Settings → Providers page. (a) **Cloud providers** -- a logo-and-name grid for hosted providers; click a card to open the credential form pre-filled with that preset. (b) **Detected on this machine** -- only renders when an auto-detect probe found a reachable local server; rows include the URL, model count, and `[Add local]` / `[Add cloud]` buttons (the cloud variant is offered when a local preset has a hosted counterpart, e.g. local Ollama → Ollama Cloud). The probe is a single batch call to `POST /providers/probe-local` issued once on mount, with a manual rescan button. (c) **Configure manually** -- opens the credential form in custom-endpoint mode. The "Detected" section is hidden entirely when nothing was detected; vLLM is intentionally omitted from auto-detect because its default port (8000) collides with the SynthOrg backend.
 

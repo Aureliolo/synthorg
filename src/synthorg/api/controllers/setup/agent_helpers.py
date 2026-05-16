@@ -47,6 +47,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Inverted-convention result from ``auto_select_embedder``: ``None``
+# means success (a model was ranked and persisted); a ``str`` carries
+# the human-readable failure reason. Aliased here so the call site
+# can pass the result directly to
+# ``SetupCompleteResponse.embedder_failure_reason`` without re-stating
+# the inversion at every call.
+type EmbedderSelectResult = str | None
+
 # Module-level lock: serializes read-modify-write on agents settings.
 AGENT_LOCK = asyncio.Lock()
 
@@ -354,7 +362,7 @@ async def auto_select_embedder(
     available_model_ids: tuple[str, ...],
     provider_preset_name: str | None = None,
     has_gpu: bool | None = None,
-) -> str | None:
+) -> EmbedderSelectResult:
     """Auto-select an embedding model and persist the choice.
 
     Best-effort: logs a warning but does not raise on failure.
@@ -365,6 +373,13 @@ async def auto_select_embedder(
         available_model_ids: Model IDs discovered from providers.
         provider_preset_name: Provider preset for tier inference.
         has_gpu: Whether the host has a GPU.
+
+    Returns:
+        ``None`` on success (a model was ranked and persisted), or a
+        short human-readable failure reason string when selection or
+        persistence failed. The inverted convention (None = success,
+        str = failure) keeps the caller free to pass the result
+        directly to ``SetupCompleteResponse.embedder_failure_reason``.
     """
     from synthorg.memory.embedding.selector import (  # noqa: PLC0415
         infer_deployment_tier,
@@ -395,13 +410,6 @@ async def auto_select_embedder(
             reason=reason,
         )
         return reason
-    logger.info(
-        MEMORY_EMBEDDER_AUTO_SELECTED,
-        model_id=ranking.model_id,
-        tier=tier.value,
-        overall_score=ranking.overall,
-        dims=ranking.output_dims,
-    )
     try:
         await settings_svc.set(
             "memory",
@@ -415,11 +423,24 @@ async def auto_select_embedder(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         reason = "failed to persist embedder settings"
         logger.warning(
             MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
             reason=reason,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return reason
+    # INFO log emitted AFTER the persistence writes succeed so the
+    # event accurately reflects committed state. A pre-write log
+    # would otherwise misleadingly claim success when the writes
+    # below fail and fall through to the warning branch.
+    logger.info(
+        MEMORY_EMBEDDER_AUTO_SELECTED,
+        model_id=ranking.model_id,
+        tier=tier.value,
+        overall_score=ranking.overall,
+        dims=ranking.output_dims,
+    )
     return None

@@ -39,7 +39,7 @@ See [docs/reference/web-package-structure.md](../docs/reference/web-package-stru
 
 ## Zustand Store Error Handling (MANDATORY)
 
-All store **mutation** actions (create / update / delete) follow the `stores/connections/crud-actions.ts` pattern: wrap the API call in `try` / `catch`, success path updates state + emits a success toast, failure path logs + emits an error toast + returns a sentinel on failure. The sentinel shape mirrors the mutation's return type: `null` for entity-returning mutations (`createDepartment`, `updateAgent`, etc.), `false` for boolean-returning mutations (`updateCompany`, `deleteTeam`, `reorderAgents`, etc.) -- not only delete. Optimistic mutations capture `previous` synchronously and restore in `catch`. Use `getCrudErrorTitle(err, fallback)` (from `@/utils/errors`) on every error toast so duplicate-resource / version-conflict / generic-conflict 409s all get distinct titles. **Callers MUST NOT wrap store mutation calls in `try` / `catch`**; the store owns the error UX. List reads (`fetch*`) set `error: string | null` on the store instead of toasting.
+All store **mutation** actions (create / update / delete) follow the `stores/connections/crud-actions.ts` pattern: wrap the API call in `try` / `catch`, success path updates state + emits a success toast, failure path logs + emits an error toast + returns a sentinel on failure. The sentinel shape mirrors the mutation's return type: `null` for entity-returning mutations (`createDepartment`, `updateAgent`, etc.), `false` for boolean-returning mutations. Every void / boolean-returning mutation uses `false` regardless of whether it deletes, reorders, or updates (so `updateCompany`, `deleteTeam`, and `reorderAgents` all follow the same pattern, not just delete). Optimistic mutations capture `previous` synchronously and restore in `catch`. Use `getCrudErrorTitle(err, fallback)` (from `@/utils/errors`) on every error toast so duplicate-resource / version-conflict / generic-conflict 409s all get distinct titles. **Callers MUST NOT wrap store mutation calls in `try` / `catch`**; the store owns the error UX. List reads (`fetch*`) set `error: string | null` on the store instead of toasting.
 
 **Cursor pagination (MANDATORY)**: list endpoints use opaque cursor-based paging via `PaginationMeta`. Stores keep `nextCursor` + `hasMore` in state (not offset arithmetic) and early-return when `!hasMore || !nextCursor`. Display counts come from `data.length`; the wire envelope no longer carries `total`.
 
@@ -76,6 +76,13 @@ components in `web/src/components/ui/`):
    covering every meaningful state (default, hover, loading, error,
    empty, disabled where applicable). The PostToolUse hook on
    `web/src/components/ui/*.tsx` validates the convention.
+3. Base UI primitives compose Portal + Backdrop + Popup explicitly,
+   use the `render` prop for polymorphism, and rely on animation
+   state attributes (`data-[open]`, `data-[closed]`) rather than the
+   older `data-[state=open]` form. Tailwind v4 transition + scale
+   gotchas (CSS layer ordering, `@keyframes` not inheriting layer
+   precedence) are covered in
+   `docs/reference/web-design-system.md` § Creating New Components.
 
 A PostToolUse hook (`scripts/check_web_design_system.py`) runs on every `web/src/` edit and flags hardcoded hex / rgba / fonts / Motion durations / locale literals / bare `.toLocale*String()` calls / missing Storybook stories / duplicate component patterns / complex `.map()` blocks. Fix every violation before proceeding.
 

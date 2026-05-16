@@ -329,7 +329,7 @@ export function DepartmentsTab({
 
         <DragOverlay>
           {activeDept && (
-            <div className="rounded-lg border border-accent bg-card p-card" style={{ boxShadow: 'var(--so-shadow-card-hover)' }}>
+            <div className="rounded-lg border border-accent bg-card p-card shadow-card-hover">
               <p className="text-sm font-semibold text-foreground">{activeDept.display_name ?? activeDept.name}</p>
             </div>
           )}
