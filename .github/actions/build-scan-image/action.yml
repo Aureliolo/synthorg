@@ -311,9 +311,13 @@ runs:
     # Trivy JSON + SARIF + CIS benchmark per arch. JSON feeds
     # evaluate-scan.sh (fails on CRITICAL, warns on HIGH). SARIF goes to
     # GitHub Security for both arches with distinct categories.
+    # zizmor: ignore[unpinned-tools] -- trivy binary pinned upstream via
+    # TRIVY_VERSION + curl + SHA256 verify in build-apko-base; the action
+    # action.yml's auto-install path is unused. zizmor v1.25.0's new
+    # `unpinned-tools` audit doesn't see through this pattern.
     - name: Trivy scan (amd64)
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with: # zizmor: ignore[unpinned-tools]
+      with:
         image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
         format: json
         output: trivy-${{ inputs.image-name }}-amd64.json
@@ -328,10 +332,11 @@ runs:
         DISPLAY_NAME: ${{ inputs.display-name }}
       run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-amd64.json" "$DISPLAY_NAME"
 
+    # zizmor: ignore[unpinned-tools] -- see Trivy scan (amd64) above.
     - name: Trivy scan (arm64)
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with: # zizmor: ignore[unpinned-tools]
+      with:
         image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
         format: json
         output: trivy-${{ inputs.image-name }}-arm64.json
@@ -356,10 +361,11 @@ runs:
         retention-days: 30
         if-no-files-found: ignore
 
+    # zizmor: ignore[unpinned-tools] -- see Trivy scan (amd64) above.
     - name: Trivy SARIF scan (amd64)
       if: always()
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with: # zizmor: ignore[unpinned-tools]
+      with:
         image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
         format: sarif
         output: trivy-${{ inputs.image-name }}-amd64.sarif
@@ -374,10 +380,11 @@ runs:
         sarif_file: trivy-${{ inputs.image-name }}-amd64.sarif
         category: trivy-${{ inputs.image-name }}-amd64
 
+    # zizmor: ignore[unpinned-tools] -- see Trivy scan (amd64) above.
     - name: Trivy SARIF scan (arm64)
       if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with: # zizmor: ignore[unpinned-tools]
+      with:
         image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
         format: sarif
         output: trivy-${{ inputs.image-name }}-arm64.sarif

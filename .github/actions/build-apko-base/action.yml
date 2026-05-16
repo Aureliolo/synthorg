@@ -120,8 +120,12 @@ runs:
 
     - name: Trivy SARIF scan
       if: always()
+      # zizmor: ignore[unpinned-tools] -- trivy binary is curl-installed +
+      # SHA256-verified in this same composite (see TRIVY_VERSION step
+      # above); the action.yml's own auto-install path is unused. New
+      # `unpinned-tools` audit in zizmor v1.25.0 can't see through this.
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with: # zizmor: ignore[template-injection,unpinned-tools]
+      with: # zizmor: ignore[template-injection]
         image-ref: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base:${{ steps.image-ref.outputs.tag }}
         format: sarif
         output: trivy-${{ inputs.image-name }}-base.sarif
