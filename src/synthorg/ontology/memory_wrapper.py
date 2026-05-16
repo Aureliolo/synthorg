@@ -309,6 +309,14 @@ class OntologyAwareMemoryBackend:
                     reason="entity_lookup_failed",
                 )
                 continue
+            if entity is None:
+                logger.warning(
+                    ONTOLOGY_MEMORY_DRIFT_WARNED,
+                    agent_id=agent_id,
+                    entity_name=name,
+                    reason="entity_not_found",
+                )
+                continue
             if not entity.definition:
                 continue
             defn_words = set(entity.definition.lower().split())

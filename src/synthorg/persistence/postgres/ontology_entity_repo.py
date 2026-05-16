@@ -25,6 +25,7 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
@@ -162,8 +163,15 @@ class PostgresOntologyEntityRepository:
             tier=entity.tier.value,
         )
 
-    async def get(self, name: str) -> EntityDefinition:
-        """Retrieve an entity definition by name."""
+    async def save(self, entity: EntityDefinition) -> None:
+        """Upsert an entity definition (delegates to register).
+
+        Per ADR-0001 generic IdKeyedRepository surface.
+        """
+        await self.register(entity)
+
+    async def get(self, name: str) -> EntityDefinition | None:
+        """Retrieve an entity definition by name, or None if not found."""
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
@@ -175,9 +183,7 @@ class PostgresOntologyEntityRepository:
             )
             row = await cur.fetchone()
         if row is None:
-            msg = f"Entity '{name}' not found"
-            logger.warning(ONTOLOGY_ENTITY_NOT_FOUND, entity_name=name, op="get")
-            raise OntologyNotFoundError(msg)
+            return None
         return self._row_to_entity(row)
 
     async def update(self, entity: EntityDefinition) -> None:
@@ -204,21 +210,41 @@ class PostgresOntologyEntityRepository:
                 )
                 raise OntologyNotFoundError(msg)
 
-    async def delete(self, name: str) -> None:
-        """Delete an entity definition by name."""
+    async def delete(self, name: str) -> bool:
+        """Delete an entity definition by name.
+
+        Returns ``True`` iff a row existed (generic IdKeyedRepository contract).
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             await cur.execute(
                 "DELETE FROM entity_definitions WHERE name = %(name)s",
                 {"name": name},
             )
-            if cur.rowcount == 0:
-                msg = f"Entity '{name}' not found"
-                logger.warning(
-                    ONTOLOGY_ENTITY_NOT_FOUND,
-                    entity_name=name,
-                    op="delete",
-                )
-                raise OntologyNotFoundError(msg)
+            return cur.rowcount > 0
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[EntityDefinition, ...]:
+        """List all entity definitions in name order.
+
+        Per ADR-0001 generic IdKeyedRepository surface.
+        """
+        dict_row = self._dict_row
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
+            await cur.execute(
+                "SELECT * FROM entity_definitions "
+                "ORDER BY name ASC "
+                "LIMIT %(limit)s OFFSET %(offset)s",
+                {"limit": limit, "offset": offset},
+            )
+            rows = await cur.fetchall()
+        return self._rows_to_entities(rows)
 
     async def list_entities(
         self,

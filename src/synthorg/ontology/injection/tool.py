@@ -15,7 +15,6 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_INJECTION_PREPARED,
     ONTOLOGY_TOOL_LOOKUP,
 )
-from synthorg.ontology.errors import OntologyNotFoundError
 from synthorg.ontology.injection._tool_args import LookupEntityArgs
 from synthorg.ontology.injection.prompt import format_entity
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -103,16 +102,6 @@ class LookupEntityTool(BaseTool):
         """
         try:
             entity = await self._backend.get(name)
-        except OntologyNotFoundError:
-            logger.debug(
-                ONTOLOGY_TOOL_LOOKUP,
-                name=name,
-                found=False,
-            )
-            return ToolExecutionResult(
-                content=f"Entity '{name}' not found in the ontology.",
-                is_error=True,
-            )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -124,6 +113,16 @@ class LookupEntityTool(BaseTool):
             )
             return ToolExecutionResult(
                 content="Entity lookup failed. Try again later.",
+                is_error=True,
+            )
+        if entity is None:
+            logger.debug(
+                ONTOLOGY_TOOL_LOOKUP,
+                name=name,
+                found=False,
+            )
+            return ToolExecutionResult(
+                content=f"Entity '{name}' not found in the ontology.",
                 is_error=True,
             )
         logger.debug(
