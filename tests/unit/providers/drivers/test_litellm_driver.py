@@ -730,7 +730,7 @@ class TestGetModelCapabilities:
         """supports_streaming reads from model info, not hard-coded."""
         driver = _make_driver()
         model_info = {
-            "supports_streaming": False,
+            "supports_native_streaming": False,
             "supports_function_calling": True,
         }
 
@@ -747,7 +747,7 @@ class TestGetModelCapabilities:
         """supports_streaming_tool_calls needs streaming AND tools."""
         driver = _make_driver()
         model_info = {
-            "supports_streaming": True,
+            "supports_native_streaming": True,
             "supports_function_calling": False,
         }
 
@@ -759,6 +759,23 @@ class TestGetModelCapabilities:
 
         assert caps.supports_streaming is True
         assert caps.supports_streaming_tool_calls is False
+
+    async def test_streaming_defaults_true_when_litellm_returns_none(self) -> None:
+        """None means unknown (LiteLLM's own convention); default to True."""
+        driver = _make_driver()
+        model_info = {
+            "supports_native_streaming": None,
+            "supports_function_calling": True,
+        }
+
+        with patch(
+            _PATCH_MODEL_INFO,
+            return_value=model_info,
+        ):
+            caps = await driver.get_model_capabilities("medium")
+
+        assert caps.supports_streaming is True
+        assert caps.supports_streaming_tool_calls is True
 
     async def test_max_output_capped_at_context(self) -> None:
         config = make_provider_config(
