@@ -119,6 +119,10 @@ class PostgresOntologyDriftReportRepository:
         """
         return ()
 
+    async def purge_before(self, threshold: Any) -> int:  # noqa: ARG002
+        """Delete drift reports older than threshold (not yet implemented)."""
+        return 0
+
     async def get_latest(
         self,
         entity_name: NotBlankStr,
