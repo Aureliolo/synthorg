@@ -1,8 +1,6 @@
 # Web Dashboard
 
-React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Motion + Zustand
-
-`App.tsx` wraps the app in `<CSPProvider nonce={getCspNonce()}>` + `<MotionConfig nonce>` so every inline `<style>` tag injected by Base UI and Motion carries the per-request CSP nonce. See `docs/security.md` → CSP Nonce Infrastructure for the full flow. Base UI's `render` prop is the polymorphism primitive used throughout the dashboard; the local `<Slot>` helper in `components/ui/slot.tsx` uses `@base-ui/react/merge-props` to support the `<Button asChild>` ergonomic (the only component that uses this helper; all other primitives use Base UI's native `render` prop directly).
+React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Motion + Zustand. Base UI primitives use the native `render` prop; the local `<Slot>` helper in `components/ui/slot.tsx` exists only for `<Button asChild>`. CSP nonces flow via `<CSPProvider>` + `<MotionConfig nonce>` in `App.tsx`; details in `docs/security.md`.
 
 ## Quick Commands
 
@@ -24,17 +22,9 @@ npm --prefix web run storybook             # Storybook dev server (http://localh
 npm --prefix web run storybook:build       # Storybook production build
 ```
 
-## Performance Benchmarks
-
-`*.bench.ts` files under `web/src/__tests__/benchmarks/` use Vitest's `bench()` API and the `@codspeed/vitest-plugin` integration. The plugin is a no-op when `process.env.CODSPEED` is unset, so `npm run bench` works locally as a walltime sanity check. CI runs the same suite under CodSpeed CPU Simulation (deterministic instruction counting, sub-1% variance) in the `codspeed-web` job of `.github/workflows/codspeed.yml` (consolidated with the Python shard in one workflow run per CodSpeed's Sharded Benchmarks contract). Bench targets are pure-compute helpers only -- no DOM, no MSW, no Zustand store imports that pull in toast/timer side effects. New helpers worth benching live alongside their `.test.ts` counterparts under `web/src/__tests__/benchmarks/`.
-
-Bundle-size budgets are declared in `web/.size-limit.cjs` (per-vendor-chunk gzipped ceilings) and enforced by the `dashboard-build` job in `.github/workflows/ci.yml`. Raise a budget intentionally only when a feature legitimately requires more shipping JS, never just to silence a CI red.
-
 ## Package Structure
 
-`web/src/` follows the standard split: `api/` (Axios client + endpoint domains), `components/` (`ui/` primitives + `layout/`), `hooks/`, `lib/`, `mocks/` (MSW), `pages/`, `router/`, `stores/` (Zustand), `styles/` (design tokens), `utils/`, `__tests__/`. Stores over ~600 lines are sliced into packages with one of two aggregation patterns (package-internal `index.ts` or sibling `.ts` aggregator).
-
-`web/e2e/` holds the Playwright suite: `factories/`, `fixtures/` (`mock-api.ts`, `websocket-harness.ts`), `flows/`, `helpers/`, `visual/`.
+Bench targets (`web/src/__tests__/benchmarks/*.bench.ts`) are pure-compute helpers only: no DOM, no MSW, no store imports that pull in toast/timer side effects. Bundle-size budgets in `web/.size-limit.cjs` are raised only when a feature legitimately requires more shipping JS, never to silence a CI red.
 
 See [docs/reference/web-package-structure.md](../docs/reference/web-package-structure.md) for the per-folder inventory and the store-slicing pattern catalog.
 
@@ -65,11 +55,9 @@ All store **mutation** actions (create / update / delete) follow the `stores/con
 
 **WS wire protocol (MANDATORY)**: the client-server contract lives in `web/src/utils/constants.ts` (`WS_PROTOCOL_VERSION`, `WS_MAX_MESSAGE_SIZE`, `WS_HEARTBEAT_INTERVAL_MS`, `WS_PONG_TIMEOUT_MS`, `LOG_SANITIZE_MAX_LENGTH`) and MUST stay in lockstep with `src/synthorg/api/ws_models.py` / `src/synthorg/api/controllers/ws.py`. Bump the protocol version on both sides together for breaking payload changes. Drift is enforced at pre-commit / pre-push by `scripts/check_ws_protocol_version_in_sync.py`.
 
-**SSE fallback for proxy-blocked WS**: when the WebSocket handshake fails twice in a row with close code 1006 before `auth_ok` ever arrives (canonical signature of a reverse proxy that does not forward WS upgrades), the store switches transport to a read-only SSE feed against `/api/v1/events/stream` via `web/src/api/sse/client.ts`. The SSE client maps AG-UI projected event types (`run_started`, `step_started`, `approval_interrupt`, etc.) onto the dashboard's internal `WsEvent` envelope so the existing channel-handler chain keeps the tasks / approvals / agents / budget surfaces live. Write-path features (chat, settings actions) surface a `Connection limited` toast and direct the operator to reload after fixing their proxy; only the read surfaces are covered by the fallback.
-
 **Error-code constants (MANDATORY)**: import `ErrorCode` and `ErrorCategory` from `@/api/types/errors` (re-exported from the generated `web/src/api/types/error-codes.gen.ts`). Discriminate on `ErrorCode.<NAME>`, never on raw integer literals. The generator (`scripts/generate_error_codes_ts.py`) reads `src/synthorg/core/error_taxonomy.py`; drift is enforced at pre-push by `scripts/check_error_codes_ts_in_sync.py`.
 
-**Generated DTO types (MANDATORY)**: every Pydantic DTO mirrored on the wire is mechanically generated from the OpenAPI schema into three committed files: `web/src/api/types/openapi.gen.ts` (full `paths` + `components.schemas`), `web/src/api/types/dtos.gen.ts` (named-alias layer with `<Name>Envelope` / `<Name>Page` shortcuts for Litestar's monomorphised generics), and `web/src/api/types/enum-values.gen.ts` (runtime `*_VALUES` tuples plus the derived string-union types). NEVER hand-edit a `*.gen.ts` file. Regenerate with `uv run python scripts/generate_dto_types_ts.py` (re-execs under `PYTHONHASHSEED=0`, normalises enum descriptions via class-docstring lookup for byte-stable output, and promotes every response-side schema property into `required[]` so generated types match Pydantic's wire serialisation rather than the schema's looser optionality). Because the generator handles response optionality, consumer types are plain `components['schemas']['X']` re-exports with no hand-written tightening. Drift is enforced at pre-push and in the `dashboard-build` CI job by `scripts/check_dto_types_ts_in_sync.py`. The gate requires `openapi-typescript` to be installed; run `npm --prefix web install` once after pulling a change that touches `web/package-lock.json`. Consumer code imports DTOs via the barrel (`import type { AgentConfig } from '@/api/types'`) or directly from the generated module (`import type { AgentConfig } from '@/api/types/dtos.gen'`); the canonical `ApiResponse<T>` / `PaginatedResponse<T>` generics in `web/src/api/types/http.ts` remain hand-maintained because endpoint client code uses the named generic at the call site.
+**Generated DTO types (MANDATORY)**: NEVER hand-edit `web/src/api/types/*.gen.ts`. Regenerate with `uv run python scripts/generate_dto_types_ts.py`; drift enforced at pre-push by `scripts/check_dto_types_ts_in_sync.py`. Import DTOs via the barrel (`import type { AgentConfig } from '@/api/types'`). The hand-maintained `ApiResponse<T>` / `PaginatedResponse<T>` generics in `web/src/api/types/http.ts` are the call-site shape.
 
 See [docs/reference/web-zustand-stores.md](../docs/reference/web-zustand-stores.md) for the full mutation pattern, the per-PR async-leak audit trail, the structural-floor research, the WebSocket auth handshake / backpressure / single-writer details, and the cookie shim contract.
 
@@ -93,23 +81,10 @@ A PostToolUse hook (`scripts/check_web_design_system.py`) runs on every `web/src
 
 See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md) for the full component inventory (badges, cards, forms, layout, feedback, animation, command palette, version rollback, provider picker), the design-token recipe book (colors, typography, spacing, shadows, responsive widths, chart SVG attributes), the Base UI integration recipe (Portal + Backdrop + Popup composition, animation state attributes, Tailwind v4 transition gotchas), and the "What NOT to do" anti-pattern list.
 
-### Component reuse: don't recreate these inline
+### Anti-patterns (lint-enforced)
 
-- Status dots -> `<StatusBadge>` (defaults to `role="img"` with aria-label; `decorative` for adjacent-labeled, `announce` for live WS updates).
-- KPI displays -> `<MetricCard>` / `<Sparkline>` / `<ProgressGauge>` / `<TokenUsageBar>`.
-- Cards -> `<SectionCard>` (titled wrapper with icon and action slot); `<AgentCard>`, `<DeptHealthBar>` for domain-specific.
-- Form fields -> `<InputField>` / `<SelectField>` / `<SliderField>` / `<ToggleField>` / `<SegmentedControl>` / `<TagInput>` / `<SearchInput>`.
-- Slide-in panels -> `<Drawer width="compact|narrow|default|wide">` (Base UI; do NOT add inline `w-[40vw]` overrides).
-- Loading / empty / error states -> `<Skeleton>` family / `<EmptyState>` / `<ErrorBoundary>` / `<ErrorBanner>` / `<ProgressIndicator>`.
-- List-page primitives -> `<ListHeader>` / `<SearchFilterSort>` / `<Pagination>` / `<BulkActionBar>` / `<MetadataGrid>` / `<Breadcrumbs>` / `<Collapsible>`. Page conventions: root container uses `space-y-section-gap` (the majority pattern -- `flex flex-col gap-section-gap` is equivalent but discouraged); `<ErrorBanner>` lands immediately after `<ListHeader>`, before any filter / pagination row; pages with a one-line mission statement pass it via `<ListHeader description="..." />`. List layout choice: use Kanban grouping for status-flow domains where each row's column conveys lifecycle phase (Tasks, Requests); use a flat scrollable list for queues without explicit phase semantics (Escalations, Approvals).
-- Breadcrumb depth: aim for **2 or 3 levels max** in visible trails. The dashboard's information architecture is intentionally flat (every primary domain is one sidebar click away); a 4+ level trail almost always reflects a routing mistake. When natural depth exceeds 3, route the user to a flatter parent or rely on `<Breadcrumbs maxItems={...} />` to collapse middle nodes into the ellipsis (default `maxItems=4` collapses anything beyond). `<Breadcrumbs items={[]}>` returns `null` so unconditional render at the top of a page is safe.
-- Empty-state derivation -> `useEmptyStateProps({ filteredCount, totalCount, filterActive, empty, filtered })` from `@/hooks/use-empty-state-props` returns `EmptyStateProps | null` so the page branches on a single value instead of duplicating the "no data ever" / "no data after filter" discriminator.
-- Status / role / risk / urgency badge classes -> `STATUS_COLORS` family from `@/styles/status-colors` (typed `Record<EnumValue, string>` lookups; no inline `Record<EnumValue, string>` constants per page).
-- Confirmation / toasts -> `<ConfirmDialog>` / `<Toast>` (Zustand-backed queue, NOT Base UI's Toast).
-- Cmd+K / shortcuts -> `<CommandPalette>` / `<KeyboardShortcutHint>` / `<CommandCheatsheet>`.
-- Animation -> `<AnimatedPresence>` / `<StaggerGroup>` / `<LiveRegion>` (debounced ARIA live for WS updates).
-- Icon helpers -> never write `getXIcon(value): LucideIcon` factories that return a component reference and get called inside JSX render bodies (the `react-x/static-components` rule flags them as "components created during render"). Export a `<XIcon value={...} {...lucideProps} />` wrapper component instead, doing the lookup inside the wrapper via `createElement` (avoids a PascalCase JSX binding in the wrapper body too). See `web/src/utils/activity-event-icon.tsx` and `web/src/pages/mcp-catalog/catalog-icons.tsx` for the canonical shape. Wrapper components live in their own file (NOT alongside utility exports) so React Fast Refresh stays compatible per the `react-refresh/only-export-components` rule.
-- Viewport-size reads -> `useViewportSize()` from `@/hooks/useViewportSize` (`useSyncExternalStore` over `window` resize). Never read `window.innerWidth` / `window.innerHeight` directly inside a component render body or `useMemo`; the `react-x/globals` rule will flag it and it would be stale across resizes anyway.
+- **Icon helpers**: NEVER write `getXIcon(value): LucideIcon` factories called inside JSX bodies (`react-x/static-components` flags them). Export a `<XIcon value={...} />` wrapper that does the lookup via `createElement` inside the wrapper body. Wrapper components live in their own file, not alongside utility exports, so `react-refresh/only-export-components` stays clean. Canonical shape: `web/src/utils/activity-event-icon.tsx`.
+- **Viewport-size reads**: use `useViewportSize()` from `@/hooks/useViewportSize`. NEVER read `window.innerWidth` / `window.innerHeight` directly in a render body or `useMemo`; `react-x/globals` flags it and it would be stale across resizes anyway.
 
 ## ESLint (MANDATORY)
 
@@ -122,14 +97,6 @@ See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md
 - `@typescript-eslint/no-misused-promises` (with `checksVoidReturn: { attributes: false }`): forbids passing async functions where the callsite ignores the returned promise; React 19 `async` event handlers stay allowed via the `attributes: false` exemption, paired with the global error handler.
 
 Lint runs via `npm --prefix web run lint` with `--max-warnings 0`. To enumerate stale `eslint-disable` directives after a rule reshuffle: `npm --prefix web run lint -- --report-unused-disable-directives-severity=warn`.
-
-## Base UI Adoption Decisions
-
-**Adopted (direct import from `@base-ui/react/<subpath>`)**: Dialog, AlertDialog, Popover, Tabs, Menu, Drawer, CSPProvider, merge-props.
-
-**Not adopted**: Toast (we use a Zustand-backed queue), Meter (covered by `<ProgressGauge>`), Select (we use native `<select>` for mobile picker UX), Combobox / Autocomplete / OTP Field / Tooltip (no current call sites; revisit when needed).
-
-See [docs/reference/web-base-ui-decisions.md](../docs/reference/web-base-ui-decisions.md) for the per-primitive rationale table.
 
 ## Post-Training Reference
 
