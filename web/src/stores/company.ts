@@ -144,13 +144,27 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   updateFromWsEvent: (event) => {
     if (ORG_MUTATION_EVENTS.has(event.event_type)) {
       const store = useCompanyStore.getState()
-      store.fetchCompanyData()
-        .then(() => store.fetchDepartmentHealths())
-        .catch((err: unknown) => {
-          // Errors are set in store state by the respective fetch methods;
-          // log for observability in case both swallow the error.
-          log.error('WS refresh failed:', getErrorMessage(err))
-        })
+      // Sequential: fetchDepartmentHealths needs the freshly fetched
+      // config.departments list to know which deps to query, so it
+      // must run AFTER fetchCompanyData completes. If fetchCompanyData
+      // rejects, run fetchDepartmentHealths against the stale
+      // department list rather than skipping it entirely -- a
+      // transient config-fetch failure should not block the health
+      // refresh, and each fetch sets its own error state so the user
+      // still sees what failed. Each branch's catch logs the failure
+      // for the diagnostic trail.
+      ;(async () => {
+        try {
+          await store.fetchCompanyData()
+        } catch (err) {
+          log.warn('WS refresh: fetchCompanyData failed:', getErrorMessage(err))
+        }
+        try {
+          await store.fetchDepartmentHealths()
+        } catch (err) {
+          log.warn('WS refresh: fetchDepartmentHealths failed:', getErrorMessage(err))
+        }
+      })()
     }
   },
 

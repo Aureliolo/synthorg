@@ -295,8 +295,18 @@ export function getCrudErrorTitle(
         return { title: 'Not found' }
       case 'budget_exhausted':
         return { title: 'Budget exhausted' }
-      default:
+      case 'provider_error':
+        return { title: 'Provider error' }
+      case 'internal':
+        // Fall through to the HTTP-status / caller-fallback branches
+        // below; 5xx-class internal failures get a more specific
+        // status-based message than the generic category copy.
         break
+      default:
+        // Exhaustiveness guard: a new ErrorCategory added to the
+        // backend without a matching arm here breaks the build instead
+        // of silently falling through to the caller's generic fallback.
+        ((_: never) => _)(detail.error_category)
     }
   }
   if (status !== undefined) {
