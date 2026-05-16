@@ -64,13 +64,13 @@ You should see all tests passing.
 
 ## Pre-commit Hooks
 
-Install the Git hooks so code quality checks run automatically on each commit:
+Wire the committed Git hooks so code quality checks run automatically on each commit:
 
 ```bash
-uv run pre-commit install
+bash scripts/install_git_hooks.sh
 ```
 
-This installs hooks for `pre-commit`, `commit-msg`, and `pre-push` stages. To run all hooks manually against the entire codebase:
+This points `core.hooksPath` at the version-controlled `scripts/git-hooks/` directory (relative, so every worktree resolves its own copy against its own virtualenv) and installs hooks for the `pre-commit`, `commit-msg`, and `pre-push` stages. Do not run `pre-commit install`: it would write venv-baked wrappers into `.git/hooks/`, which is no longer the hooks path. To run all hooks manually against the entire codebase:
 
 ```bash
 uv run pre-commit run --all-files

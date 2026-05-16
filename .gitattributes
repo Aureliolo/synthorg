@@ -25,6 +25,13 @@ src/synthorg/persistence/postgres/schema.sql text eol=lf
 # Shell scripts must use LF (bash can't parse CRLF).
 *.sh text eol=lf
 
+# Committed git hook wrappers are extensionless (git only invokes a
+# hook file named exactly pre-commit / pre-push / commit-msg), so the
+# *.sh rule above misses them. They run via `#!/usr/bin/env bash`; a
+# CRLF checkout makes the kernel look for `bash\r` and every hook
+# fails silently. Pin to LF regardless of platform / core.autocrlf.
+scripts/git-hooks/* text eol=lf
+
 # ZAP DAST rules file is parsed on Linux runners; CRLF was observed
 # leaking in from Windows-side edits, leaving the file with mixed
 # endings that some TSV consumers cannot handle.
