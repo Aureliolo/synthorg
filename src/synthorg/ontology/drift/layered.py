@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import ONTOLOGY_DRIFT_CHECK_COMPLETED
-from synthorg.ontology.errors import OntologyNotFoundError
 from synthorg.ontology.models import EntityTier
 
 if TYPE_CHECKING:
@@ -60,9 +59,8 @@ class LayeredDetectionStrategy:
         Returns:
             Drift report from the tier-appropriate strategy.
         """
-        try:
-            entity = await self._ontology.get(entity_name)
-        except OntologyNotFoundError:
+        entity = await self._ontology.get(entity_name)
+        if entity is None:
             logger.warning(
                 ONTOLOGY_DRIFT_CHECK_COMPLETED,
                 entity_name=entity_name,

@@ -65,6 +65,7 @@ class TestOntologyEntityRepository:
         entity = _entity()
         await backend.ontology_entities.register(entity)
         fetched = await backend.ontology_entities.get("Widget")
+        assert fetched is not None
         assert fetched.name == "Widget"
         assert fetched.tier == EntityTier.USER
         assert fetched.definition == "A thing that gets shipped."
@@ -74,9 +75,9 @@ class TestOntologyEntityRepository:
         with pytest.raises(OntologyDuplicateError):
             await backend.ontology_entities.register(_entity("Duplicate"))
 
-    async def test_get_missing_raises(self, backend: PersistenceBackend) -> None:
-        with pytest.raises(OntologyNotFoundError):
-            await backend.ontology_entities.get("NeverRegistered")
+    async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
+        fetched = await backend.ontology_entities.get("NeverRegistered")
+        assert fetched is None
 
     async def test_update_overwrites(self, backend: PersistenceBackend) -> None:
         entity = _entity("Updatable", definition="original")
@@ -89,6 +90,7 @@ class TestOntologyEntityRepository:
         )
         await backend.ontology_entities.update(updated)
         fetched = await backend.ontology_entities.get("Updatable")
+        assert fetched is not None
         assert fetched.definition == "revised"
 
     async def test_update_missing_raises(self, backend: PersistenceBackend) -> None:
@@ -97,13 +99,16 @@ class TestOntologyEntityRepository:
 
     async def test_delete_removes_entity(self, backend: PersistenceBackend) -> None:
         await backend.ontology_entities.register(_entity("Deletable"))
-        await backend.ontology_entities.delete("Deletable")
-        with pytest.raises(OntologyNotFoundError):
-            await backend.ontology_entities.get("Deletable")
+        deleted = await backend.ontology_entities.delete("Deletable")
+        assert deleted is True
+        fetched = await backend.ontology_entities.get("Deletable")
+        assert fetched is None
 
-    async def test_delete_missing_raises(self, backend: PersistenceBackend) -> None:
-        with pytest.raises(OntologyNotFoundError):
-            await backend.ontology_entities.delete("NeverHere")
+    async def test_delete_missing_returns_false(
+        self, backend: PersistenceBackend
+    ) -> None:
+        deleted = await backend.ontology_entities.delete("NeverHere")
+        assert deleted is False
 
     async def test_list_entities_filters_by_tier(
         self, backend: PersistenceBackend
@@ -180,6 +185,25 @@ class TestOntologyEntityRepository:
         second_names = {e.name for e in second_page}
         assert first_names.isdisjoint(second_names)
 
+    async def test_save_upserts_like_register(
+        self, backend: PersistenceBackend
+    ) -> None:
+        entity = _entity("SaveTest")
+        await backend.ontology_entities.save(entity)
+        fetched = await backend.ontology_entities.get("SaveTest")
+        assert fetched is not None
+        assert fetched.name == "SaveTest"
+
+    async def test_list_items_returns_all_in_order(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for name in ("Zebra", "Alpha", "Beta"):
+            await backend.ontology_entities.register(_entity(name))
+        items = await backend.ontology_entities.list_items(limit=10, offset=0)
+        names = [e.name for e in items]
+        assert {"Zebra", "Alpha", "Beta"} <= set(names)
+        assert names.index("Alpha") < names.index("Beta") < names.index("Zebra")
+
     async def test_backend_name_matches_fixture(
         self, backend: PersistenceBackend, request: pytest.FixtureRequest
     ) -> None:
@@ -216,14 +240,14 @@ def _drift_report(
 
 class TestOntologyDriftReportRepository:
     async def test_store_and_get_latest(self, backend: PersistenceBackend) -> None:
-        await backend.ontology_drift.store_report(_drift_report("Widget"))
+        await backend.ontology_drift.append(_drift_report("Widget"))
         rows = await backend.ontology_drift.get_latest(NotBlankStr("Widget"))
         assert len(rows) >= 1
         assert rows[0].entity_name == "Widget"
 
     async def test_get_latest_honours_limit(self, backend: PersistenceBackend) -> None:
         for idx in range(5):
-            await backend.ontology_drift.store_report(
+            await backend.ontology_drift.append(
                 _drift_report("Repeated", divergence=idx / 10),
             )
         rows = await backend.ontology_drift.get_latest(NotBlankStr("Repeated"), limit=2)
@@ -240,13 +264,13 @@ class TestOntologyDriftReportRepository:
     async def test_get_all_latest_returns_one_per_entity(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.ontology_drift.store_report(
+        await backend.ontology_drift.append(
             _drift_report("EntityA", divergence=0.2),
         )
-        await backend.ontology_drift.store_report(
+        await backend.ontology_drift.append(
             _drift_report("EntityA", divergence=0.3),
         )
-        await backend.ontology_drift.store_report(
+        await backend.ontology_drift.append(
             _drift_report("EntityB", divergence=0.5),
         )
         rows = await backend.ontology_drift.get_all_latest()
