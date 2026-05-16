@@ -104,3 +104,30 @@ def test_empty_stdin_is_noop() -> None:
         encoding="utf-8",
     )
     assert result.returncode == 0
+
+
+def test_whitespace_stdin_is_noop() -> None:
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, str(_SCRIPT)],
+        input="  \n ",
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+    )
+    assert result.returncode == 0
+
+
+def test_malformed_json_fails_closed() -> None:
+    # Present-but-unparseable stdin is an unknown state: the guard must
+    # fail closed (exit 2) so a corrupted envelope cannot bypass it.
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, str(_SCRIPT)],
+        input='{"tool_name": "Bash", ',
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+    )
+    assert result.returncode == 2
+    assert "malformed" in result.stderr.lower()

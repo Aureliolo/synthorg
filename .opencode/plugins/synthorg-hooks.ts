@@ -12,7 +12,11 @@
  *   PreToolUse (Bash): scripts/check_no_baseline_update.sh
  *   PreToolUse (Bash): scripts/check_bash_no_write.sh
  *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
- *   PreToolUse (Bash | Edit): scripts/check_no_bulk_edit.py
+ *   PreToolUse (Bash): scripts/check_no_pr_create.sh
+ *   PreToolUse (Bash): scripts/check_no_cd_prefix.sh
+ *   PreToolUse (Bash): scripts/check_no_local_coverage.sh
+ *   PreToolUse (Bash): scripts/check_enforce_parallel_tests.sh
+ *   PreToolUse (Bash): scripts/check_no_bulk_edit.py (shell in-place only)
  *   PreToolUse (Edit|Write): scripts/check_mock_spec_ratchet.py
  *   PreToolUse (Edit|Write): scripts/check_no_edit_migration.sh
  *   PreToolUse (Edit|Write): scripts/check_no_edit_baseline.sh
@@ -23,11 +27,11 @@
  *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
  *   PostToolUse (Bash): scripts/record_push_throttle.sh
  *
- * Hookify rules enforced via this plugin (from .claude/hookify.*.md):
- *   block-pr-create: blocks direct `gh pr create`
- *   enforce-parallel-tests: enforces `-n 8` with pytest
- *   no-cd-prefix: blocks `cd` prefix in Bash commands
- *   no-local-coverage: blocks `--cov` flags locally
+ * The former .claude/hookify.*.md rules were migrated to the committed
+ * scripts above (block-pr-create -> check_no_pr_create.sh, no-cd-prefix
+ * -> check_no_cd_prefix.sh, no-local-coverage -> check_no_local_coverage.sh,
+ * enforce-parallel-tests -> check_enforce_parallel_tests.sh) so OpenCode
+ * and Claude Code share one source of truth.
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
@@ -328,38 +332,24 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               throw new Error(bulkDeny);
             }
 
-            // block-pr-create: block direct gh pr create
-            if (/gh\s+pr\s+create/i.test(command)) {
-              throw new Error(
-                "PR creation blocked. Use `/pre-pr-review` instead; it runs automated checks + review agents + fixes before creating the PR. For trivial or docs-only changes: `/pre-pr-review quick` skips agents but still runs automated checks.",
-              );
-            }
-
-            // enforce-parallel-tests: enforce -n 8 with pytest
-            if (
-              /(?:^|\s)(?:pytest|run\s+pytest|python\s+-m\s+pytest)\b/i.test(command) &&
-              !/-n 8/.test(command)
-            ) {
-              throw new Error(
-                "Always use `-n 8` with pytest for parallel execution. Add `-n 8` to your pytest command. Never run tests sequentially or with `-n auto` (32 workers causes crashes and is slower due to contention).",
-              );
-            }
-
-            // no-cd-prefix: block cd prefix in Bash commands (with optional leading whitespace)
-            if (/^\s*cd\s+/i.test(command)) {
-              throw new Error(
-                "BLOCKED: Do not use `cd` in Bash commands; it poisons the cwd for all subsequent calls. The working directory is ALREADY set to the project root. Run commands directly. For Go commands: use `go -C cli <command>`. For subdir tools without a `-C`/`--prefix` equivalent: use `bash -c \"cd <dir> && <cmd>\"`.",
-              );
-            }
-
-            // no-local-coverage: block --cov flags locally
-            if (
-              /(?:^|\s)(?:pytest|run\s+pytest|python\s+-m\s+pytest)\b/i.test(command) &&
-              /--cov\b/.test(command)
-            ) {
-              throw new Error(
-                "Do not run pytest with coverage locally; CI handles it. Coverage adds 20-40% overhead. Remove `--cov`, `--cov-report`, and `--cov-fail-under` from your command.",
-              );
+            // block-pr-create / no-cd-prefix / no-local-coverage /
+            // enforce-parallel-tests: defer to the committed scripts so the
+            // rule lives in one place and OpenCode stays in lockstep with
+            // .claude/settings.json. The previous inline regexes had drifted
+            // (the enforce-parallel-tests variant blocked the documented
+            // `pytest -m unit` even though pyproject addopts already pins
+            // -n=8 --dist=loadfile).
+            for (const script of [
+              "scripts/check_no_pr_create.sh",
+              "scripts/check_no_cd_prefix.sh",
+              "scripts/check_no_local_coverage.sh",
+              "scripts/check_enforce_parallel_tests.sh",
+            ]) {
+              const outcome = runHookScript(script, { command }, 5000, "Bash");
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
+              }
             }
 
             // check_push_throttle.sh + check_ci_before_push.sh + check_push_rebased.sh:

@@ -893,14 +893,19 @@ class _FakeGit:
         status_outputs: list[str],
         *,
         restore_raises: bool = False,
+        status_raises: bool = False,
     ) -> None:
         self._status_outputs = list(status_outputs)
         self._restore_raises = restore_raises
+        self._status_raises = status_raises
         self.calls: list[tuple[str, ...]] = []
 
     def __call__(self, *args: str) -> str:
         self.calls.append(args)
         if args[:2] == ("status", "--porcelain"):
+            if self._status_raises:
+                msg = "git status unreadable"
+                raise _MODULE._GitError(msg)
             if not self._status_outputs:
                 return ""
             return self._status_outputs.pop(0)
@@ -969,6 +974,20 @@ def test_reconcile_returns_one_when_restore_fails(
     monkeypatch.setattr(_MODULE, "_git", fake)
     rc = _MODULE._reconcile_worktree(set())
     assert rc == 1
+
+
+def test_reconcile_fails_closed_when_post_status_unreadable(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Post-run `git status` failing means we cannot prove the run left
+    # the tree clean: fail closed (return 1) instead of silently
+    # passing, so a hidden mutation cannot reach the push.
+    fake = _FakeGit([], status_raises=True)
+    monkeypatch.setattr(_MODULE, "_git", fake)
+    rc = _MODULE._reconcile_worktree(set())
+    assert rc == 1
+    assert "failing closed" in capsys.readouterr().err
 
 
 def test_main_skips_reconcile_when_pre_snapshot_fails(

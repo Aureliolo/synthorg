@@ -50,11 +50,20 @@ def main() -> int:
     """Read the PreToolUse JSON envelope from stdin and decide whether to block."""
     raw = sys.stdin.read()
     if not raw.strip():
+        # No stdin (pre-commit, not a tool call): not applicable, pass.
         return 0
     try:
         payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return 0
+    except json.JSONDecodeError as exc:
+        # stdin present but unparseable is an unknown state, not "no
+        # opinion" -- fail closed so a corrupted/truncated envelope
+        # cannot silently bypass the bulk-edit guard.
+        print(
+            f"BLOCKED: malformed PreToolUse JSON envelope ({exc}); "
+            f"check_no_bulk_edit fails closed.",
+            file=sys.stderr,
+        )
+        return 2
 
     tool_name = payload.get("tool_name", "")
     tool_input = payload.get("tool_input") or {}

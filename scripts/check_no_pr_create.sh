@@ -9,8 +9,17 @@
 # stdin (pre-commit) -> not applicable, pass.
 set -euo pipefail
 
-if ! COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null); then
+RAW="$(cat)"
+# No stdin (pre-commit, not a tool call): not applicable, pass.
+if [[ -z "${RAW//[[:space:]]/}" ]]; then
     exit 0
+fi
+# stdin present: it MUST parse. A malformed envelope is an unknown
+# state, not "no opinion" -- fail closed so a corrupted/truncated
+# payload cannot silently bypass the gate.
+if ! COMMAND=$(printf '%s' "$RAW" | jq -r '.tool_input.command // empty' 2>/dev/null); then
+    echo "BLOCKED: malformed PreToolUse JSON envelope; gate fails closed." >&2
+    exit 2
 fi
 
 if [[ -z "$COMMAND" ]]; then

@@ -171,3 +171,40 @@ def test_no_stdin_is_noop(script: str) -> None:
         encoding="utf-8",
     )
     assert result.returncode == 0
+
+
+@_BASH_AVAILABLE
+@pytest.mark.parametrize(
+    "script",
+    [
+        "check_no_pr_create.sh",
+        "check_no_cd_prefix.sh",
+        "check_no_local_coverage.sh",
+        "check_enforce_parallel_tests.sh",
+    ],
+)
+def test_malformed_json_fails_closed(script: str) -> None:
+    # stdin present but unparseable must NOT silently pass (that would
+    # let a corrupted/truncated envelope bypass the gate). Whitespace-
+    # only stdin is still treated as no-stdin and passes.
+    assert _BASH is not None
+    result = subprocess.run(  # noqa: S603
+        [_BASH, str(_SCRIPTS / script)],
+        input='{"tool_input": {"command": ',
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+    )
+    assert result.returncode == 2
+    assert "malformed" in result.stderr.lower()
+
+    whitespace = subprocess.run(  # noqa: S603
+        [_BASH, str(_SCRIPTS / script)],
+        input="   \n  ",
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+    )
+    assert whitespace.returncode == 0

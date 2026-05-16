@@ -69,7 +69,13 @@ _SKIP_ISOLATION_GATE_ENV = "SYNTHORG_SKIP_ISOLATION_GATE"
 # Minimum path depth for src/synthorg/<module> or tests/unit/<module>.
 _MIN_MODULE_DEPTH = 3
 
-# Valid Python package directory names (prevents path traversal).
+# Valid Python package directory names (letters, digits, underscores;
+# leading letter or underscore). This regex is the ONLY barrier stopping
+# a crafted git-diff path component (e.g. ``..``) from being joined into
+# a filesystem path later. The special case ``"."`` is used for test-unit
+# root files; module names proper never contain dots. Do NOT relax it
+# without adding an explicit path-bounds check that the resolved test dir
+# stays under tests/unit/.
 _SAFE_MODULE_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
@@ -99,10 +105,20 @@ def _merge_base() -> str:
     """Find the merge base between HEAD and origin/main."""
     try:
         return _git("merge-base", "HEAD", "origin/main")
-    except _GitError:
+    except _GitError as merge_base_exc:
         # Fallback: if merge-base fails (e.g. origin/main not fetched, or
         # history too shallow), diff against HEAD~1 so we check *something*.
-        return _git("rev-parse", "HEAD~1")
+        # On an orphan / single-commit branch HEAD~1 also fails; wrap it so
+        # the caller gets the friendly "running full unit suite" fallback
+        # instead of a raw traceback.
+        try:
+            return _git("rev-parse", "HEAD~1")
+        except _GitError as head_parent_exc:
+            msg = (
+                f"no merge-base with origin/main ({merge_base_exc}) and "
+                f"HEAD~1 unavailable ({head_parent_exc})"
+            )
+            raise _GitError(msg) from head_parent_exc
 
 
 def _changed_files(base: str) -> list[str]:
@@ -855,12 +871,17 @@ def _reconcile_worktree(before: set[str]) -> int:
     try:
         after = _tracked_dirty_paths()
     except _GitError as exc:
+        # Fail closed: if we cannot read post-run status we cannot prove
+        # the run left the tree clean. Returning 0 here would let a
+        # test-induced mutation slip through silently (pre-commit would
+        # later block the push with no hint the hook tried and gave up).
         print(
             f"run_affected_tests: could not read post-run git status "
-            f"({exc}); skipping worktree reconciliation.",
+            f"({exc}); cannot verify the run left the tree clean -- "
+            f"failing closed. Inspect the working tree manually.",
             file=sys.stderr,
         )
-        return 0
+        return 1
     newly_dirtied = sorted(after - before)
     if not newly_dirtied:
         return 0
