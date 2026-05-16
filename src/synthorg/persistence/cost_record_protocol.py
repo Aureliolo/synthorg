@@ -1,21 +1,53 @@
 """CostRecord repository protocol."""
 
-from typing import Protocol, runtime_checkable
+from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.budget.cost_record import CostRecord  # noqa: TC001
+from pydantic import BaseModel, ConfigDict, Field
+
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import (
+    DEFAULT_PAGE_SIZE,
+    AppendOnlyRepository,
+)
+
+if TYPE_CHECKING:
+    from synthorg.budget.cost_record import CostRecord
+
+
+class CostRecordFilterSpec(BaseModel):
+    """Filter spec for ``CostRecordRepository.query`` (ADR-0001)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    agent_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by agent identifier",
+    )
+    task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by task identifier",
+    )
 
 
 @runtime_checkable
-class CostRecordRepository(Protocol):
-    """Append-only persistence + query/aggregation for CostRecord."""
+class CostRecordRepository(
+    AppendOnlyRepository["CostRecord", CostRecordFilterSpec],
+    Protocol,
+):
+    """Append-only persistence + query/aggregation for CostRecord.
 
-    async def save(self, record: CostRecord) -> None:
+    Composes :class:`AppendOnlyRepository` (ADR-0001). Bespoke per D7:
+
+    * ``aggregate`` sums total cost with a mixed-currency rejection
+      invariant; the generic ``query`` cannot express aggregation.
+    """
+
+    async def append(self, event: CostRecord) -> None:
         """Persist a cost record (append-only).
 
         Args:
-            record: The cost record to persist.
+            event: The cost record to persist.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -24,24 +56,34 @@ class CostRecordRepository(Protocol):
 
     async def query(
         self,
+        filter_spec: CostRecordFilterSpec,
         *,
-        agent_id: NotBlankStr | None = None,
-        task_id: NotBlankStr | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Query cost records with optional filters and pagination.
 
         Args:
-            agent_id: Filter by agent identifier.
-            task_id: Filter by task identifier.
-            limit: Maximum rows to return.  Defaults to
-                ``DEFAULT_LIST_LIMIT``; pass a larger positive integer
-                for a wider window.
-            offset: Rows to skip before applying *limit*.
+            filter_spec: Carries optional agent_id and task_id filters.
+            limit: Maximum rows to return.
+            offset: Rows to skip before applying limit.
 
         Returns:
-            Matching cost records as a tuple.
+            Matching cost records as a tuple, ordered newest-first.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete cost records with timestamp before threshold (retention).
+
+        Args:
+            threshold: Records older than this are deleted.
+
+        Returns:
+            Number of rows removed.
 
         Raises:
             PersistenceError: If the operation fails.

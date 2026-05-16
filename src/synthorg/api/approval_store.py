@@ -59,6 +59,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_STATUS_TRANSITIONED,
 )
 from synthorg.observability.metrics_hub import record_approval_decision
+from synthorg.persistence.approval_protocol import ApprovalFilterSpec
 
 if TYPE_CHECKING:
     from synthorg.persistence.approval_protocol import ApprovalRepository
@@ -353,10 +354,13 @@ class ApprovalStore:
         while True:
             # Repo I/O outside the store lock so concurrent get() /
             # save() callers are never blocked by a long scan.
-            page = await self._repo.list_items(
+            filter_spec = ApprovalFilterSpec(
                 status=repo_status,
                 risk_level=risk_level,
                 action_type=action_type,
+            )
+            page = await self._repo.query(
+                filter_spec,
                 limit=page_size,
                 offset=offset,
             )

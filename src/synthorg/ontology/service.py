@@ -200,13 +200,7 @@ class OntologyService:
         Raises:
             OntologyNotFoundError: If not found.
         """
-        from synthorg.ontology.errors import OntologyNotFoundError  # noqa: PLC0415
-
-        result = await self._backend.get(name)
-        if result is None:
-            msg = f"Entity '{name}' not found"
-            raise OntologyNotFoundError(msg)
-        return result
+        return await self._backend.get(name)
 
     async def list_entities(
         self,

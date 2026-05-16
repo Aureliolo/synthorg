@@ -5,6 +5,7 @@ import pytest
 
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
+from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.sqlite.project_repo import SQLiteProjectRepository
 from tests._shared.persistence import make_private_write_context
 
@@ -70,31 +71,33 @@ class TestSQLiteProjectRepository:
         assert fetched is not None
         assert fetched.name == "Updated Name"
 
-    async def test_list_all(self, repo: SQLiteProjectRepository) -> None:
+    async def test_list_items_in_id_order(self, repo: SQLiteProjectRepository) -> None:
         await repo.save(_make_project(project_id="p1", name="P1"))
         await repo.save(_make_project(project_id="p2", name="P2"))
-        result = await repo.list_projects()
+        result = await repo.list_items()
         assert len(result) == 2
+        assert result[0].id == "p1"
+        assert result[1].id == "p2"
 
-    async def test_list_filter_by_status(self, repo: SQLiteProjectRepository) -> None:
+    async def test_query_filter_by_status(self, repo: SQLiteProjectRepository) -> None:
         await repo.save(
             _make_project(project_id="p1", name="P1", status=ProjectStatus.ACTIVE)
         )
         await repo.save(
             _make_project(project_id="p2", name="P2", status=ProjectStatus.COMPLETED)
         )
-        result = await repo.list_projects(status=ProjectStatus.ACTIVE)
+        result = await repo.query(ProjectFilterSpec(status=ProjectStatus.ACTIVE))
         assert len(result) == 1
         assert result[0].status is ProjectStatus.ACTIVE
 
-    async def test_list_filter_by_lead(self, repo: SQLiteProjectRepository) -> None:
+    async def test_query_filter_by_lead(self, repo: SQLiteProjectRepository) -> None:
         await repo.save(_make_project(project_id="p1", name="P1", lead="alice"))
         await repo.save(_make_project(project_id="p2", name="P2", lead="bob"))
-        result = await repo.list_projects(lead="alice")
+        result = await repo.query(ProjectFilterSpec(lead="alice"))
         assert len(result) == 1
         assert result[0].lead == "alice"
 
-    async def test_list_combined_filters(self, repo: SQLiteProjectRepository) -> None:
+    async def test_query_combined_filters(self, repo: SQLiteProjectRepository) -> None:
         await repo.save(
             _make_project(
                 project_id="p1",
@@ -119,7 +122,9 @@ class TestSQLiteProjectRepository:
                 lead="alice",
             )
         )
-        result = await repo.list_projects(status=ProjectStatus.ACTIVE, lead="alice")
+        result = await repo.query(
+            ProjectFilterSpec(status=ProjectStatus.ACTIVE, lead="alice"),
+        )
         assert len(result) == 1
         assert result[0].id == "p1"
 

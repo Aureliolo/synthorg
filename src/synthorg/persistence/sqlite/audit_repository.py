@@ -13,6 +13,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.audit import (
     AUDIT_COLUMNS,
     audit_entry_to_payload,
@@ -25,9 +26,9 @@ if TYPE_CHECKING:
 
     from synthorg.core.enums import ApprovalRiskLevel
     from synthorg.core.types import NotBlankStr
+    from synthorg.persistence.audit_protocol import AuditFilterSpec
     from synthorg.security.models import AuditEntry, AuditVerdictStr
 
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
     is_unique_constraint_error,
@@ -66,7 +67,7 @@ class SQLiteAuditRepository:
         self._db = db
         self._write_context = write_context
 
-    async def save(self, entry: AuditEntry) -> None:
+    async def append(self, entry: AuditEntry) -> None:
         """Persist an audit entry (append-only, no upsert).
 
         Args:
@@ -120,53 +121,49 @@ class SQLiteAuditRepository:
         # would be redundant. Callers that need a save signal should
         # log it once at the boundary that owns the write.
 
-    async def query(  # noqa: PLR0913
+    async def query(
         self,
+        filter_spec: AuditFilterSpec,
         *,
-        agent_id: NotBlankStr | None = None,
-        action_type: NotBlankStr | None = None,
-        verdict: AuditVerdictStr | None = None,
-        risk_level: ApprovalRiskLevel | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[AuditEntry, ...]:
-        """Query audit entries with optional filters (newest first).
+        """Return audit entries matching the filter spec (paginated).
 
-        Filters are AND-combined. Results ordered by timestamp
-        descending.
+        Results are ordered by timestamp descending (newest first).
 
         Args:
-            agent_id: Filter by agent identifier.
-            action_type: Filter by action type string.
-            verdict: Filter by verdict string.
-            risk_level: Filter by risk level.
-            since: Only return entries at or after this timestamp.
-            until: Only return entries at or before this timestamp.
-            limit: Maximum number of entries (must be >= 1).
+            filter_spec: Audit filter specification with optional filters.
+            limit: Maximum number of entries to return (must be >= 1).
+            offset: Number of entries to skip (for pagination).
 
         Returns:
             Matching audit entries as a tuple.
 
         Raises:
             QueryError: If the operation fails, *limit* < 1, or
-                *until* is earlier than *since*.
+                *until* is earlier than *since* in the filter spec.
         """
-        self._validate_query_args(since=since, until=until, limit=limit)
+        self._validate_query_args(
+            since=filter_spec.since,
+            until=filter_spec.until,
+            limit=limit,
+        )
 
         where, params = self._build_query_clause(
-            agent_id=agent_id,
-            action_type=action_type,
-            verdict=verdict,
-            risk_level=risk_level,
-            since=since,
-            until=until,
+            agent_id=filter_spec.agent_id,
+            action_type=filter_spec.action_type,
+            verdict=filter_spec.verdict,
+            risk_level=filter_spec.risk_level,
+            since=filter_spec.since,
+            until=filter_spec.until,
         )
         sql = (
             f"SELECT {_COL_LIST} FROM audit_entries{where} "  # noqa: S608
-            "ORDER BY timestamp DESC LIMIT ?"
+            "ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         )
         params.append(limit)
+        params.append(offset)
 
         try:
             cursor = await self._db.execute(sql, params)
@@ -177,13 +174,16 @@ class SQLiteAuditRepository:
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                agent_id=agent_id,
-                action_type=action_type,
-                verdict=verdict,
-                risk_level=(risk_level.value if risk_level else None),
-                since=since.isoformat() if since else None,
-                until=until.isoformat() if until else None,
+                agent_id=filter_spec.agent_id,
+                action_type=filter_spec.action_type,
+                verdict=filter_spec.verdict,
+                risk_level=(
+                    filter_spec.risk_level.value if filter_spec.risk_level else None
+                ),
+                since=filter_spec.since.isoformat() if filter_spec.since else None,
+                until=filter_spec.until.isoformat() if filter_spec.until else None,
                 limit=limit,
+                offset=offset,
             )
             raise QueryError(msg) from exc
 

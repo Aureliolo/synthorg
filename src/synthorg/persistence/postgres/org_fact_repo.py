@@ -33,8 +33,9 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, normalize_utc
-from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_5
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
 
 if TYPE_CHECKING:
     import psycopg
@@ -415,7 +416,7 @@ class PostgresOrgFactRepository:
         *,
         categories: frozenset[OrgFactCategory] | None = None,
         text: str | None = None,
-        limit: int = _DEFAULT_LIST_LIMIT_5,
+        limit: int = _DEFAULT_LIST_LIMIT_FACTS,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """Query active facts by category and/or text content."""
@@ -471,7 +472,7 @@ class PostgresOrgFactRepository:
         self,
         category: OrgFactCategory,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """List all active facts in a category, optionally paginated."""

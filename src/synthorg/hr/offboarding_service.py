@@ -31,6 +31,7 @@ from synthorg.observability.events.hr import (
     HR_FIRING_REASSIGNMENT_FAILED,
     HR_FIRING_TEAM_NOTIFIED,
 )
+from synthorg.persistence.task_protocol import TaskFilterSpec
 
 if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
@@ -189,8 +190,8 @@ class OffboardingService:
             return ()
 
         try:
-            assigned_tasks = await self._task_repository.list_tasks(
-                assigned_to=NotBlankStr(agent_id),
+            assigned_tasks = await self._task_repository.query(
+                TaskFilterSpec(assigned_to=NotBlankStr(agent_id)),
             )
             active_tasks = tuple(
                 t

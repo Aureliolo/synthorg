@@ -20,7 +20,8 @@ from synthorg.observability.events.api import (
     API_PROJECT_LISTED,
     API_PROJECT_UPDATED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.project_protocol import ProjectFilterSpec
 
 if TYPE_CHECKING:
     from synthorg.persistence.project_protocol import ProjectRepository
@@ -80,7 +81,7 @@ class ProjectService:
         *,
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[Project, ...]:
         """List projects with optional ``status`` / ``lead`` filters.
 
@@ -91,7 +92,7 @@ class ProjectService:
             status: Restrict to projects in this lifecycle status.
             lead: Restrict to projects led by this agent id.
             limit: Maximum projects to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+                :data:`DEFAULT_PAGE_SIZE`).
 
         Returns:
             Tuple of matching projects in repository order, capped at
@@ -102,9 +103,8 @@ class ProjectService:
                 before propagating).
         """
         try:
-            projects = await self._repo.list_projects(
-                status=status,
-                lead=lead,
+            projects = await self._repo.query(
+                ProjectFilterSpec(status=status, lead=lead),
                 limit=limit,
             )
         except MemoryError, RecursionError:

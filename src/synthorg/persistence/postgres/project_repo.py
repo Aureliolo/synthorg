@@ -25,10 +25,9 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_LISTED,
     PERSISTENCE_PROJECT_SAVE_FAILED,
 )
-from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,
-    validate_pagination_args,
-)
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.project_protocol import ProjectFilterSpec
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -232,42 +231,66 @@ class PostgresProjectRepository:
         logger.debug(PERSISTENCE_PROJECT_FETCHED, project_id=project_id, found=True)
         return project
 
-    async def list_projects(
+    async def list_items(
         self,
         *,
-        status: ProjectStatus | None = None,
-        lead: NotBlankStr | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[Project, ...]:
-        """List projects with optional filters.
+        """List all projects in ID order.
 
         Args:
-            status: Filter by project status.
-            lead: Filter by project lead agent ID.
-            limit: Maximum projects to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum projects to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Projects in ascending ID order.
+        """
+        return await self.query(
+            ProjectFilterSpec(),
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query(
+        self,
+        filter_spec: ProjectFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Project, ...]:
+        """List projects matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional ``status`` and ``lead`` filters.
+            limit: Maximum projects to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Matching projects ordered by ID.
         """
         limit = validate_pagination_args(
-            limit, 0, event=PERSISTENCE_PROJECT_LIST_FAILED
+            limit, offset, event=PERSISTENCE_PROJECT_LIST_FAILED
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         conditions: list[str] = []
         params: list[object] = []
 
-        if status is not None:
+        if filter_spec.status is not None:
             conditions.append("status = %s")
-            params.append(status.value)
-        if lead is not None:
+            params.append(filter_spec.status.value)
+        if filter_spec.lead is not None:
             conditions.append("lead = %s")
-            params.append(lead)
+            params.append(filter_spec.lead)
 
         # Safety invariant: ``conditions`` only ever contains hardcoded
         # ``"<col> = %s"`` fragments built above; the filter values flow
         # through ``params`` and stay parameterized. Never interpolate
         # user-supplied text into ``conditions``.
         where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
-        query = f"SELECT * FROM projects{where_clause} ORDER BY id LIMIT %s"  # noqa: S608
+        query = f"SELECT * FROM projects{where_clause} ORDER BY id LIMIT %s OFFSET %s"  # noqa: S608
         params.append(effective_limit)
+        params.append(offset)
 
         try:
             async with (
@@ -296,6 +319,38 @@ class PostgresProjectRepository:
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_PROJECT_LISTED, count=len(projects))
         return projects
+
+    async def count(self, filter_spec: ProjectFilterSpec) -> int:
+        """Count projects matching the filter spec."""
+        conditions: list[str] = []
+        params: list[object] = []
+
+        if filter_spec.status is not None:
+            conditions.append("status = %s")
+            params.append(filter_spec.status.value)
+        if filter_spec.lead is not None:
+            conditions.append("lead = %s")
+            params.append(filter_spec.lead)
+
+        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        query = f"SELECT COUNT(*) FROM projects{where_clause}"  # noqa: S608
+
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(query, params)
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = "Failed to count projects"
+            logger.warning(
+                PERSISTENCE_PROJECT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return int(row["count"]) if row else 0
 
     async def delete(self, project_id: NotBlankStr) -> bool:
         """Delete a project by primary key."""

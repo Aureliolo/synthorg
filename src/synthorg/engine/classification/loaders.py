@@ -15,6 +15,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.classification import (
     CONTEXT_LOADER_ERROR,
 )
+from synthorg.persistence.task_protocol import TaskFilterSpec
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
@@ -131,7 +132,7 @@ class TaskTreeLoader:
             Delegation requests found in the task tree.
         """
         try:
-            all_tasks: tuple[Task, ...] = await self._task_repo.list_tasks()
+            all_tasks: tuple[Task, ...] = await self._task_repo.query(TaskFilterSpec())
         except MemoryError, RecursionError:
             raise
         except Exception:

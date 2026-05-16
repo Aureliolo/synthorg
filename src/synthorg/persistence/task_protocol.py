@@ -2,32 +2,65 @@
 
 from typing import Protocol, runtime_checkable
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from synthorg.core.enums import TaskStatus  # noqa: TC001
-from synthorg.core.task import Task  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import (
+    DEFAULT_PAGE_SIZE,
+    FilteredQueryRepository,
+    IdKeyedRepository,
+)
+
+
+class TaskFilterSpec(BaseModel):
+    """Filter spec for ``TaskRepository.query`` (ADR-0001)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    status: TaskStatus | None = Field(
+        default=None,
+        description="Filter by task status",
+    )
+    assigned_to: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by assignee agent ID",
+    )
+    project: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by project ID",
+    )
 
 
 @runtime_checkable
-class TaskRepository(Protocol):
-    """CRUD + query interface for Task persistence."""
+class TaskRepository(
+    IdKeyedRepository[Task, NotBlankStr],
+    FilteredQueryRepository[Task, TaskFilterSpec],
+    Protocol,
+):
+    """CRUD + query interface for Task persistence.
 
-    async def save(self, task: Task) -> None:
-        """Persist a task (insert or update).
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
+    (ADR-0001).
+    """
+
+    async def save(self, entity: Task) -> None:
+        """Persist a task (insert or update by id).
 
         Args:
-            task: The task to persist.
+            entity: The task to persist.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def get(self, task_id: NotBlankStr) -> Task | None:
+    async def get(self, entity_id: NotBlankStr) -> Task | None:
         """Retrieve a task by its ID.
 
         Args:
-            task_id: The task identifier.
+            entity_id: The task identifier.
 
         Returns:
             The task, or ``None`` if not found.
@@ -37,52 +70,53 @@ class TaskRepository(Protocol):
         """
         ...
 
-    async def list_tasks(
+    async def list_items(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: NotBlankStr | None = None,
-        project: NotBlankStr | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Task, ...]:
-        """List tasks with optional filters and pagination.
+        """List tasks with pagination.
 
         Args:
-            status: Filter by task status.
-            assigned_to: Filter by assignee agent ID.
-            project: Filter by project ID.
-            limit: Maximum rows to return.  Defaults to
-                ``DEFAULT_LIST_LIMIT``; callers may pass a larger
-                positive integer when they need a wider window.
-            offset: Rows to skip before the window (``0`` = no offset).
-                Paired with ``limit`` for cursor/offset pagination.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Matching tasks as a tuple.  Ordering is deterministic on
-            the primary key ``id`` (ascending) so limit/offset windows
-            do not jitter across calls; the ``Task`` model has no
-            ``created_at`` field so primary-key order is the only
-            stable backend-agnostic signal available.
+            Tasks ordered by id ascending.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def count_tasks(
+    async def query(
         self,
+        filter_spec: TaskFilterSpec,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: NotBlankStr | None = None,
-        project: NotBlankStr | None = None,
-    ) -> int:
-        """Count tasks matching the given filters.
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Task, ...]:
+        """List tasks matching the filter spec.
 
         Args:
-            status: Filter by task status.
-            assigned_to: Filter by assignee agent ID.
-            project: Filter by project ID.
+            filter_spec: Carries optional filters for status, assigned_to, project.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Matching tasks ordered by id ascending.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def count(self, filter_spec: TaskFilterSpec) -> int:
+        """Count tasks matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters.
 
         Returns:
             Total number of matching tasks.
@@ -92,11 +126,11 @@ class TaskRepository(Protocol):
         """
         ...
 
-    async def delete(self, task_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a task by ID.
 
         Args:
-            task_id: The task identifier.
+            entity_id: The task identifier.
 
         Returns:
             ``True`` if the task was deleted, ``False`` if not found.

@@ -13,13 +13,14 @@ import aiosqlite
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
     from synthorg.persistence.message_protocol import MessageFilterSpec
+    from synthorg.persistence.task_protocol import TaskFilterSpec
 from pydantic import BaseModel, ValidationError
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import Message
-from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -218,41 +219,21 @@ id, title, description, type, priority, project, created_by,
         logger.debug(PERSISTENCE_TASK_FETCHED, task_id=task_id, found=True)
         return self._row_to_task(row)
 
-    async def list_tasks(
+    async def list_items(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Task, ...]:
-        """List tasks with optional filters and pagination.
+        """List tasks with pagination (no filters).
 
         Ordering is deterministic on the primary key ``id`` so paginated
         callers see stable windows.
         """
-        clauses: list[str] = []
-        params: list[object] = []
-        if status is not None:
-            clauses.append("status = ?")
-            params.append(status.value)
-        if assigned_to is not None:
-            clauses.append("assigned_to = ?")
-            params.append(assigned_to)
-        if project is not None:
-            clauses.append("project = ?")
-            params.append(project)
-
-        query = f"SELECT {self._TASK_COLUMNS} FROM tasks"  # noqa: S608
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY id ASC"
-        query += " LIMIT ?"
-        params.append(int(limit))
-        if offset:
-            query += " OFFSET ?"
-            params.append(int(offset))
+        query = (
+            f"SELECT {self._TASK_COLUMNS} FROM tasks ORDER BY id ASC LIMIT ? OFFSET ?"  # noqa: S608
+        )
+        params: list[object] = [int(limit), int(offset)]
 
         try:
             cursor = await self._db.execute(query, params)
@@ -269,25 +250,64 @@ id, title, description, type, priority, project, created_by,
         logger.debug(PERSISTENCE_TASK_LISTED, count=len(tasks))
         return tasks
 
-    async def count_tasks(
+    async def query(
         self,
+        filter_spec: TaskFilterSpec,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-    ) -> int:
-        """Count tasks matching the given filters."""
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Task, ...]:
+        """Query tasks matching the filter spec.
+
+        Ordering is deterministic on the primary key ``id`` so paginated
+        callers see stable windows.
+        """
         clauses: list[str] = []
         params: list[object] = []
-        if status is not None:
+        if filter_spec.status is not None:
             clauses.append("status = ?")
-            params.append(status.value)
-        if assigned_to is not None:
+            params.append(filter_spec.status.value)
+        if filter_spec.assigned_to is not None:
             clauses.append("assigned_to = ?")
-            params.append(assigned_to)
-        if project is not None:
+            params.append(filter_spec.assigned_to)
+        if filter_spec.project is not None:
             clauses.append("project = ?")
-            params.append(project)
+            params.append(filter_spec.project)
+
+        query = f"SELECT {self._TASK_COLUMNS} FROM tasks"  # noqa: S608
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY id ASC LIMIT ? OFFSET ?"
+        params.extend([int(limit), int(offset)])
+
+        try:
+            cursor = await self._db.execute(query, params)
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list tasks"
+            logger.warning(
+                PERSISTENCE_TASK_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        tasks = tuple(self._row_to_task(row) for row in rows)
+        logger.debug(PERSISTENCE_TASK_LISTED, count=len(tasks))
+        return tasks
+
+    async def count(self, filter_spec: TaskFilterSpec) -> int:
+        """Count tasks matching the given filter spec."""
+        clauses: list[str] = []
+        params: list[object] = []
+        if filter_spec.status is not None:
+            clauses.append("status = ?")
+            params.append(filter_spec.status.value)
+        if filter_spec.assigned_to is not None:
+            clauses.append("assigned_to = ?")
+            params.append(filter_spec.assigned_to)
+        if filter_spec.project is not None:
+            clauses.append("project = ?")
+            params.append(filter_spec.project)
 
         query = "SELECT COUNT(*) FROM tasks"
         if clauses:
@@ -351,11 +371,11 @@ class SQLiteCostRecordRepository:
         self._db = db
         self._write_context = write_context
 
-    async def save(self, record: CostRecord) -> None:
-        """Persist a cost record (append-only)."""
+    async def append(self, event: CostRecord) -> None:
+        """Persist a cost record (append-only per AppendOnlyRepository)."""
         async with self._write_context():
             try:
-                data = record.model_dump(mode="json")
+                data = event.model_dump(mode="json")
                 await self._db.execute(
                     """\
 INSERT INTO cost_records (
@@ -369,11 +389,11 @@ INSERT INTO cost_records (
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                msg = f"Failed to save cost record for agent {record.agent_id!r}"
+                msg = f"Failed to save cost record for agent {event.agent_id!r}"
                 logger.warning(
                     PERSISTENCE_COST_RECORD_SAVE_FAILED,
-                    agent_id=record.agent_id,
-                    task_id=record.task_id,
+                    agent_id=event.agent_id,
+                    task_id=event.task_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -381,21 +401,20 @@ INSERT INTO cost_records (
 
     async def query(
         self,
+        filter_spec: CostRecordFilterSpec,
         *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        """Query cost records with optional filters and pagination."""
+        """Query cost records matching filter spec with pagination."""
         clauses: list[str] = []
         params: list[object] = []
-        if agent_id is not None:
+        if filter_spec.agent_id is not None:
             clauses.append("agent_id = ?")
-            params.append(agent_id)
-        if task_id is not None:
+            params.append(filter_spec.agent_id)
+        if filter_spec.task_id is not None:
             clauses.append("task_id = ?")
-            params.append(task_id)
+            params.append(filter_spec.task_id)
 
         sql = """\
 SELECT agent_id, task_id, provider, model, input_tokens,
@@ -508,6 +527,25 @@ FROM cost_records"""
             total_cost=total,
         )
         return total
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete cost records with timestamp before threshold (retention)."""
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM cost_records WHERE timestamp < ?",
+                    (threshold.isoformat(),),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = "Failed to purge cost records by threshold"
+                logger.warning(
+                    PERSISTENCE_COST_RECORD_QUERY_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return cursor.rowcount
 
 
 class SQLiteMessageRepository:
