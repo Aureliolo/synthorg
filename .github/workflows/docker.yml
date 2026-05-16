@@ -816,8 +816,6 @@ jobs:
         run: scripts/report-image-size.sh "${SCAN_REF}" "Web"
 
       - name: Install Trivy
-        env:
-          TRIVY_VERSION: ${{ env.TRIVY_VERSION }}
         run: |
           curl -sfL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
           curl -sfL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
