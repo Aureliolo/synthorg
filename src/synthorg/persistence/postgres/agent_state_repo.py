@@ -18,9 +18,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AGENT_STATE_DESERIALIZE_FAILED,
     PERSISTENCE_AGENT_STATE_FETCH_FAILED,
     PERSISTENCE_AGENT_STATE_FETCHED,
+    PERSISTENCE_AGENT_STATE_LIST_FAILED,
+    PERSISTENCE_AGENT_STATE_LISTED,
     PERSISTENCE_AGENT_STATE_NOT_FOUND,
     PERSISTENCE_AGENT_STATE_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -123,6 +126,39 @@ ON CONFLICT (agent_id) DO UPDATE SET
             status=state.status.value,
         )
         return state
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[AgentRuntimeState, ...]:
+        """List agent runtime states in agent_id order."""
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT agent_id, execution_id, task_id, status, "
+                    "turn_count, accumulated_cost, currency, "
+                    "last_activity_at, started_at "
+                    "FROM agent_states ORDER BY agent_id LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list agent states"
+            logger.warning(
+                PERSISTENCE_AGENT_STATE_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        states = tuple(self._row_to_model(row) for row in rows)
+        logger.debug(PERSISTENCE_AGENT_STATE_LISTED, count=len(states))
+        return states
 
     async def get_active(self) -> tuple[AgentRuntimeState, ...]:
         """Retrieve all non-idle agent states, ordered by last_activity_at DESC."""

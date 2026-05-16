@@ -230,6 +230,8 @@ PERSISTENCE_AGENT_STATE_ACTIVE_QUERIED: Final[str] = (
 PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED: Final[str] = (
     "persistence.agent_state.active_query_failed"
 )
+PERSISTENCE_AGENT_STATE_LISTED: Final[str] = "persistence.agent_state.listed"
+PERSISTENCE_AGENT_STATE_LIST_FAILED: Final[str] = "persistence.agent_state.list_failed"
 PERSISTENCE_AGENT_STATE_DELETED: Final[str] = "persistence.agent_state.deleted"
 PERSISTENCE_AGENT_STATE_DELETE_FAILED: Final[str] = (
     "persistence.agent_state.delete_failed"

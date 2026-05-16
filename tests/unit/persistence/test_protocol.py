@@ -408,6 +408,15 @@ class _FakeAgentStateRepository:
     async def get(self, agent_id: str) -> AgentRuntimeState | None:
         return None
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[AgentRuntimeState, ...]:
+        del limit, offset
+        return ()
+
     async def get_active(self) -> tuple[AgentRuntimeState, ...]:
         return ()
 

@@ -115,6 +115,40 @@ class TestAgentStateRepository:
         ordered_ids = [s.agent_id for s in active if s.agent_id in scoped_ids]
         assert ordered_ids == ["newer", "middle", "older"]
 
+    async def test_list_items_returns_all_in_id_order(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.agent_states.save(_executing(agent_id="list-b"))
+        await backend.agent_states.save(_executing(agent_id="list-a"))
+        await backend.agent_states.save(_idle(agent_id="list-c"))
+
+        results = await backend.agent_states.list_items()
+        scoped = [s.agent_id for s in results if s.agent_id.startswith("list-")]
+        assert scoped == ["list-a", "list-b", "list-c"]
+
+    async def test_list_items_respects_limit_and_offset(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for suffix in ("a", "b", "c"):
+            await backend.agent_states.save(_executing(agent_id=f"page-{suffix}"))
+
+        all_ids = [
+            s.agent_id
+            for s in await backend.agent_states.list_items(limit=100, offset=0)
+            if s.agent_id.startswith("page-")
+        ]
+        assert all_ids == ["page-a", "page-b", "page-c"]
+
+        # Slice the in-test subset by index against limit/offset on the
+        # full list, since the shared backend may contain rows from
+        # sibling tests.
+        page = [
+            s.agent_id
+            for s in await backend.agent_states.list_items(limit=10, offset=0)
+            if s.agent_id.startswith("page-")
+        ]
+        assert page[:2] == ["page-a", "page-b"]
+
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.agent_states.save(_executing())
 

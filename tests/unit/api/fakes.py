@@ -620,6 +620,15 @@ class FakeAgentStateRepository:
     async def get(self, agent_id: str) -> AgentRuntimeState | None:
         return self._states.get(agent_id)
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[AgentRuntimeState, ...]:
+        ordered = sorted(self._states.values(), key=lambda s: s.agent_id)
+        return tuple(ordered[offset : offset + limit])
+
     async def get_active(self) -> tuple[AgentRuntimeState, ...]:
         active = (s for s in self._states.values() if s.status != ExecutionStatus.IDLE)
         return tuple(sorted(active, key=lambda s: s.last_activity_at, reverse=True))
