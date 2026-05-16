@@ -27,6 +27,8 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED,
     MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,
     MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
+    MEMORY_FINE_TUNE_ENCODE_INVOKED,
+    MEMORY_FINE_TUNE_ENCODE_TRUNCATION_LIKELY,
     MEMORY_FINE_TUNE_EVAL_COMPLETED,
     MEMORY_FINE_TUNE_VALIDATION_FAILED,
 )
@@ -82,6 +84,145 @@ _DEFAULT_TRAIN_LEARNING_RATE: Final[float] = 1e-5
 _DEFAULT_TRAIN_TEMPERATURE: Final[float] = 0.02
 _DEFAULT_TRAIN_BATCH_SIZE: Final[int] = 128
 _DEFAULT_METRICS_K: Final[int] = 10
+_QUERY_MAX_LENGTH: Final[int] = 128
+_PASSAGE_MAX_LENGTH: Final[int] = 512
+_TOKENS_PER_WORD: Final[float] = 1.33
+
+_ENCODE_ROLE_QUERY: Final[str] = "query"
+_ENCODE_ROLE_PASSAGE: Final[str] = "passage"
+
+
+def _likely_truncated_count(texts: list[str], max_length: int) -> int:
+    """Count texts whose word count suggests they will hit ``max_length`` tokens."""
+    word_threshold = max_length / _TOKENS_PER_WORD
+    return sum(1 for text in texts if len(text.split()) > word_threshold)
+
+
+async def _encode_with_observability(
+    *,
+    model: object,
+    texts: list[str],
+    max_length: int,
+    role: str,
+    model_name: str,
+) -> object:
+    """Run ``model.encode`` with per-call ``processing_kwargs`` and observability."""
+    logger.debug(
+        MEMORY_FINE_TUNE_ENCODE_INVOKED,
+        role=role,
+        model=model_name,
+        max_length=max_length,
+        batch_size=len(texts),
+    )
+    truncated = _likely_truncated_count(texts, max_length)
+    if truncated > 0:
+        logger.warning(
+            MEMORY_FINE_TUNE_ENCODE_TRUNCATION_LIKELY,
+            role=role,
+            model=model_name,
+            max_length=max_length,
+            batch_size=len(texts),
+            likely_truncated_count=truncated,
+        )
+    return await asyncio.to_thread(
+        model.encode,  # type: ignore[attr-defined]
+        texts,
+        show_progress_bar=False,
+        processing_kwargs={
+            "text": {"max_length": max_length, "truncation": True},
+        },
+    )
+
+
+async def _encode_query_passage_pair(
+    *,
+    model: object,
+    model_name: str,
+    queries: list[str],
+    passages: list[str],
+    cancellation: CancellationToken | None,
+) -> tuple[object, object]:
+    """Encode queries and passages, honouring cancellation between the two calls."""
+    if cancellation is not None:
+        cancellation.check()
+    q_embs = await _encode_with_observability(
+        model=model,
+        texts=queries,
+        max_length=_QUERY_MAX_LENGTH,
+        role=_ENCODE_ROLE_QUERY,
+        model_name=model_name,
+    )
+    if cancellation is not None:
+        cancellation.check()
+    p_embs = await _encode_with_observability(
+        model=model,
+        texts=passages,
+        max_length=_PASSAGE_MAX_LENGTH,
+        role=_ENCODE_ROLE_PASSAGE,
+        model_name=model_name,
+    )
+    if cancellation is not None:
+        cancellation.check()
+    return q_embs, p_embs
+
+
+_REQUIRED_PAIR_FIELDS: Final[tuple[str, ...]] = ("query", "positive_passage")
+
+
+async def _load_query_passage_pairs(
+    path: str,
+    *,
+    require_non_empty: bool,
+) -> tuple[list[str], list[str]]:
+    """Read JSONL ``{"query", "positive_passage"}`` records into parallel lists."""
+    pairs = await asyncio.to_thread(_read_jsonl, Path(path))
+    if require_non_empty and not pairs:
+        msg = "Validation data is empty"
+        raise ValueError(msg)
+    queries: list[str] = []
+    passages: list[str] = []
+    for idx, pair in enumerate(pairs):
+        missing = [f for f in _REQUIRED_PAIR_FIELDS if f not in pair]
+        if missing:
+            msg = (
+                f"Invalid JSONL record at index {idx}: missing field(s) "
+                f"{missing} (expected {list(_REQUIRED_PAIR_FIELDS)})"
+            )
+            logger.warning(
+                MEMORY_FINE_TUNE_VALIDATION_FAILED,
+                field="training_record",
+                record_index=idx,
+                missing_fields=missing,
+            )
+            raise ValueError(msg)
+        query = pair["query"]
+        passage = pair["positive_passage"]
+        if not isinstance(query, str) or not isinstance(passage, str):
+            msg = (
+                f"Invalid JSONL record at index {idx}: query and "
+                "positive_passage must be strings"
+            )
+            logger.warning(
+                MEMORY_FINE_TUNE_VALIDATION_FAILED,
+                field="training_record",
+                record_index=idx,
+                reason="non_string_field",
+            )
+            raise TypeError(msg)
+        queries.append(query)
+        passages.append(passage)
+    return queries, passages
+
+
+async def _persist_triples(
+    triples: list[dict[str, object]],
+    output_dir: str,
+) -> Path:
+    """Write mining triples to ``training_triples.jsonl`` under ``output_dir``."""
+    out = _ensure_dir(output_dir)
+    triples_path = out / "training_triples.jsonl"
+    await asyncio.to_thread(_write_jsonl_any, triples_path, triples)
+    return triples_path
 
 
 def _import_sentence_transformers() -> ModuleType:
@@ -320,37 +461,78 @@ async def mine_hard_negatives(  # noqa: PLR0913
     _require_not_blank(output_dir, "output_dir")
 
     st = _import_sentence_transformers()
-    pairs = await asyncio.to_thread(_read_jsonl, Path(training_data_path))
-    passages = [p["positive_passage"] for p in pairs]
-    queries = [p["query"] for p in pairs]
-
+    queries, passages = await _load_query_passage_pairs(
+        training_data_path,
+        require_non_empty=False,
+    )
     model = await asyncio.to_thread(st.SentenceTransformer, base_model)
-    passage_embeddings = await asyncio.to_thread(
-        model.encode,
-        passages,
-        show_progress_bar=False,
+    triples = await _mine_negatives_from_pairs(
+        model=model,
+        model_name=base_model,
+        queries=queries,
+        passages=passages,
+        top_k=top_k,
+        cancellation=cancellation,
+        progress_callback=progress_callback,
+    )
+    return await _persist_triples(triples, output_dir)
+
+
+async def _mine_negatives_from_pairs(  # noqa: PLR0913
+    *,
+    model: object,
+    model_name: str,
+    queries: list[str],
+    passages: list[str],
+    top_k: int,
+    cancellation: CancellationToken | None,
+    progress_callback: ProgressCallback | None,
+) -> list[dict[str, object]]:
+    """Encode the pairs and pick hard negatives in one orchestration."""
+    query_embeddings, passage_embeddings = await _encode_query_passage_pair(
+        model=model,
+        model_name=model_name,
+        queries=queries,
+        passages=passages,
+        cancellation=cancellation,
+    )
+    return await _select_hard_negatives(
+        queries=queries,
+        passages=passages,
+        query_embeddings=query_embeddings,
+        passage_embeddings=passage_embeddings,
+        top_k=top_k,
+        cancellation=cancellation,
+        progress_callback=progress_callback,
     )
 
-    out = _ensure_dir(output_dir)
-    triples_path = out / "training_triples.jsonl"
 
-    query_embeddings = await asyncio.to_thread(
-        model.encode,
-        queries,
-        show_progress_bar=False,
-    )
+_HARD_NEGATIVE_MARGIN_RATIO: Final[float] = 0.95
+_CANCELLATION_CHECK_INTERVAL: Final[int] = 50
 
+
+async def _select_hard_negatives(  # noqa: PLR0913
+    *,
+    queries: list[str],
+    passages: list[str],
+    query_embeddings: object,
+    passage_embeddings: object,
+    top_k: int,
+    cancellation: CancellationToken | None,
+    progress_callback: ProgressCallback | None,
+) -> list[dict[str, object]]:
+    """Pick the top-k hardest non-positive passages per query by similarity."""
     triples: list[dict[str, object]] = []
     for i, query in enumerate(queries):
-        if cancellation is not None and i % 50 == 0:
+        if cancellation is not None and i % _CANCELLATION_CHECK_INTERVAL == 0:
             cancellation.check()
         sims = await asyncio.to_thread(
             _cosine_similarities,
-            query_embeddings[i],
+            query_embeddings[i],  # type: ignore[index]
             passage_embeddings,
         )
         positive_sim = sims[i]
-        margin = 0.95 * positive_sim
+        margin = _HARD_NEGATIVE_MARGIN_RATIO * positive_sim
         candidates = sorted(
             ((j, s) for j, s in enumerate(sims) if j != i and s < margin),
             key=lambda x: x[1],
@@ -366,9 +548,7 @@ async def mine_hard_negatives(  # noqa: PLR0913
         )
         if progress_callback:
             progress_callback((i + 1) / len(queries))
-
-    await asyncio.to_thread(_write_jsonl_any, triples_path, triples)
-    return triples_path
+    return triples
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -559,69 +739,96 @@ async def evaluate_checkpoint(  # noqa: PLR0913
     _require_not_blank(validation_data_path, "validation_data_path")
     _require_not_blank(output_dir, "output_dir")
 
+    queries, passages = await _load_query_passage_pairs(
+        validation_data_path,
+        require_non_empty=True,
+    )
+    return await _run_eval_pipeline(
+        checkpoint_path=checkpoint_path,
+        base_model=base_model,
+        output_dir=output_dir,
+        queries=queries,
+        passages=passages,
+        cancellation=cancellation,
+        progress_callback=progress_callback,
+    )
+
+
+_EVAL_PROGRESS_AFTER_LOAD: Final[float] = 0.2
+_EVAL_PROGRESS_AFTER_FINETUNED: Final[float] = 0.5
+_EVAL_PROGRESS_AFTER_BASE: Final[float] = 0.8
+_EVAL_PROGRESS_COMPLETE: Final[float] = 1.0
+
+
+def _report_progress(callback: ProgressCallback | None, value: float) -> None:
+    """Invoke ``callback`` with ``value`` when a callback was supplied."""
+    if callback is not None:
+        callback(value)
+
+
+async def _run_eval_pipeline(  # noqa: PLR0913
+    *,
+    checkpoint_path: str,
+    base_model: str,
+    output_dir: str,
+    queries: list[str],
+    passages: list[str],
+    cancellation: CancellationToken | None,
+    progress_callback: ProgressCallback | None,
+) -> EvalMetrics:
+    """Load both models, encode query/passage pairs, persist metrics."""
     st = _import_sentence_transformers()
     from synthorg.memory.embedding.fine_tune_models import (  # noqa: PLC0415
         EvalMetrics,
     )
 
-    pairs = await asyncio.to_thread(_read_jsonl, Path(validation_data_path))
-    if not pairs:
-        msg = "Validation data is empty"
-        raise ValueError(msg)
-
-    queries = [p["query"] for p in pairs]
-    passages = [p["positive_passage"] for p in pairs]
-
-    finetuned = await asyncio.to_thread(
-        st.SentenceTransformer,
-        checkpoint_path,
-    )
+    finetuned = await asyncio.to_thread(st.SentenceTransformer, checkpoint_path)
     base = await asyncio.to_thread(st.SentenceTransformer, base_model)
-
     if cancellation is not None:
         cancellation.check()
-    if progress_callback:
-        progress_callback(0.2)
+    _report_progress(progress_callback, _EVAL_PROGRESS_AFTER_LOAD)
+    ft_q_embs, ft_p_embs = await _encode_query_passage_pair(
+        model=finetuned,
+        model_name=checkpoint_path,
+        queries=queries,
+        passages=passages,
+        cancellation=cancellation,
+    )
+    _report_progress(progress_callback, _EVAL_PROGRESS_AFTER_FINETUNED)
+    base_q_embs, base_p_embs = await _encode_query_passage_pair(
+        model=base,
+        model_name=base_model,
+        queries=queries,
+        passages=passages,
+        cancellation=cancellation,
+    )
+    _report_progress(progress_callback, _EVAL_PROGRESS_AFTER_BASE)
+    metrics = await _persist_eval_metrics(
+        ft_q_embs=ft_q_embs,
+        ft_p_embs=ft_p_embs,
+        base_q_embs=base_q_embs,
+        base_p_embs=base_p_embs,
+        output_dir=output_dir,
+        eval_metrics_cls=EvalMetrics,
+    )
+    _report_progress(progress_callback, _EVAL_PROGRESS_COMPLETE)
+    return metrics
 
-    ft_q_embs = await asyncio.to_thread(
-        finetuned.encode,
-        queries,
-        show_progress_bar=False,
-    )
-    if cancellation is not None:
-        cancellation.check()
-    ft_p_embs = await asyncio.to_thread(
-        finetuned.encode,
-        passages,
-        show_progress_bar=False,
-    )
-    if cancellation is not None:
-        cancellation.check()
-    if progress_callback:
-        progress_callback(0.5)
 
-    base_q_embs = await asyncio.to_thread(
-        base.encode,
-        queries,
-        show_progress_bar=False,
-    )
-    if cancellation is not None:
-        cancellation.check()
-    base_p_embs = await asyncio.to_thread(
-        base.encode,
-        passages,
-        show_progress_bar=False,
-    )
-    if progress_callback:
-        progress_callback(0.8)
-
+async def _persist_eval_metrics(  # noqa: PLR0913
+    *,
+    ft_q_embs: object,
+    ft_p_embs: object,
+    base_q_embs: object,
+    base_p_embs: object,
+    output_dir: str,
+    eval_metrics_cls: type[EvalMetrics],
+) -> EvalMetrics:
+    """Compute eval metrics, write the JSON file, and emit the completion log."""
     ft_ndcg, ft_recall = _compute_metrics(ft_q_embs, ft_p_embs)
-    base_ndcg, base_recall = _compute_metrics(
-        base_q_embs,
-        base_p_embs,
-    )
+    base_ndcg, base_recall = _compute_metrics(base_q_embs, base_p_embs)
 
-    metrics = EvalMetrics(
+    metrics = eval_metrics_cls(
         ndcg_at_10=ft_ndcg,
         recall_at_10=ft_recall,
         base_ndcg_at_10=base_ndcg,
@@ -642,9 +849,6 @@ async def evaluate_checkpoint(  # noqa: PLR0913
         improvement_ndcg=metrics.improvement_ndcg,
         improvement_recall=metrics.improvement_recall,
     )
-    if progress_callback:
-        progress_callback(1.0)
-
     return metrics
 
 

@@ -265,6 +265,153 @@ class TestRecommendBatchSize:
                 del proxy.warning
 
 
+class _FakeHttpResponse:
+    """Minimal stand-in for the context-manager returned by ``urlopen``.
+
+    Only ``status`` is read by ``_check_fine_tune_sidecar_health``; the
+    helper wraps the call in ``with urllib.request.urlopen(...) as resp:``
+    so the fake must also be a context manager. Spec'd as a concrete
+    class so the mock-spec ratchet stays at zero.
+    """
+
+    def __init__(self, status: int) -> None:
+        self.status = status
+
+    def __enter__(self) -> _FakeHttpResponse:
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        return None
+
+
+@pytest.mark.unit
+class TestCheckFineTuneSidecarHealth:
+    """Cover the urllib-based fine-tune sidecar health probe.
+
+    The probe is wrapped in a broad try/except so callers fall back to
+    the in-process import path on any failure (DNS miss, refused
+    connection, non-2xx response, timeout, unexpected). These tests pin
+    the four branches: 2xx -> True, non-2xx -> False, expected exceptions
+    -> False, unexpected exception -> False.
+    """
+
+    def test_returns_true_on_2xx_response(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A 200 OK response flips the probe to ``True``."""
+        import urllib.request
+
+        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+
+        def fake_urlopen(*_args: object, **_kwargs: object) -> _FakeHttpResponse:
+            return _FakeHttpResponse(status=200)
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        assert _check_fine_tune_sidecar_health() is True
+
+    def test_returns_false_on_5xx_response(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A 503 Service Unavailable response stays at ``False``."""
+        import urllib.request
+
+        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+
+        def fake_urlopen(*_args: object, **_kwargs: object) -> _FakeHttpResponse:
+            return _FakeHttpResponse(status=503)
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        assert _check_fine_tune_sidecar_health() is False
+
+    def test_returns_false_on_urlerror(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Network errors are swallowed; the probe returns ``False``."""
+        import urllib.error
+        import urllib.request
+
+        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+
+        def raise_url_error(*_args: object, **_kwargs: object) -> object:
+            msg = "connection refused"
+            raise urllib.error.URLError(msg)
+
+        monkeypatch.setattr(urllib.request, "urlopen", raise_url_error)
+        assert _check_fine_tune_sidecar_health() is False
+
+    def test_returns_false_on_timeout(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A request that times out returns ``False`` rather than raising."""
+        import urllib.request
+
+        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+
+        def raise_timeout(*_args: object, **_kwargs: object) -> object:
+            msg = "probe timed out"
+            raise TimeoutError(msg)
+
+        monkeypatch.setattr(urllib.request, "urlopen", raise_timeout)
+        assert _check_fine_tune_sidecar_health() is False
+
+    def test_returns_false_on_unexpected_exception(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Any other exception lands in the catch-all, returning ``False``."""
+        import urllib.request
+
+        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+
+        def raise_runtime(*_args: object, **_kwargs: object) -> object:
+            msg = "unexpected probe failure"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(urllib.request, "urlopen", raise_runtime)
+        assert _check_fine_tune_sidecar_health() is False
+
+    def test_reraises_memory_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``MemoryError`` is re-raised, never swallowed by the catch-all.
+
+        The helper has an explicit ``except MemoryError, RecursionError:
+        raise`` clause before the broad ``except Exception``; a system
+        error must propagate so the process is not left limping.
+        """
+        import urllib.request
+
+        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+
+        def raise_memory_error(*_args: object, **_kwargs: object) -> object:
+            raise MemoryError
+
+        monkeypatch.setattr(urllib.request, "urlopen", raise_memory_error)
+        with pytest.raises(MemoryError):
+            _check_fine_tune_sidecar_health()
+
+    def test_reraises_recursion_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``RecursionError`` propagates rather than being swallowed."""
+        import urllib.request
+
+        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+
+        def raise_recursion_error(*_args: object, **_kwargs: object) -> object:
+            raise RecursionError
+
+        monkeypatch.setattr(urllib.request, "urlopen", raise_recursion_error)
+        with pytest.raises(RecursionError):
+            _check_fine_tune_sidecar_health()
+
+
 @pytest.mark.unit
 class TestDeleteMemoryEntryEndpoint:
     """Direct-method coverage for ``MemoryAdminController.delete_memory_entry``."""

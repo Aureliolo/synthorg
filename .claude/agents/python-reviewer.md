@@ -11,7 +11,7 @@ You are a senior Python code reviewer ensuring high standards of Pythonic code a
 
 When invoked:
 1. Run `git diff -- '*.py'` to see recent Python file changes
-2. Run static analysis if available: `uv run ruff check src/ tests/`, `uv run mypy src/ tests/` (strict mode is configured in `pyproject.toml`, no flag needed)
+2. Run static analysis if available: `uv run ruff check src/ tests/`, `uv run mypy --num-workers=4 src/ tests/` (strict mode is configured in `pyproject.toml`, no flag needed)
 3. Focus on modified `.py` files
 4. Begin review immediately
 
@@ -154,7 +154,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 ```bash
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run mypy src/ tests/
+uv run mypy --num-workers=4 src/ tests/
 uv run python -m pytest tests/ -m unit -n 8
 uv run pre-commit run --all-files
 ```

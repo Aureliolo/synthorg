@@ -281,7 +281,7 @@ class StragglerGap(BaseModel):
 # Module-level (not class-level) so the ``alert`` computed_field does
 # not pay a Pydantic field-table lookup per instance -- a class-level
 # float annotation is otherwise picked up by Pydantic's model-fields
-# inspection and adds measurable overhead (~26µs per call observed on
+# inspection and adds measurable overhead (~26μs per call observed on
 # the CodSpeed benchmark).
 _DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO: Final[float] = 2.0
 

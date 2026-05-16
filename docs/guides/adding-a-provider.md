@@ -165,7 +165,7 @@ The featured/soft tier invariants are already tested generically: `test_featured
 
 ```bash
 uv run python -m pytest tests/unit/providers/test_presets.py -m unit -n 8 -v
-uv run mypy src/synthorg/providers/presets.py tests/unit/providers/test_presets.py
+uv run mypy --num-workers=4 src/synthorg/providers/presets.py tests/unit/providers/test_presets.py
 uv run ruff check src/ tests/ --fix
 uv run ruff format src/ tests/
 npm --prefix web run lint

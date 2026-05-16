@@ -340,7 +340,8 @@ class LiteLLMDriver(BaseCompletionProvider):
         max_output = int(
             info.get("max_output_tokens", 0) or info.get("max_tokens", 0) or fallback,
         )
-        supports_streaming = bool(info.get("supports_streaming", True))
+        streaming_raw = info.get("supports_native_streaming")
+        supports_streaming = True if streaming_raw is None else bool(streaming_raw)
         supports_tools = bool(
             info.get("supports_function_calling", False),
         )
