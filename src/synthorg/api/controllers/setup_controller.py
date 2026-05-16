@@ -20,6 +20,9 @@ from synthorg.api.controllers.setup.agent_helpers import (
     AGENT_LOCK as _AGENT_LOCK,
 )
 from synthorg.api.controllers.setup.agent_helpers import (
+    COMPLETE_LOCK as _COMPLETE_LOCK,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
     auto_create_template_agents as _auto_create_template_agents,
 )
 from synthorg.api.controllers.setup.agent_helpers import (
@@ -369,7 +372,6 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
         from synthorg.templates.preset_service import (  # noqa: PLC0415
             fetch_custom_presets_map,
@@ -386,6 +388,10 @@ class SetupController(Controller):
         )
 
         async with _AGENT_LOCK:
+            # Re-check setup_complete inside the lock so a concurrent
+            # /setup/complete cannot slip between an outside check and
+            # the agents write.
+            await _check_setup_not_complete(settings_svc)
             existing_agents = await get_existing_agents(settings_svc)
             updated_agents = [*existing_agents, agent_config]
             await settings_svc.set(
@@ -483,13 +489,16 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
         # Validate provider/model before acquiring the lock.
         providers = await app_state.provider_management.list_providers()
         validate_model_assignment(providers, data)
 
         async with _AGENT_LOCK:
+            # Re-check setup_complete inside the lock so a concurrent
+            # /setup/complete cannot slip between the validation above
+            # and the agents write below.
+            await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
@@ -549,9 +558,11 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
         async with _AGENT_LOCK:
+            # Re-check setup_complete inside the lock so a concurrent
+            # /setup/complete cannot slip in before the agents write.
+            await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
@@ -609,11 +620,13 @@ class SetupController(Controller):
 
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
         locales = await _read_name_locales(settings_svc)
 
         async with _AGENT_LOCK:
+            # Re-check setup_complete inside the lock so a concurrent
+            # /setup/complete cannot slip in before the agents write.
+            await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
@@ -780,67 +793,75 @@ class SetupController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
 
-        # Verify company has been created (strict: propagate unexpected errors).
-        has_company = await _check_has_company(settings_svc, strict=True)
-        if not has_company:
-            msg = "A company must be created before completing setup"
-            logger.warning(SETUP_NO_COMPANY)
-            raise ValidationError(msg)
+        # Serialise the entire check / validate / reinit / persist flow
+        # so two concurrent /setup/complete requests cannot both observe
+        # ``setup_complete=false`` and race on reinit + flag write.
+        async with _COMPLETE_LOCK:
+            await _check_setup_not_complete(settings_svc)
 
-        # Verify at least one agent exists (warn-only, not required).
-        # Quick Setup mode skips agent configuration -- users add agents
-        # later in Settings.
-        has_agents = await _check_has_agents(settings_svc)
-        if not has_agents:
-            logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
+            # Verify company has been created (strict: propagate unexpected errors).
+            has_company = await _check_has_company(settings_svc, strict=True)
+            if not has_company:
+                msg = "A company must be created before completing setup"
+                logger.warning(SETUP_NO_COMPANY)
+                raise ValidationError(msg)
 
-        # Verify at least one provider is configured.
-        if not app_state.has_provider_registry or len(app_state.provider_registry) == 0:
-            msg = "At least one provider must be configured before completing setup"
-            logger.warning(SETUP_NO_PROVIDERS)
-            raise ValidationError(msg)
+            # Verify at least one agent exists (warn-only, not required).
+            # Quick Setup mode skips agent configuration -- users add agents
+            # later in Settings.
+            has_agents = await _check_has_agents(settings_svc)
+            if not has_agents:
+                logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
 
-        # Auto-select embedding model from configured providers.
-        # Best-effort: does not block setup completion on failure.
-        # The preset hint comes from the first registered provider
-        # (when operators use preset names verbatim as provider names,
-        # which is the wizard default); ``has_gpu`` is an operator-
-        # owned boolean read from the api/setup_has_gpu setting.  Both
-        # are optional hints for ``infer_deployment_tier`` and degrade
-        # gracefully when absent.
-        provider_names = app_state.provider_registry.list_providers()
-        provider_preset_name = provider_names[0] if provider_names else None
-        has_gpu = await _read_has_gpu_setting(settings_svc)
-        try:
-            model_ids = await _collect_model_ids(app_state)
-            await auto_select_embedder(
-                settings_svc=settings_svc,
-                available_model_ids=model_ids,
-                provider_preset_name=provider_preset_name,
-                has_gpu=has_gpu,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                SETUP_COMPLETE_CHECK_ERROR,
-                check="auto_select_embedder",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            # Verify at least one provider is configured.
+            if (
+                not app_state.has_provider_registry
+                or len(app_state.provider_registry) == 0
+            ):
+                msg = "At least one provider must be configured before completing setup"
+                logger.warning(SETUP_NO_PROVIDERS)
+                raise ValidationError(msg)
 
-        # Reload providers + bootstrap agents BEFORE persisting the
-        # completion flag. ``_post_setup_reinit`` propagates failures
-        # so a broken provider config or bootstrap error leaves the
-        # flag at ``false``; the operator fixes the underlying issue
-        # and retries. Without this ordering, the frontend would
-        # believe setup succeeded while the runtime is half-configured.
-        await _post_setup_reinit(app_state)
+            # Auto-select embedding model from configured providers.
+            # Best-effort: does not block setup completion on failure.
+            # The preset hint comes from the first registered provider
+            # (when operators use preset names verbatim as provider names,
+            # which is the wizard default); ``has_gpu`` is an operator-
+            # owned boolean read from the api/setup_has_gpu setting.  Both
+            # are optional hints for ``infer_deployment_tier`` and degrade
+            # gracefully when absent.
+            provider_names = app_state.provider_registry.list_providers()
+            provider_preset_name = provider_names[0] if provider_names else None
+            has_gpu = await _read_has_gpu_setting(settings_svc)
+            try:
+                model_ids = await _collect_model_ids(app_state)
+                await auto_select_embedder(
+                    settings_svc=settings_svc,
+                    available_model_ids=model_ids,
+                    provider_preset_name=provider_preset_name,
+                    has_gpu=has_gpu,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    SETUP_COMPLETE_CHECK_ERROR,
+                    check="auto_select_embedder",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
-        await settings_svc.set("api", "setup_complete", "true")
+            # Reload providers + bootstrap agents BEFORE persisting the
+            # completion flag. ``_post_setup_reinit`` propagates failures
+            # so a broken provider config or bootstrap error leaves the
+            # flag at ``false``; the operator fixes the underlying issue
+            # and retries. Without this ordering, the frontend would
+            # believe setup succeeded while the runtime is half-configured.
+            await _post_setup_reinit(app_state)
 
-        logger.info(SETUP_COMPLETED)
+            await settings_svc.set("api", "setup_complete", "true")
 
-        return ApiResponse(data=SetupCompleteResponse(setup_complete=True))
+            logger.info(SETUP_COMPLETED)
+
+            return ApiResponse(data=SetupCompleteResponse(setup_complete=True))

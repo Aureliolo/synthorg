@@ -50,6 +50,11 @@ logger = get_logger(__name__)
 # Module-level lock: serializes read-modify-write on agents settings.
 AGENT_LOCK = asyncio.Lock()
 
+# Module-level lock: serializes the entire /setup/complete flow so two
+# concurrent clients cannot both pass the ``setup_complete=false`` check
+# and then race on reinit + flag write.
+COMPLETE_LOCK = asyncio.Lock()
+
 
 def validate_agent_index(
     agent_index: int,
