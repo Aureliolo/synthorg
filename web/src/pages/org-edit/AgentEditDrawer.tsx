@@ -97,11 +97,16 @@ export function AgentEditDrawer({
   const handleDelete = useCallback(async () => {
     if (!agent) return
     setDeleting(true)
-    const ok = await onDelete(agent.name)
-    setDeleting(false)
-    if (ok) {
-      setDeleteOpen(false)
-      onClose()
+    try {
+      const ok = await onDelete(agent.name)
+      if (ok) {
+        setDeleteOpen(false)
+        onClose()
+      }
+    } finally {
+      // ``finally`` so an unexpected reject never strands the
+      // confirm dialog in loading state.
+      setDeleting(false)
     }
   }, [agent, onDelete, onClose])
 

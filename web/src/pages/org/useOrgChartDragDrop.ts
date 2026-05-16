@@ -114,7 +114,13 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
       // emits its own "Agent X updated" toast already, but a drag-and-
       // drop move is a distinct user action that deserves its own
       // verbal cue, so the success branch keeps the "Moved" toast.
-      useCompanyStore
+      // Store mutation owns its own error UX and never throws
+      // (sentinel-return contract: ``updateAgent`` returns ``null`` on
+      // failure). The caller MUST NOT wrap it in try/catch/.catch;
+      // failure is handled via the ``result === null`` branch below.
+      // ``void`` marks the fire-and-forget intent for
+      // @typescript-eslint/no-floating-promises.
+      void useCompanyStore
         .getState()
         .updateAgent(agentName, {
           department: newDeptName,
@@ -136,14 +142,6 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
           }
           announce(`Moved ${agentName} to ${newDept}`)
           addToast({ variant: 'success', title: `Moved ${agentName} to ${newDept}` })
-        })
-        .catch(() => {
-          // Defensive: the store contract is now sentinel-return, so
-          // a real rejection here means an unexpected programmer
-          // error. Roll the optimistic move back so the UI does not
-          // freeze mid-animation.
-          rollback()
-          announce(`Failed to move ${agentName}`)
         })
     },
     [deptBounds, addToast, announce],

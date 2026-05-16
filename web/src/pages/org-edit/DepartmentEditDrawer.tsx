@@ -101,11 +101,16 @@ export function DepartmentEditDrawer({
   const handleDelete = useCallback(async () => {
     if (!department) return
     setDeleting(true)
-    const ok = await onDelete(department.name)
-    setDeleting(false)
-    if (ok) {
-      setDeleteOpen(false)
-      onClose()
+    try {
+      const ok = await onDelete(department.name)
+      if (ok) {
+        setDeleteOpen(false)
+        onClose()
+      }
+    } finally {
+      // ``finally`` so an unexpected reject never strands the
+      // confirm dialog in loading state.
+      setDeleting(false)
     }
   }, [department, onDelete, onClose])
 

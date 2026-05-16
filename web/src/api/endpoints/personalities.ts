@@ -13,7 +13,7 @@ import type {
   PresetDetailResponse,
   PresetSummaryResponse,
   UpdatePresetRequest,
-} from '../types/dtos.gen'
+} from '@/api/types'
 
 export interface ListAdminPresetsParams {
   readonly cursor?: string | null

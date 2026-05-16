@@ -193,8 +193,10 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
      * ``deleteProvider`` action would stack N success toasts on a
      * bulk selection).
      */
-    bulkDeleteProviders: async (names: readonly string[]): Promise<void> => {
-      if (names.length === 0) return
+    bulkDeleteProviders: async (
+      names: readonly string[],
+    ): Promise<boolean> => {
+      if (names.length === 0) return true
       beginMutation(set)
       let succeeded = 0
       const failed: string[] = []
@@ -225,7 +227,9 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
             variant: 'success',
             title: `${succeeded} provider${succeeded === 1 ? '' : 's'} deleted`,
           })
-        } else if (succeeded > 0) {
+          return true
+        }
+        if (succeeded > 0) {
           useToastStore.getState().add({
             variant: 'warning',
             title: `${succeeded} deleted; ${failed.length} failed`,
@@ -240,9 +244,10 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         }
         // Resync against the server when anything failed so the list
         // reflects true state rather than the optimistic removals.
-        if (failed.length > 0) {
-          await get().fetchProviders()
-        }
+        await get().fetchProviders()
+        // Sentinel-return contract: any failure in the batch yields
+        // ``false`` so callers can detect it without try/catch.
+        return false
       } finally {
         endMutation(set)
       }

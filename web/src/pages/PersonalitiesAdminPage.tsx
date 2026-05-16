@@ -8,7 +8,7 @@
  * the ``custom`` source so the runtime cannot drift from the shipped
  * defaults.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -31,7 +31,7 @@ import {
   deleteAdminPreset,
   listAdminPresets,
 } from '@/api/endpoints/personalities'
-import type { PresetSummaryResponse } from '@/api/types/dtos.gen'
+import type { PresetSummaryResponse } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
@@ -69,7 +69,14 @@ export default function PersonalitiesAdminPage() {
   const [deleteTarget, setDeleteTarget] = useState<PresetSummaryResponse | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Monotonic refresh id: the initial-mount load can still be in
+  // flight when a create/delete triggers a second refresh. Without
+  // this guard a slower older response would clobber the newer
+  // result and make a just-created/deleted preset reappear/vanish.
+  const refreshIdRef = useRef(0)
+
   const refresh = useCallback(async () => {
+    const requestId = ++refreshIdRef.current
     setError(null)
     try {
       // ``listAdminPresets`` is single-page (cursor-aware) per the
@@ -80,13 +87,15 @@ export default function PersonalitiesAdminPage() {
       const rows = await paginateAll<PresetSummaryResponse>((cursor) =>
         listAdminPresets({ cursor }),
       )
+      if (requestId !== refreshIdRef.current) return
       setPresets(rows)
     } catch (err) {
+      if (requestId !== refreshIdRef.current) return
       const message = getErrorMessage(err)
       log.error('listAdminPresets failed', { error: sanitizeForLog(message) })
       setError(message)
     } finally {
-      setLoading(false)
+      if (requestId === refreshIdRef.current) setLoading(false)
     }
   }, [])
 

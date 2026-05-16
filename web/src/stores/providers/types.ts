@@ -91,7 +91,7 @@ export interface ProvidersState {
   createFromPreset: (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>
   updateProvider: (name: string, data: UpdateProviderRequest) => Promise<ProviderConfig | null>
   deleteProvider: (name: string) => Promise<boolean>
-  bulkDeleteProviders: (names: readonly string[]) => Promise<void>
+  bulkDeleteProviders: (names: readonly string[]) => Promise<boolean>
   testConnection: (name: string, data?: TestConnectionRequest) => Promise<TestConnectionResponse | null>
   discoverModels: (name: string, presetHint?: string) => Promise<DiscoverModelsResponse | null>
   clearTestResult: () => void

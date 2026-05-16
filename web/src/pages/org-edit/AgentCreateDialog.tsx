@@ -58,20 +58,26 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
     if (Object.keys(next).length > 0) return
 
     setSubmitting(true)
-    const result = await onCreate({
-      name: form.name.trim(),
-      role: form.role.trim(),
-      department: form.department as CreateAgentOrgRequest['department'],
-      level: form.level,
-    })
-    setSubmitting(false)
-    if (result === null) {
-      // Store owns the toast UX; the dialog stays open so the user can
-      // amend their input.
-      return
+    try {
+      const result = await onCreate({
+        name: form.name.trim(),
+        role: form.role.trim(),
+        department: form.department as CreateAgentOrgRequest['department'],
+        level: form.level,
+      })
+      if (result === null) {
+        // Store owns the toast UX; the dialog stays open so the user can
+        // amend their input.
+        return
+      }
+      setForm(INITIAL_FORM)
+      onOpenChange(false)
+    } finally {
+      // ``finally`` (not the happy path only) so an unexpected reject
+      // never leaves the dialog locked (onOpenChange is gated on
+      // !submitting).
+      setSubmitting(false)
     }
-    setForm(INITIAL_FORM)
-    onOpenChange(false)
   }, [form, onCreate, onOpenChange])
 
   const deptOptions = useMemo(
