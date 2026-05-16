@@ -124,20 +124,24 @@ class TestCreateBackend:
         revisions copy keeps the on-disk layout symmetric with
         production.
         """
+        import shutil
+
         from synthorg.persistence import migrations
 
         path_a = str(tmp_path / "company-a.db")
         path_b = str(tmp_path / "company-b.db")
 
+        # Migrate once into a template and copy to both tenant paths;
+        # halves the migration cost so the test stays comfortably under
+        # the 8s unit wall-clock budget on Windows under xdist load.
+        template_path = tmp_path / "template.db"
         rev_path = migrations.copy_revisions(tmp_path / "revisions")
         await migrations.migrate_apply(
-            migrations.to_sqlite_url(path_a),
+            migrations.to_sqlite_url(str(template_path)),
             revisions_path=rev_path,
         )
-        await migrations.migrate_apply(
-            migrations.to_sqlite_url(path_b),
-            revisions_path=rev_path,
-        )
+        shutil.copyfile(template_path, path_a)
+        shutil.copyfile(template_path, path_b)
 
         config_a = PersistenceConfig(sqlite=SQLiteConfig(path=path_a))
         config_b = PersistenceConfig(sqlite=SQLiteConfig(path=path_b))
