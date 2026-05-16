@@ -17,8 +17,22 @@
 
 set -euo pipefail
 
-if ! COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null); then
+# Capture stdin once so we can distinguish "no payload" (a non-tool
+# invocation, e.g. the pre-commit stage) from "payload present but
+# unparseable". Silently exit-0 on a parse failure would let a
+# malformed hook payload disable this guard entirely.
+INPUT="$(cat)"
+if [[ -z "${INPUT//[$' \t\r\n']/}" ]]; then
+    # Empty stdin: not a Claude Code / OpenCode tool call -> nothing
+    # to police (fast path).
     exit 0
+fi
+
+if ! COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty'); then
+    # Non-empty stdin that does not parse as the expected hook JSON:
+    # fail closed (deny) rather than silently allowing the command.
+    echo "check_no_git_no_verify: unparseable hook payload; denying." >&2
+    exit 2
 fi
 
 if [[ -z "$COMMAND" ]]; then

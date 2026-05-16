@@ -387,6 +387,13 @@ class SQLiteCostRecordRepository:
         async with self._write_context():
             try:
                 data = event.model_dump(mode="json")
+                # Store a UTC-normalised ISO string so the string
+                # comparison in ``purge_before`` (which formats its
+                # threshold the same way) is correct regardless of the
+                # caller's original offset.
+                data["timestamp"] = format_iso_utc(
+                    normalize_utc(event.timestamp),
+                )
                 await self._db.execute(
                     """\
 INSERT INTO cost_records (
@@ -636,7 +643,12 @@ INSERT INTO messages (
 )""",
                     {
                         "id": msg_id,
-                        "timestamp": data["timestamp"],
+                        # UTC-normalised ISO so ``purge_before`` /
+                        # ``get_history`` ordering compare correctly
+                        # regardless of the caller's original offset.
+                        "timestamp": format_iso_utc(
+                            normalize_utc(message.timestamp),
+                        ),
                         "sender": data["sender"],
                         "to": data["to"],
                         "type": data["type"],

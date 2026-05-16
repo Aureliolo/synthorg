@@ -196,7 +196,7 @@ def mint_pull_token(repo_path: str, ghcr_token: str | None) -> str | None:
         f"https://{GHCR_REGISTRY}/token?service={GHCR_REGISTRY}"
         f"&scope=repository:{safe_repo}:pull"
     )
-    req = urllib.request.Request(  # noqa: S310 -- URL is constructed from constants + percent-encoded repo path
+    req = urllib.request.Request(
         url,
         headers={"Authorization": f"Basic {_basic_auth('x-access-token', ghcr_token)}"},
     )
