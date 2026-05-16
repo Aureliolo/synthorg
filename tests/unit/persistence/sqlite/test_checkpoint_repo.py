@@ -51,7 +51,7 @@ class TestSQLiteCheckpointRepository:
             migrated_db, write_context=make_private_write_context()
         )
         cp = _make_checkpoint(checkpoint_id="cp-rt-001")
-        await repo.save(cp)
+        await repo.append(cp)
 
         result = await repo.get_latest(execution_id="exec-001")
         assert result is not None
@@ -82,9 +82,9 @@ class TestSQLiteCheckpointRepository:
             turn_number=3,
         )
         # Insert in non-order to confirm DB ordering
-        await repo.save(cp_mid)
-        await repo.save(cp_low)
-        await repo.save(cp_high)
+        await repo.append(cp_mid)
+        await repo.append(cp_low)
+        await repo.append(cp_high)
 
         result = await repo.get_latest(execution_id="exec-001")
         assert result is not None
@@ -107,8 +107,8 @@ class TestSQLiteCheckpointRepository:
             task_id="task-beta",
             turn_number=5,
         )
-        await repo.save(cp_a)
-        await repo.save(cp_b)
+        await repo.append(cp_a)
+        await repo.append(cp_b)
 
         result = await repo.get_latest(task_id="task-alpha")
         assert result is not None
@@ -131,8 +131,8 @@ class TestSQLiteCheckpointRepository:
             execution_id="exec-beta",
             turn_number=4,
         )
-        await repo.save(cp_a)
-        await repo.save(cp_b)
+        await repo.append(cp_a)
+        await repo.append(cp_b)
 
         result = await repo.get_latest(execution_id="exec-alpha")
         assert result is not None
@@ -157,8 +157,8 @@ class TestSQLiteCheckpointRepository:
             task_id="task-other",
             turn_number=5,
         )
-        await repo.save(cp_match)
-        await repo.save(cp_exec_only)
+        await repo.append(cp_match)
+        await repo.append(cp_exec_only)
 
         result = await repo.get_latest(execution_id="exec-m", task_id="task-m")
         assert result is not None
@@ -191,14 +191,14 @@ class TestSQLiteCheckpointRepository:
             context_json='{"version": 1}',
             turn_number=1,
         )
-        await repo.save(cp_v1)
+        await repo.append(cp_v1)
 
         cp_v2 = _make_checkpoint(
             checkpoint_id="cp-upsert",
             context_json='{"version": 2}',
             turn_number=2,
         )
-        await repo.save(cp_v2)
+        await repo.append(cp_v2)
 
         result = await repo.get_latest(execution_id="exec-001")
         assert result is not None
@@ -218,7 +218,7 @@ class TestSQLiteCheckpointRepository:
                 execution_id="exec-to-delete",
                 turn_number=i,
             )
-            await repo.save(cp)
+            await repo.append(cp)
 
         count = await repo.delete_by_execution("exec-to-delete")
         assert count == 3
@@ -249,8 +249,8 @@ class TestSQLiteCheckpointRepository:
             checkpoint_id="cp-delete",
             execution_id="exec-delete",
         )
-        await repo.save(cp_keep)
-        await repo.save(cp_delete)
+        await repo.append(cp_keep)
+        await repo.append(cp_delete)
 
         await repo.delete_by_execution("exec-delete")
 
@@ -274,7 +274,7 @@ class TestSQLiteCheckpointRepositoryErrors:
         )
         cp = _make_checkpoint()
         with pytest.raises(QueryError, match="Failed to save"):
-            await repo.save(cp)
+            await repo.append(cp)
 
     async def test_get_latest_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection
