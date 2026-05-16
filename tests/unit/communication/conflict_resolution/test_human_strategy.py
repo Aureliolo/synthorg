@@ -277,7 +277,7 @@ class TestHumanEscalationFullLoop:
             created_at=past,
             expires_at=past,
         )
-        await store.save(escalation)
+        await store.create(escalation)
         expired = await store.mark_expired(datetime.now(UTC).isoformat())
         assert expired == ("escalation-stale-0001",)
         row = await store.get("escalation-stale-0001")

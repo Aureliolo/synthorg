@@ -347,7 +347,7 @@ class TestCustomRuleAuditEvents:
         fields would break forensic queries -- the payload assertions
         pin the contract."""
         rule = _make_rule()
-        patched_service.save.return_value = rule
+        patched_service.create.return_value = rule
 
         ctrl = CustomRuleController(owner=CustomRuleController)  # type: ignore[arg-type]
         with structlog.testing.capture_logs() as events:

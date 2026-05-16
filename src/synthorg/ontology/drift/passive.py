@@ -12,6 +12,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
     ONTOLOGY_DRIFT_CHECK_STARTED,
 )
+from synthorg.ontology.errors import OntologyNotFoundError
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 
 if TYPE_CHECKING:
@@ -112,7 +113,10 @@ class PassiveMonitorStrategy:
             strategy="passive",
         )
 
-        entity = await self._ontology.get(entity_name)
+        try:
+            entity = await self._ontology.get(entity_name)
+        except OntologyNotFoundError:
+            entity = None
         if entity is None:
             logger.warning(
                 ONTOLOGY_DRIFT_CHECK_COMPLETED,

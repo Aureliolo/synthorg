@@ -15,6 +15,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_INJECTION_PREPARED,
     ONTOLOGY_TOOL_LOOKUP,
 )
+from synthorg.ontology.errors import OntologyNotFoundError
 from synthorg.ontology.injection._tool_args import LookupEntityArgs
 from synthorg.ontology.injection.prompt import format_entity
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -104,6 +105,8 @@ class LookupEntityTool(BaseTool):
             entity = await self._backend.get(name)
         except MemoryError, RecursionError:
             raise
+        except OntologyNotFoundError:
+            entity = None
         except Exception as exc:
             logger.warning(
                 ONTOLOGY_TOOL_LOOKUP,

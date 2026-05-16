@@ -114,7 +114,7 @@ class TestSnapshotPublishing:
 
         # All futures resolved
         assert len(results) == 5
-        stored = await persistence.tasks.list_tasks()
+        stored = await persistence.tasks.list_items()
         assert len(stored) == 5
 
 

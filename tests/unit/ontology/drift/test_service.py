@@ -69,7 +69,7 @@ class TestDriftDetectionService:
         ontology = _make_ontology()
         config = DriftDetectionConfig()
         store = mock_of[OntologyDriftReportRepository](
-            store_report=AsyncMock(),
+            append=AsyncMock(),
         )
 
         service = DriftDetectionService(
@@ -80,7 +80,7 @@ class TestDriftDetectionService:
         )
 
         await service.check_entity("Task", ("agent-1",))
-        store.store_report.assert_awaited_once()
+        store.append.assert_awaited_once()
 
     async def test_check_all_iterates_entities(self) -> None:
         """check_all runs detection for all registered entities."""

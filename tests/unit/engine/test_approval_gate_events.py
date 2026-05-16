@@ -160,7 +160,7 @@ class TestApprovalGateEventStream:
             timeout_seconds=300.0,
             tool_name="deploy",
         )
-        await store.save(interrupt)
+        await store.create(interrupt)
         assert len(await store.list_pending()) == 1
 
         gate = ApprovalGate(

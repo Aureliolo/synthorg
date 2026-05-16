@@ -95,7 +95,7 @@ class TestSubworkflowServiceList:
     @pytest.mark.unit
     async def test_lists_unfiltered(self) -> None:
         registry = AsyncMock()
-        registry.list_items.return_value = (
+        registry.list_all.return_value = (
             _summary("b-2"),
             _summary("a-1"),
         )
