@@ -61,16 +61,16 @@ jobs:
       # `owner` + `repositories` pin the installation lookup so the
       # token is bound to this single-repo install -- without them the
       # action walks every installation the App is authorised for.
+      # zizmor v1.25.0 (bundled with zizmorcore/zizmor-action v0.5.4) has
+      # a false positive in the github-app audit: it checks for the YAML
+      # key `repository` (singular) instead of `repositories` (plural),
+      # so this callsite is flagged despite passing the correct plural
+      # key. Fixed upstream in zizmor v1.25.2; remove the inline ignore
+      # on the `with:` line below once zizmor-action ships v1.25.2+.
       - name: Mint repo-bot App token
         id: app-token
-        # zizmor: ignore[github-app] -- false positive in zizmor v1.25.0
-        # (bundled with zizmorcore/zizmor-action v0.5.4): the audit checks
-        # for the YAML key `repository` (singular) instead of
-        # `repositories` (plural), so this callsite is flagged despite
-        # passing the correct plural key. Fixed upstream in zizmor
-        # v1.25.2; remove this ignore once zizmor-action ships v1.25.2+.
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
+        with: # zizmor: ignore[github-app]
           client-id: ${{ secrets.APKO_BOT_APP_CLIENT_ID }}
           private-key: ${{ secrets.APKO_BOT_APP_PRIVATE_KEY }}
           # Both `owner` and `repositories` are literal values so the

@@ -83,18 +83,18 @@ runs:
     # GitHub-signed (verify via `gh api .../commits/<sha> --jq
     # '.commit.verification'` -> expect `verified: true, reason: "valid"`)
     # AND trigger downstream workflows.
+    # zizmor v1.25.0 (bundled with zizmorcore/zizmor-action v0.5.4) has a
+    # false positive in the github-app audit: it checks for the YAML key
+    # `repository` (singular) instead of `repositories` (plural), so this
+    # callsite is flagged despite passing the correct plural key. Fixed
+    # upstream in zizmor v1.25.2; remove the inline ignore on the `with:`
+    # line below once zizmor-action ships v1.25.2+. The callsite is
+    # genuinely narrow: literal `owner: Aureliolo`, literal
+    # `repositories: synthorg`, explicit `permission-*` passthroughs.
     - name: Mint release-bot App token
       id: app-token
-      # zizmor: ignore[github-app] -- false positive in zizmor v1.25.0 (the
-      # version bundled with zizmorcore/zizmor-action v0.5.4): its github-app
-      # audit checks for the YAML key `repository` (singular) instead of
-      # `repositories` (plural), so this callsite is flagged despite passing
-      # the correct plural key. Fixed upstream in zizmor v1.25.2; remove
-      # this ignore once zizmor-action ships v1.25.2+. The callsite is
-      # genuinely narrow: literal `owner: Aureliolo`, literal
-      # `repositories: synthorg`, explicit `permission-*` passthroughs.
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-      with:
+      with: # zizmor: ignore[github-app]
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.app-private-key }}
         # Single-repo install -- the App must be installed on exactly
