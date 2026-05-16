@@ -1137,4 +1137,96 @@ describe('setup wizard store', () => {
       expect(state.probing).toBe(false)
     })
   })
+
+  describe('completeSetup', () => {
+    it('marks completing=false and clears warning on a clean response', async () => {
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              setup_complete: true,
+              embedder_selected: true,
+              embedder_failure_reason: null,
+            }),
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().completeSetup()
+      const state = useSetupWizardStore.getState()
+      expect(state.completing).toBe(false)
+      expect(state.completionError).toBeNull()
+      expect(state.completionWarning).toBeNull()
+    })
+
+    it('sets completionWarning from embedder_failure_reason on a 200 with warning', async () => {
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              setup_complete: true,
+              embedder_selected: false,
+              embedder_failure_reason: 'no ranked model available',
+            }),
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().completeSetup()
+      const state = useSetupWizardStore.getState()
+      expect(state.completing).toBe(false)
+      expect(state.completionError).toBeNull()
+      expect(state.completionWarning).toContain('no ranked model available')
+    })
+
+    it('sets completionError on a 409 (already complete) failure', async () => {
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(apiError('Setup already complete'), { status: 409 }),
+        ),
+      )
+      await expect(useSetupWizardStore.getState().completeSetup()).rejects.toThrow()
+      const state = useSetupWizardStore.getState()
+      expect(state.completing).toBe(false)
+      expect(state.completionError).not.toBeNull()
+    })
+
+    it('sets completionError on a 422 validation failure', async () => {
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(
+            apiError('Validation failed'),
+            { status: 422 },
+          ),
+        ),
+      )
+      await expect(useSetupWizardStore.getState().completeSetup()).rejects.toThrow()
+      const state = useSetupWizardStore.getState()
+      expect(state.completing).toBe(false)
+      expect(state.completionError).not.toBeNull()
+    })
+
+    it('clears completionError on a subsequent successful retry', async () => {
+      // First attempt fails.
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(apiError('Validation failed'), { status: 422 }),
+        ),
+      )
+      await expect(useSetupWizardStore.getState().completeSetup()).rejects.toThrow()
+      expect(useSetupWizardStore.getState().completionError).not.toBeNull()
+      // Replace with a happy-path handler and retry.
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              setup_complete: true,
+              embedder_selected: true,
+              embedder_failure_reason: null,
+            }),
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().completeSetup()
+      expect(useSetupWizardStore.getState().completionError).toBeNull()
+    })
+  })
 })

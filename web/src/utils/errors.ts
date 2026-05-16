@@ -103,10 +103,17 @@ export function getErrorMessage(error: unknown): string {
     // (its structured error_detail.detail wins inside the switch).
     if (status === 429) {
       const ms = readRetryAfterHeaderMs(error)
+      // Backend rate limits are per-operation (per_op_rate_limit_from_policy),
+      // not global; call out which operation hit the cap so the operator
+      // does not assume the whole dashboard is throttled.
+      const url = error.config?.url ?? ''
+      const opHint = url.includes('/setup/complete')
+        ? 'Too many setup completion attempts'
+        : 'Too many requests for this operation'
       if (ms !== null && ms > 0) {
-        return `Too many requests. Try again in ${formatRetryAfter(ms)}.`
+        return `${opHint}. Try again in ${formatRetryAfter(ms)}.`
       }
-      return 'Too many requests. Try again in a few seconds.'
+      return `${opHint}. Try again in a few seconds.`
     }
     if (status === 503) {
       const ms = readRetryAfterHeaderMs(error)
