@@ -770,6 +770,27 @@ ordering purposes, even though they wrap a third-party logger
 under the hood. The package facade is the convention boundary; what
 it wraps is an implementation detail.
 
+## 31. Ruff lint preview rules
+
+The project opts into individual ruff preview rules via three coupled
+keys in `[tool.ruff.lint]`:
+
+* `preview = true` enables ruff's preview-rule machinery.
+* `explicit-preview-rules = true` restricts activation to preview rules
+  that are explicitly listed in `select` / `extend-select`. Without
+  this flag, `preview = true` activates every preview rule and would
+  surface hundreds of unintended violations across the codebase.
+* `extend-select` lists each preview rule the project opts into.
+
+Active preview opt-ins:
+
+* `TID255` (`lazy-import-immediately-resolved`): pre-emptive gate for
+  PEP 690 lazy imports. Currently inert on Python 3.14 (no `lazy`
+  syntax in the language yet); becomes meaningful when 3.15 lands.
+
+When adding a new preview rule, list it in `extend-select` and keep
+the `explicit-preview-rules = true` flag; never remove that flag.
+
 ## See also
 
 * [persistence-boundary.md](persistence-boundary.md): repository /

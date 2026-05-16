@@ -153,7 +153,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 ```bash
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run mypy src/ tests/
+uv run mypy --num-workers=4 src/ tests/
 uv run python -m pytest tests/ -m unit -n 8
 uv run pre-commit run --all-files
 ```

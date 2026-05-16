@@ -92,7 +92,7 @@ Run these before pushing to ensure CI will pass:
 ```bash
 uv run ruff check src/ tests/              # lint
 uv run ruff format --check src/ tests/     # format check
-uv run mypy src/ tests/                    # type check (strict)
+uv run mypy --num-workers=4 src/ tests/    # type check (strict)
 ```
 
 Auto-fix issues:

@@ -190,8 +190,12 @@ line-length = 88
 src = ["src", "tests"]
 
 [tool.ruff.lint]
+# preview + explicit-preview-rules: required to activate TID255 (added via
+# extend-select below). Removing explicit-preview-rules would enable every
+# ruff preview rule at once, not just TID255, surfacing hundreds of
+# unintended violations across the codebase. Keep both flags together.
 preview = true
-explicit-preview-rules = true  # only opt-in to preview rules listed in extend-select
+explicit-preview-rules = true
 select = [
     "F",      # pyflakes
     "E", "W", # pycodestyle

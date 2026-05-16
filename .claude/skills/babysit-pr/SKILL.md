@@ -345,7 +345,7 @@ Conditional gates by file type touched:
   ```bash
   uv run ruff check src/ tests/ --fix
   uv run ruff format src/ tests/
-  uv run mypy src/ tests/
+  uv run mypy --num-workers=4 src/ tests/
   uv run python -m pytest tests/ -m unit -n 8
   ```
 

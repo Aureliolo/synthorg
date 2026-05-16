@@ -106,7 +106,7 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 
 # Type check
-uv run mypy src/ tests/
+uv run mypy --num-workers=4 src/ tests/
 
 # Tests with coverage
 uv run python -m pytest tests/ -n 8 --cov=synthorg --cov-fail-under=80
