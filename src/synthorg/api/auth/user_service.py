@@ -82,7 +82,7 @@ class UserService:
         Callers paginating over large user bases should use
         :meth:`list_users_page` instead, which exposes a stable cursor.
         """
-        users = await self._repo.list_users(limit=limit)
+        users = await self._repo.list_items(limit=limit)
         logger.debug(API_USER_LISTED, count=len(users))
         return users
 
@@ -117,9 +117,14 @@ class UserService:
         """
         # Over-fetch by one row to detect has_more without a COUNT.
         try:
-            rows = await self._repo.list_users_paginated(
-                after_id=after_id,
+            from synthorg.persistence.user_protocol import (  # noqa: PLC0415
+                UserFilterSpec,
+            )
+
+            rows = await self._repo.query(
+                UserFilterSpec(),
                 limit=limit + 1,
+                offset=0,
             )
         except MemoryError, RecursionError:
             raise

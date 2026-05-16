@@ -199,15 +199,15 @@ class PersonalityPresetService:
             entries[name] = _builtin_to_entry(name, dict(preset))
 
         presets = await self._repo.list_items()
-        for preset in presets:
-            config = _parse_config_json(preset.config_json, preset.name)
-            entries[preset.name] = PresetEntry(
-                name=preset.name,
+        for custom in presets:
+            config = _parse_config_json(custom.config_json, custom.name)
+            entries[custom.name] = PresetEntry(
+                name=custom.name,
                 source=PresetSource.CUSTOM,
                 config=config,
-                description=preset.description,
-                created_at=preset.created_at,
-                updated_at=preset.updated_at,
+                description=custom.description,
+                created_at=custom.created_at,
+                updated_at=custom.updated_at,
             )
 
         return tuple(entries[k] for k in sorted(entries))
