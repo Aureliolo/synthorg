@@ -50,7 +50,7 @@ class TestInterruptStore:
     async def test_create_and_get(self) -> None:
         store = InterruptStore()
         interrupt = _make_interrupt()
-        await store.save(interrupt)
+        await store.create(interrupt)
         result = await store.get("int-001")
         assert result is not None
         assert result.id == "int-001"
@@ -62,28 +62,28 @@ class TestInterruptStore:
 
     async def test_create_duplicate_raises(self) -> None:
         store = InterruptStore()
-        await store.save(_make_interrupt())
+        await store.create(_make_interrupt())
         with pytest.raises(ValueError, match="already exists"):
-            await store.save(_make_interrupt())
+            await store.create(_make_interrupt())
 
     async def test_list_pending_all(self) -> None:
         store = InterruptStore()
-        await store.save(_make_interrupt(id="i1"))
-        await store.save(_make_interrupt(id="i2"))
+        await store.create(_make_interrupt(id="i1"))
+        await store.create(_make_interrupt(id="i2"))
         pending = await store.list_pending()
         assert len(pending) == 2
 
     async def test_list_pending_by_session(self) -> None:
         store = InterruptStore()
-        await store.save(_make_interrupt(id="i1", session_id="s1"))
-        await store.save(_make_interrupt(id="i2", session_id="s2"))
+        await store.create(_make_interrupt(id="i1", session_id="s1"))
+        await store.create(_make_interrupt(id="i2", session_id="s2"))
         pending = await store.list_pending(session_id="s1")
         assert len(pending) == 1
         assert pending[0].id == "i1"
 
     async def test_resolve_returns_interrupt(self) -> None:
         store = InterruptStore()
-        await store.save(_make_interrupt())
+        await store.create(_make_interrupt())
         resolution = _make_resolution()
         result = await store.resolve(resolution)
         assert result is not None
@@ -91,7 +91,7 @@ class TestInterruptStore:
 
     async def test_resolve_removes_from_pending(self) -> None:
         store = InterruptStore()
-        await store.save(_make_interrupt())
+        await store.create(_make_interrupt())
         await store.resolve(_make_resolution())
         result = await store.get("int-001")
         assert result is None
@@ -103,7 +103,7 @@ class TestInterruptStore:
 
     async def test_resolve_signals_waiter(self) -> None:
         store = InterruptStore()
-        await store.save(_make_interrupt())
+        await store.create(_make_interrupt())
 
         async def _resolve_after_yield() -> None:
             # Yield control so the waiter can start, then resolve.
@@ -118,7 +118,7 @@ class TestInterruptStore:
 
     async def test_wait_for_resolution_timeout(self) -> None:
         store = InterruptStore()
-        await store.save(_make_interrupt())
+        await store.create(_make_interrupt())
         # No resolution is provided, so wait_for_resolution always
         # times out deterministically (asyncio.wait_for on an unset
         # Event fires TimeoutError after the timeout elapses).
@@ -147,7 +147,7 @@ class TestInterruptStoreRaceConditions:
         async def attempt_create() -> bool:
             await barrier.wait()
             try:
-                await store.save(_make_interrupt())
+                await store.create(_make_interrupt())
             except ValueError:
                 return False
             return True
@@ -160,7 +160,7 @@ class TestInterruptStoreRaceConditions:
 
     async def test_resolve_during_wait_timeout_no_double_pop(self) -> None:
         store = InterruptStore()
-        await store.save(_make_interrupt())
+        await store.create(_make_interrupt())
 
         async def slow_resolve() -> None:
             # Yield once so the waiter starts ``event.wait()`` first.
@@ -180,7 +180,7 @@ class TestInterruptStoreRaceConditions:
 
     async def test_concurrent_resolve_only_one_succeeds(self) -> None:
         store = InterruptStore()
-        await store.save(_make_interrupt())
+        await store.create(_make_interrupt())
         n_resolvers = 20
         barrier = asyncio.Barrier(n_resolvers)
 

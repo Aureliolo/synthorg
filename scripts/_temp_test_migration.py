@@ -8,20 +8,12 @@ from pathlib import Path
 
 TESTS_DIR = Path("tests")
 
-# Per-file targeted transforms.
-TARGETED: dict[str, list[tuple[str, str]]] = {
-    "tests/unit/settings/test_service.py": [
-        # Convert tuple `("X", "Y")` after `mock_repo.get.return_value =`
-        # to `_row("X", "Y")`. The ``_row`` helper defaults to
-        # namespace="budget", key="total_monthly" which matches the
-        # default registry. The two api_key tests overlap with this
-        # default key but the service code keys off (namespace, key)
-        # from its callsite, not the row, so leaving key=total_monthly
-        # on those rows is harmless.
-        (
-            r"mock_repo\.get\.return_value\s*=\s*\(([^,)]+),\s*([^)]+)\)",
-            r"mock_repo.get.return_value = _row(\1, \2)",
-        ),
+# Per-file targeted reverts where earlier mechanical script over-renamed.
+TARGETED_REVERTS: dict[str, list[tuple[str, str]]] = {
+    # InterruptStore is an in-memory event-stream coordinator,
+    # NOT an ADR-0001 repository. `create()` is its real method.
+    "tests/unit/communication/event_stream/test_interrupt_store.py": [
+        (r"\bstore\.save\(", "store.create("),
     ],
 }
 
@@ -39,14 +31,14 @@ def apply(path: Path, patterns: list[tuple[str, str]]) -> bool:
 
 def main() -> None:
     changed: list[Path] = []
-    for rel, patterns in TARGETED.items():
+    for rel, patterns in TARGETED_REVERTS.items():
         p = Path(rel)
         if not p.exists():
             print(f"skip (not found): {rel}")
             continue
         if apply(p, patterns):
             changed.append(p)
-    print(f"Rewrote {len(changed)} files")
+    print(f"Reverted {len(changed)} files")
     for p in changed:
         print(f"  {p.as_posix()}")
 
