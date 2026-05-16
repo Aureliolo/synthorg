@@ -297,27 +297,77 @@ jobs:
       - name: Assert OpenAPI export is deterministic and complete
         run: uv run python scripts/check_openapi_liveness.py
 
-  # ── Python: Test ──
-  test:
-    name: Test (Python ${{ matrix.python-version }})
+  # ── Python: Test (Unit) ──
+  # Fast-signal arm: -m unit, no Docker, no Postgres. Lands first (~3 min)
+  # so a trivial unit break is red long before the integration / e2e
+  # testcontainer tax is paid. Collects coverage only (no per-suite gate,
+  # no Codecov upload); the 80% gate runs once on the combined aggregate
+  # in test-coverage-aggregate.
+  test-unit:
+    name: Test Unit
+    needs: changes
+    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      COVERAGE_FILE: .coverage.unit
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      # --cov-fail-under=0 overrides pyproject's [tool.coverage.report]
+      # fail_under=80, which pytest-cov otherwise applies at end-of-session
+      # even with an empty --cov-report=. A single marker slice never reaches
+      # 80% alone; the gate belongs solely to test-coverage-aggregate. Every
+      # per-suite arm below carries the same override for the same reason.
+      - name: Run unit tests
+        run: |
+          uv run python -m pytest tests/ \
+            -m unit \
+            -n auto \
+            --cov=synthorg \
+            --cov-report= \
+            --cov-fail-under=0 \
+            --junitxml=junit-unit.xml \
+            --durations=20 \
+            --durations-min=1.0
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-data-unit
+          path: .coverage.unit*
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-unit
+          path: junit-unit.xml
+
+  # ── Python: Test (Integration) ──
+  test-integration:
+    name: Test Integration
     needs: changes
     if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
-      # Required for tokenless Codecov upload via use_oidc: true.
-      id-token: write
-    strategy:
-      matrix:
-        python-version: ["3.14"]
+    env:
+      COVERAGE_FILE: .coverage.integration
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
-        with:
-          python-version: ${{ matrix.python-version }}
 
       # The backup-conformance suite shells out to ``pg_dump`` and
       # ``pg_restore`` against a postgres:18-alpine testcontainer; both
@@ -347,24 +397,227 @@ jobs:
       - name: Postgres drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 
-      - name: Run tests
+      - name: Run integration tests
         env:
           RUN_INTEGRATION_TESTS: "1"
         run: |
           uv run python -m pytest tests/ \
+            -m integration \
             -n auto \
             --cov=synthorg \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            --cov-fail-under=80 \
-            --junitxml=junit.xml \
+            --cov-report= \
+            --cov-fail-under=0 \
+            --junitxml=junit-integration.xml \
             --durations=20 \
             --durations-min=1.0
 
-      # Codecov upload is best-effort -- CI should not fail on Codecov outages.
-      # Coverage enforcement is handled by --cov-fail-under. Uses tokenless
-      # OIDC upload for this public repo so no protected secrets are needed.
-      - name: Upload coverage to Codecov
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-data-integration
+          path: .coverage.integration*
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-integration
+          path: junit-integration.xml
+
+  # ── Python: Test (E2E) ──
+  test-e2e:
+    name: Test E2E
+    needs: changes
+    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      COVERAGE_FILE: .coverage.e2e
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      # E2E exercises the full system including the Postgres path, so it
+      # needs the same v18 client setup as the integration arm. See the
+      # integration job for the rationale on the PGDG client install.
+      - name: Install PostgreSQL 18 client (pg_dump / pg_restore)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/18/bin/pg_dump --version
+          /usr/lib/postgresql/18/bin/pg_restore --version
+
+      - name: Postgres drift detection
+        run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
+
+      - name: Run e2e tests
+        env:
+          RUN_INTEGRATION_TESTS: "1"
+        run: |
+          uv run python -m pytest tests/ \
+            -m e2e \
+            -n auto \
+            --cov=synthorg \
+            --cov-report= \
+            --cov-fail-under=0 \
+            --junitxml=junit-e2e.xml \
+            --durations=20 \
+            --durations-min=1.0
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-data-e2e
+          path: .coverage.e2e*
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-e2e
+          path: junit-e2e.xml
+
+  # ── Python: Test (Conformance, SQLite arm) ──
+  # No-Docker SQLite-only slice of the dual-backend persistence
+  # conformance suite, so the lowest-cost backend is always exercised
+  # early even when the Postgres testcontainer infra is flaky. The
+  # ``backend`` fixture is parametrised ["sqlite", "postgres"]; -k "not
+  # postgres" deselects the postgres ids so the container fixture is
+  # never triggered. The full dual-backend conformance still runs inside
+  # test-integration via -m integration.
+  test-conformance-sqlite:
+    name: Test Conformance (SQLite)
+    needs: changes
+    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      COVERAGE_FILE: .coverage.conformance-sqlite
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Run SQLite conformance tests
+        env:
+          RUN_INTEGRATION_TESTS: "1"
+        run: |
+          uv run python -m pytest tests/conformance/persistence \
+            -m integration \
+            -k "not postgres" \
+            -n auto \
+            --cov=synthorg \
+            --cov-report= \
+            --cov-fail-under=0 \
+            --junitxml=junit-conformance-sqlite.xml \
+            --durations=20 \
+            --durations-min=1.0
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-data-conformance-sqlite
+          path: .coverage.conformance-sqlite*
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-conformance-sqlite
+          path: junit-conformance-sqlite.xml
+
+  # ── Python: Test Coverage Aggregate ──
+  # The single, airtight 80% gate. Runs only when all four test arms
+  # succeed (default needs semantics, no if: always()), so coverage is
+  # never computed on partial data. Codecov stays best-effort and is
+  # never the gate; ``coverage report --fail-under=80`` is.
+  test-coverage-aggregate:
+    name: Test Coverage Aggregate
+    needs: [changes, test-unit, test-integration, test-e2e, test-conformance-sqlite]
+    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Required for tokenless Codecov upload via use_oidc: true.
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Download coverage data
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+          path: coverage-data
+
+      - name: Download test results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: test-results-*
+          merge-multiple: true
+          path: test-results
+
+      # Hard no-missed-coverage assertion. Every split arm MUST have
+      # contributed a data file before the gate runs; a silently dropped
+      # suite would shrink the report yet could still clear --fail-under
+      # on the remaining suites (a false green). Fail loudly instead.
+      - name: Assert all suites contributed coverage
+        run: |
+          set -euo pipefail
+          missing=""
+          for suite in unit integration e2e conformance-sqlite; do
+            if ! compgen -G "coverage-data/.coverage.${suite}*" > /dev/null; then
+              missing="${missing} ${suite}"
+            fi
+          done
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing coverage data for suite(s):${missing}. Refusing to compute the 80% gate on partial data."
+            ls -la coverage-data || true
+            exit 1
+          fi
+          echo "All four suites contributed coverage data."
+
+      - name: Combine coverage
+        run: uv run coverage combine coverage-data
+
+      - name: Enforce 80% aggregate coverage gate
+        run: uv run coverage report --show-missing --fail-under=80
+
+      - name: Generate combined coverage XML
+        run: uv run coverage xml -o coverage.xml
+
+      # Codecov upload is best-effort -- CI must not fail on Codecov
+      # outages. The 80% enforcement above is Codecov-independent. This
+      # is the ONLY Codecov coverage upload in the workflow: one combined
+      # report, so the Codecov project view is never fragmented across
+      # partial per-suite uploads. Tokenless OIDC (public repo).
+      - name: Upload combined coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
@@ -376,17 +629,20 @@ jobs:
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
-          files: junit.xml
+          files: test-results/junit-unit.xml,test-results/junit-integration.xml,test-results/junit-e2e.xml,test-results/junit-conformance-sqlite.xml
           fail_ci_if_error: false
           report_type: test_results
           use_oidc: true
 
-      - name: Upload test results
+      - name: Upload combined coverage artifact
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: test-results-${{ matrix.python-version }}
-          path: junit.xml
+          name: coverage-combined
+          path: |
+            coverage.xml
+            .coverage
+          include-hidden-files: true
 
   # ── Python: Security Audit ──
   python-audit:
@@ -725,7 +981,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, doc-drift, runtime-stats-freshness, schema-validate, type-check, openapi-liveness, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
+    needs: [changes, lint, doc-drift, runtime-stats-freshness, schema-validate, type-check, openapi-liveness, test-unit, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -742,7 +998,11 @@ jobs:
             ${{ needs.schema-validate.result }}
             ${{ needs.type-check.result }}
             ${{ needs.openapi-liveness.result }}
-            ${{ needs.test.result }}
+            ${{ needs.test-unit.result }}
+            ${{ needs.test-integration.result }}
+            ${{ needs.test-e2e.result }}
+            ${{ needs.test-conformance-sqlite.result }}
+            ${{ needs.test-coverage-aggregate.result }}
             ${{ needs.python-audit.result }}
             ${{ needs.dockerfile-lint.result }}
             ${{ needs.dashboard-lint.result }}

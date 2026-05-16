@@ -83,14 +83,6 @@ runs:
     # GitHub-signed (verify via `gh api .../commits/<sha> --jq
     # '.commit.verification'` -> expect `verified: true, reason: "valid"`)
     # AND trigger downstream workflows.
-    # zizmor v1.25.0 (bundled with zizmorcore/zizmor-action v0.5.4) has a
-    # false positive in the github-app audit: it checks for the YAML key
-    # `repository` (singular) instead of `repositories` (plural), so this
-    # callsite is flagged despite passing the correct plural key. Fixed
-    # upstream in zizmor v1.25.2; remove the inline ignore on `owner:`
-    # below once zizmor-action ships v1.25.2+. The callsite is genuinely
-    # narrow: literal `owner: Aureliolo`, literal `repositories: synthorg`,
-    # explicit `permission-*` passthroughs.
     - name: Mint release-bot App token
       id: app-token
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -99,11 +91,11 @@ runs:
         private-key: ${{ inputs.app-private-key }}
         # Single-repo install -- the App must be installed on exactly
         # this repo. Both `owner` and `repositories` are literal values
-        # so zizmor's `github-app` audit can statically verify the scope
-        # is narrow once the v1.25.0 key-name bug above is fixed. Every
-        # caller of this composite is fork-gated at the workflow level,
-        # so the composite never executes against any other owner/repo.
-        owner: Aureliolo # zizmor: ignore[github-app]
+        # so zizmor's `github-app` audit statically verifies the scope is
+        # narrow. Every caller of this composite is fork-gated at the
+        # workflow level, so the composite never executes against any
+        # other owner/repo.
+        owner: Aureliolo
         repositories: synthorg
         # Per-call scope passthrough: empty values mean the action skips
         # requesting that permission, so the minted token carries exactly
