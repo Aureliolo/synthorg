@@ -3,6 +3,7 @@
 
 import contextlib
 import sqlite3
+from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
@@ -19,7 +20,14 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CHECKPOINT_QUERY_FAILED,
     PERSISTENCE_CHECKPOINT_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
 
 logger = get_logger(__name__)
 
@@ -46,8 +54,8 @@ class SQLiteCheckpointRepository:
         self._db = db
         self._write_context = write_context
 
-    async def save(self, checkpoint: Checkpoint) -> None:
-        """Persist a checkpoint (upsert)."""
+    async def append(self, checkpoint: Checkpoint) -> None:
+        """Persist a checkpoint row (append-only per AppendOnlyRepository)."""
         async with self._write_context():
             try:
                 data = checkpoint.model_dump(mode="json")
@@ -145,8 +153,67 @@ INSERT OR REPLACE INTO checkpoints (
         )
         return checkpoint
 
+    async def query(
+        self,
+        filter_spec: CheckpointFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Checkpoint, ...]:
+        """Return checkpoints matching the filter, newest first."""
+        conditions: list[str] = []
+        params: list[object] = []
+        if filter_spec.execution_id is not None:
+            conditions.append("execution_id = ?")
+            params.append(filter_spec.execution_id)
+        if filter_spec.task_id is not None:
+            conditions.append("task_id = ?")
+            params.append(filter_spec.task_id)
+        where = " AND ".join(conditions) if conditions else "1=1"
+        sql = (
+            "SELECT id, execution_id, agent_id, task_id, "
+            "turn_number, context_json, created_at "
+            f"FROM checkpoints WHERE {where} "
+            "ORDER BY turn_number DESC LIMIT ? OFFSET ?"
+        )
+        params.extend([limit, offset])
+        try:
+            cursor = await self._db.execute(sql, params)
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to query checkpoints"
+            logger.warning(
+                PERSISTENCE_CHECKPOINT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(self._row_to_model(dict(r)) for r in rows)
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete checkpoints with ``created_at < threshold``."""
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM checkpoints WHERE created_at < ?",
+                    (format_iso_utc(threshold),),
+                )
+                count = cursor.rowcount
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = "Failed to purge checkpoints by threshold"
+                logger.warning(
+                    PERSISTENCE_CHECKPOINT_DELETE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return count
+
     async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
-        """Delete all checkpoints for an execution."""
+        """Delete all checkpoints for an execution (bespoke D7)."""
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

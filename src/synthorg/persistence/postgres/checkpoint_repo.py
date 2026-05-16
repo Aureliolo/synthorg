@@ -24,9 +24,15 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CHECKPOINT_QUERY_FAILED,
     PERSISTENCE_CHECKPOINT_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import normalize_utc
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from psycopg_pool import AsyncConnectionPool
+
+    from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
 
 logger = get_logger(__name__)
 
@@ -41,8 +47,8 @@ class PostgresCheckpointRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save(self, checkpoint: Checkpoint) -> None:
-        """Persist a checkpoint (upsert).
+    async def append(self, checkpoint: Checkpoint) -> None:
+        """Persist a checkpoint row (append-only per AppendOnlyRepository).
 
         ``Checkpoint.context_json`` is a pre-serialized JSON **string**
         at the Python level but the Postgres column is native ``JSONB``.
@@ -171,8 +177,70 @@ ON CONFLICT(id) DO UPDATE SET
         )
         return checkpoint
 
+    async def query(
+        self,
+        filter_spec: CheckpointFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Checkpoint, ...]:
+        """Return checkpoints matching the filter, newest first."""
+        conditions: list[str] = []
+        params: list[object] = []
+        if filter_spec.execution_id is not None:
+            conditions.append("execution_id = %s")
+            params.append(filter_spec.execution_id)
+        if filter_spec.task_id is not None:
+            conditions.append("task_id = %s")
+            params.append(filter_spec.task_id)
+        where = " AND ".join(conditions) if conditions else "TRUE"
+        # ruff: noqa: S608
+        sql = (
+            "SELECT id, execution_id, agent_id, task_id, "
+            "turn_number, context_json, created_at "
+            f"FROM checkpoints WHERE {where} "
+            "ORDER BY turn_number DESC LIMIT %s OFFSET %s"
+        )
+        params.extend([limit, offset])
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, params)
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to query checkpoints"
+            logger.warning(
+                PERSISTENCE_CHECKPOINT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(self._row_to_model(dict(r)) for r in rows)
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete checkpoints with ``created_at < threshold``."""
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM checkpoints WHERE created_at < %s",
+                    (normalize_utc(threshold),),
+                )
+                count = cur.rowcount
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = "Failed to purge checkpoints by threshold"
+            logger.warning(
+                PERSISTENCE_CHECKPOINT_DELETE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return count
+
     async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
-        """Delete all checkpoints for an execution."""
+        """Delete all checkpoints for an execution (bespoke D7)."""
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

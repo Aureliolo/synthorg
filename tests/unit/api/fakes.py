@@ -377,7 +377,7 @@ class FakeCheckpointRepository:
     def __init__(self) -> None:
         self._checkpoints: dict[str, Checkpoint] = {}
 
-    async def save(self, checkpoint: Checkpoint) -> None:
+    async def append(self, checkpoint: Checkpoint) -> None:
         self._checkpoints[checkpoint.id] = checkpoint
 
     async def get_latest(
@@ -397,6 +397,30 @@ class FakeCheckpointRepository:
         if not candidates:
             return None
         return max(candidates, key=lambda c: c.turn_number)
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Checkpoint, ...]:
+        candidates = list(self._checkpoints.values())
+        if filter_spec.execution_id is not None:
+            candidates = [
+                c for c in candidates if c.execution_id == filter_spec.execution_id
+            ]
+        if filter_spec.task_id is not None:
+            candidates = [c for c in candidates if c.task_id == filter_spec.task_id]
+        candidates.sort(key=lambda c: c.turn_number, reverse=True)
+        return tuple(candidates[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        before = len(self._checkpoints)
+        self._checkpoints = {
+            k: v for k, v in self._checkpoints.items() if v.created_at >= threshold
+        }
+        return before - len(self._checkpoints)
 
     async def delete_by_execution(self, execution_id: str) -> int:
         to_delete = [

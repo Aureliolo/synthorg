@@ -26,9 +26,9 @@ def _checkpoint(
 
 
 class TestCheckpointRepository:
-    async def test_save_and_get_latest(self, backend: PersistenceBackend) -> None:
+    async def test_append_and_get_latest(self, backend: PersistenceBackend) -> None:
         cp = _checkpoint()
-        await backend.checkpoints.save(cp)
+        await backend.checkpoints.append(cp)
 
         result = await backend.checkpoints.get_latest(
             execution_id=NotBlankStr("exec-001"),
@@ -48,9 +48,9 @@ class TestCheckpointRepository:
     async def test_get_latest_returns_highest_turn(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.checkpoints.save(_checkpoint(checkpoint_id="a", turn_number=1))
-        await backend.checkpoints.save(_checkpoint(checkpoint_id="c", turn_number=5))
-        await backend.checkpoints.save(_checkpoint(checkpoint_id="b", turn_number=3))
+        await backend.checkpoints.append(_checkpoint(checkpoint_id="a", turn_number=1))
+        await backend.checkpoints.append(_checkpoint(checkpoint_id="c", turn_number=5))
+        await backend.checkpoints.append(_checkpoint(checkpoint_id="b", turn_number=3))
 
         latest = await backend.checkpoints.get_latest(
             execution_id=NotBlankStr("exec-001"),
@@ -62,9 +62,9 @@ class TestCheckpointRepository:
     async def test_delete_by_execution_removes_all(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.checkpoints.save(_checkpoint(checkpoint_id="a", turn_number=1))
-        await backend.checkpoints.save(_checkpoint(checkpoint_id="b", turn_number=2))
-        await backend.checkpoints.save(
+        await backend.checkpoints.append(_checkpoint(checkpoint_id="a", turn_number=1))
+        await backend.checkpoints.append(_checkpoint(checkpoint_id="b", turn_number=2))
+        await backend.checkpoints.append(
             _checkpoint(
                 checkpoint_id="other",
                 execution_id="exec-other",
@@ -85,3 +85,19 @@ class TestCheckpointRepository:
             execution_id=NotBlankStr("exec-other"),
         )
         assert other is not None
+
+    async def test_query_returns_paginated_descending(
+        self, backend: PersistenceBackend
+    ) -> None:
+        from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
+
+        await backend.checkpoints.append(_checkpoint(checkpoint_id="a", turn_number=1))
+        await backend.checkpoints.append(_checkpoint(checkpoint_id="b", turn_number=2))
+        await backend.checkpoints.append(_checkpoint(checkpoint_id="c", turn_number=3))
+
+        page = await backend.checkpoints.query(
+            CheckpointFilterSpec(execution_id=NotBlankStr("exec-001")),
+            limit=2,
+        )
+        assert len(page) == 2
+        assert [cp.turn_number for cp in page] == [3, 2]

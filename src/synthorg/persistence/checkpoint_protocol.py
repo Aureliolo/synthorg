@@ -1,26 +1,57 @@
 """Checkpoint and heartbeat repository protocols."""
 
+from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pydantic import AwareDatetime  # noqa: TC002
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
 
 if TYPE_CHECKING:
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
 
 __all__ = [
+    "CheckpointFilterSpec",
     "CheckpointRepository",
     "HeartbeatRepository",
 ]
 
 
-@runtime_checkable
-class CheckpointRepository(Protocol):
-    """CRUD interface for checkpoint persistence."""
+class CheckpointFilterSpec(BaseModel):
+    """Filter spec for ``CheckpointRepository.query`` (ADR-0001)."""
 
-    async def save(self, checkpoint: Checkpoint) -> None:
-        """Persist a checkpoint (insert or replace by ID).
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    execution_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter to a single execution",
+    )
+    task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter to a single task",
+    )
+
+
+@runtime_checkable
+class CheckpointRepository(
+    AppendOnlyRepository["Checkpoint", CheckpointFilterSpec],
+    Protocol,
+):
+    """Append-only persistence interface for checkpoint rows.
+
+    Composes :class:`AppendOnlyRepository` (ADR-0001). Bespoke per D7:
+
+    * ``get_latest`` returns the single newest row by ``turn_number``
+      under a filter; the generic ``query`` cannot express the
+      ``LIMIT 1 ORDER BY turn_number DESC`` shape efficiently.
+    * ``delete_by_execution`` is a batch delete keyed on
+      ``execution_id``; the generic ``purge_before(threshold)``
+      removes only by timestamp, not by execution scope.
+    """
+
+    async def append(self, checkpoint: Checkpoint) -> None:
+        """Persist a checkpoint row (append-only).
 
         Args:
             checkpoint: The checkpoint to persist.
@@ -28,6 +59,20 @@ class CheckpointRepository(Protocol):
         Raises:
             PersistenceError: If the operation fails.
         """
+        ...
+
+    async def query(
+        self,
+        filter_spec: CheckpointFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Checkpoint, ...]:
+        """Return checkpoints matching the filter, newest first."""
+        ...
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete checkpoints with ``saved_at < threshold``."""
         ...
 
     async def get_latest(
@@ -54,7 +99,7 @@ class CheckpointRepository(Protocol):
         ...
 
     async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
-        """Delete all checkpoints for an execution.
+        """Delete all checkpoints for an execution (bespoke D7).
 
         Args:
             execution_id: The execution identifier.
