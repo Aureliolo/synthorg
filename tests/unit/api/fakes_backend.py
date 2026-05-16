@@ -171,13 +171,24 @@ class FakeCircuitBreakerStateRepository:
     async def save(self, record: Any) -> None:
         self._store[(record.pair_key_a, record.pair_key_b)] = record
 
+    async def get(self, entity_id: tuple[str, str]) -> Any:
+        return self._store.get(entity_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        ordered = sorted(self._store.items(), key=lambda kv: kv[0])
+        return tuple(v for _, v in ordered[offset : offset + limit])
+
     async def load_all(self) -> tuple[Any, ...]:
         return tuple(self._store.values())
 
-    async def delete(self, pair_key_a: str, pair_key_b: str) -> bool:
-        key = (pair_key_a, pair_key_b)
-        if key in self._store:
-            del self._store[key]
+    async def delete(self, entity_id: tuple[str, str]) -> bool:
+        if entity_id in self._store:
+            del self._store[entity_id]
             return True
         return False
 

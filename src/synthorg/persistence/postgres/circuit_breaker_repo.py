@@ -19,7 +19,9 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CIRCUIT_BREAKER_LOADED,
     PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.circuit_breaker_protocol import (
+    CircuitBreakerPairKey,
     CircuitBreakerStateRecord,
 )
 
@@ -71,6 +73,106 @@ ON CONFLICT(pair_key_a, pair_key_b) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
+    async def get(
+        self,
+        entity_id: CircuitBreakerPairKey,
+    ) -> CircuitBreakerStateRecord | None:
+        """Retrieve one circuit breaker state record by composite key."""
+        pair_key_a, pair_key_b = entity_id
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT pair_key_a, pair_key_b, bounce_count, "
+                    "trip_count, opened_at FROM circuit_breaker_state "
+                    "WHERE pair_key_a = %s AND pair_key_b = %s",
+                    (pair_key_a, pair_key_b),
+                )
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = (
+                f"Failed to fetch circuit breaker state for pair "
+                f"({pair_key_a!r}, {pair_key_b!r})"
+            )
+            logger.warning(
+                PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
+                pair_key_a=pair_key_a,
+                pair_key_b=pair_key_b,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        if row is None:
+            return None
+        try:
+            return CircuitBreakerStateRecord.model_validate(row)
+        except ValidationError as exc:
+            msg = (
+                f"Failed to deserialize circuit breaker state row "
+                f"({pair_key_a!r}, {pair_key_b!r})"
+            )
+            logger.warning(
+                PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
+                pair_key_a=pair_key_a,
+                pair_key_b=pair_key_b,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="deserialization failed",
+            )
+            raise QueryError(msg) from exc
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[CircuitBreakerStateRecord, ...]:
+        """List records ordered by ``(pair_key_a, pair_key_b)`` ascending."""
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT pair_key_a, pair_key_b, bounce_count, "
+                    "trip_count, opened_at FROM circuit_breaker_state "
+                    "ORDER BY pair_key_a, pair_key_b LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list circuit breaker state"
+            logger.warning(
+                PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        results: list[CircuitBreakerStateRecord] = []
+        for row in rows:
+            try:
+                results.append(CircuitBreakerStateRecord.model_validate(row))
+            except ValidationError as exc:
+                msg = (
+                    f"Failed to deserialize circuit breaker state row "
+                    f"({row.get('pair_key_a') if row else 'unknown'})"
+                )
+                logger.warning(
+                    PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
+                    pair_key_a=row.get("pair_key_a") if row else "unknown",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="deserialization failed",
+                )
+                raise QueryError(msg) from exc
+
+        logger.debug(PERSISTENCE_CIRCUIT_BREAKER_LOADED, count=len(results))
+        return tuple(results)
+
     async def load_all(self) -> tuple[CircuitBreakerStateRecord, ...]:
         """Load all persisted circuit breaker state records."""
         try:
@@ -118,8 +220,9 @@ ON CONFLICT(pair_key_a, pair_key_b) DO UPDATE SET
         )
         return tuple(results)
 
-    async def delete(self, pair_key_a: str, pair_key_b: str) -> bool:
-        """Delete a circuit breaker state record."""
+    async def delete(self, entity_id: CircuitBreakerPairKey) -> bool:
+        """Delete a circuit breaker state record by composite key."""
+        pair_key_a, pair_key_b = entity_id
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

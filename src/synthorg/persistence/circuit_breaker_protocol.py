@@ -1,10 +1,11 @@
 """Circuit breaker state persistence protocol and model."""
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
 
 class CircuitBreakerStateRecord(BaseModel):
@@ -30,14 +31,65 @@ class CircuitBreakerStateRecord(BaseModel):
     )
 
 
-class CircuitBreakerStateRepository(Protocol):
-    """CRUD interface for circuit breaker state persistence."""
+CircuitBreakerPairKey = tuple[NotBlankStr, NotBlankStr]
+"""Composite primary key: ``(pair_key_a, pair_key_b)``."""
 
-    async def save(self, record: CircuitBreakerStateRecord) -> None:
+
+@runtime_checkable
+class CircuitBreakerStateRepository(
+    IdKeyedRepository[CircuitBreakerStateRecord, CircuitBreakerPairKey],
+    Protocol,
+):
+    """CRUD interface for circuit breaker state persistence.
+
+    Composes :class:`IdKeyedRepository` (ADR-0001) with composite key
+    ``(pair_key_a, pair_key_b)`` per D8. Bespoke per D7:
+    :meth:`load_all` returns every row in one call for circuit-breaker
+    rehydration at start, which dominates over paginated walks for the
+    expected cardinality of agent pairs.
+    """
+
+    async def save(self, entity: CircuitBreakerStateRecord) -> None:
         """Persist a circuit breaker state record (upsert).
 
         Args:
-            record: The state record to persist.
+            entity: The state record to persist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get(
+        self, entity_id: CircuitBreakerPairKey
+    ) -> CircuitBreakerStateRecord | None:
+        """Retrieve a circuit breaker state record by pair key.
+
+        Args:
+            entity_id: ``(pair_key_a, pair_key_b)`` tuple.
+
+        Returns:
+            The record, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[CircuitBreakerStateRecord, ...]:
+        """List records in ``(pair_key_a, pair_key_b)`` order.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Paginated records ordered by composite key ascending.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -45,7 +97,10 @@ class CircuitBreakerStateRepository(Protocol):
         ...
 
     async def load_all(self) -> tuple[CircuitBreakerStateRecord, ...]:
-        """Load all persisted circuit breaker state records.
+        """Load every persisted record in one call (bespoke per ADR-0001 D7).
+
+        Used by the circuit breaker guard to rehydrate every pair's
+        state at start; cardinality scales with active agent pairs.
 
         Returns:
             All stored records.
@@ -55,12 +110,11 @@ class CircuitBreakerStateRepository(Protocol):
         """
         ...
 
-    async def delete(self, pair_key_a: str, pair_key_b: str) -> bool:
+    async def delete(self, entity_id: CircuitBreakerPairKey) -> bool:
         """Delete a circuit breaker state record.
 
         Args:
-            pair_key_a: First agent ID.
-            pair_key_b: Second agent ID.
+            entity_id: ``(pair_key_a, pair_key_b)`` tuple.
 
         Returns:
             True if a record was deleted.

@@ -88,7 +88,7 @@ class TestSQLiteCircuitBreakerStateRepository:
         )
         await repo.save(r1)
 
-        deleted = await repo.delete("a", "b")
+        deleted = await repo.delete(("a", "b"))
         assert deleted is True
 
         results = await repo.load_all()
@@ -98,7 +98,7 @@ class TestSQLiteCircuitBreakerStateRepository:
         self,
         repo: SQLiteCircuitBreakerStateRepository,
     ) -> None:
-        deleted = await repo.delete("x", "y")
+        deleted = await repo.delete(("x", "y"))
         assert deleted is False
 
     async def test_load_all_empty(

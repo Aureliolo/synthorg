@@ -56,7 +56,9 @@ class TestCircuitBreakerStateRepository:
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.circuit_breaker_state.save(_record())
 
-        deleted = await backend.circuit_breaker_state.delete("agent-a", "agent-b")
+        deleted = await backend.circuit_breaker_state.delete(
+            (NotBlankStr("agent-a"), NotBlankStr("agent-b")),
+        )
         assert deleted is True
 
         rows = await backend.circuit_breaker_state.load_all()
@@ -65,8 +67,41 @@ class TestCircuitBreakerStateRepository:
         )
 
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
-        deleted = await backend.circuit_breaker_state.delete("ghost-a", "ghost-b")
+        deleted = await backend.circuit_breaker_state.delete(
+            (NotBlankStr("ghost-a"), NotBlankStr("ghost-b")),
+        )
         assert deleted is False
+
+    async def test_get_returns_existing_record(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.circuit_breaker_state.save(_record(a="get-a", b="get-b", trips=4))
+
+        result = await backend.circuit_breaker_state.get(
+            (NotBlankStr("get-a"), NotBlankStr("get-b")),
+        )
+        assert result is not None
+        assert result.trip_count == 4
+
+    async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
+        result = await backend.circuit_breaker_state.get(
+            (NotBlankStr("missing-a"), NotBlankStr("missing-b")),
+        )
+        assert result is None
+
+    async def test_list_items_in_pair_key_order(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.circuit_breaker_state.save(_record(a="li-z", b="li-z2"))
+        await backend.circuit_breaker_state.save(_record(a="li-a", b="li-a2"))
+
+        results = await backend.circuit_breaker_state.list_items()
+        scoped = [
+            (r.pair_key_a, r.pair_key_b)
+            for r in results
+            if r.pair_key_a.startswith("li-")
+        ]
+        assert scoped == [("li-a", "li-a2"), ("li-z", "li-z2")]
 
     async def test_opened_at_roundtrip(self, backend: PersistenceBackend) -> None:
         await backend.circuit_breaker_state.save(
