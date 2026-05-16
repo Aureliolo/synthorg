@@ -82,6 +82,8 @@ _DEFAULT_TRAIN_LEARNING_RATE: Final[float] = 1e-5
 _DEFAULT_TRAIN_TEMPERATURE: Final[float] = 0.02
 _DEFAULT_TRAIN_BATCH_SIZE: Final[int] = 128
 _DEFAULT_METRICS_K: Final[int] = 10
+_QUERY_MAX_LENGTH: Final[int] = 128
+_PASSAGE_MAX_LENGTH: Final[int] = 512
 
 
 def _import_sentence_transformers() -> ModuleType:
@@ -329,6 +331,9 @@ async def mine_hard_negatives(  # noqa: PLR0913
         model.encode,
         passages,
         show_progress_bar=False,
+        processing_kwargs={
+            "text": {"max_length": _PASSAGE_MAX_LENGTH, "truncation": True},
+        },
     )
 
     out = _ensure_dir(output_dir)
@@ -338,6 +343,9 @@ async def mine_hard_negatives(  # noqa: PLR0913
         model.encode,
         queries,
         show_progress_bar=False,
+        processing_kwargs={
+            "text": {"max_length": _QUERY_MAX_LENGTH, "truncation": True},
+        },
     )
 
     triples: list[dict[str, object]] = []
@@ -587,6 +595,9 @@ async def evaluate_checkpoint(  # noqa: PLR0913
         finetuned.encode,
         queries,
         show_progress_bar=False,
+        processing_kwargs={
+            "text": {"max_length": _QUERY_MAX_LENGTH, "truncation": True},
+        },
     )
     if cancellation is not None:
         cancellation.check()
@@ -594,6 +605,9 @@ async def evaluate_checkpoint(  # noqa: PLR0913
         finetuned.encode,
         passages,
         show_progress_bar=False,
+        processing_kwargs={
+            "text": {"max_length": _PASSAGE_MAX_LENGTH, "truncation": True},
+        },
     )
     if cancellation is not None:
         cancellation.check()
@@ -604,6 +618,9 @@ async def evaluate_checkpoint(  # noqa: PLR0913
         base.encode,
         queries,
         show_progress_bar=False,
+        processing_kwargs={
+            "text": {"max_length": _QUERY_MAX_LENGTH, "truncation": True},
+        },
     )
     if cancellation is not None:
         cancellation.check()
@@ -611,6 +628,9 @@ async def evaluate_checkpoint(  # noqa: PLR0913
         base.encode,
         passages,
         show_progress_bar=False,
+        processing_kwargs={
+            "text": {"max_length": _PASSAGE_MAX_LENGTH, "truncation": True},
+        },
     )
     if progress_callback:
         progress_callback(0.8)
