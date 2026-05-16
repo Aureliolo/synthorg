@@ -6,12 +6,14 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
 import { SelectField } from '@/components/ui/select-field'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useClientsData } from '@/hooks/useClientsData'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { ROUTES } from '@/router/routes'
 import { getLocale } from '@/utils/locale'
 
@@ -63,6 +65,18 @@ export default function ClientListPage() {
       }
     })
   }, [clients, searchQuery, sortKey])
+
+  // URL-persisted pagination over the sorted+filtered list. The
+  // ``clients`` namespace keeps the page/pageSize params distinct from
+  // any sibling paginators that may later mount on the same route.
+  const {
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems: pagedClients,
+    setPage,
+    setPageSize,
+  } = useListPagination({ items: filteredClients, namespace: 'clients' })
 
   // Hook before any early-return (rules-of-hooks): the loading
   // branch below short-circuits before the empty state matters.
@@ -136,35 +150,44 @@ export default function ClientListPage() {
       {emptyStateProps ? (
         <EmptyState {...emptyStateProps} />
       ) : (
-        <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
-          {filteredClients.map((client) => (
-            <SectionCard
-              key={client.client_id}
-              title={client.name}
-              icon={Users}
-            >
-              <div className="space-y-2 text-sm">
-                <p className="text-text-secondary">{client.persona}</p>
-                <p className="text-text-secondary">
-                  <span className="font-medium text-foreground">Strictness:</span>{' '}
-                  {client.strictness_level.toFixed(2)}
-                </p>
-                {client.expertise_domains.length > 0 && (
+        <>
+          <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
+            {pagedClients.map((client) => (
+              <SectionCard
+                key={client.client_id}
+                title={client.name}
+                icon={Users}
+              >
+                <div className="space-y-2 text-sm">
+                  <p className="text-text-secondary">{client.persona}</p>
                   <p className="text-text-secondary">
-                    <span className="font-medium text-foreground">Domains:</span>{' '}
-                    {client.expertise_domains.join(', ')}
+                    <span className="font-medium text-foreground">Strictness:</span>{' '}
+                    {client.strictness_level.toFixed(2)}
                   </p>
-                )}
-                <Link
-                  to={ROUTES.CLIENT_DETAIL.replace(':clientId', encodeURIComponent(client.client_id))}
-                  className="inline-block pt-2 text-accent hover:underline"
-                >
-                  View details →
-                </Link>
-              </div>
-            </SectionCard>
-          ))}
-        </div>
+                  {client.expertise_domains.length > 0 && (
+                    <p className="text-text-secondary">
+                      <span className="font-medium text-foreground">Domains:</span>{' '}
+                      {client.expertise_domains.join(', ')}
+                    </p>
+                  )}
+                  <Link
+                    to={ROUTES.CLIENT_DETAIL.replace(':clientId', encodeURIComponent(client.client_id))}
+                    className="inline-block pt-2 text-accent hover:underline"
+                  >
+                    View details →
+                  </Link>
+                </div>
+              </SectionCard>
+            ))}
+          </div>
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        </>
       )}
     </div>
   )

@@ -165,16 +165,27 @@ export function getErrorMessage(error: unknown): string {
       case 422: {
         // Prefer the structured ``error_detail.detail`` envelope (RFC
         // 9457) over the plain ``data.error`` string so the user sees
-        // the specific field or rule that failed when the backend
-        // sends both.
+        // the curated message the backend chose for THIS validation
+        // failure rather than the raw Pydantic surface.
         const structuredDetail = data?.error_detail?.detail
         if (typeof structuredDetail === 'string' && structuredDetail.trim() !== '') {
           return structuredDetail
         }
+        // Fall back to ``data.error`` only when it does NOT look like a
+        // raw Pydantic ValueError string. Pydantic emits patterns like
+        // "1 validation error for X: field required" / "value is not a
+        // valid X" which leak internal type / field names and read as
+        // developer copy. When we detect those shapes, prefer the
+        // generic message; otherwise the backend wrote a clean string
+        // and we surface it verbatim.
         if (typeof data?.error === 'string' && data.error.trim() !== '') {
-          return data.error
+          const raw = data.error
+          const looksPydanticy =
+            /validation error for /i.test(raw)
+            || /(field required|value is not a valid|string too (short|long))/i.test(raw)
+          if (!looksPydanticy) return raw
         }
-        return 'Validation error. Please check your input.'
+        return 'Validation error. Please check the highlighted fields and try again.'
       }
       case 502:
       case 504:

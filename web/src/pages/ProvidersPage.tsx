@@ -5,6 +5,8 @@ import { useProvidersStore } from '@/stores/providers'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
@@ -139,6 +141,17 @@ export default function ProvidersPage() {
 
   const hasData = filteredProviders.length > 0 || providers.length > 0
 
+  // URL-persisted pagination over the filtered providers list, matching
+  // the dashboard-wide pattern.
+  const {
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems: pagedProviders,
+    setPage,
+    setPageSize,
+  } = useListPagination({ items: filteredProviders, namespace: 'providers' })
+
   return (
     <div className="space-y-section-gap">
       <ListHeader
@@ -163,9 +176,16 @@ export default function ProvidersPage() {
       ) : (
         <ErrorBoundary level="section">
           <ProviderGridView
-            providers={filteredProviders}
+            providers={pagedProviders}
             healthMap={healthMap}
             onAddProvider={handleConfigureManually}
+          />
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
           />
         </ErrorBoundary>
       )}
