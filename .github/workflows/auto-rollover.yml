@@ -60,6 +60,10 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
           app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          # Auto-rollover lands a signed empty commit on main and opens a
+          # PR via the App identity, so the token needs contents+PRs write.
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Check if rollover is needed
         id: check

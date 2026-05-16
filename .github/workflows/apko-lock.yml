@@ -69,6 +69,14 @@ jobs:
           private-key: ${{ secrets.APKO_BOT_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
+          # Least-privilege scope per the env-comment above: Contents:write
+          # + PRs:write + Metadata:read is what the apko-bot install carries
+          # and what this workflow's `createCommitOnBranch` + `gh pr create`
+          # flow exercises. zizmor 1.25's `github-app` audit requires at
+          # least one explicit `permission-*` input on every callsite.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-metadata: read
 
       - name: Set up apko
         uses: ./.github/actions/setup-apko

@@ -65,6 +65,10 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
           app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          # Dev-release pushes a v*-dev.N tag under the App identity so
+          # downstream Docker + CLI workflows fire (GITHUB_TOKEN pushes
+          # are suppressed by the anti-recursion rule).
+          permission-contents: write
 
       - name: Check if commit already has a stable tag
         id: check-tag

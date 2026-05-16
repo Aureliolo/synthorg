@@ -686,6 +686,9 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
           app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          # Read-only audit of the GitHub rulesets API; metadata:read is
+          # the minimum scope sufficient for that surface.
+          permission-metadata: read
       - name: Install yq
         run: |
           set -euo pipefail

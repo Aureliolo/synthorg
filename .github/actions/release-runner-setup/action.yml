@@ -38,6 +38,27 @@ inputs:
     description: "When 'true', assert $GITHUB_REF == 'refs/heads/main' before minting the token. Every current caller sets this implicitly to true; the input exists so a future workflow_dispatch-based caller can opt out."
     required: false
     default: "true"
+  # Per-permission scope passthroughs to actions/create-github-app-token.
+  # Each caller declares the narrowest scope its token use needs, rather than
+  # the composite handing out the union. Empty default means "do not request
+  # this permission" -- the action treats `permission-*: ''` as omitted, so
+  # the minted token will not carry that scope. zizmor 1.25's `github-app`
+  # audit requires at least one explicit `permission-*` input on every
+  # `actions/create-github-app-token` callsite. Add more passthroughs here
+  # (permission-issues, permission-statuses, etc.) when a future caller
+  # needs them; only the three currently used across callers are exposed.
+  permission-contents:
+    description: "Contents scope for the minted token. One of 'read' / 'write' / '' (unset). 'write' is required to push tags, refs, blobs, trees, or commits via the App identity."
+    required: false
+    default: ""
+  permission-pull-requests:
+    description: "Pull-requests scope for the minted token. One of 'read' / 'write' / '' (unset). 'write' is required for gh pr create / gh pr merge / PR comment under the App identity."
+    required: false
+    default: ""
+  permission-metadata:
+    description: "Metadata scope for the minted token. One of 'read' / 'write' / '' (unset). 'read' is sufficient for read-only API surfaces like the rulesets endpoint."
+    required: false
+    default: ""
 
 outputs:
   token:
@@ -75,3 +96,9 @@ runs:
         # to token minting for a forked install if one is ever created.
         owner: ${{ github.repository_owner }}
         repositories: ${{ github.event.repository.name }}
+        # Per-call scope passthrough: empty values mean the action skips
+        # requesting that permission, so the minted token carries exactly
+        # the union of what each caller declares.
+        permission-contents: ${{ inputs.permission-contents }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
+        permission-metadata: ${{ inputs.permission-metadata }}

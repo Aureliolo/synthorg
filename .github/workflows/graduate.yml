@@ -54,6 +54,10 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
           app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          # Graduate mints a signed empty commit on main carrying the
+          # Release-As: trailer; contents:write is enough since the
+          # commit lands via the Git Data API, not via a PR.
+          permission-contents: write
 
       - name: Validate target version
         id: validate
