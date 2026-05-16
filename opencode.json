@@ -55,14 +55,6 @@
   "instructions": [
     "CLAUDE.md",
     "AGENTS.md",
-    ".claude/hookify.block-pr-create.md",
-    ".claude/hookify.enforce-parallel-tests.md",
-    ".claude/hookify.function-length.md",
-    ".claude/hookify.missing-logger.md",
-    ".claude/hookify.no-cd-prefix.md",
-    ".claude/hookify.no-future-annotations.md",
-    ".claude/hookify.no-local-coverage.md",
-    ".claude/hookify.pep758-except.md",
     "web/CLAUDE.md",
     "cli/CLAUDE.md"
   ]

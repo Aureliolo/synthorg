@@ -20,7 +20,8 @@
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build -o storybook-static",
     "generate:api-types": "uv run python ../scripts/generate_dto_types_ts.py",
-    "check:api-types": "uv run python ../scripts/check_dto_types_ts_in_sync.py"
+    "check:api-types": "uv run python ../scripts/check_dto_types_ts_in_sync.py",
+    "postinstall": "node -e \"try{require.resolve('msw/package.json')}catch{process.exit(0)}\" && msw init public --no-save"
   },
   "dependencies": {
     "@base-ui/react": "1.4.1",

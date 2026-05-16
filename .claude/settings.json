@@ -48,15 +48,25 @@
             "type": "command",
             "command": "python3 scripts/check_no_bulk_edit.py",
             "timeout": 5000
-          }
-        ]
-      },
-      {
-        "matcher": "Edit",
-        "hooks": [
+          },
           {
             "type": "command",
-            "command": "python3 scripts/check_no_bulk_edit.py",
+            "command": "bash scripts/check_no_pr_create.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_cd_prefix.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_local_coverage.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_enforce_parallel_tests.sh",
             "timeout": 5000
           }
         ]

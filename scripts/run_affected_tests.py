@@ -69,7 +69,13 @@ _SKIP_ISOLATION_GATE_ENV = "SYNTHORG_SKIP_ISOLATION_GATE"
 # Minimum path depth for src/synthorg/<module> or tests/unit/<module>.
 _MIN_MODULE_DEPTH = 3
 
-# Valid Python package directory names (prevents path traversal).
+# Valid Python package directory names (letters, digits, underscores;
+# leading letter or underscore). This regex is the ONLY barrier stopping
+# a crafted git-diff path component (e.g. ``..``) from being joined into
+# a filesystem path later. The special case ``"."`` is used for test-unit
+# root files; module names proper never contain dots. Do NOT relax it
+# without adding an explicit path-bounds check that the resolved test dir
+# stays under tests/unit/.
 _SAFE_MODULE_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
@@ -99,10 +105,20 @@ def _merge_base() -> str:
     """Find the merge base between HEAD and origin/main."""
     try:
         return _git("merge-base", "HEAD", "origin/main")
-    except _GitError:
+    except _GitError as merge_base_exc:
         # Fallback: if merge-base fails (e.g. origin/main not fetched, or
         # history too shallow), diff against HEAD~1 so we check *something*.
-        return _git("rev-parse", "HEAD~1")
+        # On an orphan / single-commit branch HEAD~1 also fails; wrap it so
+        # the caller gets the friendly "running full unit suite" fallback
+        # instead of a raw traceback.
+        try:
+            return _git("rev-parse", "HEAD~1")
+        except _GitError as head_parent_exc:
+            msg = (
+                f"no merge-base with origin/main ({merge_base_exc}) and "
+                f"HEAD~1 unavailable ({head_parent_exc})"
+            )
+            raise _GitError(msg) from head_parent_exc
 
 
 def _changed_files(base: str) -> list[str]:
@@ -814,8 +830,92 @@ def _resolve_changed_files() -> list[str] | None:
     return changed
 
 
-def main() -> int:
-    """Entry point."""
+def _tracked_dirty_paths() -> set[str]:
+    """Return the set of tracked paths with worktree/index changes.
+
+    Untracked files (``??``) are excluded: pre-commit's "files were
+    modified by this hook" detection is about *tracked* file content
+    changing, and reverting a hook-created untracked artefact is not
+    this guard's job. Renames (``R``) carry ``orig -> new``; both sides
+    are recorded so a hook-induced rename is fully reconciled.
+    """
+    porcelain = _git("status", "--porcelain")
+    paths: set[str] = set()
+    for line in porcelain.splitlines():
+        if not line or line.startswith("??"):
+            continue
+        # Porcelain v1: 2 status chars, a space, then the path(s).
+        # Only rename/copy entries carry an ``orig -> new`` payload; a
+        # plain filename containing the literal `` -> `` substring must
+        # not be misparsed as one (it would record non-existent paths).
+        status = line[:2]
+        payload = line[3:]
+        if ("R" in status or "C" in status) and " -> " in payload:
+            old, new = payload.split(" -> ", 1)
+            paths.add(old.strip())
+            paths.add(new.strip())
+        else:
+            paths.add(payload.strip())
+    return paths
+
+
+def _reconcile_worktree(before: set[str]) -> int:
+    """Revert any tracked file the hook run dirtied but was clean before.
+
+    Files already dirty *before* the run (the developer's actual work
+    being pushed) are never touched. Only paths that were pristine
+    pre-run and changed during the run are restored, so a side-effecting
+    test or a stray ``uv.lock`` rewrite cannot trip pre-commit's "files
+    were modified by this hook" while real changes stay intact.
+
+    Returns 0 on success (including nothing to do), 1 if a restore
+    failed -- the caller folds this into the overall exit code so a
+    silent un-revertable mutation never passes unnoticed.
+    """
+    try:
+        after = _tracked_dirty_paths()
+    except _GitError as exc:
+        # Fail closed: if we cannot read post-run status we cannot prove
+        # the run left the tree clean. Returning 0 here would let a
+        # test-induced mutation slip through silently (pre-commit would
+        # later block the push with no hint the hook tried and gave up).
+        print(
+            f"run_affected_tests: could not read post-run git status "
+            f"({exc}); cannot verify the run left the tree clean -- "
+            f"failing closed. Inspect the working tree manually.",
+            file=sys.stderr,
+        )
+        return 1
+    newly_dirtied = sorted(after - before)
+    if not newly_dirtied:
+        return 0
+    border = "!" * 60
+    print(
+        f"\n{border}\n"
+        f"run_affected_tests: the affected-test run modified "
+        f"{len(newly_dirtied)} tracked file(s) that were clean before "
+        f"it started:\n  " + "\n  ".join(newly_dirtied) + "\n"
+        f"Reverting them so the pre-push hook does not report 'files "
+        f"were modified by this hook'. This is a side effect of the "
+        f"test run, not your changes -- investigate the writer if it "
+        f"recurs.\n{border}",
+        file=sys.stderr,
+    )
+    try:
+        _git("restore", "--", *newly_dirtied)
+    except _GitError as exc:
+        print(
+            f"run_affected_tests: FAILED to revert hook-modified files "
+            f"({exc}). The working tree is left dirty; fix the writer "
+            f"or revert manually before pushing.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+def _run_tests() -> int:
+    """Select and run the affected (or full) unit suite."""
     changed = _resolve_changed_files()
     if changed is None:
         return _run_pytest(["tests/unit/"], run_all=True)
@@ -846,6 +946,31 @@ def main() -> int:
         if primary_returncode != 0
         else _run_isolation_gate(test_dirs)
     )
+
+
+def main() -> int:
+    """Entry point.
+
+    Snapshots the set of already-dirty tracked files, runs the suite,
+    then reverts only the files the run itself dirtied. The test exit
+    code is preserved; a failed revert is folded in so an un-revertable
+    mutation cannot pass silently.
+    """
+    try:
+        before = _tracked_dirty_paths()
+    except _GitError as exc:
+        # No pre-run snapshot means we cannot safely tell hook-induced
+        # changes from the developer's own. Skip reconciliation rather
+        # than risk reverting real work; the run still gates correctness.
+        print(
+            f"run_affected_tests: could not read pre-run git status "
+            f"({exc}); worktree reconciliation disabled for this run.",
+            file=sys.stderr,
+        )
+        return _run_tests()
+    test_returncode = _run_tests()
+    reconcile_returncode = _reconcile_worktree(before)
+    return max(test_returncode, reconcile_returncode)
 
 
 if __name__ == "__main__":
