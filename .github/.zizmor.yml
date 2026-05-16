@@ -10,9 +10,3 @@ rules:
       # access to commit signatures). Mitigated: checkout uses ref: main
       # (not PR head), no untrusted input in run: steps.
       - cla.yml
-
-  template-injection:
-    ignore:
-      # steps.scan-ref.outputs.ref is set by echo in the same job (not
-      # user-controllable). zizmor flags it at Low confidence.
-      - docker.yml

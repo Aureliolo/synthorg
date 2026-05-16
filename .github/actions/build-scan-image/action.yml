@@ -89,6 +89,9 @@ inputs:
       enable.
     required: false
     default: "false"
+  trivy-version:
+    description: "Trivy version, WITHOUT a leading `v` (e.g. `0.70.0`). The release download URL adds the `v` prefix; the tarball filename does not."
+    required: true
 
 outputs:
   ref_amd64:
@@ -308,20 +311,28 @@ runs:
         DISPLAY_NAME: ${{ inputs.display-name }}
       run: scripts/report-image-size.sh "$SCAN_REF" "$DISPLAY_NAME (arm64)"
 
+    - name: Install Trivy
+      shell: bash
+      env:
+        TRIVY_VERSION: ${{ inputs.trivy-version }}
+      run: |
+        curl -sfL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        curl -sfL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
+        (cd /tmp && grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy_checksums.txt | sha256sum -c -)
+        tar -xzf "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /tmp trivy
+        sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
+
     # Trivy JSON + SARIF + CIS benchmark per arch. JSON feeds
     # evaluate-scan.sh (fails on CRITICAL, warns on HIGH). SARIF goes to
     # GitHub Security for both arches with distinct categories.
     - name: Trivy scan (amd64)
-      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
-        image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
-        format: json
-        output: trivy-${{ inputs.image-name }}-amd64.json
-        exit-code: "0"
-        severity: CRITICAL,HIGH
-        trivyignores: .github/.trivyignore.yaml
-        # renovate: datasource=github-releases depName=aquasecurity/trivy
-        version: v0.70.0
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        SCAN_REF: ${{ steps.scan-ref.outputs.ref_amd64 }}
+      run: |
+        trivy image "${SCAN_REF}" --format json --output "trivy-${IMAGE_NAME}-amd64.json" \
+          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (amd64)
       shell: bash
@@ -332,16 +343,13 @@ runs:
 
     - name: Trivy scan (arm64)
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
-      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
-        image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
-        format: json
-        output: trivy-${{ inputs.image-name }}-arm64.json
-        exit-code: "0"
-        severity: CRITICAL,HIGH
-        trivyignores: .github/.trivyignore.yaml
-        # renovate: datasource=github-releases depName=aquasecurity/trivy
-        version: v0.70.0
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        SCAN_REF: ${{ steps.scan-ref.outputs.ref_arm64 }}
+      run: |
+        trivy image "${SCAN_REF}" --format json --output "trivy-${IMAGE_NAME}-arm64.json" \
+          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (arm64)
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
@@ -362,16 +370,13 @@ runs:
 
     - name: Trivy SARIF scan (amd64)
       if: always()
-      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
-        image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
-        format: sarif
-        output: trivy-${{ inputs.image-name }}-amd64.sarif
-        exit-code: "0"
-        severity: CRITICAL,HIGH
-        trivyignores: .github/.trivyignore.yaml
-        # renovate: datasource=github-releases depName=aquasecurity/trivy
-        version: v0.70.0
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        SCAN_REF: ${{ steps.scan-ref.outputs.ref_amd64 }}
+      run: |
+        trivy image "${SCAN_REF}" --format sarif --output "trivy-${IMAGE_NAME}-amd64.sarif" \
+          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF amd64 to GitHub Security
       if: always()
@@ -382,16 +387,13 @@ runs:
 
     - name: Trivy SARIF scan (arm64)
       if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
-      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
-        image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
-        format: sarif
-        output: trivy-${{ inputs.image-name }}-arm64.sarif
-        exit-code: "0"
-        severity: CRITICAL,HIGH
-        trivyignores: .github/.trivyignore.yaml
-        # renovate: datasource=github-releases depName=aquasecurity/trivy
-        version: v0.70.0
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        SCAN_REF: ${{ steps.scan-ref.outputs.ref_arm64 }}
+      run: |
+        trivy image "${SCAN_REF}" --format sarif --output "trivy-${IMAGE_NAME}-arm64.sarif" \
+          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF arm64 to GitHub Security
       if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
