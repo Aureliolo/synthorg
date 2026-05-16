@@ -319,7 +319,8 @@ runs:
         curl -sfL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
         curl -sfL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
         (cd /tmp && grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy_checksums.txt | sha256sum -c -)
-        tar -xzf "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
+        tar -xzf "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /tmp trivy
+        sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
 
     # Trivy JSON + SARIF + CIS benchmark per arch. JSON feeds
     # evaluate-scan.sh (fails on CRITICAL, warns on HIGH). SARIF goes to
