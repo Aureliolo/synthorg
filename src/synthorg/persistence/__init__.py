@@ -27,6 +27,10 @@ from synthorg.persistence.auth_protocol import (
     SessionFilterSpec,
     SessionRepository,
 )
+from synthorg.persistence.ceremony_scheduler_state_protocol import (
+    CeremonySchedulerStateRecord,
+    CeremonySchedulerStateRepository,
+)
 from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
@@ -46,6 +50,10 @@ from synthorg.persistence.decision_protocol import (
     DecisionRole,
 )
 from synthorg.persistence.factory import create_backend
+from synthorg.persistence.meeting_cooldown_protocol import (
+    MeetingCooldownRecord,
+    MeetingCooldownRepository,
+)
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.preset_protocol import (
@@ -65,6 +73,10 @@ from synthorg.persistence.subworkflow_protocol import (
     SubworkflowRepository,
 )
 from synthorg.persistence.task_protocol import TaskRepository
+from synthorg.persistence.tracked_container_protocol import (
+    TrackedContainerRecord,
+    TrackedContainerRepository,
+)
 from synthorg.persistence.training_protocol import (
     TrainingPlanFilterSpec,
     TrainingPlanRepository,
@@ -91,6 +103,8 @@ __all__ = [
     "ArtifactStorageFullError",
     "ArtifactTooLargeError",
     "AuditRepository",
+    "CeremonySchedulerStateRecord",
+    "CeremonySchedulerStateRepository",
     "CheckpointRepository",
     "ConnectionFilterSpec",
     "ConnectionRepository",
@@ -102,6 +116,8 @@ __all__ = [
     "DuplicateRecordError",
     "HeartbeatRepository",
     "LockoutRepository",
+    "MeetingCooldownRecord",
+    "MeetingCooldownRepository",
     "MessageRepository",
     "MigrationError",
     "OAuthStateRepository",
@@ -126,6 +142,8 @@ __all__ = [
     "SubworkflowKey",
     "SubworkflowRepository",
     "TaskRepository",
+    "TrackedContainerRecord",
+    "TrackedContainerRepository",
     "TrainingPlanFilterSpec",
     "TrainingPlanRepository",
     "TrainingResultRepository",

@@ -28,6 +28,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from synthorg.core.enums import ToolCategory
+    from synthorg.persistence.tracked_container_protocol import (
+        TrackedContainerRepository,
+    )
     from synthorg.tools.sandbox.protocol import SandboxBackend
     from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
@@ -47,7 +50,11 @@ def _build_subprocess_backend(
     *,
     config: SandboxingConfig,
     workspace: Path,
+    tracked_container_repo: TrackedContainerRepository | None = None,
 ) -> SandboxBackend:
+    # Subprocess backend has no Docker containers to track; the repo
+    # parameter is accepted to keep a uniform registry signature.
+    del tracked_container_repo
     try:
         return SubprocessSandbox(
             config=config.subprocess,
@@ -66,11 +73,13 @@ def _build_docker_backend(
     *,
     config: SandboxingConfig,
     workspace: Path,
+    tracked_container_repo: TrackedContainerRepository | None = None,
 ) -> SandboxBackend:
     try:
         return DockerSandbox(
             config=config.docker,
             workspace=workspace,
+            tracked_container_repo=tracked_container_repo,
         )
     except Exception:
         logger.error(
@@ -96,6 +105,7 @@ def build_sandbox_backends(
     *,
     config: SandboxingConfig,
     workspace: Path,
+    tracked_container_repo: TrackedContainerRepository | None = None,
 ) -> MappingProxyType[str, SandboxBackend]:
     """Build only the backend instances actually referenced by *config*.
 
@@ -106,6 +116,9 @@ def build_sandbox_backends(
     Args:
         config: Top-level sandboxing configuration.
         workspace: Absolute path to the agent workspace root.
+        tracked_container_repo: Optional persistence handle wired into
+            the Docker backend so container tracking survives restart.
+            Subprocess backend ignores it.
 
     Returns:
         A read-only mapping of backend name to backend instance.
@@ -128,7 +141,12 @@ def build_sandbox_backends(
         raise ValueError(msg)
 
     backends: dict[str, SandboxBackend] = {
-        name: _SANDBOX_BACKEND_REGISTRY.build(name, config=config, workspace=workspace)
+        name: _SANDBOX_BACKEND_REGISTRY.build(
+            name,
+            config=config,
+            workspace=workspace,
+            tracked_container_repo=tracked_container_repo,
+        )
         for name in sorted(needed)
     }
 

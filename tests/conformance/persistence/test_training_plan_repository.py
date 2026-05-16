@@ -168,8 +168,8 @@ class TestTrainingPlanRepository:
         assert len(page3) == 1
 
     async def test_query_by_agent_id(self, backend: PersistenceBackend) -> None:
-        await backend.training_plans.save(_plan(agent_id="agent-1"))
-        await backend.training_plans.save(_plan(agent_id="agent-2"))
+        await backend.training_plans.save(_plan(plan_id="p-1", agent_id="agent-1"))
+        await backend.training_plans.save(_plan(plan_id="p-2", agent_id="agent-2"))
 
         spec = TrainingPlanFilterSpec(agent_id=NotBlankStr("agent-1"))
         rows = await backend.training_plans.query(spec)
@@ -202,9 +202,9 @@ class TestTrainingPlanRepository:
         assert count == 3
 
     async def test_count_filtered(self, backend: PersistenceBackend) -> None:
-        await backend.training_plans.save(_plan(agent_id="agent-1"))
-        await backend.training_plans.save(_plan(agent_id="agent-1"))
-        await backend.training_plans.save(_plan(agent_id="agent-2"))
+        await backend.training_plans.save(_plan(plan_id="p-a1", agent_id="agent-1"))
+        await backend.training_plans.save(_plan(plan_id="p-a2", agent_id="agent-1"))
+        await backend.training_plans.save(_plan(plan_id="p-b1", agent_id="agent-2"))
 
         spec = TrainingPlanFilterSpec(agent_id=NotBlankStr("agent-1"))
         count = await backend.training_plans.count(spec)

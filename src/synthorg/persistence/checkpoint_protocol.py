@@ -115,7 +115,18 @@ class CheckpointRepository(
 
 @runtime_checkable
 class HeartbeatRepository(Protocol):
-    """CRUD interface for heartbeat persistence."""
+    """CRUD interface for heartbeat persistence.
+
+    Bespoke per ADR-0001 D7: heartbeats are a "singleton per execution"
+    (one row per ``execution_id``) but the dominant access pattern is
+    :meth:`get_stale` (range query over ``last_heartbeat_at``), which
+    is not expressible in the generic categories. The save/get/delete
+    surface looks superficially like :class:`IdKeyedRepository`, but
+    composing that protocol would require ``list_items`` pagination
+    that no caller needs while still leaving ``get_stale`` outside the
+    generic surface. Keeping the protocol fully bespoke is simpler
+    than splitting awareness across two surfaces.
+    """
 
     async def save(self, heartbeat: Heartbeat) -> None:
         """Persist a heartbeat (upsert by execution_id).

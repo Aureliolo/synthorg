@@ -137,10 +137,17 @@ class TestTrainingResultRepository:
         assert deleted is False
 
     async def test_list_items_ordered_by_id(self, backend: PersistenceBackend) -> None:
-        await _seed_plan(backend, "plan-001")
-        await backend.training_results.save(_result(result_id="c-res"))
-        await backend.training_results.save(_result(result_id="a-res"))
-        await backend.training_results.save(_result(result_id="b-res"))
+        for plan_id in ("plan-c", "plan-a", "plan-b"):
+            await _seed_plan(backend, plan_id)
+        await backend.training_results.save(
+            _result(result_id="c-res", plan_id="plan-c")
+        )
+        await backend.training_results.save(
+            _result(result_id="a-res", plan_id="plan-a")
+        )
+        await backend.training_results.save(
+            _result(result_id="b-res", plan_id="plan-b")
+        )
 
         rows = await backend.training_results.list_items()
         ids = [r.id for r in rows]
@@ -149,10 +156,10 @@ class TestTrainingResultRepository:
     async def test_list_items_with_pagination(
         self, backend: PersistenceBackend
     ) -> None:
-        await _seed_plan(backend, "plan-001")
         for i in range(5):
+            await _seed_plan(backend, f"plan-{i:02d}")
             await backend.training_results.save(
-                _result(result_id=f"res-{i:02d}"),
+                _result(result_id=f"res-{i:02d}", plan_id=f"plan-{i:02d}"),
             )
 
         page1 = await backend.training_results.list_items(limit=2, offset=0)

@@ -128,7 +128,7 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     sub_service = AsyncMock(spec=SubworkflowService)
     sub_service.list_summaries.return_value = ((), 0)
     sub_service.get.return_value = workflow_def
-    sub_service.save.return_value = workflow_def
+    sub_service.create.return_value = workflow_def
     ns.subworkflow_service = sub_service
     ns.has_subworkflow_service = True
 

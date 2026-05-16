@@ -57,6 +57,7 @@ class TestBuildSandboxBackends:
         mock_docker_cls.assert_called_once_with(
             config=config.docker,
             workspace=tmp_path,
+            tracked_container_repo=None,
         )
 
     @patch("synthorg.tools.sandbox.factory.DockerSandbox")
@@ -115,6 +116,7 @@ class TestBuildSandboxBackends:
         mock_docker_cls.assert_called_once_with(
             config=docker_config,
             workspace=tmp_path,
+            tracked_container_repo=None,
         )
 
     @patch("synthorg.tools.sandbox.factory.SubprocessSandbox")

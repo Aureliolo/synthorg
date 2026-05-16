@@ -149,11 +149,11 @@ def fake_app_state() -> SimpleNamespace:
     ns.approval_store.list_items.return_value = ()
     ns.approval_store.get.return_value = None
 
-    ns.persistence.fine_tune_checkpoints.list_checkpoints.return_value = (
+    ns.persistence.fine_tune_checkpoints.list_items_page.return_value = (
         (),
         0,
     )
-    ns.persistence.fine_tune_checkpoints.get_checkpoint.return_value = None
+    ns.persistence.fine_tune_checkpoints.get.return_value = None
 
     ns.has_task_engine = True
     ns.has_cost_tracker = True

@@ -175,6 +175,9 @@ compose any generic category and are documented at the end as "bespoke per D7".
 | 43 | IdempotencyRepository | persistence/ | **Bespoke per D7** | `claim`, `complete`, `fail`, `cleanup_expired` | Atomic claim-and-lease with token-guarded CAS; no standard CRUD |
 | 44 | ProjectCostAggregateRepository | persistence/ | **Bespoke per D7** | `get`, `increment` | Only get + atomic increment with mixed-currency rejection |
 | 45 | SeenClaimsRepository | persistence/ | **Bespoke per D7** | `is_completed`, `mark_seen`, `prune_expired` | Dedup with TTL pruning; no entity model |
+| 46 | CeremonySchedulerStateRepository | persistence/ | IdKeyed | `load_all` | WP-1 restart safety: hydrate counters/fired-once flags on sprint activation; perf bulk read on cold start |
+| 47 | MeetingCooldownRepository | persistence/ | IdKeyed | `load_all` | WP-1 restart safety: hydrate cooldown timestamps on scheduler start; perf bulk read on cold start |
+| 48 | TrackedContainerRepository | persistence/ | IdKeyed | `load_all` | WP-1 restart safety: enumerate sandbox containers for reconciliation on subsystem start |
 
 ### Bespoke-Only Protocols (No Generic Composition)
 

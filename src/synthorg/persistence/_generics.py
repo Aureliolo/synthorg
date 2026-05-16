@@ -40,10 +40,15 @@ from typing import Final, Protocol, TypeVar, runtime_checkable
 #: Canonical page size for ``list_items`` / ``query`` across every
 #: repository protocol defined here and every concrete repo that
 #: composes one of them. Pinned in one place so callers and impls
-#: cannot drift apart and so each concrete repo does not need its
-#: own ``# lint-allow: magic-numbers`` opt-out on the default.
+#: cannot drift apart. The ``# lint-allow: magic-numbers`` opt-out on
+#: every protocol method default below references this constant so the
+#: justification is not duplicated per method body.
 DEFAULT_PAGE_SIZE: Final[int] = 100
 
+# Variance follows the position rule: TypeVars that only appear in
+# argument position are contravariant; TypeVars that only appear in
+# return position are covariant; TypeVars that appear in both are
+# invariant. Pyright enforces this for ``Protocol`` types.
 T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)
 ID_contra = TypeVar("ID_contra", contravariant=True)
@@ -61,6 +66,16 @@ class SingletonRepository(Protocol[T]):
     configuration snapshots). Keyed-singleton variants (Settings,
     AgentState) use :class:`IdKeyedRepository` with ``ID = NotBlankStr``
     or ``ID = tuple[NotBlankStr, ...]`` instead.
+
+    Invariant: the single-row constraint is enforced by concrete
+    implementations (e.g. a CHECK on a fixed primary key, or upsert
+    semantics on ``upsert``). The Protocol cannot enforce it
+    structurally, so concrete repos that compose this surface MUST
+    guarantee it at the storage layer.
+
+    ``T`` SHOULD be immutable (Pydantic ``frozen=True`` model,
+    ``FrozenDataclass``, or equivalent) so callers cannot mutate the
+    object returned by :meth:`get` and corrupt repository state.
     """
 
     async def get(self) -> T | None:
@@ -82,6 +97,11 @@ class IdKeyedRepository(Protocol[T, ID_contra]):
 
     Composite keys are expressed via ``ID = tuple[NotBlankStr, ...]``;
     no separate ``CompositeKeyedRepository`` exists (see ADR-0001 D8).
+
+    ``T`` SHOULD be immutable (Pydantic ``frozen=True`` model,
+    ``FrozenDataclass``, or equivalent) so the tuple returned by
+    :meth:`list_items` cannot be mutated by callers in ways that
+    desynchronise their view from the storage layer.
     """
 
     async def save(self, entity: T) -> None:
@@ -99,7 +119,7 @@ class IdKeyedRepository(Protocol[T, ID_contra]):
     async def list_items(
         self,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[T, ...]:
         """List entities with pagination, ordered deterministically by id."""
@@ -118,15 +138,20 @@ class FilteredQueryRepository(Protocol[T_co, FilterSpec_contra]):
         self,
         filter_spec: FilterSpec_contra,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[T_co, ...]:
         """Return all entities matching the filter spec (paginated).
 
-        Order: each concrete repo documents its ordering invariant
-        (typically primary-key ascending). Callers that need a
-        different order should sort the returned tuple in the caller
-        rather than embedding sort hints in ``FilterSpec``.
+        Order: each concrete repo documents its ordering invariant in
+        its own protocol docstring (typically primary-key ascending or
+        a domain-specific column). Pagination is best-effort snapshot
+        stable: concurrent writes between two calls may shift offset
+        boundaries, so callers that need transactional pagination
+        should consume the full result inside one logical batch.
+        Callers that need a different order should sort the returned
+        tuple in the caller rather than embedding sort hints in
+        ``FilterSpec``.
         """
         ...
 
@@ -140,7 +165,14 @@ class AppendOnlyRepository(Protocol[Event, FilterSpec_contra]):
     """Immutable event log with query and retention purge.
 
     No per-row update or delete; ``purge_before`` is the only deletion
-    primitive and is restricted to bulk retention sweeps.
+    primitive and is restricted to bulk retention sweeps. A small
+    number of concrete repos add a per-row ``delete`` as a bespoke
+    method under ADR-0001 D7 (e.g. operator-driven moderation on
+    ``MessageRepository``); such bespoke methods are domain-specific
+    and not part of the generic surface here.
+
+    ``Event`` SHOULD be immutable (frozen Pydantic / dataclass) so
+    historical records cannot be retroactively mutated by callers.
     """
 
     async def append(self, event: Event) -> None:
@@ -151,14 +183,18 @@ class AppendOnlyRepository(Protocol[Event, FilterSpec_contra]):
         self,
         filter_spec: FilterSpec_contra,
         *,
-        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Event, ...]:
         """Return events matching the filter spec, newest-first (paginated).
 
         Order is fixed: append-only logs return rows by descending
         append timestamp / id so a paginated walk yields the most
-        recent activity first without per-repo configuration.
+        recent activity first without per-repo configuration. Note
+        this is the *opposite* of :class:`FilteredQueryRepository`,
+        which defaults to ascending primary-key order; the two
+        protocols intentionally diverge because audit-style consumers
+        almost always want recency first.
         """
         ...
 
@@ -177,8 +213,12 @@ class StatefulRepository(Protocol[T, ID_contra, State_contra]):
     cannot both observe ``from_state`` and both write ``to_state``.
 
     ``**updates`` carries status-correlated fields (e.g.
-    ``expired_at``, ``expired_by``). Each concrete repo documents the
-    keys it accepts.
+    ``expired_at``, ``expired_by``). Concrete repos MUST declare a
+    per-repo ``TypedDict`` for the accepted keys (so callers get
+    static type-checker enforcement) and MUST validate kwargs at the
+    implementation layer (so passing an unknown key raises rather
+    than being silently dropped). See ``ApprovalRepository`` for the
+    canonical example.
     """
 
     async def save(self, entity: T) -> None:
@@ -206,13 +246,12 @@ class StatefulRepository(Protocol[T, ID_contra, State_contra]):
         in ``to_state``. Returns ``False`` on state mismatch or when
         no row exists.
 
-        ``**updates`` carries status-correlated columns whose names and
-        types are documented per concrete repo's own ``transition_if``
-        signature: passing a key the concrete repo does not declare is
-        a contract violation, not a silently-ignored argument. Concrete
-        repos should introduce a per-repo ``TypedDict`` for the kwargs
-        so the type checker enforces the contract without docstring
-        archaeology.
+        ``**updates`` carries status-correlated columns; concrete repos
+        MUST type the kwargs with a ``TypedDict`` and MUST reject
+        unknown keys at the implementation layer. ``object`` here is
+        the widest possible declaration so the Protocol stays usable
+        for every concrete state schema; do not interpret it as a
+        promise that any key will be accepted.
         """
         ...
 
@@ -242,5 +281,12 @@ class MVCCRepository(Protocol[T_co, ID_contra, Op]):
         ...
 
     async def get_operation_log(self, entity_id: ID_contra) -> tuple[Op, ...]:
-        """Return the full op history for one entity (oldest-first)."""
+        """Return the full op history for one entity.
+
+        Ordering: rows are returned by ascending append order
+        (oldest-first). The append-order key is the storage layer's
+        monotonic insertion id; concrete implementations MUST not
+        re-order historical entries even after retraction, since the
+        log is the system-of-record for the entity's causal history.
+        """
         ...

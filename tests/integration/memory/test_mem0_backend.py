@@ -257,7 +257,7 @@ class TestMem0RetrievalPipeline:
         mock_client: MagicMock,
     ) -> None:
         """Count memories after storing several entries."""
-        mock_client.list_items.return_value = {
+        mock_client.get_all.return_value = {
             "results": [
                 {
                     "id": "m1",

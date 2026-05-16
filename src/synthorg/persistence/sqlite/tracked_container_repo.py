@@ -44,8 +44,12 @@ class SQLiteTrackedContainerRepository:
             await self._db.rollback()
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.warning(event, error="rollback failed")
+        except Exception as exc:
+            logger.warning(
+                event,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def save(self, record: TrackedContainerRecord) -> None:
         """Insert or replace the tracking row for one container."""

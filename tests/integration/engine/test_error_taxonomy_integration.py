@@ -465,7 +465,7 @@ class TestCrossAgentNumericalDriftTaskTree:
         )
 
         mock_repo = AsyncMock()
-        mock_repo.list_tasks = AsyncMock(return_value=(child_alpha, child_beta))
+        mock_repo.query = AsyncMock(return_value=(child_alpha, child_beta))
 
         provider_response = CompletionResponse(
             content=(
@@ -575,7 +575,7 @@ class TestDelegationProtocolViolationIntegration:
             estimated_complexity=Complexity.MEDIUM,
         )
         mock_repo = AsyncMock()
-        mock_repo.list_tasks = AsyncMock(return_value=(legal_child,))
+        mock_repo.query = AsyncMock(return_value=(legal_child,))
 
         config = ErrorTaxonomyConfig(
             enabled=True,
@@ -608,7 +608,7 @@ class TestDelegationProtocolViolationIntegration:
         )
 
         assert result is not None
-        mock_repo.list_tasks.assert_awaited_once()
+        mock_repo.query.assert_awaited_once()
         delegation_findings = [
             f
             for f in result.findings
