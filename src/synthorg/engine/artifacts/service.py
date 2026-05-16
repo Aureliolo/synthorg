@@ -35,8 +35,12 @@ from synthorg.observability.events.persistence import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.persistence.artifact_protocol import ArtifactRepository
     from synthorg.persistence.artifact_storage import ArtifactStorageBackend
+
+from synthorg.persistence.artifact_protocol import (
+    ArtifactFilterSpec,
+    ArtifactRepository,
+)
 
 logger = get_logger(__name__)
 
@@ -67,10 +71,12 @@ class ArtifactService:
         All three filters are AND-combined when provided; passing
         ``None`` for a filter omits it from the query.
         """
-        return await self._repo.list_artifacts(
-            task_id=task_id,
-            created_by=created_by,
-            artifact_type=artifact_type,
+        return await self._repo.query(
+            ArtifactFilterSpec(
+                task_id=task_id,
+                created_by=created_by,
+                artifact_type=artifact_type,
+            ),
         )
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
@@ -107,8 +113,11 @@ class ArtifactService:
             project_id=project_id,
             created_at=datetime.now(UTC),
         )
-        await self._repo.save(artifact)
-        logger.info(API_ARTIFACT_CREATED, artifact_id=artifact.id)
+        created = await self._repo.save_returning_outcome(artifact)
+        logger.info(
+            API_ARTIFACT_CREATED if created else API_ARTIFACT_UPDATED,
+            artifact_id=artifact.id,
+        )
         return artifact
 
     async def save(self, artifact: Artifact) -> None:
@@ -125,7 +134,7 @@ class ArtifactService:
         ``API_ARTIFACT_UPDATED`` see neither phantom updates on
         first-write upload flows nor phantom creates on collisions.
         """
-        created = await self._repo.save(artifact)
+        created = await self._repo.save_returning_outcome(artifact)
         logger.info(
             API_ARTIFACT_CREATED if created else API_ARTIFACT_UPDATED,
             artifact_id=artifact.id,

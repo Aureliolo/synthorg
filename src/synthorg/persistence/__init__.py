@@ -16,7 +16,10 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.persistence.agent_state_protocol import AgentStateRepository
-from synthorg.persistence.artifact_protocol import ArtifactRepository
+from synthorg.persistence.artifact_protocol import (
+    ArtifactFilterSpec,
+    ArtifactRepository,
+)
 from synthorg.persistence.audit_protocol import AuditRepository
 from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
@@ -60,6 +63,7 @@ from synthorg.persistence.version_protocol import VersionRepository
 __all__ = [
     "AgentStateRepository",
     "ApiKeyRepository",
+    "ArtifactFilterSpec",
     "ArtifactRepository",
     "ArtifactStorageFullError",
     "ArtifactTooLargeError",
