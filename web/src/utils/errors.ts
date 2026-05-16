@@ -3,7 +3,50 @@
 import axios, { type AxiosError } from 'axios'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import type { ErrorCode, ErrorDetail } from '@/api/types/errors'
+import { ErrorCode, type ErrorDetail } from '@/api/types/errors'
+
+/**
+ * Format a millisecond duration as user-facing British English copy
+ * for "try again in X" toasts. The granularity ladder is hour /
+ * minute / second; sub-second waits round up to "a few seconds" so the
+ * toast does not promise a precision the user cannot react to.
+ */
+function formatRetryAfter(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return 'a few seconds'
+  const seconds = Math.max(1, Math.round(ms / 1000))
+  if (seconds < 60) {
+    if (seconds < 5) return 'a few seconds'
+    return `${seconds} seconds`
+  }
+  if (seconds < 3600) {
+    const minutes = Math.round(seconds / 60)
+    return minutes === 1 ? '1 minute' : `${minutes} minutes`
+  }
+  const hours = Math.round(seconds / 3600)
+  return hours === 1 ? '1 hour' : `${hours} hours`
+}
+
+/**
+ * Read the ``Retry-After`` HTTP header value from an axios error
+ * response and return the wait duration in milliseconds (or ``null``
+ * when the header is absent or unparseable). Distinct from
+ * ``parseRetryAfterMs`` in ``@/utils/retry-after``: that helper caps
+ * the result against the auto-retry budget and returns a sentinel,
+ * which is the wrong contract for user-facing toast copy where we
+ * want the literal wait duration even when it exceeds the budget.
+ */
+function readRetryAfterHeaderMs(error: AxiosError): number | null {
+  const raw = error.response?.headers?.['retry-after']
+  if (typeof raw !== 'string' || raw.trim() === '') return null
+  const trimmed = raw.trim()
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number.parseInt(trimmed, 10)
+    return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null
+  }
+  const parsedDate = Date.parse(trimmed)
+  if (!Number.isFinite(parsedDate)) return null
+  return Math.max(0, parsedDate - Date.now())
+}
 
 const log = createLogger('errors')
 
@@ -53,6 +96,40 @@ export function getErrorMessage(error: unknown): string {
       | { error?: string; error_detail?: ErrorDetail; success?: boolean }
       | undefined
 
+    // 409 / 429 / 503 are differentiated BEFORE the generic
+    // data.error early-return so a backend that always populates
+    // data.error does not flatten the structured copy below into a
+    // single uninformative line. 422 is excluded for the same reason
+    // (its structured error_detail.detail wins inside the switch).
+    if (status === 429) {
+      const ms = readRetryAfterHeaderMs(error)
+      if (ms !== null && ms > 0) {
+        return `Too many requests. Try again in ${formatRetryAfter(ms)}.`
+      }
+      return 'Too many requests. Try again in a few seconds.'
+    }
+    if (status === 503) {
+      const ms = readRetryAfterHeaderMs(error)
+      if (ms !== null) {
+        return `The service is restarting. Try again in ${formatRetryAfter(ms)}.`
+      }
+      return 'The service is unavailable. Contact the operator if this persists.'
+    }
+    if (status === 409) {
+      // Branch on the structured error_code so duplicate /
+      // version-conflict / generic-conflict cases each get actionable
+      // copy. Falls through to the existing generic message when the
+      // envelope did not carry a code.
+      const code = data?.error_detail?.error_code
+      if (code === ErrorCode.DUPLICATE_RECORD || code === ErrorCode.ONTOLOGY_DUPLICATE) {
+        return 'A resource with this name already exists. Pick a different name.'
+      }
+      if (code === ErrorCode.VERSION_CONFLICT || code === ErrorCode.TASK_VERSION_CONFLICT) {
+        return 'This resource was edited by someone else. Reload to see the latest version, then retry.'
+      }
+      return 'The resource state changed. Refresh the page and try again.'
+    }
+
     // For 4xx errors, surface the backend's validation message.
     // 422 is excluded so the structured ``error_detail.detail`` branch
     // below can prefer the field-specific RFC 9457 detail over the
@@ -76,12 +153,6 @@ export function getErrorMessage(error: unknown): string {
         return 'You do not have permission to perform this action.'
       case 404:
         return 'The requested resource was not found.'
-      case 409:
-        // 409 covers optimistic-concurrency races, duplicate-resource
-        // attempts, and version-mismatch conflicts. The earlier copy
-        // assumed concurrency only, which misled users when the cause
-        // was a duplicate or version skew.
-        return 'The resource state changed. Refresh the page and try again.'
       case 422: {
         // Prefer the structured ``error_detail.detail`` envelope (RFC
         // 9457) over the plain ``data.error`` string so the user sees
@@ -96,13 +167,9 @@ export function getErrorMessage(error: unknown): string {
         }
         return 'Validation error. Please check your input.'
       }
-      case 429:
-        return 'Too many requests. Please try again in a moment.'
       case 502:
       case 504:
         return 'Temporary connectivity issue. Please retry shortly.'
-      case 503:
-        return 'The service is temporarily unavailable. Try again in a moment.'
       default:
         break
     }
