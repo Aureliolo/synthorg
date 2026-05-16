@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Tabs } from '@base-ui/react/tabs'
 import { ArrowLeft, Building2, Settings, Users } from 'lucide-react'
 import { companyVersionsClient } from '@/api/endpoints/version-history'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { WsConnectionBanner } from '@/components/ui/ws-connection-banner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ToggleField } from '@/components/ui/toggle-field'
@@ -59,14 +60,6 @@ export default function OrgEditPage() {
     optimisticReorderDepartments,
     optimisticReorderAgents,
   } = useOrgEditData()
-
-  // Only surface the offline banner once the WS has connected at least
-  // once; otherwise the first render flashes a false-positive warning
-  // before the handshake completes.
-  const wasConnectedRef = useRef(false)
-  useEffect(() => {
-    if (wsConnected) wasConnectedRef.current = true
-  }, [wsConnected])
 
   const rawTab = searchParams.get('tab') ?? 'general'
   const activeTab: TabValue = isTabValue(rawTab) ? rawTab : 'general'
@@ -155,12 +148,14 @@ export default function OrgEditPage() {
         />
       )}
 
-      {/* WS disconnect warning */}
-      {!wsConnected && !loading && (wasConnectedRef.current || Boolean(wsSetupError)) && (
+      <WsConnectionBanner
+        description={wsSetupError ?? 'Edits may not sync until the connection recovers.'}
+      />
+      {wsSetupError && wsConnected && (
         <ErrorBanner
-          variant="offline"
-          title="Real-time updates disconnected"
-          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+          severity="warning"
+          title="Connection setup warning"
+          description={wsSetupError}
         />
       )}
 

@@ -115,8 +115,9 @@ describe('useFineTuningStore', () => {
 
       await useFineTuningStore.getState().fetchStatus()
 
-      // Refined 503 copy (see Phase 7 of WP-6): sustained outage
-      // when the response carries no Retry-After header.
+      // 503 with no Retry-After header signals a sustained outage,
+      // so the toast must escalate ("unavailable") rather than promise
+      // a retry duration the backend has not provided.
       expect(useFineTuningStore.getState().errors.status).toContain('unavailable')
       // Fetch failures stay on the page-level ErrorBanner; no toast.
       expect(useToastStore.getState().toasts).toHaveLength(0)
