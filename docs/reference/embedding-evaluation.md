@@ -182,6 +182,10 @@ graph LR
   non-positive passages (with margin filter to avoid false negatives)
 - Output: `(query, positive, [hard_negative_1, ..., hard_negative_k])` triples
 - GPU required (40 GB VRAM for embedding)
+- Encoding constraints: per-call `processing_kwargs={"text": {"max_length": N, "truncation": True}}`
+  with `_QUERY_MAX_LENGTH = 128` for queries and `_PASSAGE_MAX_LENGTH = 512` for passages.
+  Inputs whose word count likely exceeds the token limit emit a
+  `memory.fine_tune.encode_truncation_likely` WARNING log.
 
 **Stage 3: Contrastive Fine-Tuning**
 
@@ -191,7 +195,15 @@ graph LR
 - GPU required (80 GB VRAM for training, or reduced batch size on smaller GPUs)
 - Duration: 1-2 hours for typical org corpus (~500 documents)
 
-**Stage 4: Deploy**
+**Stage 4: Evaluation**
+
+- Input: held-out validation pairs + fine-tuned checkpoint and base model
+- Process: encode queries and passages with both models and compute NDCG@10 and Recall@10
+- Re-applies the same query (128) / passage (512) token caps with truncation enabled, so
+  eval embeddings are tokenisation-consistent with mining
+- Output: `EvalMetrics` snapshot (per-model NDCG@10 / Recall@10) persisted alongside the checkpoint
+
+**Stage 5: Deploy**
 
 - Save fine-tuned model checkpoint to configured path
 - Update `Mem0EmbedderConfig` to point to the fine-tuned model (via custom Mem0 provider or
