@@ -17,10 +17,11 @@ import type {
 
 export async function listAdminPresets(): Promise<readonly PresetSummaryResponse[]> {
   return paginateAll<PresetSummaryResponse>(async (cursor) => {
-    const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
-    const response = await apiClient.get<PaginatedResponse<PresetSummaryResponse>>(
-      `/personalities/presets${qs}`,
-    )
+    const query = new URLSearchParams()
+    if (cursor) query.set('cursor', cursor)
+    const qs = query.toString()
+    const url = qs ? `/personalities/presets?${qs}` : '/personalities/presets'
+    const response = await apiClient.get<PaginatedResponse<PresetSummaryResponse>>(url)
     return unwrapPaginated(response)
   })
 }
