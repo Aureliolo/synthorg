@@ -90,17 +90,15 @@ runs:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.app-private-key }}
         # Single-repo install -- the App must be installed on exactly
-        # this repo. `owner` + `repositories` together pin the
-        # installation lookup; without them the action walks every
-        # installation the App is authorised for, which opens the door
-        # to token minting for a forked install if one is ever created.
-        # `repositories` is a literal value (not `${{ github.event.repository.name }}`)
+        # this repo. Both `owner` and `repositories` are literal values
         # so zizmor's `github-app` audit can statically verify the scope
-        # is narrow; the dynamic expression would otherwise be flagged
-        # as "token granted access to all repositories for this owner".
-        # Every caller of this composite is fork-gated at the workflow
-        # level, so this composite never executes outside synthorg.
-        owner: ${{ github.repository_owner }}
+        # is narrow. Expression-based values (e.g. `${{ github.repository_owner }}`)
+        # would be flagged as "token granted access to all repositories
+        # for this owner's app installation" -- the audit needs literal
+        # strings to prove narrowness. Every caller of this composite is
+        # fork-gated at the workflow level, so the composite never
+        # executes against any owner/repo other than `Aureliolo/synthorg`.
+        owner: Aureliolo
         repositories: synthorg
         # Per-call scope passthrough: empty values mean the action skips
         # requesting that permission, so the minted token carries exactly
