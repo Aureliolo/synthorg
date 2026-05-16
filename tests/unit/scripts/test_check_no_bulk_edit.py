@@ -133,6 +133,28 @@ def test_malformed_json_fails_closed() -> None:
     assert "malformed" in result.stderr.lower()
 
 
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        {"tool_name": "Bash", "tool_input": [1, 2]},
+        {"tool_name": "Bash", "tool_input": "sed -i s/a/b/ x.py"},
+        {"tool_name": "Bash", "tool_input": 42},
+        {"tool_name": "Bash", "tool_input": None},
+        {"tool_name": "Bash", "tool_input": {"command": 123}},
+        {"tool_name": "Bash", "tool_input": {"command": ["sed", "-i"]}},
+    ],
+)
+def test_malformed_bash_tool_input_fails_closed(
+    envelope: dict[str, object],
+) -> None:
+    # A non-dict tool_input or non-string command for the Bash path
+    # would crash with AttributeError/TypeError instead of failing
+    # closed, silently bypassing the bulk-edit guard.
+    result = _run(envelope)
+    assert result.returncode == 2, result.stdout
+    assert "malformed" in result.stderr.lower()
+
+
 @pytest.mark.parametrize("payload", ["[]", '"a string"', "42", "true", "null"])
 def test_non_object_json_fails_closed(payload: str) -> None:
     # Valid JSON that is not an object would make ``payload.get(...)``

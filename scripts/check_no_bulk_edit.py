@@ -46,6 +46,48 @@ _BULK_BASH_PATTERNS = (
 )
 
 
+def _scan_bash(tool_input: object) -> int:
+    """Return the exit code for a ``Bash`` tool envelope.
+
+    A well-formed Bash envelope always carries an object ``tool_input``
+    with a string ``command``. A non-dict tool_input or non-string
+    command is a corrupted envelope for the path this gate inspects --
+    fail closed (same rationale as the non-object payload guard) so it
+    cannot crash with AttributeError/TypeError and silently bypass the
+    gate. Returns 2 on a detected bulk edit or malformed Bash envelope,
+    0 otherwise.
+    """
+    if not isinstance(tool_input, dict):
+        print(
+            "BLOCKED: malformed PreToolUse JSON envelope (Bash tool_input "
+            f"is {type(tool_input).__name__}, expected object); "
+            "check_no_bulk_edit fails closed.",
+            file=sys.stderr,
+        )
+        return 2
+    command = tool_input.get("command", "")
+    if not isinstance(command, str):
+        print(
+            "BLOCKED: malformed PreToolUse JSON envelope (Bash command is "
+            f"{type(command).__name__}, expected string); "
+            "check_no_bulk_edit fails closed.",
+            file=sys.stderr,
+        )
+        return 2
+    for pattern in _BULK_BASH_PATTERNS:
+        if pattern.search(command):
+            print(
+                "BLOCKED: detected an in-place bulk-edit shell command "
+                f"({pattern.pattern}). Bulk edits require explicit user "
+                "approval. Use the Edit tool with replace_all=false for "
+                "per-occurrence edits, or ask the user to approve the "
+                "bulk operation.",
+                file=sys.stderr,
+            )
+            return 2
+    return 0
+
+
 def main() -> int:
     """Read the PreToolUse JSON envelope from stdin and decide whether to block."""
     raw = sys.stdin.read()
@@ -79,21 +121,8 @@ def main() -> int:
         return 2
 
     tool_name = payload.get("tool_name", "")
-    tool_input = payload.get("tool_input") or {}
-
     if tool_name == "Bash":
-        command = tool_input.get("command", "") or ""
-        for pattern in _BULK_BASH_PATTERNS:
-            if pattern.search(command):
-                print(
-                    "BLOCKED: detected an in-place bulk-edit shell command "
-                    f"({pattern.pattern}). Bulk edits require explicit user "
-                    "approval. Use the Edit tool with replace_all=false for "
-                    "per-occurrence edits, or ask the user to approve the "
-                    "bulk operation.",
-                    file=sys.stderr,
-                )
-                return 2
+        return _scan_bash(payload.get("tool_input"))
 
     return 0
 
