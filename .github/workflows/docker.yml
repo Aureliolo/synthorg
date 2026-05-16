@@ -821,6 +821,8 @@ jobs:
           exit-code: "0"
           severity: CRITICAL,HIGH
           trivyignores: .github/.trivyignore.yaml
+          # renovate: datasource=github-releases depName=aquasecurity/trivy
+          version: v0.70.0
 
       - name: Evaluate Trivy results
         run: scripts/evaluate-scan.sh --verbose trivy-web.json "Web"
@@ -835,6 +837,8 @@ jobs:
           exit-code: "0"
           severity: CRITICAL,HIGH
           trivyignores: .github/.trivyignore.yaml
+          # renovate: datasource=github-releases depName=aquasecurity/trivy
+          version: v0.70.0
 
       - name: Upload SARIF to GitHub Security (web)
         if: always()
