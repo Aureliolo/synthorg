@@ -8,6 +8,7 @@ so each case runs in milliseconds.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -40,17 +41,43 @@ class _FakeCustomRuleRepository:
                 return row
         return None
 
-    async def list_rules(
+    async def list_items(
         self,
         *,
-        enabled_only: bool = False,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
+    ) -> tuple[CustomRuleDefinition, ...]:
+        from synthorg.persistence.custom_rule_protocol import (
+            CustomRuleFilterSpec,
+        )
+
+        return await self.query(
+            CustomRuleFilterSpec(),
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[CustomRuleDefinition, ...]:
         limit = validate_pagination_args(
-            limit, offset=0, event="fake.custom_rules.list_rules"
+            limit, offset=offset, event="fake.custom_rules.query"
         )
-        rows = [r for r in self._rows.values() if not enabled_only or r.enabled]
-        return tuple(sorted(rows, key=lambda r: r.name)[:limit])
+        rows = [
+            r for r in self._rows.values() if not filter_spec.enabled_only or r.enabled
+        ]
+        ordered = sorted(rows, key=lambda r: r.name)
+        return tuple(ordered[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        rows = [
+            r for r in self._rows.values() if not filter_spec.enabled_only or r.enabled
+        ]
+        return len(rows)
 
     async def delete(self, rule_id: NotBlankStr) -> bool:
         return self._rows.pop(str(rule_id), None) is not None

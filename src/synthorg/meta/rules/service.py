@@ -28,7 +28,9 @@ from synthorg.observability.events.meta import (
 _IMMUTABLE_RULE_FIELDS: frozenset[str] = frozenset({"id", "created_at"})
 
 if TYPE_CHECKING:
-    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
+    from synthorg.persistence.custom_rule_protocol import (
+        CustomRuleRepository,
+    )
 
 logger = get_logger(__name__)
 
@@ -74,7 +76,11 @@ class CustomRulesService:
         if limit is not None and limit < 1:
             msg = f"limit must be >= 1 when provided, got {limit}"
             raise ValueError(msg)
-        all_rules = await self._repo.list_rules()
+        from synthorg.persistence.custom_rule_protocol import (  # noqa: PLC0415
+            CustomRuleFilterSpec,
+        )
+
+        all_rules = await self._repo.query(CustomRuleFilterSpec())
         total = len(all_rules)
         end = total if limit is None else offset + limit
         return tuple(all_rules[offset:end]), total

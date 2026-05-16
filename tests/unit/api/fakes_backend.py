@@ -468,17 +468,41 @@ class FakeCustomRuleRepository:
                 return r
         return None
 
-    async def list_rules(
+    async def list_items(
         self,
         *,
-        enabled_only: bool = False,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[CustomRuleDefinition, ...]:
-        limit = validate_pagination_args(limit, offset=0, event="fake.list_rules")
+        from synthorg.persistence.custom_rule_protocol import (
+            CustomRuleFilterSpec,
+        )
+
+        return await self.query(
+            CustomRuleFilterSpec(),
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[CustomRuleDefinition, ...]:
+        limit = validate_pagination_args(limit, offset=offset, event="fake.query")
         rules = list(self._rules.values())
-        if enabled_only:
+        if filter_spec.enabled_only:
             rules = [r for r in rules if r.enabled]
-        return tuple(sorted(rules, key=lambda r: r.name)[:limit])
+        ordered = sorted(rules, key=lambda r: r.name)
+        return tuple(ordered[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        rules = list(self._rules.values())
+        if filter_spec.enabled_only:
+            rules = [r for r in rules if r.enabled]
+        return len(rules)
 
     async def delete(self, rule_id: NotBlankStr) -> bool:
         key = str(rule_id)

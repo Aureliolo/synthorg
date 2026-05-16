@@ -18,6 +18,7 @@ from synthorg.core.persistence_errors import ConstraintViolationError, QueryErro
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.persistence._shared import normalize_utc as _ensure_tz
+from synthorg.persistence.custom_rule_protocol import CustomRuleFilterSpec
 from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
     _row_to_definition,
@@ -336,7 +337,7 @@ class TestListRules:
         rule_a = _make_rule(name="alpha")
         rule_b = _make_rule(name="beta", enabled=False)
         pool.fetchall_result = [_row_for(rule_a), _row_for(rule_b)]
-        rules = await instance.list_rules()
+        rules = await instance.query(CustomRuleFilterSpec())
         assert len(rules) == 2
         assert {r.name for r in rules} == {"alpha", "beta"}
 
@@ -359,8 +360,8 @@ class TestListRules:
         """
         instance, pool = repo
         pool.fetchall_result = []
-        await instance.list_rules(enabled_only=True)
-        assert pool.executed, "list_rules should issue a SELECT"
+        await instance.query(CustomRuleFilterSpec(enabled_only=True))
+        assert pool.executed, "query should issue a SELECT"
         query, params = pool.executed[0]
         assert "enabled" in query.lower(), (
             "list_rules(enabled_only=True) must mention the ``enabled`` column"
@@ -384,7 +385,7 @@ class TestListRules:
     ) -> None:
         instance, pool = repo
         pool.fetchall_result = []
-        rules = await instance.list_rules()
+        rules = await instance.query(CustomRuleFilterSpec())
         assert rules == ()
 
     async def test_list_wraps_db_error(
@@ -394,7 +395,7 @@ class TestListRules:
         instance, pool = repo
         pool.execute_side_effect = psycopg.errors.DatabaseError("boom")
         with pytest.raises(QueryError, match="Failed to list"):
-            await instance.list_rules()
+            await instance.query(CustomRuleFilterSpec())
 
 
 class TestDelete:

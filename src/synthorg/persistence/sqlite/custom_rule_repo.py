@@ -21,14 +21,15 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_LISTED,
     META_CUSTOM_RULE_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.custom_rule import (
     row_to_custom_rule,
     serialize_altitudes,
 )
-from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,
-    validate_pagination_args,
+from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.custom_rule_protocol import (
+    CustomRuleFilterSpec,
 )
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
@@ -277,32 +278,43 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         return _row_to_definition(row)
 
-    async def list_rules(
+    async def list_items(
         self,
         *,
-        enabled_only: bool = False,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[CustomRuleDefinition, ...]:
-        """List custom rules ordered by name, bounded by *limit*.
+        """List custom rules ordered by name."""
+        return await self.query(
+            CustomRuleFilterSpec(),
+            limit=limit,
+            offset=offset,
+        )
 
-        Args:
-            enabled_only: If ``True``, return only enabled rules.
-            limit: Maximum rules to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+    async def query(
+        self,
+        filter_spec: CustomRuleFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[CustomRuleDefinition, ...]:
+        """List custom rules matching ``filter_spec`` ordered by name.
 
         Raises:
             QueryError: If the query or pagination validation fails.
         """
-        limit = validate_pagination_args(limit, 0, event=META_CUSTOM_RULE_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, offset, event=META_CUSTOM_RULE_LIST_FAILED
+        )
         base = (
             "SELECT id, name, description, metric_path, "
             "comparator, threshold, severity, target_altitudes, "
             "enabled, created_at, updated_at FROM custom_rules"
         )
-        where = " WHERE enabled = 1" if enabled_only else ""
-        query = f"{base}{where} ORDER BY name LIMIT ?"
+        where = " WHERE enabled = 1" if filter_spec.enabled_only else ""
+        sql = f"{base}{where} ORDER BY name LIMIT ? OFFSET ?"
         try:
-            async with self._db.execute(query, (limit,)) as cursor:
+            async with self._db.execute(sql, (limit, offset)) as cursor:
                 rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list custom rules"
@@ -315,6 +327,23 @@ ON CONFLICT(id) DO UPDATE SET
         result = tuple(_row_to_definition(row) for row in rows)
         logger.debug(META_CUSTOM_RULE_LISTED, count=len(result))
         return result
+
+    async def count(self, filter_spec: CustomRuleFilterSpec) -> int:
+        """Count custom rules matching the filter spec."""
+        where = " WHERE enabled = 1" if filter_spec.enabled_only else ""
+        sql = f"SELECT COUNT(*) FROM custom_rules{where}"  # noqa: S608
+        try:
+            async with self._db.execute(sql) as cursor:
+                row = await cursor.fetchone()
+        except sqlite3.Error as exc:
+            msg = "Failed to count custom rules"
+            logger.warning(
+                META_CUSTOM_RULE_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return int(row[0]) if row else 0
 
     async def delete(self, rule_id: NotBlankStr) -> bool:
         """Delete a custom rule by id.
