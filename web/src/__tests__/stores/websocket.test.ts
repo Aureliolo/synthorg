@@ -785,11 +785,10 @@ const handler = vi.fn()
       const ws = await connectAndAuth()
       // Heartbeat is now armed; arm the pong timer too by advancing
       // through one ping cycle without responding with a pong.
-      // Advance past the worst-case jitter window so the heartbeat
-      // tick always fires (a uniform-jittered delay can be as late
-      // as ``WS_HEARTBEAT_INTERVAL_MS * 1.05`` so advancing by exactly
-      // ``WS_HEARTBEAT_INTERVAL_MS`` is sometimes too short).
-      await vi.advanceTimersByTimeAsync(Math.ceil(WS_HEARTBEAT_INTERVAL_MS * 1.1))
+      // ``WS_HEARTBEAT_MAX_DELAY_MS`` is the canonical worst-case
+      // jittered delay (ceil(interval * JITTER_MAX)); advancing by it
+      // guarantees the tick fired without re-deriving the bound here.
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_MAX_DELAY_MS)
       // Sanity: with a heartbeat interval + an unanswered pong timer
       // armed, vitest's fake-timer scheduler must report at least two
       // pending timers. If teardown silently fails to clear them,
