@@ -240,6 +240,11 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
           app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          # cla-sign writes a signed commit on cla-signatures via the
+          # Git Data API (blob / tree / commit / ref PATCH). The minted
+          # token only needs contents:write -- PR comments and run reruns
+          # go through GITHUB_TOKEN (pull-requests:write on this job).
+          permission-contents: write
 
       - name: Validate commenter and record signature
         env:

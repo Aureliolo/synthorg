@@ -45,6 +45,10 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
           app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          # release-please creates/updates the release branch + release PR
+          # under the App identity, so the token needs contents+PRs write.
+          permission-contents: write
+          permission-pull-requests: write
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         id: release
@@ -167,7 +171,7 @@ jobs:
         # runs. A GitHub Models quota hit, model timeout, or transient
         # service error must not fail the release pipeline.
         continue-on-error: true
-        uses: actions/ai-inference@af6ad2c4ac4edf01884054fc3a6caa6d2567c13a # v2.0.8
+        uses: actions/ai-inference@17ff458cb182449bbb2e43701fcd98f6af8f6570 # v2.1.0
         with:
           # openai/gpt-4.1-mini is in the "Low" rate-limit class on
           # GitHub Models (150 requests/day, 8k input / 4k output tokens
