@@ -345,7 +345,7 @@ class TestReadThroughErrorWrapping:
             msg = "disk I/O"
             raise OSError(msg)
 
-        persistence.tasks.get = exploding_get  # type: ignore[method-assign]
+        persistence.tasks.get = exploding_get  # type: ignore[method-assign,assignment]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
         try:
@@ -380,7 +380,7 @@ class TestReadThroughErrorWrapping:
         async def oom_get(task_id: str) -> None:
             raise MemoryError
 
-        persistence.tasks.get = oom_get  # type: ignore[method-assign]
+        persistence.tasks.get = oom_get  # type: ignore[method-assign,assignment]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
         try:
@@ -488,6 +488,7 @@ class TestListTasksPushDownPagination:
             # limit + offset forwarded as kwargs; filter passed positionally
             # as a TaskFilterSpec with all-None defaults.
             call = list_spy.await_args
+            assert call is not None
             assert call.kwargs == {"limit": 2, "offset": 0}
             (spec,) = call.args
             assert spec.status is None
@@ -671,7 +672,7 @@ class TestListTasksPushDownPagination:
 
             tail_tuple = await persistence.tasks.query(
                 TaskFilterSpec(),
-                limit=None,  # type: ignore[arg-type]
+                limit=None,
                 offset=2,
             )
             assert [t.id for t in tail_tuple] == [t.id for t in full][2:]

@@ -582,7 +582,7 @@ class TestProcessingLoopExceptionRecovery:
             msg = "Unexpected DB crash"
             raise RuntimeError(msg)
 
-        persistence.tasks.save = exploding_save  # type: ignore[method-assign]
+        persistence.tasks.save = exploding_save  # type: ignore[method-assign,assignment]
 
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
@@ -616,7 +616,7 @@ class TestProcessingLoopExceptionRecovery:
                 raise RuntimeError(msg)
             await original_save(task)  # type: ignore[arg-type]
 
-        persistence.tasks.save = fail_once_save  # type: ignore[method-assign]
+        persistence.tasks.save = fail_once_save  # type: ignore[method-assign,assignment]
 
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]

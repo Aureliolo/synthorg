@@ -272,7 +272,7 @@ class TestCreateTaskTypedErrorDispatch:
             msg = "Disk full"
             raise OSError(msg)
 
-        persistence.tasks.save = exploding_save  # type: ignore[method-assign]
+        persistence.tasks.save = exploding_save  # type: ignore[method-assign,assignment]
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
             config=config,
@@ -465,7 +465,7 @@ class TestMemoryErrorReRaise:
         async def oom_save(task: object) -> None:
             raise MemoryError
 
-        persistence.tasks.save = oom_save  # type: ignore[method-assign]
+        persistence.tasks.save = oom_save  # type: ignore[method-assign,assignment]
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
             config=config,
@@ -508,7 +508,7 @@ class TestMemoryErrorReRaise:
         async def recursive_save(task: object) -> None:
             raise RecursionError
 
-        persistence.tasks.save = recursive_save  # type: ignore[method-assign]
+        persistence.tasks.save = recursive_save  # type: ignore[method-assign,assignment]
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
             config=config,

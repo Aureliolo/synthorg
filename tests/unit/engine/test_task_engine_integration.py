@@ -296,7 +296,7 @@ class TestDrainTimeout:
             await block.wait()
             await original_save(task)  # type: ignore[arg-type]
 
-        persistence.tasks.save = slow_save  # type: ignore[method-assign]
+        persistence.tasks.save = slow_save  # type: ignore[method-assign,assignment]
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()

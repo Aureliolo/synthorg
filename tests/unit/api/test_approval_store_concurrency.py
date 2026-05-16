@@ -563,7 +563,7 @@ class TestLostRaceBatchFetch:
         }
 
         class SnapshotRepo(_LostRaceRepo):
-            async def query(  # type: ignore[override]
+            async def query(
                 self,
                 filter_spec: Any,
                 *,

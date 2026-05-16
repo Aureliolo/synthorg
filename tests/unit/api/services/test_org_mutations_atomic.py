@@ -258,7 +258,7 @@ class TestCASRetry:
                             update={"updated_at": "2099-01-01T00:00:00+00:00"}
                         )
                     )
-            return result
+            return cast("SettingRow | None", result)
 
         persistence.settings.get = intercepting_get
         try:
