@@ -1,34 +1,103 @@
 """Settings repository protocol."""
 
 from collections.abc import Mapping, Sequence  # noqa: TC003
-from typing import Final, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from pydantic import BaseModel, ConfigDict, Field
 
-_DEFAULT_LIST_LIMIT_200: Final[int] = 200
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
+
+
+class SettingRow(BaseModel):
+    """Persistent settings record.
+
+    Attributes:
+        namespace: Setting namespace (part of composite primary key).
+        key: Setting key within the namespace (part of composite primary key).
+        value: Setting value as a string.
+        updated_at: ISO 8601 timestamp of the last update.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    namespace: NotBlankStr = Field(description="Setting namespace")
+    key: NotBlankStr = Field(description="Setting key")
+    value: str = Field(description="Setting value")
+    updated_at: str = Field(description="ISO 8601 timestamp")
+
+
+SettingRowKey = tuple[NotBlankStr, NotBlankStr]
+"""Composite primary key: ``(namespace, key)``."""
 
 
 @runtime_checkable
-class SettingsRepository(Protocol):
+class SettingsRepository(
+    IdKeyedRepository[SettingRow, SettingRowKey],
+    Protocol,
+):
     """CRUD interface for namespaced settings persistence.
 
-    Settings are stored as ``(namespace, key)`` composite-keyed
-    string values with ``updated_at`` timestamps.
+    Composes :class:`IdKeyedRepository` (ADR-0001) with composite key
+    ``(namespace, key)`` per D8. Bespoke per D7: :meth:`get_namespace`,
+    :meth:`set_many`, :meth:`delete_namespace`, and
+    :meth:`delete_namespace_returning_keys` encode atomic multi-row and
+    namespace-scoped operations that the generic surface cannot express.
     """
 
-    async def get(
-        self,
-        namespace: NotBlankStr,
-        key: NotBlankStr,
-    ) -> tuple[str, str] | None:
-        """Retrieve a setting value and its timestamp.
+    async def save(self, entity: SettingRow) -> None:
+        """Persist a setting (upsert by composite key).
 
         Args:
-            namespace: Setting namespace.
-            key: Setting key within the namespace.
+            entity: The setting to persist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get(self, entity_id: SettingRowKey) -> SettingRow | None:
+        """Retrieve a setting by composite key.
+
+        Args:
+            entity_id: ``(namespace, key)`` tuple.
 
         Returns:
-            ``(value, updated_at)`` tuple, or ``None`` if not found.
+            The setting, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[SettingRow, ...]:
+        """List settings across all namespaces (paginated).
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Paginated settings ordered by ``(namespace, key)`` ascending.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(self, entity_id: SettingRowKey) -> bool:
+        """Delete a setting by composite key.
+
+        Args:
+            entity_id: ``(namespace, key)`` tuple.
+
+        Returns:
+            ``True`` if a setting was deleted, ``False`` if not found.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -38,65 +107,36 @@ class SettingsRepository(Protocol):
     async def get_namespace(
         self,
         namespace: NotBlankStr,
-    ) -> tuple[tuple[NotBlankStr, str, str], ...]:
-        """Retrieve all settings in a namespace.
+    ) -> tuple[SettingRow, ...]:
+        """Retrieve all settings in a namespace (bespoke per ADR-0001 D7).
 
         Args:
             namespace: Setting namespace.
 
         Returns:
-            Tuple of ``(key, value, updated_at)`` tuples, sorted by key.
+            All settings in the namespace, sorted by key ascending.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def get_all(
+    async def set_if_unchanged(
         self,
-        *,
-        limit: int = _DEFAULT_LIST_LIMIT_200,
-        offset: int = 0,
-    ) -> tuple[tuple[NotBlankStr, NotBlankStr, str, str], ...]:
-        """Retrieve all settings across all namespaces (paginated).
-
-        Args:
-            limit: Maximum rows to return (>= 1; defaults to 200, the
-                practical bound for the settings registry).
-            offset: Rows to skip (>= 0).
-
-        Returns:
-            Tuple of ``(namespace, key, value, updated_at)`` tuples,
-            sorted by namespace then key.
-
-        Raises:
-            PersistenceError: If the operation fails.
-            QueryError: If ``limit < 1`` or ``offset < 0``.
-        """
-        ...
-
-    async def set(
-        self,
-        namespace: NotBlankStr,
-        key: NotBlankStr,
-        value: str,
-        updated_at: str,
-        *,
+        entity: SettingRow,
         expected_updated_at: str | None = None,
     ) -> bool:
-        """Upsert a setting value.
+        """Upsert a setting with optional compare-and-swap (bespoke per D7).
 
         Args:
-            namespace: Setting namespace.
-            key: Setting key within the namespace.
-            value: Setting value as a string.
-            updated_at: ISO 8601 timestamp of the change.
-            expected_updated_at: When provided, the row is only
-                updated if the current ``updated_at`` matches
-                (atomic compare-and-swap).
+            entity: The setting to upsert.
+            expected_updated_at: When provided, enforces atomic CAS -- the
+                row is only updated if the current ``updated_at`` matches.
+                Empty string ``""`` signals "only insert if no row exists".
 
         Returns:
-            ``True`` if the write succeeded.
+            ``True`` if the write succeeded, ``False`` if the CAS condition
+            was not met.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -105,26 +145,29 @@ class SettingsRepository(Protocol):
 
     async def set_many(
         self,
-        items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
+        items: Sequence[SettingRow],
         *,
-        expected_updated_at_map: (
-            Mapping[tuple[NotBlankStr, NotBlankStr], str] | None
-        ) = None,
+        expected_updated_at_map: (Mapping[SettingRowKey, str] | None) = None,
     ) -> bool:
-        """Atomically upsert multiple settings in a single transaction.
+        """Atomically upsert multiple settings (bespoke per ADR-0001 D7).
 
-        Each element of ``items`` is ``(namespace, key, value,
-        updated_at)``.  ``expected_updated_at_map`` optionally supplies
-        a compare-and-swap expected version per ``(namespace, key)``;
-        keys absent from the map are upserted unconditionally.  Pass
-        an empty string ``""`` in the map for first-write CAS
-        semantics (the row must not exist yet).
+        Each element of ``items`` is a ``SettingRow`` instance.
+        ``expected_updated_at_map`` optionally supplies a
+        compare-and-swap expected version per ``(namespace, key)``
+        composite key; keys absent from the map are upserted
+        unconditionally. Pass an empty string ``""`` in the map for
+        first-write CAS semantics (the row must not exist yet).
 
         The whole operation is atomic: if any CAS check fails, the
         transaction rolls back and no rows are modified.
 
+        Args:
+            items: Settings to upsert.
+            expected_updated_at_map: Optional CAS version map keyed by
+                composite ``(namespace, key)``.
+
         Returns:
-            ``True`` if every write succeeded.  ``False`` if any CAS
+            ``True`` if every write succeeded. ``False`` if any CAS
             check failed; callers should re-read versions and retry
             if they need to recover.
 
@@ -133,27 +176,8 @@ class SettingsRepository(Protocol):
         """
         ...
 
-    async def delete(
-        self,
-        namespace: NotBlankStr,
-        key: NotBlankStr,
-    ) -> bool:
-        """Delete a setting.
-
-        Args:
-            namespace: Setting namespace.
-            key: Setting key within the namespace.
-
-        Returns:
-            ``True`` if the setting was deleted, ``False`` if not found.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
     async def delete_namespace(self, namespace: NotBlankStr) -> int:
-        """Delete all settings in a namespace.
+        """Delete all settings in a namespace (bespoke per ADR-0001 D7).
 
         Args:
             namespace: Setting namespace.
@@ -170,7 +194,7 @@ class SettingsRepository(Protocol):
         self,
         namespace: NotBlankStr,
     ) -> tuple[NotBlankStr, ...]:
-        """Atomically delete all settings in a namespace, returning the keys.
+        """Atomically delete namespace, returning deleted keys (bespoke per D7).
 
         Equivalent to :meth:`delete_namespace` but returns the keys
         whose rows were actually removed in a single transaction;

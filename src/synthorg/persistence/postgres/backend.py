@@ -167,6 +167,7 @@ from synthorg.persistence.postgres.workflow_definition_repo import (
 from synthorg.persistence.postgres.workflow_execution_repo import (
     PostgresWorkflowExecutionRepository,
 )
+from synthorg.persistence.settings_protocol import SettingRow
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -931,8 +932,8 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
             PersistenceConnectionError: If not connected or settings
                 repository is not yet ported.
         """
-        result = await self.settings.get(NotBlankStr("_system"), key)
-        return result[0] if result is not None else None
+        entity = await self.settings.get((NotBlankStr("_system"), key))
+        return entity.value if entity is not None else None
 
     async def set_setting(self, key: NotBlankStr, value: str) -> None:
         """Store a setting value (upsert) in the ``_system`` namespace.
@@ -944,12 +945,13 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
                 repository is not yet ported.
         """
         updated_at = datetime.now(UTC)
-        await self.settings.set(
-            NotBlankStr("_system"),
-            key,
-            value,
-            updated_at.isoformat(),
+        entity = SettingRow(
+            namespace=NotBlankStr("_system"),
+            key=key,
+            value=value,
+            updated_at=updated_at.isoformat(),
         )
+        await self.settings.save(entity)
 
 
 # Public re-export for convenience.
