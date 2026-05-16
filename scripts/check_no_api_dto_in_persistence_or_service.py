@@ -8,10 +8,16 @@ domain module they describe (e.g.
 modules are HTTP-facing aliases and importing them from the
 persistence layer creates a layering cycle.
 
-The gate scans ``*.py`` files under:
+The gate scans:
 
-* ``src/synthorg/persistence/``
-* ``src/synthorg/api/services/`` (the service layer)
+* every ``*.py`` file under ``src/synthorg/persistence/``
+* every ``*.py`` file under ``src/synthorg/api/services/`` (the
+  API service layer)
+* every domain service-layer module elsewhere under
+  ``src/synthorg/`` -- files named ``service.py`` or matching
+  ``*_service.py`` (e.g. ``hr/offboarding_service.py``,
+  ``memory/service.py``) -- so a service module edited in isolation
+  cannot slip an ``api.dto_*`` import past the gate
 
 and flags any ``from synthorg.api.dto_<name> import ...`` or
 ``import synthorg.api.dto_<name>`` statement. ``synthorg.api`` imports
@@ -50,9 +56,21 @@ _IO_ERROR_PREFIX: Final[str] = "[I/O ERROR] "
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
+_SRC_ROOT: Final[Path] = _REPO_ROOT / "src" / "synthorg"
+
 _SCOPED_DIRS: Final[tuple[Path, ...]] = (
-    _REPO_ROOT / "src" / "synthorg" / "persistence",
-    _REPO_ROOT / "src" / "synthorg" / "api" / "services",
+    _SRC_ROOT / "persistence",
+    _SRC_ROOT / "api" / "services",
+)
+
+# Domain service-layer modules live throughout the tree (not just
+# under api/services/). They are identified by filename: ``service.py``
+# or ``*_service.py``. Scanning them by glob keeps the gate's coverage
+# aligned with the "service layer must not import api.dto_*" rule even
+# when such a module is edited in isolation.
+_SERVICE_MODULE_GLOBS: Final[tuple[str, ...]] = (
+    "**/service.py",
+    "**/*_service.py",
 )
 
 # ``from synthorg.api import dto_capability`` reaches the same DTO
@@ -113,12 +131,21 @@ def _scan(path: Path) -> tuple[list[str], list[str]]:
 
 
 def _discover_default_paths() -> list[Path]:
-    """Return all ``*.py`` files under ``src/synthorg/{persistence,service}/``."""
-    discovered: list[Path] = []
+    """Return persistence + service-layer ``*.py`` files to scan.
+
+    Covers every file under :data:`_SCOPED_DIRS` plus every domain
+    service-layer module (``service.py`` / ``*_service.py``) anywhere
+    under ``src/synthorg/``. Paths are de-duplicated (a file under
+    ``api/services/`` may match both) and returned in stable order.
+    """
+    discovered: set[Path] = set()
     for root in _SCOPED_DIRS:
         if root.exists():
-            discovered.extend(sorted(root.rglob("*.py")))
-    return discovered
+            discovered.update(root.rglob("*.py"))
+    if _SRC_ROOT.exists():
+        for pattern in _SERVICE_MODULE_GLOBS:
+            discovered.update(_SRC_ROOT.glob(pattern))
+    return sorted(discovered)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -132,7 +159,9 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help=(
             "Python files to scan. When omitted, the gate scans every "
-            "*.py file under src/synthorg/persistence/ and src/synthorg/service/."
+            "*.py file under src/synthorg/persistence/ and "
+            "src/synthorg/api/services/, plus every domain service-layer "
+            "module (service.py / *_service.py) under src/synthorg/."
         ),
     )
     args = parser.parse_args(argv)

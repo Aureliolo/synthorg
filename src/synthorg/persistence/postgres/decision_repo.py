@@ -41,7 +41,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import validate_pagination_args
+from synthorg.persistence._shared import normalize_utc, validate_pagination_args
 from synthorg.persistence.decision_protocol import (  # noqa: TC001
     DecisionFilterSpec,
     DecisionRole,
@@ -867,7 +867,7 @@ class PostgresDecisionRepository:
             ):
                 await cur.execute(
                     "DELETE FROM decision_records WHERE recorded_at < %s",
-                    (threshold,),
+                    (normalize_utc(threshold),),
                 )
                 return cur.rowcount
         except psycopg.Error as exc:

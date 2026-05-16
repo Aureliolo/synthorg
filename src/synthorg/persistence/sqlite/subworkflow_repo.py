@@ -351,6 +351,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
     ) -> tuple[WorkflowDefinition, ...]:
         """List subworkflows by composite key in ascending order (paginated).
 
+        Ordering is ``(subworkflow_id, semver)`` as a SQL string
+        comparison -- lexicographic, not semantic-version order (so
+        ``1.10.0`` sorts before ``1.2.0``). This is deliberate: the
+        contract here is a stable, deterministic pagination window, not
+        a semver ranking. Callers that need semantic ordering use
+        :meth:`list_versions`, which sorts versions client-side.
+
         Raises:
             QueryError: If the database query fails.
         """

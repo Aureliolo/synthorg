@@ -20,6 +20,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence._shared.datetime_marshaller import (
     format_iso_utc,
     parse_iso_utc,
@@ -201,9 +202,9 @@ class SQLiteProviderAuditRepo:
         and no ``has_more`` overflow is returned. Use ``list`` when the
         dashboard needs the ``has_more`` signal.
         """
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            raise QueryError(msg)
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED
+        )
         sql = _LIST_BASE_SQL
         params: list[object] = [filter_spec.provider_name]
         effective_offset = offset

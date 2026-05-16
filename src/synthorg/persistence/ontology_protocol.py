@@ -80,10 +80,10 @@ class OntologyEntityRepository(
     async def get(self, entity_id: NotBlankStr) -> EntityDefinition | None:
         """Retrieve an entity definition by name.
 
-        Returns ``None`` when absent (generic ``IdKeyedRepository`` contract).
-        Note: the pre-migration protocol raised ``OntologyNotFoundError``;
-        callers still expecting that should use ``register`` or ``update``
-        (which do raise) or check the ``None`` return from ``get``.
+        Returns ``None`` when absent (generic ``IdKeyedRepository``
+        contract). Callers that need a raised error on a missing entity
+        use ``register`` or ``update`` (which raise) rather than
+        treating a ``None`` return as exceptional.
 
         Args:
             entity_id: The entity name (entity id is the name).

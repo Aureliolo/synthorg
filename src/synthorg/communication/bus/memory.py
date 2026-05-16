@@ -179,7 +179,13 @@ class InMemoryMessageBus:
                 self._known_agents.clear()
                 self._waiters.clear()
                 self._running = True
-                self._shutdown_event.clear()
+                # Allocate a fresh event per generation rather than
+                # clearing the existing one. A receive() in flight from
+                # the previous run captured the old event; clearing it
+                # would let a fast restart resurrect that waiter against
+                # the new generation. The new object leaves the old
+                # waiter bound to its now-set old event.
+                self._shutdown_event = asyncio.Event()  # lint-allow: loop-bound-init
                 self._idle_poll_count = 0
                 self._last_idle_summary = self._clock.monotonic()
                 maxlen = self._config.retention.max_messages_per_channel
@@ -630,8 +636,16 @@ class InMemoryMessageBus:
             queue = self._ensure_queue(channel_name, subscriber_id)
             key = (channel_name, subscriber_id)
             self._waiters.setdefault(key, set()).add(unsub_future)
+            # Bind to this generation's shutdown event while holding
+            # the lock. A concurrent stop()+start() swaps in a fresh
+            # event; capturing here ties this waiter to the event
+            # stop() will actually set, so a fast restart cannot strand
+            # it on a stale generation.
+            shutdown_event = self._shutdown_event
         try:
-            result = await self._await_with_shutdown(queue, timeout, unsub_future)
+            result = await self._await_with_shutdown(
+                queue, timeout, unsub_future, shutdown_event
+            )
         finally:
             # Remove this waiter's future from the active set so the
             # next ``unsubscribe`` only targets still-live waiters.
@@ -702,6 +716,7 @@ class InMemoryMessageBus:
         queue: asyncio.Queue[DeliveryEnvelope | None],
         timeout: float | None,  # noqa: ASYNC109
         unsub_future: asyncio.Future[None],
+        shutdown_event: asyncio.Event,
     ) -> DeliveryEnvelope | None:
         """Await next envelope, returning ``None`` on timeout, shutdown, or unsubscribe.
 
@@ -712,13 +727,18 @@ class InMemoryMessageBus:
                 resolves to wake this receive. Resolving the future is
                 how the caller cancels an in-flight receive without
                 needing to send a sentinel through the bounded queue.
+            shutdown_event: The generation-scoped shutdown event the
+                caller captured under ``self._lock``. Awaiting this
+                captured reference (not ``self._shutdown_event``) keeps
+                the waiter bound to the event ``stop()`` will set, even
+                if a concurrent restart swaps in a new one.
 
         Returns:
             The next envelope, or ``None``.
         """
         get_task = asyncio.create_task(queue.get())
         shutdown_task = asyncio.create_task(
-            self._shutdown_event.wait(),
+            shutdown_event.wait(),
         )
         # ``asyncio.wait`` requires awaitables of the same type. Cast
         # the heterogeneous {get_task, shutdown_task, unsub_future} set

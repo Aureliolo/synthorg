@@ -20,6 +20,7 @@ from synthorg.core.persistence_errors import ConstraintViolationError, QueryErro
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
+    PERSISTENCE_API_KEY_COUNT_FAILED,
     PERSISTENCE_API_KEY_DELETE_FAILED,
     PERSISTENCE_API_KEY_FETCH_FAILED,
     PERSISTENCE_API_KEY_FETCHED,
@@ -860,7 +861,7 @@ ON CONFLICT(id) DO UPDATE SET
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count API keys"
             logger.warning(
-                PERSISTENCE_API_KEY_LIST_FAILED,
+                PERSISTENCE_API_KEY_COUNT_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

@@ -28,7 +28,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import validate_pagination_args
+from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
 from synthorg.persistence.decision_protocol import (  # noqa: TC001
     DecisionFilterSpec,
     DecisionRole,
@@ -514,6 +514,13 @@ class SQLiteDecisionRepository:
                 )
                 raise DuplicateRecordError(msg) from exc
             msg = f"Failed to append decision record {event.id!r}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                record_id=event.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                sqlite_errorname=getattr(exc, "sqlite_errorname", None),
+            )
             raise QueryError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
@@ -923,7 +930,7 @@ class SQLiteDecisionRepository:
             async with self._write_context():
                 cursor = await self._db.execute(
                     "DELETE FROM decision_records WHERE recorded_at < ?",
-                    (threshold,),
+                    (format_iso_utc(threshold),),
                 )
                 await self._db.commit()
                 return cursor.rowcount

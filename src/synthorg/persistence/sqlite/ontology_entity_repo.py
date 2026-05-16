@@ -28,7 +28,10 @@ from synthorg.ontology.models import (
     EntityTier,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -163,12 +166,49 @@ class SQLiteOntologyEntityRepository:
         an existing entity is updated rather than raising
         ``OntologyDuplicateError`` (which ``register`` does for the
         insert-only path).
+
+        A single ``INSERT ... ON CONFLICT(name) DO UPDATE`` is used so
+        the existence check and the write are one atomic statement;
+        a ``get``-then-``register``/``update`` sequence races with a
+        concurrent save on the same name. ``created_by`` / ``created_at``
+        are intentionally left untouched on conflict so the original
+        creator and creation time survive an upsert.
         """
-        existing = await self.get(entity.name)
-        if existing is None:
-            await self.register(entity)
-        else:
-            await self.update(entity)
+        params = self._entity_to_params(entity)
+        async with self._write_context():
+            try:
+                await self._db.execute(
+                    """INSERT INTO entity_definitions
+                       (name, tier, source, definition, fields, constraints,
+                        disambiguation, relationships, created_by,
+                        created_at, updated_at)
+                       VALUES (:name, :tier, :source, :definition, :fields,
+                               :constraints, :disambiguation, :relationships,
+                               :created_by, :created_at, :updated_at)
+                       ON CONFLICT(name) DO UPDATE SET
+                           tier = excluded.tier,
+                           source = excluded.source,
+                           definition = excluded.definition,
+                           fields = excluded.fields,
+                           constraints = excluded.constraints,
+                           disambiguation = excluded.disambiguation,
+                           relationships = excluded.relationships,
+                           updated_at = excluded.updated_at""",
+                    params,
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to save entity '{entity.name}'"
+                logger.warning(
+                    ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
+                    entity_name=entity.name,
+                    op="save",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise OntologyError(msg) from exc
 
     async def get(self, name: str) -> EntityDefinition | None:
         """Retrieve an entity definition by name, or None if not found."""
@@ -259,6 +299,9 @@ class SQLiteOntologyEntityRepository:
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """List all entity definitions in name order."""
+        limit = validate_pagination_args(
+            limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
+        )
         cursor = await self._db.execute(
             """SELECT * FROM entity_definitions
                ORDER BY name ASC

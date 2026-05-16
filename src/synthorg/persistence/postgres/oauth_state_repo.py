@@ -23,7 +23,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_OAUTH_STATE_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
+from synthorg.persistence._shared import (
+    coerce_row_timestamp,
+    normalize_utc,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -194,8 +198,9 @@ class PostgresOAuthStateRepository:
         offset: int = 0,
     ) -> tuple[OAuthState, ...]:
         """List all OAuth states with pagination."""
-        if limit <= 0:
-            return ()
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_OAUTH_STATE_FETCH_FAILED
+        )
         # ``created_at`` is non-unique; ``state_token`` (PK) is the
         # deterministic tie-breaker so offset paging cannot skip or
         # duplicate rows that share a timestamp.
@@ -204,7 +209,7 @@ class PostgresOAuthStateRepository:
             "ORDER BY created_at DESC, state_token ASC"
         )
         sql += " LIMIT %s OFFSET %s"
-        params: tuple[object, ...] = (int(limit), max(0, int(offset)))
+        params: tuple[object, ...] = (limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,

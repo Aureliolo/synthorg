@@ -42,7 +42,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, normalize_utc
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -558,7 +558,7 @@ class PostgresCostRecordRepository:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     "DELETE FROM cost_records WHERE timestamp < %s",
-                    (threshold,),
+                    (normalize_utc(threshold),),
                 )
                 deleted_count = cur.rowcount
                 await conn.commit()
@@ -756,7 +756,7 @@ class PostgresMessageRepository:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     "DELETE FROM messages WHERE timestamp < %s",
-                    (threshold,),
+                    (normalize_utc(threshold),),
                 )
                 rowcount = cur.rowcount
                 await conn.commit()

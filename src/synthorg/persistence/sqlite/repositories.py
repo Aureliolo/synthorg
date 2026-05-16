@@ -52,6 +52,7 @@ from synthorg.persistence._shared import (
     DEFAULT_LIST_LIMIT,
     format_iso_utc,
     normalize_utc,
+    validate_pagination_args,
 )
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
@@ -234,10 +235,13 @@ id, title, description, type, priority, project, created_by,
         Ordering is deterministic on the primary key ``id`` so paginated
         callers see stable windows.
         """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
+        )
         query = (
             f"SELECT {self._TASK_COLUMNS} FROM tasks ORDER BY id ASC LIMIT ? OFFSET ?"  # noqa: S608
         )
-        params: list[object] = [int(limit), int(offset)]
+        params: list[object] = [limit, offset]
 
         try:
             cursor = await self._db.execute(query, params)
@@ -266,6 +270,9 @@ id, title, description, type, priority, project, created_by,
         Ordering is deterministic on the primary key ``id`` so paginated
         callers see stable windows.
         """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
+        )
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.status is not None:
@@ -282,7 +289,7 @@ id, title, description, type, priority, project, created_by,
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY id ASC LIMIT ? OFFSET ?"
-        params.extend([int(limit), int(offset)])
+        params.extend([limit, offset])
 
         try:
             cursor = await self._db.execute(query, params)
@@ -752,7 +759,7 @@ FROM messages"""
         if filter_spec.channel is not None:
             sql += " WHERE channel = ?"
             params.append(filter_spec.channel)
-        sql += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        sql += " ORDER BY timestamp DESC, id ASC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         try:
             cursor = await self._db.execute(sql, params)

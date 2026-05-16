@@ -26,6 +26,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
+    validate_pagination_args,
 )
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
@@ -251,18 +252,17 @@ class SQLiteWebhookReceiptRepository:
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List all webhook receipts with pagination."""
-        if limit <= 0:
-            return ()
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED
+        )
         sql = (
             "SELECT "
             "    id, connection_name, event_type, status, "
             "    received_at, processed_at, payload_json, error "
             "FROM webhook_receipts ORDER BY received_at DESC, id DESC"
         )
-        params: tuple[object, ...] = ()
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (int(limit), max(0, int(offset)))
+        sql += " LIMIT ? OFFSET ?"
+        params: tuple[object, ...] = (limit, offset)
         try:
             async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()

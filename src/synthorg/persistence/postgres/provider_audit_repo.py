@@ -174,8 +174,8 @@ class PostgresProviderAuditRepo:
     async def append(self, event: ProviderAuditEvent) -> None:
         """Insert one audit event (generic AppendOnly surface).
 
-        Discards the assigned id; callers that need the id use
-        :meth:`record` (bespoke D7).
+        Discards the assigned id; callers that need the persisted id
+        use :meth:`record`, which returns it.
         """
         await self.record(event)
 

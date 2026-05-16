@@ -18,6 +18,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_AUTH_SESSION_PERSISTENCE_ERROR,
     API_SESSION_CLEANUP,
     API_SESSION_CREATE_FAILED,
     API_SESSION_REVOKE_FAILED,
@@ -29,6 +30,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
 )
 from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
 )
 from synthorg.persistence.auth_protocol import SessionFilterSpec  # noqa: TC001
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
@@ -170,11 +172,13 @@ class SQLiteSessionRepository:
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all sessions with pagination."""
+        limit = validate_pagination_args(
+            limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
+        )
         sql = "SELECT * FROM sessions ORDER BY session_id ASC"
         params: tuple[object, ...] = ()
-        effective_offset = max(0, int(offset))
         sql += " LIMIT ? OFFSET ?"
-        params = (*params, int(limit), effective_offset)
+        params = (*params, limit, offset)
         cursor = await self._db.execute(sql, params)
         rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
@@ -187,6 +191,9 @@ class SQLiteSessionRepository:
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List sessions matching the filter spec."""
+        limit = validate_pagination_args(
+            limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
+        )
         sql = "SELECT * FROM sessions WHERE 1=1"
         params: list[object] = []
         if filter_spec.user_id is not None:
@@ -196,9 +203,8 @@ class SQLiteSessionRepository:
             sql += " AND revoked = ?"
             params.append(int(filter_spec.revoked))
         sql += " ORDER BY session_id ASC"
-        effective_offset = max(0, int(offset))
         sql += " LIMIT ? OFFSET ?"
-        params = [*params, int(limit), effective_offset]
+        params = [*params, limit, offset]
         cursor = await self._db.execute(sql, tuple(params))
         rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)

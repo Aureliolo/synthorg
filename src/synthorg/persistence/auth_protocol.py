@@ -196,16 +196,17 @@ class SessionRepository(
     async def revoke(self, session_id: NotBlankStr) -> bool:
         """Mark a session as revoked. Returns True iff it existed.
 
-        Bespoke D7: state transition with cache-coherence side-effect
-        (updates load_revoked-backed in-memory set) that the generic
-        save cannot express.
+        Distinct from a generic save because the state transition also
+        updates the ``load_revoked``-backed in-memory set, keeping the
+        synchronous ``is_revoked`` hot-path check coherent.
         """
         ...
 
     async def revoke_all_for_user(self, user_id: NotBlankStr) -> int:
         """Revoke every active session for a user; return the count.
 
-        Bespoke D7: domain invariant specific to session revocation policy.
+        Enforces the session-revocation policy as a single domain
+        operation rather than a caller-orchestrated loop over saves.
         """
         ...
 
@@ -216,7 +217,9 @@ class SessionRepository(
     ) -> int:
         """Revoke oldest sessions when a user exceeds the concurrent limit.
 
-        Bespoke D7: domain invariant specific to session concurrency.
+        Enforces the per-user session-concurrency invariant atomically;
+        the eviction choice (oldest-first) is domain policy the generic
+        save surface cannot express.
         """
         ...
 

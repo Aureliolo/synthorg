@@ -145,7 +145,7 @@ class PostgresMeetingCooldownRepository:
         try:
             row["last_triggered_at"] = normalize_utc(row["last_triggered_at"])
             return MeetingCooldownRecord.model_validate(row)
-        except (ValidationError, ValueError) as exc:
+        except (ValidationError, ValueError, TypeError, KeyError) as exc:
             msg = f"corrupt meeting_cooldown row {row.get('meeting_type_name')!r}"
             logger.warning(
                 PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,

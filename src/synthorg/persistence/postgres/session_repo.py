@@ -14,10 +14,14 @@ from synthorg.core.auth.session import Session
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    API_AUTH_SESSION_PERSISTENCE_ERROR,
     API_SESSION_CLEANUP,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared.pagination import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared.pagination import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.auth_protocol import SessionFilterSpec  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -145,13 +149,15 @@ class PostgresSessionRepository:
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all sessions with pagination."""
+        limit = validate_pagination_args(
+            limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
+        )
         dict_row = self._dict_row
 
         sql = "SELECT * FROM sessions ORDER BY session_id ASC"
         params: tuple[object, ...] = ()
-        effective_offset = max(0, int(offset))
         sql += " LIMIT %s OFFSET %s"
-        params = (*params, int(limit), effective_offset)
+        params = (*params, limit, offset)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
@@ -168,6 +174,9 @@ class PostgresSessionRepository:
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List sessions matching the filter spec."""
+        limit = validate_pagination_args(
+            limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
+        )
         dict_row = self._dict_row
 
         sql = "SELECT * FROM sessions WHERE TRUE"
@@ -179,9 +188,8 @@ class PostgresSessionRepository:
             sql += " AND revoked = %s"
             params.append(filter_spec.revoked)
         sql += " ORDER BY session_id ASC"
-        effective_offset = max(0, int(offset))
         sql += " LIMIT %s OFFSET %s"
-        params = [*params, int(limit), effective_offset]
+        params = [*params, limit, offset]
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,

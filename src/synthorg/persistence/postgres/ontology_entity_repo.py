@@ -170,12 +170,36 @@ class PostgresOntologyEntityRepository:
         an existing entity is updated rather than raising
         ``OntologyDuplicateError`` (which ``register`` does for the
         insert-only path).
+
+        A single ``INSERT ... ON CONFLICT (name) DO UPDATE`` is used so
+        the existence check and the write are one atomic statement;
+        a ``get``-then-``register``/``update`` sequence races with a
+        concurrent save on the same name. ``created_by`` / ``created_at``
+        are intentionally left untouched on conflict so the original
+        creator and creation time survive an upsert.
         """
-        existing = await self.get(entity.name)
-        if existing is None:
-            await self.register(entity)
-        else:
-            await self.update(entity)
+        params = self._entity_to_params(entity)
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """INSERT INTO entity_definitions
+                   (name, tier, source, definition, fields, constraints,
+                    disambiguation, relationships, created_by,
+                    created_at, updated_at)
+                   VALUES (%(name)s, %(tier)s, %(source)s, %(definition)s,
+                           %(fields)s, %(constraints)s, %(disambiguation)s,
+                           %(relationships)s, %(created_by)s,
+                           %(created_at)s, %(updated_at)s)
+                   ON CONFLICT (name) DO UPDATE SET
+                       tier = EXCLUDED.tier,
+                       source = EXCLUDED.source,
+                       definition = EXCLUDED.definition,
+                       fields = EXCLUDED.fields,
+                       constraints = EXCLUDED.constraints,
+                       disambiguation = EXCLUDED.disambiguation,
+                       relationships = EXCLUDED.relationships,
+                       updated_at = EXCLUDED.updated_at""",
+                params,
+            )
 
     async def get(self, name: str) -> EntityDefinition | None:
         """Retrieve an entity definition by name, or None if not found."""
