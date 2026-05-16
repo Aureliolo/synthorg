@@ -353,6 +353,14 @@ class _FakeUserRepository:
     ) -> tuple[User, ...]:
         return ()
 
+    async def list_after_id(
+        self,
+        *,
+        after_id: str | None = None,
+        limit: int = 100,
+    ) -> tuple[User, ...]:
+        return ()
+
     async def query(
         self,
         filter_spec: UserFilterSpec,

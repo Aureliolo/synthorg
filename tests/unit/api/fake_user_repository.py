@@ -124,6 +124,21 @@ class FakeUserRepository:
         sliced = humans[offset : offset + limit]
         return tuple(copy.deepcopy(u) for u in sliced)
 
+    async def list_after_id(
+        self,
+        *,
+        after_id: str | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> tuple[User, ...]:
+        limit = validate_pagination_args(limit, offset=0, event="fake.list_after_id")
+        humans = sorted(
+            (u for u in self._users.values() if u.role != HumanRole.SYSTEM),
+            key=lambda u: u.id,
+        )
+        if after_id is not None:
+            humans = [u for u in humans if u.id > after_id]
+        return tuple(copy.deepcopy(u) for u in humans[:limit])
+
     async def query(
         self,
         filter_spec: object,

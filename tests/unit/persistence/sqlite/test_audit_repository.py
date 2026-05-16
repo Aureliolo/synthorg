@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -435,15 +436,11 @@ class TestSQLiteAuditRepository:
     async def test_query_until_before_since_raises(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        """until < since raises QueryError."""
-        repo = SQLiteAuditRepository(
-            migrated_db, write_context=make_private_write_context()
-        )
+        """An inverted since/until window is rejected at the filter-spec
+        boundary (model_validator), before query() is ever reached."""
         now = datetime.now(UTC)
-        with pytest.raises(QueryError, match="until"):
-            await repo.query(
-                AuditFilterSpec(since=now, until=now - timedelta(hours=1)),
-            )
+        with pytest.raises(ValidationError, match="until"):
+            AuditFilterSpec(since=now, until=now - timedelta(hours=1))
 
     async def test_since_boundary_inclusive(
         self, migrated_db: aiosqlite.Connection

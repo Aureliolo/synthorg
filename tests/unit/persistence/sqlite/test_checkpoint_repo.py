@@ -182,7 +182,11 @@ class TestSQLiteCheckpointRepository:
         with pytest.raises(ValueError, match="At least one"):
             await repo.get_latest()
 
-    async def test_upsert_same_id(self, migrated_db: aiosqlite.Connection) -> None:
+    async def test_append_duplicate_id_raises_and_preserves_row(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        from synthorg.core.persistence_errors import DuplicateRecordError
+
         repo = SQLiteCheckpointRepository(
             migrated_db, write_context=make_private_write_context()
         )
@@ -198,13 +202,17 @@ class TestSQLiteCheckpointRepository:
             context_json='{"version": 2}',
             turn_number=2,
         )
-        await repo.append(cp_v2)
+        # Append-only contract: a repeated id is a contract violation,
+        # not a silent overwrite.
+        with pytest.raises(DuplicateRecordError):
+            await repo.append(cp_v2)
 
+        # The original row is preserved unchanged.
         result = await repo.get_latest(execution_id="exec-001")
         assert result is not None
         assert result.id == "cp-upsert"
-        assert result.context_json == '{"version": 2}'
-        assert result.turn_number == 2
+        assert result.context_json == '{"version": 1}'
+        assert result.turn_number == 1
 
     async def test_delete_by_execution_returns_count(
         self, migrated_db: aiosqlite.Connection
