@@ -162,7 +162,12 @@ repos:
     rev: v1.25.2
     hooks:
       - id: zizmor
-        files: ^(\.github/workflows/.*\.ya?ml|\.github/\.zizmor\.yml)$
+        # Match workflows + composite actions. zizmor v1.25+ recognises both
+        # as inputs. `.github/.zizmor.yml` is intentionally NOT matched: it
+        # is the audit config (passed via --config below) and zizmor v1.25
+        # exits with `no inputs collected` if the only matched path is the
+        # config itself.
+        files: ^(\.github/workflows/.*\.ya?ml|\.github/actions/.+/action\.ya?ml)$
         args: [--config=.github/.zizmor.yml]
 
   - repo: local

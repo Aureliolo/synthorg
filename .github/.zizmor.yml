@@ -16,3 +16,16 @@ rules:
       # steps.scan-ref.outputs.ref is set by echo in the same job (not
       # user-controllable). zizmor flags it at Low confidence.
       - docker.yml
+
+  unpinned-tools:
+    ignore:
+      # aquasecurity/trivy-action is invoked without a `version:` input
+      # because the trivy binary itself is curl-installed and SHA256-
+      # verified upstream in build-apko-base / setup-apko (TRIVY_VERSION
+      # env var, see scripts/setup-apko.sh and the trivy install steps).
+      # The trivy-action's own auto-install path is therefore unused.
+      # zizmor's `unpinned-tools` audit was introduced in v1.25.0 and
+      # cannot see through this pattern -- it flags any trivy-action
+      # callsite that lacks a `version:` input. Track a unified pinning
+      # mechanism in a follow-up issue rather than dual-pinning here.
+      - docker.yml
