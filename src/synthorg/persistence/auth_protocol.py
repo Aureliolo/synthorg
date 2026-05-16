@@ -176,6 +176,7 @@ class SessionRepository(
         self,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[Session, ...]:
         """List sessions including revoked, ordered by created_at DESC.
 
@@ -190,6 +191,7 @@ class SessionRepository(
         user_id: NotBlankStr,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[Session, ...]:
         """List sessions for a user, newest-first (bespoke D7 alternate-key)."""
         ...

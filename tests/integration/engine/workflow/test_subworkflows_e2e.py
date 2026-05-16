@@ -314,7 +314,7 @@ class TestSubworkflowDeleteProtection:
         await registry.delete("sub-greet", "1.0.0")
 
         # Use repo directly since registry.get() raises on not-found.
-        result = await sub_repo.get("sub-greet", "1.0.0")
+        result = await sub_repo.get(("sub-greet", "1.0.0"))
         assert result is None
 
 

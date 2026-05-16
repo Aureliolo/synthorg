@@ -117,7 +117,7 @@ class TestOrchestratorLifecycle:
                 await orchestrator._current_task
 
         # Run should be persisted.
-        fetched = await run_repo.get_run(run.id)
+        fetched = await run_repo.get(run.id)
         assert fetched is not None
 
     async def test_double_start_raises(
@@ -165,7 +165,7 @@ class TestOrchestratorCancellation:
                     await orchestrator._current_task
 
         # Run should be marked as failed.
-        fetched = await run_repo.get_run(run.id)
+        fetched = await run_repo.get(run.id)
         assert fetched is not None
         assert fetched.stage == FineTuneStage.FAILED
 
@@ -193,10 +193,10 @@ class TestOrchestratorRecovery:
             started_at=now,
             updated_at=now,
         )
-        await run_repo.save_run(run)
+        await run_repo.save(run)
         count = await orchestrator.recover_interrupted()
         assert count == 1
-        fetched = await run_repo.get_run("stale-run")
+        fetched = await run_repo.get("stale-run")
         assert fetched is not None
         assert fetched.stage == FineTuneStage.FAILED
 

@@ -388,7 +388,7 @@ class TestSessionStoreLoadRevoked:
         store1 = SqliteSessionStore(db, write_context=make_private_write_context())
         with _patch_now():
             await store1.load_revoked()
-        await store1.create(_make_session())
+        await store1.save(_make_session())
         await store1.revoke("sess-1")
 
         # Create a new store (simulates restart).

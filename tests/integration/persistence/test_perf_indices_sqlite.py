@@ -50,7 +50,7 @@ async def _seed_tasks(backend: SQLitePersistenceBackend) -> None:
 
 async def _seed_cost_records(backend: SQLitePersistenceBackend, n: int) -> None:
     for i in range(n):
-        await backend.cost_records.save(
+        await backend.cost_records.append(
             CostRecord(
                 agent_id=NotBlankStr(_AGENTS[i % len(_AGENTS)]),
                 task_id=NotBlankStr(_TASKS[i % len(_TASKS)]),

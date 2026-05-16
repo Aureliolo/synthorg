@@ -33,7 +33,7 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from synthorg.persistence.preset_protocol import PresetListRow, PresetRow
+from synthorg.persistence.preset_protocol import Preset
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
 
@@ -44,34 +44,41 @@ class FakeTaskRepository:
     def __init__(self) -> None:
         self._tasks: dict[str, Task] = {}
 
-    async def save(self, task: Task) -> None:
-        self._tasks[task.id] = task
+    async def save(self, entity: Task) -> None:
+        self._tasks[entity.id] = entity
 
-    async def get(self, task_id: str) -> Task | None:
-        return self._tasks.get(task_id)
+    async def get(self, entity_id: str) -> Task | None:
+        return self._tasks.get(entity_id)
 
-    async def list_tasks(
+    async def list_items(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
-        result = self._filtered(status, assigned_to, project)
-        if limit is None:
-            return tuple(result[offset:])
+        result = sorted(self._tasks.values(), key=lambda t: t.id)
         return tuple(result[offset : offset + limit])
 
-    async def count_tasks(
+    async def query(
         self,
+        filter_spec: object,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-    ) -> int:
-        return len(self._filtered(status, assigned_to, project))
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Task, ...]:
+        result = self._filtered(
+            getattr(filter_spec, "status", None),
+            getattr(filter_spec, "assigned_to", None),
+            getattr(filter_spec, "project", None),
+        )
+        return tuple(result[offset : offset + limit])
+
+    async def count(self, filter_spec: object) -> int:
+        return len(self._filtered(
+            getattr(filter_spec, "status", None),
+            getattr(filter_spec, "assigned_to", None),
+            getattr(filter_spec, "project", None),
+        ))
 
     def _filtered(
         self,
@@ -88,8 +95,8 @@ class FakeTaskRepository:
             result = [t for t in result if t.project == project]
         return result
 
-    async def delete(self, task_id: str) -> bool:
-        return self._tasks.pop(task_id, None) is not None
+    async def delete(self, entity_id: str) -> bool:
+        return self._tasks.pop(entity_id, None) is not None
 
 
 class FakeCostRecordRepository:
@@ -98,21 +105,28 @@ class FakeCostRecordRepository:
     def __init__(self) -> None:
         self._records: list[CostRecord] = []
 
-    async def save(self, record: CostRecord) -> None:
-        self._records.append(record)
+    async def append(self, event: CostRecord) -> None:
+        self._records.append(event)
 
     async def query(
         self,
+        filter_spec: object,
         *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         result = self._records
+        agent_id = getattr(filter_spec, "agent_id", None)
+        task_id = getattr(filter_spec, "task_id", None)
         if agent_id is not None:
             result = [r for r in result if r.agent_id == agent_id]
         if task_id is not None:
             result = [r for r in result if r.task_id == task_id]
-        return tuple(result)
+        return tuple(result[offset : offset + limit])
+
+    async def purge_before(self, threshold: object) -> int:
+        del threshold
+        return 0
 
     async def aggregate(
         self,
@@ -120,7 +134,13 @@ class FakeCostRecordRepository:
         agent_id: str | None = None,
         task_id: str | None = None,
     ) -> float:
-        records = await self.query(agent_id=agent_id, task_id=task_id)
+        from synthorg.persistence.cost_record_protocol import (
+            CostRecordFilterSpec,
+        )
+
+        records = await self.query(
+            CostRecordFilterSpec(agent_id=agent_id, task_id=task_id),
+        )
         return sum(r.cost for r in records)
 
 
@@ -711,37 +731,40 @@ class FakePersonalityPresetRepository:
     """In-memory custom personality preset repository for tests."""
 
     def __init__(self) -> None:
-        self._presets: dict[str, PresetRow] = {}
+        self._presets: dict[str, Preset] = {}
 
-    async def save(
+    async def save(self, entity: Preset) -> None:
+        existing = self._presets.get(entity.name)
+        created_at = existing.created_at if existing else entity.created_at
+        self._presets[entity.name] = entity.model_copy(
+            update={"created_at": created_at},
+        )
+
+    async def get(self, entity_id: NotBlankStr) -> Preset | None:
+        return self._presets.get(entity_id)
+
+    async def list_items(
         self,
-        name: NotBlankStr,
-        config_json: str,
-        description: str,
-        created_at: str,
-        updated_at: str,
-    ) -> None:
-        existing = self._presets.get(name)
-        self._presets[name] = PresetRow(
-            config_json,
-            description,
-            existing.created_at if existing else created_at,
-            updated_at,
-        )
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Preset, ...]:
+        rows = tuple(p for _, p in sorted(self._presets.items()))
+        return rows[offset : offset + limit]
 
-    async def get(self, name: NotBlankStr) -> PresetRow | None:
-        return self._presets.get(name)
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Preset, ...]:
+        return await self.list_items(limit=limit, offset=offset)
 
-    async def list_all(self, *, limit: int = 100) -> tuple[PresetListRow, ...]:
-        rows = tuple(
-            PresetListRow(name, *row) for name, row in sorted(self._presets.items())
-        )
-        return rows[:limit]
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._presets.pop(entity_id, None) is not None
 
-    async def delete(self, name: NotBlankStr) -> bool:
-        return self._presets.pop(name, None) is not None
-
-    async def count(self) -> int:
+    async def count(self, filter_spec: object | None = None) -> int:
         return len(self._presets)
 
 

@@ -8,6 +8,7 @@ import pytest
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.persistence.approval_protocol import ApprovalFilterSpec
 from synthorg.persistence.sqlite.approval_repo import SQLiteApprovalRepository
 from tests._shared.persistence import make_private_write_context
 
@@ -126,7 +127,7 @@ class TestSQLiteApprovalRepository:
     ) -> None:
         await repo.save(_item(item_id="a1", status=ApprovalStatus.PENDING))
         await repo.save(_item(item_id="a2", status=ApprovalStatus.APPROVED))
-        pending = await repo.list_items(status=ApprovalStatus.PENDING)
+        pending = await repo.query(ApprovalFilterSpec(status=ApprovalStatus.PENDING))
         assert len(pending) == 1
         assert pending[0].id == "a1"
 
@@ -140,7 +141,7 @@ class TestSQLiteApprovalRepository:
         await repo.save(
             _item(item_id="a2", risk_level=ApprovalRiskLevel.LOW),
         )
-        high = await repo.list_items(risk_level=ApprovalRiskLevel.HIGH)
+        high = await repo.query(ApprovalFilterSpec(risk_level=ApprovalRiskLevel.HIGH))
         assert len(high) == 1
         assert high[0].id == "a1"
 
@@ -154,7 +155,7 @@ class TestSQLiteApprovalRepository:
         await repo.save(
             _item(item_id="a2", action_type="meta.architecture"),
         )
-        config = await repo.list_items(action_type="meta.config_tuning")
+        config = await repo.query(ApprovalFilterSpec(action_type="meta.config_tuning"))
         assert len(config) == 1
         assert config[0].id == "a1"
 

@@ -145,9 +145,13 @@ class TestRepositoryTransparency:
                 timestamp=base + timedelta(days=i % 7, hours=i),
                 call_category=None,
             )
-            await timescaledb_backend.cost_records.save(record)
+            await timescaledb_backend.cost_records.append(record)
 
-        results = await timescaledb_backend.cost_records.query()
+        from synthorg.persistence.cost_record_protocol import (
+            CostRecordFilterSpec,
+        )
+
+        results = await timescaledb_backend.cost_records.query(CostRecordFilterSpec())
         assert len(results) == 50
 
         # Hypertable partitioning check: multiple chunks exist.
@@ -172,7 +176,7 @@ class TestRepositoryTransparency:
 
         now = datetime.now(UTC)
         for i in range(5):
-            await repo.save(
+            await repo.append(
                 AuditEntry(
                     id=NotBlankStr(f"audit-{i}"),
                     timestamp=now,

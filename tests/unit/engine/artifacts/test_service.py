@@ -36,26 +36,33 @@ class _FakeArtifactRepo:
     def __init__(self) -> None:
         self._rows: dict[str, Artifact] = {}
 
-    async def save(self, artifact: Artifact) -> bool:
-        created = artifact.id not in self._rows
-        self._rows[artifact.id] = artifact
+    async def save(self, entity: Artifact) -> None:
+        self._rows[entity.id] = entity
+
+    async def save_returning_outcome(self, entity: Artifact) -> bool:
+        created = entity.id not in self._rows
+        self._rows[entity.id] = entity
         return created
 
-    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
-        return self._rows.get(artifact_id)
+    async def get(self, entity_id: NotBlankStr) -> Artifact | None:
+        return self._rows.get(entity_id)
 
-    async def list_artifacts(
+    async def list_items(
         self,
         *,
-        task_id: NotBlankStr | None = None,
-        created_by: NotBlankStr | None = None,
-        artifact_type: ArtifactType | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
-        # Mirror the real repo's validation so service-level tests
-        # exercising bad pagination args see the same QueryError they
-        # would in production.
+        rows = sorted(self._rows.values(), key=lambda a: a.id)
+        return tuple(rows[offset : offset + limit])
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Artifact, ...]:
         if limit < 1:
             from synthorg.core.persistence_errors import QueryError
 
@@ -66,22 +73,28 @@ class _FakeArtifactRepo:
 
             msg = f"offset must be >= 0, got {offset}"
             raise QueryError(msg)
-        # Mirror the production clamp so service-level tests that pass a
-        # runaway ``limit`` (e.g. ``limit=10**9``) observe the same page
-        # ceiling as the real backends instead of silently materialising
-        # the full table.
         effective_limit = min(limit, _FAKE_MAX_LIST_ROWS)
         rows = sorted(self._rows.values(), key=lambda a: a.id)
-        if task_id is not None:
-            rows = [a for a in rows if a.task_id == task_id]
-        if created_by is not None:
-            rows = [a for a in rows if a.created_by == created_by]
-        if artifact_type is not None:
-            rows = [a for a in rows if a.type == artifact_type]
+        if getattr(filter_spec, "task_id", None) is not None:
+            rows = [a for a in rows if a.task_id == filter_spec.task_id]  # type: ignore[attr-defined]
+        if getattr(filter_spec, "created_by", None) is not None:
+            rows = [a for a in rows if a.created_by == filter_spec.created_by]  # type: ignore[attr-defined]
+        if getattr(filter_spec, "artifact_type", None) is not None:
+            rows = [a for a in rows if a.type == filter_spec.artifact_type]  # type: ignore[attr-defined]
         return tuple(rows[offset : offset + effective_limit])
 
-    async def delete(self, artifact_id: NotBlankStr) -> bool:
-        return self._rows.pop(artifact_id, None) is not None
+    async def count(self, filter_spec: object) -> int:
+        rows = list(self._rows.values())
+        if getattr(filter_spec, "task_id", None) is not None:
+            rows = [a for a in rows if a.task_id == filter_spec.task_id]  # type: ignore[attr-defined]
+        if getattr(filter_spec, "created_by", None) is not None:
+            rows = [a for a in rows if a.created_by == filter_spec.created_by]  # type: ignore[attr-defined]
+        if getattr(filter_spec, "artifact_type", None) is not None:
+            rows = [a for a in rows if a.type == filter_spec.artifact_type]  # type: ignore[attr-defined]
+        return len(rows)
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._rows.pop(entity_id, None) is not None
 
 
 async def test_create_emits_api_artifact_created() -> None:

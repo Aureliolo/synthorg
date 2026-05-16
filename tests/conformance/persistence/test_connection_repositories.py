@@ -130,7 +130,7 @@ class TestConnectionRepository:
             ),
         )
 
-        from synthorg.persistence.connection_protocol import (  # noqa: PLC0415
+        from synthorg.persistence.connection_protocol import (
             ConnectionFilterSpec,
         )
 
@@ -222,7 +222,7 @@ class TestConnectionRepository:
                 _connection(name, connection_type=ConnectionType.GITHUB),
             )
 
-        from synthorg.persistence.connection_protocol import (  # noqa: PLC0415
+        from synthorg.persistence.connection_protocol import (
             ConnectionFilterSpec,
         )
 

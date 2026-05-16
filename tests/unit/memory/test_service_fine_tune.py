@@ -60,19 +60,32 @@ class _FakeRunRepo:
     def __init__(self, runs: list[FineTuneRun] | None = None) -> None:
         self._runs = list(runs or [])
 
-    async def save_run(self, run: FineTuneRun) -> None:
-        self._runs.append(run)
+    async def save(self, entity: FineTuneRun) -> None:
+        self._runs.append(entity)
 
-    async def get_run(self, run_id: str) -> FineTuneRun | None:
+    async def get(self, entity_id: str) -> FineTuneRun | None:
         for r in self._runs:
-            if r.id == run_id:
+            if r.id == entity_id:
                 return r
         return None
+
+    async def delete(self, entity_id: str) -> bool:
+        before = len(self._runs)
+        self._runs = [r for r in self._runs if r.id != entity_id]
+        return len(self._runs) < before
 
     async def get_active_run(self) -> FineTuneRun | None:
         return None
 
-    async def list_runs(
+    async def list_items(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[FineTuneRun, ...]:
+        return tuple(self._runs[offset : offset + limit])
+
+    async def list_items_page(
         self,
         *,
         limit: int = 50,
@@ -95,13 +108,22 @@ class _FakeCheckpointRepo:
     ) -> None:
         self._rows = {c.id: c for c in checkpoints or []}
 
-    async def save_checkpoint(self, c: CheckpointRecord) -> None:
-        self._rows[c.id] = c
+    async def save(self, entity: CheckpointRecord) -> None:
+        self._rows[entity.id] = entity
 
-    async def get_checkpoint(self, cid: str) -> CheckpointRecord | None:
-        return self._rows.get(cid)
+    async def get(self, entity_id: str) -> CheckpointRecord | None:
+        return self._rows.get(entity_id)
 
-    async def list_checkpoints(
+    async def list_items(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[CheckpointRecord, ...]:
+        values = tuple(self._rows.values())
+        return values[offset : offset + limit]
+
+    async def list_items_page(
         self,
         *,
         limit: int = 50,
@@ -117,8 +139,8 @@ class _FakeCheckpointRepo:
         for k, v in list(self._rows.items()):
             self._rows[k] = v.model_copy(update={"is_active": False})
 
-    async def delete_checkpoint(self, cid: str) -> None:
-        self._rows.pop(cid, None)
+    async def delete(self, entity_id: str) -> bool:
+        return self._rows.pop(entity_id, None) is not None
 
     async def get_active_checkpoint(self) -> CheckpointRecord | None:
         for v in self._rows.values():

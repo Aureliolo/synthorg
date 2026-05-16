@@ -382,7 +382,7 @@ class FakeSubworkflowRepository:
         parents = await self.find_parents(subworkflow_id, version)
         if parents:
             return False, parents
-        deleted = await self.delete(subworkflow_id, version)
+        deleted = await self.delete((subworkflow_id, version))
         return deleted, ()
 
     async def find_parents(

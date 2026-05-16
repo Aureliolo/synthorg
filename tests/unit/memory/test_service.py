@@ -234,7 +234,7 @@ class TestMemoryServiceCheckpoints:
             run_repo=_FakeRunRepo(),
             settings_service=None,
         )
-        assert await service.get(NotBlankStr("ghost")) is None
+        assert await service.get_checkpoint(NotBlankStr("ghost")) is None
 
     @pytest.mark.parametrize(
         "operation",

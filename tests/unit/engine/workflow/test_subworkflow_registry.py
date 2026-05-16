@@ -95,11 +95,22 @@ class FakeSubworkflowRepository(SubworkflowRepository):
 
     async def get(
         self,
-        subworkflow_id: str,
-        version: str,
+        entity_id: tuple[str, str],
     ) -> WorkflowDefinition | None:
-        row = self._rows.get((subworkflow_id, version))
+        row = self._rows.get(entity_id)
         return copy.deepcopy(row) if row is not None else None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        items = sorted(self._rows.items())
+        return tuple(
+            copy.deepcopy(definition)
+            for _, definition in items[offset : offset + limit]
+        )
 
     async def list_versions(
         self,
@@ -149,12 +160,10 @@ class FakeSubworkflowRepository(SubworkflowRepository):
 
     async def delete(
         self,
-        subworkflow_id: str,
-        version: str,
+        entity_id: tuple[str, str],
     ) -> bool:
-        key = (subworkflow_id, version)
-        if key in self._rows:
-            del self._rows[key]
+        if entity_id in self._rows:
+            del self._rows[entity_id]
             return True
         return False
 
@@ -166,7 +175,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         parents = await self.find_parents(subworkflow_id, version)
         if parents:
             return False, parents
-        deleted = await self.delete(subworkflow_id, version)
+        deleted = await self.delete((subworkflow_id, version))
         return deleted, ()
 
     async def find_parents(

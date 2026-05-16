@@ -78,7 +78,9 @@ class TestConcurrentWrites:
                 tg.create_task(postgres_backend.tasks.save(task))
 
         # Verify every row is present.
-        all_tasks = await postgres_backend.tasks.list_tasks()
+        from synthorg.persistence.task_protocol import TaskFilterSpec
+
+        all_tasks = await postgres_backend.tasks.query(TaskFilterSpec())
         saved_ids = {t.id for t in all_tasks}
         for tid in task_ids:
             assert tid in saved_ids
@@ -109,7 +111,7 @@ class TestConcurrentWrites:
 
         async with asyncio.TaskGroup() as tg:
             for record in records:
-                tg.create_task(postgres_backend.cost_records.save(record))
+                tg.create_task(postgres_backend.cost_records.append(record))
 
         total = await postgres_backend.cost_records.aggregate(task_id="cost-parent")
         # Sum of 0.01 * (1..20) = 0.21 * 10 = 2.10
@@ -235,9 +237,15 @@ class TestNativePostgresTypes:
             timestamp=precise_ts,
             call_category=LLMCallCategory.PRODUCTIVE,
         )
-        await postgres_backend.cost_records.save(record)
+        await postgres_backend.cost_records.append(record)
 
-        results = await postgres_backend.cost_records.query(agent_id="tz-agent")
+        from synthorg.persistence.cost_record_protocol import (
+            CostRecordFilterSpec,
+        )
+
+        results = await postgres_backend.cost_records.query(
+            CostRecordFilterSpec(agent_id="tz-agent"),
+        )
         assert len(results) == 1
         assert results[0].timestamp == precise_ts
         assert results[0].timestamp.tzinfo is not None

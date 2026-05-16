@@ -37,22 +37,30 @@ class TestSQLiteSettingsRepository:
         assert result is None
 
     async def test_set_and_get(self, repo: SQLiteSettingsRepository) -> None:
-        await repo.save(_row("budget", "total_monthly", "200.0", "2026-03-16T10:00:00Z"))
+        await repo.save(
+            _row("budget", "total_monthly", "200.0", "2026-03-16T10:00:00Z")
+        )
         result = await repo.get((NotBlankStr("budget"), NotBlankStr("total_monthly")))
         assert result is not None
         assert result.value == "200.0"
         assert result.updated_at == "2026-03-16T10:00:00Z"
 
     async def test_set_upserts(self, repo: SQLiteSettingsRepository) -> None:
-        await repo.save(_row("budget", "total_monthly", "100.0", "2026-03-16T10:00:00Z"))
-        await repo.save(_row("budget", "total_monthly", "300.0", "2026-03-16T11:00:00Z"))
+        await repo.save(
+            _row("budget", "total_monthly", "100.0", "2026-03-16T10:00:00Z")
+        )
+        await repo.save(
+            _row("budget", "total_monthly", "300.0", "2026-03-16T11:00:00Z")
+        )
         result = await repo.get((NotBlankStr("budget"), NotBlankStr("total_monthly")))
         assert result is not None
         assert result.value == "300.0"
         assert result.updated_at == "2026-03-16T11:00:00Z"
 
     async def test_delete_existing(self, repo: SQLiteSettingsRepository) -> None:
-        await repo.save(_row("budget", "total_monthly", "100.0", "2026-03-16T10:00:00Z"))
+        await repo.save(
+            _row("budget", "total_monthly", "100.0", "2026-03-16T10:00:00Z")
+        )
         deleted = await repo.delete(
             (NotBlankStr("budget"), NotBlankStr("total_monthly")),
         )
@@ -83,7 +91,9 @@ class TestSQLiteSettingsRepository:
         assert result == ()
 
     async def test_get_all(self, repo: SQLiteSettingsRepository) -> None:
-        await repo.save(_row("budget", "total_monthly", "100.0", "2026-03-16T10:00:00Z"))
+        await repo.save(
+            _row("budget", "total_monthly", "100.0", "2026-03-16T10:00:00Z")
+        )
         await repo.save(_row("security", "enabled", "true", "2026-03-16T10:00:00Z"))
         result = await repo.list_items(limit=100, offset=0)
         assert len(result) == 2
