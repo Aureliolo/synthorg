@@ -126,6 +126,90 @@ from synthorg.observability.events.setup import (
 logger = get_logger(__name__)
 
 
+async def _validate_completion_prereqs(
+    app_state: AppState,
+    settings_svc: SettingsService,
+) -> bool:
+    """Verify company / providers / agent provider+model pairs.
+
+    Extracted from ``complete_setup`` so the controller method stays
+    under the 50-line limit. Returns ``has_agents`` so the caller can
+    decide whether to log the quick-setup note (already logged here
+    too, but kept stable in the return so future callers can chain).
+
+    Raises:
+        ValidationError: If company is missing, no provider is
+            configured, or a persisted agent references a now-absent
+            provider / model.
+    """
+    has_company = await _check_has_company(settings_svc, strict=True)
+    if not has_company:
+        msg = "A company must be created before completing setup"
+        logger.warning(SETUP_NO_COMPANY)
+        raise ValidationError(msg)
+
+    # Quick Setup mode allows zero agents -- log a note but do not raise.
+    has_agents = await _check_has_agents(settings_svc)
+    if not has_agents:
+        logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
+
+    if not app_state.has_provider_registry or len(app_state.provider_registry) == 0:
+        msg = "At least one provider must be configured before completing setup"
+        logger.warning(SETUP_NO_PROVIDERS)
+        raise ValidationError(msg)
+
+    # Cross-check persisted agents against provider_management config so
+    # an agent whose provider/model was deleted between agent creation
+    # and setup completion cannot pass through as ``complete``. Skip
+    # when provider_management is empty: in-process test fixtures
+    # populate the runtime registry without seeding the config, but
+    # production always has both populated together.
+    if has_agents:
+        persisted_agents = await get_existing_agents(settings_svc)
+        providers_map = await app_state.provider_management.list_providers()
+        if providers_map:
+            validate_persisted_agents_against_providers(
+                providers_map,
+                persisted_agents,
+            )
+    return has_agents
+
+
+async def _run_embedder_auto_select(
+    app_state: AppState,
+    settings_svc: SettingsService,
+) -> str | None:
+    """Best-effort embedder auto-selection. Returns failure reason or None.
+
+    Extracted from ``complete_setup`` for the same line-budget reason
+    as :func:`_validate_completion_prereqs`. Unexpected exceptions are
+    logged at WARNING and folded into the failure reason rather than
+    re-raised, so the completion flow continues to the reinit step
+    (which is the gate that actually blocks completion on failure).
+    """
+    provider_names = app_state.provider_registry.list_providers()
+    provider_preset_name = provider_names[0] if provider_names else None
+    has_gpu = await _read_has_gpu_setting(settings_svc)
+    try:
+        model_ids = await _collect_model_ids(app_state)
+        return await auto_select_embedder(
+            settings_svc=settings_svc,
+            available_model_ids=model_ids,
+            provider_preset_name=provider_preset_name,
+            has_gpu=has_gpu,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            SETUP_COMPLETE_CHECK_ERROR,
+            check="auto_select_embedder",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return "Embedder auto-selection raised an unexpected error."
+
+
 async def _read_has_gpu_setting(settings_svc: SettingsService) -> bool | None:
     """Return the operator-owned ``api/setup_has_gpu`` boolean.
 
@@ -800,95 +884,20 @@ class SetupController(Controller):
         # ``setup_complete=false`` and race on reinit + flag write.
         async with _COMPLETE_LOCK:
             await _check_setup_not_complete(settings_svc)
-
-            # Verify company has been created (strict: propagate unexpected errors).
-            has_company = await _check_has_company(settings_svc, strict=True)
-            if not has_company:
-                msg = "A company must be created before completing setup"
-                logger.warning(SETUP_NO_COMPANY)
-                raise ValidationError(msg)
-
-            # Verify at least one agent exists (warn-only, not required).
-            # Quick Setup mode skips agent configuration -- users add agents
-            # later in Settings.
-            has_agents = await _check_has_agents(settings_svc)
-            if not has_agents:
-                logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
-
-            # Verify at least one provider is configured.
-            if (
-                not app_state.has_provider_registry
-                or len(app_state.provider_registry) == 0
-            ):
-                msg = "At least one provider must be configured before completing setup"
-                logger.warning(SETUP_NO_PROVIDERS)
-                raise ValidationError(msg)
-
-            # Verify every persisted agent still points at a valid
-            # provider+model pair. A previously-saved agent whose
-            # provider got deleted between agent creation and setup
-            # completion would otherwise land on a "complete" dashboard
-            # with a broken model reference. Skip when the management
-            # surface has no providers configured: the earlier
-            # ``has_provider_registry`` gate above only checks the
-            # runtime registry, but the model-list source we need lives
-            # in provider_management and the in-process test fixtures
-            # populate the runtime registry without seeding the config.
-            # Production always has both populated together.
-            if has_agents:
-                persisted_agents = await get_existing_agents(settings_svc)
-                providers_map = await app_state.provider_management.list_providers()
-                if providers_map:
-                    validate_persisted_agents_against_providers(
-                        providers_map,
-                        persisted_agents,
-                    )
-
-            # Auto-select embedding model from configured providers.
-            # Best-effort: does not block setup completion on failure.
-            # The preset hint comes from the first registered provider
-            # (when operators use preset names verbatim as provider names,
-            # which is the wizard default); ``has_gpu`` is an operator-
-            # owned boolean read from the api/setup_has_gpu setting.  Both
-            # are optional hints for ``infer_deployment_tier`` and degrade
-            # gracefully when absent.
-            provider_names = app_state.provider_registry.list_providers()
-            provider_preset_name = provider_names[0] if provider_names else None
-            has_gpu = await _read_has_gpu_setting(settings_svc)
-            embedder_failure_reason: str | None = None
-            try:
-                model_ids = await _collect_model_ids(app_state)
-                embedder_failure_reason = await auto_select_embedder(
-                    settings_svc=settings_svc,
-                    available_model_ids=model_ids,
-                    provider_preset_name=provider_preset_name,
-                    has_gpu=has_gpu,
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                embedder_failure_reason = (
-                    "Embedder auto-selection raised an unexpected error."
-                )
-                logger.warning(
-                    SETUP_COMPLETE_CHECK_ERROR,
-                    check="auto_select_embedder",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-
+            has_agents = await _validate_completion_prereqs(app_state, settings_svc)
+            embedder_failure_reason = await _run_embedder_auto_select(
+                app_state, settings_svc
+            )
             # Reload providers + bootstrap agents BEFORE persisting the
             # completion flag. ``_post_setup_reinit`` propagates failures
             # so a broken provider config or bootstrap error leaves the
             # flag at ``false``; the operator fixes the underlying issue
             # and retries. Without this ordering, the frontend would
             # believe setup succeeded while the runtime is half-configured.
+            del has_agents
             await _post_setup_reinit(app_state)
-
             await settings_svc.set("api", "setup_complete", "true")
-
             logger.info(SETUP_COMPLETED)
-
             return ApiResponse(
                 data=SetupCompleteResponse(
                     setup_complete=True,
