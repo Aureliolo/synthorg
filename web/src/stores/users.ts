@@ -184,7 +184,9 @@ export const useUsersStore = create<UsersState>()((set, get) => {
       // The endpoint returns void; refetch the affected user via list
       // refresh to keep state coherent.  ``fetchUsers`` resets the
       // entire list which is fine for this rarely-used operation.
-      void get().fetchUsers()
+      get().fetchUsers().catch((refetchErr: unknown) => {
+        log.warn('users post-revoke refetch failed', sanitizeForLog(refetchErr))
+      })
       useToastStore.getState().add({
         variant: 'success',
         title: `Revoked ${role}`,

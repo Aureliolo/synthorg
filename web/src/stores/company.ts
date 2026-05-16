@@ -16,7 +16,7 @@ import {
   deleteTeam as apiDeleteTeam,
   reorderTeams as apiReorderTeams,
 } from '@/api/endpoints/company'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
@@ -55,24 +55,26 @@ interface CompanyState {
   updateFromWsEvent: (event: WsEvent) => void
 
   /**
-   * Update top-level company config. Follows the canonical store error
-   * contract: log + error toast + return `false` on failure. Callers
-   * MUST NOT wrap in try/catch.
+   * Every mutation follows the canonical Zustand store error contract:
+   * log + error toast + return a sentinel value (`null` for entity
+   * returns, `false` for void / boolean returns) on failure. Callers
+   * MUST NOT wrap mutation calls in try/catch; the store owns the
+   * error UX.
    */
   updateCompany: (data: UpdateCompanyRequest) => Promise<boolean>
-  createDepartment: (data: CreateDepartmentRequest) => Promise<Department>
-  updateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department>
-  deleteDepartment: (name: string) => Promise<void>
-  reorderDepartments: (orderedNames: string[]) => Promise<void>
-  createAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig>
-  updateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
-  deleteAgent: (name: string) => Promise<void>
-  reorderAgents: (deptName: string, orderedIds: string[]) => Promise<void>
+  createDepartment: (data: CreateDepartmentRequest) => Promise<Department | null>
+  updateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department | null>
+  deleteDepartment: (name: string) => Promise<boolean>
+  reorderDepartments: (orderedNames: string[]) => Promise<boolean>
+  createAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig | null>
+  updateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
+  deleteAgent: (name: string) => Promise<boolean>
+  reorderAgents: (deptName: string, orderedIds: string[]) => Promise<boolean>
 
-  createTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig>
-  updateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
-  deleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<void>
-  reorderTeams: (deptName: string, orderedNames: string[]) => Promise<void>
+  createTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig | null>
+  updateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>
+  deleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<boolean>
+  reorderTeams: (deptName: string, orderedNames: string[]) => Promise<boolean>
 
   optimisticReorderDepartments: (orderedNames: string[]) => () => void
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
@@ -202,10 +204,20 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, departments: [...prev.departments, dept] } } : {}),
       }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Department ${dept.name} created`,
+      })
       return dept
     } catch (err) {
+      log.error('Create department failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to create department'),
+        description: getErrorMessage(err),
+      })
+      return null
     }
   },
 
@@ -218,10 +230,20 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, departments: prev.departments.map((d) => (d.name === name ? dept : d)) } } : {}),
       }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Department ${dept.name} updated`,
+      })
       return dept
     } catch (err) {
+      log.error('Update department failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to update department'),
+        description: getErrorMessage(err),
+      })
+      return null
     }
   },
 
@@ -234,9 +256,20 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, departments: prev.departments.filter((d) => d.name !== name) } } : {}),
       }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Department ${name} deleted`,
+      })
+      return true
     } catch (err) {
+      log.error('Delete department failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to delete department'),
+        description: getErrorMessage(err),
+      })
+      return false
     }
   },
 
@@ -249,9 +282,16 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, departments: [...reordered] } } : {}),
       }))
+      return true
     } catch (err) {
+      log.error('Reorder departments failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to reorder departments'),
+        description: getErrorMessage(err),
+      })
+      return false
     }
   },
 
@@ -264,10 +304,20 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, agents: [...prev.agents, agent] } } : {}),
       }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Agent ${agent.name} created`,
+      })
       return agent
     } catch (err) {
+      log.error('Create agent failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to create agent'),
+        description: getErrorMessage(err),
+      })
+      return null
     }
   },
 
@@ -280,10 +330,20 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, agents: prev.agents.map((a) => (a.name === name ? agent : a)) } } : {}),
       }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Agent ${agent.name} updated`,
+      })
       return agent
     } catch (err) {
+      log.error('Update agent failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to update agent'),
+        description: getErrorMessage(err),
+      })
+      return null
     }
   },
 
@@ -296,9 +356,20 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, agents: prev.agents.filter((a) => a.name !== name) } } : {}),
       }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Agent ${name} deleted`,
+      })
+      return true
     } catch (err) {
+      log.error('Delete agent failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to delete agent'),
+        description: getErrorMessage(err),
+      })
+      return false
     }
   },
 
@@ -319,9 +390,16 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       set((s) => ({
         savingCount: Math.max(0, s.savingCount - 1),
       }))
+      return true
     } catch (err) {
+      log.error('Reorder agents failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to reorder agents'),
+        description: getErrorMessage(err),
+      })
+      return false
     }
   },
 
@@ -343,10 +421,20 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
           },
         } : {}),
       }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Team ${team.name} created`,
+      })
       return team
     } catch (err) {
+      log.error('Create team failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to create team'),
+        description: getErrorMessage(err),
+      })
+      return null
     }
   },
 
@@ -368,10 +456,20 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
           },
         } : {}),
       }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Team ${team.name} updated`,
+      })
       return team
     } catch (err) {
+      log.error('Update team failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to update team'),
+        description: getErrorMessage(err),
+      })
+      return null
     }
   },
 
@@ -398,9 +496,20 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
           } : {}),
         }))
       }
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Team ${teamName} deleted`,
+      })
+      return true
     } catch (err) {
+      log.error('Delete team failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to delete team'),
+        description: getErrorMessage(err),
+      })
+      return false
     }
   },
 
@@ -420,9 +529,16 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
           },
         } : {}),
       }))
+      return true
     } catch (err) {
+      log.error('Reorder teams failed:', sanitizeForLog(err))
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to reorder teams'),
+        description: getErrorMessage(err),
+      })
+      return false
     }
   },
 

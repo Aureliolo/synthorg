@@ -394,6 +394,8 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
   setWorkflowTypeFilter: (t) => set({ workflowTypeFilter: t }),
 
   updateFromWsEvent: () => {
-    void useWorkflowsStore.getState().fetchWorkflows()
+    useWorkflowsStore.getState().fetchWorkflows().catch((err: unknown) => {
+      log.warn('workflows ws refetch failed', sanitizeForLog(err))
+    })
   },
 }))

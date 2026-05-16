@@ -63,7 +63,7 @@ const meta = {
     agent: mockAgent,
     departments: mockDepartments,
     onUpdate: async () => mockAgent,
-    onDelete: async () => {},
+    onDelete: async () => true,
     saving: false,
   },
 } satisfies Meta<typeof AgentEditDrawer>

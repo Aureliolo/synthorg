@@ -11,7 +11,6 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import type { UpdateCompanyRequest } from '@/api/types/org'
 import { useOrgEditData } from '@/hooks/useOrgEditData'
-import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
 import { OrgEditSkeleton } from './org-edit/OrgEditSkeleton'
 import { GeneralTab } from './org-edit/GeneralTab'
@@ -88,29 +87,26 @@ export default function OrgEditPage() {
   )
 
   const handleYamlSave = useCallback(
-    async (parsed: Record<string, unknown>) => {
-      try {
-        await updateCompany({
-          company_name: typeof parsed.company_name === 'string' ? parsed.company_name : undefined,
-          // Preserve ``undefined`` when YAML omits the key so the
-          // existing value is not silently cleared on every save;
-          // ``null`` only when the YAML explicitly sets the key to
-          // null (the user-intentional "clear" path).
-          autonomy_level: typeof parsed.autonomy_level === 'string'
-            ? (parsed.autonomy_level as Exclude<UpdateCompanyRequest['autonomy_level'], undefined>)
-            : parsed.autonomy_level === null
-              ? null
-              : undefined,
-          budget_monthly: typeof parsed.budget_monthly === 'number' ? parsed.budget_monthly : undefined,
-          communication_pattern: typeof parsed.communication_pattern === 'string'
-            ? parsed.communication_pattern
+    async (parsed: Record<string, unknown>): Promise<boolean> => {
+      // ``updateCompany`` already owns the toast UX (success +
+      // "Failed to update company" copy). The boolean return is used
+      // here so the YAML editor knows whether to clear its dirty flag.
+      return updateCompany({
+        company_name: typeof parsed.company_name === 'string' ? parsed.company_name : undefined,
+        // Preserve ``undefined`` when YAML omits the key so the
+        // existing value is not silently cleared on every save;
+        // ``null`` only when the YAML explicitly sets the key to
+        // null (the user-intentional "clear" path).
+        autonomy_level: typeof parsed.autonomy_level === 'string'
+          ? (parsed.autonomy_level as Exclude<UpdateCompanyRequest['autonomy_level'], undefined>)
+          : parsed.autonomy_level === null
+            ? null
             : undefined,
-        })
-        useToastStore.getState().add({ variant: 'success', title: 'Configuration saved' })
-      } catch (err) {
-        useToastStore.getState().add({ variant: 'error', title: 'Failed to save configuration' })
-        throw err
-      }
+        budget_monthly: typeof parsed.budget_monthly === 'number' ? parsed.budget_monthly : undefined,
+        communication_pattern: typeof parsed.communication_pattern === 'string'
+          ? parsed.communication_pattern
+          : undefined,
+      })
     },
     [updateCompany],
   )

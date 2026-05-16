@@ -179,7 +179,9 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
 
     setStatusFilter: (status) => {
       set({ statusFilter: status })
-      void get().fetchEscalations()
+      get().fetchEscalations().catch((err: unknown) => {
+        log.warn('escalations filter-change refetch failed', getErrorMessage(err))
+      })
     },
 
     fetchEscalationDetail: async (id: string) => {
@@ -228,7 +230,9 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
           title: 'Escalation decided',
         })
         // Refresh the list so the decided row falls out of pending.
-        void get().fetchEscalations()
+        get().fetchEscalations().catch((refetchErr: unknown) => {
+          log.warn('escalations post-decision refetch failed', getErrorMessage(refetchErr))
+        })
         set({ submitting: false })
         return response
       } catch (err) {
@@ -251,7 +255,9 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
           variant: 'success',
           title: 'Escalation cancelled',
         })
-        void get().fetchEscalations()
+        get().fetchEscalations().catch((refetchErr: unknown) => {
+          log.warn('escalations post-cancel refetch failed', getErrorMessage(refetchErr))
+        })
         set({ submitting: false })
         return response
       } catch (err) {

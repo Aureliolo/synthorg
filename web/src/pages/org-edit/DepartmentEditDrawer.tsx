@@ -14,7 +14,6 @@ import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
-import { getErrorMessage } from '@/utils/errors'
 import { DepartmentCeremonyOverride } from './DepartmentCeremonyOverride'
 import { TeamListSection } from './TeamListSection'
 
@@ -24,12 +23,12 @@ export interface DepartmentEditDrawerProps {
   department: Department | null
   health: DepartmentHealth | null
   config: CompanyConfig | null
-  onUpdate: (name: string, data: UpdateDepartmentRequest) => Promise<Department>
-  onDelete: (name: string) => Promise<void>
-  onCreateTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig>
-  onUpdateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
-  onDeleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<void>
-  onReorderTeams: (deptName: string, orderedNames: string[]) => Promise<void>
+  onUpdate: (name: string, data: UpdateDepartmentRequest) => Promise<Department | null>
+  onDelete: (name: string) => Promise<boolean>
+  onCreateTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig | null>
+  onUpdateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>
+  onDeleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<boolean>
+  onReorderTeams: (deptName: string, orderedNames: string[]) => Promise<boolean>
   saving: boolean
 }
 
@@ -87,32 +86,26 @@ export function DepartmentEditDrawer({
       setSubmitError('Budget percent must be between 0 and 100')
       return
     }
-    try {
-      // ``autonomy_level`` is intentionally omitted: this drawer only
-      // edits budget and ceremony policy, so sending ``null`` would
-      // wipe a value managed elsewhere (the dedicated agent autonomy
-      // editor) on every save.
-      await onUpdate(department.name, {
-        budget_percent: Number.isFinite(pct) ? pct : undefined,
-        ceremony_policy: ceremonyPolicy as Record<string, unknown> | null,
-      })
-      onClose()
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
-    }
+    // ``autonomy_level`` is intentionally omitted: this drawer only
+    // edits budget and ceremony policy, so sending ``null`` would
+    // wipe a value managed elsewhere (the dedicated agent autonomy
+    // editor) on every save.
+    const result = await onUpdate(department.name, {
+      budget_percent: Number.isFinite(pct) ? pct : undefined,
+      ceremony_policy: ceremonyPolicy as Record<string, unknown> | null,
+    })
+    // Store owns the toast; close only on success.
+    if (result !== null) onClose()
   }, [department, budgetPercent, ceremonyPolicy, onUpdate, onClose])
 
   const handleDelete = useCallback(async () => {
     if (!department) return
     setDeleting(true)
-    try {
-      await onDelete(department.name)
+    const ok = await onDelete(department.name)
+    setDeleting(false)
+    if (ok) {
       setDeleteOpen(false)
       onClose()
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
-    } finally {
-      setDeleting(false)
     }
   }, [department, onDelete, onClose])
 

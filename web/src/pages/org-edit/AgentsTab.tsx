@@ -32,10 +32,10 @@ import { AgentEditDrawer } from './AgentEditDrawer'
 export interface AgentsTabProps {
   config: CompanyConfig | null
   saving: boolean
-  onCreateAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig>
-  onUpdateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
-  onDeleteAgent: (name: string) => Promise<void>
-  onReorderAgents: (deptName: string, orderedIds: string[]) => Promise<void>
+  onCreateAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig | null>
+  onUpdateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
+  onDeleteAgent: (name: string) => Promise<boolean>
+  onReorderAgents: (deptName: string, orderedIds: string[]) => Promise<boolean>
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
 }
 

@@ -5,15 +5,14 @@ import type { CreateTeamRequest, TeamConfig, UpdateTeamRequest } from '@/api/typ
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { TagInput } from '@/components/ui/tag-input'
-import { getErrorMessage } from '@/utils/errors'
 
 export interface TeamEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   mode: 'create' | 'edit'
   team?: TeamConfig
-  onCreateTeam: (data: CreateTeamRequest) => Promise<TeamConfig>
-  onUpdateTeam: (teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
+  onCreateTeam: (data: CreateTeamRequest) => Promise<TeamConfig | null>
+  onUpdateTeam: (teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>
   disabled?: boolean
 }
 
@@ -73,26 +72,27 @@ export function TeamEditDialog({
     const trimmedMembers = members.map((m) => m.trim()).filter(Boolean)
 
     setSaving(true)
-    try {
-      if (mode === 'create') {
-        await onCreateTeam({
-          name: trimmedName,
-          lead: trimmedLead,
-          members: trimmedMembers,
-        })
-      } else if (team) {
-        await onUpdateTeam(team.name, {
-          name: trimmedName,
-          lead: trimmedLead,
-          members: trimmedMembers,
-        })
-      }
-      onOpenChange(false)
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
-    } finally {
-      setSaving(false)
+    let result: unknown
+    if (mode === 'create') {
+      result = await onCreateTeam({
+        name: trimmedName,
+        lead: trimmedLead,
+        members: trimmedMembers,
+      })
+    } else if (team) {
+      result = await onUpdateTeam(team.name, {
+        name: trimmedName,
+        lead: trimmedLead,
+        members: trimmedMembers,
+      })
     }
+    setSaving(false)
+    if (result === null) {
+      // Store owns the toast UX; keep the dialog open so the user can
+      // see what they typed.
+      return
+    }
+    onOpenChange(false)
   }, [name, lead, members, mode, team, onCreateTeam, onUpdateTeam, onOpenChange])
 
   const busy = saving || disabled

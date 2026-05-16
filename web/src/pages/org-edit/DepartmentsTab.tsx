@@ -37,15 +37,15 @@ export interface DepartmentsTabProps {
   config: CompanyConfig | null
   departmentHealths: readonly DepartmentHealth[]
   saving: boolean
-  onCreateDepartment: (data: CreateDepartmentRequest) => Promise<Department>
-  onUpdateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department>
-  onDeleteDepartment: (name: string) => Promise<void>
-  onReorderDepartments: (orderedNames: string[]) => Promise<void>
+  onCreateDepartment: (data: CreateDepartmentRequest) => Promise<Department | null>
+  onUpdateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department | null>
+  onDeleteDepartment: (name: string) => Promise<boolean>
+  onReorderDepartments: (orderedNames: string[]) => Promise<boolean>
   optimisticReorderDepartments: (orderedNames: string[]) => () => void
-  onCreateTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig>
-  onUpdateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
-  onDeleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<void>
-  onReorderTeams: (deptName: string, orderedNames: string[]) => Promise<void>
+  onCreateTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig | null>
+  onUpdateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>
+  onDeleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<boolean>
+  onReorderTeams: (deptName: string, orderedNames: string[]) => Promise<boolean>
 }
 
 function SortableDepartmentCard({

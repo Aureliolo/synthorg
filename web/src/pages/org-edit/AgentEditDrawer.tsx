@@ -9,7 +9,6 @@ import { SelectField } from '@/components/ui/select-field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { getErrorMessage } from '@/utils/errors'
 import { formatDateOnly } from '@/utils/format'
 import { toRuntimeStatus } from '@/utils/agents'
 
@@ -18,8 +17,8 @@ export interface AgentEditDrawerProps {
   onClose: () => void
   agent: AgentConfig | null
   departments: readonly Department[]
-  onUpdate: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
-  onDelete: (name: string) => Promise<void>
+  onUpdate: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
+  onDelete: (name: string) => Promise<boolean>
   saving: boolean
 }
 
@@ -84,30 +83,25 @@ export function AgentEditDrawer({
       return
     }
     setSubmitError(null)
-    try {
-      await onUpdate(agent.name, {
-        name: trimmedName,
-        role: form.role.trim() || undefined,
-        department: form.department as UpdateAgentOrgRequest['department'],
-        level: form.level,
-      })
-      onClose()
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
-    }
+    const result = await onUpdate(agent.name, {
+      name: trimmedName,
+      role: form.role.trim() || undefined,
+      department: form.department as UpdateAgentOrgRequest['department'],
+      level: form.level,
+    })
+    // Store owns the error toast; the drawer just decides whether to
+    // close on success.
+    if (result !== null) onClose()
   }, [agent, form, onUpdate, onClose])
 
   const handleDelete = useCallback(async () => {
     if (!agent) return
     setDeleting(true)
-    try {
-      await onDelete(agent.name)
+    const ok = await onDelete(agent.name)
+    setDeleting(false)
+    if (ok) {
       setDeleteOpen(false)
       onClose()
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
-    } finally {
-      setDeleting(false)
     }
   }, [agent, onDelete, onClose])
 

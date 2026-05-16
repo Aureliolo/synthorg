@@ -4,13 +4,12 @@ import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
-import { getErrorMessage } from '@/utils/errors'
 import type { CreateDepartmentRequest, Department } from '@/api/types/org'
 
 export interface DepartmentCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreate: (data: CreateDepartmentRequest) => Promise<Department>
+  onCreate: (data: CreateDepartmentRequest) => Promise<Department | null>
 }
 
 interface FormState {
@@ -27,20 +26,17 @@ export function DepartmentCreateDialog({ open, onOpenChange, onCreate }: Departm
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const prevOpenRef = useRef(open)
   if (!open && prevOpenRef.current) {
     setForm(INITIAL_FORM)
     setErrors({})
-    setSubmitError(null)
   }
   prevOpenRef.current = open
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
     setErrors((prev) => ({ ...prev, [key]: undefined }))
-    setSubmitError(null)
   }
 
   const handleSubmit = useCallback(async () => {
@@ -54,19 +50,19 @@ export function DepartmentCreateDialog({ open, onOpenChange, onCreate }: Departm
     if (Object.keys(next).length > 0) return
 
     setSubmitting(true)
-    setSubmitError(null)
-    try {
-      await onCreate({
-        name: form.name.trim(),
-        budget_percent: pct,
-      })
-      setForm(INITIAL_FORM)
-      onOpenChange(false)
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
+    const result = await onCreate({
+      name: form.name.trim(),
+      budget_percent: pct,
+    })
+    setSubmitting(false)
+    if (result === null) {
+      // Store owns the toast UX; the dialog stays open so the user can
+      // see their input. The shared ``saveError`` already populates the
+      // page-level banner so an inline message would duplicate it.
+      return
     }
+    setForm(INITIAL_FORM)
+    onOpenChange(false)
   }, [form, onCreate, onOpenChange])
 
   return (
@@ -119,10 +115,6 @@ export function DepartmentCreateDialog({ open, onOpenChange, onCreate }: Departm
               error={errors.budget_percent}
               hint="Percentage of company budget (0-100)"
             />
-
-            {submitError && (
-              <p className="text-xs text-danger">{submitError}</p>
-            )}
 
             <div className="flex justify-end gap-3 pt-2">
               <Dialog.Close
