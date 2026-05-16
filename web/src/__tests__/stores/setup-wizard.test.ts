@@ -76,6 +76,65 @@ describe('setup wizard store', () => {
       expect(useSetupWizardStore.getState().stepsCompleted.template).toBe(false)
     })
 
+    it('initialises stepsNeedRevalidation to all-false', () => {
+      const state = useSetupWizardStore.getState()
+      for (const step of state.stepOrder) {
+        expect(state.stepsNeedRevalidation[step]).toBe(false)
+      }
+    })
+
+    it('markStepNeedsRevalidation flips only the target step', () => {
+      useSetupWizardStore.getState().markStepNeedsRevalidation('agents')
+      const state = useSetupWizardStore.getState()
+      expect(state.stepsNeedRevalidation.agents).toBe(true)
+      expect(state.stepsNeedRevalidation.providers).toBe(false)
+    })
+
+    it('clearStepRevalidationFlag clears only the target step', () => {
+      useSetupWizardStore.getState().markStepNeedsRevalidation('agents')
+      useSetupWizardStore.getState().markStepNeedsRevalidation('providers')
+      useSetupWizardStore.getState().clearStepRevalidationFlag('agents')
+      const state = useSetupWizardStore.getState()
+      expect(state.stepsNeedRevalidation.agents).toBe(false)
+      expect(state.stepsNeedRevalidation.providers).toBe(true)
+    })
+
+    it('recomputeAgentsRevalidation is a no-op when agents step is incomplete', () => {
+      const agentFixture = {
+        name: 'X',
+        role: '',
+        department: '',
+        level: 'mid',
+        model_provider: 'missing-provider',
+        model_id: 'm',
+        personality_preset: 'pragmatist',
+        tier: 'medium',
+      } as unknown as ReturnType<typeof useSetupWizardStore.getState>['agents'][number]
+      useSetupWizardStore.setState({ agents: [agentFixture], providers: {} })
+      // stepsCompleted.agents is still false -> recompute must keep flag clear.
+      useSetupWizardStore.getState().recomputeAgentsRevalidation()
+      expect(useSetupWizardStore.getState().stepsNeedRevalidation.agents).toBe(false)
+    })
+
+    it('recomputeAgentsRevalidation flips the flag on when agents are complete but unresolved', () => {
+      const agentFixture = {
+        name: 'X',
+        role: '',
+        department: '',
+        level: 'mid',
+        model_provider: 'missing-provider',
+        model_id: 'm',
+        personality_preset: 'pragmatist',
+        tier: 'medium',
+      } as unknown as ReturnType<typeof useSetupWizardStore.getState>['agents'][number]
+      useSetupWizardStore.setState({ agents: [agentFixture], providers: {} })
+      useSetupWizardStore.getState().markStepComplete('agents')
+      useSetupWizardStore.getState().recomputeAgentsRevalidation()
+      // Step stays complete; only the revalidation flag flips.
+      expect(useSetupWizardStore.getState().stepsCompleted.agents).toBe(true)
+      expect(useSetupWizardStore.getState().stepsNeedRevalidation.agents).toBe(true)
+    })
+
     it('canNavigateTo returns true for first step', () => {
       expect(useSetupWizardStore.getState().canNavigateTo('mode')).toBe(true)
     })

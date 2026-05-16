@@ -4,7 +4,7 @@ import { useThemeStore } from '@/stores/theme'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-import { initialStepsCompleted } from './navigation'
+import { initialStepsCompleted, initialStepsNeedRevalidation } from './navigation'
 import { DEFAULT_THEME } from './theme'
 import type { CompletionSlice, SliceCreator, ThemeSettings } from './types'
 
@@ -34,6 +34,7 @@ function getInitialState() {
     currentStep: 'mode' as const,
     stepOrder: ['mode', 'template', 'providers', 'company', 'agents', 'theme', 'complete'] as const,
     stepsCompleted: initialStepsCompleted(),
+    stepsNeedRevalidation: initialStepsNeedRevalidation(),
     direction: 'forward' as const,
     needsAdmin: false,
     accountCreated: false,

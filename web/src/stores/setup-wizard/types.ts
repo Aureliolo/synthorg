@@ -40,6 +40,17 @@ export interface NavigationSlice {
   currentStep: WizardStep
   stepOrder: readonly WizardStep[]
   stepsCompleted: Record<WizardStep, boolean>
+  /**
+   * Per-step "needs revalidation" flag. Distinct from
+   * ``stepsCompleted``: a completed step can stay complete while
+   * gaining a revalidation warning when an upstream edit changes
+   * something the step depended on (e.g. editing a provider after the
+   * agents step was completed). The progress bar surfaces this as a
+   * warning glyph instead of demoting the tick. Cleared when the user
+   * re-enters the step. Excluded from ``partialize``: a reload re-
+   * derives it from current state on first mount of the dependent step.
+   */
+  stepsNeedRevalidation: Record<WizardStep, boolean>
   direction: 'forward' | 'backward'
   needsAdmin: boolean
   accountCreated: boolean
@@ -47,6 +58,17 @@ export interface NavigationSlice {
   setStep: (step: WizardStep) => void
   markStepComplete: (step: WizardStep) => void
   markStepIncomplete: (step: WizardStep) => void
+  markStepNeedsRevalidation: (step: WizardStep) => void
+  clearStepRevalidationFlag: (step: WizardStep) => void
+  /**
+   * Re-derive ``stepsNeedRevalidation.agents`` from the current
+   * agents-vs-providers state. The providers slice calls this after
+   * any successful provider mutation; the flag flips on only when
+   * the edit introduced a new unresolved-agent breakage AND
+   * ``stepsCompleted.agents === true`` (an incomplete step needs no
+   * revalidation marker).
+   */
+  recomputeAgentsRevalidation: () => void
   canNavigateTo: (step: WizardStep) => boolean
   setNeedsAdmin: (needsAdmin: boolean) => void
   setAccountCreated: (created: boolean) => void

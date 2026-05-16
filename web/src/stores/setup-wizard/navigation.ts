@@ -1,3 +1,4 @@
+import { resolveAgentModels } from '@/utils/setup-validation'
 import type { NavigationSlice, SliceCreator, WizardMode, WizardStep } from './types'
 
 const GUIDED_STEP_ORDER: readonly WizardStep[] = [
@@ -38,10 +39,24 @@ export function initialStepsCompleted(): Record<WizardStep, boolean> {
   }
 }
 
+export function initialStepsNeedRevalidation(): Record<WizardStep, boolean> {
+  return {
+    account: false,
+    mode: false,
+    template: false,
+    company: false,
+    providers: false,
+    agents: false,
+    theme: false,
+    complete: false,
+  }
+}
+
 export const createNavigationSlice: SliceCreator<NavigationSlice> = (set, get) => ({
   currentStep: 'mode',
   stepOrder: GUIDED_STEP_ORDER,
   stepsCompleted: initialStepsCompleted(),
+  stepsNeedRevalidation: initialStepsNeedRevalidation(),
   direction: 'forward',
   needsAdmin: false,
   accountCreated: false,
@@ -69,6 +84,31 @@ export const createNavigationSlice: SliceCreator<NavigationSlice> = (set, get) =
 
   markStepIncomplete(step) {
     set((s) => ({ stepsCompleted: { ...s.stepsCompleted, [step]: false } }))
+  },
+
+  markStepNeedsRevalidation(step) {
+    set((s) => ({ stepsNeedRevalidation: { ...s.stepsNeedRevalidation, [step]: true } }))
+  },
+
+  clearStepRevalidationFlag(step) {
+    set((s) => ({ stepsNeedRevalidation: { ...s.stepsNeedRevalidation, [step]: false } }))
+  },
+
+  recomputeAgentsRevalidation() {
+    const { agents, providers, stepsCompleted } = get()
+    if (!stepsCompleted.agents) {
+      // Incomplete steps cannot need revalidation; clear any stale
+      // flag and bail.
+      set((s) => ({ stepsNeedRevalidation: { ...s.stepsNeedRevalidation, agents: false } }))
+      return
+    }
+    const unresolved = resolveAgentModels(agents, providers)
+    set((s) => ({
+      stepsNeedRevalidation: {
+        ...s.stepsNeedRevalidation,
+        agents: unresolved.length > 0,
+      },
+    }))
   },
 
   canNavigateTo(step) {
@@ -107,6 +147,9 @@ export const createNavigationSlice: SliceCreator<NavigationSlice> = (set, get) =
         stepsCompleted: mode === 'quick'
           ? { ...s.stepsCompleted, template: false, agents: false, theme: false }
           : s.stepsCompleted,
+        stepsNeedRevalidation: mode === 'quick'
+          ? { ...s.stepsNeedRevalidation, template: false, agents: false, theme: false }
+          : s.stepsNeedRevalidation,
       }
     })
   },

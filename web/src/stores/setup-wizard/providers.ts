@@ -70,6 +70,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
     try {
       const providers = await listProviders()
       set({ providers, providersLoading: false })
+      get().recomputeAgentsRevalidation()
     } catch (err) {
       log.error('fetchProviders failed:', getErrorMessage(err))
       set({ providersError: getErrorMessage(err), providersLoading: false })
@@ -126,12 +127,14 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
         tos_accepted: false,
       })
       set((s) => ({ providers: { ...s.providers, [name]: provider } }))
+      get().recomputeAgentsRevalidation()
 
       if (provider.models.length === 0) {
         try {
           await discoverModels(name, presetName)
           const refreshed = await getProvider(name)
           set((s) => ({ providers: { ...s.providers, [name]: refreshed } }))
+          get().recomputeAgentsRevalidation()
           if (refreshed.models.length === 0) {
             // Provider created OK; only model discovery returned empty.
             // Surface as warning (separate slot from providersError) so
@@ -186,12 +189,14 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
     try {
       const provider = await createFromPreset(data)
       set((s) => ({ providers: { ...s.providers, [data.name]: provider } }))
+      get().recomputeAgentsRevalidation()
 
       if (provider.models.length === 0) {
         try {
           await discoverModels(data.name, data.preset_name)
           const refreshed = await getProvider(data.name)
           set((s) => ({ providers: { ...s.providers, [data.name]: refreshed } }))
+          get().recomputeAgentsRevalidation()
           if (refreshed.models.length === 0) {
             set({
               providersWarning:
@@ -224,6 +229,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
     try {
       const provider = await apiCreateProvider(data)
       set((s) => ({ providers: { ...s.providers, [data.name]: provider } }))
+      get().recomputeAgentsRevalidation()
       return provider
     } catch (err) {
       log.error('createProviderCustom failed:', getErrorMessage(err))
