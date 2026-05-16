@@ -53,6 +53,7 @@ export default function ApprovalsPage() {
     batchApprove,
     batchReject,
     detailError,
+    isRefetching,
   } = useApprovalsData()
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -266,6 +267,7 @@ export default function ApprovalsPage() {
             ? undefined
             : `${formatNumber(filtered.length)} of ${formatNumber(approvals.length)}`
         }
+        refreshing={isRefetching}
       />
 
       {error && (

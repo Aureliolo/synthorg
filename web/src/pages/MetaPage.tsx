@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
+import { WsConnectionBanner } from '@/components/ui/ws-connection-banner'
 import {
   SkeletonCard,
   SkeletonMetric,
@@ -94,6 +95,8 @@ export default function MetaPage() {
             Trigger Cycle
           </Button>
         </header>
+
+        <WsConnectionBanner description="Meta-loop signals may be stale until the connection recovers." />
 
         <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
           <MetricCard label="Pending Proposals" value={pendingCount} />

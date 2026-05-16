@@ -50,6 +50,7 @@ export default function BudgetPage() {
     setAggregationPeriod,
     loading,
     error,
+    isRefetching,
     wsConnected,
     wsSetupError,
   } = useBudgetData()
@@ -100,6 +101,7 @@ export default function BudgetPage() {
       <ListHeader
         title="Budget"
         description="Live spend, burn-rate forecast, and cost breakdowns."
+        refreshing={isRefetching}
         primaryAction={
           <PeriodSelector value={aggregationPeriod} onChange={setAggregationPeriod} />
         }

@@ -13,6 +13,7 @@ const defaultReturn: UseApprovalsDataReturn = {
   loadingDetail: false,
   error: null,
   detailError: null,
+  isRefetching: false,
   wsConnected: true,
   wsSetupError: null,
   fetchApproval: vi.fn(),

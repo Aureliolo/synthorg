@@ -25,7 +25,7 @@ const log = createLogger('providers-page')
  * -- there is no separate dialog-launching button.
  */
 export default function ProvidersPage() {
-  const { filteredProviders, healthMap, loading, error, providers } = useProvidersData()
+  const { filteredProviders, healthMap, loading, error, providers, isRefetching } = useProvidersData()
   const presets = useProvidersStore((s) => s.presets)
   const presetsLoading = useProvidersStore((s) => s.presetsLoading)
   const presetsError = useProvidersStore((s) => s.presetsError)
@@ -145,6 +145,7 @@ export default function ProvidersPage() {
         title="Providers"
         description="Configured LLM providers and presets your agents call."
         count={providers.length}
+        refreshing={isRefetching}
       />
 
       {error && (

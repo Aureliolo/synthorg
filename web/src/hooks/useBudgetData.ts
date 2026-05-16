@@ -29,6 +29,7 @@ export interface UseBudgetDataReturn {
   loading: boolean
   error: string | null
   pollingError: string | null
+  isRefetching: boolean
   wsConnected: boolean
   wsSetupError: string | null
 }
@@ -93,6 +94,7 @@ export function useBudgetData(): UseBudgetDataReturn {
     loading,
     error,
     pollingError: polling.error,
+    isRefetching: polling.isRefetching,
     wsConnected,
     wsSetupError,
   }

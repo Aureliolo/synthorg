@@ -13,6 +13,7 @@ export interface UseProvidersDataReturn {
   healthMap: Record<string, ProviderHealthSummary>
   loading: boolean
   error: string | null
+  isRefetching: boolean
 }
 
 export function useProvidersData(): UseProvidersDataReturn {
@@ -52,5 +53,6 @@ export function useProvidersData(): UseProvidersDataReturn {
     healthMap,
     loading,
     error,
+    isRefetching: polling.isRefetching,
   }
 }

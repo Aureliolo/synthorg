@@ -66,6 +66,7 @@ const defaultHookReturn: UseBudgetDataReturn = {
   loading: false,
   error: null,
   pollingError: null,
+  isRefetching: false,
   wsConnected: true,
   wsSetupError: null,
 }

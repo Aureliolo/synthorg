@@ -7,6 +7,7 @@ import {
   Globe,
   HardDrive,
   Network,
+  RefreshCw,
   Settings,
   Shield,
   Wallet,
@@ -86,6 +87,7 @@ export default function SettingsPage() {
     error,
     saving,
     saveError,
+    isRefetching,
     wsConnected,
     wsSetupError,
     updateSetting,
@@ -311,7 +313,15 @@ export default function SettingsPage() {
   return (
     <div className="space-y-section-gap">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-lg font-semibold text-foreground">Settings</h1>
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-lg font-semibold text-foreground">Settings</h1>
+          {isRefetching && (
+            <span aria-live="polite" className="text-muted-foreground">
+              <RefreshCw className="size-3 animate-spin" aria-hidden="true" />
+              <span className="sr-only">Refreshing</span>
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-4">
           {viewMode !== 'code' && (
             <SearchInput

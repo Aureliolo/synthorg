@@ -21,6 +21,7 @@ export interface UseScalingDataReturn {
   loading: boolean
   error: string | null
   evaluating: boolean
+  isRefetching: boolean
   wsConnected: boolean
   wsSetupError: string | null
   evaluateNow: () => Promise<ScalingDecisionResponse[]>
@@ -79,6 +80,7 @@ export function useScalingData(): UseScalingDataReturn {
     loading,
     error,
     evaluating,
+    isRefetching: polling.isRefetching,
     wsConnected,
     wsSetupError,
     evaluateNow,

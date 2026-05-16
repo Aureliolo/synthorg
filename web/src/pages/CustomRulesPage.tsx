@@ -14,6 +14,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { WsConnectionBanner } from '@/components/ui/ws-connection-banner'
 import { useCustomRulesStore } from '@/stores/custom-rules'
 import { CustomRuleFormDrawer } from './custom-rules/CustomRuleFormDrawer'
 import type { CustomRule } from '@/api/endpoints/custom-rules'
@@ -87,6 +88,8 @@ export default function CustomRulesPage() {
           }}
         />
       )}
+
+      <WsConnectionBanner />
 
       {loading && rules.length === 0 ? (
         <div className="flex flex-col gap-grid-gap">
