@@ -345,8 +345,20 @@ class _FakeApiKeyRepository:
 
 
 class _FakeCheckpointRepository:
-    async def save(self, checkpoint: Checkpoint) -> None:
+    async def append(self, checkpoint: Checkpoint) -> None:
         pass
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Checkpoint, ...]:
+        return ()
+
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
 
     async def get_latest(
         self,
