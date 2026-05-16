@@ -10,10 +10,12 @@ TESTS_DIR = Path("tests")
 
 # Per-file targeted reverts where earlier mechanical script over-renamed.
 TARGETED_REVERTS: dict[str, list[tuple[str, str]]] = {
-    # InterruptStore is an in-memory event-stream coordinator,
-    # NOT an ADR-0001 repository. `create()` is its real method.
-    "tests/unit/communication/event_stream/test_interrupt_store.py": [
-        (r"\bstore\.save\(", "store.create("),
+    # TaskRepository moved list_tasks/count_tasks -> query/count
+    # under ADR-0001. The engine now calls .query()/.count() but
+    # the test still spies on the old names.
+    "tests/unit/engine/test_task_engine_mutations.py": [
+        (r"persistence\.tasks\.list_tasks", "persistence.tasks.query"),
+        (r"persistence\.tasks\.count_tasks", "persistence.tasks.count"),
     ],
 }
 

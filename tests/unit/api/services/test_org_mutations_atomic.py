@@ -236,28 +236,27 @@ class TestCASRetry:
         # Simulate: between read and write, another writer modifies
         # the same key.  We do this by manually updating the settings
         # timestamp right after the service reads.
+        from synthorg.core.types import NotBlankStr
+        from synthorg.persistence.settings_protocol import SettingRow
+
         original_get = persistence.settings.get
 
         call_count = 0
 
         async def intercepting_get(
-            namespace: str,
-            key: str,
-        ) -> tuple[str, str] | None:
+            entity_id: tuple[NotBlankStr, NotBlankStr],
+        ) -> SettingRow | None:
             nonlocal call_count
-            result = cast(
-                "tuple[str, str] | None",
-                await original_get(namespace, key),
-            )
+            result = await original_get(entity_id)
+            namespace, key = entity_id
             if namespace == "company" and key == "departments":
                 call_count += 1
                 if call_count == 1 and result is not None:
                     # Simulate a concurrent write by changing the timestamp
-                    await persistence.settings.set(
-                        namespace,
-                        key,
-                        result[0],
-                        "2099-01-01T00:00:00+00:00",
+                    await persistence.settings.save(
+                        result.model_copy(
+                            update={"updated_at": "2099-01-01T00:00:00+00:00"}
+                        )
                     )
             return result
 
@@ -287,34 +286,24 @@ class TestCASRetry:
             ),
         )
 
-        original_set = persistence.settings.set
+        original_set_if_unchanged = persistence.settings.set_if_unchanged
 
-        async def always_conflict_set(
-            namespace: str,
-            key: str,
-            value: str,
-            updated_at: str,
+        async def always_conflict_set_if_unchanged(
+            entity: Any,
             *,
             expected_updated_at: str | None = None,
         ) -> bool:
-            if (
-                namespace == "company"
-                and key == "departments"
-                and expected_updated_at is not None
-            ):
+            if entity.namespace == "company" and entity.key == "departments":
                 return False  # Always CAS failure
             return cast(
                 "bool",
-                await original_set(
-                    namespace,
-                    key,
-                    value,
-                    updated_at,
+                await original_set_if_unchanged(
+                    entity,
                     expected_updated_at=expected_updated_at,
                 ),
             )
 
-        persistence.settings.set = always_conflict_set
+        persistence.settings.set_if_unchanged = always_conflict_set_if_unchanged
         try:
             with pytest.raises(VersionConflictError):
                 await service.update_department(
@@ -322,7 +311,7 @@ class TestCASRetry:
                     UpdateDepartmentRequest(head="bob"),
                 )
         finally:
-            persistence.settings.set = original_set
+            persistence.settings.set_if_unchanged = original_set_if_unchanged
 
 
 # ── CAS retry coverage for the remaining 6 mutations ──────────
@@ -340,30 +329,20 @@ def _always_conflict_for_key(
     into a single transaction (like ``delete_department``) also surface
     the conflict.
     """
-    original_set = persistence.settings.set
+    original_set_if_unchanged = persistence.settings.set_if_unchanged
     original_set_many = persistence.settings.set_many
 
-    async def always_conflict_set(
-        namespace: str,
-        key: str,
-        value: str,
-        updated_at: str,
+    async def always_conflict_set_if_unchanged(
+        entity: Any,
         *,
         expected_updated_at: str | None = None,
     ) -> bool:
-        if (
-            namespace == "company"
-            and key == target_key
-            and expected_updated_at is not None
-        ):
+        if entity.namespace == "company" and entity.key == target_key:
             return False
         return cast(
             "bool",
-            await original_set(
-                namespace,
-                key,
-                value,
-                updated_at,
+            await original_set_if_unchanged(
+                entity,
                 expected_updated_at=expected_updated_at,
             ),
         )
@@ -386,11 +365,11 @@ def _always_conflict_for_key(
         )
 
     def install() -> None:
-        persistence.settings.set = always_conflict_set
+        persistence.settings.set_if_unchanged = always_conflict_set_if_unchanged
         persistence.settings.set_many = always_conflict_set_many
 
     def uninstall() -> None:
-        persistence.settings.set = original_set
+        persistence.settings.set_if_unchanged = original_set_if_unchanged
         persistence.settings.set_many = original_set_many
 
     return install, uninstall

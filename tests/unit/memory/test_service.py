@@ -224,7 +224,7 @@ class TestMemoryServiceCheckpoints:
             settings_service=None,
         )
 
-        page, total = await service.list_items_page(limit=limit, offset=offset)
+        page, total = await service.list_checkpoints(limit=limit, offset=offset)
         assert tuple(sorted(c.id for c in page)) == tuple(sorted(expected_ids))
         assert total == 2
 
@@ -234,7 +234,7 @@ class TestMemoryServiceCheckpoints:
             run_repo=_FakeRunRepo(),
             settings_service=None,
         )
-        assert await service.get(NotBlankStr("ghost")) is None
+        assert await service.get_checkpoint(NotBlankStr("ghost")) is None
 
     @pytest.mark.parametrize(
         "operation",
@@ -266,7 +266,7 @@ class TestMemoryServiceCheckpoints:
             run_repo=_FakeRunRepo(),
             settings_service=None,
         )
-        await service.delete(NotBlankStr("a"))
+        await service.delete_checkpoint(NotBlankStr("a"))
         assert await repo.get("a") is None
 
 
@@ -493,13 +493,13 @@ class TestMemoryServiceReReadFailure:
                 super().__init__()
                 self._vanish_after = False
 
-            async def get_checkpoint(
+            async def get(
                 self,
-                checkpoint_id: str,
+                entity_id: str,
             ) -> CheckpointRecord | None:
                 if self._vanish_after:
                     return None
-                return await super().get(checkpoint_id)
+                return await super().get(entity_id)
 
             async def set_active(self, checkpoint_id: str) -> None:
                 await super().set_active(checkpoint_id)

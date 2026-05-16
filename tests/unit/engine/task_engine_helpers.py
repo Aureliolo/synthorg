@@ -44,7 +44,7 @@ class FakeTaskRepository:
         self,
         filter_spec: object,
         *,
-        limit: int = 100,
+        limit: int | None = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         result = self._filtered(
@@ -52,6 +52,8 @@ class FakeTaskRepository:
             getattr(filter_spec, "assigned_to", None),
             getattr(filter_spec, "project", None),
         )
+        if limit is None:
+            return tuple(result[offset:])
         return tuple(result[offset : offset + limit])
 
     async def count(self, filter_spec: object) -> int:
