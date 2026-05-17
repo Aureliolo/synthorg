@@ -28,7 +28,12 @@ from synthorg.integrations.errors import (
     OIDCNonceMismatchError,
     OIDCVerificationError,
 )
-from synthorg.observability import safe_error_description
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.integrations import (
+    OAUTH_OIDC_VERIFICATION_FAILED,
+)
+
+logger = get_logger(__name__)
 
 # Asymmetric signature algorithms only. ``HS256`` / ``none`` are
 # deliberately excluded: accepting HMAC here would let an attacker
@@ -61,8 +66,15 @@ def _jwks_client_for(jwks_uri: str) -> PyJWKClient:
     """Return a cached ``PyJWKClient`` for *jwks_uri* (creating once)."""
     client = _jwks_clients.get(jwks_uri)
     if client is None:
-        client = PyJWKClient(jwks_uri, timeout=_JWKS_HTTP_TIMEOUT_SECONDS)
-        _jwks_clients[jwks_uri] = client
+        # ``setdefault`` is the atomic get-or-create: if a concurrent
+        # callback created the client between our ``get`` and here,
+        # that instance wins and ours is discarded. Lock-free; relies
+        # on CPython dict.setdefault atomicity. The rare extra
+        # construct is cheap (no network until first key lookup).
+        client = _jwks_clients.setdefault(
+            jwks_uri,
+            PyJWKClient(jwks_uri, timeout=_JWKS_HTTP_TIMEOUT_SECONDS),
+        )
     return client
 
 
@@ -110,6 +122,16 @@ async def verify_id_token(
     except MemoryError, RecursionError:
         raise
     except (jwt.exceptions.PyJWTError, jwt.exceptions.PyJWKClientError, OSError) as exc:
+        # Dedicated forensic event: the caller only logs the generic
+        # OAUTH_FLOW_FAILED for the whole callback, which cannot
+        # distinguish a signature/issuer/expiry rejection from a
+        # downstream failure. Scrubbed per the secret-log policy.
+        logger.warning(
+            OAUTH_OIDC_VERIFICATION_FAILED,
+            reason="signature_or_claim",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         msg = f"OIDC id_token verification failed: {safe_error_description(exc)}"
         raise OIDCVerificationError(msg) from exc
 
@@ -117,6 +139,13 @@ async def verify_id_token(
     if not isinstance(claim_nonce, str) or not hmac.compare_digest(
         claim_nonce, expected_nonce
     ):
+        # A nonce mismatch is the replay/injection signal; record it
+        # distinctly so a forensic reader can separate "attacker
+        # replayed an id_token" from a benign verification fault.
+        logger.warning(
+            OAUTH_OIDC_VERIFICATION_FAILED,
+            reason="nonce_mismatch",
+        )
         msg = "OIDC id_token nonce does not match the flow nonce"
         raise OIDCNonceMismatchError(msg)
 

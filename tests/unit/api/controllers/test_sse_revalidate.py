@@ -230,3 +230,47 @@ async def test_revalidation_tick_revokes_when_window_saturates() -> None:
     assert revoked is not None
     assert revoked["event"] == "revoked"
     assert json.loads(revoked["data"])["reason"] == "backend_unavailable"
+
+
+async def test_interleaved_success_does_not_reset_failure_budget() -> None:
+    """The core regression the sliding window exists to prevent: a
+    transient backend that returns one good response between failure
+    clusters must NOT reset the budget (a streak counter would). With
+    max_events=3, the sequence fail, ok, fail, ok, fail, fail must
+    still revoke on the 4th failure despite the interleaved successes.
+    """
+    healthy = _make_user(role=HumanRole.CEO)
+    state = _FakeAppState(persisted_user=healthy)
+    # Alternate transient failure / healthy read; the limiter only
+    # ever sees the failures (ok ticks return None without taking).
+    state.persistence.users.get.side_effect = [  # type: ignore[attr-defined]
+        RuntimeError("blip"),
+        healthy,
+        RuntimeError("blip"),
+        healthy,
+        RuntimeError("blip"),
+        RuntimeError("blip"),
+    ]
+    limiter = _SlidingWindowRateLimiter(max_events=3, window_seconds=60.0)
+    user = _make_auth_user()
+
+    # F, ok, F, ok, F  -> 3 admitted failures, never revoked.
+    for _ in range(5):
+        assert (
+            await _run_revalidation_tick(
+                app_state=state,  # type: ignore[arg-type]
+                user=user,
+                failure_limiter=limiter,
+            )
+            is None
+        )
+
+    # 4th failure exceeds the window despite the two interleaved
+    # successes -> revoke (a reset-on-success streak would never).
+    revoked = await _run_revalidation_tick(
+        app_state=state,  # type: ignore[arg-type]
+        user=user,
+        failure_limiter=limiter,
+    )
+    assert revoked is not None
+    assert json.loads(revoked["data"])["reason"] == "backend_unavailable"

@@ -67,9 +67,12 @@ echo
 # NOT match a tag ref, and vice versa -- so every pattern must carry
 # its type explicitly. `reconcile_policies()` compares `(type, name)`
 # pairs so mistyped policies self-heal on a subsequent `--apply`.
-# For PR-triggered envs (cloudflare-preview) the workflow-level
-# `if:` guard is the actual gate -- see
-# docs/reference/github-environments.md for rationale.
+# For PR-triggered envs (cloudflare-preview, lighthouse) the
+# workflow-level `if:` guard is the actual gate -- see
+# docs/reference/github-environments.md for rationale. Both are
+# deliberately ABSENT from ENV_CONFIG below: PR refs
+# (refs/pull/N/merge) cannot be matched by a deployment branch
+# policy, so the reconciler must leave these envs policy-free.
 # `release` is scoped to `branch:main` alone because it holds the
 # `RELEASE_PLEASE_TOKEN` secret. GitHub's deployment branch policies
 # match ref *names* only -- they do NOT verify that a tag's commit

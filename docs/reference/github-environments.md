@@ -18,6 +18,7 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
 | `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch. Holds `APKO_BOT_APP_CLIENT_ID` + `APKO_BOT_APP_PRIVATE_KEY`: a copy of the `synthorg-repo-bot` App credentials (`Contents: Read and write` + `Pull requests: Read and write` + `Metadata: Read`, scoped to this repo only), used by the apko-lock workflow to mint an installation token for the lockfile-update PR. `GITHUB_TOKEN` cannot create the PR because the repo-level setting `can_approve_pull_request_reviews: false` blocks it. The same App credentials live under `RELEASE_BOT_APP_*` in the `release` env (env-scoped, not shared across envs). Both copies point at the same App; the dedicated `apko-lock` env keeps weekly-cron auth and release-pipeline auth in separate boxes even though they share an identity. |
 | `cloudflare-preview` | _none_ (see below) | `pages-preview.yml` pull_request events |
+| `lighthouse` | _none_ (see below) | `lighthouse.yml` pull_request events. Holds `LHCI_GITHUB_APP_TOKEN`. |
 
 The release path is intentionally split into two environments. GitHub's
 deployment branch policies only match ref *names*; they do NOT verify
@@ -28,7 +29,7 @@ credentials. Keeping `release` main-only and routing tag-only jobs
 through `release-tags` preserves the structural ref gate without
 exposing the App.
 
-## Why `cloudflare-preview` has no branch policy
+## Why `cloudflare-preview` and `lighthouse` have no branch policy
 
 GitHub's deployment branch policies match against `github.ref` using fnmatch,
 but only for refs under `refs/heads/*` (branches) and `refs/tags/*` (tags).
@@ -41,10 +42,21 @@ would either:
 - block every PR preview (if set to `main`), or
 - admit everything (if set to `*`), providing no real protection.
 
+`lighthouse` is the same case: `lighthouse.yml`'s dashboard + site
+jobs run only on `pull_request`, hold `LHCI_GITHUB_APP_TOKEN`, and a
+`main` policy would block every web/site PR (the `Lighthouse Pass`
+aggregate is a REQUIRED check, so a permanently-pending sub-job would
+wedge merges). It therefore carries no branch policy either.
+
 The workflow-level gate is the actual control:
 
 - `pages-preview.yml:deploy-preview` / `cleanup-preview`: gated on
   `same_repo == 'true'` so fork PRs cannot access Cloudflare secrets.
+- `lighthouse.yml:lighthouse-dashboard` / `lighthouse-site`: gated on
+  `github.event.pull_request.head.repo.full_name == github.repository`
+  (or `workflow_dispatch`) so a fork PR cannot reach
+  `LHCI_GITHUB_APP_TOKEN`; the `lighthouse-pass` aggregator treats the
+  resulting skipped sub-jobs as a pass.
 
 If GitHub ever extends deployment branch policies to cover PR refs, revisit
 this entry in `scripts/configure_environments.sh`.

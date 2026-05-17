@@ -433,9 +433,18 @@ class AuthService:
             raise RefreshTokenInvalidError
 
         record = outcome.record
-        # RefreshConsumeOutcome's validator guarantees exactly one of
-        # record / reject_reason is set; reject_reason was None above.
-        assert record is not None  # noqa: S101 -- model invariant
+        if record is None:
+            # RefreshConsumeOutcome's validator guarantees exactly one
+            # of record / reject_reason is set and reject_reason was
+            # None above, so this is unreachable in practice. Handle it
+            # explicitly anyway (not `assert`, which `python -O`
+            # strips) so the security path fails closed if the
+            # invariant is ever violated by a future change.
+            logger.warning(
+                SECURITY_AUTH_REFRESH_REJECTED,
+                reason="consume_outcome_invariant_violation",
+            )
+            raise RefreshTokenInvalidError
 
         user = await users.get(record.user_id)
         if user is None:

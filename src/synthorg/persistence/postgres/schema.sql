@@ -943,6 +943,8 @@ CREATE TABLE oauth_states (
     expires_at TIMESTAMPTZ NOT NULL,
     consumed_at TIMESTAMPTZ,
     connection_name_returned TEXT,
+    -- OIDC nonce; nullable: only set for OIDC connections (jwks_uri
+    -- configured). Plain-OAuth2 flows leave it NULL.
     nonce TEXT,
     CONSTRAINT oauth_states_consumed_pair CHECK (
         (consumed_at IS NULL AND connection_name_returned IS NULL)

@@ -109,7 +109,12 @@ _AUTH_REVALIDATE_MAX_FAILURES_FALLBACK: Final[int] = 5
 def _build_revalidation_limiter(
     app_state: AppState | None,
 ) -> _SlidingWindowRateLimiter:
-    """Build the shared sliding-window limiter for SSE revalidation.
+    """Build a per-connection sliding-window limiter for SSE revalidation.
+
+    "Shared" with WS means the same *model + settings*, not a shared
+    instance: like ``_periodic_revalidate`` (WS), each stream gets its
+    own limiter so one connection's transient failures cannot evict
+    another's.
 
     Mirrors ``_periodic_revalidate`` (WS): a flaky persistence layer
     that interleaves one success between failure clusters cannot keep
