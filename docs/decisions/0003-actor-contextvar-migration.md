@@ -79,14 +79,23 @@ binding therefore fails loudly rather than mis-attributing.
 
 ### Phased plan
 
-- **Phase 1 (this PR)**: `decided_by` only, in the approvals path and
-  the review gate. `engine/approval_gate.py` and the approval
-  controller/service stop accepting `decided_by` as an explicit
-  parameter and read `current_actor()`. The API middleware binds the
-  human actor for HTTP-driven decisions; the approval-timeout
-  scheduler binds `ActorIdentity.system("approval-timeout")` before
-  invoking the auto-decision. All other `decided_by` /
-  `requested_by` / `operator` parameters are unchanged this PR.
+- **Phase 1 (this PR, broadened)**: the **entire `decided_by`
+  surface**, not just the approval/review gate. Every entry boundary
+  that decides an approval, review, escalation, or conflict-resolution
+  outcome stops accepting `decided_by` as a caller-supplied parameter
+  and resolves it via the precedence rule (explicit system-override
+  arg > `current_actor()` > error). Covered modules include
+  `engine/approval_gate.py`, `engine/review_gate.py`, the approval /
+  review / escalation controllers, and the conflict-resolution
+  strategies (`communication/conflict_resolution/*`). The API auth
+  middleware binds the human actor for HTTP-driven decisions; the
+  approval-timeout scheduler binds
+  `ActorIdentity.system("approval-timeout")`; worker / coordination /
+  meeting spawn entries bind the agent or system actor before any
+  decision is recorded. Security-sensitive self-review checks
+  (`decided_by == task.assigned_to`) resolve the actor identically so
+  `SelfReviewError` behaviour is byte-for-byte preserved.
+  `requested_by` / `operator` are out of Phase-1 scope.
 - **Phase 2 (follow-up PR)**: `requested_by` in autonomy
   promotion/recovery.
 - **Phase 3 (follow-up PR)**: `operator` in settings mutation and
@@ -137,8 +146,10 @@ all-callers-in-one-commit rule to their symbol.
 - A new `core/` seam parallel to `correlation.py`; the two are
   deliberately separate (one is a structlog binding, one is a typed
   domain object consumed by audit writes).
-- Phase 1 narrows three approval/review signatures; later phases
-  remove `requested_by` / `operator` similarly.
+- Phase 1 removes the explicit `decided_by` parameter across the
+  whole approval / review / escalation / conflict-resolution surface
+  (broadened from the original gate-only scope); later phases remove
+  `requested_by` / `operator` similarly.
 - A missing binding on a path that records an actor now raises rather
   than recording `None`; system paths must name themselves.
 - Out of scope this PR: phases 2-4 symbols, web / CLI, the Phase-4
