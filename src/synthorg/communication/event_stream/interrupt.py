@@ -325,7 +325,10 @@ class InterruptStore:
             documented above.
         """
         from synthorg.communication.event_stream.interrupt_resolution_validators import (  # noqa: E501, PLC0415
-            INTERRUPT_RESOLUTION_VALIDATORS,
+            INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY,
+        )
+        from synthorg.core.registry import (  # noqa: PLC0415
+            StrategyFactoryNotFoundError,
         )
 
         async with self._lock:
@@ -337,8 +340,16 @@ class InterruptStore:
                 )
                 return None
 
-            # Validate resolution payload matches interrupt type.
-            failure_note = INTERRUPT_RESOLUTION_VALIDATORS[interrupt.type](resolution)
+            # Validate resolution payload matches interrupt type. An
+            # interrupt type with no registered validator is a
+            # programming gap; surface it as a rejection note rather
+            # than unwinding the resolve flow through an exception.
+            try:
+                failure_note = INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY.build(
+                    interrupt.type, resolution
+                )
+            except StrategyFactoryNotFoundError:
+                failure_note = f"no validator for interrupt type {interrupt.type!r}"
             if failure_note is not None:
                 logger.warning(
                     EVENT_STREAM_INVALID_RESUME_PAYLOAD,
