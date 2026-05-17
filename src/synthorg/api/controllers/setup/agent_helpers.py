@@ -139,6 +139,32 @@ async def post_setup_reinit(app_state: AppState) -> None:
             )
             raise
 
+    # 3. Rebuild + hot-swap the worker execution service so a provider
+    #    added after an empty-company start wakes the agent runtime
+    #    live, with no process restart. Raise on failure so the caller
+    #    keeps ``setup_complete=false`` rather than presenting a
+    #    half-configured runtime as complete.
+    try:
+        from synthorg.workers.runtime_builder import (  # noqa: PLC0415
+            build_worker_execution_service,
+        )
+
+        service = await build_worker_execution_service(
+            app_state,
+            workspace_root=app_state.agent_workspace_root,
+        )
+        app_state.swap_worker_execution_service(service)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            SETUP_AGENT_BOOTSTRAP_FAILED,
+            context="worker_execution_service_rebuild",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
+
 
 async def check_needs_admin(
     persistence: PersistenceBackend,

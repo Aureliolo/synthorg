@@ -12,6 +12,7 @@ re-init wake, so a provider added after an empty-company start brings
 the runtime online with no restart.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.engine.agent_engine import AgentEngine
@@ -91,6 +92,11 @@ async def build_worker_execution_service(
         )
     provider = registry.get(names[0])
 
+    await asyncio.to_thread(
+        workspace_root.mkdir,
+        parents=True,
+        exist_ok=True,
+    )
     web_request_timeout = await app_state.config_resolver.get_float(
         _WEB_TIMEOUT_NS,
         _WEB_TIMEOUT_KEY,

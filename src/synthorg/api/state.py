@@ -6,8 +6,10 @@ Holds typed references to core services, injected into
 """
 
 import asyncio
+import tempfile
 import threading
 from collections import OrderedDict
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.api.auth.presence import UserPresence
@@ -167,6 +169,7 @@ class AppState(AppStateServicesMixin):
         "_agent_health_service",
         "_agent_registry",
         "_agent_version_service",
+        "_agent_workspace_root",
         "_analytics_service",
         "_api_bridge_config",
         "_api_bridge_config_lock",
@@ -418,6 +421,12 @@ class AppState(AppStateServicesMixin):
         # deployments may swap the implementation to invoke the full
         # AgentEngine instead of the baseline lifecycle walk.
         self._worker_execution_service: WorkerExecutionService | None = None
+        # Filesystem root the agent's file-system / sandbox tools use.
+        # Pinned once at startup from the runtime data dir via
+        # ``set_agent_workspace_root``; the property falls back to a
+        # process-stable temp directory so dev / empty-company runs
+        # still have a valid absolute workspace.
+        self._agent_workspace_root: Path | None = None
         # Guards the double-checked locking on first-access lazy wiring
         # of worker_execution_service / experiment_service. Both
         # properties may be invoked from concurrent request handlers
@@ -856,6 +865,54 @@ class AppState(AppStateServicesMixin):
             "_worker_execution_service",
             service,
             "Worker execution service",
+        )
+
+    def swap_worker_execution_service(
+        self,
+        service: WorkerExecutionService,
+    ) -> None:
+        """Replace the worker execution service (hot-reload).
+
+        Unlike :meth:`set_worker_execution_service` (boot, once-only),
+        this intentionally replaces an already-wired service so a
+        provider added after an empty-company start brings the runtime
+        online with no restart (setup-reinit path). The seam is not
+        bypassed -- the swap goes through this method, and the
+        ``WorkerExecutionService`` contract is unchanged.
+        """
+        previous = self._worker_execution_service
+        if previous is service:
+            transition = "noop"
+        elif previous is None:
+            transition = "attached"
+        else:
+            transition = "replaced"
+        self._worker_execution_service = service
+        logger.info(
+            API_APP_STARTUP,
+            service="worker_execution_service",
+            transition=transition,
+        )
+
+    @property
+    def agent_workspace_root(self) -> Path:
+        """Filesystem root the agent's file-system / sandbox tools use.
+
+        Pinned once at startup from the runtime data directory
+        (env-aware) via :meth:`set_agent_workspace_root`. Falls back to
+        a process-stable temp directory so dev / empty-company runs
+        still have a valid absolute workspace.
+        """
+        if self._agent_workspace_root is not None:
+            return self._agent_workspace_root
+        return Path(tempfile.gettempdir()) / "synthorg-agent-workspaces"
+
+    def set_agent_workspace_root(self, path: Path) -> None:
+        """Pin the agent workspace root (once-only, startup)."""
+        self._set_once(
+            "_agent_workspace_root",
+            path,
+            "Agent workspace root",
         )
 
     @property
