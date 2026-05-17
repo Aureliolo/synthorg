@@ -25,11 +25,9 @@ from synthorg.observability.events.integrations import (
     OAUTH_STATE_INVALID,
 )
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
-from synthorg.persistence.connection_protocol import (
-    OAuthStateRepository,  # noqa: TC001
-)
 
 if TYPE_CHECKING:
+    from synthorg.integrations.oauth.state_service import OAuthStateService
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -78,7 +76,7 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
     *,
     state_param: str,
     code: str,
-    state_repo: OAuthStateRepository,
+    state_service: OAuthStateService,
     catalog: ConnectionCatalog,
     flow: AuthorizationCodeFlow | None = None,
     config_resolver: ConfigResolver | None = None,
@@ -93,7 +91,9 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
     Args:
         state_param: The state parameter from the callback URL.
         code: The authorization code.
-        state_repo: Repository for looking up OAuth states.
+        state_service: Audit-aware OAuth-state facade (the callback's
+            persistence-boundary delegate for get / expire /
+            mark_consumed).
         catalog: Connection catalog for credential storage.
         flow: Authorization code flow instance. When ``None`` a new
             flow is constructed with the operator-tuned HTTP timeout
@@ -117,7 +117,7 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
 
     from datetime import UTC, datetime  # noqa: PLC0415
 
-    oauth_state = await state_repo.get(NotBlankStr(state_param))
+    oauth_state = await state_service.get(NotBlankStr(state_param))
     if oauth_state is None:
         logger.warning(OAUTH_STATE_INVALID, state_prefix=state_param[:8])
         msg = "Invalid or expired OAuth state token"
@@ -143,7 +143,7 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
         return str(connection_name)
 
     if oauth_state.expires_at < datetime.now(UTC):
-        await state_repo.delete(NotBlankStr(state_param))
+        await state_service.expire(NotBlankStr(state_param))
         logger.warning(
             OAUTH_STATE_INVALID,
             state_prefix=state_param[:8],
@@ -297,7 +297,7 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
     # *redelivered* callbacks) but possible under genuinely
     # concurrent in-flight callbacks; surface it as a WARNING so
     # operators can observe the collision.
-    consumed_winner = await state_repo.mark_consumed(
+    consumed_winner = await state_service.mark_consumed(
         NotBlankStr(state_param),
         connection_name=NotBlankStr(conn.name),
         consumed_at=datetime.now(UTC),

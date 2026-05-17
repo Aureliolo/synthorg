@@ -22,6 +22,7 @@ from synthorg.core.types import (
 )
 from synthorg.integrations.errors import (
     InvalidStateError,
+    OIDCVerificationError,
     SecretRetrievalError,
     TokenExchangeFailedError,
 )
@@ -178,7 +179,6 @@ class OAuthController(Controller):
         )
 
         app_state = state["app_state"]
-        persistence = app_state.persistence
         catalog = app_state.connection_catalog
         resolver = app_state.config_resolver if app_state.has_config_resolver else None
 
@@ -186,11 +186,15 @@ class OAuthController(Controller):
             connection_name = await handle_oauth_callback(
                 state_param=state_param,
                 code=code,
-                state_repo=persistence.oauth_states,
+                state_service=app_state.oauth_state_service,
                 catalog=catalog,
                 config_resolver=resolver,
             )
         except InvalidStateError as exc:
+            raise ValidationError(str(exc)) from exc
+        except OIDCVerificationError as exc:
+            # id_token signature/claim/nonce rejection is a callback
+            # validation failure (400), not an upstream 502.
             raise ValidationError(str(exc)) from exc
         except TokenExchangeFailedError as exc:
             raise ValidationError(str(exc)) from exc

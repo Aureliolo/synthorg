@@ -45,7 +45,7 @@ from synthorg.integrations.oauth.pkce import (
     encrypt_pkce_verifier,
     generate_code_verifier,
 )
-from synthorg.persistence.connection_protocol import OAuthStateRepository
+from synthorg.integrations.oauth.state_service import OAuthStateService
 from tests._shared.fake_clock import FakeClock
 
 
@@ -156,9 +156,9 @@ class TestCallbackHandler:
             created_at=now,
             expires_at=now + timedelta(hours=1),
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
-        state_repo.mark_consumed.return_value = True
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
+        state_service.mark_consumed.return_value = True
 
         stored_tokens: dict[str, str] = {}
 
@@ -195,7 +195,7 @@ class TestCallbackHandler:
         result = await handle_oauth_callback(
             state_param="state-1",
             code="auth-code",
-            state_repo=state_repo,
+            state_service=state_service,
             catalog=catalog,
             flow=fake_flow,
         )
@@ -212,14 +212,14 @@ class TestCallbackHandler:
             created_at=past - timedelta(hours=1),
             expires_at=past,
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
         catalog = MagicMock(spec=ConnectionCatalog)
         with pytest.raises(InvalidStateError):
             await handle_oauth_callback(
                 state_param="state-expired",
                 code="auth-code",
-                state_repo=state_repo,
+                state_service=state_service,
                 catalog=catalog,
             )
 
@@ -231,8 +231,8 @@ class TestCallbackHandler:
             pkce_verifier=NotBlankStr("verifier"),
             expires_at=now + timedelta(hours=1),
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
         catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_or_raise.return_value = Connection(
             name=NotBlankStr("conn-1"),
@@ -244,7 +244,7 @@ class TestCallbackHandler:
             await handle_oauth_callback(
                 state_param="state-missing",
                 code="auth-code",
-                state_repo=state_repo,
+                state_service=state_service,
                 catalog=catalog,
             )
 
@@ -275,9 +275,9 @@ class TestCallbackOidcBinding:
             expires_at=now + timedelta(hours=1),
             nonce=NotBlankStr(nonce) if nonce else None,
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
-        state_repo.mark_consumed.return_value = True
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
+        state_service.mark_consumed.return_value = True
 
         catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_or_raise.return_value = Connection(
@@ -308,10 +308,10 @@ class TestCallbackOidcBinding:
             id_token=id_token,
             expires_at=now + timedelta(seconds=3600),
         )
-        return state_repo, catalog, fake_flow
+        return state_service, catalog, fake_flow
 
     async def test_plain_oauth2_skips_verification(self) -> None:
-        state_repo, catalog, flow = self._harness(credentials={}, id_token=None)
+        state_service, catalog, flow = self._harness(credentials={}, id_token=None)
         with patch(
             "synthorg.integrations.oauth.callback_handler.verify_id_token",
             autospec=True,
@@ -319,7 +319,7 @@ class TestCallbackOidcBinding:
             result = await handle_oauth_callback(
                 state_param="state-oidc",
                 code="auth-code",
-                state_repo=state_repo,
+                state_service=state_service,
                 catalog=catalog,
                 flow=flow,
             )
@@ -327,7 +327,7 @@ class TestCallbackOidcBinding:
         verify.assert_not_called()
 
     async def test_full_oidc_verification_invoked(self) -> None:
-        state_repo, catalog, flow = self._harness(
+        state_service, catalog, flow = self._harness(
             credentials={
                 "jwks_uri": "https://idp.example.com/jwks",
                 "oidc_issuer": "https://idp.example.com",
@@ -341,7 +341,7 @@ class TestCallbackOidcBinding:
             result = await handle_oauth_callback(
                 state_param="state-oidc",
                 code="auth-code",
-                state_repo=state_repo,
+                state_service=state_service,
                 catalog=catalog,
                 flow=flow,
             )
@@ -355,18 +355,18 @@ class TestCallbackOidcBinding:
         assert kwargs["expected_nonce"] == "flow-nonce"
 
     async def test_id_token_without_jwks_uri_fails_closed(self) -> None:
-        state_repo, catalog, flow = self._harness(credentials={}, id_token="h.p.s")
+        state_service, catalog, flow = self._harness(credentials={}, id_token="h.p.s")
         with pytest.raises(OIDCVerificationError):
             await handle_oauth_callback(
                 state_param="state-oidc",
                 code="auth-code",
-                state_repo=state_repo,
+                state_service=state_service,
                 catalog=catalog,
                 flow=flow,
             )
 
     async def test_jwks_configured_but_no_id_token_fails_closed(self) -> None:
-        state_repo, catalog, flow = self._harness(
+        state_service, catalog, flow = self._harness(
             credentials={
                 "jwks_uri": "https://idp.example.com/jwks",
                 "oidc_issuer": "https://idp.example.com",
@@ -377,13 +377,13 @@ class TestCallbackOidcBinding:
             await handle_oauth_callback(
                 state_param="state-oidc",
                 code="auth-code",
-                state_repo=state_repo,
+                state_service=state_service,
                 catalog=catalog,
                 flow=flow,
             )
 
     async def test_jwks_without_issuer_fails_closed(self) -> None:
-        state_repo, catalog, flow = self._harness(
+        state_service, catalog, flow = self._harness(
             credentials={"jwks_uri": "https://idp.example.com/jwks"},
             id_token="h.p.s",
         )
@@ -391,13 +391,13 @@ class TestCallbackOidcBinding:
             await handle_oauth_callback(
                 state_param="state-oidc",
                 code="auth-code",
-                state_repo=state_repo,
+                state_service=state_service,
                 catalog=catalog,
                 flow=flow,
             )
 
     async def test_nonce_mismatch_propagates(self) -> None:
-        state_repo, catalog, flow = self._harness(
+        state_service, catalog, flow = self._harness(
             credentials={
                 "jwks_uri": "https://idp.example.com/jwks",
                 "oidc_issuer": "https://idp.example.com",
@@ -413,7 +413,7 @@ class TestCallbackOidcBinding:
                 await handle_oauth_callback(
                     state_param="state-oidc",
                     code="auth-code",
-                    state_repo=state_repo,
+                    state_service=state_service,
                     catalog=catalog,
                     flow=flow,
                 )
@@ -437,8 +437,8 @@ class TestCallbackReplay:
             consumed_at=now - timedelta(minutes=4),
             connection_name_returned=NotBlankStr("conn-1"),
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
 
         catalog = MagicMock(spec=ConnectionCatalog)
 
@@ -447,7 +447,7 @@ class TestCallbackReplay:
         result = await handle_oauth_callback(
             state_param="state-replay",
             code="auth-code",
-            state_repo=state_repo,
+            state_service=state_service,
             catalog=catalog,
             flow=fake_flow,
         )
@@ -458,8 +458,8 @@ class TestCallbackReplay:
         fake_flow.exchange_code.assert_not_awaited()
         catalog.store_oauth_tokens.assert_not_awaited()
         catalog.update.assert_not_awaited()
-        state_repo.mark_consumed.assert_not_awaited()
-        state_repo.delete.assert_not_awaited()
+        state_service.mark_consumed.assert_not_awaited()
+        state_service.expire.assert_not_awaited()
 
     async def test_fresh_callback_marks_consumed_and_does_not_delete(
         self,
@@ -474,9 +474,9 @@ class TestCallbackReplay:
             created_at=now,
             expires_at=now + timedelta(hours=1),
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
-        state_repo.mark_consumed.return_value = True
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
+        state_service.mark_consumed.return_value = True
 
         catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_or_raise.return_value = Connection(
@@ -500,7 +500,7 @@ class TestCallbackReplay:
         result = await handle_oauth_callback(
             state_param="state-fresh",
             code="auth-code",
-            state_repo=state_repo,
+            state_service=state_service,
             catalog=catalog,
             flow=fake_flow,
         )
@@ -509,10 +509,10 @@ class TestCallbackReplay:
         # Success path stamps the consumed marker and never falls
         # back to ``delete`` (delete is now reserved for the expiry
         # branch only).
-        state_repo.mark_consumed.assert_awaited_once()
-        kwargs = state_repo.mark_consumed.await_args.kwargs
+        state_service.mark_consumed.assert_awaited_once()
+        kwargs = state_service.mark_consumed.await_args.kwargs
         assert kwargs.get("connection_name") == "conn-2"
-        state_repo.delete.assert_not_awaited()
+        state_service.expire.assert_not_awaited()
 
 
 @pytest.mark.integration

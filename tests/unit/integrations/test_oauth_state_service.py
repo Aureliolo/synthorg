@@ -89,3 +89,57 @@ class TestPersistInitiation:
                 connection_name=NotBlankStr("github-prod"),
             )
         repo.save.assert_awaited_once()
+
+
+class TestCallbackStateOps:
+    """The callback path routes get / expire / mark_consumed through
+    the service rather than touching ``persistence.oauth_states``
+    directly, so the layer boundary holds on both flow halves.
+    """
+
+    async def test_get_delegates_to_repo(self) -> None:
+        repo = AsyncMock(spec=OAuthStateRepository)
+        state = _state(connection_name="github-prod")
+        repo.get.return_value = state
+        service = OAuthStateService(repo=repo)
+
+        result = await service.get(NotBlankStr("tok-abcdef-12345"))
+
+        assert result is state
+        repo.get.assert_awaited_once_with(NotBlankStr("tok-abcdef-12345"))
+
+    async def test_get_missing_returns_none(self) -> None:
+        repo = AsyncMock(spec=OAuthStateRepository)
+        repo.get.return_value = None
+        service = OAuthStateService(repo=repo)
+
+        assert await service.get(NotBlankStr("missing-token-1")) is None
+
+    async def test_expire_delegates_to_repo_delete(self) -> None:
+        repo = AsyncMock(spec=OAuthStateRepository)
+        repo.delete.return_value = True
+        service = OAuthStateService(repo=repo)
+
+        deleted = await service.expire(NotBlankStr("tok-abcdef-12345"))
+
+        assert deleted is True
+        repo.delete.assert_awaited_once_with(NotBlankStr("tok-abcdef-12345"))
+
+    async def test_mark_consumed_delegates_with_kwargs(self) -> None:
+        repo = AsyncMock(spec=OAuthStateRepository)
+        repo.mark_consumed.return_value = True
+        service = OAuthStateService(repo=repo)
+        when = datetime.now(UTC)
+
+        won = await service.mark_consumed(
+            NotBlankStr("tok-abcdef-12345"),
+            connection_name=NotBlankStr("github-prod"),
+            consumed_at=when,
+        )
+
+        assert won is True
+        repo.mark_consumed.assert_awaited_once_with(
+            NotBlankStr("tok-abcdef-12345"),
+            connection_name=NotBlankStr("github-prod"),
+            consumed_at=when,
+        )
