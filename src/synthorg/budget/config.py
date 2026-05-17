@@ -35,7 +35,7 @@ class BudgetAlertConfig(BaseModel):
         hard_stop_at: Percentage of budget that triggers a hard stop.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(
@@ -115,7 +115,7 @@ class AutoDowngradeConfig(BaseModel):
             never mid-execution per the Operations design page).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(
@@ -223,7 +223,7 @@ class BudgetConfig(BaseModel):
         currency: ISO 4217 currency code for display formatting.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(

@@ -48,7 +48,7 @@ class AnonymizedOutcomeEvent(BaseModel):
         sdk_version: SynthOrg version string.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     schema_version: Literal["1"] = "1"
     deployment_id: NotBlankStr
@@ -116,7 +116,7 @@ class EventBatch(BaseModel):
         events: Tuple of anonymized outcome events.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     events: tuple[AnonymizedOutcomeEvent, ...] = Field(max_length=1000)
 
@@ -141,7 +141,7 @@ class AggregatedPattern(BaseModel):
         industry_breakdown: Sorted (industry_tag, count) pairs.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     source_rule: NotBlankStr
     altitude: NotBlankStr
@@ -174,7 +174,7 @@ class ThresholdRecommendation(BaseModel):
         rationale: Human-readable explanation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     rule_name: NotBlankStr
     metric_name: NotBlankStr

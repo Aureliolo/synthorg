@@ -36,7 +36,7 @@ class QuotaLimit(BaseModel):
         max_tokens: Maximum tokens in the window (0 = unlimited).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     window: QuotaWindow = Field(description="Time window for this limit")
     max_requests: int = Field(
@@ -91,7 +91,7 @@ class SubscriptionConfig(BaseModel):
         hardware_limits: Free-text hardware constraints for local models.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     plan_name: NotBlankStr = Field(
         default="pay_as_you_go",
@@ -181,7 +181,7 @@ class DegradationConfig(BaseModel):
         queue_max_wait_seconds: Max seconds to wait when queueing.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: DegradationAction = Field(
         default=DegradationAction.ALERT,

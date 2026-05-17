@@ -28,7 +28,7 @@ class NotificationSinkConfig(BaseModel):
             ``webhook_url``) -- treat as sensitive.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: NotificationSinkType = Field(description="Adapter type")
     enabled: bool = Field(
@@ -49,7 +49,7 @@ class NotificationConfig(BaseModel):
         min_severity: Minimum severity to dispatch (filters below).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     sinks: tuple[NotificationSinkConfig, ...] = Field(
         default=(NotificationSinkConfig(type=NotificationSinkType.CONSOLE),),

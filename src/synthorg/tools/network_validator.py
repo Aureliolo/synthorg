@@ -85,7 +85,7 @@ class NetworkPolicy(BaseModel):
             resolution.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     hostname_allowlist: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -133,7 +133,7 @@ class DnsValidationOk(BaseModel):
         is_https: Whether the URL uses HTTPS transport.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     hostname: NotBlankStr
     port: int | None = Field(default=None, gt=0, le=65535)

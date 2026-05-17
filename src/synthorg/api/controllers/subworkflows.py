@@ -28,7 +28,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import WorkflowType
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import WorkflowDefinitionValidationError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -46,6 +46,7 @@ from synthorg.engine.workflow.subworkflow_registry import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_CURSOR_INVALID
+from synthorg.persistence._shared import collect_all
 
 logger = get_logger(__name__)
 
@@ -214,14 +215,37 @@ class SubworkflowController(Controller):
                 description="Search substring",
             ),
         ],
-    ) -> Response[ApiResponse[tuple[SubworkflowSummary, ...]]]:
-        """Substring search across name and description."""
+        limit: CursorLimit = DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> Response[PaginatedResponse[SubworkflowSummary]]:
+        """Substring search across name and description (cursor-paginated).
+
+        Applies opaque-cursor pagination at the API boundary over the
+        complete match set: the handler drains every bounded repository
+        page via ``collect_all`` first (a truncated set would break the
+        cursor walk and under-report matches), then slices the
+        requested cursor page for the response.
+        """
         registry = _registry(state)
-        matches = await registry.search(q)
-        return Response(
-            content=ApiResponse[tuple[SubworkflowSummary, ...]](
-                data=matches,
+        # This endpoint applies its own opaque-cursor pagination over
+        # the full match set, so drain every bounded repo page; a
+        # truncated set would break the cursor walk and under-report
+        # matches.
+        matches = await collect_all(
+            lambda page_limit, offset: registry.search(
+                NotBlankStr(q),
+                limit=page_limit,
+                offset=offset,
             ),
+        )
+        page, meta = paginate_cursor(
+            matches,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
+        return Response(
+            content=PaginatedResponse[SubworkflowSummary](data=page, pagination=meta),
         )
 
     @get("/{subworkflow_id:str}/versions", guards=[require_read_access])
@@ -293,9 +317,27 @@ class SubworkflowController(Controller):
         limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> Response[PaginatedResponse[ParentReference]]:
-        """List parent workflow definitions pinning this version (cursor-paginated)."""
+        """List parent workflow definitions pinning this version.
+
+        Applies opaque-cursor pagination at the API boundary over the
+        complete parent set: the handler drains every bounded
+        repository page via ``collect_all`` first (a truncated set
+        would break the cursor walk and under-report references), then
+        slices the requested cursor page for the response.
+        """
         registry = _registry(state)
-        parents = await registry.find_parents(subworkflow_id, version)
+        # This endpoint applies its own opaque-cursor pagination over
+        # the full parent set, so drain every bounded repo page; a
+        # truncated set would break the cursor walk and (worse)
+        # under-report references.
+        parents = await collect_all(
+            lambda page_limit, offset: registry.find_parents(
+                NotBlankStr(subworkflow_id),
+                NotBlankStr(version),
+                limit=page_limit,
+                offset=offset,
+            ),
+        )
         page, meta = paginate_cursor(
             parents,
             limit=limit,

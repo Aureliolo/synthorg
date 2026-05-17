@@ -330,8 +330,8 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
     """
     for setting_key, setter_name in (
         ("ws_frame_timeout_seconds", "set_ws_frame_timeout_seconds"),
-        ("ws_revalidation_window_seconds", "set_ws_revalidation_window_seconds"),
-        ("ws_revalidation_max_failures", "set_ws_revalidation_max_failures"),
+        ("auth_revalidate_window_seconds", "set_auth_revalidate_window_seconds"),
+        ("auth_revalidate_max_failures", "set_auth_revalidate_max_failures"),
     ):
         try:
             value = await app_state.config_resolver.get_int(

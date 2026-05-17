@@ -30,7 +30,7 @@ class RuleConfig(BaseModel):
         custom_rule_modules: Dotted module paths for user-defined rules.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     disabled_rules: tuple[NotBlankStr, ...] = ()
     custom_rule_modules: tuple[NotBlankStr, ...] = ()
@@ -48,7 +48,7 @@ class ABTestConfig(BaseModel):
             declare treatment as winner.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     control_fraction: float = Field(default=0.5, gt=0.0, lt=1.0)
     min_agents_per_group: int = Field(default=5, ge=2)
@@ -67,7 +67,7 @@ class RolloutConfig(BaseModel):
         ab_test: A/B test-specific configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     default_strategy: RolloutStrategyType = RolloutStrategyType.BEFORE_AFTER
     observation_window_hours: int = Field(default=48, ge=1)
@@ -99,7 +99,7 @@ class RegressionConfig(BaseModel):
         min_data_points: Min data points for statistical test.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     quality_drop_threshold: float = Field(default=0.10, ge=0.0, le=1.0)
     cost_increase_threshold: float = Field(default=0.20, ge=0.0, le=1.0)
@@ -117,7 +117,7 @@ class GuardChainConfig(BaseModel):
         rate_limit_window_hours: Duration of the rate limit window.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     proposal_rate_limit: int = Field(default=10, ge=1)
     rate_limit_window_hours: int = Field(default=24, ge=1)
@@ -131,7 +131,7 @@ class ScheduleConfig(BaseModel):
         inflection_trigger_enabled: Trigger on performance inflections.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cycle_interval_hours: int = Field(default=168, ge=1)
     inflection_trigger_enabled: bool = True
@@ -146,7 +146,7 @@ class PromptTuningConfig(BaseModel):
         allowed_modes: Which evolution modes are available.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     default_evolution_mode: EvolutionMode = EvolutionMode.ORG_WIDE
     allowed_modes: tuple[Literal["org_wide", "override", "advisory"], ...] = (
@@ -174,7 +174,7 @@ class CodeModificationConfig(BaseModel):
         ci_timeout_seconds: Timeout for CI validation subprocess calls.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     allowed_paths: tuple[NotBlankStr, ...] = (
         NotBlankStr("src/synthorg/meta/strategies/*"),
@@ -275,7 +275,7 @@ class SelfImprovementConfig(BaseModel):
         analysis_max_tokens: Token budget for analysis responses.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     chief_of_staff_enabled: bool = False

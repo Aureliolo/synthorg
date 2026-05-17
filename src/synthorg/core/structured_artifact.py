@@ -13,6 +13,6 @@ class StructuredArtifact(BaseModel):
     - EvidencePackage (HITL approval payload)
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     created_at: datetime = Field(description="Artifact creation timestamp")

@@ -39,7 +39,7 @@ class MCPServerConfig(BaseModel):
         enabled: Whether the server is active.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Unique server identifier")
     transport: Literal["stdio", "streamable_http"] = Field(
@@ -154,7 +154,7 @@ class MCPConfig(BaseModel):
         servers: Tuple of MCP server configurations.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     servers: tuple[MCPServerConfig, ...] = Field(
         default=(),

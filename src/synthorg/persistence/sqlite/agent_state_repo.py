@@ -149,16 +149,36 @@ INSERT OR REPLACE INTO agent_states (
         logger.debug(PERSISTENCE_AGENT_STATE_LISTED, count=len(states))
         return states
 
-    async def get_active(self) -> tuple[AgentRuntimeState, ...]:
-        """Retrieve all non-idle agent states, ordered by last_activity_at DESC."""
+    async def get_active(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[AgentRuntimeState, ...]:
+        """Bounded page of non-idle agent states, newest activity first.
+
+        ``agent_id`` is the stable secondary sort so rows that share a
+        ``last_activity_at`` page deterministically. Callers needing
+        every active state drain via
+        :func:`synthorg.persistence._shared.collect_all`.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT agent_id, execution_id, task_id, status, "
                 "turn_count, accumulated_cost, currency, "
                 "last_activity_at, started_at "
-                "FROM agent_states WHERE status != ? "
-                "ORDER BY last_activity_at DESC",
-                (ExecutionStatus.IDLE.value,),
+                "FROM agent_states WHERE status IN (?, ?) "
+                "ORDER BY last_activity_at DESC, agent_id "
+                "LIMIT ? OFFSET ?",
+                (
+                    ExecutionStatus.EXECUTING.value,
+                    ExecutionStatus.PAUSED.value,
+                    limit,
+                    offset,
+                ),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

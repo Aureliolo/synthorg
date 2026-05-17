@@ -16,9 +16,9 @@ This module provides two helpers:
 
 ``scrub_secret_tokens(text)``
     Pattern-replace well-known credential shapes (URL-encoded form
-    fields, JSON string values, ``Authorization:`` headers, Fernet
-    ciphertexts) with ``***`` placeholders.  Idempotent and bounded in
-    output length.
+    fields, JSON string values, ``Authorization:`` headers, bare
+    ``bearer <token>`` text, Fernet ciphertexts) with ``***``
+    placeholders.  Idempotent and bounded in output length.
 
 ``safe_error_description(exc)``
     Return ``f"{type(exc).__name__}: {scrub_secret_tokens(str(exc))}"``,
@@ -93,6 +93,20 @@ _AUTH_HEADER_PATTERN: Final[re.Pattern[str]] = re.compile(
     re.IGNORECASE,
 )
 
+# Bare ``bearer <token>`` anywhere in free text, without the
+# ``Authorization:`` header framing or a ``bearer=`` form-field
+# ``=``.  Upstream HTTP libraries routinely raise exceptions whose
+# message embeds the token this way ("auth failed: bearer eyJ..."),
+# which neither the header pattern nor the form pattern catches, so
+# the raw token would otherwise survive into the log record. The
+# matched keyword is preserved verbatim (case + spelling) so the
+# stricter header rule's ``Authorization: Bearer ***`` output is left
+# byte-identical and the substitution stays idempotent.
+_BARE_BEARER_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\b(bearer)\s+\S+",
+    re.IGNORECASE,
+)
+
 # Fernet ciphertext prefix.  Every Fernet token starts with the version
 # byte ``0x80`` which base64-encodes as ``gAAAAAB``; we require at least
 # 16 further URL-safe-base64 characters to avoid false positives on
@@ -118,6 +132,8 @@ def scrub_secret_tokens(text: str) -> str:
       <user>:<password>@...`` URL that shows up in exception messages.
     - ``Authorization: Bearer xxx`` / ``Authorization: Basic xxx`` →
       ``Authorization: Bearer ***`` / ``Authorization: Basic ***``
+    - bare ``bearer xxx`` in free text (no ``Authorization:`` header,
+      no ``=``) → ``bearer ***`` (keyword case preserved)
     - ``gAAAAAB...`` (Fernet ciphertexts) → ``***FERNET_CIPHERTEXT***``
 
     The function is idempotent: applying it twice is equivalent to
@@ -150,6 +166,15 @@ def scrub_secret_tokens(text: str) -> str:
         scrubbed = _URL_USERINFO_PATTERN.sub(r"\1***@", scrubbed)
         scrubbed = _AUTH_HEADER_PATTERN.sub(
             lambda m: f"{m.group(1)}{m.group(2)} ***",
+            scrubbed,
+        )
+        # Runs AFTER the header pattern: an already-scrubbed
+        # ``Bearer ***`` re-matches here and rewrites to the identical
+        # ``Bearer ***`` (group 1 preserves the original casing), so
+        # the header rule's output is unchanged and the whole function
+        # stays idempotent.
+        scrubbed = _BARE_BEARER_PATTERN.sub(
+            lambda m: f"{m.group(1)} ***",
             scrubbed,
         )
         return _FERNET_PATTERN.sub("***FERNET_CIPHERTEXT***", scrubbed)

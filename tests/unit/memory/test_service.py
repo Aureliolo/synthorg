@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -485,7 +484,9 @@ class TestMemoryServiceRollback:
 
 
 class TestMemoryServiceReReadFailure:
-    """``deploy`` detects missing-after-write and raises ``QueryError``."""
+    """``deploy`` maps a vanished-after-activation row to the contracted
+    ``CheckpointNotFoundError`` (a concurrent delete is the only
+    realistic cause) rather than a generic ``QueryError``."""
 
     async def test_deploy_raises_when_activation_row_vanishes(self) -> None:
         class _VanishingRepo(_FakeCheckpointRepo):
@@ -514,7 +515,7 @@ class TestMemoryServiceReReadFailure:
             run_repo=_FakeRunRepo(),
             settings_service=None,
         )
-        with pytest.raises(QueryError):
+        with pytest.raises(CheckpointNotFoundError):
             await service.deploy_checkpoint(NotBlankStr("a"))
 
 

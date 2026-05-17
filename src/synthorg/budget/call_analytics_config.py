@@ -20,7 +20,7 @@ class RetryAlertConfig(BaseModel):
             alert.  Must be in [0.0, 1.0].
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     warn_rate: float = Field(
         default=_DEFAULT_RETRY_WARN_RATE,
@@ -44,7 +44,7 @@ class CallAnalyticsConfig(BaseModel):
         retry_alerts: Configuration for retry rate alerting.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,

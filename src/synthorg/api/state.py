@@ -176,6 +176,8 @@ class AppState(AppStateServicesMixin):
         "_artifact_storage",
         "_audit_log",
         "_audit_read_service",
+        "_auth_revalidate_max_failures",
+        "_auth_revalidate_window_seconds",
         "_auth_service",
         "_backup_facade_service",
         "_backup_service",
@@ -297,8 +299,6 @@ class AppState(AppStateServicesMixin):
         "_workflow_version_service",
         "_ws_auth_timeout_seconds",
         "_ws_frame_timeout_seconds",
-        "_ws_revalidation_max_failures",
-        "_ws_revalidation_window_seconds",
         "approval_store",
         "clock",
         "config",
@@ -518,8 +518,8 @@ class AppState(AppStateServicesMixin):
         # handler reads these on every connection but never writes
         # them. Sane built-in defaults so the handler never fails open.
         self._ws_frame_timeout_seconds: int = 30
-        self._ws_revalidation_window_seconds: int = 60
-        self._ws_revalidation_max_failures: int = 5
+        self._auth_revalidate_window_seconds: int = 60
+        self._auth_revalidate_max_failures: int = 5
         self._provider_audit_service = None
         self._preset_override_service = None
         self._init_derived_services(

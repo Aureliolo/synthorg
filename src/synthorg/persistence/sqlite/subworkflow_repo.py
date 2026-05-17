@@ -471,18 +471,39 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
     async def search(
         self,
         query: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[SubworkflowSummary, ...]:
-        """Return summaries matching a name or description substring."""
+        """Return a bounded page of summaries matching a substring.
+
+        Summaries are ``(subworkflow_id, latest_version)``-ordered so
+        a cursor walk is stable; callers that need every match drain
+        via :func:`synthorg.persistence._shared.collect_all`.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED, query=query
+        )
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
+        # A summary aggregates every version row of a subworkflow into
+        # one entry, so the page boundary is the distinct
+        # ``subworkflow_id`` set, not raw rows. Page the ids at the DB
+        # first, then fetch only that page's rows: this bounds both scan
+        # cost and the rows materialised in memory to roughly
+        # ``limit * versions_per_subworkflow``.
         try:
-            cursor = await self._db.execute(
-                f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
+            id_cursor = await self._db.execute(
+                "SELECT subworkflow_id FROM subworkflows "
                 "WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE "
-                "OR description LIKE ? ESCAPE '\\' COLLATE NOCASE",
-                (pattern, pattern),
+                "OR description LIKE ? ESCAPE '\\' COLLATE NOCASE "
+                "GROUP BY subworkflow_id "
+                "ORDER BY subworkflow_id LIMIT ? OFFSET ?",
+                (pattern, pattern, limit, offset),
             )
-            rows = await cursor.fetchall()
+            page_ids = [
+                str(row["subworkflow_id"]) for row in await id_cursor.fetchall()
+            ]
         except sqlite3.Error as exc:
             msg = f"Failed to search subworkflows with query {query!r}"
             logger.warning(
@@ -493,15 +514,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             raise QueryError(msg) from exc
 
-        matched_ids = {str(row["subworkflow_id"]) for row in rows}
-        if not matched_ids:
+        if not page_ids:
             return ()
-        placeholders = ", ".join("?" for _ in matched_ids)
+        placeholders = ", ".join("?" for _ in page_ids)
         try:
             full_cursor = await self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
                 f"WHERE subworkflow_id IN ({placeholders})",
-                tuple(matched_ids),
+                tuple(page_ids),
             )
             full_rows = await full_cursor.fetchall()
         except sqlite3.Error as exc:
@@ -569,7 +589,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 raise QueryError(msg) from exc
 
             try:
-                parents = await self.find_parents(subworkflow_id, version)
+                parents = await self._find_parents_unpaged(subworkflow_id, version)
                 if parents:
                     await self._db.rollback()
                     return False, parents
@@ -609,12 +629,41 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         self,
         subworkflow_id: NotBlankStr,
         version: NotBlankStr | None = None,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[ParentReference, ...]:
-        """Return workflows referencing a subworkflow.
+        """Return a bounded page of workflows referencing a subworkflow.
 
         Scans both ``workflow_definitions.nodes`` and
         ``subworkflows.nodes`` so that nested subworkflow references
         (a subworkflow pinning another subworkflow) are discovered.
+        References page in
+        ``(parent_type, parent_id, node_id, pinned_version)`` order so
+        a cursor walk is stable. The referential-integrity path
+        (:meth:`delete_if_unreferenced`) bypasses pagination via
+        :meth:`_find_parents_unpaged`; a truncated parent set would let
+        a still-referenced version be deleted.
+        """
+        limit = validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+            subworkflow_id=subworkflow_id,
+        )
+        references = await self._find_parents_unpaged(subworkflow_id, version)
+        return tuple(references[offset : offset + limit])
+
+    async def _find_parents_unpaged(
+        self,
+        subworkflow_id: NotBlankStr,
+        version: NotBlankStr | None = None,
+    ) -> tuple[ParentReference, ...]:
+        """Return every reference to a subworkflow, sorted, unpaged.
+
+        Backs both :meth:`find_parents` (which slices a page off this
+        result) and :meth:`delete_if_unreferenced` (which must see the
+        complete set so a still-referenced version is never deleted).
         """
         references: list[ParentReference] = []
 
@@ -647,6 +696,20 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             references=references,
         )
 
+        # The reference scan walks JSON node arrays in both
+        # ``workflow_definitions`` and ``subworkflows``; true SQL-level
+        # pagination needs a normalized references table (a schema
+        # change tracked separately). Sorting the full set in memory is
+        # acceptable because the referential-integrity caller needs
+        # every reference anyway, so per-page DB bounding saves nothing.
+        references.sort(
+            key=lambda r: (
+                r.parent_type,
+                r.parent_id,
+                r.node_id,
+                r.pinned_version,
+            ),
+        )
         return tuple(references)
 
     async def _fetch_parent_rows(

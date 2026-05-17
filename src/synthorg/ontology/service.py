@@ -18,6 +18,7 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
+from synthorg.persistence._shared import collect_all_mapping
 
 if TYPE_CHECKING:
     from synthorg.ontology.config import EntitiesConfig, OntologyConfig
@@ -235,10 +236,20 @@ class OntologyService:
     async def get_version_manifest(self) -> dict[str, int]:
         """Return the latest version for each entity.
 
+        Drains every bounded backend page so callers (drift
+        detection, the delegation entity guard, the API endpoint)
+        keep receiving the complete manifest; a truncated manifest
+        would make drift detection miss entities.
+
         Returns:
             Mapping from entity name to latest version number.
         """
-        return await self._backend.get_version_manifest()
+        return await collect_all_mapping(
+            lambda limit, offset: self._backend.get_version_manifest(
+                limit=limit,
+                offset=offset,
+            ),
+        )
 
     async def list_versions(
         self,

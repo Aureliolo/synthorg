@@ -34,7 +34,7 @@ class RecommendedAction(BaseModel):
             dialog before executing.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     action_type: NotBlankStr = Field(description="Semantic action key")
     label: NotBlankStr = Field(description="UI button text")
@@ -59,7 +59,7 @@ class EvidencePackageSignature(BaseModel):
         chain_position: Position in the append-only audit chain.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     approver_id: NotBlankStr = Field(description="Approver identity")
     algorithm: Literal["ml-dsa-65", "ed25519"] = Field(

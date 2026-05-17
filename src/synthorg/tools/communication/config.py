@@ -28,7 +28,7 @@ class EmailConfig(BaseModel):
         smtp_timeout: SMTP connection timeout in seconds.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     host: NotBlankStr = Field(description="SMTP server hostname")
     port: int = Field(
@@ -97,7 +97,7 @@ class CommunicationToolsConfig(BaseModel):
         max_recipients: Maximum number of recipients per email.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     email: EmailConfig | None = Field(
         default=None,

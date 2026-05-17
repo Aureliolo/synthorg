@@ -902,9 +902,11 @@ class TestTaskAssignmentServiceIntegration:
         )
         service = TaskAssignmentService(strategy)
 
-        task = _make_task(
-            required_skills=("python",),
-        )
+        # ``required_skills`` is a scoring hint on ``AssignmentRequest``,
+        # not a ``Task`` field; passing it to ``_make_task`` was a
+        # silently-dropped no-op before ``Task`` gained ``extra=
+        # "forbid"``. The request below already carries it.
+        task = _make_task()
 
         # Both agents match python; backend has higher workload
         request = AssignmentRequest(

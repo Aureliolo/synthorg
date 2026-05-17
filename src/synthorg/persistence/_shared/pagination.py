@@ -16,7 +16,13 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+    from collections.abc import (
+        AsyncIterator,
+        Awaitable,
+        Callable,
+        Mapping,
+        Sequence,
+    )
 
 logger = get_logger(__name__)
 
@@ -84,6 +90,89 @@ async def paginate[PageItemT](
         yield page
         if len(page) < page_size:
             return
+
+
+async def collect_all[PageItemT](
+    fetch: Callable[[int, int], Awaitable[Sequence[PageItemT]]],
+    *,
+    page_size: int = DEFAULT_LIST_LIMIT,
+) -> tuple[PageItemT, ...]:
+    """Drain a ``*, limit, offset`` repo method into one full tuple.
+
+    For the callers that genuinely need the *complete* set (boot-time
+    state rehydration, drift detection) of a now-paginated repository
+    method. Each underlying query stays bounded at ``page_size`` (no
+    single unbounded scan), while the caller still gets every row, so
+    correctness is preserved without reintroducing the unbounded read
+    the pagination was added to remove. Thin wrapper over
+    :func:`paginate`; the short-page termination guarantee is
+    inherited.
+
+    Args:
+        fetch: Async callable taking ``(limit, offset)`` positionally
+            and returning the page sequence (wrap the repo method at
+            the call site, e.g.
+            ``lambda limit, offset: repo.load_all(limit=limit,
+            offset=offset)``).
+        page_size: Rows per underlying query.
+
+    Returns:
+        Every row across all pages, in the method's deterministic
+        order.
+    """
+    collected: list[PageItemT] = []
+    async for page in paginate(fetch, page_size=page_size):
+        collected.extend(page)
+    return tuple(collected)
+
+
+async def collect_all_mapping[KeyT, ValT](
+    fetch: Callable[[int, int], Awaitable[Mapping[KeyT, ValT]]],
+    *,
+    page_size: int = DEFAULT_LIST_LIMIT,
+) -> dict[KeyT, ValT]:
+    """Drain a paginated mapping-returning repo method into one dict.
+
+    The mapping analogue of :func:`collect_all` for
+    ``get_version_manifest``-style aggregates that return
+    ``dict[Key, Val]``. Pages are deterministically key-sorted and
+    disjoint, so merge order does not change the result; iteration
+    stops on the first short page exactly like :func:`paginate`.
+
+    Caller invariant: the wrapped repo method MUST return disjoint
+    pages over a stable key order. Overlapping keys across pages are
+    silently last-write-wins (``dict.update``); this helper does not
+    detect page overlap. An empty first page legitimately yields an
+    empty dict (a valid result, not an error).
+
+    Cancellation: if the awaiting task is cancelled mid-page the
+    ``CancelledError`` from the in-flight ``fetch`` propagates
+    unmodified; ``merged`` is a local accumulator so the partial
+    result is simply discarded with no cleanup required.
+
+    Args:
+        fetch: Async callable taking ``(limit, offset)`` positionally
+            and returning a page of the mapping.
+        page_size: Entries per underlying query.
+
+    Returns:
+        The fully reassembled mapping.
+    """
+    # ``bool`` is a subclass of ``int``; without the explicit
+    # ``isinstance(page_size, bool)`` guard ``True`` / ``False`` would
+    # slip through as page sizes 1 / 0 and corrupt the drain loop.
+    if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
+        msg = f"page_size must be a positive int, got {page_size!r}"
+        raise QueryError(msg)
+    merged: dict[KeyT, ValT] = {}
+    for offset in count(0, page_size):
+        page = await fetch(page_size, offset)
+        if not page:
+            return merged
+        merged.update(page)
+        if len(page) < page_size:
+            return merged
+    return merged  # unreachable; count() is infinite
 
 
 def validate_pagination_args(

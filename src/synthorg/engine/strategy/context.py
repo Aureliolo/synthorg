@@ -33,7 +33,9 @@ _STRATEGIC_CONTEXT_TAG: NotBlankStr = NotBlankStr("strategic-context")
 """Tag the memory backend filters on for strategic-context entries."""
 
 
-class _StrategicContextOverridesArgs(BaseModel):
+class _StrategicContextOverridesArgs(
+    BaseModel
+):  # lint-allow: frozen-extra-forbid -- extra="ignore" keeps this memory-backed typed boundary forward-compatible with future enrichment fields (class docstring)  # noqa: E501
     """Typed-boundary args model for memory-stored context overrides.
 
     The memory backend yields untrusted JSON; this args model is the

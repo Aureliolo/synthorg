@@ -27,7 +27,7 @@ _DEFAULT_LIMIT: Final[int] = 10000
 class CoordinationMetricsRecord(BaseModel):
     """Timestamped coordination metrics from a single run."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Associated task")
     agent_id: NotBlankStr | None = Field(

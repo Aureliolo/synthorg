@@ -28,7 +28,7 @@ class FilesystemPolicy(BaseModel):
         deny_paths: Paths explicitly denied (overrides read/write).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     read_paths: tuple[str, ...] = ("/workspace",)
     write_paths: tuple[str, ...] = ()
@@ -48,7 +48,7 @@ class NetworkPolicy(BaseModel):
         loopback_allowed: Allow loopback traffic in restricted mode.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mode: Literal["none", "bridge", "host"] = "none"
     allowed_hosts: tuple[NotBlankStr, ...] = ()
@@ -69,7 +69,7 @@ class ProcessPolicy(BaseModel):
         deny_executables: Blacklist of executable paths.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_processes: int = Field(default=64, gt=0, le=4096)
     allowed_executables: tuple[str, ...] = ()
@@ -90,7 +90,7 @@ class InferencePolicy(BaseModel):
             (only relevant when ``route_through_proxy`` is ``False``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     route_through_proxy: bool = False
     allowed_providers: tuple[NotBlankStr, ...] = ()
@@ -111,7 +111,7 @@ class SandboxPolicy(BaseModel):
         inference: Inference routing policy.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     filesystem: FilesystemPolicy = Field(
         default_factory=FilesystemPolicy,

@@ -269,9 +269,17 @@ class SubworkflowRegistry:
     async def search(
         self,
         query: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[SubworkflowSummary, ...]:
-        """Search subworkflows by name or description substring."""
-        return await self._repo.search(query)
+        """Search subworkflows by name or description substring.
+
+        Pass-through to the repository's bounded, deterministically
+        ordered page; callers needing every match drain via
+        :func:`synthorg.persistence._shared.collect_all`.
+        """
+        return await self._repo.search(query, limit=limit, offset=offset)
 
     async def delete(
         self,
@@ -335,6 +343,19 @@ class SubworkflowRegistry:
         self,
         subworkflow_id: NotBlankStr,
         version: NotBlankStr | None = None,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[ParentReference, ...]:
-        """Return parent workflow definitions referencing a subworkflow."""
-        return await self._repo.find_parents(subworkflow_id, version)
+        """Return parent workflow definitions referencing a subworkflow.
+
+        Pass-through to the repository's bounded, deterministically
+        ordered page; referential-integrity callers MUST drain every
+        page via :func:`synthorg.persistence._shared.collect_all`.
+        """
+        return await self._repo.find_parents(
+            subworkflow_id,
+            version,
+            limit=limit,
+            offset=offset,
+        )

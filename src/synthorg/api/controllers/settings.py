@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Self
 
 from litestar import Controller, Request, Response, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import InternalServerException
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import (
     AwareDatetime,
@@ -62,7 +61,9 @@ from synthorg.settings.enums import SettingNamespace, SettingsImportSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingsEncryptionError,
+    SettingsEncryptionFailedError,
     SettingValidationError,
+    SinkConfigValidationError,
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry  # noqa: TC001
 
@@ -541,7 +542,7 @@ class SettingsController(Controller):
                 error=safe_error_description(exc),
             )
             msg = "Internal error processing sensitive setting"
-            raise InternalServerException(msg) from None
+            raise SettingsEncryptionFailedError(msg) from None
 
         new_etag = compute_etag(
             entry.value,
@@ -699,7 +700,7 @@ class SettingsController(Controller):
                 error=safe_error_description(exc),
             )
             msg = "Internal error validating sink configuration"
-            raise InternalServerException(msg) from None
+            raise SinkConfigValidationError(msg) from None
         return ApiResponse(
             data=TestSinkConfigResponse(valid=True),
         )

@@ -23,6 +23,8 @@ from synthorg.persistence._shared.datetime_marshaller import (
 from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     MAX_LIST_LIMIT,
+    collect_all,
+    collect_all_mapping,
     paginate,
     validate_pagination_args,
 )
@@ -31,6 +33,8 @@ __all__ = (
     "DEFAULT_LIST_LIMIT",
     "MAX_LIST_LIMIT",
     "coerce_row_timestamp",
+    "collect_all",
+    "collect_all_mapping",
     "format_iso_utc",
     "normalize_utc",
     "paginate",

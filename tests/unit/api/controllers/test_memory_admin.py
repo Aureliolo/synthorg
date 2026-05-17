@@ -610,6 +610,8 @@ class TestResolveFineTuneThresholds:
                 "fine_tune_default_batch_size": "256",
                 "fine_tune_min_docs_required": "25",
                 "fine_tune_min_docs_recommended": "75",
+                "fine_tune_preflight_max_depth": "12",
+                "fine_tune_preflight_walk_timeout_s": "2.5",
             }[key]
             return SettingValue(
                 namespace=SettingNamespace.MEMORY,
@@ -625,6 +627,8 @@ class TestResolveFineTuneThresholds:
         assert thresholds.default_batch_size == 256
         assert thresholds.min_docs_required == 25
         assert thresholds.min_docs_recommended == 75
+        assert thresholds.preflight_max_depth == 12
+        assert thresholds.preflight_walk_timeout_s == 2.5
 
     async def test_unparseable_value_falls_back_to_default(self) -> None:
         """A non-integer setting value drops to the imported fallback."""
@@ -758,6 +762,79 @@ class TestCheckDocumentsBoundaries:
             min_recommended=50,
         )
         assert check.status == "warn"
+
+    def test_depth_cap_truncates_to_warn_not_false_fail(
+        self,
+        tmp_path: object,
+    ) -> None:
+        """A tree deeper than ``max_depth`` returns a truncation warn.
+
+        Without the cap the scan would recurse unbounded; with it the
+        endpoint must surface ``warn`` (scan truncated) rather than a
+        false ``fail`` from an undercount or an unbounded traversal.
+        """
+        from pathlib import Path
+
+        from synthorg.api.controllers.memory import _check_documents
+
+        root = Path(str(tmp_path))
+        deep = root
+        for level in range(6):
+            deep = deep / f"level-{level}"
+            deep.mkdir()
+            (deep / f"doc-{level}.md").write_text("x")
+        check = _check_documents(
+            str(root),
+            min_required=1,
+            min_recommended=2,
+            max_depth=2,
+            walk_timeout_s=30.0,
+        )
+        assert check.status == "warn"
+        assert "truncated" in check.message.lower()
+
+    def test_deadline_truncates_to_warn(
+        self,
+        tmp_path: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A scan that exceeds the wall-clock deadline warns, not hangs.
+
+        ``time.monotonic`` is advanced past the deadline on the first
+        in-loop check so the bound is exercised deterministically
+        without depending on real wall-clock timing.
+        """
+        import time as _time_mod
+        from pathlib import Path
+
+        from synthorg.api.controllers.memory import _check_documents
+
+        src = Path(str(tmp_path))
+        for i in range(30):
+            (src / f"doc-{i:02d}.md").write_text("x")
+
+        ticks = iter([0.0, 1.0, 100.0, 200.0, 300.0])
+
+        def _fake_monotonic() -> float:
+            try:
+                return next(ticks)
+            except StopIteration:
+                return 999.0
+
+        # ``_check_documents`` imports ``time`` locally, so patching
+        # the stdlib module's ``monotonic`` is what the deadline check
+        # resolves at call time.
+        monkeypatch.setattr(_time_mod, "monotonic", _fake_monotonic)
+
+        check = _check_documents(
+            str(src),
+            min_required=1,
+            min_recommended=2,
+            max_depth=64,
+            walk_timeout_s=0.001,
+        )
+        assert check.status == "warn"
+        assert "truncated" in check.message.lower()
 
 
 @pytest.mark.unit
@@ -983,4 +1060,41 @@ class TestListRunsEndpoint:
                 state=State({"app_state": app_state}),
                 cursor="not-a-real-cursor",
                 limit=50,
+            )
+
+
+@pytest.mark.unit
+class TestPathParamTyping:
+    """The 5 admin path-param handlers carry the ``PathId`` domain type.
+
+    Each handler annotates its identifier path params with the
+    framework-level ``PathId`` constraint so a blank / over-length
+    segment is rejected by Litestar before the handler body runs.
+    """
+
+    @pytest.mark.parametrize(
+        ("handler_name", "param_names"),
+        [
+            ("resume_fine_tune", ("run_id",)),
+            ("deploy_checkpoint", ("checkpoint_id",)),
+            ("rollback_checkpoint", ("checkpoint_id",)),
+            ("delete_checkpoint", ("checkpoint_id",)),
+            ("delete_memory_entry", ("agent_id", "memory_id")),
+        ],
+    )
+    def test_handler_path_params_use_pathid(
+        self,
+        handler_name: str,
+        param_names: tuple[str, ...],
+    ) -> None:
+        import typing
+
+        from synthorg.api.path_params import PathId
+
+        fn = getattr(MemoryAdminController, handler_name).fn
+        hints = typing.get_type_hints(fn, include_extras=True)
+        for param in param_names:
+            assert hints[param] == PathId, (
+                f"{handler_name}.{param} must be annotated PathId, "
+                f"got {hints.get(param)!r}"
             )

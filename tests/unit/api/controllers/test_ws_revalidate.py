@@ -111,7 +111,7 @@ async def test_periodic_revalidate_closes_on_role_demoted() -> None:
 async def test_periodic_revalidate_tolerates_transient_failure() -> None:
     """Three consecutive transient errors close the socket with 4011.
 
-    The fake app state caps ``ws_revalidation_max_failures`` at 3, so
+    The fake app state caps ``auth_revalidate_max_failures`` at 3, so
     the third take() returns False and the limiter triggers the close
     with code 4011 (server error / revalidation backend unavailable).
     """
@@ -190,8 +190,8 @@ class _FakeApp:
                 # Tight revalidation-window bounds so the
                 # transient-failure regression test can saturate the
                 # window in a few iterations.
-                "ws_revalidation_window_seconds": 60,
-                "ws_revalidation_max_failures": 3,
+                "auth_revalidate_window_seconds": 60,
+                "auth_revalidate_max_failures": 3,
             },
         )()
         self.state: dict[str, Any] = {"app_state": app_state}

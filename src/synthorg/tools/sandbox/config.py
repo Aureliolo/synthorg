@@ -24,7 +24,7 @@ class SubprocessSandboxConfig(BaseModel):
             prefixes appended to platform defaults for the PATH filter.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     timeout_seconds: float = Field(
         default=30.0,

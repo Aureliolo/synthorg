@@ -38,7 +38,7 @@ class MetricSummary(BaseModel):
         window_days: How many days the trend covers.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     value: float
@@ -58,7 +58,7 @@ class OrgPerformanceSummary(BaseModel):
         department_summaries: Per-department metric rollups.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     avg_quality_score: float = Field(ge=0.0, le=10.0)
     avg_success_rate: float = Field(ge=0.0, le=1.0)
@@ -83,7 +83,7 @@ class OrgBudgetSummary(BaseModel):
         orchestration_overhead: Coordination/productive token ratio.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total_spend: float = Field(ge=0.0)
     productive_ratio: float = Field(ge=0.0, le=1.0)
@@ -107,7 +107,7 @@ class OrgCoordinationSummary(BaseModel):
         sample_count: Number of tasks used for these metrics.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     coordination_efficiency: float | None = None
     coordination_overhead_pct: float | None = None
@@ -133,7 +133,7 @@ class ScalingDecisionSummary(BaseModel):
         created_at: When the decision was made.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     decision_id: NotBlankStr
     action_type: NotBlankStr
@@ -153,7 +153,7 @@ class OrgScalingSummary(BaseModel):
         most_common_signal: Most frequently triggered signal.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     recent_decisions: tuple[ScalingDecisionSummary, ...] = ()
     total_decisions: int = Field(default=0, ge=0)
@@ -171,7 +171,7 @@ class ErrorCategorySummary(BaseModel):
         trend: Whether this category is increasing or decreasing.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     category: NotBlankStr
     count: int = Field(ge=0)
@@ -188,7 +188,7 @@ class OrgErrorSummary(BaseModel):
         most_severe_category: Category with highest avg severity.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total_findings: int = Field(default=0, ge=0)
     categories: tuple[ErrorCategorySummary, ...] = ()
@@ -218,7 +218,7 @@ class EvolutionOutcomeSummary(BaseModel):
         proposed_at: When the proposal was generated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
     axis: NotBlankStr
@@ -236,7 +236,7 @@ class OrgEvolutionSummary(BaseModel):
         most_adapted_axis: Most frequently adapted axis.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     recent_outcomes: tuple[EvolutionOutcomeSummary, ...] = ()
     total_proposals: int = Field(default=0, ge=0)
@@ -253,7 +253,7 @@ class OrgTelemetrySummary(BaseModel):
         error_event_count: Number of error-level events.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     event_count: int = Field(default=0, ge=0)
     top_event_types: tuple[str, ...] = ()
@@ -280,7 +280,7 @@ class OrgSignalSnapshot(BaseModel):
         collected_at: When the snapshot was assembled.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     performance: OrgPerformanceSummary
     budget: OrgBudgetSummary

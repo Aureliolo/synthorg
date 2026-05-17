@@ -88,9 +88,21 @@ jobs:
   lighthouse-dashboard:
     name: Lighthouse Dashboard
     needs: changes
-    if: needs.changes.outputs.dashboard == 'true'
+    # ``LHCI_GITHUB_APP_TOKEN`` is scoped to the dedicated ``lighthouse``
+    # GitHub Environment. This job runs on ``pull_request``, whose ref
+    # is ``refs/pull/N/merge`` -- deployment branch policies cannot
+    # match PR refs, so (per docs/reference/github-environments.md) the
+    # ``lighthouse`` environment carries NO branch policy and the
+    # workflow-level fork gate below is the actual control: same-repo
+    # PRs (and manual dispatch) only, so a fork PR cannot exfiltrate
+    # the token. Same pattern as ``cloudflare-preview``.
+    if: >-
+      needs.changes.outputs.dashboard == 'true' &&
+      (github.event.pull_request.head.repo.full_name == github.repository ||
+       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    environment: lighthouse
     permissions:
       contents: read
     steps:
@@ -128,9 +140,16 @@ jobs:
   lighthouse-site:
     name: Lighthouse Site
     needs: changes
-    if: needs.changes.outputs.site == 'true'
+    # Same dedicated ``lighthouse`` Environment + fork gate as the
+    # dashboard job (no branch policy: PR refs are unmatchable; the
+    # same-repo / dispatch ``if:`` is the control).
+    if: >-
+      needs.changes.outputs.site == 'true' &&
+      (github.event.pull_request.head.repo.full_name == github.repository ||
+       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    environment: lighthouse
     permissions:
       contents: read
     steps:

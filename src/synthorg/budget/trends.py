@@ -61,7 +61,7 @@ class TrendDataPoint(BaseModel):
         value: Metric value for this bucket.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     timestamp: AwareDatetime = Field(description="Bucket start time (UTC)")
     value: float = Field(description="Metric value for this bucket")
@@ -76,7 +76,7 @@ class ForecastPoint(BaseModel):
             in the configured currency.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     day: date = Field(description="Calendar date")
     projected_spend: float = Field(
@@ -99,7 +99,7 @@ class BudgetForecast(BaseModel):
         avg_daily_spend: Average daily spend used for projection.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     projected_total: float = Field(
         ge=0.0,

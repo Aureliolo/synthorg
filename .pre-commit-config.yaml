@@ -588,14 +588,15 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
-      - id: dto-forbid-extra
-        name: DTO extra="forbid" gate (src/synthorg/api)
-        entry: uv run python scripts/check_dto_forbid_extra.py
+      - id: frozen-extra-forbid
+        name: Frozen model extra="forbid" gate (src/synthorg)
+        entry: uv run python scripts/check_frozen_model_extra_forbid.py
         language: system
-        # Trigger on any change to the scanned tree, the checker
+        # Project-wide successor to the old api-only dto-forbid-extra
+        # gate. Trigger on any change to the scanned tree, the checker
         # itself, or this config so a PR that weakens the gate cannot
-        # bypass the check by not touching api Python files.
-        files: ^(src/synthorg/api/.*\.py|scripts/check_dto_forbid_extra\.py|\.pre-commit-config\.yaml)$
+        # bypass it by not touching scanned Python files.
+        files: ^(src/synthorg/.*\.py|scripts/check_frozen_model_extra_forbid\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

@@ -20,7 +20,7 @@ class RiskBudgetAlertConfig(BaseModel):
         critical_at: Percentage at which to issue a critical alert.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     warn_at: int = Field(default=75, ge=0, le=100, strict=True)
     critical_at: int = Field(default=90, ge=0, le=100, strict=True)
@@ -51,7 +51,7 @@ class RiskBudgetConfig(BaseModel):
         alerts: Alert threshold configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     per_task_risk_limit: float = Field(default=5.0, ge=0.0)

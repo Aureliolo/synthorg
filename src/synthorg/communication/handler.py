@@ -110,6 +110,7 @@ class HandlerRegistration(BaseModel):
         frozen=True,
         arbitrary_types_allowed=True,
         allow_inf_nan=False,
+        extra="forbid",
     )
 
     handler_id: NotBlankStr = Field(default_factory=lambda: str(uuid4()))

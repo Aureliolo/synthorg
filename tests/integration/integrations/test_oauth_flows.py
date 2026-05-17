@@ -29,6 +29,8 @@ from synthorg.integrations.connections.models import (
 )
 from synthorg.integrations.errors import (
     InvalidStateError,
+    OIDCNonceMismatchError,
+    OIDCVerificationError,
     TokenExchangeFailedError,
 )
 from synthorg.integrations.oauth.callback_handler import handle_oauth_callback
@@ -43,7 +45,7 @@ from synthorg.integrations.oauth.pkce import (
     encrypt_pkce_verifier,
     generate_code_verifier,
 )
-from synthorg.persistence.connection_protocol import OAuthStateRepository
+from synthorg.integrations.oauth.state_service import OAuthStateService
 from tests._shared.fake_clock import FakeClock
 
 
@@ -154,9 +156,9 @@ class TestCallbackHandler:
             created_at=now,
             expires_at=now + timedelta(hours=1),
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
-        state_repo.mark_consumed.return_value = True
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
+        state_service.mark_consumed.return_value = True
 
         stored_tokens: dict[str, str] = {}
 
@@ -193,7 +195,7 @@ class TestCallbackHandler:
         result = await handle_oauth_callback(
             state_param="state-1",
             code="auth-code",
-            state_repo=state_repo,
+            state_service=state_service,
             catalog=catalog,
             flow=fake_flow,
         )
@@ -210,14 +212,14 @@ class TestCallbackHandler:
             created_at=past - timedelta(hours=1),
             expires_at=past,
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
         catalog = MagicMock(spec=ConnectionCatalog)
         with pytest.raises(InvalidStateError):
             await handle_oauth_callback(
                 state_param="state-expired",
                 code="auth-code",
-                state_repo=state_repo,
+                state_service=state_service,
                 catalog=catalog,
             )
 
@@ -229,8 +231,8 @@ class TestCallbackHandler:
             pkce_verifier=NotBlankStr("verifier"),
             expires_at=now + timedelta(hours=1),
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
         catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_or_raise.return_value = Connection(
             name=NotBlankStr("conn-1"),
@@ -242,9 +244,179 @@ class TestCallbackHandler:
             await handle_oauth_callback(
                 state_param="state-missing",
                 code="auth-code",
-                state_repo=state_repo,
+                state_service=state_service,
                 catalog=catalog,
             )
+
+
+@pytest.mark.integration
+class TestCallbackOidcBinding:
+    """OIDC id_token nonce binding fail-closed matrix on the callback.
+
+    Four cells: (id_token present?) x (jwks_uri configured?). Only
+    "no jwks_uri AND no id_token" (plain OAuth2) skips verification;
+    every other asymmetry fails closed.
+    """
+
+    @staticmethod
+    def _harness(
+        *,
+        credentials: dict[str, str],
+        id_token: str | None,
+        nonce: str | None = "flow-nonce",
+    ) -> tuple[Any, Any, Any]:
+        now = datetime.now(UTC)
+        state = OAuthState(
+            state_token=NotBlankStr("state-oidc"),
+            connection_name=NotBlankStr("conn-1"),
+            pkce_verifier=NotBlankStr("verifier"),
+            redirect_uri="https://app.example.com/cb",
+            created_at=now,
+            expires_at=now + timedelta(hours=1),
+            nonce=NotBlankStr(nonce) if nonce else None,
+        )
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
+        state_service.mark_consumed.return_value = True
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.get_or_raise.return_value = Connection(
+            name=NotBlankStr("conn-1"),
+            connection_type=ConnectionType.OAUTH_APP,
+            auth_method=AuthMethod.OAUTH2,
+        )
+        catalog.get_credentials.return_value = {
+            "token_url": "https://example.com/token",
+            "client_id": "cid",
+            "client_secret": "csec",
+            **credentials,
+        }
+
+        async def _store(
+            name: str,
+            *,
+            access_token: str,
+            refresh_token: str | None = None,
+        ) -> None:
+            return None
+
+        catalog.store_oauth_tokens.side_effect = _store
+
+        fake_flow = MagicMock(spec=AuthorizationCodeFlow)
+        fake_flow.exchange_code.return_value = OAuthToken(
+            access_token="atk",
+            id_token=id_token,
+            expires_at=now + timedelta(seconds=3600),
+        )
+        return state_service, catalog, fake_flow
+
+    async def test_plain_oauth2_skips_verification(self) -> None:
+        state_service, catalog, flow = self._harness(credentials={}, id_token=None)
+        with patch(
+            "synthorg.integrations.oauth.callback_handler.verify_id_token",
+            autospec=True,
+        ) as verify:
+            result = await handle_oauth_callback(
+                state_param="state-oidc",
+                code="auth-code",
+                state_service=state_service,
+                catalog=catalog,
+                flow=flow,
+            )
+        assert result == "conn-1"
+        verify.assert_not_called()
+
+    async def test_full_oidc_verification_invoked(self) -> None:
+        state_service, catalog, flow = self._harness(
+            credentials={
+                "jwks_uri": "https://idp.example.com/jwks",
+                "oidc_issuer": "https://idp.example.com",
+            },
+            id_token="h.p.s",
+        )
+        with patch(
+            "synthorg.integrations.oauth.callback_handler.verify_id_token",
+            autospec=True,
+        ) as verify:
+            result = await handle_oauth_callback(
+                state_param="state-oidc",
+                code="auth-code",
+                state_service=state_service,
+                catalog=catalog,
+                flow=flow,
+            )
+        assert result == "conn-1"
+        verify.assert_awaited_once()
+        assert verify.await_args is not None
+        kwargs = verify.await_args.kwargs
+        assert kwargs["jwks_uri"] == "https://idp.example.com/jwks"
+        assert kwargs["issuer"] == "https://idp.example.com"
+        assert kwargs["client_id"] == "cid"
+        assert kwargs["expected_nonce"] == "flow-nonce"
+
+    async def test_id_token_without_jwks_uri_fails_closed(self) -> None:
+        state_service, catalog, flow = self._harness(credentials={}, id_token="h.p.s")
+        with pytest.raises(OIDCVerificationError):
+            await handle_oauth_callback(
+                state_param="state-oidc",
+                code="auth-code",
+                state_service=state_service,
+                catalog=catalog,
+                flow=flow,
+            )
+
+    async def test_jwks_configured_but_no_id_token_fails_closed(self) -> None:
+        state_service, catalog, flow = self._harness(
+            credentials={
+                "jwks_uri": "https://idp.example.com/jwks",
+                "oidc_issuer": "https://idp.example.com",
+            },
+            id_token=None,
+        )
+        with pytest.raises(OIDCVerificationError):
+            await handle_oauth_callback(
+                state_param="state-oidc",
+                code="auth-code",
+                state_service=state_service,
+                catalog=catalog,
+                flow=flow,
+            )
+
+    async def test_jwks_without_issuer_fails_closed(self) -> None:
+        state_service, catalog, flow = self._harness(
+            credentials={"jwks_uri": "https://idp.example.com/jwks"},
+            id_token="h.p.s",
+        )
+        with pytest.raises(OIDCVerificationError):
+            await handle_oauth_callback(
+                state_param="state-oidc",
+                code="auth-code",
+                state_service=state_service,
+                catalog=catalog,
+                flow=flow,
+            )
+
+    async def test_nonce_mismatch_propagates(self) -> None:
+        state_service, catalog, flow = self._harness(
+            credentials={
+                "jwks_uri": "https://idp.example.com/jwks",
+                "oidc_issuer": "https://idp.example.com",
+            },
+            id_token="h.p.s",
+        )
+        with patch(
+            "synthorg.integrations.oauth.callback_handler.verify_id_token",
+            autospec=True,
+        ) as verify:
+            verify.side_effect = OIDCNonceMismatchError("nope")
+            with pytest.raises(OIDCNonceMismatchError):
+                await handle_oauth_callback(
+                    state_param="state-oidc",
+                    code="auth-code",
+                    state_service=state_service,
+                    catalog=catalog,
+                    flow=flow,
+                )
 
 
 @pytest.mark.integration
@@ -265,8 +437,8 @@ class TestCallbackReplay:
             consumed_at=now - timedelta(minutes=4),
             connection_name_returned=NotBlankStr("conn-1"),
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
 
         catalog = MagicMock(spec=ConnectionCatalog)
 
@@ -275,7 +447,7 @@ class TestCallbackReplay:
         result = await handle_oauth_callback(
             state_param="state-replay",
             code="auth-code",
-            state_repo=state_repo,
+            state_service=state_service,
             catalog=catalog,
             flow=fake_flow,
         )
@@ -286,8 +458,8 @@ class TestCallbackReplay:
         fake_flow.exchange_code.assert_not_awaited()
         catalog.store_oauth_tokens.assert_not_awaited()
         catalog.update.assert_not_awaited()
-        state_repo.mark_consumed.assert_not_awaited()
-        state_repo.delete.assert_not_awaited()
+        state_service.mark_consumed.assert_not_awaited()
+        state_service.expire.assert_not_awaited()
 
     async def test_fresh_callback_marks_consumed_and_does_not_delete(
         self,
@@ -302,9 +474,9 @@ class TestCallbackReplay:
             created_at=now,
             expires_at=now + timedelta(hours=1),
         )
-        state_repo = MagicMock(spec=OAuthStateRepository)
-        state_repo.get.return_value = state
-        state_repo.mark_consumed.return_value = True
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
+        state_service.mark_consumed.return_value = True
 
         catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_or_raise.return_value = Connection(
@@ -328,7 +500,7 @@ class TestCallbackReplay:
         result = await handle_oauth_callback(
             state_param="state-fresh",
             code="auth-code",
-            state_repo=state_repo,
+            state_service=state_service,
             catalog=catalog,
             flow=fake_flow,
         )
@@ -337,10 +509,10 @@ class TestCallbackReplay:
         # Success path stamps the consumed marker and never falls
         # back to ``delete`` (delete is now reserved for the expiry
         # branch only).
-        state_repo.mark_consumed.assert_awaited_once()
-        kwargs = state_repo.mark_consumed.await_args.kwargs
+        state_service.mark_consumed.assert_awaited_once()
+        kwargs = state_service.mark_consumed.await_args.kwargs
         assert kwargs.get("connection_name") == "conn-2"
-        state_repo.delete.assert_not_awaited()
+        state_service.expire.assert_not_awaited()
 
 
 @pytest.mark.integration

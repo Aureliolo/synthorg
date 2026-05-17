@@ -153,7 +153,7 @@ class RedundancyRate(BaseModel):
         sample_count: Number of similarity samples.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     value: float = Field(
         ge=0.0,
@@ -384,7 +384,7 @@ class CoordinationMetrics(BaseModel):
         message_overhead: O(n^2) message overhead detection.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     efficiency: CoordinationEfficiency | None = Field(
         default=None,

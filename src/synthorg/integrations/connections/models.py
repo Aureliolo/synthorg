@@ -72,7 +72,7 @@ class SecretRef(BaseModel):
         key_version: Encryption key version used.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     secret_id: NotBlankStr
     backend: NotBlankStr
@@ -102,7 +102,7 @@ class Connection(BaseModel):
         updated_at: Last modification timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -151,6 +151,11 @@ class OAuthState(BaseModel):
         redirect_uri: Redirect URI used for this flow.
         created_at: When the state was created.
         expires_at: When the state expires.
+        nonce: OIDC nonce. Generated at flow start, sent in the
+            authorization request, and matched against the
+            ``id_token`` ``nonce`` claim on callback (OIDC ID-token
+            binding). ``None`` for plain-OAuth2 connections that have
+            no ``jwks_uri`` configured.
         consumed_at: When the callback exchanged this state for tokens.
             ``None`` while the flow is in flight; set when the
             callback handler successfully exchanged the code so that
@@ -161,11 +166,12 @@ class OAuthState(BaseModel):
             both must be set together.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     state_token: NotBlankStr
     connection_name: NotBlankStr
     pkce_verifier: NotBlankStr | None = None
+    nonce: NotBlankStr | None = None
     scopes_requested: str = ""
     redirect_uri: str = ""
     created_at: AwareDatetime = Field(
@@ -240,12 +246,17 @@ class OAuthToken(BaseModel):
         token_type: Token type (usually "Bearer").
         expires_at: When the access token expires.
         scope_granted: Space-separated scopes actually granted.
+        id_token: Raw OIDC ID token (compact JWS), when the provider
+            is an OIDC IdP. Transient and sensitive (carries identity
+            claims); used only to verify the ``nonce`` binding on
+            callback, never persisted.
         issued_at: When the tokens were issued.
     """
 
     model_config = ConfigDict(
         frozen=True,
         allow_inf_nan=False,
+        extra="forbid",
         # Raw tokens are sensitive -- exclude from repr to keep them
         # out of accidental logging and exception tracebacks.
     )
@@ -257,6 +268,7 @@ class OAuthToken(BaseModel):
     token_type: str = "Bearer"  # noqa: S105
     expires_at: AwareDatetime | None = None
     scope_granted: str = ""
+    id_token: str | None = Field(default=None, repr=False, exclude=True)
     issued_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )
@@ -276,7 +288,7 @@ class WebhookReceipt(BaseModel):
         error: Error message if processing failed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -304,7 +316,7 @@ class HealthReport(BaseModel):
         consecutive_failures: Running failure count.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     connection_name: NotBlankStr
     status: ConnectionStatus
@@ -330,7 +342,7 @@ class CatalogEntry(BaseModel):
         tags: Searchable tags.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     name: NotBlankStr

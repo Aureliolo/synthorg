@@ -18,7 +18,7 @@ class ChainEntry(BaseModel):
         timestamp: When the entry was created.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     position: int = Field(ge=0, description="Chain position")
     event_hash: str = Field(description="SHA-256 of event data")

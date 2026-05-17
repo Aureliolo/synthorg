@@ -56,7 +56,7 @@ class WelchResult(BaseModel):
         p_two_sided: Two-sided p-value in ``[0, 1]``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     t: float
     df: float = Field(gt=0.0)

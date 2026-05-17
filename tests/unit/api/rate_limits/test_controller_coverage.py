@@ -220,6 +220,21 @@ _GUARDED_ENDPOINTS: tuple[tuple[Path, str, str], ...] = (
         "delete_message",
         "messages.delete",
     ),
+    (
+        _CONTROLLERS_DIR / "training.py",
+        "create_plan",
+        "training.create_plan",
+    ),
+    (
+        _CONTROLLERS_DIR / "training.py",
+        "execute_plan",
+        "training.execute",
+    ),
+    (
+        _CONTROLLERS_DIR / "training.py",
+        "update_overrides",
+        "training.update_overrides",
+    ),
 )
 
 

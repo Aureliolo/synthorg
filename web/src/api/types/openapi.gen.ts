@@ -875,6 +875,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/auth/refresh": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Rotate the refresh token */
+        readonly post: operations["ApiV1AuthRefreshRefresh"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/auth/sessions": {
         readonly parameters: {
             readonly query?: never;
@@ -5365,14 +5382,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[SubworkflowSummary, ...]] */
-        readonly "ApiResponse_tuple_SubworkflowSummary_..._": {
-            readonly data: readonly components["schemas"]["SubworkflowSummary"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[tuple[TeamResponse, ...]] */
         readonly "ApiResponse_tuple_TeamResponse_..._": {
             readonly data: readonly components["schemas"]["TeamResponse"][] | null;
@@ -7283,7 +7292,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -12602,7 +12611,9 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly agent_id: string;
+                /** @description Resource identifier */
                 readonly memory_id: string;
             };
             readonly cookie?: never;
@@ -12744,6 +12755,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly checkpoint_id: string;
             };
             readonly cookie?: never;
@@ -12773,6 +12785,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly checkpoint_id: string;
             };
             readonly cookie?: never;
@@ -12803,6 +12816,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly checkpoint_id: string;
             };
             readonly cookie?: never;
@@ -12864,6 +12878,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly run_id: string;
             };
             readonly cookie?: never;
@@ -14390,6 +14405,33 @@ export interface operations {
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1AuthRefreshRefresh: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CookieSessionResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
@@ -20434,6 +20476,10 @@ export interface operations {
     readonly ApiV1SubworkflowsSearchSearchSubworkflows: {
         readonly parameters: {
             readonly query: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
                 /** @description Search substring */
                 readonly q: string;
             };
@@ -20449,7 +20495,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_SubworkflowSummary_..._"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_SubworkflowSummary_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21461,7 +21507,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": string;
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

@@ -27,16 +27,22 @@ class BackupInProgressError(BackupError):
 
     default_message: ClassVar[str] = "Backup operation already in progress"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.BACKUP_IN_PROGRESS
     status_code: ClassVar[int] = 409
 
 
 class RestoreError(BackupError):
     """Raised when a restore operation fails."""
 
+    default_message: ClassVar[str] = "Restore operation failed"
+    error_code: ClassVar[ErrorCode] = ErrorCode.BACKUP_RESTORE_FAILED
+
 
 class ManifestError(BackupError):
     """Raised when a backup manifest is invalid or corrupt."""
+
+    default_message: ClassVar[str] = "Backup manifest is invalid or corrupt"
+    error_code: ClassVar[ErrorCode] = ErrorCode.BACKUP_MANIFEST_ERROR
 
 
 class ComponentBackupError(BackupError):
@@ -52,7 +58,7 @@ class BackupNotFoundError(BackupError):
 
     default_message: ClassVar[str] = "Backup not found"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
-    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.BACKUP_NOT_FOUND
     status_code: ClassVar[int] = 404
 
 
@@ -68,7 +74,7 @@ class BackupUnrestartableError(BackupError):
         "Backup scheduler is unrestartable after a timed-out stop"
     )
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.BACKUP_UNRESTARTABLE
     status_code: ClassVar[int] = 409
 
 

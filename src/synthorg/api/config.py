@@ -38,7 +38,7 @@ class CorsConfig(BaseModel):
             allowed in cross-origin requests.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     # Empty by default: safe-by-default for production. Local dev sets
     # the origin explicitly via the settings registry
@@ -120,7 +120,7 @@ class RateLimitConfig(BaseModel):
         exclude_paths: Paths excluded from rate limiting.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(
@@ -267,7 +267,7 @@ class ServerConfig(BaseModel):
         ws_ping_timeout: WebSocket pong timeout in seconds.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     reload: bool = Field(
         default=False,
@@ -316,7 +316,7 @@ class ApiConfig(BaseModel):
         api_prefix: URL prefix for all API routes.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(

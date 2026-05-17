@@ -17,7 +17,7 @@ class QuotaAlertThresholds(BaseModel):
             ``warn_pct``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     warn_pct: float = Field(
         default=80.0,
@@ -57,7 +57,7 @@ class QuotaPollerConfig(BaseModel):
             the same provider/window/level tuple.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,

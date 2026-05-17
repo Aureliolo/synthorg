@@ -171,6 +171,13 @@ class _FakeMessageRepository:
     async def purge_before(self, threshold: Any) -> int:
         return 0
 
+    async def get_by_id(
+        self,
+        channel: str,
+        message_id: str,
+    ) -> Message | None:
+        return None
+
     async def delete(self, message_id: str) -> bool:
         return False
 

@@ -49,6 +49,9 @@ OAUTH_FLOW_COMPLETED: Final[str] = "integrations.oauth.flow_completed"
 OAUTH_FLOW_FAILED: Final[str] = "integrations.oauth.flow_failed"
 OAUTH_CALLBACK_RECEIVED: Final[str] = "integrations.oauth.callback_received"
 OAUTH_STATE_INVALID: Final[str] = "integrations.oauth.state_invalid"
+OAUTH_OIDC_VERIFICATION_FAILED: Final[str] = (
+    "integrations.oauth.oidc_verification_failed"
+)
 OAUTH_TOKEN_EXCHANGED: Final[str] = "integrations.oauth.token_exchanged"  # noqa: S105
 OAUTH_TOKEN_EXCHANGE_FAILED: Final[str] = "integrations.oauth.token_exchange_failed"  # noqa: S105
 OAUTH_TOKEN_REFRESHED: Final[str] = "integrations.oauth.token_refreshed"  # noqa: S105

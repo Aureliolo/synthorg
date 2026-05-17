@@ -202,6 +202,11 @@ def _build_auth_exclude_paths(
     # as a fail-safe even when operators override
     # ``auth.exclude_paths`` with a custom list.
     logout_path = f"^{prefix}/auth/logout$"
+    # Refresh-token rotation runs precisely when the access token is
+    # expired, so it cannot itself require a valid access token. Kept
+    # in the fail-safe set (like login/logout) so a custom
+    # ``auth.exclude_paths`` cannot lock clients out of rotation.
+    refresh_path = f"^{prefix}/auth/refresh$"
     # The OAuth provider redirects the user's browser here without a
     # session cookie, so the global auth middleware has to let it
     # through. CSRF protection is handled by the state token the
@@ -226,6 +231,7 @@ def _build_auth_exclude_paths(
             "^/api$",
             f"^{prefix}/auth/setup$",
             f"^{prefix}/auth/login$",
+            refresh_path,
             logout_path,
             setup_status_path,
             oauth_callback_path,
@@ -248,6 +254,7 @@ def _build_auth_exclude_paths(
         logout_path,
         auth_setup_path,
         auth_login_path,
+        refresh_path,
         ws_path,
         oauth_callback_path,
     ]
@@ -328,7 +335,11 @@ def _build_auth_and_csrf(
     auth_middleware = create_auth_middleware_class(auth)
 
     # CSRF middleware: exempt login/setup (they set the cookie, client
-    # cannot carry a CSRF token on the first request), logout (clients
+    # cannot carry a CSRF token on the first request), refresh (the
+    # access token is expected to be expired so the session cookie may
+    # be gone; the refresh cookie is SameSite + narrow-path + single-use
+    # consume, which is the CSRF defence by design -- mirrors the
+    # documented contract in the ``/refresh`` handler), logout (clients
     # may need to clear a stale session whose CSRF cookie was lost;
     # e.g. on app version upgrade; CSRF-protecting logout is low value
     # since forcing a logout is a nuisance, not a compromise), and
@@ -337,6 +348,7 @@ def _build_auth_and_csrf(
         {
             f"{prefix}/auth/login",
             f"{prefix}/auth/setup",
+            f"{prefix}/auth/refresh",
             f"{prefix}/auth/logout",
             f"{prefix}/healthz",
             f"{prefix}/readyz",

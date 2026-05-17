@@ -34,7 +34,7 @@ class AcceptanceCriterion(BaseModel):
         met: Whether this criterion has been satisfied.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     description: NotBlankStr = Field(
         description="Criterion text",
@@ -85,7 +85,7 @@ class Task(BaseModel):
             construction to prevent external mutation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique task identifier")
     title: NotBlankStr = Field(description="Short task title")

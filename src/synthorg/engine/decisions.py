@@ -66,6 +66,7 @@ class DecisionRecord(BaseModel):
         frozen=True,
         allow_inf_nan=False,
         arbitrary_types_allowed=True,
+        extra="forbid",
     )
 
     id: NotBlankStr = Field(description="Unique decision record identifier")

@@ -10,11 +10,13 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.errors import (
     InvalidStateError,
+    OIDCVerificationError,
     TokenExchangeFailedError,
 )
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
+from synthorg.integrations.oauth.oidc_verify import verify_id_token
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     OAUTH_CALLBACK_RECEIVED,
@@ -23,11 +25,9 @@ from synthorg.observability.events.integrations import (
     OAUTH_STATE_INVALID,
 )
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
-from synthorg.persistence.connection_protocol import (
-    OAuthStateRepository,  # noqa: TC001
-)
 
 if TYPE_CHECKING:
+    from synthorg.integrations.oauth.state_service import OAuthStateService
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -76,7 +76,7 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
     *,
     state_param: str,
     code: str,
-    state_repo: OAuthStateRepository,
+    state_service: OAuthStateService,
     catalog: ConnectionCatalog,
     flow: AuthorizationCodeFlow | None = None,
     config_resolver: ConfigResolver | None = None,
@@ -91,7 +91,9 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
     Args:
         state_param: The state parameter from the callback URL.
         code: The authorization code.
-        state_repo: Repository for looking up OAuth states.
+        state_service: Audit-aware OAuth-state facade (the callback's
+            persistence-boundary delegate for get / expire /
+            mark_consumed).
         catalog: Connection catalog for credential storage.
         flow: Authorization code flow instance. When ``None`` a new
             flow is constructed with the operator-tuned HTTP timeout
@@ -115,7 +117,7 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
 
     from datetime import UTC, datetime  # noqa: PLC0415
 
-    oauth_state = await state_repo.get(NotBlankStr(state_param))
+    oauth_state = await state_service.get(NotBlankStr(state_param))
     if oauth_state is None:
         logger.warning(OAUTH_STATE_INVALID, state_prefix=state_param[:8])
         msg = "Invalid or expired OAuth state token"
@@ -141,7 +143,7 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
         return str(connection_name)
 
     if oauth_state.expires_at < datetime.now(UTC):
-        await state_repo.delete(NotBlankStr(state_param))
+        await state_service.expire(NotBlankStr(state_param))
         logger.warning(
             OAUTH_STATE_INVALID,
             state_prefix=state_param[:8],
@@ -210,6 +212,62 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
         msg = "OAuth flow returned no access_token"
         raise TokenExchangeFailedError(msg)
 
+    # OIDC ID-token nonce binding (fail-closed matrix). A connection
+    # is "OIDC" iff it carries a ``jwks_uri``. Any asymmetry between
+    # "configured for OIDC" and "id_token returned" is rejected so a
+    # downgrade (IdP silently dropping the id_token) cannot disable
+    # the binding, and an unverifiable id_token cannot slip through.
+    jwks_uri = credentials.get("jwks_uri", "")
+    oidc_issuer = credentials.get("oidc_issuer", "")
+    if jwks_uri and not token.id_token:
+        logger.warning(
+            OAUTH_FLOW_FAILED,
+            connection_name=conn.name,
+            reason="oidc_id_token_missing",
+        )
+        msg = "Connection is OIDC-configured but the provider returned no id_token"
+        raise OIDCVerificationError(msg)
+    if token.id_token and not jwks_uri:
+        logger.warning(
+            OAUTH_FLOW_FAILED,
+            connection_name=conn.name,
+            reason="oidc_jwks_uri_missing",
+        )
+        msg = "Provider returned an id_token but connection has no jwks_uri"
+        raise OIDCVerificationError(msg)
+    if token.id_token and jwks_uri:
+        if not oidc_issuer:
+            logger.warning(
+                OAUTH_FLOW_FAILED,
+                connection_name=conn.name,
+                reason="oidc_issuer_missing",
+            )
+            msg = "OIDC connection (jwks_uri set) is missing oidc_issuer"
+            raise OIDCVerificationError(msg)
+        if oauth_state.nonce is None:
+            logger.warning(
+                OAUTH_FLOW_FAILED,
+                connection_name=conn.name,
+                reason="oidc_state_nonce_missing",
+            )
+            msg = "OAuth state carries no nonce; cannot bind the id_token"
+            raise OIDCVerificationError(msg)
+        try:
+            await verify_id_token(
+                token.id_token,
+                jwks_uri=jwks_uri,
+                issuer=oidc_issuer,
+                client_id=client_id,
+                expected_nonce=str(oauth_state.nonce),
+            )
+        except OIDCVerificationError:
+            logger.warning(
+                OAUTH_FLOW_FAILED,
+                connection_name=conn.name,
+                reason="oidc_id_token_verification_failed",
+            )
+            raise
+
     # Persist access/refresh tokens via the secret backend.
     await catalog.store_oauth_tokens(
         conn.name,
@@ -239,7 +297,7 @@ async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
     # *redelivered* callbacks) but possible under genuinely
     # concurrent in-flight callbacks; surface it as a WARNING so
     # operators can observe the collision.
-    consumed_winner = await state_repo.mark_consumed(
+    consumed_winner = await state_service.mark_consumed(
         NotBlankStr(state_param),
         connection_name=NotBlankStr(conn.name),
         consumed_at=datetime.now(UTC),

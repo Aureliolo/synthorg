@@ -57,7 +57,7 @@ class TaskSpending(BaseModel):
         record_count: Number of cost records.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Task identifier")
     total_cost: float = Field(ge=0.0, description="Total cost")
@@ -92,7 +92,7 @@ class ProviderDistribution(BaseModel):
         percentage_of_total: Percentage of total spending.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider: NotBlankStr = Field(description="Provider name")
     total_cost: float = Field(ge=0.0, description="Total cost")
@@ -132,7 +132,7 @@ class ModelDistribution(BaseModel):
         percentage_of_total: Percentage of total spending.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     model: NotBlankStr = Field(description="Model identifier")
     provider: NotBlankStr = Field(description="Provider name")
@@ -217,7 +217,7 @@ class SpendingReport(BaseModel):
         generated_at: When the report was generated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     summary: SpendingSummary = Field(description="Overall spending summary")
     by_task: tuple[TaskSpending, ...] = Field(

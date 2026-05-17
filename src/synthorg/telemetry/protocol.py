@@ -34,7 +34,7 @@ class TelemetryEvent(BaseModel):
             restricted to primitives (int, float, str, bool).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     event_type: NotBlankStr = Field(
         description="Dot-separated event name",

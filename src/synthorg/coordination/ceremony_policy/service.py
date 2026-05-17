@@ -52,7 +52,7 @@ class ActiveCeremonyStrategy(BaseModel):
         sprint_id: Active sprint id, or ``None``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: CeremonyStrategyType | None = Field(
         default=None,

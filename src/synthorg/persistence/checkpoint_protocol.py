@@ -160,15 +160,24 @@ class HeartbeatRepository(Protocol):
     async def get_stale(
         self,
         threshold: AwareDatetime,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[Heartbeat, ...]:
-        """Retrieve heartbeats older than the threshold.
+        """Retrieve a bounded page of heartbeats older than the threshold.
 
         Args:
             threshold: Heartbeats with ``last_heartbeat_at`` before
                 this timestamp are considered stale.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Stale heartbeats as a tuple.
+            A page of stale heartbeats ordered by ``last_heartbeat_at``
+            then ``execution_id`` (stable secondary key for
+            deterministic paging). Callers needing every stale
+            heartbeat drain via
+            :func:`synthorg.persistence._shared.collect_all`.
 
         Raises:
             PersistenceError: If the operation fails.

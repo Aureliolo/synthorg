@@ -39,7 +39,7 @@ class CrossDeploymentAnalyticsConfig(BaseModel):
             required before generating threshold recommendations.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     collector_url: NotBlankStr | None = None

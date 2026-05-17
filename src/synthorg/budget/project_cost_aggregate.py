@@ -36,7 +36,7 @@ class ProjectCostAggregate(BaseModel):
         last_updated: Timestamp of the most recent increment.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_id: NotBlankStr = Field(description="Project identifier")
     total_cost: float = Field(

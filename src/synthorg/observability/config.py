@@ -49,7 +49,7 @@ class RotationConfig(BaseModel):
             files.  Only supported with builtin rotation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     @model_validator(mode="after")
     def _reject_compress_with_external(self) -> Self:
@@ -170,7 +170,7 @@ class SinkConfig(BaseModel):
         http_max_retries: Retry count on HTTP failure.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     sink_type: SinkType = Field(
         description="Log output destination type",
@@ -491,7 +491,7 @@ class ContainerLogShippingConfig(BaseModel):
             per execution (stdout + stderr + sidecar logs combined).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,
@@ -537,7 +537,7 @@ class LogConfig(BaseModel):
         container_log_shipping: Container log shipping configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     root_level: LogLevel = Field(
         default=LogLevel.INFO,

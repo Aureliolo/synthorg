@@ -34,7 +34,7 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_WRITE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared import normalize_utc, validate_pagination_args
 from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
 
 if TYPE_CHECKING:
@@ -513,15 +513,22 @@ class PostgresOrgFactRepository:
     async def snapshot_at(
         self,
         timestamp: AwareDatetime,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[OperationLogSnapshot, ...]:
-        """Point-in-time snapshot of all facts at a given timestamp.
+        """Bounded page of the point-in-time snapshot of all facts.
 
         ``timestamp`` must be timezone-aware so psycopg binds it to the
         ``TIMESTAMPTZ`` parameter at a known instant; a naive datetime
         would otherwise bind in the session timezone and silently
         produce a wrong-but-plausible snapshot.  The signature is
         :class:`pydantic.AwareDatetime` to make that contract explicit.
+        Rows page in ``fact_id`` order so a cursor walk is repeatable
+        across the same snapshot; callers needing the whole snapshot
+        drain via :func:`synthorg.persistence._shared.collect_all`.
         """
+        limit = validate_pagination_args(limit, offset, event=ORG_MEMORY_QUERY_FAILED)
         dict_row = self._dict_row
         if timestamp.tzinfo is None:
             msg = (
@@ -568,13 +575,17 @@ LEFT JOIN latest_publishes lp ON lp.fact_id = lo.fact_id
 LEFT JOIN first_publishes fp ON fp.fact_id = lo.fact_id
 WHERE lo.rn = 1
 ORDER BY lo.fact_id
+LIMIT %(limit)s OFFSET %(offset)s
 """
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(sql, {"ts": timestamp})
+                await cur.execute(
+                    sql,
+                    {"ts": timestamp, "limit": limit, "offset": offset},
+                )
                 rows = await cur.fetchall()
         except Exception as exc:
             ts_iso = timestamp.isoformat()
@@ -598,8 +609,19 @@ ORDER BY lo.fact_id
     async def get_operation_log(
         self,
         fact_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[OperationLogEntry, ...]:
-        """Retrieve full audit trail for a fact."""
+        """Bounded page of the audit trail for a fact (version ASC).
+
+        Version is unique per fact so the ordering is already stable;
+        callers needing the full trail drain via
+        :func:`synthorg.persistence._shared.collect_all`.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=ORG_MEMORY_QUERY_FAILED, fact_id=fact_id
+        )
         dict_row = self._dict_row
         try:
             async with (
@@ -608,8 +630,9 @@ ORDER BY lo.fact_id
             ):
                 await cur.execute(
                     "SELECT * FROM org_facts_operation_log "
-                    "WHERE fact_id = %s ORDER BY version ASC",
-                    (fact_id,),
+                    "WHERE fact_id = %s ORDER BY version ASC "
+                    "LIMIT %s OFFSET %s",
+                    (fact_id, limit, offset),
                 )
                 rows = await cur.fetchall()
         except Exception as exc:

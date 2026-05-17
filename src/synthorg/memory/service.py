@@ -23,9 +23,12 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -97,29 +100,34 @@ class CheckpointNotFoundError(NotFoundError):
     default_message: ClassVar[str] = "Checkpoint not found"
 
 
-class CheckpointRollbackUnavailableError(ConflictError):
+class CheckpointRollbackUnavailableError(ValidationError):
     """Raised when a rollback is requested but no backup config exists.
 
-    Inherits :class:`ConflictError` so ``EXCEPTION_HANDLERS`` emits a
-    409 envelope: the checkpoint exists, but its rollback prerequisite
-    (a stored backup config) does not, so the operation cannot proceed
-    in the current state.  The prior bare ``DomainError`` base
-    misclassified this as INTERNAL/500.
+    Inherits :class:`ValidationError` so ``EXCEPTION_HANDLERS`` emits a
+    422 envelope with the distinct ``CHECKPOINT_ROLLBACK_UNAVAILABLE``
+    code: the checkpoint exists but its rollback prerequisite (a
+    stored backup config) does not, so the dashboard can message the
+    invalid rollback target precisely rather than show a blanket retry.
     """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: no backup exists
-    status_code: ClassVar[int] = 409
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.CHECKPOINT_ROLLBACK_UNAVAILABLE
     default_message: ClassVar[str] = "No backup config available for this checkpoint"
 
 
-class CheckpointRollbackCorruptError(DomainError):
-    """Raised when the stored backup config fails JSON parsing."""
+class CheckpointRollbackCorruptError(ValidationError):
+    """Raised when the stored backup config fails JSON parsing.
+
+    Inherits :class:`ValidationError` (422) with the distinct
+    ``CHECKPOINT_ROLLBACK_CORRUPT`` code so clients can tell a corrupt
+    rollback backup from a generic validation failure.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the stored payload is malformed
+    error_code: ClassVar[ErrorCode] = ErrorCode.CHECKPOINT_ROLLBACK_CORRUPT
+    default_message: ClassVar[str] = "Checkpoint rollback data is corrupt"
 
 
 class FineTuneRunNotFoundError(NotFoundError):
@@ -136,10 +144,8 @@ class FineTuneRunNotFoundError(NotFoundError):
     error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
     default_message: ClassVar[str] = "Fine-tune run not found"
-    # Wire-level ``domain_code`` so MCP handlers can route via the
-    # shared ``err(exc)`` helper instead of regex-matching the
-    # exception message -- that was the pre-existing anti-pattern
-    # this class replaces.
+    # Wire-level ``domain_code`` so MCP handlers route via the shared
+    # ``err(exc)`` helper instead of regex-matching exception messages.
     domain_code: str = "not_found"
 
 
@@ -147,8 +153,8 @@ class FineTuneRunNotResumableError(ConflictError):
     """Raised when a fine-tune run exists but is not in a resumable stage.
 
     Inherits :class:`ConflictError` so ``EXCEPTION_HANDLERS`` routes
-    this through the 409 envelope; the prior ``DomainError`` base
-    classified it as INTERNAL/500.
+    this through the 409 envelope, distinguishing a non-resumable
+    stage from an internal failure.
     """
 
     __slots__ = ()
@@ -396,13 +402,17 @@ class MemoryService:
 
             updated = await checkpoints.get(checkpoint_id)
             if updated is None:
-                logger.error(
+                # Disappearing between activation and re-read can only
+                # be a concurrent delete; surface the contracted
+                # CheckpointNotFoundError (404) so the caller sees a
+                # deterministic "checkpoint no longer exists".
+                logger.warning(
                     MEMORY_CHECKPOINT_REREAD_FAILED,
                     checkpoint_id=checkpoint_id,
                     operation="deploy",
                 )
-                msg = "Checkpoint activated but not found on re-read"
-                raise QueryError(msg)
+                msg = f"Checkpoint {checkpoint_id} was removed concurrently"
+                raise CheckpointNotFoundError(msg)
         logger.info(
             MEMORY_CHECKPOINT_DEPLOYED,
             checkpoint_id=checkpoint_id,
@@ -480,13 +490,17 @@ class MemoryService:
             await checkpoints.deactivate_all()
             updated = await checkpoints.get(checkpoint_id)
             if updated is None:
-                logger.error(
+                # Disappearing right after deactivate_all can only be a
+                # concurrent delete; surface the contracted
+                # CheckpointNotFoundError (404) so the caller sees a
+                # deterministic "checkpoint no longer exists".
+                logger.warning(
                     MEMORY_CHECKPOINT_REREAD_FAILED,
                     checkpoint_id=checkpoint_id,
                     operation="rollback",
                 )
-                msg = "Checkpoint not found after rollback"
-                raise QueryError(msg)
+                msg = f"Checkpoint {checkpoint_id} was removed concurrently"
+                raise CheckpointNotFoundError(msg)
         logger.info(
             MEMORY_CHECKPOINT_ROLLBACK,
             checkpoint_id=checkpoint_id,
@@ -838,9 +852,8 @@ class MemoryService:
             # three-valued prior state captured by ``_read_setting``.
             # ``read_failed`` explicitly leaves the newly-written key
             # in place so a transient read error cannot erase a real
-            # pre-existing setting -- safer than the old ``bool``
-            # design that collapsed "absent" and "read failed" into
-            # the same branch.
+            # pre-existing setting: "absent" and "read failed" must
+            # stay distinct branches, never collapsed.
             await self._restore_or_delete(
                 "embedder_model",
                 prior_model_value,
@@ -975,10 +988,10 @@ class MemoryService:
         try:
             await coro
         except Exception as exc:
-            # Emit both the legacy aggregate event (for existing
-            # dashboards / alerting) AND the step-specific event so
-            # alerts can pick up partial-rollback conditions distinctly
-            # from the overall rollback failure signal.
+            # Emit both the aggregate event (broad dashboards /
+            # alerting) AND the step-specific event so alerts can pick
+            # up partial-rollback conditions distinctly from the
+            # overall rollback failure signal.
             logger.warning(
                 MEMORY_CHECKPOINT_ROLLBACK_FAILED,
                 checkpoint_id=checkpoint_id,

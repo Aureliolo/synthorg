@@ -73,7 +73,7 @@ class _TicketEntry(BaseModel):
         expires_at: ``time.monotonic()`` deadline.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     user: AuthenticatedUser
     expires_at: float

@@ -194,13 +194,25 @@ class OntologyEntityRepository(
         """
         ...
 
-    async def get_version_manifest(self) -> dict[NotBlankStr, int]:
-        """Return the latest version number for each entity.
+    async def get_version_manifest(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> dict[NotBlankStr, int]:
+        """Return a bounded page of the latest version per entity.
 
-        Version manifest is a domain-specific aggregate.
+        Version manifest is a domain-specific aggregate. Entities page
+        in ``entity_id`` order so a cursor walk is stable.
+
+        Args:
+            limit: Maximum entries to return.
+            offset: Entries to skip from the head of the ordering.
 
         Returns:
-            Mapping of entity name to latest version number.
+            A page of the entity-name to latest-version mapping.
+            Callers needing the whole manifest drain via
+            :func:`synthorg.persistence._shared.collect_all_mapping`.
         """
         ...
 

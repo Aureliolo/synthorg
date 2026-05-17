@@ -9,13 +9,14 @@ silently regress when a new field or write path is added; every other
 persistence-layer mutation in the controller stack already follows the
 same shape.
 
-This service is the minimum surface required to cover that one write.
-The OAuth callback path (which deletes the consumed state token)
-already routes through ``handle_oauth_callback`` in
-:mod:`synthorg.integrations.oauth.callback_handler`, so it is out of
-this service's scope by design.
+The OAuth callback path routes its state reads and writes
+(``get`` / ``expire`` / ``mark_consumed``) through this same service
+so both halves of the flow respect the persistence-layer boundary;
+``handle_oauth_callback`` receives an :class:`OAuthStateService`, not
+a bare repository.
 """
 
+from datetime import datetime  # noqa: TC003 -- runtime annotation
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
@@ -88,6 +89,41 @@ class OAuthStateService:
             state_token_prefix=str(bound.state_token)[:_STATE_TOKEN_PREFIX_LENGTH],
         )
         return bound
+
+    async def get(self, state_token: NotBlankStr) -> OAuthState | None:
+        """Fetch the OAuth state for *state_token* on the callback path.
+
+        Returns ``None`` when no row matches (invalid/unknown token).
+        """
+        return await self._repo.get(state_token)
+
+    async def expire(self, state_token: NotBlankStr) -> bool:
+        """Delete an expired/invalid state row; ``True`` if one was removed.
+
+        The callback handler logs the ``OAUTH_STATE_INVALID`` event for
+        the expiry decision; this method is the persistence-boundary
+        delegate so the handler never touches the repo directly.
+        """
+        return await self._repo.delete(state_token)
+
+    async def mark_consumed(
+        self,
+        state_token: NotBlankStr,
+        *,
+        connection_name: NotBlankStr,
+        consumed_at: datetime,
+    ) -> bool:
+        """Compare-and-set the consumed marker (single-use callback).
+
+        Returns ``True`` for the winning write, ``False`` when a
+        concurrent callback already stamped the row (the handler
+        routes that case through its replay branch).
+        """
+        return await self._repo.mark_consumed(
+            state_token,
+            connection_name=connection_name,
+            consumed_at=consumed_at,
+        )
 
 
 __all__ = ["OAuthStateService"]
