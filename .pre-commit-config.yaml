@@ -195,6 +195,15 @@ repos:
         language: system
         files: ^tests/.*\.py$
 
+      - id: timeout-interval-default-drift
+        name: timeout-check interval boot fallback matches registered default
+        entry: uv
+        args: [run, python, scripts/check_timeout_interval_default_drift.py]
+        language: system
+        pass_filenames: false
+        files: ^src/synthorg/(api/app\.py|settings/definitions/security\.py)$
+        stages: [pre-commit, pre-push]
+
       - id: no-new-logger-exception-str-exc
         name: block new logger.exception(..., error=str(exc)) sites
         entry: uv
