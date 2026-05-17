@@ -59,7 +59,6 @@ from synthorg.observability.events.api import (
 )
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
-from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
 from synthorg.ontology.service import OntologyService  # noqa: TC001
 from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
 from synthorg.persistence.auth_protocol import (
@@ -70,6 +69,9 @@ from synthorg.persistence.auth_protocol import (
 )
 from synthorg.persistence.auth_protocol import (
     SessionRepository as SessionStore,  # noqa: TC001
+)
+from synthorg.persistence.ontology_protocol import (  # noqa: TC001
+    OntologyDriftReportRepository,
 )
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.management.audit_service import (
@@ -189,7 +191,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _notification_dispatcher: NotificationDispatcher | None
     _bridge_config_applied: bool
     _ontology_service: OntologyService | None
-    _drift_report_store: DriftReportStore | None
+    _drift_report_store: OntologyDriftReportRepository | None
     _drift_detection_service: DriftDetectionService | None
     _ontology_sync_service: OntologyOrgMemorySync | None
     _model_router: ModelRouter | None
@@ -877,7 +879,7 @@ class AppStateServicesMixin(_FacadesMixin):
         return self._ontology_service is not None
 
     @property
-    def drift_report_store(self) -> DriftReportStore | None:
+    def drift_report_store(self) -> OntologyDriftReportRepository | None:
         """Return the drift report store, or None if not configured."""
         return self._drift_report_store
 
@@ -895,7 +897,7 @@ class AppStateServicesMixin(_FacadesMixin):
         """Attach the ontology service (once-only; auto-wired on startup)."""
         self._set_once("_ontology_service", service, "Ontology service")
 
-    def set_drift_report_store(self, store: DriftReportStore) -> None:
+    def set_drift_report_store(self, store: OntologyDriftReportRepository) -> None:
         """Attach the drift report store (once-only)."""
         self._set_once("_drift_report_store", store, "Drift report store")
 

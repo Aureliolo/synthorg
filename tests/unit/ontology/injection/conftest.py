@@ -84,7 +84,7 @@ def mock_backend(
     core_entities: tuple[EntityDefinition, ...],
     user_entity: EntityDefinition,
 ) -> AsyncMock:
-    """Mock OntologyBackend with pre-loaded entities."""
+    """Mock OntologyEntityRepository with pre-loaded entities."""
     backend = AsyncMock()
     backend.is_connected = True
     backend.backend_name = "mock"

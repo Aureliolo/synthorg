@@ -21,7 +21,6 @@ from synthorg.memory.org.models import (
     OrgFactWriteRequest,
     OrgMemoryQuery,
 )
-from synthorg.memory.org.store import OrgFactStore  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.org_memory import (
     ORG_MEMORY_BACKEND_CONNECTED,
@@ -35,6 +34,9 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_WRITE_FAILED,
     ORG_MEMORY_WRITE_START,
 )
+from synthorg.persistence.memory_protocol import (  # noqa: TC001
+    OrgFactRepository,
+)
 
 logger = get_logger(__name__)
 
@@ -46,7 +48,7 @@ class HybridPromptRetrievalBackend:
 
     Core policies are static strings that get injected directly into
     agent system prompts.  Extended facts are stored in a dynamic
-    ``OrgFactStore`` for on-demand retrieval.
+    ``OrgFactRepository`` for on-demand retrieval.
 
     Args:
         core_policies: Static core policy texts.
@@ -58,7 +60,7 @@ class HybridPromptRetrievalBackend:
         self,
         *,
         core_policies: tuple[NotBlankStr, ...],
-        store: OrgFactStore,
+        store: OrgFactRepository,
         access_config: WriteAccessConfig,
     ) -> None:
         self._core_policies = core_policies
@@ -69,7 +71,7 @@ class HybridPromptRetrievalBackend:
     async def connect(self) -> None:
         """Mark the backend live; store lifecycle is owned by persistence.
 
-        After A4 the extended ``OrgFactStore`` is a repository on the
+        After A4 the extended ``OrgFactRepository`` is a repository on the
         shared :class:`PersistenceBackend`, whose connection is opened
         earlier in the startup sequence.  Connecting/disconnecting the
         store here would double-close it on shutdown.

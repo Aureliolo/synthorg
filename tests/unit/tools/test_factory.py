@@ -740,10 +740,10 @@ class TestBuildKnowledgeArchitectTools:
         """
         from synthorg.memory.consolidation.wiki_export import WikiExporter
         from synthorg.memory.org.protocol import OrgMemoryBackend
-        from synthorg.memory.org.store import OrgFactStore
+        from synthorg.persistence.memory_protocol import OrgFactRepository
 
         backend = MagicMock(spec=OrgMemoryBackend)
-        store = MagicMock(spec=OrgFactStore)
+        store = MagicMock(spec=OrgFactRepository)
         exporter = MagicMock(spec=WikiExporter)
 
         # Only backend + store, no exporter
@@ -770,10 +770,10 @@ class TestBuildKnowledgeArchitectTools:
         """All three collaborators wired -> all 6 tools appear."""
         from synthorg.memory.consolidation.wiki_export import WikiExporter
         from synthorg.memory.org.protocol import OrgMemoryBackend
-        from synthorg.memory.org.store import OrgFactStore
+        from synthorg.persistence.memory_protocol import OrgFactRepository
 
         backend = MagicMock(spec=OrgMemoryBackend)
-        store = MagicMock(spec=OrgFactStore)
+        store = MagicMock(spec=OrgFactRepository)
         exporter = MagicMock(spec=WikiExporter)
 
         tools = build_default_tools(

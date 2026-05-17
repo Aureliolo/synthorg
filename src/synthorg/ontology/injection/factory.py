@@ -19,14 +19,14 @@ from synthorg.ontology.injection.tool import ToolBasedInjectionStrategy
 if TYPE_CHECKING:
     from synthorg.memory.injection import TokenEstimator
     from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 
 
 def create_injection_strategy(
     config: OntologyInjectionConfig,
-    backend: OntologyBackend,
+    backend: OntologyEntityRepository,
     *,
     token_estimator: TokenEstimator | None = None,
 ) -> OntologyInjectionStrategy:

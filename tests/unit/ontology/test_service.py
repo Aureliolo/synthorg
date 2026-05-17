@@ -39,7 +39,7 @@ def _make_entity(
 
 @pytest.fixture
 def mock_backend() -> AsyncMock:
-    """A mock OntologyBackend."""
+    """A mock OntologyEntityRepository."""
     backend = AsyncMock()
     backend.register = AsyncMock()
     backend.get = AsyncMock()

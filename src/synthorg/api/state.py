@@ -85,7 +85,6 @@ from synthorg.observability.prometheus_collector import (
 )
 from synthorg.observability.tracing.protocol import TraceHandler  # noqa: TC001
 from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
-from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
 from synthorg.ontology.service import OntologyService  # noqa: TC001
 from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
 from synthorg.persistence.artifact_storage import (
@@ -99,6 +98,9 @@ from synthorg.persistence.auth_protocol import (
 )
 from synthorg.persistence.auth_protocol import (
     SessionRepository as SessionStore,  # noqa: TC001
+)
+from synthorg.persistence.ontology_protocol import (  # noqa: TC001
+    OntologyDriftReportRepository,
 )
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
@@ -351,7 +353,7 @@ class AppState(AppStateServicesMixin):
         self._coordination_metrics_store = coordination_metrics_store
         self._notification_dispatcher = notification_dispatcher
         self._ontology_service = ontology_service
-        self._drift_report_store: DriftReportStore | None = None
+        self._drift_report_store: OntologyDriftReportRepository | None = None
         self._drift_detection_service: DriftDetectionService | None = None
         self._ontology_sync_service: OntologyOrgMemorySync | None = None
         self._persistence = persistence

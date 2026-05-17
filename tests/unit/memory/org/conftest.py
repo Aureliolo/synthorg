@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
-from synthorg.persistence.sqlite.org_fact_repo import SQLiteOrgFactRepository
 
 _NOW = datetime.now(UTC)
 HUMAN_AUTHOR = OrgFactAuthor(is_human=True)
@@ -33,6 +32,3 @@ def _make_fact(
         author=author,
         created_at=_NOW,
     )
-
-
-SQLiteOrgFactStore = SQLiteOrgFactRepository

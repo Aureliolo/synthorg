@@ -22,7 +22,7 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
     from synthorg.providers.models import ChatMessage, ToolDefinition
 
 logger = get_logger(__name__)
@@ -34,8 +34,8 @@ LOOKUP_ENTITY_TOOL_NAME = "lookup_entity"
 class LookupEntityTool(BaseTool):
     """On-demand entity definition lookup tool.
 
-    Delegates to ``OntologyBackend.get()`` for exact name lookup
-    and ``OntologyBackend.search()`` for free-text search.
+    Delegates to ``OntologyEntityRepository.get()`` for exact name lookup
+    and ``OntologyEntityRepository.search()`` for free-text search.
 
     Args:
         backend: Ontology backend for entity retrieval.
@@ -47,7 +47,7 @@ class LookupEntityTool(BaseTool):
     def __init__(
         self,
         *,
-        backend: OntologyBackend,
+        backend: OntologyEntityRepository,
         tool_name: str = LOOKUP_ENTITY_TOOL_NAME,
     ) -> None:
         super().__init__(
@@ -197,7 +197,7 @@ class ToolBasedInjectionStrategy:
     def __init__(
         self,
         *,
-        backend: OntologyBackend,
+        backend: OntologyEntityRepository,
         tool_name: str = LOOKUP_ENTITY_TOOL_NAME,
     ) -> None:
         self._backend = backend

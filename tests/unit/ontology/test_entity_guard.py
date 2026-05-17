@@ -35,7 +35,7 @@ def _make_request() -> DelegationRequest:
 def _make_backend(
     manifest: dict[str, int] | None = None,
 ) -> AsyncMock:
-    """Create a mock OntologyBackend."""
+    """Create a mock OntologyEntityRepository."""
     backend = AsyncMock()
     if manifest is None:
         manifest = {"Task": 1, "AgentIdentity": 2}

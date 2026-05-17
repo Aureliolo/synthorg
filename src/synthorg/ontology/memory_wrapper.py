@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.ontology.config import OntologyMemoryConfig
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 
@@ -57,7 +57,7 @@ class OntologyAwareMemoryBackend:
     def __init__(
         self,
         inner: MemoryBackend,
-        ontology: OntologyBackend,
+        ontology: OntologyEntityRepository,
         config: OntologyMemoryConfig,
     ) -> None:
         self._inner = inner

@@ -11,7 +11,7 @@ from synthorg.ontology.drift.passive import PassiveMonitorStrategy
 
 if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 _DEFAULT_THRESHOLD: Final[float] = 0.3
@@ -33,7 +33,7 @@ class ActiveValidatorStrategy(PassiveMonitorStrategy):
     def __init__(
         self,
         *,
-        ontology: OntologyBackend,
+        ontology: OntologyEntityRepository,
         memory: MemoryBackend,
         threshold: float = _DEFAULT_THRESHOLD,
     ) -> None:

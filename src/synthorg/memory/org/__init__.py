@@ -29,7 +29,7 @@ from synthorg.memory.org.models import (
     OrgMemoryQuery,
 )
 from synthorg.memory.org.protocol import OrgMemoryBackend
-from synthorg.memory.org.store import OrgFactStore
+from synthorg.persistence.memory_protocol import OrgFactRepository
 
 __all__ = [
     "CategoryWriteRule",
@@ -39,7 +39,7 @@ __all__ = [
     "OperationLogSnapshot",
     "OrgFact",
     "OrgFactAuthor",
-    "OrgFactStore",
+    "OrgFactRepository",
     "OrgFactWriteRequest",
     "OrgMemoryAccessDeniedError",
     "OrgMemoryBackend",

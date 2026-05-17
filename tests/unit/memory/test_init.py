@@ -50,7 +50,7 @@ class TestMemoryExports:
             "MemoryStoreRequest",
             "OrgFact",
             "OrgFactAuthor",
-            "OrgFactStore",
+            "OrgFactRepository",
             "OrgFactWriteRequest",
             "OrgMemoryBackend",
             "OrgMemoryConfig",

@@ -19,7 +19,7 @@ from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.protocol import MemoryBackend
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 
@@ -66,7 +66,7 @@ class PassiveMonitorStrategy:
     def __init__(
         self,
         *,
-        ontology: OntologyBackend,
+        ontology: OntologyEntityRepository,
         memory: MemoryBackend,
         threshold: float = _DEFAULT_DRIFT_DETECT_THRESHOLD,
     ) -> None:

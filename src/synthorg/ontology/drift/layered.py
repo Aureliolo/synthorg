@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.ontology.drift.protocol import DriftDetectionStrategy
     from synthorg.ontology.models import DriftReport
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 
@@ -24,7 +24,7 @@ class LayeredDetectionStrategy:
 
     Runs the ``active`` sub-strategy for CORE entities and the
     ``passive`` sub-strategy for USER entities.  Requires an
-    ``OntologyBackend`` to look up entity tiers.
+    ``OntologyEntityRepository`` to look up entity tiers.
 
     Args:
         ontology: Ontology backend for tier lookup.
@@ -37,7 +37,7 @@ class LayeredDetectionStrategy:
     def __init__(
         self,
         *,
-        ontology: OntologyBackend,
+        ontology: OntologyEntityRepository,
         core_strategy: DriftDetectionStrategy,
         user_strategy: DriftDetectionStrategy,
     ) -> None:

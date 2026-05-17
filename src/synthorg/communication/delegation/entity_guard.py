@@ -24,7 +24,7 @@ from synthorg.ontology.config import GuardMode
 if TYPE_CHECKING:
     from synthorg.communication.delegation.models import DelegationRequest
     from synthorg.ontology.config import DelegationGuardConfig
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 
@@ -88,7 +88,7 @@ class EntityAlignmentGuard:
     def __init__(
         self,
         *,
-        ontology: OntologyBackend,
+        ontology: OntologyEntityRepository,
         config: DelegationGuardConfig,
     ) -> None:
         self._ontology = ontology
