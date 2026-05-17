@@ -3,8 +3,8 @@
 ``_probe_and_fetch`` runs HTTP requests whose frame locals can hold
 OAuth tokens. The unexpected-error branch must log a scrubbed
 description (``error_type`` + ``error``) at WARNING with NO ``exc_info``
-(SEC-1: a traceback serialises frame locals), and the probed URL must
-stay redacted.
+(a traceback serialises frame locals), and the probed URL must stay
+redacted.
 """
 
 from unittest.mock import AsyncMock, patch

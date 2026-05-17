@@ -59,7 +59,7 @@ def _log_probe_miss(
     network code path: log at WARNING with a typed, scrubbed
     description (``error_type`` + ``error``) and never a traceback.
     ``exc_info`` would serialise frame locals that can hold OAuth
-    tokens on this path (SEC-1); the scrubbed description preserves
+    tokens on this network path; the scrubbed description preserves
     diagnosability without the leak.
 
     Args:
