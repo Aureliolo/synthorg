@@ -242,6 +242,39 @@ async def _apply_workers_bridge_config_snapshot(app_state: AppState) -> None:
     app_state.swap_workers_bridge_config(snapshot)
 
 
+async def _apply_memory_bridge_config_snapshot(app_state: AppState) -> None:
+    """Snapshot ``MemoryBridgeConfig`` onto ``AppState`` at startup.
+
+    Resolves the consolidation enforce-batch + fine-tune preflight
+    knobs once via :meth:`ConfigResolver.get_memory_bridge_config` and
+    atomically swaps the result onto ``app_state`` so memory consumers
+    observe operator-tuned values. On any non-fatal resolve failure the
+    default ``MemoryBridgeConfig()`` snapshot (Field defaults ==
+    registered ``memory.*`` defaults) is retained -- the fail-safe
+    rule: a settings-backend hiccup must not perturb the memory knobs.
+
+    No-op when no resolver is wired.
+    """
+    if not app_state.has_config_resolver:
+        return
+    try:
+        snapshot = await app_state.config_resolver.get_memory_bridge_config()
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_BRIDGE_CONFIG_RESOLVE_FAILED,
+            bridge="memory",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback="module_defaults",
+        )
+        return
+    app_state.swap_memory_bridge_config(snapshot)
+
+
 async def _apply_ws_ticket_settings(app_state: AppState) -> None:
     """Apply the ticket-store pending-per-user limit from settings."""
     try:
@@ -469,6 +502,7 @@ async def _apply_bridge_config(
     await _validate_approval_urgency_invariant(app_state)
     await _apply_api_bridge_config_snapshot(app_state)
     await _apply_workers_bridge_config_snapshot(app_state)
+    await _apply_memory_bridge_config_snapshot(app_state)
     await _apply_ws_ticket_settings(app_state)
     await _apply_ws_auth_timeout(app_state)
     await _apply_ws_dos_settings(app_state)

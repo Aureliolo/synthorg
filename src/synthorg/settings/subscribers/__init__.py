@@ -6,6 +6,9 @@ from synthorg.settings.subscribers.api_bridge_subscriber import (
 from synthorg.settings.subscribers.backup_subscriber import (
     BackupSettingsSubscriber,
 )
+from synthorg.settings.subscribers.memory_bridge_subscriber import (
+    MemoryBridgeSettingsSubscriber,
+)
 from synthorg.settings.subscribers.memory_subscriber import (
     MemorySettingsSubscriber,
 )
@@ -28,6 +31,7 @@ from synthorg.settings.subscribers.workers_bridge_subscriber import (
 __all__ = [
     "ApiBridgeSettingsSubscriber",
     "BackupSettingsSubscriber",
+    "MemoryBridgeSettingsSubscriber",
     "MemorySettingsSubscriber",
     "ObservabilitySettingsSubscriber",
     "PerOpRateLimitSettingsSubscriber",

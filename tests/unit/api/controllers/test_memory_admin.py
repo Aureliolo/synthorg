@@ -207,6 +207,29 @@ class TestRecommendBatchSize:
         assert thresholds == sorted(thresholds, reverse=True)
         assert len(thresholds) == len(set(thresholds))
 
+    def test_custom_vram_table_is_honoured(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An operator-tuned VRAM table (from the memory bridge) wins.
+
+        ``run_preflight`` passes
+        ``app_state.memory_bridge_config.fine_tune_vram_batch_table``;
+        this proves the bridge value reaches the lookup and overrides
+        the module-constant tiers.
+        """
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.return_value = True
+        props = MagicMock()
+        props.total_memory = 20 * (1024**3)
+        fake_torch.cuda.get_device_properties.return_value = props
+        monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
+
+        # Default tiers would map 20 GB -> 64; an operator table with a
+        # 20 GB row mapping to 256 must win.
+        custom = ((20.0, 256), (8.0, 32))
+        assert _recommend_batch_size(vram_table=custom) == 256
+
     def test_unexpected_exception_is_logged_and_returns_none(
         self,
         monkeypatch: pytest.MonkeyPatch,

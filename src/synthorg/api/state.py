@@ -114,6 +114,7 @@ from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa
 from synthorg.security.trust.service import TrustService  # noqa: TC001
 from synthorg.settings.bridge_configs import (
     ApiBridgeConfig,
+    MemoryBridgeConfig,
     WorkersBridgeConfig,
 )
 from synthorg.settings.resolver import ConfigResolver
@@ -221,6 +222,8 @@ class AppState(AppStateServicesMixin):
         "_meeting_scheduler",
         "_meeting_service",
         "_memory_backend",
+        "_memory_bridge_config",
+        "_memory_bridge_config_lock",
         "_memory_service",
         "_message_bus",
         "_message_service",
@@ -467,6 +470,15 @@ class AppState(AppStateServicesMixin):
         self._api_bridge_config_lock: threading.Lock = threading.Lock()
         self._workers_bridge_config: WorkersBridgeConfig = WorkersBridgeConfig()
         self._workers_bridge_config_lock: threading.Lock = threading.Lock()
+        # Frozen ``MemoryBridgeConfig`` snapshot (consolidation
+        # enforce-batch + fine-tune preflight knobs). Default-
+        # constructed so the field defaults equal the registered
+        # ``memory.*`` defaults; ``_apply_bridge_config`` swaps in the
+        # operator-tuned snapshot and ``MemoryBridgeSettingsSubscriber``
+        # hot-swaps it on operator edits. The dedicated lock guards the
+        # read-modify-write path on ``mutate_memory_bridge_config``.
+        self._memory_bridge_config: MemoryBridgeConfig = MemoryBridgeConfig()
+        self._memory_bridge_config_lock: threading.Lock = threading.Lock()
         self._provider_management: ProviderManagementService | None = None
         self._org_mutation_service: OrgMutationService | None = None
         # Shutdown flag observable by long-lived subsystems.

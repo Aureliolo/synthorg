@@ -38,9 +38,20 @@ This PR performs the full sweep (big-bang), not a single pilot:
 
 ### Scope
 
-1. `MemoryConfig` for `MemoryService`: consolidation interval,
-   `max_memories_per_agent`, retention/archival toggles resolved into
-   one frozen model; the service stops holding a resolver for these.
+1. `MemoryBridgeConfig` (the memory namespace): the consolidation
+   enforce-batch size and the embedding fine-tune preflight knobs
+   (`fine_tune_vram_batch_table`, `fine_tune_chunk_size`) resolved into
+   one frozen model with an `AppState` slot, startup snapshot, and a
+   hot-swap subscriber. The live consumer -- the fine-tune preflight
+   batch-size recommendation in `api/controllers/memory.py` -- reads
+   `app_state.memory_bridge_config.fine_tune_vram_batch_table` per
+   request instead of a module constant. The `consolidation_enabled`
+   master kill-switch stays a per-cycle resolve (the deliberate
+   kill-switch idiom, unchanged). The remaining two fields'
+   consumers -- `MemoryConsolidationService` and `FineTuneOrchestrator`
+   -- are not constructed in production today; constructing them into
+   startup (which activates those fields) is the enumerated next phase
+   below, not a silent gap.
 2. `OptionalSettingsGate` and its callers: the gate resolves once into
    a frozen snapshot.
 3. Full sweep: every service constructed with `config_resolver=` that
@@ -68,14 +79,27 @@ This PR performs the full sweep (big-bang), not a single pilot:
 - **Restart-required knobs** use the simpler boot-time `set_*` pattern
   in `_apply_bridge_config`, not a subscriber.
 
-### Phased plan (within this PR)
+### Phased plan
 
-1. `MemoryService` / `MemoryConfig` first (reference conversion).
-2. `OptionalSettingsGate`.
-3. Remaining namespaces, one commit per namespace bridge, each
+Within this PR:
+
+1. `WorkersBridgeConfig` (dispatcher publish-retry budget) -- full
+   chain incl. live `DistributedDispatcher` consumer via a late-bound
+   provider (reference conversion).
+2. `MemoryBridgeConfig` -- full infra chain + the live fine-tune
+   preflight VRAM-table consumer.
+3. `OptionalSettingsGate`.
+4. Remaining namespaces, one commit per namespace bridge, each
    verified green by the ghost-wired
    (`check_setting_to_startup_trace.py`) and full test suites before
    the next.
+
+Subsequent (consumer construction, separately tracked): wire
+`MemoryConsolidationService` and `FineTuneOrchestrator` into production
+startup so the `consolidation_enforce_batch_size` and
+`fine_tune_chunk_size` bridge fields gain live consumers. The bridge
+infra landing first means that work is pure construction -- no further
+settings plumbing.
 
 ## Migration mechanics
 

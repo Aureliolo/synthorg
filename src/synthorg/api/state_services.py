@@ -87,6 +87,7 @@ from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
 from synthorg.settings.bridge_configs import (  # noqa: TC001
     ApiBridgeConfig,
+    MemoryBridgeConfig,
     WorkersBridgeConfig,
 )
 from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
@@ -163,6 +164,8 @@ class AppStateServicesMixin(_FacadesMixin):
     _api_bridge_config_lock: threading.Lock
     _workers_bridge_config: WorkersBridgeConfig
     _workers_bridge_config_lock: threading.Lock
+    _memory_bridge_config: MemoryBridgeConfig
+    _memory_bridge_config_lock: threading.Lock
     config: Any
 
     def _require_service[T](  # pragma: no cover
@@ -1179,6 +1182,61 @@ class AppStateServicesMixin(_FacadesMixin):
         logger.info(
             SETTINGS_SERVICE_SWAPPED,
             service="workers_bridge_config",
+            transition="mutate",
+            changed_fields=sorted(updates),
+        )
+
+    @property
+    def memory_bridge_config(self) -> MemoryBridgeConfig:
+        """Return the current ``MemoryBridgeConfig`` snapshot.
+
+        Always non-None: ``__init__`` default-constructs a
+        ``MemoryBridgeConfig()`` (Field defaults == the registered
+        ``memory.*`` defaults) so a consumer built before
+        ``_apply_bridge_config`` or under a resolver outage still
+        observes the documented consolidation / fine-tune preflight
+        defaults.
+        """
+        return self._memory_bridge_config
+
+    def swap_memory_bridge_config(self, config: MemoryBridgeConfig) -> None:
+        """Replace the ``MemoryBridgeConfig`` snapshot wholesale.
+
+        Used by ``_apply_bridge_config`` at startup with the value
+        resolved through ``ConfigResolver.get_memory_bridge_config``.
+        Hot-reload paths must use :meth:`mutate_memory_bridge_config`.
+        """
+        with self._memory_bridge_config_lock:
+            previous = self._memory_bridge_config
+            self._memory_bridge_config = config
+        if previous is config:
+            return
+        prev_fields = previous.model_dump()
+        new_fields = config.model_dump()
+        changed = sorted(k for k in new_fields if prev_fields.get(k) != new_fields[k])
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="memory_bridge_config",
+            transition="swap",
+            changed_fields=changed,
+        )
+
+    def mutate_memory_bridge_config(self, updates: dict[str, object]) -> None:
+        """Apply ``updates`` to the memory snapshot under a lock.
+
+        Re-validates via ``model_validate`` so an out-of-range operator
+        value raises ``ValidationError`` and the prior snapshot is
+        retained (mirrors :meth:`mutate_api_bridge_config`).
+        """
+        with self._memory_bridge_config_lock:
+            previous = self._memory_bridge_config
+            merged = previous.model_dump()
+            merged.update(updates)
+            new_config = type(previous).model_validate(merged)
+            self._memory_bridge_config = new_config
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="memory_bridge_config",
             transition="mutate",
             changed_fields=sorted(updates),
         )
