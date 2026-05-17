@@ -50,9 +50,13 @@ class OAuthTokenManager:
         config_resolver: Optional ConfigResolver used to resolve the
             operator-tuned OAuth HTTP timeout
             (``integrations.oauth_http_timeout_seconds``, restart
-            required). Resolved once at :meth:`start` so refresh calls
-            honour operator tuning; when the resolver is absent or the
-            lookup fails, the flow's built-in default is used.
+            required) plus the sweep interval
+            (``integrations.oauth_token_check_interval_seconds``) and
+            refresh window
+            (``integrations.oauth_token_refresh_threshold_seconds``).
+            All are resolved once at :meth:`start`; when the resolver
+            is absent or a lookup fails, the constructor default
+            (equal to the registered default) is kept.
     """
 
     def __init__(
@@ -119,12 +123,53 @@ class OAuthTokenManager:
             return
         self._flow = AuthorizationCodeFlow(http_timeout_seconds=timeout)
 
+    async def _resolve_loop_tuning(self) -> None:
+        """Resolve the operator-tuned sweep interval and refresh window.
+
+        Called once inside :meth:`start` before the refresh loop spawns.
+        A settings outage is non-fatal: each value keeps the
+        constructor default (which equals the registered default), so a
+        backend outage never silently disables the sweep.
+        """
+        if self._config_resolver is None:
+            return
+        for key, apply in (
+            ("oauth_token_check_interval_seconds", self._apply_interval),
+            ("oauth_token_refresh_threshold_seconds", self._apply_threshold),
+        ):
+            try:
+                value = await self._config_resolver.get_int(
+                    SettingNamespace.INTEGRATIONS.value,
+                    key,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.info(
+                    SETTINGS_FETCH_FAILED,
+                    namespace=SettingNamespace.INTEGRATIONS.value,
+                    key=key,
+                    error=(
+                        f"failed to resolve {key}; keeping default"
+                        f" ({type(exc).__name__})"
+                    ),
+                )
+                continue
+            apply(value)
+
+    def _apply_interval(self, seconds: int) -> None:
+        self._interval = seconds
+
+    def _apply_threshold(self, seconds: int) -> None:
+        self._threshold = timedelta(seconds=seconds)
+
     async def start(self) -> None:
         """Start the background refresh loop."""
         async with self._lifecycle_lock:
             if self._task is not None:
                 return
             await self._resolve_flow_timeout()
+            await self._resolve_loop_tuning()
             self._task = asyncio.create_task(self._refresh_loop())
             logger.info(
                 OAUTH_TOKEN_REFRESHED,

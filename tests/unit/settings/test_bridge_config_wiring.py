@@ -28,6 +28,7 @@ Covers the consumer-side plumbing added for #1398 / #1400:
 
 import importlib
 from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -217,6 +218,35 @@ class TestOAuthTokenManagerConfigResolver:
         # Settings outage is swallowed -- the default flow stays in place.
         await mgr._resolve_flow_timeout()
         assert mgr._flow is original
+
+    @pytest.mark.unit
+    async def test_resolve_loop_tuning_noop_without_resolver(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
+        interval, threshold = mgr._interval, mgr._threshold
+        await mgr._resolve_loop_tuning()
+        assert mgr._interval == interval
+        assert mgr._threshold == threshold
+
+    @pytest.mark.unit
+    async def test_resolve_loop_tuning_applies_resolved_values(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
+        resolver = MagicMock()
+        resolver.get_int = AsyncMock(side_effect=[120, 900])
+        mgr.set_config_resolver(resolver)
+        await mgr._resolve_loop_tuning()
+        assert mgr._interval == 120
+        assert mgr._threshold == timedelta(seconds=900)
+
+    @pytest.mark.unit
+    async def test_resolve_loop_tuning_tolerates_outage(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
+        resolver = MagicMock()
+        resolver.get_int = AsyncMock(side_effect=RuntimeError("boom"))
+        mgr.set_config_resolver(resolver)
+        interval, threshold = mgr._interval, mgr._threshold
+        await mgr._resolve_loop_tuning()
+        assert mgr._interval == interval
+        assert mgr._threshold == threshold
 
 
 # ── WebhookEventBridge.set_config_resolver ─────────────────────

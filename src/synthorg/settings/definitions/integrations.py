@@ -45,6 +45,42 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.INTEGRATIONS,
+        key="oauth_token_check_interval_seconds",
+        type=SettingType.INTEGER,
+        default="60",
+        description=(
+            "How often the OAuth token manager sweeps connections for"
+            " tokens nearing expiry. Lower values refresh sooner at the"
+            " cost of more frequent catalog scans."
+        ),
+        group="OAuth",
+        level=SettingLevel.ADVANCED,
+        min_value=5,
+        max_value=3600,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="oauth_token_refresh_threshold_seconds",
+        type=SettingType.INTEGER,
+        default="300",
+        description=(
+            "Refresh OAuth tokens that expire within this many seconds."
+            " Must exceed the check interval so a token is refreshed"
+            " before it lapses."
+        ),
+        group="OAuth",
+        level=SettingLevel.ADVANCED,
+        min_value=30,
+        max_value=86400,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
         key="oauth_device_flow_max_wait_seconds",
         type=SettingType.INTEGER,
         default="600",
