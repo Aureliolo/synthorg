@@ -74,7 +74,14 @@ _WHITELIST_PREFIXES: Final[tuple[str, ...]] = ("src/synthorg/observability/",)
 
 _OPT_OUT_MARKER: Final[str] = "# lint-allow: clock-seam --"
 
-# (module, attr) pairs that resolve to a forbidden zero-arg call.
+# Forbidden zero-arg time calls keyed by ``(module, attr)`` where
+# *module* is the stdlib module a name was imported from. ``utcnow``
+# is a classmethod on the ``datetime`` class (imported via
+# ``from datetime import datetime``); the rest are ``time`` module
+# functions. Matching is done against *resolved import bindings*, not
+# raw identifier text, so ``import time as t; t.monotonic()`` and
+# ``from time import monotonic as m; m()`` are caught while a local
+# callable that merely happens to be named ``time`` is not.
 _FORBIDDEN_ATTR: Final[frozenset[tuple[str, str]]] = frozenset(
     {
         ("time", "monotonic"),
@@ -82,8 +89,6 @@ _FORBIDDEN_ATTR: Final[frozenset[tuple[str, str]]] = frozenset(
         ("datetime", "utcnow"),
     }
 )
-# Bare names when imported via ``from time import monotonic`` etc.
-_FORBIDDEN_NAME: Final[frozenset[str]] = frozenset({"monotonic", "time", "utcnow"})
 
 
 class _Violation:
@@ -111,15 +116,69 @@ def _opted_out(lines: list[str], lineno: int) -> bool:
     return False
 
 
-def _call_label(node: ast.Call) -> str | None:
-    """Return a human label if *node* is a forbidden time call, else None."""
+def _collect_bindings(
+    tree: ast.Module,
+) -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
+    """Map local names to the stdlib imports they bind.
+
+    Returns ``(module_aliases, from_imports)`` where *module_aliases*
+    maps a local name to a ``time``/``datetime`` module (``import
+    datetime as _dt`` -> ``{"_dt": "datetime"}``) and *from_imports*
+    maps a local name to the ``(module, symbol)`` it was imported as
+    (``from time import monotonic as m`` -> ``{"m": ("time",
+    "monotonic")}``). Collected across the whole module (any scope) so
+    function-local aliases are still resolved -- conservative on
+    purpose; the per-line opt-out covers the rare reuse case.
+    """
+    module_aliases: dict[str, str] = {}
+    from_imports: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in ("time", "datetime"):
+                    module_aliases[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module in (
+            "time",
+            "datetime",
+        ):
+            for alias in node.names:
+                from_imports[alias.asname or alias.name] = (
+                    node.module,
+                    alias.name,
+                )
+    return module_aliases, from_imports
+
+
+def _call_label(
+    node: ast.Call,
+    module_aliases: dict[str, str],
+    from_imports: dict[str, tuple[str, str]],
+) -> str | None:
+    """Return a human label if *node* is a forbidden time call, else None.
+
+    Resolves the call target through *module_aliases* / *from_imports*
+    so aliased imports are caught and unrelated local callables that
+    share a forbidden name are not flagged.
+    """
     func = node.func
     if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-        pair = (func.value.id, func.attr)
-        if pair in _FORBIDDEN_ATTR:
-            return f"{pair[0]}.{pair[1]}()"
-    if isinstance(func, ast.Name) and func.id in _FORBIDDEN_NAME:
-        return f"{func.id}()"
+        base = func.value.id
+        attr = func.attr
+        # ``import time [as t]; t.monotonic()`` -> (time, monotonic).
+        mod = module_aliases.get(base)
+        if mod is not None and (mod, attr) in _FORBIDDEN_ATTR:
+            return f"{mod}.{attr}()"
+        # ``from datetime import datetime [as d]; d.utcnow()``: the
+        # bound symbol is the datetime class; the call is
+        # ``datetime.utcnow()``.
+        origin = from_imports.get(base)
+        if origin is not None and (origin[0], attr) in _FORBIDDEN_ATTR:
+            return f"{origin[0]}.{attr}()"
+    if isinstance(func, ast.Name):
+        # ``from time import monotonic [as m]; m()``.
+        origin = from_imports.get(func.id)
+        if origin is not None and origin in _FORBIDDEN_ATTR:
+            return f"{origin[0]}.{origin[1]}()"
     return None
 
 
@@ -133,11 +192,12 @@ def _scan_file(path: Path) -> list[_Violation]:
     except SyntaxError:
         return []
     lines = source.splitlines()
+    module_aliases, from_imports = _collect_bindings(tree)
     out: list[_Violation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        label = _call_label(node)
+        label = _call_label(node, module_aliases, from_imports)
         if label is None:
             continue
         if _opted_out(lines, node.lineno):
