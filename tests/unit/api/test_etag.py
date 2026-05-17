@@ -444,7 +444,7 @@ class TestETagMiddleware:
         # (body is unhashable without buffering), but the
         # validator-friendly Cache-Control IS applied so the global
         # ``no-store`` does not suppress revalidation for streamed
-        # allowlisted reads (WP-3 streaming cache-control fix).
+        # allowlisted reads.
         assert len(recorder.messages) == 1 + len(chunks)
         headers = dict(recorder.messages[0]["headers"])
         assert b"etag" not in headers

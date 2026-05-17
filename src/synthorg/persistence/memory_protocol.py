@@ -176,9 +176,12 @@ class OrgFactRepository(Protocol):
     ) -> tuple[OperationLogSnapshot, ...]:
         """Materialize a bounded page of fact state at a timestamp.
 
-        Returns the state of all facts (active and retracted) as they
-        were at the given timestamp. Used for point-in-time audits and
-        historical reconstruction.
+        Returns one ``limit``-sized page (not the whole set) of facts
+        (active and retracted) as they were at the given timestamp,
+        ordered for a stable cursor walk. Callers needing the complete
+        point-in-time snapshot drain every page via
+        :func:`synthorg.persistence._shared.collect_all`. Used for
+        point-in-time audits and historical reconstruction.
 
         ``timestamp`` MUST be timezone-aware. Implementations route it
         through :func:`format_iso_utc` (SQLite) or bind it directly as
@@ -216,9 +219,12 @@ class OrgFactRepository(Protocol):
     ) -> tuple[OperationLogEntry, ...]:
         """Retrieve a bounded page of the audit trail for a fact.
 
-        Returns PUBLISH and RETRACT operations for the fact in
-        chronological order (oldest first), indexed by version
-        number. Version is unique per fact so the order is stable.
+        Returns one ``limit``-sized page (not the whole trail) of
+        PUBLISH and RETRACT operations for the fact in chronological
+        order (oldest first), indexed by version number. Version is
+        unique per fact so the page order is stable; callers needing
+        the full trail drain every page via
+        :func:`synthorg.persistence._shared.collect_all`.
 
         Args:
             fact_id: The fact identifier.

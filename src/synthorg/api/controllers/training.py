@@ -175,6 +175,9 @@ class TrainingController(Controller):
     ) -> ApiResponse[TrainingPlanResponse]:
         """Create a training plan for the specified agent.
 
+        Rate-limited per user by the ``training.create_plan`` policy
+        guard; burst traffic is rejected with HTTP 429.
+
         Args:
             state: Application state.
             agent_name: Agent identifier from the URL path.
@@ -433,6 +436,9 @@ class TrainingController(Controller):
         data: UpdateTrainingOverridesRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
         """Update training plan overrides.
+
+        Rate-limited per user by the ``training.update_overrides``
+        policy guard; burst traffic is rejected with HTTP 429.
 
         Args:
             state: Application state.

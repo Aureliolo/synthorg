@@ -65,6 +65,11 @@ class MeetingService:
         handler can build the pagination envelope without slicing a
         second time.
 
+        The page is a point-in-time snapshot: concurrent status
+        transitions or deletions between this read and the caller
+        consuming the result are not reflected, so the newest-first
+        ordering is only consistent within a single call.
+
         Raises:
             ValueError: If ``offset`` is negative, or if ``limit`` is
                 provided and non-positive.

@@ -217,7 +217,21 @@ class WorkflowController(Controller):
         state: State,
         workflow_id: PathId,
     ) -> ApiResponse[WorkflowDefinition]:
-        """Get a workflow definition by ID."""
+        """Get a workflow definition by ID.
+
+        Returns the bare ``ApiResponse`` envelope (Litestar wraps it in
+        a 200 response). A missing definition raises ``NotFoundError``
+        (HTTP 404, ``WORKFLOW_DEFINITION_NOT_FOUND``) routed through the
+        shared exception handlers rather than an inline 404 body.
+
+        Args:
+            state: Application state.
+            workflow_id: Workflow identifier (1-128 chars, enforced at
+                the path-parameter boundary by ``PathId``).
+
+        Raises:
+            NotFoundError: The workflow definition does not exist.
+        """
         definition = await _service(state).get_definition(workflow_id)
         if definition is None:
             logger.warning(
@@ -484,7 +498,16 @@ class WorkflowController(Controller):
         state: State,
         workflow_id: PathId,
     ) -> ApiResponse[WorkflowValidationResult]:
-        """Validate a workflow definition for execution readiness."""
+        """Validate a workflow definition for execution readiness.
+
+        Returns the bare ``ApiResponse`` envelope (Litestar wraps it in
+        a 200 response). A missing definition raises ``NotFoundError``
+        (HTTP 404, ``WORKFLOW_DEFINITION_NOT_FOUND``) via the shared
+        exception handlers instead of an inline 404 body.
+
+        Raises:
+            NotFoundError: The workflow definition does not exist.
+        """
         definition = await _service(state).get_definition(workflow_id)
         if definition is None:
             logger.warning(
@@ -514,7 +537,16 @@ class WorkflowController(Controller):
         state: State,
         workflow_id: PathId,
     ) -> Response[str]:
-        """Export a workflow definition as YAML."""
+        """Export a workflow definition as YAML.
+
+        Returns only ``Response[str]`` on success; a missing definition
+        raises ``NotFoundError`` (HTTP 404,
+        ``WORKFLOW_DEFINITION_NOT_FOUND``) through the shared exception
+        handlers rather than returning an inline 404 response.
+
+        Raises:
+            NotFoundError: The workflow definition does not exist.
+        """
         definition = await _service(state).get_definition(workflow_id)
         if definition is None:
             logger.warning(

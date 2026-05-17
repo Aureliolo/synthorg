@@ -216,7 +216,13 @@ class SubworkflowController(Controller):
             ),
         ],
     ) -> Response[ApiResponse[tuple[SubworkflowSummary, ...]]]:
-        """Substring search across name and description."""
+        """Substring search across name and description.
+
+        Returns the complete match set in a single ``ApiResponse``
+        envelope: the repository pages internally, so this handler
+        drains every bounded page via ``collect_all`` before
+        responding (this endpoint is not itself cursor-paginated).
+        """
         registry = _registry(state)
         # This endpoint returns the full match set in one envelope, so
         # drain every bounded repo page rather than the first only.
@@ -302,7 +308,14 @@ class SubworkflowController(Controller):
         limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> Response[PaginatedResponse[ParentReference]]:
-        """List parent workflow definitions pinning this version (cursor-paginated)."""
+        """List parent workflow definitions pinning this version.
+
+        Applies opaque-cursor pagination at the API boundary over the
+        complete parent set: the handler drains every bounded
+        repository page via ``collect_all`` first (a truncated set
+        would break the cursor walk and under-report references), then
+        slices the requested cursor page for the response.
+        """
         registry = _registry(state)
         # This endpoint applies its own opaque-cursor pagination over
         # the full parent set, so drain every bounded repo page; a

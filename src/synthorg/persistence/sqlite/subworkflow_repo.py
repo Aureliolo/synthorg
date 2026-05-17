@@ -486,14 +486,24 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         )
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
+        # A summary aggregates every version row of a subworkflow into
+        # one entry, so the page boundary is the distinct
+        # ``subworkflow_id`` set, not raw rows. Page the ids at the DB
+        # first, then fetch only that page's rows: this bounds both scan
+        # cost and the rows materialised in memory to roughly
+        # ``limit * versions_per_subworkflow``.
         try:
-            cursor = await self._db.execute(
-                f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
+            id_cursor = await self._db.execute(
+                "SELECT subworkflow_id FROM subworkflows "
                 "WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE "
-                "OR description LIKE ? ESCAPE '\\' COLLATE NOCASE",
-                (pattern, pattern),
+                "OR description LIKE ? ESCAPE '\\' COLLATE NOCASE "
+                "GROUP BY subworkflow_id "
+                "ORDER BY subworkflow_id LIMIT ? OFFSET ?",
+                (pattern, pattern, limit, offset),
             )
-            rows = await cursor.fetchall()
+            page_ids = [
+                str(row["subworkflow_id"]) for row in await id_cursor.fetchall()
+            ]
         except sqlite3.Error as exc:
             msg = f"Failed to search subworkflows with query {query!r}"
             logger.warning(
@@ -504,15 +514,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             raise QueryError(msg) from exc
 
-        matched_ids = {str(row["subworkflow_id"]) for row in rows}
-        if not matched_ids:
+        if not page_ids:
             return ()
-        placeholders = ", ".join("?" for _ in matched_ids)
+        placeholders = ", ".join("?" for _ in page_ids)
         try:
             full_cursor = await self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
                 f"WHERE subworkflow_id IN ({placeholders})",
-                tuple(matched_ids),
+                tuple(page_ids),
             )
             full_rows = await full_cursor.fetchall()
         except sqlite3.Error as exc:
@@ -525,11 +534,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             raise QueryError(msg) from exc
 
-        summaries = sorted(
-            self._build_summaries_from_rows(full_rows),
-            key=lambda s: s.subworkflow_id,
-        )
-        return tuple(summaries[offset : offset + limit])
+        return self._build_summaries_from_rows(full_rows)
 
     async def delete(
         self,
@@ -677,6 +682,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             references=references,
         )
 
+        # The reference scan walks JSON node arrays in both
+        # ``workflow_definitions`` and ``subworkflows``; true SQL-level
+        # pagination needs a normalized references table (a schema
+        # change tracked separately). Paging in memory is acceptable
+        # here because referential-integrity callers MUST drain every
+        # page anyway, so bounding per-page DB cost would yield no real
+        # saving.
         references.sort(
             key=lambda r: (
                 r.parent_type,

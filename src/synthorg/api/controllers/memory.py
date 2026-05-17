@@ -31,11 +31,12 @@ from synthorg.core.domain_errors import (
     FeatureNotImplementedError,
     FineTuneRunActiveError,
     NotFoundError,
+    ServiceUnavailableError,
     resource_not_found,
 )
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -63,7 +64,9 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
     MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
+    MEMORY_FINE_TUNE_PREFLIGHT_TIMED_OUT,
     MEMORY_FINE_TUNE_REQUESTED,
+    MEMORY_FINE_TUNE_THRESHOLD_FALLBACK,
 )
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
@@ -158,6 +161,14 @@ _BATCH_SIZE_BY_VRAM_GB: Final[tuple[tuple[float, int], ...]] = (
     (8.0, 32),
 )
 
+# Scheduling slack added on top of ``preflight_walk_timeout_s`` for the
+# hard request ceiling. The in-thread monotonic deadline already bounds
+# the walk once it starts running; this margin covers ``to_thread``
+# pool scheduling, the parallel batch-size task, and result assembly so
+# a saturated executor surfaces as a clean 503 instead of a hung
+# request.
+_PREFLIGHT_HARD_TIMEOUT_MARGIN_S: Final[float] = 5.0
+
 
 class _FineTuneThresholds(BaseModel):
     """Fine-tune preflight thresholds resolved at request time.
@@ -206,12 +217,19 @@ async def _resolve_fine_tune_thresholds(
         try:
             entry = await settings_service.get("memory", key)
             value = int(entry.value)
-        except SettingNotFoundError, ValueError, TypeError:
+        except (SettingNotFoundError, ValueError, TypeError) as exc:
+            logger.debug(
+                MEMORY_FINE_TUNE_THRESHOLD_FALLBACK,
+                setting_key=key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             resolved[key] = fallback
             continue
-        # ``_FineTuneThresholds`` enforces ``ge=1`` on every int field,
-        # so an unparseable override (handled above) AND a non-positive
-        # one ("0" / "-1") must both fall back rather than reach the
+        # ``_FineTuneThresholds`` enforces ``ge=1`` on every int field
+        # (the float walk-timeout is resolved separately below), so an
+        # unparseable override (handled above) AND a non-positive one
+        # ("0" / "-1") must both fall back rather than reach the
         # constructor and surface as a 500 from the controller.
         resolved[key] = value if value >= 1 else fallback
     # The walk timeout is a float and is resolved independently of the
@@ -223,7 +241,13 @@ async def _resolve_fine_tune_thresholds(
             "fine_tune_preflight_walk_timeout_s",
         )
         timeout_value = float(timeout_entry.value)
-    except SettingNotFoundError, ValueError, TypeError:
+    except (SettingNotFoundError, ValueError, TypeError) as exc:
+        logger.debug(
+            MEMORY_FINE_TUNE_THRESHOLD_FALLBACK,
+            setting_key="fine_tune_preflight_walk_timeout_s",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         timeout_value = FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S
     if timeout_value <= 0.0:
         timeout_value = FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S
@@ -353,7 +377,21 @@ class MemoryAdminController(Controller):
         state: State,
         run_id: PathId,
     ) -> ApiResponse[FineTuneStatus]:
-        """Resume a failed/cancelled pipeline run."""
+        """Resume a failed or cancelled fine-tune pipeline run.
+
+        Args:
+            state: Application state.
+            run_id: Fine-tune run identifier (1-128 chars, enforced at
+                the path-parameter boundary by ``PathId``).
+
+        Raises:
+            FeatureNotImplementedError: Orchestrator not configured
+                (HTTP 501).
+            FineTuneRunActiveError: Another run is already active
+                (HTTP 409).
+            NotFoundError: Run does not exist or is not resumable
+                (HTTP 404).
+        """
         app_state: AppState = state.app_state
         if not app_state.has_fine_tune_orchestrator:
             msg = "Fine-tuning is not available"
@@ -455,23 +493,46 @@ class MemoryAdminController(Controller):
             app_state.settings_service if app_state.has_settings_service else None
         )
         thresholds = await _resolve_fine_tune_thresholds(settings_service)
-        async with asyncio.TaskGroup() as tg:
-            checks_task = tg.create_task(
-                asyncio.to_thread(
-                    _run_preflight_checks,
-                    data,
-                    min_required=thresholds.min_docs_required,
-                    min_recommended=thresholds.min_docs_recommended,
-                    max_depth=thresholds.preflight_max_depth,
-                    walk_timeout_s=thresholds.preflight_walk_timeout_s,
-                ),
+        # The walk's in-thread monotonic deadline only starts counting
+        # once the ``to_thread`` job is scheduled; a saturated default
+        # executor could otherwise leave this request awaiting
+        # indefinitely. The outer ``asyncio.timeout`` is a hard,
+        # cancellation-aware ceiling so a stuck pool surfaces as a
+        # clean 503 the operator can retry rather than a hung request.
+        hard_ceiling = (
+            thresholds.preflight_walk_timeout_s + _PREFLIGHT_HARD_TIMEOUT_MARGIN_S
+        )
+        try:
+            async with (
+                asyncio.timeout(hard_ceiling),
+                asyncio.TaskGroup() as tg,
+            ):
+                checks_task = tg.create_task(
+                    asyncio.to_thread(
+                        _run_preflight_checks,
+                        data,
+                        min_required=thresholds.min_docs_required,
+                        min_recommended=thresholds.min_docs_recommended,
+                        max_depth=thresholds.preflight_max_depth,
+                        walk_timeout_s=thresholds.preflight_walk_timeout_s,
+                    ),
+                )
+                batch_task = tg.create_task(
+                    asyncio.to_thread(
+                        _recommend_batch_size,
+                        default_batch_size=thresholds.default_batch_size,
+                    ),
+                )
+        except TimeoutError as exc:
+            logger.warning(
+                MEMORY_FINE_TUNE_PREFLIGHT_TIMED_OUT,
+                hard_ceiling_s=hard_ceiling,
+                walk_timeout_s=thresholds.preflight_walk_timeout_s,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            batch_task = tg.create_task(
-                asyncio.to_thread(
-                    _recommend_batch_size,
-                    default_batch_size=thresholds.default_batch_size,
-                ),
-            )
+            msg = "Preflight validation timed out"
+            raise ServiceUnavailableError(msg) from exc
         checks = list(checks_task.result())
         batch_size = batch_task.result()
         result = PreflightResult(
@@ -530,6 +591,11 @@ class MemoryAdminController(Controller):
     ) -> ApiResponse[CheckpointRecord]:
         """Deploy a specific checkpoint.
 
+        Args:
+            state: Application state.
+            checkpoint_id: Checkpoint identifier (1-128 chars, enforced
+                at the path-parameter boundary by ``PathId``).
+
         Exception mapping:
 
         - ``CheckpointNotFoundError`` -> HTTP 404
@@ -541,7 +607,7 @@ class MemoryAdminController(Controller):
         """
         service = _build_memory_service(state.app_state)
         try:
-            updated = await service.deploy_checkpoint(NotBlankStr(checkpoint_id))
+            updated = await service.deploy_checkpoint(checkpoint_id)
         except CheckpointNotFoundError as exc:
             logger.warning(
                 MEMORY_CHECKPOINT_NOT_FOUND,
@@ -587,6 +653,11 @@ class MemoryAdminController(Controller):
     ) -> ApiResponse[CheckpointRecord]:
         """Rollback: restore pre-deployment config from backup.
 
+        Args:
+            state: Application state.
+            checkpoint_id: Checkpoint identifier (1-128 chars, enforced
+                at the path-parameter boundary by ``PathId``).
+
         Exception mapping:
 
         - ``CheckpointNotFoundError`` -> HTTP 404 via ``NotFoundError``
@@ -599,7 +670,7 @@ class MemoryAdminController(Controller):
         """
         service = _build_memory_service(state.app_state)
         try:
-            updated = await service.rollback_checkpoint(NotBlankStr(checkpoint_id))
+            updated = await service.rollback_checkpoint(checkpoint_id)
         except CheckpointNotFoundError as exc:
             logger.warning(
                 MEMORY_CHECKPOINT_NOT_FOUND,
@@ -653,6 +724,11 @@ class MemoryAdminController(Controller):
     ) -> ApiResponse[None]:
         """Delete a checkpoint (rejects active checkpoint).
 
+        Args:
+            state: Application state.
+            checkpoint_id: Checkpoint identifier (1-128 chars, enforced
+                at the path-parameter boundary by ``PathId``).
+
         Exception mapping mirrors deploy/rollback so all checkpoint
         endpoints share the same contract:
 
@@ -663,7 +739,7 @@ class MemoryAdminController(Controller):
         """
         service = _build_memory_service(state.app_state)
         try:
-            await service.delete_checkpoint(NotBlankStr(checkpoint_id))
+            await service.delete_checkpoint(checkpoint_id)
         except CheckpointNotFoundError as exc:
             logger.warning(
                 MEMORY_CHECKPOINT_NOT_FOUND,
@@ -709,6 +785,13 @@ class MemoryAdminController(Controller):
     ) -> ApiResponse[None]:
         """Delete a single memory entry owned by an agent.
 
+        Args:
+            state: Application state.
+            agent_id: Owning agent identifier (1-128 chars, enforced
+                at the path-parameter boundary by ``PathId``).
+            memory_id: Memory entry identifier (1-128 chars, enforced
+                at the path-parameter boundary by ``PathId``).
+
         Returns ``200 OK`` on success and ``404 Not Found`` when the
         memory entry does not exist (or the agent has no entry with
         that id). Returns ``501 Not Implemented`` when no memory
@@ -721,8 +804,8 @@ class MemoryAdminController(Controller):
         service = _build_memory_service(state.app_state, require_fine_tune=False)
         try:
             deleted = await service.delete_memory_entry(
-                NotBlankStr(agent_id),
-                NotBlankStr(memory_id),
+                agent_id,
+                memory_id,
             )
         except MemoryBackendUnsupportedError as exc:
             # ``MemoryService.delete_memory_entry`` already emits
@@ -1023,7 +1106,7 @@ def _check_dependencies() -> PreflightCheck:
             name="dependencies",
             status="fail",
             message="Missing ML dependencies",
-            detail=str(exc),
+            detail=safe_error_description(exc),
         )
     except MemoryError, RecursionError:
         raise
@@ -1032,7 +1115,7 @@ def _check_dependencies() -> PreflightCheck:
             name="dependencies",
             status="fail",
             message=f"Dependency check failed: {type(exc).__name__}",
-            detail=str(exc),
+            detail=safe_error_description(exc),
         )
     return PreflightCheck(
         name="dependencies",
@@ -1074,7 +1157,7 @@ def _check_gpu() -> PreflightCheck:
             name="gpu",
             status="warn",
             message=f"GPU detection error: {type(exc).__name__}",
-            detail=str(exc),
+            detail=safe_error_description(exc),
         )
 
 

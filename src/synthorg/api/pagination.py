@@ -36,7 +36,13 @@ CursorLimit = Annotated[
         description=f"Page size (default {DEFAULT_LIMIT}, max {MAX_LIMIT})",
     ),
 ]
-"""Query-parameter type for the page size (1-MAX_LIMIT)."""
+"""Query-parameter type for the page size (1-MAX_LIMIT).
+
+HTTP-boundary only: the bounds are enforced by Litestar's
+``Parameter`` metadata at request parsing. Do not reuse this alias
+for in-process validation, where the constraint would silently not
+apply.
+"""
 
 CursorParam = Annotated[
     str | None,
@@ -45,7 +51,12 @@ CursorParam = Annotated[
         description="Opaque pagination cursor returned by the previous page",
     ),
 ]
-"""Query-parameter type for the opaque cursor (max 512 chars)."""
+"""Query-parameter type for the opaque cursor (max 512 chars).
+
+HTTP-boundary only: the ``max_length`` is enforced by Litestar's
+``Parameter`` metadata at request parsing, not by the type itself.
+Do not reuse this alias for in-process validation.
+"""
 
 
 def paginate_cursor[T](

@@ -1044,10 +1044,9 @@ class TestListRunsEndpoint:
 class TestPathParamTyping:
     """The 5 admin path-param handlers carry the ``PathId`` domain type.
 
-    WP-3 replaced bare ``str`` path params (plus manual
-    ``NotBlankStr(...)`` wraps in the body) with the framework-level
-    ``PathId`` constraint so a blank / over-length segment is rejected
-    before the handler runs.
+    Each handler annotates its identifier path params with the
+    framework-level ``PathId`` constraint so a blank / over-length
+    segment is rejected by Litestar before the handler body runs.
     """
 
     @pytest.mark.parametrize(

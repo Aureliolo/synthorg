@@ -75,7 +75,7 @@ from synthorg.core.types import NotBlankStr
 class Skill(BaseModel):
     """Structured capability description, A2A AgentSkill-aligned."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr                              # e.g. "code-review"
     name: NotBlankStr                            # e.g. "Code Review"
@@ -88,7 +88,7 @@ class Skill(BaseModel):
 class SkillSet(BaseModel):
     """Agent skill inventory, split into primary and secondary."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     primary: tuple[Skill, ...] = ()
     secondary: tuple[Skill, ...] = ()

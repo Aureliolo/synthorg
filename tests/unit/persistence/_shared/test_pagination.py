@@ -1,4 +1,4 @@
-"""Unit tests for the WP-3 drain helpers.
+"""Unit tests for the pagination drain helpers.
 
 ``collect_all`` / ``collect_all_mapping`` reassemble the complete
 result of a now-paginated repo method for the callers that genuinely

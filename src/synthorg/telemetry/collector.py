@@ -1097,6 +1097,15 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
     modes (file deleted, permission denied, decode error, validation
     error) in the logs so operators can tell "peer file disappeared"
     from "peer wrote garbage".
+
+    This is a synchronous helper run via ``to_thread``; the blocking
+    ``time.sleep`` backoff is intentional in that context and is hard-
+    bounded by ``_PEER_READ_RETRY_ATTEMPTS`` (not cancellation-aware,
+    but it cannot run longer than the summed backoff). A persistently
+    empty peer file after exhaustion is deliberately NOT distinguished
+    from "deleted then recreated empty": both return ``None`` and the
+    caller repairs the file via the atomic-create branch, so the
+    distinction would add complexity with no behavioural gain.
     """
     # See docs/reference/retry-patterns.md: Pattern A -- transient I/O.
     for attempt in range(_PEER_READ_RETRY_ATTEMPTS):
@@ -1156,6 +1165,11 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
         detail="deployment_id_peer_read_exhausted",
         attempts=_PEER_READ_RETRY_ATTEMPTS,
         using_generated_id=True,
+        impact=(
+            "caller falls back to a fresh per-process deployment_id; "
+            "telemetry from this process will not correlate with the "
+            "peer until the on-disk id file is repaired"
+        ),
     )
     return None
 

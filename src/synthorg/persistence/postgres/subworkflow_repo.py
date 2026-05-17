@@ -421,10 +421,27 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
+                # A summary aggregates every version row of a
+                # subworkflow into one entry, so the page boundary is
+                # the distinct ``subworkflow_id`` set, not raw rows.
+                # Page the ids at the DB first, then fetch only that
+                # page's rows: this bounds both scan cost and the rows
+                # materialised in memory to roughly
+                # ``limit * versions_per_subworkflow``.
+                await cur.execute(
+                    "SELECT subworkflow_id FROM subworkflows"
+                    " WHERE name ILIKE %s OR description ILIKE %s"
+                    " GROUP BY subworkflow_id"
+                    " ORDER BY subworkflow_id LIMIT %s OFFSET %s",
+                    (pattern, pattern, limit, offset),
+                )
+                page_ids = [str(r["subworkflow_id"]) for r in await cur.fetchall()]
+                if not page_ids:
+                    return ()
                 await cur.execute(
                     f"SELECT {_SELECT_COLUMNS} FROM subworkflows"  # noqa: S608
-                    " WHERE name ILIKE %s OR description ILIKE %s",
-                    (pattern, pattern),
+                    " WHERE subworkflow_id = ANY(%s)",
+                    (page_ids,),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -437,11 +454,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             )
             raise QueryError(msg) from exc
 
-        summaries = sorted(
-            self._build_summaries_from_rows(rows),
-            key=lambda s: s.subworkflow_id,
-        )
-        return tuple(summaries[offset : offset + limit])
+        return self._build_summaries_from_rows(rows)
 
     async def delete(
         self,
@@ -555,6 +568,13 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     subworkflow_id,
                     version,
                 )
+                # The reference scan walks JSON node arrays in both
+                # ``workflow_definitions`` and ``subworkflows``; true
+                # SQL-level pagination needs a normalized references
+                # table (a schema change tracked separately). Paging in
+                # memory is acceptable here because referential-
+                # integrity callers MUST drain every page anyway, so
+                # bounding per-page DB cost would yield no real saving.
                 ordered = sorted(
                     refs,
                     key=lambda r: (

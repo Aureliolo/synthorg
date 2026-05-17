@@ -6,6 +6,7 @@ audit-grade ``COMMUNICATION_MESSAGE_DELETED`` event on success only.
 """
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,13 +18,15 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.communication import (
     COMMUNICATION_MESSAGE_DELETED,
 )
+from synthorg.persistence.message_protocol import MessageRepository
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _make_service(*, deleted: bool) -> tuple[MessageService, AsyncMock]:
-    repo = AsyncMock()
-    repo.delete = AsyncMock(return_value=deleted)
+def _make_service(*, deleted: bool) -> tuple[MessageService, Any]:
+    repo = mock_of[MessageRepository]()
+    repo.delete.return_value = deleted
     persistence = SimpleNamespace(messages=repo)
     bus = AsyncMock(spec=MessageBus)
     service = MessageService(bus=bus, persistence=persistence)
@@ -75,9 +78,8 @@ class TestMessageServiceGetMessage:
         self,
     ) -> None:
         sentinel = object()
-        repo = AsyncMock()
-        repo.get_by_id = AsyncMock(return_value=sentinel)
-        repo.get_history = AsyncMock()
+        repo = mock_of[MessageRepository]()
+        repo.get_by_id.return_value = sentinel
         persistence = SimpleNamespace(messages=repo)
         service = MessageService(
             bus=AsyncMock(spec=MessageBus),
@@ -94,8 +96,8 @@ class TestMessageServiceGetMessage:
         repo.get_history.assert_not_awaited()
 
     async def test_returns_none_when_repo_returns_none(self) -> None:
-        repo = AsyncMock()
-        repo.get_by_id = AsyncMock(return_value=None)
+        repo = mock_of[MessageRepository]()
+        repo.get_by_id.return_value = None
         service = MessageService(
             bus=AsyncMock(spec=MessageBus),
             persistence=SimpleNamespace(messages=repo),

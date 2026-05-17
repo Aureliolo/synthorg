@@ -8,6 +8,9 @@
 --   * approvals(risk_level, created_at DESC) and
 --     approvals(action_type, created_at DESC) -- dashboard triage
 --     inboxes newest-first.
+--   * heartbeats(last_heartbeat_at, execution_id) -- widen the
+--     single-column stale-heartbeat index so it fully covers the
+--     get_stale ORDER BY without a tiebreak sort.
 
 CREATE INDEX idx_snapshot_category_active
     ON org_facts_snapshot (category)
@@ -21,3 +24,8 @@ CREATE INDEX idx_approvals_risk_created_at
 
 CREATE INDEX idx_approvals_action_created_at
     ON approvals(action_type, created_at DESC);
+
+DROP INDEX idx_hb_last_heartbeat;
+
+CREATE INDEX idx_hb_last_heartbeat
+    ON heartbeats(last_heartbeat_at, execution_id);

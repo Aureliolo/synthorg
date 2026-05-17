@@ -189,10 +189,15 @@ ON CONFLICT (agent_id) DO UPDATE SET
                     "SELECT agent_id, execution_id, task_id, status, "
                     "turn_count, accumulated_cost, currency, "
                     "last_activity_at, started_at "
-                    "FROM agent_states WHERE status != %s "
+                    "FROM agent_states WHERE status IN (%s, %s) "
                     "ORDER BY last_activity_at DESC, agent_id "
                     "LIMIT %s OFFSET %s",
-                    (ExecutionStatus.IDLE.value, limit, offset),
+                    (
+                        ExecutionStatus.EXECUTING.value,
+                        ExecutionStatus.PAUSED.value,
+                        limit,
+                        offset,
+                    ),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

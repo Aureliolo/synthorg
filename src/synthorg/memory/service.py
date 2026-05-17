@@ -29,7 +29,6 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -409,13 +408,19 @@ class MemoryService:
 
             updated = await checkpoints.get(checkpoint_id)
             if updated is None:
-                logger.error(
+                # Gone on re-read despite activating moments ago: a
+                # concurrent delete is the only realistic cause. Raise
+                # the contracted CheckpointNotFoundError (404) rather
+                # than a generic QueryError (409) so the caller sees
+                # the documented error for "checkpoint no longer
+                # exists".
+                logger.warning(
                     MEMORY_CHECKPOINT_REREAD_FAILED,
                     checkpoint_id=checkpoint_id,
                     operation="deploy",
                 )
-                msg = "Checkpoint activated but not found on re-read"
-                raise QueryError(msg)
+                msg = f"Checkpoint {checkpoint_id} was removed concurrently"
+                raise CheckpointNotFoundError(msg)
         logger.info(
             MEMORY_CHECKPOINT_DEPLOYED,
             checkpoint_id=checkpoint_id,
@@ -493,13 +498,18 @@ class MemoryService:
             await checkpoints.deactivate_all()
             updated = await checkpoints.get(checkpoint_id)
             if updated is None:
-                logger.error(
+                # Gone on re-read directly after deactivate_all: a
+                # concurrent delete is the only realistic cause. Raise
+                # the contracted CheckpointNotFoundError (404) rather
+                # than a generic QueryError so the caller sees the
+                # documented error for "checkpoint no longer exists".
+                logger.warning(
                     MEMORY_CHECKPOINT_REREAD_FAILED,
                     checkpoint_id=checkpoint_id,
                     operation="rollback",
                 )
-                msg = "Checkpoint not found after rollback"
-                raise QueryError(msg)
+                msg = f"Checkpoint {checkpoint_id} was removed concurrently"
+                raise CheckpointNotFoundError(msg)
         logger.info(
             MEMORY_CHECKPOINT_ROLLBACK,
             checkpoint_id=checkpoint_id,

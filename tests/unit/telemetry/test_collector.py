@@ -874,3 +874,34 @@ class TestPeerReadExponentialBackoff:
         # 2 sleeps for the 2 empty reads; exponential 5 ms -> 10 ms
         # (base * 2**attempt), never a flat 5/5.
         assert sleeps == [0.005, 0.01]
+
+    def test_exhausted_peer_read_returns_none_after_full_backoff(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A peer that never finishes its write exhausts all attempts.
+
+        The file stays empty for every attempt, so the helper backs
+        off once per attempt and finally returns ``None`` (the caller
+        then unlinks + repairs via the atomic-create branch).
+        """
+        import time as _time_mod
+
+        from synthorg.telemetry import collector as collector_mod
+
+        id_path = tmp_path / "deployment_id"
+        id_path.write_text("", encoding="utf-8")
+        sleeps: list[float] = []
+        monkeypatch.setattr(
+            _time_mod,
+            "sleep",
+            lambda seconds: sleeps.append(round(seconds, 6)),
+        )
+
+        result = collector_mod._read_peer_deployment_id(str(id_path))
+
+        assert result is None
+        # One backoff per attempt, doubling: 5 / 10 / 20 ms.
+        assert sleeps == [0.005, 0.01, 0.02]
+        assert len(sleeps) == collector_mod._PEER_READ_RETRY_ATTEMPTS

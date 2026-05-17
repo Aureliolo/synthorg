@@ -139,6 +139,17 @@ async def collect_all_mapping[KeyT, ValT](
     disjoint, so merge order does not change the result; iteration
     stops on the first short page exactly like :func:`paginate`.
 
+    Caller invariant: the wrapped repo method MUST return disjoint
+    pages over a stable key order. Overlapping keys across pages are
+    silently last-write-wins (``dict.update``); this helper does not
+    detect page overlap. An empty first page legitimately yields an
+    empty dict (a valid result, not an error).
+
+    Cancellation: if the awaiting task is cancelled mid-page the
+    ``CancelledError`` from the in-flight ``fetch`` propagates
+    unmodified; ``merged`` is a local accumulator so the partial
+    result is simply discarded with no cleanup required.
+
     Args:
         fetch: Async callable taking ``(limit, offset)`` positionally
             and returning a page of the mapping.
@@ -147,6 +158,9 @@ async def collect_all_mapping[KeyT, ValT](
     Returns:
         The fully reassembled mapping.
     """
+    # ``bool`` is a subclass of ``int``; without the explicit
+    # ``isinstance(page_size, bool)`` guard ``True`` / ``False`` would
+    # slip through as page sizes 1 / 0 and corrupt the drain loop.
     if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
         msg = f"page_size must be a positive int, got {page_size!r}"
         raise QueryError(msg)

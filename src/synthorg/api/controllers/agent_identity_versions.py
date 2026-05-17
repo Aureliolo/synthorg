@@ -234,6 +234,21 @@ class AgentIdentityVersionController(Controller):
 
         Produces a new version snapshot (N+1) whose content hash equals the
         restored snapshot's content hash, preserving the full audit trail.
+
+        Args:
+            state: Application state.
+            agent_id: Agent identifier (1-128 chars, enforced at the
+                path-parameter boundary by ``PathId``).
+            data: Rollback request (target version, optional reason).
+
+        Raises:
+            NotFoundError: The agent does not exist (HTTP 404).
+            ImmutableFieldMismatchError: Immutable fields
+                (id/name/department) differ between the current entry
+                and the restored snapshot (HTTP 422,
+                ``IMMUTABLE_FIELD_MISMATCH``).
+            AgentIdentityRollbackError: Unexpected server fault during
+                rollback (HTTP 500, ``AGENT_IDENTITY_ROLLBACK_FAILED``).
         """
         target = await state.app_state.agent_version_service.get_for_rollback(
             agent_id,

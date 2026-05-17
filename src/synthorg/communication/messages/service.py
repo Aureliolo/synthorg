@@ -63,6 +63,12 @@ class MessageService:
         The handler uses ``total`` to build the pagination envelope so
         callers can navigate.  Passing ``channel=None`` returns
         ``((), 0)`` -- an empty page -- without touching persistence.
+
+        The page is a point-in-time snapshot: writes that land between
+        this read and the caller consuming the result are not
+        reflected, and a concurrent delete can leave a one-row gap on
+        the page. Callers must not assume the slice is transactionally
+        consistent with later reads.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"

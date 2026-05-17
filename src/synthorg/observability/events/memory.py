@@ -107,6 +107,10 @@ MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED: Final[str] = (
 MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED: Final[str] = (
     "memory.fine_tune.batch_size_recommendation_failed"
 )
+MEMORY_FINE_TUNE_THRESHOLD_FALLBACK: Final[str] = "memory.fine_tune.threshold_fallback"
+MEMORY_FINE_TUNE_PREFLIGHT_TIMED_OUT: Final[str] = (
+    "memory.fine_tune.preflight_timed_out"
+)
 MEMORY_FINE_TUNE_EVAL_COMPLETED: Final[str] = "memory.fine_tune.eval_completed"
 MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED: Final[str] = (
     "memory.fine_tune.backup_read_skipped"

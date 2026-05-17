@@ -762,7 +762,13 @@ ORDER BY timestamp DESC"""
         channel: str,
         message_id: str,
     ) -> Message | None:
-        """Fetch one message by ``(channel, id)`` via the PK point read."""
+        """Fetch one message by ``(channel, id)`` via the PK point read.
+
+        The ``id`` predicate alone resolves the row (it is the primary
+        key); the extra ``channel`` predicate is a deliberate scoping
+        guard so a caller holding only a message id cannot read a
+        message outside the channel it asked for.
+        """
         sql = """\
 SELECT id, timestamp, sender, "to", type, priority,
        channel, content, attachments, metadata

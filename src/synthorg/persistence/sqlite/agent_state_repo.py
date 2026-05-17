@@ -170,10 +170,15 @@ INSERT OR REPLACE INTO agent_states (
                 "SELECT agent_id, execution_id, task_id, status, "
                 "turn_count, accumulated_cost, currency, "
                 "last_activity_at, started_at "
-                "FROM agent_states WHERE status != ? "
+                "FROM agent_states WHERE status IN (?, ?) "
                 "ORDER BY last_activity_at DESC, agent_id "
                 "LIMIT ? OFFSET ?",
-                (ExecutionStatus.IDLE.value, limit, offset),
+                (
+                    ExecutionStatus.EXECUTING.value,
+                    ExecutionStatus.PAUSED.value,
+                    limit,
+                    offset,
+                ),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

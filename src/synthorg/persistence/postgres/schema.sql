@@ -382,7 +382,7 @@ CREATE TABLE heartbeats (
 );
 
 CREATE INDEX idx_hb_last_heartbeat
-    ON heartbeats(last_heartbeat_at);
+    ON heartbeats(last_heartbeat_at, execution_id);
 
 -- ── Agent states ──────────────────────────────────────────────
 CREATE TABLE agent_states (
