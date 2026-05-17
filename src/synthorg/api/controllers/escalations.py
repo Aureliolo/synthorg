@@ -9,9 +9,9 @@ client cannot flood the queue.  Error responses use the shared RFC
 9457 handlers registered by :mod:`synthorg.api.exception_handlers`.
 """
 
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
-from litestar import Controller, Request, get, post
+from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,11 +29,10 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationStatus,
 )
 from synthorg.communication.errors import EscalationDecisionError
-from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
-    UnauthorizedError,
     ValidationError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -99,19 +98,19 @@ def _to_response(escalation: Escalation) -> EscalationResponse:
     )
 
 
-def _operator_id(request: Request[Any, Any, Any]) -> str:
-    """Extract the authenticated operator ID prefixed with ``human:``."""
-    user = request.scope.get("user")
-    if not isinstance(user, AuthenticatedUser):
-        msg = "Authentication required to decide on escalations"
-        logger.warning(
-            CONFLICT_ESCALATION_RESOLVED,
-            note="operator_id_missing_auth",
-            user_type=type(user).__name__ if user is not None else "None",
-            path=request.scope.get("path"),
-        )
-        raise UnauthorizedError(msg)
-    return f"human:{user.user_id}"
+def _operator_id() -> str:
+    """Resolve the deciding operator id, prefixed with ``human:``.
+
+    RFC#3 / ADR-0003: the identity comes from the actor seam bound by
+    ``AuthContextMiddleware`` (``actor_id`` == immutable user id)
+    rather than re-reading ``request.scope["user"]``. The
+    ``human:<user_id>`` shape is byte-identical to the previous
+    derivation so persisted escalation decisions are unchanged. An
+    unbound context surfaces as :class:`ActorContextMissingError`
+    (500): the middleware binds before any controller runs.
+    """
+    actor = require_actor()
+    return f"human:{actor.actor_id}"
 
 
 # ── Controller ──────────────────────────────────────────────────
@@ -212,7 +211,6 @@ class EscalationsController(Controller):
     )
     async def submit_decision(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         escalation_id: PathId,
         data: SubmitDecisionRequest,
@@ -246,7 +244,7 @@ class EscalationsController(Controller):
             )
             raise NotFoundError(msg)
 
-        operator = _operator_id(request)
+        operator = _operator_id()
         row = await store.get(escalation_id)
         if row is None:
             msg = f"Escalation {escalation_id!r} not found"
@@ -340,7 +338,6 @@ class EscalationsController(Controller):
     )
     async def cancel_escalation(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         escalation_id: PathId,
         data: CancelEscalationRequest,
@@ -363,7 +360,7 @@ class EscalationsController(Controller):
                 missing_registry=registry is None,
             )
             raise NotFoundError(msg)
-        operator = _operator_id(request)
+        operator = _operator_id()
         try:
             updated = await store.cancel(escalation_id, cancelled_by=operator)
         except KeyError as exc:
