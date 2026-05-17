@@ -82,10 +82,20 @@ stored string keys (the `StrEnum` `.value`s) sorted, unchanged contract.
   `handler = _NODE_HANDLERS.get(node.type); return await handler(...)`.
   An unknown member raises `StrategyFactoryNotFoundError` at dispatch
   with a structured event instead of silently falling through.
-- `INTERRUPT_FIELD_VALIDATORS`: a registry keyed by `InterruptType`
-  backs both `Interrupt._validate_type_fields` and
-  `_validate_resume_payload`, so required-field rules for an interrupt
-  type are declared once.
+- `INTERRUPT_FIELD_RULES`: a frozen `Mapping[InterruptType,
+  _InterruptFieldRule(interrupt_field, resume_field)]` table backs both
+  `Interrupt._validate_type_fields` and `_validate_resume_payload`, so
+  the per-type required-field knowledge is declared exactly once and
+  both hand-rolled if-cascades are removed. This site deliberately
+  uses a frozen data table rather than `StrategyRegistry`: the other
+  three sites dispatch *behaviour* (validators / node handlers / type
+  coercers) keyed by an enum, whereas here the per-type knowledge is
+  *data* (which field is required on which object). `StrategyRegistry`
+  is the factory-dispatch seam; applying it to a static 2-entry data
+  table would add factory-returning-constant indirection with no
+  payoff, contrary to the codebase principle "do not add machinery
+  where a typed constant suffices" (see `configuration-precedence.md`,
+  "Protocol constants are not settings").
 
 No new AST lint is added. A per-site lint over enum if-cascades would
 fire on legitimate `match` statements elsewhere; instead this ADR is

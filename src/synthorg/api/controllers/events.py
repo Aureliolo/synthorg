@@ -25,6 +25,7 @@ from synthorg.api.rate_limits import (
 )
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.event_stream.interrupt import (
+    INTERRUPT_FIELD_RULES,
     Interrupt,
     InterruptResolution,
     InterruptStore,
@@ -256,22 +257,14 @@ def _validate_resume_payload(
     Raises:
         ValidationError: If required fields are missing.
     """
-    if interrupt.type == InterruptType.TOOL_APPROVAL and data.decision is None:
-        msg = "TOOL_APPROVAL interrupts require a decision"
+    rule = INTERRUPT_FIELD_RULES.get(interrupt.type)
+    if rule is not None and getattr(data, rule.resume_field) is None:
+        msg = f"{interrupt.type.name} interrupts require a {rule.resume_field}"
         logger.warning(
             API_VALIDATION_FAILED,
             reason="resume_payload_missing_field",
             interrupt_type=interrupt.type.value,
-            missing_field="decision",
-        )
-        raise ValidationError(msg)
-    if interrupt.type == InterruptType.INFO_REQUEST and data.response is None:
-        msg = "INFO_REQUEST interrupts require a response"
-        logger.warning(
-            API_VALIDATION_FAILED,
-            reason="resume_payload_missing_field",
-            interrupt_type=interrupt.type.value,
-            missing_field="response",
+            missing_field=rule.resume_field,
         )
         raise ValidationError(msg)
 
