@@ -67,7 +67,7 @@ class RefreshRotation(BaseModel):
     access token rotated in place), not a freshly minted one.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     token: str
     expires_in: int
