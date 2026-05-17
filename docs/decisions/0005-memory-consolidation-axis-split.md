@@ -61,40 +61,51 @@ class ConsolidationOp(Protocol):
         self,
         to_remove: tuple[MemoryEntry, ...],
         *,
-        agent_id: NotBlankStr,
         category: MemoryCategory,
         context: ConsolidationContext,
     ) -> OpResult: ...
 ```
 
-`OpResult` is the contract that preserves byte-identical behaviour
-across the truncation-driven deletion subset (LLM strategy):
+The op owns the backend (injected at construction, mirroring the
+pre-split monolith ``__init__``) and performs store + delete
+internally with that strategy's *exact* failure semantics. This is
+required because the three strategies' delete handling is mutually
+incompatible and cannot be reproduced by a uniform composite-driven
+delete:
+
+- Simple: no ``try/except``, no return-value check -- a delete failure
+  aborts the whole consolidation.
+- LLM: per-delete ``try/except``; swallows non-system exceptions,
+  propagates ``MemoryError`` / ``RecursionError``.
+- DualMode: checks the bool return (``if not deleted: continue``), no
+  ``try/except``.
+
+So `OpResult` is the minimal cross-boundary contract -- not summary
+text/tags (op-internal), just the outcome:
 
 ```python
 @dataclass(frozen=True, slots=True)
 class OpResult:
-    content: str
-    # subset of to_remove the summary actually represents; the
-    # Composite deletes THIS, not the selector's full to_remove, so
-    # entries dropped by LLM prompt truncation stay in the backend
-    # for the next pass (preserves the existing contract exactly).
-    represented: tuple[MemoryEntry, ...]
-    # summary tags: ("consolidated",) for ConcatenationOp;
-    # ("consolidated", "llm-synthesized"|"concat-fallback") for
-    # LLMSynthesisOp; ("consolidated", "mode:extractive"|
-    # "mode:abstractive") for DensityRoutingOp.
-    tags: tuple[str, ...]
-    # DualMode-only; empty tuple for every other op. Threading it
-    # here keeps ConsolidationResult.mode_assignments byte-identical.
-    mode_assignments: tuple[ArchivalModeAssignment, ...] = ()
+    summary_id: NotBlankStr
+    removed_ids: tuple[NotBlankStr, ...]   # only successfully deleted
+    mode_assignments: tuple[ArchivalModeAssignment, ...] = ()  # DualMode only
 ```
 
-`CompositeConsolidationStrategy(selector, op)` satisfies the existing
-`ConsolidationStrategy` Protocol, so `MemoryConsolidationService` is
-unchanged at the callsite. It runs the selector, then per group:
-calls the op, stores `OpResult.content` with `OpResult.tags`, and
-deletes exactly `OpResult.represented` (best-effort, matching the
-existing per-strategy delete-failure tolerance).
+The truncation-survivor contract (LLM) is preserved *inside*
+``LLMSynthesisOp``: it tracks which entries the prompt cap admitted
+and deletes only those, so dropped entries stay for the next pass --
+exactly as the monolith did. ``removed_ids`` reports only the
+successfully deleted subset.
+
+`CompositeConsolidationStrategy(selector, op, *, parallel=False)`
+satisfies the existing `ConsolidationStrategy` Protocol, so
+`MemoryConsolidationService` is unchanged at the callsite. It runs the
+selector then aggregates one ``OpResult`` per group into a
+`ConsolidationResult`. ``parallel`` defaults to ``False`` (sequential
+group iteration -- Simple/DualMode); the factory wires it ``True`` for
+LLM, where the composite owns the ``asyncio.TaskGroup`` fan-out across
+groups plus the ``except*`` unwrap, byte-identical with the LLM
+monolith's ``_run_groups``.
 
 ### Implementations
 

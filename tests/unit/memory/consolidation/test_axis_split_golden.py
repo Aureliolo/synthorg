@@ -19,14 +19,23 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.composite import (
+    CompositeConsolidationStrategy,
+)
 from synthorg.memory.consolidation.config import LLMConsolidationConfig
 from synthorg.memory.consolidation.density import ContentDensity
 from synthorg.memory.consolidation.dual_mode_strategy import (
     DualModeConsolidationStrategy,
 )
 from synthorg.memory.consolidation.extractive import ExtractivePreserver
+from synthorg.memory.consolidation.llm_op import LLMSynthesisOp
 from synthorg.memory.consolidation.llm_strategy import LLMConsolidationStrategy
 from synthorg.memory.consolidation.models import ArchivalMode
+from synthorg.memory.consolidation.ops import (
+    ConcatenationOp,
+    DensityRoutingOp,
+)
+from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
 from synthorg.memory.consolidation.simple_strategy import (
     SimpleConsolidationStrategy,
 )
@@ -281,6 +290,153 @@ async def test_llm_truncation_keeps_dropped_entries() -> None:
     # the rest stay in the backend. The invariant: every removed id is
     # one that was represented, and at least one over-cap entry is NOT
     # deleted.
+    assert set(result.removed_ids).issubset({"t0", "t1", "t2"})
+    assert result.removed_ids == tuple(backend.deleted)
+    assert len(result.removed_ids) < 3
+    assert "t3" not in result.removed_ids
+
+
+# ── Composite parity: same expectations as the monolith goldens ──
+#
+# These build Composite(HighestRelevanceSelector, <Op>) and assert
+# the SAME pinned values the monolith goldens above assert. Identical
+# expectations on both sides == byte-identical behaviour.
+
+
+async def test_composite_simple_parity() -> None:
+    backend = _RecordingBackend()
+    entries = tuple(
+        _entry(f"m{i}", content=f"Content for m{i}", relevance=0.1 * i)
+        for i in range(5)
+    )
+    strategy = CompositeConsolidationStrategy(
+        selector=HighestRelevanceSelector(group_threshold=3),
+        op=ConcatenationOp(backend=backend),  # type: ignore[arg-type]
+    )
+
+    result = await strategy.consolidate(entries, agent_id=_AGENT)
+
+    assert result.removed_ids == ("m0", "m1", "m2", "m3")
+    assert result.summary_ids == ("sum-1",)
+    assert result.mode_assignments == ()
+    assert backend.deleted == ["m0", "m1", "m2", "m3"]
+    _agent, req = backend.stored[0]
+    assert req.metadata.tags == ("consolidated",)
+    expected = (
+        "Consolidated episodic memories:\n"
+        "- Content for m0\n"
+        "- Content for m1\n"
+        "- Content for m2\n"
+        "- Content for m3"
+    )
+    assert req.content == expected
+
+
+async def test_composite_dual_mode_parity() -> None:
+    backend = _RecordingBackend()
+    extractor = ExtractivePreserver()
+
+    class _AllDenseClassifier:
+        def classify_batch(
+            self, entries: tuple[MemoryEntry, ...]
+        ) -> tuple[tuple[MemoryEntry, ContentDensity], ...]:
+            return tuple((e, ContentDensity.DENSE) for e in entries)
+
+    class _UnusedSummarizer:
+        async def summarize(self, content: str, *, agent_id: str) -> str:
+            msg = "abstractive path must not run for dense content"
+            raise AssertionError(msg)
+
+    entries = tuple(
+        _entry(f"d{i}", content=f"id=ABC-{i} ref=DEF-{i} key: value", relevance=0.1 * i)
+        for i in range(4)
+    )
+    strategy = CompositeConsolidationStrategy(
+        selector=HighestRelevanceSelector(group_threshold=3),
+        op=DensityRoutingOp(
+            backend=backend,  # type: ignore[arg-type]
+            classifier=_AllDenseClassifier(),  # type: ignore[arg-type]
+            extractor=extractor,
+            summarizer=_UnusedSummarizer(),  # type: ignore[arg-type]
+        ),
+    )
+
+    result = await strategy.consolidate(entries, agent_id=_AGENT)
+
+    assert result.removed_ids == ("d0", "d1", "d2")
+    assert result.summary_ids == ("sum-1",)
+    assert tuple(a.original_id for a in result.mode_assignments) == (
+        "d0",
+        "d1",
+        "d2",
+    )
+    assert all(a.mode is ArchivalMode.EXTRACTIVE for a in result.mode_assignments)
+    _agent, req = backend.stored[0]
+    assert req.metadata.tags == ("consolidated", "mode:extractive")
+    to_remove = (entries[0], entries[1], entries[2])
+    expected = "\n---\n".join(extractor.extract(e.content) for e in to_remove)
+    assert req.content == expected
+
+
+async def test_composite_llm_parity() -> None:
+    backend = _RecordingBackend()
+    provider = _FixedProvider("SYNTHESIZED")
+    config = LLMConsolidationConfig(
+        group_threshold=3,
+        include_distillation_context=False,
+    )
+    strategy = CompositeConsolidationStrategy(
+        selector=HighestRelevanceSelector(group_threshold=3),
+        op=LLMSynthesisOp(
+            backend=backend,  # type: ignore[arg-type]
+            provider=provider,  # type: ignore[arg-type]
+            model="test-model",
+            config=config,
+        ),
+        parallel=True,
+    )
+    entries = tuple(
+        _entry(f"l{i}", content=f"Content for l{i}", relevance=0.1 * i)
+        for i in range(4)
+    )
+
+    result = await strategy.consolidate(entries, agent_id=_AGENT)
+
+    assert result.removed_ids == ("l0", "l1", "l2")
+    assert result.summary_ids == ("sum-1",)
+    assert provider.calls == 1
+    _agent, req = backend.stored[0]
+    assert req.content == "SYNTHESIZED"
+    assert req.metadata.tags == ("consolidated", "llm-synthesized")
+
+
+async def test_composite_llm_truncation_parity() -> None:
+    backend = _RecordingBackend()
+    provider = _FixedProvider("SYNTH")
+    config = LLMConsolidationConfig(
+        group_threshold=3,
+        include_distillation_context=False,
+        max_entry_input_chars=1000,
+        max_total_user_content_chars=1000,
+        fallback_truncate_length=50,
+    )
+    big = "X" * 900
+    entries = tuple(
+        _entry(f"t{i}", content=f"{big}-{i}", relevance=0.1 * i) for i in range(4)
+    )
+    strategy = CompositeConsolidationStrategy(
+        selector=HighestRelevanceSelector(group_threshold=3),
+        op=LLMSynthesisOp(
+            backend=backend,  # type: ignore[arg-type]
+            provider=provider,  # type: ignore[arg-type]
+            model="test-model",
+            config=config,
+        ),
+        parallel=True,
+    )
+
+    result = await strategy.consolidate(entries, agent_id=_AGENT)
+
     assert set(result.removed_ids).issubset({"t0", "t1", "t2"})
     assert result.removed_ids == tuple(backend.deleted)
     assert len(result.removed_ids) < 3
