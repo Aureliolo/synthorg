@@ -278,7 +278,13 @@ class PostgresTaskRepository:
 
         Ordering is deterministic on the primary key ``id`` so paginated
         callers see stable windows.
+
+        Raises:
+            QueryError: If the query fails or pagination is out of range.
         """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
+        )
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.status is not None:
@@ -295,7 +301,7 @@ class PostgresTaskRepository:
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY id ASC LIMIT %s OFFSET %s"
-        params.extend([int(limit), int(offset)])
+        params.extend([limit, offset])
 
         try:
             async with (
@@ -430,7 +436,14 @@ class PostgresCostRecordRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        """Query cost records matching filter spec with pagination."""
+        """Query cost records matching filter spec with pagination.
+
+        Raises:
+            QueryError: If the query fails or pagination is out of range.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_COST_RECORD_QUERY_FAILED
+        )
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.agent_id is not None:
@@ -448,9 +461,8 @@ class PostgresCostRecordRepository:
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
-        effective_offset = max(0, int(offset))
         sql += " LIMIT %s OFFSET %s"
-        params.extend([int(limit), effective_offset])
+        params.extend([limit, offset])
 
         try:
             async with (
@@ -727,10 +739,14 @@ class PostgresMessageRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Message, ...]:
-        """Return messages matching the filter spec, newest first."""
-        if limit < 1:
-            msg = f"limit must be a positive integer, got {limit}"
-            raise QueryError(msg)
+        """Return messages matching the filter spec, newest first.
+
+        Raises:
+            QueryError: If the query fails or pagination is out of range.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_MESSAGE_HISTORY_FAILED
+        )
         sql = (
             'SELECT id, timestamp, sender, "to", type, priority, '
             "channel, content, attachments, metadata "
