@@ -14,7 +14,7 @@ class WebToolsConfig(BaseModel):
         request_timeout: Default HTTP request timeout in seconds.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     network_policy: NetworkPolicy = Field(
         default_factory=NetworkPolicy,

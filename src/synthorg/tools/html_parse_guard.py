@@ -134,7 +134,7 @@ class HTMLParseGuardConfig(BaseModel):
             which ``gap_detected`` is set to ``True``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,
@@ -158,7 +158,7 @@ class HTMLSanitizeResult(BaseModel):
         stripped_element_count: Number of elements stripped.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cleaned: str = Field(description="Sanitized output text")
     gap_detected: bool = Field(

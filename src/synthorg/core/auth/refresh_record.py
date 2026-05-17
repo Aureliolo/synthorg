@@ -34,7 +34,7 @@ class RefreshConsumeOutcome(BaseModel):
     The model validator below keeps the discriminator honest.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     record: RefreshRecord | None = None
     reject_reason: RefreshRejectReason | None = None
@@ -63,7 +63,7 @@ class RefreshRecord(BaseModel):
         created_at: Creation timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     token_hash: NotBlankStr
     session_id: NotBlankStr

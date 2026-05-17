@@ -150,17 +150,24 @@ class SubworkflowRepository(
     async def search(
         self,
         query: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[SubworkflowSummary, ...]:
-        """Search subworkflows by case-insensitive substring.
+        """Search subworkflows by case-insensitive substring (paginated).
 
         Bespoke per ADR-0001 D7. Matches against name or description
         fields.
 
         Args:
             query: Search term.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Matching summaries.
+            A page of matching summaries in ``subworkflow_id`` order.
+            Callers needing every match drain via
+            :func:`synthorg.persistence._shared.collect_all`.
         """
         ...
 
@@ -193,6 +200,9 @@ class SubworkflowRepository(
         self,
         subworkflow_id: NotBlankStr,
         version: NotBlankStr | None = None,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[ParentReference, ...]:
         """Find parent workflow definitions referencing a subworkflow.
 
@@ -202,8 +212,15 @@ class SubworkflowRepository(
             subworkflow_id: The subworkflow identifier.
             version: Optional semver filter.  When ``None``, returns
                 parents pinning any version of the subworkflow.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Tuple of parent references (possibly empty).
+            A page of parent references in
+            ``(parent_type, parent_id, node_id, pinned_version)``
+            order. Referential-integrity callers MUST drain every page
+            via :func:`synthorg.persistence._shared.collect_all`; a
+            truncated parent set would let a still-referenced version
+            be deleted.
         """
         ...

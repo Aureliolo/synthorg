@@ -66,7 +66,7 @@ class CostRecord(BaseModel):
         success: Whether the call completed without error or content filter.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     task_id: NotBlankStr = Field(description="Task identifier")

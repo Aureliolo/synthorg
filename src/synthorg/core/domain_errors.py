@@ -306,6 +306,67 @@ class PerOperationRateLimitError(DomainError):
         self.retry_after = max(1, int(retry_after))
 
 
+class ImmutableFieldMismatchError(ValidationError):
+    """Raised when a restore/rollback would change an immutable field (422).
+
+    Distinct ``error_code`` lets the dashboard tell "the snapshot is
+    incompatible because id/name/department differ" apart from a generic
+    validation failure, so it can surface the specific blocked fields
+    instead of a retry button that would always fail.
+    """
+
+    default_message: ClassVar[str] = "Cannot apply: immutable field mismatch"
+    error_code: ClassVar[ErrorCode] = ErrorCode.IMMUTABLE_FIELD_MISMATCH
+
+
+class AgentIdentityRollbackError(DomainError):
+    """Raised when an agent-identity rollback fails unexpectedly (500).
+
+    Distinct from :class:`ImmutableFieldMismatchError` (422, operator
+    error): this is an unexpected server fault during the rollback
+    write, not a rejected request.
+    """
+
+    default_message: ClassVar[str] = "Rollback failed due to an unexpected server error"
+    error_code: ClassVar[ErrorCode] = ErrorCode.AGENT_IDENTITY_ROLLBACK_FAILED
+
+
+class CheckpointOperationConflictError(ConflictError):
+    """Raised when a fine-tune checkpoint deploy/delete conflicts (409).
+
+    Distinct ``error_code`` separates "checkpoint operation rejected by
+    its current state" (e.g. deleting the active checkpoint) from a
+    generic resource conflict so clients can message it precisely.
+    """
+
+    default_message: ClassVar[str] = "Checkpoint operation conflict"
+    error_code: ClassVar[ErrorCode] = ErrorCode.CHECKPOINT_OPERATION_CONFLICT
+
+
+class FineTuneRunActiveError(ConflictError):
+    """Raised when a fine-tune run is already active (409).
+
+    Start/resume is rejected because the single-run invariant holds.
+    Distinct ``error_code`` lets clients render "a run is already in
+    progress" instead of a generic conflict.
+    """
+
+    default_message: ClassVar[str] = "A fine-tuning run is already active"
+    error_code: ClassVar[ErrorCode] = ErrorCode.FINE_TUNE_RUN_ACTIVE
+
+
+class TrainingPlanNotModifiableError(ConflictError):
+    """Raised when a training plan is edited after execution/failure (409).
+
+    Distinct ``error_code`` tells the dashboard the plan is frozen by
+    its lifecycle status rather than a transient conflict, so it hides
+    the edit form instead of offering a retry.
+    """
+
+    default_message: ClassVar[str] = "Cannot modify plan after execution or failure"
+    error_code: ClassVar[ErrorCode] = ErrorCode.TRAINING_PLAN_NOT_MODIFIABLE
+
+
 class ConcurrencyLimitExceededError(PerOperationRateLimitError):
     """Raised when a per-operation concurrency (inflight) cap is hit (429).
 

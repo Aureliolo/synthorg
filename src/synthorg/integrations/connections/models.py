@@ -72,7 +72,7 @@ class SecretRef(BaseModel):
         key_version: Encryption key version used.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     secret_id: NotBlankStr
     backend: NotBlankStr
@@ -102,7 +102,7 @@ class Connection(BaseModel):
         updated_at: Last modification timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -166,7 +166,7 @@ class OAuthState(BaseModel):
             both must be set together.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     state_token: NotBlankStr
     connection_name: NotBlankStr
@@ -256,6 +256,7 @@ class OAuthToken(BaseModel):
     model_config = ConfigDict(
         frozen=True,
         allow_inf_nan=False,
+        extra="forbid",
         # Raw tokens are sensitive -- exclude from repr to keep them
         # out of accidental logging and exception tracebacks.
     )
@@ -287,7 +288,7 @@ class WebhookReceipt(BaseModel):
         error: Error message if processing failed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -315,7 +316,7 @@ class HealthReport(BaseModel):
         consecutive_failures: Running failure count.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     connection_name: NotBlankStr
     status: ConnectionStatus
@@ -341,7 +342,7 @@ class CatalogEntry(BaseModel):
         tags: Searchable tags.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     name: NotBlankStr

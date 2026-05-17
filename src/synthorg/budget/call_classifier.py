@@ -40,7 +40,7 @@ class ClassificationContext(BaseModel):
         agent_role: Optional semantic role of the agent (context only).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     turn_number: int = Field(gt=0, description="1-indexed turn number")
     agent_id: NotBlankStr = Field(description="Executing agent identifier")

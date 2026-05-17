@@ -49,7 +49,7 @@ class PresetEntry(BaseModel):
         updated_at: ISO 8601 last-update timestamp (None for builtins).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     source: PresetSource

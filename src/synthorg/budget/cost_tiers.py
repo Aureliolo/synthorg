@@ -36,7 +36,7 @@ class CostTierDefinition(BaseModel):
         sort_order: Display ordering (lower = cheaper).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique tier identifier")
     display_name: NotBlankStr = Field(description="Human-readable name")
@@ -103,7 +103,7 @@ class CostTiersConfig(BaseModel):
         include_builtin: Whether to merge built-in default tiers.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     tiers: tuple[CostTierDefinition, ...] = Field(
         default=(),

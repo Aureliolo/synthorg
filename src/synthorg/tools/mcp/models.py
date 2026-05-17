@@ -21,7 +21,7 @@ class MCPToolInfo(BaseModel):
         server_name: Name of the server that hosts this tool.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Tool name")
     description: str = Field(
@@ -46,7 +46,7 @@ class MCPRawResult(BaseModel):
         structured_content: Optional structured content from the result.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     content: tuple[Any, ...] = Field(
         default=(),

@@ -28,7 +28,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import WorkflowType
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import WorkflowDefinitionValidationError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -46,6 +46,7 @@ from synthorg.engine.workflow.subworkflow_registry import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_CURSOR_INVALID
+from synthorg.persistence._shared import collect_all
 
 logger = get_logger(__name__)
 
@@ -217,7 +218,15 @@ class SubworkflowController(Controller):
     ) -> Response[ApiResponse[tuple[SubworkflowSummary, ...]]]:
         """Substring search across name and description."""
         registry = _registry(state)
-        matches = await registry.search(q)
+        # This endpoint returns the full match set in one envelope, so
+        # drain every bounded repo page rather than the first only.
+        matches = await collect_all(
+            lambda limit, offset: registry.search(
+                NotBlankStr(q),
+                limit=limit,
+                offset=offset,
+            ),
+        )
         return Response(
             content=ApiResponse[tuple[SubworkflowSummary, ...]](
                 data=matches,
@@ -295,7 +304,18 @@ class SubworkflowController(Controller):
     ) -> Response[PaginatedResponse[ParentReference]]:
         """List parent workflow definitions pinning this version (cursor-paginated)."""
         registry = _registry(state)
-        parents = await registry.find_parents(subworkflow_id, version)
+        # This endpoint applies its own opaque-cursor pagination over
+        # the full parent set, so drain every bounded repo page; a
+        # truncated set would break the cursor walk and (worse)
+        # under-report references.
+        parents = await collect_all(
+            lambda page_limit, offset: registry.find_parents(
+                NotBlankStr(subworkflow_id),
+                NotBlankStr(version),
+                limit=page_limit,
+                offset=offset,
+            ),
+        )
         page, meta = paginate_cursor(
             parents,
             limit=limit,

@@ -21,6 +21,22 @@ def _default_curation_config() -> dict[str, _ConfigValue]:
     return {"top_k": 50}
 
 
+def _default_volume_caps() -> dict[ContentType, int]:
+    """Default per-content-type hard limits for stored training items.
+
+    A named factory (not an inline ``lambda``) so the mutable dict is
+    rebuilt per model instance with a referenceable, testable symbol
+    instead of an anonymous closure -- the same shape as
+    :func:`_default_selector_config` / :func:`_default_curation_config`
+    above.
+    """
+    return {
+        ContentType.PROCEDURAL: 50,
+        ContentType.SEMANTIC: 10,
+        ContentType.TOOL_PATTERNS: 20,
+    }
+
+
 class TrainingConfig(BaseModel):
     """Configuration for the training pipeline.
 
@@ -64,11 +80,7 @@ class TrainingConfig(BaseModel):
         description="Serialized config for curation",
     )
     default_volume_caps: dict[ContentType, int] = Field(
-        default_factory=lambda: {
-            ContentType.PROCEDURAL: 50,
-            ContentType.SEMANTIC: 10,
-            ContentType.TOOL_PATTERNS: 20,
-        },
+        default_factory=_default_volume_caps,
         description="Default per-content-type hard limits",
     )
     require_review_by_default: bool = Field(

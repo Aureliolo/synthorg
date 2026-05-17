@@ -440,11 +440,15 @@ class TestETagMiddleware:
             _empty_receive,
             recorder,
         )
-        # 1 start + 3 body messages, all forwarded as-is.
+        # 1 start + 3 body messages: bodies forwarded as-is, no ETag
+        # (body is unhashable without buffering), but the
+        # validator-friendly Cache-Control IS applied so the global
+        # ``no-store`` does not suppress revalidation for streamed
+        # allowlisted reads (WP-3 streaming cache-control fix).
         assert len(recorder.messages) == 1 + len(chunks)
         headers = dict(recorder.messages[0]["headers"])
         assert b"etag" not in headers
-        assert b"cache-control" not in headers
+        assert headers[b"cache-control"] == b"private, must-revalidate"
         bodies = [m["body"] for m in recorder.messages[1:]]
         assert bodies == chunks
         # The middle chunks must keep ``more_body=True``; only the last is False.

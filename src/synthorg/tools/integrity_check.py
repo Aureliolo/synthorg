@@ -42,7 +42,7 @@ class ToolIntegrityCheckConfig(BaseModel):
         fail_on_violation: If ``True``, raise on hash mismatch.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,
@@ -67,7 +67,7 @@ class ToolIntegrityViolation(BaseModel):
         actual_hash: Hash computed at current boot.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     tool_name: NotBlankStr = Field(description="Tool with mismatch")
     expected_hash: NotBlankStr = Field(description="Prior recorded hash")
@@ -83,7 +83,7 @@ class ToolIntegrityReport(BaseModel):
         checked_at: UTC timestamp of the check.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     violations: tuple[ToolIntegrityViolation, ...] = Field(
         default=(),

@@ -14,7 +14,7 @@ class RiskCheckResult(BaseModel):
         reason: Human-readable explanation when denied.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     allowed: bool = True
     risk_units: float = Field(default=0.0, ge=0.0)

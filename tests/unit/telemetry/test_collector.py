@@ -836,3 +836,36 @@ class TestCollectorEnvironmentPropagation:
 
         monkeypatch.delenv("CI", raising=False)
         assert _looks_like_ci(None) is False
+
+
+class TestPeerReadExponentialBackoff:
+    """``_read_peer_deployment_id`` waits out a slow peer write with
+    exponential backoff (5 / 10 / 20 ms), not a flat 5 ms."""
+
+    def test_backoff_doubles_per_attempt_and_returns_late_write(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.telemetry import collector as collector_mod
+
+        id_path = tmp_path / "deployment_id"
+        id_path.write_text("", encoding="utf-8")
+        valid_uuid = "11111111-2222-4333-8444-555555555555"
+        sleeps: list[float] = []
+
+        def _fake_sleep(seconds: float) -> None:
+            sleeps.append(round(seconds, 6))
+            # The peer finishes its write during the second backoff
+            # window, so the third read attempt succeeds.
+            if len(sleeps) == 2:
+                id_path.write_text(valid_uuid, encoding="utf-8")
+
+        monkeypatch.setattr(collector_mod.time, "sleep", _fake_sleep)
+
+        result = collector_mod._read_peer_deployment_id(str(id_path))
+
+        assert result == valid_uuid
+        # 2 sleeps for the 2 empty reads; exponential 5 ms -> 10 ms
+        # (base * 2**attempt), never a flat 5/5.
+        assert sleeps == [0.005, 0.01]

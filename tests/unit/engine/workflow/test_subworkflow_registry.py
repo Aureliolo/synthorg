@@ -26,6 +26,7 @@ from synthorg.engine.workflow.subworkflow_models import (
     SubworkflowSummary,
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
 
 _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
@@ -151,12 +152,20 @@ class FakeSubworkflowRepository(SubworkflowRepository):
             )
         return tuple(summaries)[:limit]
 
-    async def search(self, query: str) -> tuple[SubworkflowSummary, ...]:
+    async def search(
+        self,
+        query: str,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[SubworkflowSummary, ...]:
         q = query.lower()
         summaries = await self.list_summaries()
-        return tuple(
-            s for s in summaries if q in s.name.lower() or q in s.description.lower()
+        matched = sorted(
+            (s for s in summaries if q in s.name.lower() or q in s.description.lower()),
+            key=lambda s: s.subworkflow_id,
         )
+        return tuple(matched[offset : offset + limit])
 
     async def delete(
         self,
@@ -182,13 +191,24 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         self,
         subworkflow_id: str,
         version: str | None = None,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[ParentReference, ...]:
-        matching = [
-            p
-            for p in self._parents.get(subworkflow_id, [])
-            if version is None or p.pinned_version == version
-        ]
-        return tuple(matching)
+        matching = sorted(
+            (
+                p
+                for p in self._parents.get(subworkflow_id, [])
+                if version is None or p.pinned_version == version
+            ),
+            key=lambda r: (
+                r.parent_type,
+                r.parent_id,
+                r.node_id,
+                r.pinned_version,
+            ),
+        )
+        return tuple(matching[offset : offset + limit])
 
     def add_parent(self, subworkflow_id: str, parent: ParentReference) -> None:
         """Test helper to inject a parent reference."""

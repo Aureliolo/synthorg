@@ -80,14 +80,26 @@ class ParkedContextRepository(
         """
         ...
 
-    async def get_by_agent(self, agent_id: NotBlankStr) -> tuple[ParkedContext, ...]:
-        """Retrieve all parked contexts for an agent.
+    async def get_by_agent(
+        self,
+        agent_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        """Retrieve a bounded page of parked contexts for an agent.
 
         Args:
             agent_id: The agent identifier.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Parked contexts for the agent, ordered by ``parked_at`` DESC.
+            A page of parked contexts for the agent, ordered by
+            ``parked_at`` DESC then ``id`` ascending (stable secondary
+            key for deterministic paging). Callers that need every
+            parked context drain via
+            :func:`synthorg.persistence._shared.collect_all`.
 
         Raises:
             PersistenceError: If the operation fails.

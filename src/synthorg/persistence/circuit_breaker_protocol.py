@@ -19,7 +19,7 @@ class CircuitBreakerStateRecord(BaseModel):
         opened_at: Monotonic timestamp when opened, or ``None``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     pair_key_a: NotBlankStr = Field(description="First agent ID (sorted)")
     pair_key_b: NotBlankStr = Field(description="Second agent ID (sorted)")
@@ -96,14 +96,27 @@ class CircuitBreakerStateRepository(
         """
         ...
 
-    async def load_all(self) -> tuple[CircuitBreakerStateRecord, ...]:
-        """Load every persisted record in one call (bespoke per ADR-0001 D7).
+    async def load_all(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[CircuitBreakerStateRecord, ...]:
+        """Load a bounded page of records (bespoke per ADR-0001 D7).
 
         Used by the circuit breaker guard to rehydrate every pair's
         state at start; cardinality scales with active agent pairs.
+        The query is bounded per call (no unbounded scan); callers
+        that need the complete set drain via
+        :func:`synthorg.persistence._shared.collect_all`. Rows are in
+        ``(pair_key_a, pair_key_b)`` order so paging is stable.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            All stored records.
+            A page of stored records in deterministic key order.
 
         Raises:
             PersistenceError: If the query fails.

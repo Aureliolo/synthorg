@@ -101,6 +101,33 @@ class MessageRepository(
         """
         ...
 
+    async def get_by_id(
+        self,
+        channel: NotBlankStr,
+        message_id: NotBlankStr,
+    ) -> Message | None:
+        """Fetch a single message by ``(channel, id)``.
+
+        ``messages.id`` is the primary key (globally unique), so the
+        lookup is an indexed point read; ``channel`` is an additional
+        scoping predicate so a caller cannot read a message off a
+        channel it did not address. Replaces the prior
+        ``get_history`` full-channel scan in
+        :meth:`MessageService.get_message`.
+
+        Args:
+            channel: Channel the message must belong to.
+            message_id: The unique message identifier.
+
+        Returns:
+            The matching :class:`Message`, or ``None`` when no message
+            with that id exists on that channel.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
     async def delete(self, message_id: NotBlankStr) -> bool:
         """Delete a message by id (moderation / redaction).
 

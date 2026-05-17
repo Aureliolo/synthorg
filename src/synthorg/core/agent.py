@@ -141,7 +141,7 @@ class SkillSet(BaseModel):
         secondary: Supporting skills.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     primary: tuple[Skill, ...] = Field(
         default=(),
@@ -200,7 +200,7 @@ class ModelConfig(BaseModel):
             Controls prompt profile selection.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider: NotBlankStr = Field(description="LLM provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
@@ -238,7 +238,7 @@ class AgentRetentionRule(BaseModel):
             category.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     category: MemoryCategory = Field(
         description="Memory category this override applies to",
@@ -262,7 +262,7 @@ class MemoryConfig(BaseModel):
             rules during retention enforcement.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: MemoryLevel = Field(
         default=MemoryLevel.SESSION,
@@ -344,7 +344,7 @@ class ToolPermissions(BaseModel):
             resolves defaults from the access level.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     access_level: ToolAccessLevel = Field(
         default=ToolAccessLevel.STANDARD,
@@ -442,7 +442,7 @@ class AgentIdentity(BaseModel):
         status: Current lifecycle status.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: UUID = Field(default_factory=uuid4, description="Unique agent identifier")
     name: NotBlankStr = Field(description="Agent display name")

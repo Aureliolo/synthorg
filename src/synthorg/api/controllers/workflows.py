@@ -30,8 +30,9 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import resource_not_found
 from synthorg.core.enums import WorkflowType
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     WorkflowDefinitionValidationError,
@@ -215,7 +216,7 @@ class WorkflowController(Controller):
         self,
         state: State,
         workflow_id: PathId,
-    ) -> Response[ApiResponse[WorkflowDefinition]]:
+    ) -> ApiResponse[WorkflowDefinition]:
         """Get a workflow definition by ID."""
         definition = await _service(state).get_definition(workflow_id)
         if definition is None:
@@ -223,15 +224,13 @@ class WorkflowController(Controller):
                 WORKFLOW_DEF_NOT_FOUND,
                 definition_id=workflow_id,
             )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Workflow definition not found",
-                ),
-                status_code=404,
+            resource_type = "workflow_definition"
+            raise resource_not_found(
+                resource_type,
+                workflow_id,
+                code=ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND,
             )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](data=definition),
-        )
+        return ApiResponse[WorkflowDefinition](data=definition)
 
     @post(
         guards=[
@@ -400,8 +399,12 @@ class WorkflowController(Controller):
                 WORKFLOW_DEF_NOT_FOUND,
                 definition_id=workflow_id,
             )
-            msg = "Workflow definition not found"
-            raise NotFoundError(msg)
+            resource_type = "workflow_definition"
+            raise resource_not_found(
+                resource_type,
+                workflow_id,
+                code=ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND,
+            )
         # Post-delete confirmation -- emitted only on persistence success.
         logger.info(
             WORKFLOW_DEFINITION_CHANGED,
@@ -480,7 +483,7 @@ class WorkflowController(Controller):
         self,
         state: State,
         workflow_id: PathId,
-    ) -> Response[ApiResponse[WorkflowValidationResult]]:
+    ) -> ApiResponse[WorkflowValidationResult]:
         """Validate a workflow definition for execution readiness."""
         definition = await _service(state).get_definition(workflow_id)
         if definition is None:
@@ -488,19 +491,15 @@ class WorkflowController(Controller):
                 WORKFLOW_DEF_NOT_FOUND,
                 definition_id=workflow_id,
             )
-            return Response(
-                content=ApiResponse[WorkflowValidationResult](
-                    error="Workflow definition not found",
-                ),
-                status_code=404,
+            resource_type = "workflow_definition"
+            raise resource_not_found(
+                resource_type,
+                workflow_id,
+                code=ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND,
             )
 
         result = run_workflow_validation(definition)
-        return Response(
-            content=ApiResponse[WorkflowValidationResult](
-                data=result,
-            ),
-        )
+        return ApiResponse[WorkflowValidationResult](data=result)
 
     @post(
         "/{workflow_id:str}/export",
@@ -514,7 +513,7 @@ class WorkflowController(Controller):
         self,
         state: State,
         workflow_id: PathId,
-    ) -> Response[str] | Response[ApiResponse[None]]:
+    ) -> Response[str]:
         """Export a workflow definition as YAML."""
         definition = await _service(state).get_definition(workflow_id)
         if definition is None:
@@ -522,11 +521,11 @@ class WorkflowController(Controller):
                 WORKFLOW_DEF_NOT_FOUND,
                 definition_id=workflow_id,
             )
-            return Response(
-                content=ApiResponse[None](
-                    error="Workflow definition not found",
-                ),
-                status_code=404,
+            resource_type = "workflow_definition"
+            raise resource_not_found(
+                resource_type,
+                workflow_id,
+                code=ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND,
             )
 
         try:

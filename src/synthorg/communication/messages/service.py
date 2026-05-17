@@ -9,6 +9,7 @@ forwards the call and emits an audit-grade
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMMUNICATION_MESSAGE_DELETED,
@@ -21,7 +22,6 @@ if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.channel import Channel
     from synthorg.communication.message import Message
-    from synthorg.core.types import NotBlankStr
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
@@ -83,12 +83,16 @@ class MessageService:
         channel: NotBlankStr,
         message_id: str,
     ) -> Message | None:
-        """Return one message by ``(channel, id)`` or ``None``."""
-        history = await self._persistence.messages.get_history(channel)
-        for msg in history:
-            if str(msg.id) == message_id:
-                return msg
-        return None
+        """Return one message by ``(channel, id)`` or ``None``.
+
+        Single indexed point read on the ``messages`` primary key
+        (``id``), scoped to ``channel``. Replaces the prior
+        ``get_history`` full-channel scan that was O(channel size).
+        """
+        return await self._persistence.messages.get_by_id(
+            channel,
+            NotBlankStr(message_id),
+        )
 
     async def send_message(
         self,

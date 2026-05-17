@@ -42,7 +42,7 @@ logger = get_logger(__name__)
 class InstallationResult(BaseModel):
     """Outcome of a successful MCP catalog install."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     catalog_entry_id: NotBlankStr
     server_name: NotBlankStr

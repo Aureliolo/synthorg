@@ -29,7 +29,7 @@ class AnalyticsOverview(BaseModel):
         collected_at: When the overview was assembled.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     avg_quality_score: float = Field(ge=0.0, le=10.0)
     avg_success_rate: float = Field(ge=0.0, le=1.0)
@@ -53,7 +53,7 @@ class MetricTrend(BaseModel):
         window_days: Observation window length.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     current_value: float
@@ -64,7 +64,7 @@ class MetricTrend(BaseModel):
 class AnalyticsTrends(BaseModel):
     """Batch of metric trends for a given window."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     metrics: tuple[MetricTrend, ...] = ()
     window_days: int = Field(ge=1)
@@ -82,7 +82,7 @@ class AnalyticsForecast(BaseModel):
         projected_spend: Linear projection of spend across the horizon.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     horizon_days: int = Field(ge=1)
     days_until_budget_exhausted: int | None = None
@@ -100,7 +100,7 @@ class MetricsSnapshot(BaseModel):
     names would silently collide downstream.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     metrics: dict[NotBlankStr, float] = Field(default_factory=dict)
     captured_at: AwareDatetime = Field(
@@ -115,7 +115,7 @@ class MetricsHistoryPoint(BaseModel):
     keys for the same reason as :class:`MetricsSnapshot.metrics`.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     timestamp: AwareDatetime
     values: dict[NotBlankStr, float] = Field(default_factory=dict)
@@ -124,7 +124,7 @@ class MetricsHistoryPoint(BaseModel):
 class MetricsHistory(BaseModel):
     """Historical samples for a metric-name set."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     metric_names: tuple[NotBlankStr, ...] = ()
     points: tuple[MetricsHistoryPoint, ...] = ()

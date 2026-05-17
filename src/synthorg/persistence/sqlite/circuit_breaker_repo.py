@@ -185,47 +185,20 @@ INSERT OR REPLACE INTO circuit_breaker_state (
         logger.debug(PERSISTENCE_CIRCUIT_BREAKER_LOADED, count=len(results))
         return tuple(results)
 
-    async def load_all(self) -> tuple[CircuitBreakerStateRecord, ...]:
-        """Load all persisted circuit breaker state records."""
-        try:
-            cursor = await self._db.execute(
-                "SELECT pair_key_a, pair_key_b, bounce_count, "
-                "trip_count, opened_at FROM circuit_breaker_state",
-            )
-            rows = await cursor.fetchall()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to load circuit breaker state"
-            logger.warning(
-                PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+    async def load_all(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[CircuitBreakerStateRecord, ...]:
+        """Load a bounded page of records in ``(pair_key_a, pair_key_b)``.
 
-        results: list[CircuitBreakerStateRecord] = []
-        for row in rows:
-            try:
-                results.append(
-                    CircuitBreakerStateRecord.model_validate(dict(row)),
-                )
-            except ValidationError as exc:
-                msg = (
-                    f"Failed to deserialize circuit breaker state row "
-                    f"({row['pair_key_a'] if row else 'unknown'})"
-                )
-                logger.warning(
-                    PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
-                    pair_key_a=row["pair_key_a"] if row else "unknown",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                    note="deserialization failed",
-                )
-                raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_CIRCUIT_BREAKER_LOADED,
-            count=len(results),
-        )
-        return tuple(results)
+        Delegates to :meth:`list_items` (same deterministic key order
+        and pagination contract); kept as a distinct ADR-0001 D7
+        method because boot-time callers drain it via
+        :func:`synthorg.persistence._shared.collect_all`.
+        """
+        return await self.list_items(limit=limit, offset=offset)
 
     async def delete(self, entity_id: CircuitBreakerPairKey) -> bool:
         """Delete a circuit breaker state record by composite key."""

@@ -161,15 +161,32 @@ INSERT OR REPLACE INTO parked_contexts (
 
         return self._row_to_model(dict(row))
 
-    async def get_by_agent(self, agent_id: str) -> tuple[ParkedContext, ...]:
-        """Retrieve all parked contexts for an agent."""
+    async def get_by_agent(
+        self,
+        agent_id: str,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        """Bounded page of parked contexts for an agent, newest first.
+
+        ``id`` is the stable secondary sort so rows sharing a
+        ``parked_at`` page deterministically.
+        """
+        limit = validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
+            agent_id=agent_id,
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT id, execution_id, agent_id, task_id, approval_id, "
                 "parked_at, context_json, metadata "
                 "FROM parked_contexts WHERE agent_id = ? "
-                "ORDER BY parked_at DESC",
-                (agent_id,),
+                "ORDER BY parked_at DESC, id "
+                "LIMIT ? OFFSET ?",
+                (agent_id, limit, offset),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

@@ -471,8 +471,19 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
     async def search(
         self,
         query: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[SubworkflowSummary, ...]:
-        """Return summaries matching a name or description substring."""
+        """Return a bounded page of summaries matching a substring.
+
+        Summaries are ``(subworkflow_id, latest_version)``-ordered so
+        a cursor walk is stable; callers that need every match drain
+        via :func:`synthorg.persistence._shared.collect_all`.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED, query=query
+        )
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         try:
@@ -514,7 +525,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             raise QueryError(msg) from exc
 
-        return self._build_summaries_from_rows(full_rows)
+        summaries = sorted(
+            self._build_summaries_from_rows(full_rows),
+            key=lambda s: s.subworkflow_id,
+        )
+        return tuple(summaries[offset : offset + limit])
 
     async def delete(
         self,
@@ -609,13 +624,28 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         self,
         subworkflow_id: NotBlankStr,
         version: NotBlankStr | None = None,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[ParentReference, ...]:
-        """Return workflows referencing a subworkflow.
+        """Return a bounded page of workflows referencing a subworkflow.
 
         Scans both ``workflow_definitions.nodes`` and
         ``subworkflows.nodes`` so that nested subworkflow references
         (a subworkflow pinning another subworkflow) are discovered.
+        References page in
+        ``(parent_type, parent_id, node_id, pinned_version)`` order so
+        a cursor walk is stable. Referential-integrity callers (the
+        delete-if-unreferenced path) MUST drain every page via
+        :func:`synthorg.persistence._shared.collect_all`; a truncated
+        parent set would let a still-referenced version be deleted.
         """
+        limit = validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+            subworkflow_id=subworkflow_id,
+        )
         references: list[ParentReference] = []
 
         # Scan workflow_definitions table.
@@ -647,7 +677,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             references=references,
         )
 
-        return tuple(references)
+        references.sort(
+            key=lambda r: (
+                r.parent_type,
+                r.parent_id,
+                r.node_id,
+                r.pinned_version,
+            ),
+        )
+        return tuple(references[offset : offset + limit])
 
     async def _fetch_parent_rows(
         self,

@@ -67,14 +67,27 @@ class AgentStateRepository(
         """
         ...
 
-    async def get_active(self) -> tuple[AgentRuntimeState, ...]:
-        """Retrieve all non-idle agent states.
+    async def get_active(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[AgentRuntimeState, ...]:
+        """Retrieve a bounded page of non-idle agent states.
 
         Returns states where ``status != 'idle'``, ordered by
-        ``last_activity_at`` descending (most recent first).
+        ``last_activity_at`` descending then ``agent_id`` ascending
+        (the stable secondary key makes paging deterministic when
+        activity timestamps tie). Callers that need every active
+        state drain via
+        :func:`synthorg.persistence._shared.collect_all`.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Active agent states as a tuple.
+            A page of active agent states.
 
         Raises:
             PersistenceError: If the operation fails.

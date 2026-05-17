@@ -15,6 +15,7 @@ from synthorg.observability.events.delegation import (
     DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
     DELEGATION_LOOP_CIRCUIT_RESET,
 )
+from synthorg.persistence._shared import collect_all
 from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
     CircuitBreakerStateRepository,
@@ -304,8 +305,17 @@ class DelegationCircuitBreaker:
         """
         if self._state_repo is None:
             return
+        repo = self._state_repo
         try:
-            records = await self._state_repo.load_all()
+            # Drain every page: boot-time rehydration needs the
+            # complete breaker set, but each query stays bounded so a
+            # large pair count cannot trigger one unbounded scan.
+            records = await collect_all(
+                lambda limit, offset: repo.load_all(
+                    limit=limit,
+                    offset=offset,
+                ),
+            )
         except MemoryError, RecursionError:
             raise
         except Exception:

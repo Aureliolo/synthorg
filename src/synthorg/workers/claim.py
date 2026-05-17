@@ -87,7 +87,7 @@ class TaskClaim(BaseModel):
             duplicate observation back to ack-and-skip.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Task identifier")
     project_id: NotBlankStr | None = Field(

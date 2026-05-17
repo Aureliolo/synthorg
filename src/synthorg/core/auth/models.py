@@ -45,7 +45,7 @@ class User(BaseModel):
         updated_at: Last modification timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     username: NotBlankStr
@@ -83,7 +83,7 @@ class ApiKey(BaseModel):
         revoked: Whether the key has been revoked.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     key_hash: NotBlankStr = Field(repr=False)
@@ -115,7 +115,7 @@ class AuthenticatedUser(BaseModel):
             waiting for the access token to expire.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     user_id: NotBlankStr
     username: NotBlankStr

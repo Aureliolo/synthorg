@@ -206,7 +206,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "tasks.transition": (100, 60),
     "tasks.update": (100, 60),
     # training
+    "training.create_plan": (30, 3600),
     "training.execute": (20, 3600),
+    "training.update_overrides": (60, 3600),
     # users
     "users.create": (5, 60),
     "users.delete": (3, 60),

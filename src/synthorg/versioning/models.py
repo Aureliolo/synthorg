@@ -48,7 +48,7 @@ class VersionSnapshot[T: BaseModel](BaseModel):
         saved_at: Timezone-aware timestamp when the snapshot was captured.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     entity_id: NotBlankStr = Field(description="String primary key of the entity")
     version: int = Field(ge=1, description="Monotonic version counter (1-indexed)")

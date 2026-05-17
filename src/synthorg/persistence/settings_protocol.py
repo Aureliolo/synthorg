@@ -19,7 +19,7 @@ class SettingRow(BaseModel):
         updated_at: ISO 8601 timestamp of the last update.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     namespace: NotBlankStr = Field(description="Setting namespace")
     key: NotBlankStr = Field(description="Setting key")

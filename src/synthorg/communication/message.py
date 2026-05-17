@@ -67,6 +67,7 @@ class DataPart(BaseModel):
         frozen=True,
         allow_inf_nan=False,
         arbitrary_types_allowed=True,
+        extra="forbid",
     )
 
     type: Literal["data"] = Field(

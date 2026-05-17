@@ -181,6 +181,20 @@ FINE_TUNE_MIN_DOCS_REQUIRED: Final[int] = 10
 FINE_TUNE_MIN_DOCS_RECOMMENDED: Final[int] = 50
 """Soft minimum: corpora below this size emit a preflight warn band."""
 
+FINE_TUNE_PREFLIGHT_MAX_DEPTH: Final[int] = 8
+"""Max directory recursion depth for the preflight document scan.
+
+Bounds the ``_check_documents`` walk so a pathologically deep
+(symlink-loop / generated) source tree cannot turn the preflight
+endpoint into an unbounded filesystem traversal."""
+
+FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S: Final[float] = 5.0
+"""Wall-clock deadline (seconds) for the preflight document scan.
+
+Independent of the depth cap: a wide but shallow tree on a slow /
+stale-handle NFS mount is bounded by time even when depth is fine.
+On either bound the check returns a ``warn`` band, never a hang."""
+
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
@@ -231,5 +245,43 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_preflight_max_depth",
+        type=SettingType.INTEGER,
+        default=str(FINE_TUNE_PREFLIGHT_MAX_DEPTH),
+        description=(
+            "Max directory recursion depth for the preflight document"
+            " scan. Bounds the walk so a pathologically deep source"
+            " tree cannot make the preflight endpoint traverse the"
+            " filesystem unbounded; exceeding it returns a warn band."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=64,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_preflight_walk_timeout_s",
+        type=SettingType.FLOAT,
+        default=str(FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S),
+        description=(
+            "Wall-clock deadline (seconds) for the preflight document"
+            " scan. A wide but shallow tree on a slow / stale-handle"
+            " mount is bounded by time even when depth is fine;"
+            " exceeding it returns a warn band rather than hanging."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=60.0,
     )
 )

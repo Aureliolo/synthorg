@@ -66,3 +66,44 @@ class TestMessageServiceDelete:
         repo.delete.assert_awaited_once_with("missing")
         audit = [e for e in events if e.get("event") == COMMUNICATION_MESSAGE_DELETED]
         assert audit == []
+
+
+class TestMessageServiceGetMessage:
+    """``get_message`` is a single indexed point read, not a scan."""
+
+    async def test_delegates_to_get_by_id_and_never_scans_history(
+        self,
+    ) -> None:
+        sentinel = object()
+        repo = AsyncMock()
+        repo.get_by_id = AsyncMock(return_value=sentinel)
+        repo.get_history = AsyncMock()
+        persistence = SimpleNamespace(messages=repo)
+        service = MessageService(
+            bus=AsyncMock(spec=MessageBus),
+            persistence=persistence,
+        )
+
+        result = await service.get_message(
+            channel=NotBlankStr("chan1"),
+            message_id="msg-9",
+        )
+
+        assert result is sentinel
+        repo.get_by_id.assert_awaited_once_with("chan1", "msg-9")
+        repo.get_history.assert_not_awaited()
+
+    async def test_returns_none_when_repo_returns_none(self) -> None:
+        repo = AsyncMock()
+        repo.get_by_id = AsyncMock(return_value=None)
+        service = MessageService(
+            bus=AsyncMock(spec=MessageBus),
+            persistence=SimpleNamespace(messages=repo),
+        )
+
+        result = await service.get_message(
+            channel=NotBlankStr("chan1"),
+            message_id="nope",
+        )
+
+        assert result is None

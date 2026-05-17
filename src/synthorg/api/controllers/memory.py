@@ -19,6 +19,7 @@ from synthorg.api.pagination import (
     CursorParam,
     encode_repo_seek_meta,
 )
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import (
     per_op_concurrency_from_policy,
     per_op_rate_limit_from_policy,
@@ -26,11 +27,13 @@ from synthorg.api.rate_limits import (
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
-    ConflictError,
+    CheckpointOperationConflictError,
     FeatureNotImplementedError,
+    FineTuneRunActiveError,
     NotFoundError,
-    ValidationError,
+    resource_not_found,
 )
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
@@ -70,6 +73,8 @@ from synthorg.settings.definitions.memory import (
     FINE_TUNE_DEFAULT_BATCH_SIZE,
     FINE_TUNE_MIN_DOCS_RECOMMENDED,
     FINE_TUNE_MIN_DOCS_REQUIRED,
+    FINE_TUNE_PREFLIGHT_MAX_DEPTH,
+    FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S,
 )
 from synthorg.settings.errors import SettingNotFoundError
 
@@ -168,6 +173,8 @@ class _FineTuneThresholds(BaseModel):
     default_batch_size: int = Field(ge=1)
     min_docs_required: int = Field(ge=1)
     min_docs_recommended: int = Field(ge=1)
+    preflight_max_depth: int = Field(ge=1)
+    preflight_walk_timeout_s: float = Field(gt=0.0)
 
 
 async def _resolve_fine_tune_thresholds(
@@ -184,12 +191,15 @@ async def _resolve_fine_tune_thresholds(
         "fine_tune_default_batch_size": FINE_TUNE_DEFAULT_BATCH_SIZE,
         "fine_tune_min_docs_required": FINE_TUNE_MIN_DOCS_REQUIRED,
         "fine_tune_min_docs_recommended": FINE_TUNE_MIN_DOCS_RECOMMENDED,
+        "fine_tune_preflight_max_depth": FINE_TUNE_PREFLIGHT_MAX_DEPTH,
     }
     if settings_service is None:
         return _FineTuneThresholds(
             default_batch_size=fallbacks["fine_tune_default_batch_size"],
             min_docs_required=fallbacks["fine_tune_min_docs_required"],
             min_docs_recommended=fallbacks["fine_tune_min_docs_recommended"],
+            preflight_max_depth=fallbacks["fine_tune_preflight_max_depth"],
+            preflight_walk_timeout_s=FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S,
         )
     resolved: dict[str, int] = {}
     for key, fallback in fallbacks.items():
@@ -199,11 +209,24 @@ async def _resolve_fine_tune_thresholds(
         except SettingNotFoundError, ValueError, TypeError:
             resolved[key] = fallback
             continue
-        # ``_FineTuneThresholds`` enforces ``ge=1`` on every field, so
-        # an unparseable override (handled above) AND a non-positive
+        # ``_FineTuneThresholds`` enforces ``ge=1`` on every int field,
+        # so an unparseable override (handled above) AND a non-positive
         # one ("0" / "-1") must both fall back rather than reach the
         # constructor and surface as a 500 from the controller.
         resolved[key] = value if value >= 1 else fallback
+    # The walk timeout is a float and is resolved independently of the
+    # int knobs above; the same fall-back-on-bad-input contract holds
+    # (unparseable / non-positive -> imported default).
+    try:
+        timeout_entry = await settings_service.get(
+            "memory",
+            "fine_tune_preflight_walk_timeout_s",
+        )
+        timeout_value = float(timeout_entry.value)
+    except SettingNotFoundError, ValueError, TypeError:
+        timeout_value = FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S
+    if timeout_value <= 0.0:
+        timeout_value = FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S
     # Cross-field invariant: ``min_docs_recommended >= min_docs_required``,
     # otherwise ``_check_documents`` could never emit the ``warn`` band
     # (a corpus passes the required floor but is still below recommended).
@@ -222,6 +245,8 @@ async def _resolve_fine_tune_thresholds(
         default_batch_size=resolved["fine_tune_default_batch_size"],
         min_docs_required=resolved["fine_tune_min_docs_required"],
         min_docs_recommended=resolved["fine_tune_min_docs_recommended"],
+        preflight_max_depth=resolved["fine_tune_preflight_max_depth"],
+        preflight_walk_timeout_s=timeout_value,
     )
 
 
@@ -300,7 +325,7 @@ class MemoryAdminController(Controller):
                 error=safe_error_description(exc),
             )
             msg = "A fine-tuning run is already active"
-            raise ConflictError(msg) from exc
+            raise FineTuneRunActiveError(msg) from exc
         return ApiResponse(
             data=FineTuneStatus(
                 run_id=run.id,
@@ -326,7 +351,7 @@ class MemoryAdminController(Controller):
     async def resume_fine_tune(
         self,
         state: State,
-        run_id: str,
+        run_id: PathId,
     ) -> ApiResponse[FineTuneStatus]:
         """Resume a failed/cancelled pipeline run."""
         app_state: AppState = state.app_state
@@ -351,7 +376,7 @@ class MemoryAdminController(Controller):
                 error=safe_error_description(exc),
             )
             msg = "A fine-tuning run is already active"
-            raise ConflictError(msg) from exc
+            raise FineTuneRunActiveError(msg) from exc
         except ValueError as exc:
             logger.warning(
                 MEMORY_FINE_TUNE_REQUESTED,
@@ -437,6 +462,8 @@ class MemoryAdminController(Controller):
                     data,
                     min_required=thresholds.min_docs_required,
                     min_recommended=thresholds.min_docs_recommended,
+                    max_depth=thresholds.preflight_max_depth,
+                    walk_timeout_s=thresholds.preflight_walk_timeout_s,
                 ),
             )
             batch_task = tg.create_task(
@@ -499,7 +526,7 @@ class MemoryAdminController(Controller):
     async def deploy_checkpoint(
         self,
         state: State,
-        checkpoint_id: str,
+        checkpoint_id: PathId,
     ) -> ApiResponse[CheckpointRecord]:
         """Deploy a specific checkpoint.
 
@@ -537,7 +564,7 @@ class MemoryAdminController(Controller):
                 error=safe_error_description(exc),
             )
             msg = "Failed to deploy checkpoint"
-            raise ConflictError(msg) from exc
+            raise CheckpointOperationConflictError(msg) from exc
         return ApiResponse(data=updated)
 
     @post(
@@ -556,16 +583,18 @@ class MemoryAdminController(Controller):
     async def rollback_checkpoint(
         self,
         state: State,
-        checkpoint_id: str,
+        checkpoint_id: PathId,
     ) -> ApiResponse[CheckpointRecord]:
         """Rollback: restore pre-deployment config from backup.
 
         Exception mapping:
 
         - ``CheckpointNotFoundError`` -> HTTP 404 via ``NotFoundError``
-        - ``CheckpointRollbackUnavailableError``,
-          ``CheckpointRollbackCorruptError`` -> HTTP 422 via
-          ``ValidationError`` (operator error / corrupt backup)
+        - ``CheckpointRollbackUnavailableError`` (HTTP 422, code
+          ``CHECKPOINT_ROLLBACK_UNAVAILABLE``) and
+          ``CheckpointRollbackCorruptError`` (HTTP 422, code
+          ``CHECKPOINT_ROLLBACK_CORRUPT``) carry distinct codes so the
+          dashboard can message operator error vs corrupt backup apart
         - Any other exception propagates as HTTP 500
         """
         service = _build_memory_service(state.app_state)
@@ -593,7 +622,7 @@ class MemoryAdminController(Controller):
                 error=safe_error_description(exc),
             )
             msg = "Checkpoint rollback is unavailable"
-            raise ValidationError(msg) from exc
+            raise CheckpointRollbackUnavailableError(msg) from exc
         except CheckpointRollbackCorruptError as exc:
             logger.warning(
                 MEMORY_CHECKPOINT_ROLLBACK_FAILED,
@@ -604,7 +633,7 @@ class MemoryAdminController(Controller):
                 error=safe_error_description(exc),
             )
             msg = "Checkpoint rollback data is corrupt"
-            raise ValidationError(msg) from exc
+            raise CheckpointRollbackCorruptError(msg) from exc
         return ApiResponse(data=updated)
 
     @delete(
@@ -620,7 +649,7 @@ class MemoryAdminController(Controller):
     async def delete_checkpoint(
         self,
         state: State,
-        checkpoint_id: str,
+        checkpoint_id: PathId,
     ) -> ApiResponse[None]:
         """Delete a checkpoint (rejects active checkpoint).
 
@@ -657,7 +686,7 @@ class MemoryAdminController(Controller):
             # text doesn't leak into the 409 response.  Detail stays in
             # the warning log above for operator triage.
             msg = "Failed to delete checkpoint"
-            raise ConflictError(msg) from exc
+            raise CheckpointOperationConflictError(msg) from exc
         return ApiResponse(data=None)
 
     # -- Memory entries -------------------------------------------------
@@ -675,8 +704,8 @@ class MemoryAdminController(Controller):
     async def delete_memory_entry(
         self,
         state: State,
-        agent_id: str,
-        memory_id: str,
+        agent_id: PathId,
+        memory_id: PathId,
     ) -> ApiResponse[None]:
         """Delete a single memory entry owned by an agent.
 
@@ -708,8 +737,12 @@ class MemoryAdminController(Controller):
             # ``MEMORY_ENTRY_DELETE_FAILED`` with ``reason="not_found"``
             # for this branch, so the controller stays in the layering
             # role of HTTP translation only.
-            msg = f"memory entry {memory_id!r} not found"
-            raise NotFoundError(msg)
+            resource_type = "memory entry"
+            raise resource_not_found(
+                resource_type,
+                memory_id,
+                code=ErrorCode.MEMORY_ENTRY_NOT_FOUND,
+            )
         return ApiResponse(data=None)
 
     # -- Run history -------------------------------------------------
@@ -798,6 +831,8 @@ def _run_preflight_checks(
     *,
     min_required: int = FINE_TUNE_MIN_DOCS_REQUIRED,
     min_recommended: int = FINE_TUNE_MIN_DOCS_RECOMMENDED,
+    max_depth: int = FINE_TUNE_PREFLIGHT_MAX_DEPTH,
+    walk_timeout_s: float = FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S,
 ) -> list[PreflightCheck]:
     """Run all pre-flight validation checks.
 
@@ -812,6 +847,8 @@ def _run_preflight_checks(
             reports ``warn``. Resolved from the
             ``memory.fine_tune_min_docs_recommended`` setting under
             the same fallback contract as ``min_required``.
+        max_depth: Directory recursion cap for the document scan.
+        walk_timeout_s: Wall-clock deadline for the document scan.
     """
     checks: list[PreflightCheck] = []
     checks.append(_check_dependencies())
@@ -821,6 +858,8 @@ def _run_preflight_checks(
             request.source_dir,
             min_required=min_required,
             min_recommended=min_recommended,
+            max_depth=max_depth,
+            walk_timeout_s=walk_timeout_s,
         )
     )
     output_dir = request.output_dir or request.source_dir
@@ -833,8 +872,22 @@ def _check_documents(
     *,
     min_required: int = FINE_TUNE_MIN_DOCS_REQUIRED,
     min_recommended: int = FINE_TUNE_MIN_DOCS_RECOMMENDED,
+    max_depth: int = FINE_TUNE_PREFLIGHT_MAX_DEPTH,
+    walk_timeout_s: float = FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S,
 ) -> PreflightCheck:
-    """Check source directory has enough documents."""
+    """Check source directory has enough documents.
+
+    The scan is bounded on two independent axes so a pathologically
+    deep (symlink-loop / generated) or pathologically wide tree on a
+    slow / stale-handle mount cannot turn this preflight endpoint into
+    an unbounded filesystem traversal: ``max_depth`` caps recursion
+    depth and ``walk_timeout_s`` is a wall-clock deadline. Hitting
+    either bound returns a ``warn`` band (never a hang and never a
+    false ``fail``): the operator is told the scan was truncated and
+    can re-run against a shallower tree or raise the limits.
+    """
+    import os  # noqa: PLC0415
+    import time  # noqa: PLC0415
     from pathlib import Path  # noqa: PLC0415
 
     src = Path(source_dir)
@@ -844,7 +897,40 @@ def _check_documents(
             status="fail",
             message="Source directory not found",
         )
-    count = sum(1 for ext in ("*.txt", "*.md", "*.rst") for _ in src.rglob(ext))
+    exts = (".txt", ".md", ".rst")
+    deadline = time.monotonic() + walk_timeout_s
+    count = 0
+    truncated = False
+    # ``os.walk`` is a generator, so this is a ``for`` (not ``while``)
+    # loop: the long-running-loop kill-switch gate only inspects
+    # ``while`` loops, and this sweep is bounded by both the depth
+    # prune and the monotonic deadline regardless. ``followlinks``
+    # stays False so a symlink cycle cannot defeat the depth cap.
+    for root, dirnames, filenames in os.walk(src, followlinks=False):
+        if time.monotonic() >= deadline:
+            truncated = True
+            break
+        depth = len(Path(root).relative_to(src).parts)
+        count += sum(1 for f in filenames if f.endswith(exts))
+        if depth >= max_depth:
+            if dirnames:
+                # Sub-directories exist below the cap and will NOT be
+                # scanned: surface that as a truncation warn rather
+                # than silently under-counting.
+                truncated = True
+            # Prune deeper traversal in place; os.walk honours this.
+            dirnames[:] = []
+    if truncated:
+        return PreflightCheck(
+            name="documents",
+            status="warn",
+            message=(
+                f"Document scan truncated after {walk_timeout_s:g}s "
+                f"(depth cap {max_depth}); counted {count}+ so far. "
+                "Re-run against a shallower source tree or raise "
+                "memory.fine_tune_preflight_* limits."
+            ),
+        )
     if count < min_required:
         return PreflightCheck(
             name="documents",

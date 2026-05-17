@@ -41,7 +41,7 @@ class SubConstraintViolation(BaseModel):
             action is unconditionally denied.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     constraint: NotBlankStr
     reason: NotBlankStr

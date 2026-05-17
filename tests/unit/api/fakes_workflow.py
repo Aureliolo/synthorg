@@ -14,6 +14,7 @@ from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
@@ -356,14 +357,21 @@ class FakeSubworkflowRepository:
     async def search(
         self,
         query: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[SubworkflowSummary, ...]:
         q = query.lower()
         summaries = await self.list_summaries()
-        return tuple(
-            s
-            for s in summaries
-            if q in s.name.lower() or q in (s.description or "").lower()
+        matched = sorted(
+            (
+                s
+                for s in summaries
+                if q in s.name.lower() or q in (s.description or "").lower()
+            ),
+            key=lambda s: s.subworkflow_id,
         )
+        return tuple(matched[offset : offset + limit])
 
     async def delete(
         self,
@@ -389,6 +397,9 @@ class FakeSubworkflowRepository:
         self,
         subworkflow_id: NotBlankStr,
         version: NotBlankStr | None = None,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[ParentReference, ...]:
         if self._definition_repo is None:
             return ()
@@ -416,4 +427,12 @@ class FakeSubworkflowRepository:
                         parent_type="workflow_definition",
                     ),
                 )
-        return tuple(references)
+        references.sort(
+            key=lambda r: (
+                r.parent_type,
+                r.parent_id,
+                r.node_id,
+                r.pinned_version,
+            ),
+        )
+        return tuple(references[offset : offset + limit])

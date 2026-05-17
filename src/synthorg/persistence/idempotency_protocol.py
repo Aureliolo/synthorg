@@ -53,7 +53,7 @@ class IdempotencyClaim(BaseModel):
             ``COMPLETED`` / ``FAILED``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     outcome: IdempotencyOutcome
     cached_response: str | None = Field(default=None)
@@ -103,7 +103,7 @@ class IdempotencyRecord(BaseModel):
         expires_at: When the row becomes eligible for cleanup.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     scope: NotBlankStr
     key: NotBlankStr

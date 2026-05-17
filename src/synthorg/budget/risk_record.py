@@ -29,7 +29,7 @@ class RiskRecord(BaseModel):
         timestamp: Timezone-aware timestamp of the action.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     task_id: NotBlankStr = Field(description="Task identifier")

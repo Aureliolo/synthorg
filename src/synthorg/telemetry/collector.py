@@ -103,8 +103,11 @@ sees an empty / truncated string. Retries inside the same
 
 
 _PEER_READ_RETRY_DELAY_SECONDS: float = 0.005
-"""Sleep between peer-read retries (5 ms). Short enough to converge
-within a typical write window, long enough to yield CPU to the peer."""
+"""Base sleep between peer-read retries, doubled each attempt
+(5 / 10 / 20 ms for the 3-attempt budget). Exponential rather than a
+flat 5 ms so a slow NFS / stale-handle write window is waited out
+without re-stat'ing the handle every 5 ms, while the first retry
+still converges fast on the common local-disk case."""
 
 
 _TEMP_ROOT: str | None
@@ -1085,8 +1088,9 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
     Defends against the window where a peer has just won the
     ``O_CREAT|O_EXCL`` race but has not yet finished ``write()``
     (the file exists but is empty or truncated). Retries up to
-    :data:`_PEER_READ_RETRY_ATTEMPTS` times with
-    :data:`_PEER_READ_RETRY_DELAY_SECONDS` between attempts.
+    :data:`_PEER_READ_RETRY_ATTEMPTS` times with an exponential
+    backoff of :data:`_PEER_READ_RETRY_DELAY_SECONDS` doubled per
+    attempt (5 / 10 / 20 ms) between attempts.
 
     Returns the peer's UUID on success, ``None`` if all attempts
     return empty / corrupt / unreadable. Distinguishes the failure
@@ -1133,15 +1137,17 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
             return None
 
         if not stored:
-            # Peer is mid-write. Sleep briefly and retry.
-            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS)
+            # Peer is mid-write. Exponential backoff (5/10/20 ms) so a
+            # slow NFS write window is waited out without hammering the
+            # handle every 5 ms.
+            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS * (2**attempt))
             continue
         try:
             uuid.UUID(stored)
         except ValueError:
-            # Peer wrote partial UUID. Sleep briefly and retry; the
-            # peer may finish before our next attempt.
-            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS)
+            # Peer wrote partial UUID. Exponential backoff (5/10/20 ms);
+            # the peer may finish before the next, longer wait.
+            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS * (2**attempt))
             continue
         return stored
 

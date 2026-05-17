@@ -401,8 +401,19 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
     async def search(
         self,
         query: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[SubworkflowSummary, ...]:
-        """Search subworkflows by name or description substring."""
+        """Return a bounded page of summaries matching a substring.
+
+        Summaries page in ``subworkflow_id`` order so a cursor walk is
+        stable; callers needing every match drain via
+        :func:`synthorg.persistence._shared.collect_all`.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED, query=query
+        )
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         try:
@@ -426,7 +437,11 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             )
             raise QueryError(msg) from exc
 
-        return self._build_summaries_from_rows(rows)
+        summaries = sorted(
+            self._build_summaries_from_rows(rows),
+            key=lambda s: s.subworkflow_id,
+        )
+        return tuple(summaries[offset : offset + limit])
 
     async def delete(
         self,
@@ -513,18 +528,43 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         self,
         subworkflow_id: NotBlankStr,
         version: NotBlankStr | None = None,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[ParentReference, ...]:
-        """Return workflows referencing a subworkflow.
+        """Return a bounded page of workflows referencing a subworkflow.
 
         Scans both ``workflow_definitions`` and ``subworkflows`` tables.
+        References page in
+        ``(parent_type, parent_id, node_id, pinned_version)`` order so
+        a cursor walk is stable. Referential-integrity callers (the
+        delete-if-unreferenced path) MUST drain every page via
+        :func:`synthorg.persistence._shared.collect_all`; a truncated
+        parent set would let a still-referenced version be deleted.
         """
+        limit = validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+            subworkflow_id=subworkflow_id,
+        )
         try:
             async with self._pool.connection() as conn:
-                return await self._find_parents_with_conn(
+                refs = await self._find_parents_with_conn(
                     conn,
                     subworkflow_id,
                     version,
                 )
+                ordered = sorted(
+                    refs,
+                    key=lambda r: (
+                        r.parent_type,
+                        r.parent_id,
+                        r.node_id,
+                        r.pinned_version,
+                    ),
+                )
+                return tuple(ordered[offset : offset + limit])
         except psycopg.Error as exc:
             msg = f"Failed to find parents for subworkflow {subworkflow_id!r}"
             logger.warning(

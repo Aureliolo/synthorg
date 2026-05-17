@@ -23,7 +23,11 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -97,29 +101,38 @@ class CheckpointNotFoundError(NotFoundError):
     default_message: ClassVar[str] = "Checkpoint not found"
 
 
-class CheckpointRollbackUnavailableError(ConflictError):
+class CheckpointRollbackUnavailableError(ValidationError):
     """Raised when a rollback is requested but no backup config exists.
 
-    Inherits :class:`ConflictError` so ``EXCEPTION_HANDLERS`` emits a
-    409 envelope: the checkpoint exists, but its rollback prerequisite
-    (a stored backup config) does not, so the operation cannot proceed
-    in the current state.  The prior bare ``DomainError`` base
-    misclassified this as INTERNAL/500.
+    Inherits :class:`ValidationError` so ``EXCEPTION_HANDLERS`` emits a
+    422 envelope with the distinct ``CHECKPOINT_ROLLBACK_UNAVAILABLE``
+    code: the checkpoint exists, but its rollback prerequisite (a
+    stored backup config) does not, so the request cannot proceed.
+    422 (operator/target error) reflects "rollback target invalid"
+    better than a generic 409 conflict, and the distinct code lets the
+    dashboard message it precisely instead of a blanket retry button.
     """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: no backup exists
-    status_code: ClassVar[int] = 409
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.CHECKPOINT_ROLLBACK_UNAVAILABLE
     default_message: ClassVar[str] = "No backup config available for this checkpoint"
 
 
-class CheckpointRollbackCorruptError(DomainError):
-    """Raised when the stored backup config fails JSON parsing."""
+class CheckpointRollbackCorruptError(ValidationError):
+    """Raised when the stored backup config fails JSON parsing.
+
+    Inherits :class:`ValidationError` (422) with the distinct
+    ``CHECKPOINT_ROLLBACK_CORRUPT`` code so clients can tell "the
+    rollback backup is corrupt" from a generic validation failure.
+    The prior bare ``DomainError`` base misclassified this as
+    INTERNAL/500.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the stored payload is malformed
+    error_code: ClassVar[ErrorCode] = ErrorCode.CHECKPOINT_ROLLBACK_CORRUPT
+    default_message: ClassVar[str] = "Checkpoint rollback data is corrupt"
 
 
 class FineTuneRunNotFoundError(NotFoundError):

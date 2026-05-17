@@ -354,9 +354,10 @@ class TestRollback:
         Immutable-field mismatches are validation failures (the request
         targets a snapshot whose immutable fields disagree with the
         current registry entry), not generic 400-class client errors --
-        ValidationError is the correct domain exception, so the central
-        handler emits 422 with the RFC 9457 ``error_code``
-        ``VALIDATION_ERROR``.
+        ``ImmutableFieldMismatchError`` (a ``ValidationError`` subclass)
+        is the correct domain exception, so the central handler emits
+        422 with the distinct RFC 9457 ``error_code``
+        ``IMMUTABLE_FIELD_MISMATCH``.
         """
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
@@ -375,7 +376,7 @@ class TestRollback:
         )
         assert resp.status_code == 422
         body = resp.json()
-        assert body["error_detail"]["error_code"] == ErrorCode.VALIDATION_ERROR
+        assert body["error_detail"]["error_code"] == ErrorCode.IMMUTABLE_FIELD_MISMATCH
         assert "cannot rollback" in body["error"].lower()
         assert "immutable field mismatch" in body["error"].lower()
 

@@ -52,7 +52,7 @@ class WindowSamples(BaseModel):
     "current higher than baseline".
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     quality_samples: tuple[float, ...] = ()
     success_samples: tuple[float, ...] = ()

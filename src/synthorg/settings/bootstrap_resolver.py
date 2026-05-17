@@ -47,7 +47,7 @@ class BootstrapResolvedValue(BaseModel, Generic[T]):  # noqa: UP046
             persistence layer is wired.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     value: T
     source: SettingSource

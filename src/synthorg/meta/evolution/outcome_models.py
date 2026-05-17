@@ -30,7 +30,7 @@ class EvolutionOutcomeRecord(BaseModel):
             only be recorded at or after the proposal was made.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
     axis: ProposalAltitude

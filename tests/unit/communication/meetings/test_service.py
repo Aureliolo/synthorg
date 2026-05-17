@@ -63,3 +63,27 @@ class TestMeetingServiceDelete:
         orch.delete_record.assert_called_once_with("missing")
         audit = [e for e in events if e.get("event") == COMMUNICATION_MEETING_DELETED]
         assert audit == []
+
+
+class TestMeetingServiceGetMeeting:
+    """``get_meeting`` is an O(1) delegate, not a full-record scan."""
+
+    async def test_delegates_to_get_record_and_never_scans(self) -> None:
+        sentinel = object()
+        orch = MagicMock(spec=MeetingOrchestrator)
+        orch.get_record = MagicMock(return_value=sentinel)
+        orch.get_records = MagicMock()
+        service = MeetingService(orchestrator=orch)
+
+        result = await service.get_meeting(NotBlankStr("meet-1"))
+
+        assert result is sentinel
+        orch.get_record.assert_called_once_with("meet-1")
+        orch.get_records.assert_not_called()
+
+    async def test_returns_none_when_record_absent(self) -> None:
+        orch = MagicMock(spec=MeetingOrchestrator)
+        orch.get_record = MagicMock(return_value=None)
+        service = MeetingService(orchestrator=orch)
+
+        assert await service.get_meeting(NotBlankStr("nope")) is None

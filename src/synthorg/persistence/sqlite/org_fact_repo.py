@@ -40,6 +40,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
+    validate_pagination_args,
 )
 from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
@@ -525,14 +526,21 @@ class SQLiteOrgFactRepository:
     async def snapshot_at(
         self,
         timestamp: AwareDatetime,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[OperationLogSnapshot, ...]:
-        """Point-in-time snapshot of all facts at a given timestamp.
+        """Bounded page of the point-in-time snapshot of all facts.
 
         ``timestamp`` must be timezone-aware; ``format_iso_utc`` will
         raise ``ValueError`` on a naive datetime so a regression that
         bypasses the type guard surfaces immediately rather than
-        binding a misinterpreted instant into the WHERE clause.
+        binding a misinterpreted instant into the WHERE clause. Rows
+        page in ``fact_id`` order so a cursor walk is repeatable
+        across the same snapshot; callers needing the whole snapshot
+        drain via :func:`synthorg.persistence._shared.collect_all`.
         """
+        limit = validate_pagination_args(limit, offset, event=ORG_MEMORY_QUERY_FAILED)
         db = self._db
         query_ts = format_iso_utc(timestamp)
         sql = """\
@@ -577,11 +585,12 @@ SELECT lo.fact_id, lo.operation_type,
 FROM latest_ops lo
 WHERE lo.rn = 1
 ORDER BY lo.fact_id
+LIMIT ? OFFSET ?
 """
         try:
             cursor = await db.execute(
                 sql,
-                (query_ts, query_ts, query_ts, query_ts, query_ts),
+                (query_ts, query_ts, query_ts, query_ts, query_ts, limit, offset),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
@@ -607,13 +616,25 @@ ORDER BY lo.fact_id
     async def get_operation_log(
         self,
         fact_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[OperationLogEntry, ...]:
-        """Retrieve full audit trail for a fact."""
+        """Bounded page of the audit trail for a fact (version ASC).
+
+        Version is unique per fact so the ordering is already stable;
+        callers needing the full trail drain via
+        :func:`synthorg.persistence._shared.collect_all`.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=ORG_MEMORY_QUERY_FAILED, fact_id=fact_id
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM org_facts_operation_log "
-                "WHERE fact_id = ? ORDER BY version ASC",
-                (fact_id,),
+                "WHERE fact_id = ? ORDER BY version ASC "
+                "LIMIT ? OFFSET ?",
+                (fact_id, limit, offset),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:

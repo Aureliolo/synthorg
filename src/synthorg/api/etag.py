@@ -290,6 +290,32 @@ class ETagMiddleware:
         )
 
 
+def _apply_cache_control(
+    headers: list[tuple[bytes, bytes]],
+    path: str,
+) -> list[tuple[bytes, bytes]]:
+    """Replace ``cache-control`` with the validator-friendly policy.
+
+    Drops any existing ``cache-control`` and appends
+    ``_DEFAULT_PUBLIC_CACHE`` / ``_DEFAULT_PRIVATE_CACHE`` by path. The
+    replace (not append-if-missing) is required because the global
+    ``security_headers_hook`` runs as a Litestar ``before_send`` and
+    unconditionally pins ``Cache-Control: no-store, no-cache,
+    must-revalidate, max-age=0`` on every API response before this
+    middleware sees it; without the overwrite, allowlisted reads
+    (buffered AND streaming) would never advertise the
+    ``private``/``public`` policy and clients would not revalidate.
+    Shared by :func:`_emit_response` (buffered, also adds an ETag) and
+    the streaming pass-through branch (no ETag, cache policy only).
+    """
+    cache_default = (
+        _DEFAULT_PUBLIC_CACHE if _is_public_cache_path(path) else _DEFAULT_PRIVATE_CACHE
+    )
+    rewritten = [(k, v) for k, v in headers if k.lower() != b"cache-control"]
+    rewritten.append((b"cache-control", cache_default))
+    return rewritten
+
+
 async def _emit_response(
     send: Send,
     captured_start: dict[str, object] | None,
@@ -312,23 +338,12 @@ async def _emit_response(
         list(headers_value) if isinstance(headers_value, list | tuple) else []
     )
     etag = compute_etag(body)
-    cache_default = (
-        _DEFAULT_PUBLIC_CACHE if _is_public_cache_path(path) else _DEFAULT_PRIVATE_CACHE
-    )
-    # Drop any existing ``etag`` and ``cache-control`` and reinstall
-    # the policy this middleware owns. We replace (not append-if-missing)
-    # because the global ``security_headers_hook`` runs as a Litestar
-    # ``before_send`` and unconditionally sets ``Cache-Control:
-    # no-store, no-cache, must-revalidate, max-age=0`` on every API
-    # response; without this overwrite, allowlisted reads would never
-    # advertise the validator-friendly ``private``/``public`` policy
-    # documented in the module header and clients would not retain
-    # ETags for conditional GETs.
-    extended_headers = [
-        (k, v) for k, v in headers if k.lower() not in {b"etag", b"cache-control"}
-    ]
+    # Cache-Control policy is shared with the streaming branch via
+    # ``_apply_cache_control``; the ETag is buffered-only so it is
+    # dropped + reinstalled here, not in the shared helper.
+    without_etag = [(k, v) for k, v in headers if k.lower() != b"etag"]
+    extended_headers = _apply_cache_control(without_etag, path)
     extended_headers.append((b"etag", etag.encode("latin-1")))
-    extended_headers.append((b"cache-control", cache_default))
 
     if match_etag(if_none_match, etag):
         # DEBUG-only: every 304 saves a body roundtrip; logging at
@@ -439,8 +454,22 @@ async def _handle_body_message(
         return
     if message.get("more_body", False):
         # Multi-chunk response: stream as-is, no ETag, no buffering.
+        # The body cannot be hashed without buffering, so no ETag is
+        # emitted -- but the validator-friendly Cache-Control policy
+        # still applies (otherwise the global ``no-store`` from
+        # ``security_headers_hook`` would suppress client revalidation
+        # for streamed allowlisted reads too).
         if state.captured_start is not None:
-            await send(state.captured_start)  # type: ignore[arg-type]
+            headers_value = state.captured_start.get("headers", [])
+            current_headers: list[tuple[bytes, bytes]] = (
+                list(headers_value) if isinstance(headers_value, list | tuple) else []
+            )
+            forwarded_start = dict(state.captured_start)
+            forwarded_start["headers"] = _apply_cache_control(
+                current_headers,
+                path,
+            )
+            await send(forwarded_start)  # type: ignore[arg-type]
             state.captured_start = None
         await send(message)  # type: ignore[arg-type]
         state.passthrough = True

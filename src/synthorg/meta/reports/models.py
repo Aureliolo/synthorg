@@ -39,7 +39,7 @@ class Report(BaseModel):
             auditability).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: UUID = Field(default_factory=uuid4)
     template: NotBlankStr

@@ -164,8 +164,22 @@ ON CONFLICT (agent_id) DO UPDATE SET
         logger.debug(PERSISTENCE_AGENT_STATE_LISTED, count=len(states))
         return states
 
-    async def get_active(self) -> tuple[AgentRuntimeState, ...]:
-        """Retrieve all non-idle agent states, ordered by last_activity_at DESC."""
+    async def get_active(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[AgentRuntimeState, ...]:
+        """Bounded page of non-idle agent states, newest activity first.
+
+        ``agent_id`` is the stable secondary sort so rows that share a
+        ``last_activity_at`` page deterministically. Callers needing
+        every active state drain via
+        :func:`synthorg.persistence._shared.collect_all`.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,
@@ -176,8 +190,9 @@ ON CONFLICT (agent_id) DO UPDATE SET
                     "turn_count, accumulated_cost, currency, "
                     "last_activity_at, started_at "
                     "FROM agent_states WHERE status != %s "
-                    "ORDER BY last_activity_at DESC",
-                    (ExecutionStatus.IDLE.value,),
+                    "ORDER BY last_activity_at DESC, agent_id "
+                    "LIMIT %s OFFSET %s",
+                    (ExecutionStatus.IDLE.value, limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

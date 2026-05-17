@@ -36,7 +36,7 @@ class ToolL1Metadata(BaseModel):
         typical_cost_tier: Relative invocation cost.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Tool name")
     short_description: str = Field(
@@ -66,7 +66,7 @@ class ToolL2Body(BaseModel):
         failure_modes: Known failure scenarios.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     full_description: str = Field(
         min_length=1,
@@ -102,7 +102,7 @@ class ToolL3Resource(BaseModel):
         size_bytes: Byte length of ``content`` (UTF-8 encoded).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     resource_id: NotBlankStr = Field(description="Resource identifier")
     content_type: ContentType = Field(description="Content format")

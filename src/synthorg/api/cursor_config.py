@@ -27,7 +27,7 @@ class CursorConfig(BaseModel):
             tokens become invalid across restarts.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     secret: str | None = Field(
         default=None,

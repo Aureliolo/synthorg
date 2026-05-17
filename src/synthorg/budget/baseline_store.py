@@ -40,7 +40,7 @@ class BaselineRecord(BaseModel):
         timestamp: When the record was captured (UTC).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Executing agent identifier")
     task_id: NotBlankStr = Field(description="Task identifier")

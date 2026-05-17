@@ -28,6 +28,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MESSAGE_DELETE_FAILED,
     PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
     PERSISTENCE_MESSAGE_DUPLICATE,
+    PERSISTENCE_MESSAGE_FETCH_FAILED,
+    PERSISTENCE_MESSAGE_FETCHED,
     PERSISTENCE_MESSAGE_HISTORY_FAILED,
     PERSISTENCE_MESSAGE_HISTORY_FETCHED,
     PERSISTENCE_MESSAGE_SAVE_FAILED,
@@ -731,6 +733,45 @@ class PostgresMessageRepository:
             count=len(messages),
         )
         return messages
+
+    async def get_by_id(
+        self,
+        channel: str,
+        message_id: str,
+    ) -> Message | None:
+        """Fetch one message by ``(channel, id)`` via the PK point read."""
+        sql = (
+            'SELECT id, timestamp, sender, "to", type, priority, '
+            "channel, content, attachments, metadata "
+            "FROM messages "
+            "WHERE id = %s AND channel = %s"
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, [message_id, channel])
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = f"Failed to fetch message {message_id!r}"
+            logger.warning(
+                PERSISTENCE_MESSAGE_FETCH_FAILED,
+                channel=channel,
+                message_id=message_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        message = self._row_to_message(row)
+        logger.debug(
+            PERSISTENCE_MESSAGE_FETCHED,
+            channel=channel,
+            message_id=message_id,
+        )
+        return message
 
     async def query(
         self,

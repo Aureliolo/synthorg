@@ -117,7 +117,7 @@ class RollbackOperation(BaseModel):
         description: Human-readable description.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     operation_type: NotBlankStr
     target: NotBlankStr
@@ -134,7 +134,7 @@ class RollbackPlan(BaseModel):
         validation_check: Post-rollback assertion description.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     operations: tuple[RollbackOperation, ...] = Field(min_length=1)
     dependencies: tuple[UUID, ...] = ()
@@ -154,7 +154,7 @@ class ConfigChange(BaseModel):
         description: Why this change is proposed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     path: NotBlankStr
     old_value: JsonValue = None
@@ -173,7 +173,7 @@ class ArchitectureChange(BaseModel):
         description: Why this change is proposed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     operation: NotBlankStr
     target_name: NotBlankStr
@@ -191,7 +191,7 @@ class PromptChange(BaseModel):
         description: Why this change is proposed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     principle_text: NotBlankStr
     target_scope: NotBlankStr
@@ -216,7 +216,7 @@ class CodeChange(BaseModel):
         reasoning: Why this change improves the system.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     file_path: NotBlankStr
     operation: CodeOperation
@@ -282,7 +282,7 @@ class ProposalRationale(BaseModel):
         confidence_reasoning: Why the confidence level was assigned.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     signal_summary: NotBlankStr
     pattern_detected: NotBlankStr
@@ -431,7 +431,7 @@ class RuleMatch(BaseModel):
         matched_at: When the match was detected.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     rule_name: NotBlankStr
     severity: RuleSeverity
@@ -456,7 +456,7 @@ class GuardResult(BaseModel):
         evaluated_at: When the evaluation happened.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     guard_name: NotBlankStr
     verdict: GuardVerdict
@@ -489,7 +489,7 @@ class RolloutResult(BaseModel):
         completed_at: When the rollout finished.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     proposal_id: UUID
     outcome: RolloutOutcome
@@ -570,7 +570,7 @@ class ApplyResult(BaseModel):
         applied_at: When the apply completed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     success: bool
     error_message: NotBlankStr | None = None
@@ -603,7 +603,7 @@ class CIValidationResult(BaseModel):
         duration_seconds: Total wall-clock time for validation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     passed: bool
     lint_passed: bool
@@ -643,7 +643,7 @@ class RegressionThresholds(BaseModel):
         success_rate_drop: Max acceptable success rate drop.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     quality_drop: float = Field(default=0.10, ge=0.0, le=1.0)
     cost_increase: float = Field(default=0.20, ge=0.0, le=1.0)
@@ -667,7 +667,7 @@ class RegressionResult(BaseModel):
         checked_at: When the check was performed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     verdict: RegressionVerdict
     breached_metric: NotBlankStr | None = None
