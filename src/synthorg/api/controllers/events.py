@@ -33,7 +33,7 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import StreamEvent  # noqa: TC001
-from synthorg.core.auth.config import SSE_REVALIDATE_INTERVAL_SECONDS
+from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.clock import SystemClock
 from synthorg.core.domain_errors import (
@@ -42,6 +42,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.event_stream import (
@@ -98,40 +99,36 @@ async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
 # control-character session IDs reaching the hub.
 _SESSION_ID_PATTERN = r"^[a-zA-Z0-9_-]{1,128}$"
 
-# Fallback for ``api.sse_revalidate_max_failures`` when the settings
-# chain is unavailable (test harness, anonymous boot, resolver outage).
-# Mirrors the registry default in
-# ``src/synthorg/settings/definitions/api.py``.
-_SSE_REVALIDATE_MAX_FAILURES_FALLBACK: int = 3
+# Defaults when no AppState/config is wired (anonymous boot, unit
+# harness). Mirror the ``auth_revalidate_*`` registry defaults; the
+# WS revalidation loop uses the same sliding-window model + settings.
+_AUTH_REVALIDATE_WINDOW_FALLBACK_SECONDS: Final[float] = 60.0
+_AUTH_REVALIDATE_MAX_FAILURES_FALLBACK: Final[int] = 5
 
 
-async def _resolve_sse_revalidate_max_failures(app_state: AppState | None) -> int:
-    """Resolve the SSE revalidation failure tolerance through settings.
+def _build_revalidation_limiter(
+    app_state: AppState | None,
+) -> _SlidingWindowRateLimiter:
+    """Build the shared sliding-window limiter for SSE revalidation.
 
-    Falls back to :data:`_SSE_REVALIDATE_MAX_FAILURES_FALLBACK` when no
-    :class:`ConfigResolver` is wired (test harness, anonymous boot) or
-    when the resolver itself raises -- a transient settings outage
-    must not collapse the failure ceiling to zero.
+    Mirrors ``_periodic_revalidate`` (WS): a flaky persistence layer
+    that interleaves one success between failure clusters cannot keep
+    a stale-auth stream alive, because failures age out of the window
+    rather than resetting a streak on success. Window + ceiling come
+    from ``api.auth_revalidate_window_seconds`` /
+    ``api.auth_revalidate_max_failures`` (resolved into ``AppState``
+    at startup), shared with the WS loop.
     """
-    if app_state is None or not getattr(app_state, "has_config_resolver", False):
-        return _SSE_REVALIDATE_MAX_FAILURES_FALLBACK
-    try:
-        return await app_state.config_resolver.get_int(
-            "api", "sse_revalidate_max_failures"
-        )
-    except asyncio.CancelledError:
-        raise
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            EVENT_STREAM_PROJECTION_FAILED,
-            note="failed to resolve api.sse_revalidate_max_failures; using fallback",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            fallback=_SSE_REVALIDATE_MAX_FAILURES_FALLBACK,
-        )
-        return _SSE_REVALIDATE_MAX_FAILURES_FALLBACK
+    if app_state is not None:
+        window = float(app_state.auth_revalidate_window_seconds)
+        max_failures = app_state.auth_revalidate_max_failures
+    else:
+        window = _AUTH_REVALIDATE_WINDOW_FALLBACK_SECONDS
+        max_failures = _AUTH_REVALIDATE_MAX_FAILURES_FALLBACK
+    return _SlidingWindowRateLimiter(
+        max_events=max_failures,
+        window_seconds=window,
+    )
 
 
 async def _user_revocation_reason(
@@ -146,8 +143,10 @@ async def _user_revocation_reason(
     must kick a live SSE stream within one revalidation interval).
 
     ``ok`` is False when the persistence call itself failed (transient
-    backend error). Callers tolerate ``api.sse_revalidate_max_failures``
-    consecutive ``ok=False`` ticks before tearing down the stream.
+    backend error). Callers admit ``ok=False`` ticks into the shared
+    sliding-window limiter (``api.auth_revalidate_window_seconds`` /
+    ``api.auth_revalidate_max_failures``) before tearing down the
+    stream.
     """
     try:
         db_user = await app_state.persistence.users.get(user_id)
@@ -354,40 +353,23 @@ async def _serialise_stream_event(
     return {"event": event.type.value, "data": data}
 
 
-class _RevalidationVerdict(BaseModel):
-    """Outcome of one revalidation tick.
-
-    Attributes:
-        consecutive_failures: Updated transient-failure counter the
-            caller threads back into the loop.
-        revoked_event: SSE frame to yield when the user is no longer
-            authorised (or the persistence backend is repeatedly
-            unavailable). ``None`` when the loop should keep running.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    consecutive_failures: int
-    revoked_event: dict[str, str] | None = None
-
-
 async def _run_revalidation_tick(
     *,
     app_state: AppState,
     user: AuthenticatedUser,
-    consecutive_failures: int,
-    max_failures: int,
-) -> _RevalidationVerdict:
-    """Execute one revalidation check and return what the loop should do.
+    failure_limiter: _SlidingWindowRateLimiter,
+) -> dict[str, str] | None:
+    """Execute one revalidation check; return a ``revoked`` frame or None.
 
-    Centralises the failure-counter / role-check / session-revocation
-    decision tree so :func:`_sse_event_stream` does not exceed the
-    McCabe complexity ceiling. The caller advances its
-    ``next_revalidate_ts`` regardless of the verdict.
-
-    ``max_failures`` is the resolved ``api.sse_revalidate_max_failures``
-    setting; the loop tolerates this many consecutive transient
-    persistence errors before yielding a ``revoked`` frame.
+    Sliding-window failure model (shared with ``_periodic_revalidate``
+    on the WS side): a transient persistence error is admitted into
+    ``failure_limiter``; the stream is torn down only once the window
+    saturates (``api.auth_revalidate_max_failures`` errors within
+    ``api.auth_revalidate_window_seconds``). Failures age out of the
+    window instead of resetting a streak on success, so a flaky
+    backend interleaving one success cannot hold a stale-auth stream
+    open. A genuine revocation (deleted / demoted / session revoked)
+    tears down immediately. Returns ``None`` when the loop continues.
     """
     reason, ok = await _user_revocation_reason(
         app_state,
@@ -395,29 +377,19 @@ async def _run_revalidation_tick(
         user.session_id,
     )
     if not ok:
-        new_failures = consecutive_failures + 1
-        # Strictly greater-than: the docstring contract is to tolerate
-        # ``max_failures`` consecutive transient errors and revoke only
-        # once that ceiling is exceeded (failure max_failures+1), not on
-        # the max_failures-th failure itself.
-        if new_failures > max_failures:
-            return _RevalidationVerdict(
-                consecutive_failures=new_failures,
-                revoked_event={
-                    "event": "revoked",
-                    "data": _json.dumps({"reason": "backend_unavailable"}),
-                },
-            )
-        return _RevalidationVerdict(consecutive_failures=new_failures)
-    if reason is not None:
-        return _RevalidationVerdict(
-            consecutive_failures=0,
-            revoked_event={
+        admitted = await failure_limiter.take(user.user_id)
+        if not admitted:
+            return {
                 "event": "revoked",
-                "data": _json.dumps({"reason": reason}),
-            },
-        )
-    return _RevalidationVerdict(consecutive_failures=0)
+                "data": _json.dumps({"reason": "backend_unavailable"}),
+            }
+        return None
+    if reason is not None:
+        return {
+            "event": "revoked",
+            "data": _json.dumps({"reason": reason}),
+        }
+    return None
 
 
 async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
@@ -430,13 +402,14 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
     """Yield SSE events from the hub for the given session.
 
     When ``app_state`` and ``user`` are supplied, the loop tracks an
-    independent revalidation deadline (``SSE_REVALIDATE_INTERVAL_SECONDS``)
-    and fires it even on busy streams that never hit a keepalive
-    timeout. On revocation, yields a final ``revoked`` event
-    and terminates the stream. Tolerates ``api.sse_revalidate_max_failures``
-    consecutive transient persistence errors before escalating.
+    independent revalidation deadline (``AUTH_REVALIDATE_INTERVAL_SECONDS``,
+    the single cadence shared with the WS revalidation loop) and fires
+    it even on busy streams that never hit a keepalive timeout. On
+    revocation, yields a final ``revoked`` event and terminates the
+    stream. Transient persistence errors are absorbed by a shared
+    sliding-window limiter (``api.auth_revalidate_window_seconds`` /
+    ``api.auth_revalidate_max_failures``) before escalating.
     """
-    consecutive_failures = 0
     # Track the disconnect reason by exit path so the
     # ``synthorg_client_disconnects_total`` metric reflects the real
     # cause: ``cancelled`` for revocation / asyncio.CancelledError,
@@ -459,7 +432,9 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
         )
         revalidation_armed = app_state is not None and user is not None
         keepalive_seconds = await _resolve_sse_keepalive_seconds(app_state)
-        revalidate_max_failures = await _resolve_sse_revalidate_max_failures(app_state)
+        # Shared sliding-window limiter (same model + settings as the
+        # WS ``_periodic_revalidate`` loop).
+        failure_limiter = _build_revalidation_limiter(app_state)
         # Use ``app_state.clock.monotonic()`` so tests inject FakeClock
         # rather than monkey-patching ``asyncio.get_event_loop().time``.
         # The bare loop timer is still acceptable for async waits below.
@@ -471,7 +446,7 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
         # collapse to 0 on the first iteration and busy-loop the wait_for.
         # Only arm the timer when there is something to revalidate.
         next_revalidate_ts: float | None = (
-            loop_now + SSE_REVALIDATE_INTERVAL_SECONDS if revalidation_armed else None
+            loop_now + AUTH_REVALIDATE_INTERVAL_SECONDS if revalidation_armed else None
         )
         # lint-allow: long-running-loop-kill-switch -- per-request SSE stream; lifetime bounded by client connection (CancelledError on disconnect)  # noqa: E501
         while True:
@@ -504,17 +479,15 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
                 and app_state is not None
                 and user is not None
             ):
-                next_revalidate_ts = now + SSE_REVALIDATE_INTERVAL_SECONDS
-                verdict = await _run_revalidation_tick(
+                next_revalidate_ts = now + AUTH_REVALIDATE_INTERVAL_SECONDS
+                revoked_frame = await _run_revalidation_tick(
                     app_state=app_state,
                     user=user,
-                    consecutive_failures=consecutive_failures,
-                    max_failures=revalidate_max_failures,
+                    failure_limiter=failure_limiter,
                 )
-                consecutive_failures = verdict.consecutive_failures
-                if verdict.revoked_event is not None:
+                if revoked_frame is not None:
                     disconnect_reason = "cancelled"
-                    yield verdict.revoked_event
+                    yield revoked_frame
                     return
     except asyncio.CancelledError:
         disconnect_reason = "cancelled"

@@ -581,6 +581,49 @@ overview, Agent Card projection, and concept mapping tables.
 
 ---
 
+## Session Revalidation and the Revocation Window
+
+Long-lived authenticated streams (WebSocket and SSE) do not trust the
+access token for their full lifetime. Both re-load the user record on
+a single shared cadence, `AUTH_REVALIDATE_INTERVAL_SECONDS`
+(10 minutes), and tear the stream down when the user is deleted, the
+role is demoted below read access, or the session JTI has been
+revoked (an admin `DELETE /sessions/{jti}`).
+
+Operationally this means **revocation takes effect within at most one
+revalidation interval (10 minutes), not instantly**. An access token
+or open stream remains usable until the next revalidation tick after
+the revoking action. The refresh-rotation endpoint
+(`POST /auth/refresh`) rejects immediately on a revoked session, but
+an already-issued, not-yet-expired access token on an open WS/SSE
+stream is only kicked at the next tick. Size the JWT lifetime and any
+incident-response runbook around this 10-minute bound.
+
+WS and SSE share one cadence constant and one sliding-window failure
+model. Transient persistence-backend errors during a revalidation
+tick are admitted into a per-connection sliding window
+(`api.auth_revalidate_window_seconds`, default 60s;
+`api.auth_revalidate_max_failures`, default 5). Failures age out of
+the window instead of resetting on success, so a flaky backend that
+interleaves one good response between failure clusters cannot hold a
+stale-auth stream open indefinitely; once the window saturates the
+stream closes (WS: close code 4011; SSE: a final `revoked` frame with
+`reason=backend_unavailable`) and the client reconnects against a
+healthy replica.
+
+Both failure-tolerance settings are resolved once at startup
+(`restart_required`, `read_only_post_init`): changing them requires a
+restart and does not retune already-open streams. This is a
+deliberate change from the previous SSE-only behaviour, where
+`api.sse_revalidate_max_failures` was a runtime-tunable streak
+counter; the unified sliding-window model is strictly stronger
+against flaky backends and is shared verbatim with WebSocket.
+
+429 rate-limit `Retry-After` is per-policy (per-operation budgets,
+account-lockout duration) and is intentionally **not** coupled to the
+revalidation cadence; the unified cadence governs WS and SSE auth
+revalidation only.
+
 ## See Also
 
 - [Tools](tools.md): tool categories, sandboxing, progressive trust
