@@ -290,6 +290,18 @@ class _RequestLockAuthMixin:
             WS_AUTH_TIMEOUT_MIN_SECONDS,
         )
 
+        # ``bool`` is an ``int`` subclass, so ``True``/``False`` would
+        # otherwise sail through ``math.isfinite`` and the range check.
+        if isinstance(value, bool):
+            logger.warning(
+                API_BRIDGE_CONFIG_REJECTED,
+                field="ws_auth_timeout_seconds",
+                reason="invalid_type",
+                provided_type=type(value).__name__,
+            )
+            msg = f"ws_auth_timeout_seconds must be float, got {type(value).__name__}"
+            raise TypeError(msg)
+
         if not math.isfinite(value):
             logger.warning(
                 API_BRIDGE_CONFIG_REJECTED,

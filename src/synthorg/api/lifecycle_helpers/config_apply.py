@@ -224,8 +224,7 @@ async def _apply_api_bridge_config_snapshot(app_state: AppState) -> None:
     it onto ``app_state``. On any non-fatal resolve failure the
     default ``ApiBridgeConfig()`` snapshot installed by
     ``AppState.__init__`` is retained and a single structured warning
-    is emitted -- the centralised replacement for the per-request
-    log-once fallback the activities controller used to carry inline.
+    is emitted.
 
     No-op when no resolver is wired (dev/test rigs that bypass
     ``create_app``); the default snapshot remains in place.

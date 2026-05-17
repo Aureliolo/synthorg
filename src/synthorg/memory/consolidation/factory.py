@@ -1,9 +1,9 @@
-"""Consolidation strategy factory (ADR-0005 + RFC#2).
+"""Consolidation strategy factory.
 
 Maps a :class:`ConsolidationStrategyType` discriminator to a
 ``Composite(HighestRelevanceSelector, <op>)`` via a ``StrEnum``-keyed
-:class:`~synthorg.core.registry.StrategyRegistry` (the RFC#2
-registry). Replaces hand-injecting a monolithic strategy class.
+:class:`~synthorg.core.registry.StrategyRegistry`, so a composition is
+selected by config rather than by hand-injecting a monolithic class.
 
 The op-specific dependencies (LLM provider/model, density
 classifier/extractor/summarizer) are passed in a
@@ -14,7 +14,7 @@ construction.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.memory.consolidation.composite import (
@@ -41,6 +41,8 @@ if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.providers.protocol import CompletionProvider
 
+_DEFAULT_GROUP_THRESHOLD: Final[int] = 3
+
 
 @dataclass(frozen=True, slots=True)
 class ConsolidationDeps:
@@ -52,7 +54,7 @@ class ConsolidationDeps:
     """
 
     backend: MemoryBackend
-    group_threshold: int = 3
+    group_threshold: int = _DEFAULT_GROUP_THRESHOLD
     provider: CompletionProvider | None = None
     model: NotBlankStr | None = None
     llm_config: LLMConsolidationConfig | None = None

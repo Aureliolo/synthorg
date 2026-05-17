@@ -3,10 +3,11 @@
 Maps :class:`AutonomyStrategyType` to a concrete
 :class:`AutonomyChangeStrategy` via the ``StrEnum``-keyed
 :class:`~synthorg.core.registry.StrategyRegistry`. ``HUMAN_ONLY``
-returns a bare :class:`HumanOnlyPromotionStrategy`; the wrapping
-strategies require a signal provider and raise
-:class:`AutonomyStrategyConfigError` when it is absent (fail fast at
-construction).
+resolves to a :class:`HumanOnlyPromotionStrategy` -- ``deps.base``
+when it is already one (so its override store is preserved),
+otherwise a fresh instance; the wrapping strategies require a signal
+provider and raise :class:`AutonomyStrategyConfigError` when it is
+absent (fail fast at construction).
 """
 
 from typing import TYPE_CHECKING
@@ -122,8 +123,9 @@ def build_autonomy_change_strategy(
 
     Returns:
         A strategy satisfying the ``AutonomyChangeStrategy`` protocol.
-        ``config.kind == HUMAN_ONLY`` yields behaviour byte-identical
-        with a bare ``HumanOnlyPromotionStrategy()``.
+        ``config.kind == HUMAN_ONLY`` yields a
+        ``HumanOnlyPromotionStrategy`` (``deps.base`` when already one,
+        else a fresh instance) -- behaviour identical either way.
 
     Raises:
         StrategyFactoryNotFoundError: Unknown ``config.kind``.

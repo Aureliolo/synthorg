@@ -33,6 +33,7 @@ from synthorg.core.actor_context import (
     ActorIdentity,
     ActorKind,
     actor_scope,
+    actor_scope_cleared,
 )
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import DomainError
@@ -204,6 +205,10 @@ class AuthContextMiddleware(ASGIMiddleware):
                 with actor_scope(actor):
                     await next_app(scope, receive, send)
             else:
-                await next_app(scope, receive, send)
+                # No principal resolved: clear any actor inherited
+                # from an outer context so decision leaves don't
+                # mis-attribute ``decided_by`` to a stale identity.
+                with actor_scope_cleared():
+                    await next_app(scope, receive, send)
         finally:
             _authenticated_user.reset(token)

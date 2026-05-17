@@ -172,7 +172,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.paths:
-        roots = [Path(p).resolve() for p in args.paths]
+        roots = [
+            (Path(p) if Path(p).is_absolute() else root / p).resolve()
+            for p in args.paths
+        ]
     else:
         roots = [root / _REPO_REL_SRC]
 

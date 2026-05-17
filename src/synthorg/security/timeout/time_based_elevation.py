@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from synthorg.security.timeout.protocol import RiskTierClassifier
 
 _SATURDAY: int = 5  # datetime.weekday(): Mon=0 .. Sun=6
+_MIN_HOUR_OF_DAY: int = 0
+_MAX_HOUR_OF_DAY: int = 23
 
 
 class TimeBasedRiskElevationClassifier:
@@ -45,6 +47,16 @@ class TimeBasedRiskElevationClassifier:
         weekend_elevation: bool,
         clock: Clock | None = None,
     ) -> None:
+        for field_name, hour in (
+            ("off_hours_start_hour", off_hours_start_hour),
+            ("off_hours_end_hour", off_hours_end_hour),
+        ):
+            if not _MIN_HOUR_OF_DAY <= hour <= _MAX_HOUR_OF_DAY:
+                msg = (
+                    f"{field_name} must be in"
+                    f" [{_MIN_HOUR_OF_DAY}, {_MAX_HOUR_OF_DAY}], got {hour}"
+                )
+                raise ValueError(msg)
         self._base = base
         self._start = off_hours_start_hour
         self._end = off_hours_end_hour

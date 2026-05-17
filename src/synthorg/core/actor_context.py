@@ -194,6 +194,22 @@ def actor_scope(actor: ActorIdentity) -> Iterator[None]:
         _actor_var.reset(token)
 
 
+@contextmanager
+def actor_scope_cleared() -> Iterator[None]:
+    """Clear any bound actor for the block, restoring it on exit.
+
+    The unauthenticated symmetric counterpart of :func:`actor_scope`:
+    an actor inherited from an outer execution context must not leak
+    into a request that resolved no principal, or decision leaves
+    would mis-attribute ``decided_by``.
+    """
+    token = _actor_var.set(None)
+    try:
+        yield
+    finally:
+        _actor_var.reset(token)
+
+
 def with_actor(
     actor: ActorIdentity,
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
