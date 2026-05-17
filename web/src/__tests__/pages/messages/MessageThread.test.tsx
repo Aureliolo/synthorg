@@ -20,7 +20,7 @@ describe('MessageThread', () => {
   }
 
   it('renders single message without thread UI', () => {
-    const msgs = [makeMessage('1', { content: 'Solo message' })]
+    const msgs = [makeMessage('1', { text: 'Solo message' })]
     render(<MessageThread {...defaultProps} messages={msgs} />)
     expect(screen.getByText('Solo message')).toBeInTheDocument()
     expect(screen.queryByText(/more in thread/)).not.toBeInTheDocument()
@@ -28,9 +28,9 @@ describe('MessageThread', () => {
 
   it('renders first message and thread pill when collapsed', () => {
     const msgs = [
-      makeMessage('1', { content: 'First' }),
-      makeMessage('2', { content: 'Second' }),
-      makeMessage('3', { content: 'Third' }),
+      makeMessage('1', { text: 'First' }),
+      makeMessage('2', { text: 'Second' }),
+      makeMessage('3', { text: 'Third' }),
     ]
     render(<MessageThread {...defaultProps} messages={msgs} />)
     expect(screen.getByText('First')).toBeInTheDocument()
@@ -49,9 +49,9 @@ describe('MessageThread', () => {
 
   it('shows all messages when expanded', () => {
     const msgs = [
-      makeMessage('1', { content: 'First' }),
-      makeMessage('2', { content: 'Second' }),
-      makeMessage('3', { content: 'Third' }),
+      makeMessage('1', { text: 'First' }),
+      makeMessage('2', { text: 'Second' }),
+      makeMessage('3', { text: 'Third' }),
     ]
     render(<MessageThread {...defaultProps} messages={msgs} expanded={true} />)
     expect(screen.getByText('First')).toBeInTheDocument()
@@ -68,7 +68,7 @@ describe('MessageThread', () => {
   it('calls onSelectMessage when message is clicked', async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
-    const msgs = [makeMessage('msg-1', { content: 'Click me' })]
+    const msgs = [makeMessage('msg-1', { text: 'Click me' })]
     render(<MessageThread {...defaultProps} messages={msgs} onSelectMessage={onSelect} />)
 
     await user.click(screen.getByText('Click me'))

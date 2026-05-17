@@ -7,7 +7,6 @@ lifecycle hooks (startup/shutdown).
 
 import os
 import sys
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -87,6 +86,7 @@ from synthorg.communication.meeting.orchestrator import (
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig
+from synthorg.core.clock import SystemClock
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
@@ -201,6 +201,18 @@ def _resolve_api_str(key: str) -> str:
     """Resolve a string-typed api.* setting at boot."""
     resolved = resolve_init_value(SettingNamespace.API, key)
     return str(resolved.value)
+
+
+def _resolve_budget_int(key: str) -> int:
+    """Resolve an integer-typed budget.* setting at boot.
+
+    Cat-2 boot knob: the store is constructed before the
+    ``SettingsService`` connects, so the value is sourced env >
+    registered default via the bootstrap resolver (a runtime change
+    requires a restart -- the consumer is a fixed-length ring buffer).
+    """
+    resolved = resolve_init_value(SettingNamespace.BUDGET, key, parse=parse_int)
+    return int(resolved.value)
 
 
 def _build_default_approval_timeout_scheduler(
@@ -440,6 +452,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     provider_registry = phase1.provider_registry
     provider_health_tracker = phase1.provider_health_tracker
     distributed_task_queue = phase1.distributed_task_queue
+    distributed_dispatcher = phase1.distributed_dispatcher
 
     # Pre-meetings; versioning wires on startup once persistence.connect() runs.
     if agent_registry is None:
@@ -495,6 +508,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         ceremony_scheduler=ceremony_scheduler,
         db_url=db_url,
         resolved_db_path=resolved_db_path,
+        boot_db_path=db_path,
     )
     connection_catalog = integrations.connection_catalog
     oauth_token_manager = integrations.oauth_token_manager
@@ -508,11 +522,18 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if audit_log is None:
         audit_log = AuditLog()
     if coordination_metrics_store is None:
-        coordination_metrics_store = CoordinationMetricsStore()
+        coordination_metrics_store = CoordinationMetricsStore(
+            max_entries=_resolve_budget_int("coordination_metrics_max_entries"),
+        )
     if trust_service is None:
         trust_service = _build_configured_trust_service(effective_config.trust)
 
+    # One boot clock shared between the uptime baseline and AppState so
+    # ``app_state.clock`` and ``startup_time`` cannot diverge, and a
+    # FakeClock injected via AppState in tests governs both.
+    _boot_clock = SystemClock()
     app_state = AppState(
+        clock=_boot_clock,
         config=effective_config,
         persistence=persistence,
         message_bus=message_bus,
@@ -546,10 +567,19 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         mcp_catalog_service=mcp_catalog_service,
         mcp_installations_repo=mcp_installations_repo,
         training_service=training_service,
-        startup_time=time.monotonic(),
+        startup_time=_boot_clock.monotonic(),
     )
     if distributed_task_queue is not None:
         app_state.set_distributed_task_queue(distributed_task_queue)
+    if distributed_dispatcher is not None:
+        # Late-bind the live bridge-config provider now that AppState
+        # exists (the dispatcher is built in auto_wire_phase1 before
+        # AppState). Each publish then reads the current snapshot, so
+        # an operator hot-reload of a workers.dispatcher_publish_*
+        # setting takes effect without restarting the dispatcher.
+        distributed_dispatcher.set_workers_bridge_provider(
+            lambda: app_state.workers_bridge_config,
+        )
 
     # Opaque pagination cursor HMAC secret.  Loaded from the
     # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var; rolling with a

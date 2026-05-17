@@ -6,11 +6,11 @@ and hot-reload of ProviderRegistry + ModelRouter in AppState.
 
 import asyncio
 import json
-import time
 from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -226,6 +226,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         config: RootConfig,
         audit_service: ProviderAuditService | None = None,
         cost_tracker: CostTracker | None = None,
+        clock: Clock | None = None,
     ) -> None:
         from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
             resolve_init_value,
@@ -238,6 +239,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         self._config = config
         self._audit_service = audit_service
         self._cost_tracker = cost_tracker
+        self._clock: Clock = clock if clock is not None else SystemClock()
         # api.server_port is read_only_post_init; the resolved value
         # is stable for the process lifetime so we cache it once.
         self._backend_port = int(
@@ -527,7 +529,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
 
         driver = LiteLLMDriver(name, config)
         messages = [ChatMessage(role=MessageRole.USER, content="ping")]
-        start = time.monotonic()
+        start = self._clock.monotonic()
         # Probes hit a real provider and are billed; route through the
         # cost-recording chokepoint so the spend appears in the same
         # accounting surface as production calls. ``cost_tracker=None``
@@ -546,7 +548,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             call_category=LLMCallCategory.SYSTEM,
         ):
             await driver.complete(messages, model_id)
-        elapsed_ms = (time.monotonic() - start) * 1000
+        elapsed_ms = (self._clock.monotonic() - start) * 1000
 
         logger.info(
             PROVIDER_CONNECTION_TESTED,

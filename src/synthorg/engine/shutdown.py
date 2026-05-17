@@ -16,13 +16,13 @@ import asyncio
 import contextlib
 import signal
 import sys
-import time
 import types  # noqa: TC003 -- used in runtime-visible annotation
 from collections.abc import Callable, Coroutine, Mapping, Sequence
 from typing import Any, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -145,6 +145,7 @@ class CooperativeTimeoutStrategy:
         *,
         grace_seconds: float = _DEFAULT_GRACE_SECONDS,
         cleanup_seconds: float = _DEFAULT_CLEANUP_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
         if grace_seconds <= 0:
             msg = f"grace_seconds must be positive, got {grace_seconds}"
@@ -152,6 +153,7 @@ class CooperativeTimeoutStrategy:
         if cleanup_seconds <= 0:
             msg = f"cleanup_seconds must be positive, got {cleanup_seconds}"
             raise ValueError(msg)
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._grace_seconds = grace_seconds
         self._cleanup_seconds = cleanup_seconds
         self._shutdown_event = asyncio.Event()
@@ -175,7 +177,7 @@ class CooperativeTimeoutStrategy:
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Execute the cooperative timeout shutdown sequence."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
 
         self._shutdown_event.set()
         logger.info(
@@ -190,7 +192,7 @@ class CooperativeTimeoutStrategy:
 
         cleanup_completed = await _run_cleanup(cleanup_callbacks, self._cleanup_seconds)
 
-        duration = time.monotonic() - start
+        duration = self._clock.monotonic() - start
         result = ShutdownResult(
             strategy_type=self.get_strategy_type(),
             tasks_interrupted=tasks_interrupted,

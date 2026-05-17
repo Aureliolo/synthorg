@@ -716,22 +716,6 @@ class CoordinationResultResponse(BaseModel):
         return all(p.success for p in self.phases)
 
 
-# ── Provider management DTOs (split to dto_providers.py) ────
-# Re-exported for backwards compatibility.
-from synthorg.api.dto_providers import (  # noqa: E402
-    CreateFromPresetRequest,
-    CreateProviderRequest,
-    DiscoverModelsResponse,
-    ProbeLocalResponse,
-    ProbePresetResponse,
-    ProviderResponse,
-    TestConnectionRequest,
-    TestConnectionResponse,
-    UpdateProviderRequest,
-    to_provider_response,
-)
-
-
 class RollbackAgentIdentityRequest(BaseModel):
     """Request body for rolling back an agent identity to a previous version.
 
@@ -764,26 +748,16 @@ __all__ = [
     "CoordinationResultResponse",
     "CreateApprovalRequest",
     "CreateArtifactRequest",
-    "CreateFromPresetRequest",
     "CreateProjectRequest",
-    "CreateProviderRequest",
     "CreateTaskRequest",
-    "DiscoverModelsResponse",
     "ErrorDetail",
     "ExecuteTaskRequest",
     "PaginatedResponse",
     "PaginationMeta",
-    "ProbeLocalResponse",
-    "ProbePresetResponse",
     "ProblemDetail",
-    "ProviderResponse",
     "RegisterExperimentVariantRequest",
     "RejectRequest",
     "RollbackAgentIdentityRequest",
-    "TestConnectionRequest",
-    "TestConnectionResponse",
     "TransitionTaskRequest",
-    "UpdateProviderRequest",
     "UpdateTaskRequest",
-    "to_provider_response",
 ]

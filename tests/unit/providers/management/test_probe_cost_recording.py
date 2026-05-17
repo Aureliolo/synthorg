@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.api.dto import TestConnectionRequest as ConnTestRequest
+from synthorg.api.dto_providers import TestConnectionRequest as ConnTestRequest
 from synthorg.api.state import AppState
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.config import BudgetConfig

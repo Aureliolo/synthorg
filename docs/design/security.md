@@ -67,6 +67,35 @@ promotion via REST API (no agent, including CEO, can escalate privileges). Autom
 on: high error rate (one level down), budget exhausted (supervised), security incident (locked).
 Recovery from auto-downgrade is human-only.
 
+### Autonomy change strategy plugin surface
+
+The `AutonomyChangeStrategy` protocol (`security/autonomy/protocol.py`:
+`request_promotion` / `auto_downgrade` / `request_recovery`) is a
+pluggable subsystem following the risk-tier-classifier pattern: a
+`StrEnum` discriminator + frozen config + safe default +
+`StrategyRegistry` factory. The wrapping strategies delegate
+downgrade, recovery, and the override store to a base
+`HumanOnlyPromotionStrategy` (where the override store lives) and
+override only the promotion decision.
+
+| `AutonomyStrategyType` | Implementation | Behaviour |
+|---|---|---|
+| `HUMAN_ONLY` | `HumanOnlyPromotionStrategy` | Promotions + recovery always require human approval. Byte-identical with the pre-plugin default. |
+| `PERFORMANCE_GATED` | `PerformanceGatedPromotionStrategy` | Auto-grants promotion when the agent's rolling success rate (injected `PerformanceSignalProvider`) is at/above `promotion_success_threshold`; `None` history defers. |
+| `BUDGET_AWARE` | `BudgetAwarePromotionStrategy` | Denies promotion while risk-budget headroom (injected `RiskBudgetSignalProvider`) is below `budget_warn_fraction`; otherwise delegates the decision to the base. |
+| `ESCALATION_CHAIN` | `EscalationChainPromotionStrategy` | Records the configured approver-role `escalation_chain` and returns pending (`False`); per-role approvals arrive out-of-band. |
+
+Selection: `AutonomyStrategyConfig` (frozen, default
+`kind=HUMAN_ONLY`) + `AutonomyStrategyDeps` (the base strategy and
+signal providers that cannot live in frozen config).
+`change_strategy_factory.build_autonomy_change_strategy(config, deps)`
+dispatches via the `StrEnum`-keyed `StrategyRegistry`; a wrapping
+strategy missing its required signal provider raises
+`AutonomyStrategyConfigError` at construction. No production seam wires
+a non-default strategy yet (the autonomy controller path constructs no
+strategy); operators opt in by configuring it -- the surface is the
+deliverable, end-to-end production wiring is the natural follow-up.
+
 ## Security Operations Agent
 
 A special meta-agent that reviews all actions before execution:
@@ -313,6 +342,37 @@ shutdown-time mechanism.
     - **D21: Resume Injection.** Tool result injection. Approval requests modeled as tool
       calls (`request_human_approval`). Approval decision returned as `ToolResult`,
       semantically correct (approval IS the tool's return value).
+
+### Risk-tier classifier plugin surface
+
+The `RiskTierClassifier` protocol (`security/timeout/protocol.py`,
+`classify(action_type) -> ApprovalRiskLevel`) is a pluggable subsystem
+following the `security/trust/` pattern: a `StrEnum` discriminator +
+frozen config + safe default + `StrategyRegistry` factory.
+
+| `RiskClassifierType` | Implementation | Behaviour |
+|---|---|---|
+| `DEFAULT` | `DefaultRiskTierClassifier` | Static action-type -> tier map; unknown -> HIGH (D19). Byte-identical with the pre-plugin behaviour. |
+| `WORKLOAD_ADAPTIVE` | `WorkloadAdaptiveRiskClassifier` | Wraps a base classifier; elevates one tier when an injected in-flight probe (`Callable[[], int]`) is at/above `workload_threshold`. CRITICAL is the ceiling. |
+| `OPERATOR_CONFIGURABLE` | `OperatorConfigurableRiskClassifier` | Classifies from an operator-defined `action_type -> tier` map; unknown -> HIGH (D19 fail-safe). |
+| `TIME_BASED` | `TimeBasedRiskElevationClassifier` | Wraps a base classifier; elevates one tier inside a configured off-hours window (wraps midnight) and/or weekends. Uses the `Clock` seam. |
+
+Selection: `RiskClassifierConfig` (frozen, on `TieredTimeoutConfig.risk_classifier`,
+default `kind=DEFAULT`) + `RiskClassifierDeps` (the in-flight probe and
+`Clock` collaborators that cannot live in frozen config).
+`risk_classifier_factory.build_risk_tier_classifier(config, deps)`
+dispatches via the `StrEnum`-keyed `StrategyRegistry`; a non-default
+kind missing its required dependency raises `RiskClassifierConfigError`
+at construction (fail fast).
+
+The factory is wired at the tiered-timeout-policy seam
+(`timeout/factory.py::create_timeout_policy`). The two other
+`DefaultRiskTierClassifier()` consumers -- `SecOpsService.risk_classifier`
+and the `request_human_approval` tool wrapper in
+`engine/_security_factory.py` -- remain on the hardcoded default for
+now; moving them to the factory is the natural next step once a
+`SecurityConfig.risk_classifier` field is designed (out of scope for
+the plugin-surface deliverable, which is the timeout policy seam).
 
 !!! info "EvidencePackage (HITL Approval Payload)"
     `ApprovalItem.evidence_package` (optional `EvidencePackage | None`) carries a structured

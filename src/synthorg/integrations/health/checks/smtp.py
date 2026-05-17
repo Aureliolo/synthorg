@@ -2,10 +2,10 @@
 
 import asyncio
 import smtplib
-import time
 from datetime import UTC, datetime
 from typing import Final
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.models import (
     Connection,
     ConnectionStatus,
@@ -25,9 +25,12 @@ _TIMEOUT: Final[int] = 10
 class SmtpHealthCheck:
     """Health check via SMTP EHLO."""
 
+    def __init__(self, *, clock: Clock | None = None) -> None:
+        self._clock: Clock = clock if clock is not None else SystemClock()
+
     async def check(self, connection: Connection) -> HealthReport:
         """Verify SMTP connectivity via EHLO."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         try:
             result = await asyncio.to_thread(
                 self._sync_check,
@@ -39,7 +42,7 @@ class SmtpHealthCheck:
             # they are not silently reported as a transient SMTP
             # outage. ``ValueError`` is included to cover malformed
             # port metadata in ``_sync_check``.
-            elapsed = (time.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * 1000
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
@@ -58,7 +61,7 @@ class SmtpHealthCheck:
 
     def _sync_check(self, connection: Connection) -> HealthReport:
         """Synchronous SMTP EHLO check (run in thread)."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         # Explicitly validate the host/port metadata so malformed
         # config (``port=None``, ``port=[]``, etc.) raises a
         # ``ValueError`` the outer handler already translates into
@@ -82,7 +85,7 @@ class SmtpHealthCheck:
         try:
             with smtplib.SMTP(host, port, timeout=_TIMEOUT) as smtp:
                 code, _ = smtp.ehlo()
-            elapsed = (time.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * 1000
             if 200 <= code < 300:  # noqa: PLR2004
                 logger.info(
                     HEALTH_CHECK_PASSED,
@@ -103,7 +106,7 @@ class SmtpHealthCheck:
                 checked_at=datetime.now(UTC),
             )
         except (smtplib.SMTPException, OSError) as exc:
-            elapsed = (time.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * 1000
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,

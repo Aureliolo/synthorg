@@ -8,12 +8,14 @@ import pytest
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
-from synthorg.memory.consolidation.density import DensityClassifier
-from synthorg.memory.consolidation.dual_mode_strategy import (
-    DualModeConsolidationStrategy,
+from synthorg.memory.consolidation.composite import (
+    CompositeConsolidationStrategy,
 )
+from synthorg.memory.consolidation.density import DensityClassifier
 from synthorg.memory.consolidation.extractive import ExtractivePreserver
 from synthorg.memory.consolidation.models import ArchivalMode
+from synthorg.memory.consolidation.ops import DensityRoutingOp
+from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
 from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
@@ -81,7 +83,7 @@ def _make_strategy(
     summarizer: AsyncMock | None = None,
     extractor: AsyncMock | None = None,
     group_threshold: int = 3,
-) -> DualModeConsolidationStrategy:
+) -> CompositeConsolidationStrategy:
     if backend is None:
         backend = cast(
             Any,
@@ -108,12 +110,14 @@ def _make_strategy(
                 ),
             ),
         )
-    return DualModeConsolidationStrategy(
-        backend=backend,
-        classifier=classifier,
-        extractor=extractor,
-        summarizer=summarizer,
-        group_threshold=group_threshold,
+    return CompositeConsolidationStrategy(
+        selector=HighestRelevanceSelector(group_threshold=group_threshold),
+        op=DensityRoutingOp(
+            backend=backend,
+            classifier=classifier,
+            extractor=extractor,
+            summarizer=summarizer,
+        ),
     )
 
 

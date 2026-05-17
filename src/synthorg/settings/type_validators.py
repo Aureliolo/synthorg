@@ -13,20 +13,18 @@ shape validators run after a successful parse for a tighter contract.
 
 import json
 import math
-from collections.abc import Callable, Mapping
-from types import MappingProxyType
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.observability import safe_error_description
 from synthorg.settings.enums import SettingType
 from synthorg.settings.errors import SettingValidationError
 from synthorg.settings.json_validators import get_json_validator
-from synthorg.settings.models import SettingDefinition
+
+if TYPE_CHECKING:
+    from synthorg.settings.models import SettingDefinition
 
 _SENSITIVE_MASK: Final[str] = "********"
-
-
-type ValidatorCallable = Callable[[SettingDefinition, str], None]
 
 
 def _validate_string(definition: SettingDefinition, value: str) -> None:
@@ -125,7 +123,11 @@ def _check_range(definition: SettingDefinition, value: int | float) -> None:
         raise SettingValidationError(msg)
 
 
-TYPE_VALIDATORS: Final[Mapping[SettingType, ValidatorCallable]] = MappingProxyType(
+# Keyed by ``SettingType`` (a ``StrEnum``). ``.get`` (not ``.build``)
+# is used at dispatch so a validator's expected ``SettingValidationError``
+# rejection does not emit a registry ``factory.failed`` warning on every
+# invalid operator value.
+_TYPE_VALIDATOR_REGISTRY: Final[StrategyRegistry[None]] = StrategyRegistry(
     {
         SettingType.STRING: _validate_string,
         SettingType.INTEGER: _validate_integer,
@@ -134,6 +136,7 @@ TYPE_VALIDATORS: Final[Mapping[SettingType, ValidatorCallable]] = MappingProxyTy
         SettingType.ENUM: _validate_enum,
         SettingType.JSON: _validate_json,
     },
+    kind="setting_type_validator",
 )
 
 
@@ -144,8 +147,9 @@ def validate_by_type(definition: SettingDefinition, value: str) -> None:
     it. Raises :class:`SettingValidationError` on type mismatch, range
     violation, or JSON-shape failure.
 
-    Raises :class:`KeyError` for an unregistered ``SettingType`` -- a
-    defensive contract so adding a new enum variant without wiring a
-    handler fails loudly instead of silently passing validation.
+    Raises :class:`~synthorg.core.registry.StrategyFactoryNotFoundError`
+    for an unregistered ``SettingType`` -- a defensive contract so
+    adding a new enum variant without wiring a handler fails loudly
+    instead of silently passing validation.
     """
-    TYPE_VALIDATORS[definition.type](definition, value)
+    _TYPE_VALIDATOR_REGISTRY.get(definition.type)(definition, value)

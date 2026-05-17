@@ -8,6 +8,8 @@ import {
   getPriorityBadgeClasses,
   getChannelTypeLabel,
   filterMessages,
+  messageText,
+  partsToAttachments,
 } from '@/utils/messages'
 import { makeMessage } from '../helpers/factories'
 
@@ -149,9 +151,9 @@ describe('groupMessagesByThread', () => {
 
 describe('filterMessages', () => {
   const msgs = [
-    makeMessage('1', { type: 'task_update', priority: 'normal', content: 'API endpoint done', sender: 'alice' }),
-    makeMessage('2', { type: 'delegation', priority: 'high', content: 'Please review code', sender: 'bob' }),
-    makeMessage('3', { type: 'task_update', priority: 'urgent', content: 'Hotfix deployed', sender: 'alice' }),
+    makeMessage('1', { type: 'task_update', priority: 'normal', text: 'API endpoint done', sender: 'alice' }),
+    makeMessage('2', { type: 'delegation', priority: 'high', text: 'Please review code', sender: 'bob' }),
+    makeMessage('3', { type: 'task_update', priority: 'urgent', text: 'Hotfix deployed', sender: 'alice' }),
   ]
 
   it('filters by type', () => {
@@ -191,11 +193,67 @@ describe('filterMessages', () => {
 
   it('filters by search in to field', () => {
     const msgsWithTo = [
-      makeMessage('1', { to: '#engineering', content: 'hello', sender: 'alice' }),
-      makeMessage('2', { to: '#product', content: 'world', sender: 'bob' }),
+      makeMessage('1', { to: '#engineering', text: 'hello', sender: 'alice' }),
+      makeMessage('2', { to: '#product', text: 'world', sender: 'bob' }),
     ]
     const result = filterMessages(msgsWithTo, { search: 'product' })
     expect(result).toHaveLength(1)
     expect(result[0]!.id).toBe('2')
+  })
+})
+
+describe('messageText', () => {
+  it('returns the canonical text accessor', () => {
+    const msg = makeMessage('1', { text: 'body content' })
+    expect(messageText(msg)).toBe('body content')
+  })
+})
+
+describe('partsToAttachments', () => {
+  it('drops text parts (body, not attachment)', () => {
+    expect(
+      partsToAttachments([{ type: 'text', text: 'hi' }]),
+    ).toEqual([])
+  })
+
+  it('maps data -> artifact with a ref from common keys', () => {
+    expect(
+      partsToAttachments([{ type: 'data', data: { ref: 'pr-42' } }]),
+    ).toEqual([{ type: 'artifact', ref: 'pr-42' }])
+    expect(
+      partsToAttachments([{ type: 'data', data: { id: 'd-1' } }]),
+    ).toEqual([{ type: 'artifact', ref: 'd-1' }])
+    expect(
+      partsToAttachments([{ type: 'data', data: {} }]),
+    ).toEqual([{ type: 'artifact', ref: 'data' }])
+  })
+
+  it('maps file -> file and uri -> link by uri', () => {
+    expect(
+      partsToAttachments([
+        { type: 'file', uri: 'report.html', mime_type: 'text/html' },
+        { type: 'uri', uri: 'https://example.com' },
+      ]),
+    ).toEqual([
+      { type: 'file', ref: 'report.html' },
+      { type: 'link', ref: 'https://example.com' },
+    ])
+  })
+
+  it('preserves order across a mixed parts list', () => {
+    expect(
+      partsToAttachments([
+        { type: 'text', text: 'body' },
+        { type: 'uri', uri: 'https://a' },
+        { type: 'data', data: { name: 'art' } },
+      ]),
+    ).toEqual([
+      { type: 'link', ref: 'https://a' },
+      { type: 'artifact', ref: 'art' },
+    ])
+  })
+
+  it('returns empty for empty parts', () => {
+    expect(partsToAttachments([])).toEqual([])
   })
 })

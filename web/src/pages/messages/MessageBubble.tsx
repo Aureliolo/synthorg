@@ -3,7 +3,12 @@ import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { useFlash } from '@/hooks/useFlash'
 import { formatRelativeTime } from '@/utils/format'
-import { getMessagePriorityColor, getPriorityDotClass } from '@/utils/messages'
+import {
+  getMessagePriorityColor,
+  getPriorityDotClass,
+  messageText,
+  partsToAttachments,
+} from '@/utils/messages'
 import { MessageTypeBadge } from './MessageTypeBadge'
 import { AttachmentList } from './AttachmentList'
 import type { Message } from '@/api/types/messages'
@@ -31,7 +36,8 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
   // (long aria-labels overwhelm screen readers and lose context).
   // Collapse whitespace so multi-line / multi-space bodies don't
   // produce ragged labels.
-  const contentPreview = message.content.trim().replace(/\s+/g, ' ').slice(0, 120)
+  const contentPreview = messageText(message).trim().replace(/\s+/g, ' ').slice(0, 120)
+  const attachments = partsToAttachments(message.parts)
 
   // ``priorityColor`` is null for ``normal`` priority (the default
   // visible state has no dot), so we only mention priority in the
@@ -53,7 +59,7 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
       onClick={onClick}
       aria-label={ariaLabel}
       className={cn(
-        'flex w-full gap-3 rounded-lg p-3 text-left transition-colors',
+        'flex w-full gap-3 rounded-lg p-card text-left transition-colors',
         'hover:bg-card-hover',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
       )}
@@ -71,18 +77,20 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
               aria-label={`${message.priority} priority`}
             />
           )}
-          <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+          <span className="ml-auto shrink-0 font-mono text-micro text-muted-foreground">
             {relativeTime}
           </span>
         </div>
 
         {/* Content */}
-        <p className="whitespace-pre-wrap text-sm text-foreground">{message.content}</p>
+        <p className="whitespace-pre-wrap text-sm text-foreground">
+          {messageText(message)}
+        </p>
 
         {/* Attachments */}
-        {message.attachments.length > 0 && (
+        {attachments.length > 0 && (
           <div className="pt-1">
-            <AttachmentList attachments={message.attachments} />
+            <AttachmentList attachments={attachments} />
           </div>
         )}
       </div>

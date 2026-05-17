@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from synthorg.api.dto import CreateFromPresetRequest, UpdateProviderRequest
+from synthorg.api.dto_providers import CreateFromPresetRequest, UpdateProviderRequest
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderNotFoundError

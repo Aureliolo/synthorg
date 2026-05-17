@@ -22,19 +22,7 @@ from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
 from synthorg.api.dto import (
     DEFAULT_LIMIT,
     ApiResponse,
-    CreateFromPresetRequest,
-    CreateProviderRequest,
-    DiscoverModelsResponse,
     PaginatedResponse,
-    ProbeLocalResponse,
-    ProbePresetResponse,
-    ProviderResponse,
-    TestConnectionResponse,
-    UpdateProviderRequest,
-    to_provider_response,
-)
-from synthorg.api.dto import (
-    TestConnectionRequest as ConnTestRequest,
 )
 from synthorg.api.dto_discovery import (
     AddAllowlistEntryRequest,
@@ -53,10 +41,22 @@ from synthorg.api.dto_provider_capabilities import (
     SyncModelsResponse,  # noqa: TC001 -- runtime litestar response model
 )
 from synthorg.api.dto_providers import (
+    CreateFromPresetRequest,
+    CreateProviderRequest,
+    DiscoverModelsResponse,
+    ProbeLocalResponse,
+    ProbePresetResponse,
     ProviderModelResponse,
+    ProviderResponse,
     PullModelRequest,
+    TestConnectionResponse,
     UpdateModelConfigRequest,
+    UpdateProviderRequest,
     to_provider_model_response,
+    to_provider_response,
+)
+from synthorg.api.dto_providers import (
+    TestConnectionRequest as ConnTestRequest,
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.pagination import (

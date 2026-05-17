@@ -1,7 +1,9 @@
 """Workflow definition request/response DTOs.
 
-Extracted from ``dto.py`` to keep file sizes manageable.
-Re-exported via ``dto.__all__`` for backward compatibility.
+Holds the workflow-definition request/response models consumed by the
+workflow HTTP controllers. ``RollbackWorkflowRequest`` is NOT here: it
+lives in ``synthorg.versioning.models`` so the rollback service
+validates the same shape without importing the API layer.
 """
 
 import json
@@ -12,14 +14,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from synthorg.core.enums import WorkflowType, WorkflowValueType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-
-# ``RollbackWorkflowRequest`` is sourced from
-# ``synthorg.versioning.models`` so the rollback service can validate
-# the same input shape without importing from the API layer; re-exported
-# here for HTTP controllers.
-from synthorg.versioning.models import (
-    RollbackWorkflowRequest as RollbackWorkflowRequest,  # noqa: PLC0414
-)
 
 _SEMVER_RE = re.compile(
     r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$",

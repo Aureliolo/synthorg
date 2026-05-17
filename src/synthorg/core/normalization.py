@@ -269,3 +269,41 @@ def collapse_whitespace_lowercase(value: str) -> str:
         and internal whitespace runs collapsed to single space characters.
     """
     return " ".join(normalize_ascii_lowercase(value).split())
+
+
+def parse_comma_list(value: str | None) -> list[str]:
+    """Split a comma-separated string into its non-empty raw items.
+
+    Items are NOT stripped of surrounding whitespace; use
+    :func:`parse_comma_list_stripped` when the caller wants trimmed
+    tokens. ``None`` and the empty string both yield ``[]``.
+
+    Args:
+        value: Raw comma-separated string, or ``None``.
+
+    Returns:
+        List of the comma-delimited items with empty items dropped.
+    """
+    if not value:
+        return []
+    return [item for item in value.split(",") if item]
+
+
+def parse_comma_list_stripped(value: str | None) -> list[str]:
+    """Split a comma-separated string into stripped, non-empty items.
+
+    Each item has surrounding whitespace removed; items that are empty
+    after stripping are dropped. ``None`` and the empty string both
+    yield ``[]``. Replaces the
+    ``[p.strip() for p in s.split(",") if p.strip()]`` idiom at
+    currency-list, forwarded-header, and recipient-list parse sites.
+
+    Args:
+        value: Raw comma-separated string, or ``None``.
+
+    Returns:
+        List of trimmed, non-empty comma-delimited items.
+    """
+    if not value:
+        return []
+    return [stripped for item in value.split(",") if (stripped := item.strip())]

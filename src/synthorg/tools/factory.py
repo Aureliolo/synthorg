@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
     from synthorg.memory.consolidation.wiki_export import WikiExporter
     from synthorg.memory.org.protocol import OrgMemoryBackend
-    from synthorg.memory.org.store import OrgFactStore
+    from synthorg.persistence.memory_protocol import OrgFactRepository
     from synthorg.tools.analytics.config import AnalyticsToolsConfig
     from synthorg.tools.analytics.data_aggregator import AnalyticsProvider
     from synthorg.tools.analytics.metric_collector import MetricSink
@@ -333,7 +333,7 @@ _DEFAULT_ARCHITECT_AUTONOMY: Final[AutonomyLevel] = AutonomyLevel.SUPERVISED
 def _build_knowledge_architect_tools(  # noqa: PLR0913
     *,
     org_backend: OrgMemoryBackend | None,
-    fact_store: OrgFactStore | None,
+    fact_store: OrgFactRepository | None,
     wiki_exporter: WikiExporter | None,
     architect_agent_id: str,
     architect_autonomy_level: AutonomyLevel,
@@ -407,7 +407,7 @@ def build_default_tools(  # noqa: PLR0913
     async_task_supervisor_task_id: str = "default",
     code_execution_sandbox: SandboxBackend | None = None,
     org_memory_backend: OrgMemoryBackend | None = None,
-    org_fact_store: OrgFactStore | None = None,
+    org_fact_store: OrgFactRepository | None = None,
     wiki_exporter: WikiExporter | None = None,
     architect_agent_id: str = _DEFAULT_ARCHITECT_AGENT_ID,
     architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
@@ -461,7 +461,7 @@ def build_default_tools(  # noqa: PLR0913
             ``org_fact_store`` and ``wiki_exporter`` to register the
             six ``memory.*`` architect tools; missing any of the three
             keeps the surface inert.
-        org_fact_store: OrgFactStore for write/delete operations on
+        org_fact_store: OrgFactRepository for write/delete operations on
             org facts.
         wiki_exporter: Wiki exporter used by ``memory.browse_wiki``.
         architect_agent_id: Agent identity bound to the architect
@@ -601,7 +601,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
     metric_sink: MetricSink | None = None,
     async_task_service: AsyncTaskService | None = None,
     org_memory_backend: OrgMemoryBackend | None = None,
-    org_fact_store: OrgFactStore | None = None,
+    org_fact_store: OrgFactRepository | None = None,
     wiki_exporter: WikiExporter | None = None,
     architect_agent_id: str = _DEFAULT_ARCHITECT_AGENT_ID,
     architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
@@ -640,7 +640,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
             ``org_fact_store`` and ``wiki_exporter`` to register the
             ``memory.*`` architect surface; missing any of the three
             keeps it inert.
-        org_fact_store: ``OrgFactStore`` for write/delete operations
+        org_fact_store: ``OrgFactRepository`` for write/delete operations
             on org facts.
         wiki_exporter: Wiki exporter used by ``memory.browse_wiki``.
         architect_agent_id: Agent identity bound to the architect

@@ -14,6 +14,7 @@ from typing import Any, Final, Literal
 
 from litestar.connection import ASGIConnection  # noqa: TC002
 
+from synthorg.core.normalization import parse_comma_list_stripped
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_GUARD_DEGRADED_AUTH
 
@@ -125,7 +126,7 @@ def client_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str:
     if peer is not None and _ip_in_networks(peer, trusted_networks):
         forwarded = connection.headers.get("x-forwarded-for", "")
         if forwarded:
-            hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+            hops = parse_comma_list_stripped(forwarded)
             for hop in reversed(hops):
                 if _ip_in_networks(hop, trusted_networks):
                     continue

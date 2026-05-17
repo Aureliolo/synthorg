@@ -145,3 +145,28 @@ _r.register(
         validator_pattern=r"^[A-Z]{3}$",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="coordination_metrics_max_entries",
+        type=SettingType.INTEGER,
+        default="10000",
+        description=(
+            "Maximum coordination-metrics records retained in the"
+            " in-memory ring buffer (oldest evicted first). Sizes a"
+            " fixed-length deque at store construction; sourced from the"
+            " SYNTHORG_BUDGET_COORDINATION_METRICS_MAX_ENTRIES env var >"
+            " default at API-process start. Read-only post-init:"
+            " resizing the buffer at runtime would discard retained"
+            " history, so a change requires a restart."
+        ),
+        group="Coordination",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_BUDGET_COORDINATION_METRICS_MAX_ENTRIES",
+        min_value=1,
+        max_value=1_000_000,
+    )
+)

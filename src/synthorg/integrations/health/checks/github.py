@@ -1,12 +1,12 @@
 """GitHub API health check."""
 
-import time
 from datetime import UTC, datetime
 from typing import Final
 from urllib.parse import urlparse
 
 import httpx
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     Connection,
@@ -90,6 +90,7 @@ class GitHubHealthCheck:
         catalog: ConnectionCatalog | None = None,
         *,
         default_api_url: str = _DEFAULT_API_URL,
+        clock: Clock | None = None,
     ) -> None:
         # ``default_api_url`` is operator-tunable; resolve via
         # ``ConfigResolver.get_str("integrations", "github_api_url")``
@@ -97,6 +98,7 @@ class GitHubHealthCheck:
         # whose connections were registered without an explicit
         # ``base_url``.
         self._catalog = catalog
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._default_api_url = default_api_url
         # Pre-compute the per-instance trusted host set so the
         # operator-configured GHE endpoint passes
@@ -204,7 +206,7 @@ class GitHubHealthCheck:
                 checked_at=now,
             )
         url = f"{api_url}/user"
-        start = time.monotonic()
+        start = self._clock.monotonic()
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 resp = await client.get(
@@ -214,7 +216,7 @@ class GitHubHealthCheck:
                         "Accept": "application/vnd.github+json",
                     },
                 )
-            elapsed = (time.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * 1000
             if resp.status_code == _HTTP_OK:
                 logger.info(
                     HEALTH_CHECK_PASSED,
@@ -235,7 +237,7 @@ class GitHubHealthCheck:
                 checked_at=datetime.now(UTC),
             )
         except httpx.HTTPError as exc:
-            elapsed = (time.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * 1000
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,

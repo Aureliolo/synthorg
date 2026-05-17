@@ -13,6 +13,7 @@ Exposes:
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import (
     ConflictError,
     ForbiddenError,
@@ -92,7 +93,7 @@ async def preflight_review_gate(
     approval_id: str,
     task_id: str,
     *,
-    decided_by: str,
+    decided_by: str | None = None,
 ) -> None:
     """Run the review-gate preflight check before persisting a decision.
 
@@ -111,6 +112,7 @@ async def preflight_review_gate(
             unavailable (mapped from ``TaskInternalError``), mirroring
             the tasks controller's 503 handling for the same error.
     """
+    decided_by = resolve_decided_by(decided_by)
     try:
         await review_gate.check_can_decide(task_id=task_id, decided_by=decided_by)
     except SelfReviewError:
@@ -152,7 +154,7 @@ async def try_review_gate_transition(  # noqa: PLR0913
     task_id: str,
     *,
     approved: bool,
-    decided_by: str,
+    decided_by: str | None = None,
     decision_reason: str | None,
 ) -> None:
     """Delegate a review decision to the review gate service.
@@ -173,6 +175,7 @@ async def try_review_gate_transition(  # noqa: PLR0913
         ServiceUnavailableError: When the task engine backend becomes
             unavailable mid-transition.
     """
+    decided_by = resolve_decided_by(decided_by)
     try:
         await review_gate.complete_review(
             task_id=task_id,
@@ -230,7 +233,7 @@ async def signal_resume_intent(  # noqa: PLR0913
     approval_id: str,
     *,
     approved: bool,
-    decided_by: str,
+    decided_by: str | None = None,
     decision_reason: str | None = None,
     task_id: str | None = None,
 ) -> None:
@@ -251,6 +254,7 @@ async def signal_resume_intent(  # noqa: PLR0913
         decision_reason: Optional reason for the decision.
         task_id: Optional task identifier for review-gate flow.
     """
+    decided_by = resolve_decided_by(decided_by)
     logger.info(
         APPROVAL_GATE_RESUME_TRIGGERED,
         approval_id=approval_id,

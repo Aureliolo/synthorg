@@ -13,14 +13,14 @@ returns ``None`` to its own caller without unwinding through an
 exception layer for every rejection.
 """
 
-from collections.abc import Callable, Mapping
-from types import MappingProxyType
+from collections.abc import Callable
 from typing import Final
 
 from synthorg.communication.event_stream.interrupt import (
     InterruptResolution,
     InterruptType,
 )
+from synthorg.core.registry import StrategyRegistry
 
 # ``None`` means the resolution payload satisfies the interrupt's contract;
 # a ``str`` is the short note the dispatcher passes verbatim as ``note=`` on
@@ -46,11 +46,17 @@ def _validate_info_request(
     return None
 
 
-INTERRUPT_RESOLUTION_VALIDATORS: Final[Mapping[InterruptType, ResolutionValidator]] = (
-    MappingProxyType(
-        {
-            InterruptType.TOOL_APPROVAL: _validate_tool_approval,
-            InterruptType.INFO_REQUEST: _validate_info_request,
-        },
-    )
+# Keyed by ``InterruptType`` (a ``StrEnum``); the registry normalises
+# members to their string value so a lookup by either the enum member
+# or the raw value resolves the same validator. An unregistered
+# interrupt type raises ``StrategyFactoryNotFoundError`` at lookup,
+# which :meth:`InterruptStore.resolve` maps to a rejection note.
+INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY: Final[
+    StrategyRegistry[ResolutionValidationResult]
+] = StrategyRegistry(
+    {
+        InterruptType.TOOL_APPROVAL: _validate_tool_approval,
+        InterruptType.INFO_REQUEST: _validate_info_request,
+    },
+    kind="interrupt_resolution_validator",
 )

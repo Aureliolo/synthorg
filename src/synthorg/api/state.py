@@ -85,7 +85,6 @@ from synthorg.observability.prometheus_collector import (
 )
 from synthorg.observability.tracing.protocol import TraceHandler  # noqa: TC001
 from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
-from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
 from synthorg.ontology.service import OntologyService  # noqa: TC001
 from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
 from synthorg.persistence.artifact_storage import (
@@ -100,6 +99,9 @@ from synthorg.persistence.auth_protocol import (
 from synthorg.persistence.auth_protocol import (
     SessionRepository as SessionStore,  # noqa: TC001
 )
+from synthorg.persistence.ontology_protocol import (  # noqa: TC001
+    OntologyDriftReportRepository,
+)
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.management.service import (
@@ -110,7 +112,11 @@ from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
 from synthorg.security.audit import AuditLog  # noqa: TC001
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.security.trust.service import TrustService  # noqa: TC001
-from synthorg.settings.bridge_configs import ApiBridgeConfig
+from synthorg.settings.bridge_configs import (
+    ApiBridgeConfig,
+    MemoryBridgeConfig,
+    WorkersBridgeConfig,
+)
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.telemetry.collector import TelemetryCollector  # noqa: TC001
@@ -218,6 +224,8 @@ class AppState(AppStateServicesMixin):
         "_meeting_scheduler",
         "_meeting_service",
         "_memory_backend",
+        "_memory_bridge_config",
+        "_memory_bridge_config_lock",
         "_memory_service",
         "_message_bus",
         "_message_service",
@@ -283,6 +291,8 @@ class AppState(AppStateServicesMixin):
         "_webhook_replay_protector",
         "_webhook_service",
         "_worker_execution_service",
+        "_workers_bridge_config",
+        "_workers_bridge_config_lock",
         "_workflow_execution_service",
         "_workflow_rollback_service",
         "_workflow_service",
@@ -351,7 +361,7 @@ class AppState(AppStateServicesMixin):
         self._coordination_metrics_store = coordination_metrics_store
         self._notification_dispatcher = notification_dispatcher
         self._ontology_service = ontology_service
-        self._drift_report_store: DriftReportStore | None = None
+        self._drift_report_store: OntologyDriftReportRepository | None = None
         self._drift_detection_service: DriftDetectionService | None = None
         self._ontology_sync_service: OntologyOrgMemorySync | None = None
         self._persistence = persistence
@@ -458,6 +468,17 @@ class AppState(AppStateServicesMixin):
         # ``swap_api_bridge_config`` based on a stale read.
         self._api_bridge_config: ApiBridgeConfig = ApiBridgeConfig()
         self._api_bridge_config_lock: threading.Lock = threading.Lock()
+        self._workers_bridge_config: WorkersBridgeConfig = WorkersBridgeConfig()
+        self._workers_bridge_config_lock: threading.Lock = threading.Lock()
+        # Frozen ``MemoryBridgeConfig`` snapshot (consolidation
+        # enforce-batch + fine-tune preflight knobs). Default-
+        # constructed so the field defaults equal the registered
+        # ``memory.*`` defaults; ``_apply_bridge_config`` swaps in the
+        # operator-tuned snapshot and ``MemoryBridgeSettingsSubscriber``
+        # hot-swaps it on operator edits. The dedicated lock guards the
+        # read-modify-write path on ``mutate_memory_bridge_config``.
+        self._memory_bridge_config: MemoryBridgeConfig = MemoryBridgeConfig()
+        self._memory_bridge_config_lock: threading.Lock = threading.Lock()
         self._provider_management: ProviderManagementService | None = None
         self._org_mutation_service: OrgMutationService | None = None
         # Shutdown flag observable by long-lived subsystems.

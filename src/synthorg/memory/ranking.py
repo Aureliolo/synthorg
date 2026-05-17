@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.text_similarity import split_words
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
@@ -424,7 +425,7 @@ def _word_bigrams(text: str) -> frozenset[tuple[str, str]]:
         Frozen set of consecutive (word_i, word_i+1) pairs (lowercased).
         Empty when the text has fewer than two words.
     """
-    words = text.lower().split()
+    words = split_words(text)
     if len(words) < _MIN_BIGRAM_WORDS:
         return frozenset()
     return frozenset((words[i], words[i + 1]) for i in range(len(words) - 1))

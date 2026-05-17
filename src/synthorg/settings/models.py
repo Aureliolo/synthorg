@@ -6,6 +6,10 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.registry import (
+    StrategyFactoryNotFoundError,
+    StrategyRegistry,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import safe_error_description
 from synthorg.settings.enums import (
@@ -179,19 +183,21 @@ def _validate_default_type(
     default: str,
     defn: SettingDefinition,
 ) -> None:
-    """Check that *default* is parseable as *setting_type*."""
-    validators = {
-        SettingType.INTEGER: _check_default_int,
-        SettingType.FLOAT: _check_default_float,
-        SettingType.BOOLEAN: _check_default_bool,
-        SettingType.JSON: _check_default_json,
-    }
-    validator = validators.get(setting_type)
-    if validator is not None:
-        validator(default)
-    elif setting_type == SettingType.ENUM and default not in defn.enum_values:
-        msg = f"default {default!r} not in enum_values"
-        raise ValueError(msg)
+    """Check that *default* is parseable as *setting_type*.
+
+    Parse checks dispatch through ``_DEFAULT_TYPE_CHECK_REGISTRY``
+    (ADR-0002). STRING has no parse check; ENUM is a membership check
+    that needs ``defn.enum_values``, so both fall through the
+    registry-miss branch rather than being registered.
+    """
+    try:
+        check = _DEFAULT_TYPE_CHECK_REGISTRY.get(setting_type)
+    except StrategyFactoryNotFoundError:
+        if setting_type == SettingType.ENUM and default not in defn.enum_values:
+            msg = f"default {default!r} not in enum_values"
+            raise ValueError(msg) from None
+        return
+    check(default)
 
 
 def _check_default_int(default: str) -> None:
@@ -225,6 +231,21 @@ def _check_default_json(default: str) -> None:
     except json.JSONDecodeError:
         msg = "default is not valid JSON"
         raise ValueError(msg) from None
+
+
+# Keyed by ``SettingType`` (a ``StrEnum``). ``.get`` (not ``.build``)
+# is used at dispatch so a checker's expected ``ValueError`` rejection
+# of a malformed registered default does not emit a registry
+# ``factory.failed`` warning.
+_DEFAULT_TYPE_CHECK_REGISTRY: StrategyRegistry[None] = StrategyRegistry(
+    {
+        SettingType.INTEGER: _check_default_int,
+        SettingType.FLOAT: _check_default_float,
+        SettingType.BOOLEAN: _check_default_bool,
+        SettingType.JSON: _check_default_json,
+    },
+    kind="setting_default_type_check",
+)
 
 
 def _validate_default_range(

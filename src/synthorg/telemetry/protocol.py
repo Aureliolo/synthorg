@@ -1,12 +1,13 @@
 """Telemetry reporter protocol and event model."""
 
 from datetime import datetime  # noqa: TC003 -- Pydantic needs at runtime
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.telemetry.config import DEFAULT_ENVIRONMENT, MAX_STRING_LENGTH
+from synthorg.telemetry.property_rules import validate_event_properties
 
 
 class TelemetryEvent(BaseModel):
@@ -62,6 +63,22 @@ class TelemetryEvent(BaseModel):
         default_factory=dict,
         description="Event-specific aggregate data",
     )
+
+    @model_validator(mode="after")
+    def _validate_properties(self) -> Self:
+        """Enforce the privacy property contract at construction.
+
+        A telemetry property typo (key not in the per-event-type
+        allowlist), a forbidden key pattern, a non-primitive value, or
+        an over-length string now raises ``ValidationError`` here
+        rather than being silently dropped downstream. This is the
+        same contract :class:`PrivacyScrubber` enforces at delivery
+        time -- shared via
+        :func:`synthorg.telemetry.property_rules.validate_event_properties`
+        so the two guards cannot drift.
+        """
+        validate_event_properties(self.event_type, self.properties)
+        return self
 
 
 @runtime_checkable

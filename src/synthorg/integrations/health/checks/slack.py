@@ -1,12 +1,12 @@
 """Slack API health check."""
 
 import re
-import time
 from datetime import UTC, datetime
 from typing import Final
 
 import httpx
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     Connection,
@@ -22,6 +22,7 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 _TIMEOUT: Final[float] = 10.0
+_MILLISECONDS_PER_SECOND: Final[float] = 1000.0
 _DEFAULT_SLACK_BASE_URL: Final[str] = "https://slack.com"
 _ALLOWED_BASE_URL_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^https://([a-z0-9-]+\.)?slack\.com$",
@@ -37,8 +38,14 @@ class SlackHealthCheck:
             authenticate (returns UNKNOWN).
     """
 
-    def __init__(self, catalog: ConnectionCatalog | None = None) -> None:
+    def __init__(
+        self,
+        catalog: ConnectionCatalog | None = None,
+        *,
+        clock: Clock | None = None,
+    ) -> None:
         self._catalog = catalog
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     def bind_catalog(self, catalog: ConnectionCatalog) -> None:
         """Bind a catalog after construction.
@@ -144,7 +151,7 @@ class SlackHealthCheck:
         base_url: str,
     ) -> HealthReport:
         """Execute the ``auth.test`` call and interpret the response."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 resp = await client.post(
@@ -152,7 +159,7 @@ class SlackHealthCheck:
                     headers={"Authorization": f"Bearer {token}"},
                 )
         except httpx.HTTPError as exc:
-            elapsed = (time.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
             scrubbed = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,
@@ -168,7 +175,7 @@ class SlackHealthCheck:
                 checked_at=datetime.now(UTC),
             )
 
-        elapsed = (time.monotonic() - start) * 1000
+        elapsed = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         if resp.is_error:
             logger.warning(
                 HEALTH_CHECK_FAILED,

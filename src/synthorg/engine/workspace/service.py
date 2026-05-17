@@ -4,10 +4,10 @@ High-level service that coordinates workspace lifecycle:
 setup, merge, and teardown for groups of agent workspaces.
 """
 
-import time
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.errors import (
     WorkspaceCleanupError,
 )
@@ -49,14 +49,16 @@ class WorkspaceIsolationService:
         config: Workspace isolation configuration.
     """
 
-    __slots__ = ("_config", "_merge_orchestrator", "_strategy")
+    __slots__ = ("_clock", "_config", "_merge_orchestrator", "_strategy")
 
     def __init__(
         self,
         *,
         strategy: WorkspaceIsolationStrategy,
         config: WorkspaceIsolationConfig,
+        clock: Clock | None = None,
     ) -> None:
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._strategy = strategy
         self._config = config
         pw = config.planner_worktrees
@@ -65,6 +67,7 @@ class WorkspaceIsolationService:
             merge_order=pw.merge_order,
             conflict_escalation=pw.conflict_escalation,
             cleanup_on_merge=pw.cleanup_on_merge,
+            clock=self._clock,
         )
 
     async def setup_group(
@@ -168,11 +171,11 @@ class WorkspaceIsolationService:
         Raises:
             WorkspaceMergeError: When a merge operation fails fatally.
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
         merge_results = await self._merge_orchestrator.merge_all(
             workspaces=workspaces,
         )
-        elapsed = time.monotonic() - start
+        elapsed = self._clock.monotonic() - start
 
         return WorkspaceGroupResult(
             group_id=str(uuid4()),

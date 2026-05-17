@@ -3,6 +3,8 @@ import { fn } from 'storybook/test'
 import { MessageBubble } from './MessageBubble'
 import type { Message } from '@/api/types/messages'
 
+const textParts = (text: string): Message['parts'] => [{ type: 'text', text }]
+
 const baseMessage: Message = {
   id: 'msg-1',
   timestamp: new Date(Date.now() - 300_000).toISOString(),
@@ -11,7 +13,10 @@ const baseMessage: Message = {
   type: 'task_update',
   priority: 'normal',
   channel: '#engineering',
-  content: 'Completed API endpoint for user authentication. PR ready for review.',
+  text: 'Completed API endpoint for user authentication. PR ready for review.',
+  parts: textParts(
+    'Completed API endpoint for user authentication. PR ready for review.',
+  ),
   attachments: [],
   metadata: { task_id: null, project_id: null, tokens_used: 1200, cost: 0.018, extra: [] },
 }
@@ -36,16 +41,27 @@ export const HighPriority: Story = {
 }
 
 export const UrgentPriority: Story = {
-  args: { message: { ...baseMessage, priority: 'urgent', type: 'escalation', content: 'Production database is unresponsive. Immediate attention required.' } },
+  args: {
+    message: {
+      ...baseMessage,
+      priority: 'urgent',
+      type: 'escalation',
+      text: 'Production database is unresponsive. Immediate attention required.',
+      parts: textParts(
+        'Production database is unresponsive. Immediate attention required.',
+      ),
+    },
+  },
 }
 
 export const WithAttachments: Story = {
   args: {
     message: {
       ...baseMessage,
-      attachments: [
-        { type: 'artifact', ref: 'pr-42' },
-        { type: 'file', ref: 'coverage-report.html' },
+      parts: [
+        ...textParts(baseMessage.text),
+        { type: 'data', data: { ref: 'pr-42' } },
+        { type: 'file', uri: 'coverage-report.html', mime_type: 'text/html' },
       ],
     },
   },
@@ -56,7 +72,10 @@ export const DelegationType: Story = {
     message: {
       ...baseMessage,
       type: 'delegation',
-      content: 'Delegating database migration task to junior developer. Please implement the schema changes as outlined in the design doc.',
+      text: 'Delegating database migration task to junior developer. Please implement the schema changes as outlined in the design doc.',
+      parts: textParts(
+        'Delegating database migration task to junior developer. Please implement the schema changes as outlined in the design doc.',
+      ),
     },
   },
 }

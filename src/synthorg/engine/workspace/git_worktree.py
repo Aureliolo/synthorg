@@ -7,12 +7,12 @@ directory backed by its own branch.
 import asyncio
 import math
 import re
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import ConflictType
 from synthorg.engine.errors import (
     WorkspaceCleanupError,
@@ -113,6 +113,7 @@ class PlannerWorktreeStrategy:
 
     __slots__ = (
         "_active_workspaces",
+        "_clock",
         "_cmd_timeout",
         "_config",
         "_lock",
@@ -127,6 +128,7 @@ class PlannerWorktreeStrategy:
         repo_root: Path,
         cmd_timeout: float,
         semantic_analyzer: SemanticAnalyzer | None = None,
+        clock: Clock | None = None,
     ) -> None:
         """Initialize the strategy.
 
@@ -138,6 +140,7 @@ class PlannerWorktreeStrategy:
                 ``ConfigResolver.get_float("tools",
                 "git_command_timeout_seconds")`` at the call site.
             semantic_analyzer: Optional semantic conflict analyzer.
+            clock: Injectable time source; defaults to ``SystemClock``.
         """
         if not math.isfinite(cmd_timeout) or cmd_timeout <= 0:
             # Reject NaN / +Inf / -Inf alongside zero and negatives:
@@ -153,6 +156,7 @@ class PlannerWorktreeStrategy:
                 value=cmd_timeout,
             )
             raise ValueError(msg)
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._config = config
         self._repo_root = repo_root
         self._cmd_timeout = cmd_timeout
@@ -382,7 +386,7 @@ class PlannerWorktreeStrategy:
                 event=WORKSPACE_MERGE_FAILED,
             )
 
-            start = time.monotonic()
+            start = self._clock.monotonic()
             pre_merge_sha = await self._checkout_and_capture_sha(
                 workspace,
             )
@@ -393,7 +397,7 @@ class PlannerWorktreeStrategy:
                 workspace.branch_name,
                 log_event=WORKSPACE_MERGE_FAILED,
             )
-            elapsed = time.monotonic() - start
+            elapsed = self._clock.monotonic() - start
 
             if rc == 0:
                 return await self._finalize_successful_merge(
@@ -540,7 +544,7 @@ class PlannerWorktreeStrategy:
             branch_name=workspace.branch_name,
             success=False,
             conflicts=conflicts,
-            duration_seconds=time.monotonic() - start,
+            duration_seconds=self._clock.monotonic() - start,
         )
 
     async def teardown_workspace(

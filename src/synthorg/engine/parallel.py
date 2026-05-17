@@ -12,11 +12,11 @@ execution), extended with fail-fast, progress tracking, and
 
 import asyncio
 import dataclasses
-import time
 from collections.abc import Callable
 from contextlib import nullcontext
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.errors import ParallelExecutionError, ResourceConflictError
 from synthorg.engine.parallel_models import (
     AgentAssignment,
@@ -101,11 +101,13 @@ class ParallelExecutor:
         shutdown_manager: ShutdownManager | None = None,
         resource_lock: ResourceLock | None = None,
         progress_callback: ProgressCallback | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._engine = engine
         self._shutdown_manager = shutdown_manager
         self._resource_lock = resource_lock
         self._progress_callback = progress_callback
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def execute_group(
         self,
@@ -125,7 +127,7 @@ class ParallelExecutor:
             ParallelExecutionError: If fatal errors (MemoryError,
                 RecursionError) occurred during execution.
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
 
         logger.info(
             PARALLEL_GROUP_START,
@@ -192,7 +194,7 @@ class ParallelExecutor:
         result = self._build_result(
             group,
             outcomes,
-            time.monotonic() - start,
+            self._clock.monotonic() - start,
         )
 
         logger.info(

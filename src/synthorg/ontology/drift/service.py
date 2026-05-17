@@ -17,9 +17,11 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.ontology.config import DriftDetectionConfig
     from synthorg.ontology.drift.protocol import DriftDetectionStrategy
-    from synthorg.ontology.drift.store import DriftReportStore
     from synthorg.ontology.models import DriftReport
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import (
+        OntologyDriftReportRepository,
+        OntologyEntityRepository,
+    )
 
 logger = get_logger(__name__)
 
@@ -44,9 +46,9 @@ class DriftDetectionService:
         self,
         *,
         strategy: DriftDetectionStrategy,
-        ontology: OntologyBackend,
+        ontology: OntologyEntityRepository,
         config: DriftDetectionConfig,
-        store: DriftReportStore | None = None,
+        store: OntologyDriftReportRepository | None = None,
     ) -> None:
         self._strategy = strategy
         self._ontology = ontology

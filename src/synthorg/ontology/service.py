@@ -22,7 +22,7 @@ from synthorg.persistence._shared import collect_all_mapping
 
 if TYPE_CHECKING:
     from synthorg.ontology.config import EntitiesConfig, OntologyConfig
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
     from synthorg.versioning.models import VersionSnapshot
     from synthorg.versioning.service import VersioningService
 
@@ -41,7 +41,7 @@ class OntologyService:
 
     def __init__(
         self,
-        backend: OntologyBackend,
+        backend: OntologyEntityRepository,
         versioning: VersioningService[EntityDefinition],
         config: OntologyConfig,
     ) -> None:

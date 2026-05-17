@@ -33,23 +33,28 @@ class TestClassificationBudgetTracker:
         assert await tracker.try_reserve(0.11) is False
         assert tracker.total_spent == 0.0
 
-    async def test_record_reduces_remaining(self) -> None:
+    async def test_reserve_settle_reduces_remaining(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
-        await tracker.record(0.03)
+        assert await tracker.try_reserve(0.03) is True
+        await tracker.settle(0.03, 0.03)
         assert tracker.total_spent == pytest.approx(0.03)
         assert tracker.remaining == pytest.approx(0.07)
 
-    async def test_record_then_cannot_reserve(self) -> None:
+    async def test_settled_spend_then_cannot_reserve(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
-        await tracker.record(0.08)
+        assert await tracker.try_reserve(0.08) is True
+        await tracker.settle(0.08, 0.08)
         assert await tracker.try_reserve(0.05) is False
         # The failed reserve must not leak into spent state.
         assert tracker.total_spent == pytest.approx(0.08)
         assert await tracker.try_reserve(0.02) is True
 
-    async def test_remaining_never_negative(self) -> None:
+    async def test_remaining_never_negative_on_overspend(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
-        await tracker.record(0.15)
+        assert await tracker.try_reserve(0.05) is True
+        # Actual cost overran the estimate and the whole budget.
+        await tracker.settle(0.05, 0.15)
+        assert tracker.total_spent == pytest.approx(0.15)
         assert tracker.remaining == 0.0
 
     async def test_zero_budget(self) -> None:
@@ -69,20 +74,25 @@ class TestClassificationBudgetTracker:
     async def test_negative_actual_cost_rejected(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
         with pytest.raises(ValueError, match="non-negative"):
-            await tracker.record(-0.01)
+            await tracker.settle(0.0, -0.01)
 
-    async def test_multiple_records(self) -> None:
+    async def test_multiple_settled_spends(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
-        await tracker.record(0.02)
-        await tracker.record(0.03)
-        await tracker.record(0.01)
+        for cost in (0.02, 0.03, 0.01):
+            assert await tracker.try_reserve(cost) is True
+            await tracker.settle(cost, cost)
         assert tracker.total_spent == pytest.approx(0.06)
         assert tracker.remaining == pytest.approx(0.04)
 
-    async def test_concurrent_records_are_lock_safe(self) -> None:
-        """Concurrent record() calls must accumulate without loss."""
+    async def test_concurrent_settles_are_lock_safe(self) -> None:
+        """Concurrent reserve+settle pairs must accumulate without loss."""
         tracker = ClassificationBudgetTracker(budget=10.0)
-        await asyncio.gather(*(tracker.record(0.01) for _ in range(100)))
+
+        async def spend(cost: float) -> None:
+            assert await tracker.try_reserve(cost) is True
+            await tracker.settle(cost, cost)
+
+        await asyncio.gather(*(spend(0.01) for _ in range(100)))
         assert tracker.total_spent == pytest.approx(1.0)
         assert tracker.remaining == pytest.approx(9.0)
 

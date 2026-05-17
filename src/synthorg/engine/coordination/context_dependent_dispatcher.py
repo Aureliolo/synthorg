@@ -1,8 +1,8 @@
 """Context-dependent dispatcher."""
 
-import time
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.coordination._dispatch_helpers import (
     merge_workspaces,
     rebuild_group_with_workspaces,
@@ -50,6 +50,9 @@ class ContextDependentDispatcher:
     Multi-subtask waves use workspace isolation with per-wave
     setup/merge.
     """
+
+    def __init__(self, *, clock: Clock | None = None) -> None:
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def dispatch(
         self,
@@ -141,7 +144,7 @@ class ContextDependentDispatcher:
             wave_index=wave_idx,
             request_count=len(wave_requests),
         )
-        ws_start = time.monotonic()
+        ws_start = self._clock.monotonic()
         try:
             wave_workspaces = await workspace_service.setup_group(
                 requests=wave_requests,
@@ -149,7 +152,7 @@ class ContextDependentDispatcher:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            ws_elapsed = time.monotonic() - ws_start
+            ws_elapsed = self._clock.monotonic() - ws_start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=f"workspace_setup_wave_{wave_idx}",
@@ -167,7 +170,7 @@ class ContextDependentDispatcher:
             return (), None
 
         all_workspaces.extend(wave_workspaces)
-        ws_elapsed = time.monotonic() - ws_start
+        ws_elapsed = self._clock.monotonic() - ws_start
         logger.info(
             WORKSPACE_SETUP_COMPLETE,
             wave_index=wave_idx,
@@ -201,7 +204,7 @@ class ContextDependentDispatcher:
         Returns:
             True if the wave failed, False if it succeeded.
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
         subtask_ids = tuple(a.task.id for a in group.assignments)
         wave_failed = False
 
@@ -213,7 +216,7 @@ class ContextDependentDispatcher:
 
         try:
             exec_result = await parallel_executor.execute_group(group)
-            elapsed = time.monotonic() - start
+            elapsed = self._clock.monotonic() - start
 
             all_waves.append(
                 CoordinationWave(
@@ -259,7 +262,7 @@ class ContextDependentDispatcher:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed = time.monotonic() - start
+            elapsed = self._clock.monotonic() - start
             wave_failed = True
             logger.warning(
                 COORDINATION_PHASE_FAILED,
@@ -289,6 +292,7 @@ class ContextDependentDispatcher:
                     merge_result, merge_phase = await merge_workspaces(
                         workspace_service,
                         wave_workspaces,
+                        clock=self._clock,
                         phase_name=merge_phase_name,
                     )
                     all_phases.append(merge_phase)

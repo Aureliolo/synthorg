@@ -14,12 +14,13 @@ from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
     ConnectionStatus,
+    OAuthToken,
 )
 from synthorg.integrations.errors import TokenRefreshFailedError
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_EXPIRED,
     OAUTH_TOKEN_REFRESH_FAILED,
@@ -50,9 +51,13 @@ class OAuthTokenManager:
         config_resolver: Optional ConfigResolver used to resolve the
             operator-tuned OAuth HTTP timeout
             (``integrations.oauth_http_timeout_seconds``, restart
-            required). Resolved once at :meth:`start` so refresh calls
-            honour operator tuning; when the resolver is absent or the
-            lookup fails, the flow's built-in default is used.
+            required) plus the sweep interval
+            (``integrations.oauth_token_check_interval_seconds``) and
+            refresh window
+            (``integrations.oauth_token_refresh_threshold_seconds``).
+            All are resolved once at :meth:`start`; when the resolver
+            is absent or a lookup fails, the constructor default
+            (equal to the registered default) is kept.
     """
 
     def __init__(
@@ -119,12 +124,53 @@ class OAuthTokenManager:
             return
         self._flow = AuthorizationCodeFlow(http_timeout_seconds=timeout)
 
+    async def _resolve_loop_tuning(self) -> None:
+        """Resolve the operator-tuned sweep interval and refresh window.
+
+        Called once inside :meth:`start` before the refresh loop spawns.
+        A settings outage is non-fatal: each value keeps the
+        constructor default (which equals the registered default), so a
+        backend outage never silently disables the sweep.
+        """
+        if self._config_resolver is None:
+            return
+        for key, apply in (
+            ("oauth_token_check_interval_seconds", self._apply_interval),
+            ("oauth_token_refresh_threshold_seconds", self._apply_threshold),
+        ):
+            try:
+                value = await self._config_resolver.get_int(
+                    SettingNamespace.INTEGRATIONS.value,
+                    key,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.info(
+                    SETTINGS_FETCH_FAILED,
+                    namespace=SettingNamespace.INTEGRATIONS.value,
+                    key=key,
+                    error=(
+                        f"failed to resolve {key}; keeping default"
+                        f" ({type(exc).__name__})"
+                    ),
+                )
+                continue
+            apply(value)
+
+    def _apply_interval(self, seconds: int) -> None:
+        self._interval = seconds
+
+    def _apply_threshold(self, seconds: int) -> None:
+        self._threshold = timedelta(seconds=seconds)
+
     async def start(self) -> None:
         """Start the background refresh loop."""
         async with self._lifecycle_lock:
             if self._task is not None:
                 return
             await self._resolve_flow_timeout()
+            await self._resolve_loop_tuning()
             self._task = asyncio.create_task(self._refresh_loop())
             logger.info(
                 OAUTH_TOKEN_REFRESHED,
@@ -150,10 +196,14 @@ class OAuthTokenManager:
                 await self._check_and_refresh()
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                logger.exception(
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.error(
                     OAUTH_TOKEN_REFRESH_FAILED,
-                    error="unexpected error in refresh loop",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    reason="unexpected error in refresh loop",
                 )
             await asyncio.sleep(self._interval)
 
@@ -223,11 +273,15 @@ class OAuthTokenManager:
         """
         try:
             credentials = await self._catalog.get_credentials(conn.name)
-        except Exception:
-            logger.exception(
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 connection_name=conn.name,
-                error="credential load failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="credential load failed",
             )
             await self._catalog.update_health(
                 conn.name,
@@ -272,56 +326,7 @@ class OAuthTokenManager:
             )
             return
 
-        if not refreshed.access_token:
-            logger.warning(
-                OAUTH_TOKEN_REFRESH_FAILED,
-                connection_name=conn.name,
-                reason="refresh returned no access_token",
-            )
-            # Treat an empty refresh result as a failure path so
-            # the connection's health flips to ``DEGRADED`` and an
-            # operator notices it, instead of silently returning
-            # and leaving the old expired token in place.
-            await self._catalog.update_health(
-                conn.name,
-                status=ConnectionStatus.DEGRADED,
-                checked_at=now,
-            )
-            return
-
-        try:
-            await self._catalog.store_oauth_tokens(
-                conn.name,
-                access_token=refreshed.access_token,
-                refresh_token=refreshed.refresh_token,
-            )
-            if refreshed.expires_at is not None:
-                meta_updates = dict(conn.metadata)
-                meta_updates["token_expires_at"] = refreshed.expires_at.isoformat()
-                await self._catalog.update(conn.name, metadata=meta_updates)
-        except Exception:
-            # A write failure after a successful refresh leaves the
-            # connection state inconsistent. Swallow the exception
-            # so the sweep continues with the next connection, but
-            # flip health to ``DEGRADED`` and log the failure with
-            # the exception chain.
-            logger.exception(
-                OAUTH_TOKEN_REFRESH_FAILED,
-                connection_name=conn.name,
-                error="failed to persist refreshed tokens",
-            )
-            try:
-                await self._catalog.update_health(
-                    conn.name,
-                    status=ConnectionStatus.DEGRADED,
-                    checked_at=now,
-                )
-            except Exception:
-                logger.exception(
-                    OAUTH_TOKEN_REFRESH_FAILED,
-                    connection_name=conn.name,
-                    error="update_health failed after persistence failure",
-                )
+        if not await self._persist_refreshed_tokens(conn, refreshed, now):
             return
 
         logger.info(
@@ -330,3 +335,74 @@ class OAuthTokenManager:
             has_refresh=refreshed.refresh_token is not None,
             note="proactive refresh completed",
         )
+
+    async def _persist_refreshed_tokens(
+        self,
+        conn: Connection,
+        refreshed: OAuthToken,
+        now: datetime,
+    ) -> bool:
+        """Persist refreshed tokens; ``False`` if the write failed.
+
+        On failure the connection is flipped to ``DEGRADED`` so an
+        operator notices, and the exception is swallowed so the sweep
+        continues with the next connection. The traceback is
+        deliberately not logged: the stack frames here hold the OAuth
+        client secret and refresh token, so only a redacted
+        description is emitted.
+        """
+        access_token = refreshed.access_token
+        if not access_token:
+            logger.warning(
+                OAUTH_TOKEN_REFRESH_FAILED,
+                connection_name=conn.name,
+                reason="refresh returned no access_token",
+            )
+            # Treat an empty refresh result as a failure path so the
+            # connection's health flips to ``DEGRADED`` and an operator
+            # notices it, instead of silently leaving the old expired
+            # token in place.
+            await self._catalog.update_health(
+                conn.name,
+                status=ConnectionStatus.DEGRADED,
+                checked_at=now,
+            )
+            return False
+        try:
+            await self._catalog.store_oauth_tokens(
+                conn.name,
+                access_token=access_token,
+                refresh_token=refreshed.refresh_token,
+            )
+            if refreshed.expires_at is not None:
+                meta_updates = dict(conn.metadata)
+                meta_updates["token_expires_at"] = refreshed.expires_at.isoformat()
+                await self._catalog.update(conn.name, metadata=meta_updates)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                OAUTH_TOKEN_REFRESH_FAILED,
+                connection_name=conn.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="failed to persist refreshed tokens",
+            )
+            try:
+                await self._catalog.update_health(
+                    conn.name,
+                    status=ConnectionStatus.DEGRADED,
+                    checked_at=now,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as health_exc:
+                logger.warning(
+                    OAUTH_TOKEN_REFRESH_FAILED,
+                    connection_name=conn.name,
+                    error_type=type(health_exc).__name__,
+                    error=safe_error_description(health_exc),
+                    reason="update_health failed after persistence failure",
+                )
+            return False
+        return True

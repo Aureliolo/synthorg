@@ -1,4 +1,10 @@
-"""Tests for SimpleConsolidationStrategy."""
+"""Tests for the Simple composite (HighestRelevanceSelector + ConcatenationOp).
+
+Post ADR-0005 axis split: ``SimpleConsolidationStrategy`` is gone;
+"simple" is ``Composite(HighestRelevanceSelector, ConcatenationOp)``.
+These assertions are unchanged from the pre-split monolith suite --
+the composite is byte-identical (see ``test_axis_split_golden``).
+"""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -7,9 +13,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.enums import MemoryCategory
-from synthorg.memory.consolidation.simple_strategy import (
-    SimpleConsolidationStrategy,
+from synthorg.memory.consolidation.composite import (
+    CompositeConsolidationStrategy,
 )
+from synthorg.memory.consolidation.ops import ConcatenationOp
+from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
 from tests._shared import mock_of
@@ -35,13 +43,25 @@ def _make_entry(
     )
 
 
+def _make_simple(
+    backend: MemoryBackend,
+    *,
+    group_threshold: int = 3,
+) -> CompositeConsolidationStrategy:
+    """Build the Simple composite (selector group-threshold validated)."""
+    return CompositeConsolidationStrategy(
+        selector=HighestRelevanceSelector(group_threshold=group_threshold),
+        op=ConcatenationOp(backend=backend),
+    )
+
+
 @pytest.mark.unit
-class TestSimpleConsolidationStrategy:
-    """SimpleConsolidationStrategy behaviour."""
+class TestSimpleComposite:
+    """Simple composite behaviour (byte-identical with the old monolith)."""
 
     async def test_empty_input(self) -> None:
         backend = mock_of[MemoryBackend]()
-        strategy = SimpleConsolidationStrategy(backend=backend)
+        strategy = _make_simple(backend)
         result = await strategy.consolidate((), agent_id=_AGENT_ID)
         assert result.consolidated_count == 0
         assert result.removed_ids == ()
@@ -49,10 +69,7 @@ class TestSimpleConsolidationStrategy:
 
     async def test_single_category_below_threshold(self) -> None:
         backend = mock_of[MemoryBackend]()
-        strategy = SimpleConsolidationStrategy(
-            backend=backend,
-            group_threshold=5,
-        )
+        strategy = _make_simple(backend, group_threshold=5)
         entries = tuple(_make_entry(f"m{i}") for i in range(2))
         result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
         assert result.consolidated_count == 0
@@ -63,10 +80,7 @@ class TestSimpleConsolidationStrategy:
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
-        strategy = SimpleConsolidationStrategy(
-            backend=backend,
-            group_threshold=3,
-        )
+        strategy = _make_simple(backend, group_threshold=3)
         entries = tuple(_make_entry(f"m{i}", relevance=0.1 * i) for i in range(5))
         result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
         assert result.consolidated_count == 4
@@ -78,10 +92,7 @@ class TestSimpleConsolidationStrategy:
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
-        strategy = SimpleConsolidationStrategy(
-            backend=backend,
-            group_threshold=3,
-        )
+        strategy = _make_simple(backend, group_threshold=3)
         entries = (
             _make_entry("e1", MemoryCategory.EPISODIC, relevance=0.1),
             _make_entry("e2", MemoryCategory.EPISODIC, relevance=0.5),
@@ -100,10 +111,7 @@ class TestSimpleConsolidationStrategy:
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
-        strategy = SimpleConsolidationStrategy(
-            backend=backend,
-            group_threshold=3,
-        )
+        strategy = _make_simple(backend, group_threshold=3)
         entries = (
             _make_entry("low", relevance=0.1),
             _make_entry("mid", relevance=0.5),
@@ -119,19 +127,9 @@ class TestSimpleConsolidationStrategy:
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
-        strategy = SimpleConsolidationStrategy(
-            backend=backend,
-            group_threshold=3,
-        )
+        strategy = _make_simple(backend, group_threshold=3)
         long_content = "x" * 300
-        entries = tuple(
-            _make_entry(
-                f"m{i}",
-                relevance=0.1 * i,
-            )
-            for i in range(4)
-        )
-        # Override content to be long for entries that will be removed
+        entries = tuple(_make_entry(f"m{i}", relevance=0.1 * i) for i in range(4))
         long_entries = tuple(
             MemoryEntry(
                 id=e.id,
@@ -155,10 +153,7 @@ class TestSimpleConsolidationStrategy:
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
-        strategy = SimpleConsolidationStrategy(
-            backend=backend,
-            group_threshold=3,
-        )
+        strategy = _make_simple(backend, group_threshold=3)
         entries = (
             _make_entry("m0", relevance=None),
             _make_entry("m1", relevance=None),
@@ -174,17 +169,13 @@ class TestSimpleConsolidationStrategy:
         backend.store = AsyncMock(return_value="summary-1")
         backend.delete = AsyncMock(return_value=True)
 
-        strategy = SimpleConsolidationStrategy(
-            backend=backend,
-            group_threshold=3,
-        )
+        strategy = _make_simple(backend, group_threshold=3)
         entries = (
             _make_entry("old", relevance=0.5, age_hours=10),
             _make_entry("mid", relevance=0.5, age_hours=5),
             _make_entry("new", relevance=0.5, age_hours=1),
         )
         result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
-        # Most recent (age_hours=1, so closest to _NOW) should be kept
         assert "new" not in result.removed_ids
         assert "old" in result.removed_ids
         assert "mid" in result.removed_ids
@@ -192,6 +183,6 @@ class TestSimpleConsolidationStrategy:
     def test_group_threshold_validation(self) -> None:
         backend = mock_of[MemoryBackend]()
         with pytest.raises(ValueError, match="group_threshold must be >= 2"):
-            SimpleConsolidationStrategy(backend=backend, group_threshold=1)
+            _make_simple(backend, group_threshold=1)
         with pytest.raises(ValueError, match="group_threshold must be >= 2"):
-            SimpleConsolidationStrategy(backend=backend, group_threshold=0)
+            _make_simple(backend, group_threshold=0)

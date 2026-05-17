@@ -521,6 +521,9 @@ class MemoryAdminController(Controller):
                     asyncio.to_thread(
                         _recommend_batch_size,
                         default_batch_size=thresholds.default_batch_size,
+                        vram_table=(
+                            app_state.memory_bridge_config.fine_tune_vram_batch_table
+                        ),
                     ),
                 )
         except TimeoutError as exc:
@@ -981,6 +984,10 @@ def _check_documents(
             message="Source directory not found",
         )
     exts = (".txt", ".md", ".rst")
+    # Sync helper run in an ``asyncio.to_thread`` worker for the
+    # ``os.walk`` sweep; an async Clock seam cannot be awaited here, so
+    # this monotonic deadline is a genuine elapsed-time primitive.
+    # lint-allow: clock-seam -- sync to_thread os.walk deadline
     deadline = time.monotonic() + walk_timeout_s
     count = 0
     truncated = False
@@ -990,6 +997,7 @@ def _check_documents(
     # prune and the monotonic deadline regardless. ``followlinks``
     # stays False so a symlink cycle cannot defeat the depth cap.
     for root, dirnames, filenames in os.walk(src, followlinks=False):
+        # lint-allow: clock-seam -- sync to_thread os.walk deadline
         if time.monotonic() >= deadline:
             truncated = True
             break
@@ -1164,6 +1172,7 @@ def _check_gpu() -> PreflightCheck:
 def _recommend_batch_size(
     *,
     default_batch_size: int = FINE_TUNE_DEFAULT_BATCH_SIZE,
+    vram_table: tuple[tuple[float, int], ...] = _BATCH_SIZE_BY_VRAM_GB,
 ) -> int | None:
     """Recommend batch size based on available VRAM.
 
@@ -1173,6 +1182,12 @@ def _recommend_batch_size(
             GPU). Resolved from the
             ``memory.fine_tune_default_batch_size`` setting at the
             API boundary; imported default is the offline fallback.
+        vram_table: ``(min_vram_gb, batch_size)`` rows sorted
+            descending by threshold; the first row whose threshold the
+            detected VRAM clears wins. Sourced from
+            ``app_state.memory_bridge_config.fine_tune_vram_batch_table``
+            (operator-tunable via ``memory.fine_tune_vram_batch_table``);
+            the module constant is the offline/standalone fallback.
     """
     try:
         import torch  # noqa: PLC0415
@@ -1181,7 +1196,7 @@ def _recommend_batch_size(
             return default_batch_size
         props = torch.cuda.get_device_properties(0)
         vram_gb = props.total_memory / (1024**3)
-        for threshold_gb, batch_size in _BATCH_SIZE_BY_VRAM_GB:
+        for threshold_gb, batch_size in vram_table:
             if vram_gb >= threshold_gb:
                 return batch_size
         return default_batch_size  # noqa: TRY300

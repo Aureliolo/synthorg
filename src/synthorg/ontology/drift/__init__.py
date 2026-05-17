@@ -10,15 +10,18 @@ from synthorg.ontology.drift.noop import NoDriftDetection
 from synthorg.ontology.drift.passive import PassiveMonitorStrategy
 from synthorg.ontology.drift.protocol import DriftDetectionStrategy
 from synthorg.ontology.drift.service import DriftDetectionService
-from synthorg.ontology.drift.store import DriftReportStore, SQLiteDriftReportStore
+from synthorg.persistence.ontology_protocol import OntologyDriftReportRepository
+from synthorg.persistence.sqlite.ontology_drift_repo import (
+    SQLiteOntologyDriftReportRepository,
+)
 
 __all__ = [
     "ActiveValidatorStrategy",
     "DriftDetectionService",
     "DriftDetectionStrategy",
-    "DriftReportStore",
     "LayeredDetectionStrategy",
     "NoDriftDetection",
+    "OntologyDriftReportRepository",
     "PassiveMonitorStrategy",
-    "SQLiteDriftReportStore",
+    "SQLiteOntologyDriftReportRepository",
 ]

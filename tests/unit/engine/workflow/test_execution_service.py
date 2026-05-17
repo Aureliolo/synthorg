@@ -10,11 +10,13 @@ from synthorg.core.enums import (
     WorkflowEdgeType,
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
+    WorkflowNodeType,
 )
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
 )
+from synthorg.core.registry import StrategyFactoryNotFoundError
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
     WorkflowDefinitionInvalidError,
@@ -27,7 +29,12 @@ from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
 )
-from synthorg.engine.workflow.execution_service import WorkflowExecutionService
+from synthorg.engine.workflow.execution_node_dispatch import (
+    _NODE_HANDLER_REGISTRY,
+)
+from synthorg.engine.workflow.execution_service import (
+    WorkflowExecutionService,
+)
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
@@ -890,3 +897,27 @@ class TestCancelExecution:
         entry = cancel_conflict[0]
         assert entry["execution_id"] == exe.id
         assert entry["current_status"] == WorkflowExecutionStatus.FAILED.value
+
+
+@pytest.mark.unit
+class TestNodeHandlerRegistry:
+    """ADR-0002: every WorkflowNodeType resolves to a registered handler."""
+
+    def test_registry_covers_every_node_type(self) -> None:
+        assert set(_NODE_HANDLER_REGISTRY.names()) == {
+            t.value for t in WorkflowNodeType
+        }
+
+    def test_unknown_node_type_raises(self) -> None:
+        with pytest.raises(StrategyFactoryNotFoundError):
+            _NODE_HANDLER_REGISTRY.get("not_a_real_node_type")
+
+    def test_terminal_types_share_one_handler(self) -> None:
+        terminal = (
+            WorkflowNodeType.START,
+            WorkflowNodeType.END,
+            WorkflowNodeType.PARALLEL_SPLIT,
+            WorkflowNodeType.PARALLEL_JOIN,
+        )
+        handlers = {_NODE_HANDLER_REGISTRY.get(t) for t in terminal}
+        assert len(handlers) == 1

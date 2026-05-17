@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import ApprovalStatus, TimeoutActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.timeout import (
     TIMEOUT_AUTO_APPROVED,
     TIMEOUT_AUTO_DENIED,
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_TIMEOUT_POLICY_DECIDER: str = "timeout_policy"
+TIMEOUT_POLICY_DECIDER: str = "timeout_policy"
 
 
 class TimeoutChecker:
@@ -69,12 +69,14 @@ class TimeoutChecker:
             action = await self._policy.determine_action(item, elapsed)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 TIMEOUT_POLICY_EVALUATED,
                 approval_id=item.id,
                 elapsed_seconds=elapsed,
                 note="policy.determine_action failed -- defaulting to WAIT",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             action = TimeoutAction(
                 action=TimeoutActionType.WAIT,
@@ -121,7 +123,7 @@ class TimeoutChecker:
                 update={
                     "status": ApprovalStatus.APPROVED,
                     "decided_at": datetime.now(UTC),
-                    "decided_by": _TIMEOUT_POLICY_DECIDER,
+                    "decided_by": TIMEOUT_POLICY_DECIDER,
                     "decision_reason": action.reason,
                 },
             )
@@ -132,7 +134,7 @@ class TimeoutChecker:
                 update={
                     "status": ApprovalStatus.REJECTED,
                     "decided_at": datetime.now(UTC),
-                    "decided_by": _TIMEOUT_POLICY_DECIDER,
+                    "decided_by": TIMEOUT_POLICY_DECIDER,
                     "decision_reason": action.reason,
                 },
             )

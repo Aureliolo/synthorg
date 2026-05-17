@@ -462,7 +462,7 @@ class TestAppStateRequestLocks:
         # approve/reject is never stranded on an evicted Lock. Tests
         # patch the cap to a small number so the assertion is
         # constant-time independent of the production ceiling.
-        from synthorg.api import state_services as _ss
+        from synthorg.api import state_services_locks as _ss
 
         monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 4)
 
@@ -486,7 +486,7 @@ class TestAppStateRequestLocks:
         # must skip it: dropping a Lock currently inside ``async with``
         # would let the next call mint a fresh Lock for the same id and
         # leave concurrent callers serialising on different objects.
-        from synthorg.api import state_services as _ss
+        from synthorg.api import state_services_locks as _ss
 
         monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 3)
 
@@ -512,7 +512,7 @@ class TestAppStateRequestLocks:
         # An eviction sweep that ignores the refcount would drop it
         # under the caller's feet and the next call would mint a
         # different Lock, splitting the per-id serialisation guarantee.
-        from synthorg.api import state_services as _ss
+        from synthorg.api import state_services_locks as _ss
 
         monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 3)
 

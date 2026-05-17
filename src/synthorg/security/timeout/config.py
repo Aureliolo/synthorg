@@ -6,6 +6,9 @@ from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_val
 
 from synthorg.core.enums import ApprovalRiskLevel, TimeoutActionType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.security.timeout.risk_classifier_config import (
+    RiskClassifierConfig,
+)
 
 
 class WaitForeverConfig(BaseModel):
@@ -94,6 +97,14 @@ class TieredTimeoutConfig(BaseModel):
     tiers: dict[str, TierConfig] = Field(
         default_factory=dict,
         description="Tier configs keyed by risk level (low/medium/high/critical)",
+    )
+    risk_classifier: RiskClassifierConfig = Field(
+        default_factory=RiskClassifierConfig,
+        description=(
+            "Risk-tier-classifier plugin selection. Default-constructed"
+            " (kind=DEFAULT) is byte-identical with the pre-plugin"
+            " static classifier."
+        ),
     )
 
     @model_validator(mode="after")

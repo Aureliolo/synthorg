@@ -11,8 +11,9 @@ from synthorg.communication.event_stream.interrupt import (
     ResumeDecision,
 )
 from synthorg.communication.event_stream.interrupt_resolution_validators import (
-    INTERRUPT_RESOLUTION_VALIDATORS,
+    INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY,
 )
+from synthorg.core.registry import StrategyFactoryNotFoundError
 
 _TS = datetime(2026, 5, 10, tzinfo=UTC)
 
@@ -34,11 +35,18 @@ def _make_resolution(**overrides: Any) -> InterruptResolution:
 @pytest.mark.unit
 class TestRegistryShape:
     def test_registry_covers_every_interrupt_type(self) -> None:
-        assert set(INTERRUPT_RESOLUTION_VALIDATORS.keys()) == set(InterruptType)
+        assert set(INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY.names()) == {
+            t.value for t in InterruptType
+        }
 
-    def test_registry_raises_keyerror_for_unknown_type(self) -> None:
-        with pytest.raises(KeyError):
-            _ = INTERRUPT_RESOLUTION_VALIDATORS[object()]  # type: ignore[index]
+    def test_registry_raises_for_unknown_type(self) -> None:
+        with pytest.raises(StrategyFactoryNotFoundError):
+            INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY.build(
+                "unregistered", _make_resolution()
+            )
+
+    def test_lookup_accepts_enum_member(self) -> None:
+        assert InterruptType.TOOL_APPROVAL in INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY
 
 
 # ── TOOL_APPROVAL ────────────────────────────────────────────────
@@ -47,13 +55,22 @@ class TestRegistryShape:
 @pytest.mark.unit
 class TestValidateToolApproval:
     def test_decision_set_returns_none(self) -> None:
-        validator = INTERRUPT_RESOLUTION_VALIDATORS[InterruptType.TOOL_APPROVAL]
-        assert validator(_make_resolution(decision=ResumeDecision.APPROVE)) is None
+        assert (
+            INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY.build(
+                InterruptType.TOOL_APPROVAL,
+                _make_resolution(decision=ResumeDecision.APPROVE),
+            )
+            is None
+        )
 
-    def test_decision_missing_returns_legacy_note(self) -> None:
-        validator = INTERRUPT_RESOLUTION_VALIDATORS[InterruptType.TOOL_APPROVAL]
+    def test_decision_missing_returns_note(self) -> None:
         resolution = _make_resolution(decision=None, response="some text")
-        assert validator(resolution) == "TOOL_APPROVAL requires decision"
+        assert (
+            INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY.build(
+                InterruptType.TOOL_APPROVAL, resolution
+            )
+            == "TOOL_APPROVAL requires decision"
+        )
 
 
 # ── INFO_REQUEST ─────────────────────────────────────────────────
@@ -62,14 +79,22 @@ class TestValidateToolApproval:
 @pytest.mark.unit
 class TestValidateInfoRequest:
     def test_response_set_returns_none(self) -> None:
-        validator = INTERRUPT_RESOLUTION_VALIDATORS[InterruptType.INFO_REQUEST]
         resolution = _make_resolution(decision=None, response="My answer")
-        assert validator(resolution) is None
+        assert (
+            INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY.build(
+                InterruptType.INFO_REQUEST, resolution
+            )
+            is None
+        )
 
-    def test_response_missing_returns_legacy_note(self) -> None:
-        validator = INTERRUPT_RESOLUTION_VALIDATORS[InterruptType.INFO_REQUEST]
+    def test_response_missing_returns_note(self) -> None:
         resolution = _make_resolution(
             decision=ResumeDecision.APPROVE,
             response=None,
         )
-        assert validator(resolution) == "INFO_REQUEST requires response"
+        assert (
+            INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY.build(
+                InterruptType.INFO_REQUEST, resolution
+            )
+            == "INFO_REQUEST requires response"
+        )

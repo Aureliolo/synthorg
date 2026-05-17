@@ -36,6 +36,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
+from tests._shared import FakeClock
 from tests.unit.engine.conftest import (
     build_run_result,
     make_assignment_agent,
@@ -58,6 +59,7 @@ def _make_coordinator(  # noqa: PLR0913
     task_engine: AsyncMock | None = None,
     decompose_error: Exception | None = None,
     route_error: Exception | None = None,
+    clock: FakeClock | None = None,
 ) -> MultiAgentCoordinator:
     """Build a MultiAgentCoordinator with mocked dependencies."""
     decomp_service = AsyncMock(spec=DecompositionService)
@@ -87,6 +89,7 @@ def _make_coordinator(  # noqa: PLR0913
         parallel_executor=executor,
         workspace_service=workspace_service,
         task_engine=task_engine,
+        clock=clock,
     )
 
 
@@ -146,6 +149,38 @@ class TestMultiAgentCoordinator:
         assert result.status_rollup.completed == 2
         assert result.total_duration_seconds > 0
         assert isinstance(attributed.agent_contributions, tuple)
+
+    @pytest.mark.unit
+    async def test_clock_seam_drives_elapsed_deterministically(self) -> None:
+        """Injected FakeClock is the sole time source for elapsed instrumentation.
+
+        A non-advancing FakeClock makes every ``monotonic()`` read
+        identical, so the pipeline's total duration is exactly 0.0.
+        Any residual bare ``time.monotonic()`` would instead produce a
+        small positive wall-clock delta, so this asserts the seam.
+        """
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
+        agent_id_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        fake = FakeClock()
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[make_exec_result("wave-0", [("sub-a", agent_id_a)])],
+            clock=fake,
+        )
+        assert coordinator._clock is fake
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-clock"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+        attributed = await coordinator.coordinate(ctx)
+
+        assert attributed.is_success
+        assert attributed.result.total_duration_seconds == 0.0
 
     @pytest.mark.unit
     async def test_sas_topology_single_agent(self) -> None:

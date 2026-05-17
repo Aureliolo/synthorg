@@ -7,7 +7,10 @@ for each configured sink.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.normalization import normalize_ascii_lowercase_or_default
+from synthorg.core.normalization import (
+    normalize_ascii_lowercase_or_default,
+    parse_comma_list_stripped,
+)
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.notifications.adapters.console import ConsoleNotificationSink
@@ -264,9 +267,7 @@ def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation 
             error="host is required",
         )
         return None
-    to_addrs = tuple(
-        a.strip() for a in params.get("to_addrs", "").split(",") if a.strip()
-    )
+    to_addrs = tuple(parse_comma_list_stripped(params.get("to_addrs", "")))
     if not to_addrs:
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,

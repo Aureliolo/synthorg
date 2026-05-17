@@ -7,8 +7,9 @@ factory.  All satisfy the ``ShutdownStrategy`` protocol defined in
 """
 
 import asyncio
-import time
 from typing import TYPE_CHECKING, Any, Final
+
+from synthorg.core.clock import Clock, SystemClock
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -88,13 +89,19 @@ class ImmediateCancelStrategy:
     billed-but-lost LLM responses.
     """
 
-    def __init__(self, *, cleanup_seconds: float = _DEFAULT_CLEANUP_SECONDS) -> None:
+    def __init__(
+        self,
+        *,
+        cleanup_seconds: float = _DEFAULT_CLEANUP_SECONDS,
+        clock: Clock | None = None,
+    ) -> None:
         """Initialize the strategy.
 
         Args:
             cleanup_seconds: Grace window for the post-cancel cleanup
                 callbacks before they themselves are timed out.  Must
                 be positive.
+            clock: Injectable time source; defaults to ``SystemClock``.
 
         Raises:
             ValueError: If ``cleanup_seconds`` is non-positive.
@@ -108,6 +115,7 @@ class ImmediateCancelStrategy:
                 value=cleanup_seconds,
             )
             raise ValueError(msg)
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._cleanup_seconds = cleanup_seconds
         self._shutdown_event = asyncio.Event()
 
@@ -135,7 +143,7 @@ class ImmediateCancelStrategy:
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Cancel all tasks immediately, then run cleanup."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         self._shutdown_event.set()
 
         task_set = set(running_tasks.values())
@@ -164,7 +172,7 @@ class ImmediateCancelStrategy:
             tasks_interrupted=tasks_interrupted,
             tasks_completed=0,
             cleanup_completed=cleanup_completed,
-            duration_seconds=time.monotonic() - start,
+            duration_seconds=self._clock.monotonic() - start,
         )
         logger.info(
             EXECUTION_SHUTDOWN_COMPLETE,
@@ -191,6 +199,7 @@ class FinishCurrentToolStrategy:
         *,
         tool_timeout_seconds: float,
         cleanup_seconds: float = _DEFAULT_CLEANUP_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
         """Initialize the strategy.
 
@@ -203,6 +212,7 @@ class FinishCurrentToolStrategy:
             cleanup_seconds: Grace window for the post-cancel cleanup
                 callbacks before they themselves are timed out.  Must
                 be positive.
+            clock: Injectable time source; defaults to ``SystemClock``.
 
         Raises:
             ValueError: If either parameter is non-positive.
@@ -225,6 +235,7 @@ class FinishCurrentToolStrategy:
                 value=cleanup_seconds,
             )
             raise ValueError(msg)
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._tool_timeout_seconds = tool_timeout_seconds
         self._cleanup_seconds = cleanup_seconds
         self._shutdown_event = asyncio.Event()
@@ -253,7 +264,7 @@ class FinishCurrentToolStrategy:
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Wait for current tool, then cancel stragglers."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         self._shutdown_event.set()
 
         logger.info(
@@ -272,7 +283,7 @@ class FinishCurrentToolStrategy:
                 tasks_interrupted=0,
                 tasks_completed=0,
                 cleanup_completed=cleanup_completed,
-                duration_seconds=time.monotonic() - start,
+                duration_seconds=self._clock.monotonic() - start,
             )
             logger.info(
                 EXECUTION_SHUTDOWN_COMPLETE,
@@ -316,7 +327,7 @@ class FinishCurrentToolStrategy:
             tasks_interrupted=len(pending) + tasks_errored,
             tasks_completed=tasks_completed,
             cleanup_completed=cleanup_completed,
-            duration_seconds=time.monotonic() - start,
+            duration_seconds=self._clock.monotonic() - start,
         )
         logger.info(
             EXECUTION_SHUTDOWN_COMPLETE,
@@ -354,6 +365,7 @@ class CheckpointAndStopStrategy:
         grace_seconds: float = _DEFAULT_GRACE_SECONDS,
         cleanup_seconds: float = _DEFAULT_CLEANUP_SECONDS,
         checkpoint_saver: CheckpointSaver | None = None,
+        clock: Clock | None = None,
     ) -> None:
         """Initialize the strategy.
 
@@ -367,6 +379,7 @@ class CheckpointAndStopStrategy:
                 resumable state when it is checkpointed.  When ``None``
                 tasks beyond the grace window are reported as
                 ``tasks_interrupted`` rather than ``tasks_suspended``.
+            clock: Injectable time source; defaults to ``SystemClock``.
 
         Raises:
             ValueError: If ``grace_seconds`` or ``cleanup_seconds`` is
@@ -390,6 +403,7 @@ class CheckpointAndStopStrategy:
                 value=cleanup_seconds,
             )
             raise ValueError(msg)
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._grace_seconds = grace_seconds
         self._cleanup_seconds = cleanup_seconds
         self._checkpoint_saver = checkpoint_saver
@@ -414,7 +428,7 @@ class CheckpointAndStopStrategy:
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Checkpoint tasks, then stop."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         self._shutdown_event.set()
 
         logger.info(
@@ -434,7 +448,7 @@ class CheckpointAndStopStrategy:
                 tasks_completed=0,
                 tasks_suspended=0,
                 cleanup_completed=cleanup_completed,
-                duration_seconds=time.monotonic() - start,
+                duration_seconds=self._clock.monotonic() - start,
             )
             logger.info(
                 EXECUTION_SHUTDOWN_COMPLETE,
@@ -478,7 +492,7 @@ class CheckpointAndStopStrategy:
             tasks_completed=0,
             tasks_suspended=tasks_suspended,
             cleanup_completed=cleanup_completed,
-            duration_seconds=time.monotonic() - start,
+            duration_seconds=self._clock.monotonic() - start,
         )
         logger.info(
             EXECUTION_SHUTDOWN_COMPLETE,
@@ -610,6 +624,7 @@ def build_shutdown_strategy(
     config: GracefulShutdownConfig,
     *,
     checkpoint_saver: CheckpointSaver | None = None,
+    clock: Clock | None = None,
 ) -> ShutdownStrategy:
     """Build a shutdown strategy from configuration.
 
@@ -617,6 +632,9 @@ def build_shutdown_strategy(
         config: Shutdown configuration with strategy name and params.
         checkpoint_saver: Optional checkpoint callback for the
             ``"checkpoint"`` strategy.
+        clock: Injectable time source threaded into the strategy so
+            factory-built call sites keep deterministic-time injection;
+            defaults to ``SystemClock`` inside each strategy.
 
     Returns:
         Configured shutdown strategy instance.
@@ -629,18 +647,22 @@ def build_shutdown_strategy(
         "cooperative_timeout": lambda: CooperativeTimeoutStrategy(
             grace_seconds=config.grace_seconds,
             cleanup_seconds=config.cleanup_seconds,
+            clock=clock,
         ),
         "immediate": lambda: ImmediateCancelStrategy(
             cleanup_seconds=config.cleanup_seconds,
+            clock=clock,
         ),
         "finish_tool": lambda: FinishCurrentToolStrategy(
             tool_timeout_seconds=config.tool_timeout_seconds,
             cleanup_seconds=config.cleanup_seconds,
+            clock=clock,
         ),
         "checkpoint": lambda: CheckpointAndStopStrategy(
             grace_seconds=config.grace_seconds,
             cleanup_seconds=config.cleanup_seconds,
             checkpoint_saver=checkpoint_saver,
+            clock=clock,
         ),
     }
 

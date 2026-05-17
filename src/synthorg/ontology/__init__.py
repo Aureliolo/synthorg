@@ -39,8 +39,8 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
-from synthorg.ontology.protocol import OntologyBackend
 from synthorg.ontology.service import OntologyService
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 __all__ = [
     "AgentDrift",
@@ -58,11 +58,11 @@ __all__ = [
     "EntityTier",
     "GuardMode",
     "InjectionStrategy",
-    "OntologyBackend",
     "OntologyConfig",
     "OntologyConfigError",
     "OntologyConnectionError",
     "OntologyDuplicateError",
+    "OntologyEntityRepository",
     "OntologyError",
     "OntologyInjectionConfig",
     "OntologyMemoryConfig",

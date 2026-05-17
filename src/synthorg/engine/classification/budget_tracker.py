@@ -28,9 +28,9 @@ class ClassificationBudgetTracker:
 
     Provides atomic check-and-reserve admission (``try_reserve``)
     plus settlement of the actual cost once the LLM call completes
-    (``settle``).  A legacy split API (``can_spend`` + ``record``)
-    is kept for backward compatibility but is implemented on top of
-    the atomic primitives under the same lock.
+    (``settle``).  ``release`` returns a reservation when the call
+    never happened.  All three operations are serialised under the
+    same lock.
 
     Args:
         budget: Maximum allowed spend for this run.
@@ -180,36 +180,6 @@ class ClassificationBudgetTracker:
                 cost=0.0,
                 estimated_cost=estimated_cost,
                 delta=-refunded,
-                total_spent=self._spent,
-                remaining=max(0.0, self._budget - self._spent),
-            )
-
-    async def record(self, actual_cost: float) -> None:
-        """Record cost from a completed LLM call without a prior reserve.
-
-        Provided for call sites that bypass ``try_reserve``.  Always
-        acquires the lock before mutating ``_spent``.
-
-        Args:
-            actual_cost: Actual cost of the completed call.
-
-        Raises:
-            ValueError: If ``actual_cost`` is negative.
-        """
-        if not math.isfinite(actual_cost) or actual_cost < 0:
-            msg = "actual_cost must be a finite non-negative number"
-            logger.warning(
-                INVALID_COST,
-                cost=actual_cost,
-                kind="record",
-                reason=msg,
-            )
-            raise ValueError(msg)
-        async with self._lock:
-            self._spent += actual_cost
-            logger.info(
-                DETECTOR_COST_INCURRED,
-                cost=actual_cost,
                 total_spent=self._spent,
                 remaining=max(0.0, self._budget - self._spent),
             )

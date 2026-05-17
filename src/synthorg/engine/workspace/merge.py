@@ -4,9 +4,9 @@ Sequences workspace merges according to the configured merge order
 and handles conflict escalation.
 """
 
-import time
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import ConflictEscalation, MergeOrder
 from synthorg.engine.errors import WorkspaceCleanupError, WorkspaceMergeError
 from synthorg.engine.workspace.models import MergeResult
@@ -45,6 +45,7 @@ class MergeOrchestrator:
 
     __slots__ = (
         "_cleanup_on_merge",
+        "_clock",
         "_conflict_escalation",
         "_merge_order",
         "_strategy",
@@ -57,7 +58,9 @@ class MergeOrchestrator:
         merge_order: MergeOrder,
         conflict_escalation: ConflictEscalation,
         cleanup_on_merge: bool = True,
+        clock: Clock | None = None,
     ) -> None:
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._strategy = strategy
         self._merge_order = merge_order
         self._conflict_escalation = conflict_escalation
@@ -97,13 +100,13 @@ class MergeOrchestrator:
 
         results: list[MergeResult] = []
         for workspace in ordered:
-            ws_start = time.monotonic()
+            ws_start = self._clock.monotonic()
             try:
                 result = await self._strategy.merge_workspace(
                     workspace=workspace,
                 )
             except WorkspaceMergeError as exc:
-                ws_elapsed = time.monotonic() - ws_start
+                ws_elapsed = self._clock.monotonic() - ws_start
                 logger.warning(
                     WORKSPACE_MERGE_FAILED,
                     workspace_id=workspace.workspace_id,

@@ -36,6 +36,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     coerce_row_timestamp,
     normalize_utc,
+    safe_int,
     validate_pagination_args,
 )
 from synthorg.persistence.connection_protocol import ConnectionFilterSpec  # noqa: TC001
@@ -60,8 +61,8 @@ def _row_to_connection(row: dict[str, Any]) -> Connection:
     secret_refs_payload = row.get("secret_refs_json") or []
     secret_refs = tuple(SecretRef(**entry) for entry in secret_refs_payload)
     metadata = row.get("metadata_json") or {}
-    rate_limit_rpm = int(row["rate_limit_rpm"])
-    rate_limit_concurrent = int(row["rate_limit_concurrent"])
+    rate_limit_rpm = safe_int(row["rate_limit_rpm"], default=0)
+    rate_limit_concurrent = safe_int(row["rate_limit_concurrent"], default=0)
     rate_limiter = (
         RateLimiterConfig(
             max_requests_per_minute=rate_limit_rpm,
@@ -85,9 +86,7 @@ def _row_to_connection(row: dict[str, Any]) -> Connection:
             coerce_row_timestamp(last_health_check_at) if last_health_check_at else None
         ),
         metadata=metadata,
-        webhook_receipt_retention_days=(
-            int(retention) if retention is not None else None
-        ),
+        webhook_receipt_retention_days=safe_int(retention, default=None),
         created_at=coerce_row_timestamp(row["created_at"]),
         updated_at=coerce_row_timestamp(row["updated_at"]),
     )

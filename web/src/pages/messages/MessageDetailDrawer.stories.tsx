@@ -11,11 +11,16 @@ const fullMessage: Message = {
   type: 'task_update',
   priority: 'normal',
   channel: '#engineering',
-  content: 'Completed API endpoint for user authentication. All tests pass, coverage at 95%. PR ready for review.\n\nKey changes:\n- Added JWT validation middleware\n- Created user session store\n- Updated OpenAPI schema',
-  attachments: [
-    { type: 'artifact', ref: 'pr-42' },
-    { type: 'file', ref: 'coverage-report.html' },
+  text: 'Completed API endpoint for user authentication. All tests pass, coverage at 95%. PR ready for review.\n\nKey changes:\n- Added JWT validation middleware\n- Created user session store\n- Updated OpenAPI schema',
+  parts: [
+    {
+      type: 'text',
+      text: 'Completed API endpoint for user authentication. All tests pass, coverage at 95%. PR ready for review.\n\nKey changes:\n- Added JWT validation middleware\n- Created user session store\n- Updated OpenAPI schema',
+    },
+    { type: 'data', data: { ref: 'pr-42' } },
+    { type: 'file', uri: 'coverage-report.html', mime_type: 'text/html' },
   ],
+  attachments: [],
   metadata: {
     task_id: 'task-123',
     project_id: 'proj-456',
@@ -43,7 +48,7 @@ export const MinimalMetadata: Story = {
   args: {
     message: {
       ...fullMessage,
-      attachments: [],
+      parts: [{ type: 'text', text: fullMessage.text }],
       metadata: { task_id: null, project_id: null, tokens_used: null, cost: null, extra: [] },
     },
     open: true,
@@ -61,10 +66,11 @@ export const WithAttachments: Story = {
         cost: null,
         extra: [],
       },
-      attachments: [
-        { type: 'artifact', ref: 'pr-42' },
-        { type: 'file', ref: 'coverage-report.html' },
-        { type: 'link', ref: 'https://example.com/docs' },
+      parts: [
+        { type: 'text', text: fullMessage.text },
+        { type: 'data', data: { ref: 'pr-42' } },
+        { type: 'file', uri: 'coverage-report.html', mime_type: 'text/html' },
+        { type: 'uri', uri: 'https://example.com/docs' },
       ],
     },
     open: true,

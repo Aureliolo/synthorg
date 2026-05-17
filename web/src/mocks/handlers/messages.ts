@@ -12,7 +12,8 @@ export function buildMessage(overrides: Partial<Message> = {}): Message {
     type: 'announcement',
     priority: 'normal',
     channel: 'general',
-    content: 'default',
+    text: 'default',
+    parts: [{ type: 'text', text: 'default' }],
     attachments: [],
     metadata: {
       task_id: null,

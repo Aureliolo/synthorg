@@ -23,6 +23,26 @@ from synthorg.engine.shutdown_strategies import (
     ImmediateCancelStrategy,
     build_shutdown_strategy,
 )
+from tests._shared import FakeClock
+
+
+@pytest.mark.unit
+class TestShutdownStrategyClockSeam:
+    """Each shutdown strategy threads the injected Clock seam."""
+
+    def test_immediate_cancel_uses_injected_clock(self) -> None:
+        fake = FakeClock()
+        assert ImmediateCancelStrategy(clock=fake)._clock is fake
+
+    def test_finish_current_tool_uses_injected_clock(self) -> None:
+        fake = FakeClock()
+        strategy = FinishCurrentToolStrategy(tool_timeout_seconds=1.0, clock=fake)
+        assert strategy._clock is fake
+
+    def test_checkpoint_and_stop_uses_injected_clock(self) -> None:
+        fake = FakeClock()
+        assert CheckpointAndStopStrategy(clock=fake)._clock is fake
+
 
 # ── Protocol compliance ──────────────────────────────────────────
 

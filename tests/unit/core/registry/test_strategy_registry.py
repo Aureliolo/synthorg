@@ -1,5 +1,7 @@
 """Tests for :class:`synthorg.core.registry.StrategyRegistry`."""
 
+import enum
+
 import pytest
 
 from synthorg.core.registry import StrategyFactoryNotFoundError, StrategyRegistry
@@ -127,3 +129,59 @@ def test_build_forwards_keyword_arguments() -> None:
 
     assert instance.loud is True
     assert instance.name == "Daisy"
+
+
+class _Mood(enum.StrEnum):
+    LOUD = "loud"
+    QUIET = "quiet"
+
+
+def _enum_registry() -> StrategyRegistry[_Greeter]:
+    return StrategyRegistry[_Greeter](
+        {
+            _Mood.LOUD: lambda: _Greeter("e", loud=True),
+            _Mood.QUIET: lambda: _Greeter("e", loud=False),
+        },
+        kind="mood",
+    )
+
+
+def test_strenum_keys_stored_as_value() -> None:
+    registry = _enum_registry()
+    # Keys are normalised to the StrEnum ``.value``.
+    assert registry.names() == ("loud", "quiet")
+    assert _Mood.LOUD in registry
+    assert "loud" in registry
+
+
+def test_lookup_accepts_enum_or_string() -> None:
+    registry = _enum_registry()
+    assert registry.build(_Mood.LOUD).loud is True
+    assert registry.build("loud").loud is True
+    assert registry.get(_Mood.QUIET) is registry.get("quiet")
+
+
+def test_mixed_string_and_enum_construction() -> None:
+    registry = StrategyRegistry[_Greeter](
+        {_Mood.LOUD: lambda: _Greeter("x", loud=True), "quiet": lambda: _Greeter("y")},
+        kind="mixed",
+    )
+    assert registry.names() == ("loud", "quiet")
+    assert registry.build(_Mood.LOUD).loud is True
+    assert registry.build("quiet").loud is False
+
+
+def test_unknown_enum_key_raises() -> None:
+    registry = _enum_registry()
+
+    class _Other(enum.StrEnum):
+        UNREGISTERED = "unregistered"
+
+    with pytest.raises(StrategyFactoryNotFoundError, match="unregistered"):
+        registry.build(_Other.UNREGISTERED)
+
+
+def test_contains_non_str_non_enum_is_false() -> None:
+    registry = _enum_registry()
+    assert 123 not in registry
+    assert None not in registry

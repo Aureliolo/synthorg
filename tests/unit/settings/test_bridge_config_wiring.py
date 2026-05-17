@@ -28,6 +28,7 @@ Covers the consumer-side plumbing added for #1398 / #1400:
 
 import importlib
 from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -62,6 +63,7 @@ from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.settings.bridge_configs import NotificationsBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+from tests._shared import mock_of
 
 # ── Notification adapters: positive timeout validation ─────────
 
@@ -186,7 +188,7 @@ class TestOAuthTokenManagerConfigResolver:
     @pytest.mark.unit
     def test_set_config_resolver_stores_reference(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
-        resolver = MagicMock()
+        resolver = mock_of[ConfigResolver]()
         mgr.set_config_resolver(resolver)
         assert mgr._config_resolver is resolver
 
@@ -200,8 +202,7 @@ class TestOAuthTokenManagerConfigResolver:
     @pytest.mark.unit
     async def test_resolve_flow_timeout_rebuilds_flow(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
-        resolver = MagicMock()
-        resolver.get_float = AsyncMock(return_value=45.0)
+        resolver = mock_of[ConfigResolver](get_float=AsyncMock(return_value=45.0))
         mgr.set_config_resolver(resolver)
         await mgr._resolve_flow_timeout()
         # The rebuilt flow should carry the resolved timeout.
@@ -210,13 +211,43 @@ class TestOAuthTokenManagerConfigResolver:
     @pytest.mark.unit
     async def test_resolve_flow_timeout_tolerates_outage(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
-        resolver = MagicMock()
-        resolver.get_float = AsyncMock(side_effect=RuntimeError("boom"))
+        resolver = mock_of[ConfigResolver](
+            get_float=AsyncMock(side_effect=RuntimeError("boom"))
+        )
         mgr.set_config_resolver(resolver)
         original = mgr._flow
         # Settings outage is swallowed -- the default flow stays in place.
         await mgr._resolve_flow_timeout()
         assert mgr._flow is original
+
+    @pytest.mark.unit
+    async def test_resolve_loop_tuning_noop_without_resolver(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
+        interval, threshold = mgr._interval, mgr._threshold
+        await mgr._resolve_loop_tuning()
+        assert mgr._interval == interval
+        assert mgr._threshold == threshold
+
+    @pytest.mark.unit
+    async def test_resolve_loop_tuning_applies_resolved_values(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
+        resolver = mock_of[ConfigResolver](get_int=AsyncMock(side_effect=[120, 900]))
+        mgr.set_config_resolver(resolver)
+        await mgr._resolve_loop_tuning()
+        assert mgr._interval == 120
+        assert mgr._threshold == timedelta(seconds=900)
+
+    @pytest.mark.unit
+    async def test_resolve_loop_tuning_tolerates_outage(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
+        resolver = mock_of[ConfigResolver](
+            get_int=AsyncMock(side_effect=RuntimeError("boom"))
+        )
+        mgr.set_config_resolver(resolver)
+        interval, threshold = mgr._interval, mgr._threshold
+        await mgr._resolve_loop_tuning()
+        assert mgr._interval == interval
+        assert mgr._threshold == threshold
 
 
 # ── WebhookEventBridge.set_config_resolver ─────────────────────
@@ -229,7 +260,7 @@ class TestWebhookEventBridgeConfigResolver:
             bus=MagicMock(spec=MessageBus),
             ceremony_scheduler=MagicMock(spec=CeremonyScheduler),
         )
-        resolver = MagicMock()
+        resolver = mock_of[ConfigResolver]()
         bridge.set_config_resolver(resolver)
         assert bridge._config_resolver is resolver
 
@@ -283,14 +314,14 @@ class TestResolveOAuthHttpTimeout:
 
     @pytest.mark.unit
     async def test_returns_resolved_value(self) -> None:
-        resolver = MagicMock()
-        resolver.get_float = AsyncMock(return_value=42.0)
+        resolver = mock_of[ConfigResolver](get_float=AsyncMock(return_value=42.0))
         assert await resolve_oauth_http_timeout(resolver) == 42.0
 
     @pytest.mark.unit
     async def test_returns_none_on_outage(self) -> None:
-        resolver = MagicMock()
-        resolver.get_float = AsyncMock(side_effect=RuntimeError("boom"))
+        resolver = mock_of[ConfigResolver](
+            get_float=AsyncMock(side_effect=RuntimeError("boom"))
+        )
         assert await resolve_oauth_http_timeout(resolver) is None
 
 

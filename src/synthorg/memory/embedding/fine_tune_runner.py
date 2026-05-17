@@ -149,6 +149,8 @@ class _HealthHandler(http.server.BaseHTTPRequestHandler):
             body = json.dumps(
                 {
                     "status": "healthy",
+                    # lint-allow: clock-seam -- stdlib BaseHTTPRequestHandler
+                    # subprocess health server; no clock-injection seam
                     "uptime_seconds": int(time.monotonic() - self._start_time),
                 }
             )
@@ -179,6 +181,8 @@ def _start_health_server() -> http.server.HTTPServer | None:
             reason="Health server could not bind; continuing without health endpoint",
         )
         return None
+    # lint-allow: clock-seam -- stdlib HTTPServer instantiates the
+    # handler; no clock-injection seam in the fine-tune subprocess
     _HealthHandler._start_time = time.monotonic()  # noqa: SLF001
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()

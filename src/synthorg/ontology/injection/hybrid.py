@@ -19,7 +19,7 @@ from synthorg.ontology.injection.tool import (
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.injection import TokenEstimator
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
     from synthorg.providers.models import ChatMessage, ToolDefinition
 
 logger = get_logger(__name__)
@@ -44,7 +44,7 @@ class HybridInjectionStrategy:
     def __init__(
         self,
         *,
-        backend: OntologyBackend,
+        backend: OntologyEntityRepository,
         core_token_budget: int = _DEFAULT_CORE_TOKEN_BUDGET,
         tool_name: str = LOOKUP_ENTITY_TOOL_NAME,
         token_estimator: TokenEstimator | None = None,

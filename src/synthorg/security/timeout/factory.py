@@ -18,7 +18,10 @@ from synthorg.security.timeout.policies import (
     WaitForeverPolicy,
 )
 from synthorg.security.timeout.protocol import TimeoutPolicy  # noqa: TC001
-from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
+from synthorg.security.timeout.risk_classifier_config import RiskClassifierDeps
+from synthorg.security.timeout.risk_classifier_factory import (
+    build_risk_tier_classifier,
+)
 
 logger = get_logger(__name__)
 
@@ -50,7 +53,10 @@ def create_timeout_policy(
     if isinstance(config, TieredTimeoutConfig):
         return TieredTimeoutPolicy(
             tiers=config.tiers,
-            classifier=DefaultRiskTierClassifier(),
+            classifier=build_risk_tier_classifier(
+                config.risk_classifier,
+                RiskClassifierDeps(),
+            ),
         )
 
     if isinstance(config, EscalationChainConfig):

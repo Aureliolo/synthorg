@@ -58,7 +58,7 @@ _r.register(
         min_value=1,
         max_value=10,
     )
-)
+)  # lint-allow: bootstrap-wiring -- optional distributed-dispatch consumer
 
 _r.register(
     SettingDefinition(
@@ -76,7 +76,7 @@ _r.register(
         min_value=0.01,
         max_value=10.0,
     )
-)
+)  # lint-allow: bootstrap-wiring -- optional distributed-dispatch consumer
 
 _r.register(
     SettingDefinition(
@@ -94,5 +94,31 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.1,
         max_value=60.0,
+    )
+)  # lint-allow: bootstrap-wiring -- optional distributed-dispatch consumer
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.WORKERS,
+        key="executor_http_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description=(
+            "HTTP client timeout (seconds) the distributed worker uses"
+            " when calling the backend task-transition API. Bounds a"
+            " single request so a hung backend cannot stall a worker"
+            " indefinitely. Sourced from the"
+            " SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS env var > default at"
+            " worker-process start (the worker subprocess has no"
+            " settings backend). Read-only post-init: a runtime change"
+            " requires a worker restart."
+        ),
+        group="Executor",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS",
+        min_value=1.0,
+        max_value=600.0,
     )
 )

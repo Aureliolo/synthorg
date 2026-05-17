@@ -9,6 +9,7 @@ mapping of discriminator value to factory callable, then dispatches via
 :meth:`StrategyRegistry.build` rather than open-coding the chain.
 """
 
+import enum
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,26 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
 logger = get_logger(__name__)
+
+
+def _key(discriminator: str) -> str:
+    """Normalise a discriminator to its plain string form.
+
+    ``StrEnum`` is a ``str`` subclass, so a member is already a valid
+    string key; reducing it to ``.value`` strips the enum identity so
+    lookups by either ``InterruptType.TOOL_APPROVAL`` or the raw
+    ``"tool_approval"`` hit the same factory and logs show the bare
+    value. A plain ``str`` is returned unchanged.
+
+    Args:
+        discriminator: A string or ``StrEnum`` member (which is a str).
+
+    Returns:
+        The canonical string key.
+    """
+    if isinstance(discriminator, enum.Enum):
+        return str(discriminator.value)
+    return discriminator
 
 
 class StrategyRegistry[T]:
@@ -64,13 +85,17 @@ class StrategyRegistry[T]:
         *,
         kind: str,
     ) -> None:
-        """Freeze *factories* into an immutable view and emit a built event."""
+        """Freeze *factories* into an immutable view and emit a built event.
+
+        Keys may be plain strings or ``StrEnum`` members; enum keys are
+        stored under their ``.value`` so lookups accept either form.
+        """
         if not factories:
             msg = f"StrategyRegistry({kind!r}) requires at least one factory"
             raise ValueError(msg)
         self._kind = kind
         self._factories: MappingProxyType[str, Callable[..., T]] = MappingProxyType(
-            dict(factories),
+            {_key(k): v for k, v in factories.items()},
         )
         logger.info(
             REGISTRY_BUILT,
@@ -88,7 +113,8 @@ class StrategyRegistry[T]:
         """Look up a factory by discriminator value.
 
         Args:
-            name: Discriminator value (e.g. ``"ttl"``, ``"sqlite"``).
+            name: Discriminator value (e.g. ``"ttl"``, ``"sqlite"``) or
+                a ``StrEnum`` member whose ``.value`` is the key.
 
         Returns:
             The registered factory callable.
@@ -97,22 +123,23 @@ class StrategyRegistry[T]:
             StrategyFactoryNotFoundError: If no factory is registered
                 for *name*.
         """
-        factory = self._factories.get(name)
+        key = _key(name)
+        factory = self._factories.get(key)
         if factory is None:
             available = sorted(self._factories) or ["(none)"]
             logger.error(
                 REGISTRY_FACTORY_NOT_FOUND,
                 kind=self._kind,
-                name=name,
+                name=key,
                 available=available,
             )
             msg = (
-                f"No {self._kind} factory registered for {name!r}. "
+                f"No {self._kind} factory registered for {key!r}. "
                 f"Available: {', '.join(available)}"
             )
             raise StrategyFactoryNotFoundError(
                 msg,
-                context={"kind": self._kind, "name": name},
+                context={"kind": self._kind, "name": key},
             )
         return factory
 
@@ -120,7 +147,7 @@ class StrategyRegistry[T]:
         """Look up *name* and invoke the factory in one step.
 
         Args:
-            name: Discriminator value.
+            name: Discriminator value or ``StrEnum`` member.
             *args: Positional arguments forwarded to the factory.
             **kwargs: Keyword arguments forwarded to the factory.
 
@@ -133,7 +160,8 @@ class StrategyRegistry[T]:
                 untouched after a structured ``REGISTRY_FACTORY_FAILED``
                 log event is emitted.
         """
-        factory = self.get(name)
+        key = _key(name)
+        factory = self.get(key)
         try:
             instance = factory(*args, **kwargs)
         except Exception as exc:
@@ -146,7 +174,7 @@ class StrategyRegistry[T]:
             logger.warning(
                 REGISTRY_FACTORY_FAILED,
                 kind=self._kind,
-                name=name,
+                name=key,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -154,7 +182,7 @@ class StrategyRegistry[T]:
         logger.debug(
             REGISTRY_FACTORY_INVOKED,
             kind=self._kind,
-            name=name,
+            name=key,
         )
         return instance
 
@@ -163,10 +191,15 @@ class StrategyRegistry[T]:
         return tuple(sorted(self._factories))
 
     def __contains__(self, name: object) -> bool:
-        """Return ``True`` iff *name* is a registered string discriminator."""
+        """Return ``True`` iff *name* is a registered discriminator.
+
+        Accepts a ``str`` or a ``StrEnum`` member (``StrEnum`` is a
+        ``str`` subclass); any other type returns ``False`` rather than
+        raising so ``x in registry`` stays total.
+        """
         if not isinstance(name, str):
             return False
-        return name in self._factories
+        return _key(name) in self._factories
 
     def __len__(self) -> int:
         """Return the number of registered factories."""

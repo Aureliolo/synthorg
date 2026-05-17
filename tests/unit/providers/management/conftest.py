@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
-from synthorg.api.dto import CreateProviderRequest
+from synthorg.api.dto_providers import CreateProviderRequest
 from synthorg.api.state import AppState
 from synthorg.config.schema import ProviderModelConfig, RootConfig
 from synthorg.providers.enums import AuthType

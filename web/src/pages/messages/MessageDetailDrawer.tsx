@@ -4,7 +4,13 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { MessageTypeBadge } from './MessageTypeBadge'
 import { AttachmentList } from './AttachmentList'
-import { getMessagePriorityColor, getPriorityDotClass, getPriorityBadgeClasses } from '@/utils/messages'
+import {
+  getMessagePriorityColor,
+  getPriorityDotClass,
+  getPriorityBadgeClasses,
+  messageText,
+  partsToAttachments,
+} from '@/utils/messages'
 import { cn } from '@/lib/utils'
 import type { Message } from '@/api/types/messages'
 
@@ -28,9 +34,10 @@ interface MessageDetailContentProps {
 
 function MessageDetailContent({ message }: MessageDetailContentProps) {
   const priorityColor = getMessagePriorityColor(message.priority)
+  const messageAttachments = partsToAttachments(message.parts)
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-section-gap">
       {/* Sender header */}
       <div className="flex items-center gap-3">
         <Avatar name={message.sender} size="lg" />
@@ -45,7 +52,7 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
         <MessageTypeBadge type={message.type} />
         {priorityColor && (
           <span className={cn(
-            'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px]',
+            'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-micro',
             getPriorityBadgeClasses(priorityColor),
           )}>
             <span className={cn('size-1.5 rounded-full', getPriorityDotClass(priorityColor))} />
@@ -56,13 +63,15 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
 
       {/* Content */}
       <div>
-        <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Content</h3>
-        <p className="whitespace-pre-wrap text-sm text-foreground">{message.content}</p>
+        <h3 className="mb-1 text-micro font-semibold uppercase tracking-wider text-muted-foreground">Content</h3>
+        <p className="whitespace-pre-wrap text-sm text-foreground">
+          {messageText(message)}
+        </p>
       </div>
 
       {/* Metadata */}
       <div>
-        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Details</h3>
+        <h3 className="mb-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">Details</h3>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
           <MetadataRow label="Channel" value={message.channel} mono />
           <MetadataRow label="Timestamp" value={formatDate(message.timestamp)} mono />
@@ -91,10 +100,10 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
       </div>
 
       {/* Attachments */}
-      {message.attachments.length > 0 && (
+      {messageAttachments.length > 0 && (
         <div>
-          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Attachments</h3>
-          <AttachmentList attachments={message.attachments} />
+          <h3 className="mb-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">Attachments</h3>
+          <AttachmentList attachments={messageAttachments} />
         </div>
       )}
     </div>

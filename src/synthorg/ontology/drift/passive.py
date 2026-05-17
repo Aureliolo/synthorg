@@ -7,6 +7,7 @@ canonical entity definition.
 
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.text_similarity import tokenize_words, word_overlap
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
@@ -18,26 +19,9 @@ from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.protocol import MemoryBackend
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
-
-
-def _keyword_overlap(text_a: str, text_b: str) -> float:
-    """Compute keyword overlap ratio between two texts.
-
-    Args:
-        text_a: First text.
-        text_b: Reference text (denominator).
-
-    Returns:
-        Overlap ratio (0.0 to 1.0).  Returns 0.0 if reference is empty.
-    """
-    words_a = set(text_a.lower().split())
-    words_b = set(text_b.lower().split())
-    if not words_b:
-        return 0.0
-    return len(words_a & words_b) / len(words_b)
 
 
 _NOTIFY_THRESHOLD: Final[float] = 0.5
@@ -82,7 +66,7 @@ class PassiveMonitorStrategy:
     def __init__(
         self,
         *,
-        ontology: OntologyBackend,
+        ontology: OntologyEntityRepository,
         memory: MemoryBackend,
         threshold: float = _DEFAULT_DRIFT_DETECT_THRESHOLD,
     ) -> None:
@@ -147,7 +131,9 @@ class PassiveMonitorStrategy:
                 continue
 
             combined = " ".join(e.content for e in entries)
-            overlap = _keyword_overlap(combined, canonical_text)
+            overlap = word_overlap(
+                tokenize_words(combined), tokenize_words(canonical_text)
+            )
             divergence = round(1.0 - overlap, 3)
             agent_scores.append(divergence)
             if divergence > 0.0:

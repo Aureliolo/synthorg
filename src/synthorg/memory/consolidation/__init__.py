@@ -1,14 +1,28 @@
-"""Memory consolidation -- strategies, retention, archival, and service.
+"""Memory consolidation -- axis split (selector + op), retention, archival.
 
 Re-exports the public API so consumers can import from
-``synthorg.memory.consolidation`` directly.
+``synthorg.memory.consolidation`` directly. The pre-split monolithic
+``Simple`` / ``DualMode`` / ``LLM`` strategy classes were removed in
+the ADR-0005 axis split; build a composite via
+:func:`build_consolidation_strategy` instead.
 """
 
 from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
 from synthorg.memory.consolidation.archival import ArchivalStore
+from synthorg.memory.consolidation.axis import (
+    ConsolidationContext,
+    ConsolidationOp,
+    EntrySelector,
+    OpResult,
+    SelectionGroup,
+)
+from synthorg.memory.consolidation.composite import (
+    CompositeConsolidationStrategy,
+)
 from synthorg.memory.consolidation.config import (
     ArchivalConfig,
     ConsolidationConfig,
+    ConsolidationStrategyType,
     DualModeConfig,
     LLMConsolidationConfig,
     RetentionConfig,
@@ -19,14 +33,12 @@ from synthorg.memory.consolidation.distillation import (
     MemoryToolName,
     capture_distillation,
 )
-from synthorg.memory.consolidation.dual_mode_strategy import (
-    DualModeConsolidationStrategy,
-)
 from synthorg.memory.consolidation.extractive import ExtractivePreserver
-from synthorg.memory.consolidation.llm_strategy import (
-    LLMConsolidationStrategy,
-    SynthesisOutcome,
+from synthorg.memory.consolidation.factory import (
+    ConsolidationDeps,
+    build_consolidation_strategy,
 )
+from synthorg.memory.consolidation.llm_op import LLMSynthesisOp, SynthesisOutcome
 from synthorg.memory.consolidation.models import (
     ArchivalEntry,
     ArchivalIndexEntry,
@@ -35,14 +47,19 @@ from synthorg.memory.consolidation.models import (
     ConsolidationResult,
     RetentionRule,
 )
-from synthorg.memory.consolidation.retention import RetentionEnforcer
-from synthorg.memory.consolidation.service import MemoryConsolidationService
-from synthorg.memory.consolidation.simple_strategy import (
-    SimpleConsolidationStrategy,
+from synthorg.memory.consolidation.ops import (
+    AbstractiveSummarizationOp,
+    ConcatenationOp,
+    DensityRoutingOp,
+    ExtractivePreservationOp,
 )
+from synthorg.memory.consolidation.retention import RetentionEnforcer
+from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
+from synthorg.memory.consolidation.service import MemoryConsolidationService
 from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 
 __all__ = [
+    "AbstractiveSummarizationOp",
     "AbstractiveSummarizer",
     "ArchivalConfig",
     "ArchivalEntry",
@@ -50,23 +67,34 @@ __all__ = [
     "ArchivalMode",
     "ArchivalModeAssignment",
     "ArchivalStore",
+    "CompositeConsolidationStrategy",
+    "ConcatenationOp",
     "ConsolidationConfig",
+    "ConsolidationContext",
+    "ConsolidationDeps",
+    "ConsolidationOp",
     "ConsolidationResult",
     "ConsolidationStrategy",
+    "ConsolidationStrategyType",
     "ContentDensity",
     "DensityClassifier",
+    "DensityRoutingOp",
     "DistillationRequest",
     "DualModeConfig",
-    "DualModeConsolidationStrategy",
+    "EntrySelector",
+    "ExtractivePreservationOp",
     "ExtractivePreserver",
+    "HighestRelevanceSelector",
     "LLMConsolidationConfig",
-    "LLMConsolidationStrategy",
+    "LLMSynthesisOp",
     "MemoryConsolidationService",
     "MemoryToolName",
+    "OpResult",
     "RetentionConfig",
     "RetentionEnforcer",
     "RetentionRule",
-    "SimpleConsolidationStrategy",
+    "SelectionGroup",
     "SynthesisOutcome",
+    "build_consolidation_strategy",
     "capture_distillation",
 ]

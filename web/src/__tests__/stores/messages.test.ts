@@ -408,9 +408,9 @@ describe('messagesStore', () => {
       try {
         const msg = {
           ...makeMessage('bad-attach'),
-          // ``null`` is not a valid attachment -- ``isAttachmentsShape``
+          // ``null`` is not a valid structured part -- ``isPartsShape``
           // must reject the whole frame.
-          attachments: [null as unknown as { type: string; ref: string }],
+          attachments: [null] as unknown as Message['attachments'],
         }
         useMessagesStore
           .getState()
@@ -421,11 +421,15 @@ describe('messagesStore', () => {
       }
     })
 
-    it('sanitizes nested attachment ref and metadata.extra tuples', () => {
+    it('sanitizes nested part strings and metadata.extra tuples', () => {
       const RLO = String.fromCharCode(0x202e)
       const msg = {
         ...makeMessage('sanitize-nested', { channel: '#eng' }),
-        attachments: [{ type: 'artifact' as const, ref: `ref-1${RLO}` }],
+        // UriPart.uri is an untrusted wire string: ``sanitizePart``
+        // must clamp it (strip the RLO bidi override) before storage.
+        attachments: [
+          { type: 'uri' as const, uri: `https://x.test/ref-1${RLO}` },
+        ],
         metadata: {
           task_id: null,
           project_id: null,
@@ -436,7 +440,11 @@ describe('messagesStore', () => {
       }
       useMessagesStore.getState().handleWsEvent(makeWsEvent(msg), '#eng')
       const stored = useMessagesStore.getState().messages[0]
-      expect(stored?.attachments[0]?.ref).toBe('ref-1')
+      const part = stored?.attachments[0]
+      expect(part?.type).toBe('uri')
+      expect(part && 'uri' in part ? part.uri : null).toBe(
+        'https://x.test/ref-1',
+      )
       expect(stored?.metadata.extra[0]).toEqual(['key', 'value'])
     })
   })

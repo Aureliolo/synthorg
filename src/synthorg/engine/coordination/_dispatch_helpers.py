@@ -5,7 +5,6 @@ wave execution, and validation primitives used by the four
 concrete dispatchers.
 """
 
-import time
 from typing import TYPE_CHECKING
 
 from synthorg.engine.coordination.models import (
@@ -31,6 +30,7 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.core.clock import Clock
     from synthorg.engine.coordination.config import CoordinationConfig
     from synthorg.engine.decomposition.models import DecompositionResult
     from synthorg.engine.parallel import ParallelExecutor
@@ -88,9 +88,11 @@ async def setup_workspaces(
     workspace_service: WorkspaceIsolationService,
     routing_result: RoutingResult,
     config: CoordinationConfig,
+    *,
+    clock: Clock,
 ) -> tuple[tuple[Workspace, ...], CoordinationPhaseResult]:
     """Set up workspaces and return them with a phase result."""
-    start = time.monotonic()
+    start = clock.monotonic()
     phase_name = "workspace_setup"
 
     logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
@@ -100,7 +102,7 @@ async def setup_workspaces(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        elapsed = time.monotonic() - start
+        elapsed = clock.monotonic() - start
         phase = CoordinationPhaseResult(
             phase=phase_name,
             success=False,
@@ -121,7 +123,7 @@ async def setup_workspaces(
         )
         return (), phase
     else:
-        elapsed = time.monotonic() - start
+        elapsed = clock.monotonic() - start
         phase = CoordinationPhaseResult(
             phase=phase_name,
             success=True,
@@ -140,10 +142,11 @@ async def merge_workspaces(
     workspace_service: WorkspaceIsolationService,
     workspaces: tuple[Workspace, ...],
     *,
+    clock: Clock,
     phase_name: str = "merge",
 ) -> tuple[WorkspaceGroupResult | None, CoordinationPhaseResult]:
     """Merge workspaces and return result with a phase result."""
-    start = time.monotonic()
+    start = clock.monotonic()
 
     logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
     try:
@@ -153,7 +156,7 @@ async def merge_workspaces(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        elapsed = time.monotonic() - start
+        elapsed = clock.monotonic() - start
         phase = CoordinationPhaseResult(
             phase=phase_name,
             success=False,
@@ -170,7 +173,7 @@ async def merge_workspaces(
         )
         return None, phase
     else:
-        elapsed = time.monotonic() - start
+        elapsed = clock.monotonic() - start
         phase = CoordinationPhaseResult(
             phase=phase_name,
             success=True,
@@ -215,6 +218,7 @@ async def execute_waves(
     groups: tuple[ParallelExecutionGroup, ...],
     parallel_executor: ParallelExecutor,
     *,
+    clock: Clock,
     fail_fast: bool,
 ) -> tuple[list[CoordinationWave], list[CoordinationPhaseResult]]:
     """Execute wave groups sequentially, returning waves and phases."""
@@ -222,7 +226,7 @@ async def execute_waves(
     phases: list[CoordinationPhaseResult] = []
 
     for wave_idx, group in enumerate(groups):
-        start = time.monotonic()
+        start = clock.monotonic()
         phase_name = f"execute_wave_{wave_idx}"
         subtask_ids = tuple(a.task.id for a in group.assignments)
 
@@ -234,7 +238,7 @@ async def execute_waves(
 
         try:
             exec_result = await parallel_executor.execute_group(group)
-            elapsed = time.monotonic() - start
+            elapsed = clock.monotonic() - start
 
             wave = CoordinationWave(
                 wave_index=wave_idx,
@@ -281,7 +285,7 @@ async def execute_waves(
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed = time.monotonic() - start
+            elapsed = clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,

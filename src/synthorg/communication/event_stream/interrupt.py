@@ -7,8 +7,10 @@ pending interrupts with async resolution signaling.
 
 import asyncio
 import copy
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Self
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import (
     AwareDatetime,
@@ -17,6 +19,9 @@ from pydantic import (
     Field,
     model_validator,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -42,6 +47,39 @@ class InterruptType(StrEnum):
 
     TOOL_APPROVAL = "tool_approval"
     INFO_REQUEST = "info_request"
+
+
+@dataclass(frozen=True, slots=True)
+class _InterruptFieldRule:
+    """Per-``InterruptType`` required-field rule.
+
+    Declares, for one interrupt type, the field that must be present on
+    the :class:`Interrupt` model and the field that must be present on
+    the resume payload. Both the model validator and the API resume
+    guard consult the single :data:`INTERRUPT_FIELD_RULES` table so the
+    per-type knowledge lives in exactly one place (ADR-0002: this site
+    uses a frozen data table, not ``StrategyRegistry``, because the
+    per-type knowledge is data, not behaviour dispatch).
+    """
+
+    interrupt_field: str
+    resume_field: str
+
+
+INTERRUPT_FIELD_RULES: Final[Mapping[InterruptType, _InterruptFieldRule]] = (
+    MappingProxyType(
+        {
+            InterruptType.TOOL_APPROVAL: _InterruptFieldRule(
+                interrupt_field="tool_name",
+                resume_field="decision",
+            ),
+            InterruptType.INFO_REQUEST: _InterruptFieldRule(
+                interrupt_field="question",
+                resume_field="response",
+            ),
+        },
+    )
+)
 
 
 class ResumeDecision(StrEnum):
@@ -113,12 +151,10 @@ class Interrupt(BaseModel):
 
     @model_validator(mode="after")
     def _validate_type_fields(self) -> Self:
-        """Enforce required fields per interrupt type."""
-        if self.type == InterruptType.TOOL_APPROVAL and self.tool_name is None:
-            msg = "tool_name is required for TOOL_APPROVAL interrupts"
-            raise ValueError(msg)
-        if self.type == InterruptType.INFO_REQUEST and self.question is None:
-            msg = "question is required for INFO_REQUEST interrupts"
+        """Enforce required fields per interrupt type via the rule table."""
+        rule = INTERRUPT_FIELD_RULES.get(self.type)
+        if rule is not None and getattr(self, rule.interrupt_field) is None:
+            msg = f"{rule.interrupt_field} is required for {self.type.name} interrupts"
             raise ValueError(msg)
         return self
 
@@ -325,7 +361,10 @@ class InterruptStore:
             documented above.
         """
         from synthorg.communication.event_stream.interrupt_resolution_validators import (  # noqa: E501, PLC0415
-            INTERRUPT_RESOLUTION_VALIDATORS,
+            INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY,
+        )
+        from synthorg.core.registry import (  # noqa: PLC0415
+            StrategyFactoryNotFoundError,
         )
 
         async with self._lock:
@@ -337,8 +376,16 @@ class InterruptStore:
                 )
                 return None
 
-            # Validate resolution payload matches interrupt type.
-            failure_note = INTERRUPT_RESOLUTION_VALIDATORS[interrupt.type](resolution)
+            # Validate resolution payload matches interrupt type. An
+            # interrupt type with no registered validator is a
+            # programming gap; surface it as a rejection note rather
+            # than unwinding the resolve flow through an exception.
+            try:
+                failure_note = INTERRUPT_RESOLUTION_VALIDATOR_REGISTRY.build(
+                    interrupt.type, resolution
+                )
+            except StrategyFactoryNotFoundError:
+                failure_note = f"no validator for interrupt type {interrupt.type!r}"
             if failure_note is not None:
                 logger.warning(
                     EVENT_STREAM_INVALID_RESUME_PAYLOAD,

@@ -16,7 +16,7 @@ from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
     from synthorg.providers.models import ToolDefinition
 
 logger = get_logger(__name__)
@@ -70,7 +70,7 @@ class PromptInjectionStrategy:
     def __init__(
         self,
         *,
-        backend: OntologyBackend,
+        backend: OntologyEntityRepository,
         core_token_budget: int = _DEFAULT_CORE_TOKEN_BUDGET,
         token_estimator: TokenEstimator | None = None,
     ) -> None:

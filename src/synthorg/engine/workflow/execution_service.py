@@ -17,24 +17,27 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
+from synthorg.core.registry import (
+    StrategyFactoryNotFoundError,
+)
 from synthorg.engine.errors import (
     SubworkflowDepthExceededError,
     WorkflowDefinitionInvalidError,
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
-from synthorg.engine.quality.verification import VerificationVerdict
 from synthorg.engine.workflow import execution_lifecycle as lifecycle
 from synthorg.engine.workflow.execution_activation_helpers import (
-    find_downstream_task_ids,
-    process_conditional_node,
     process_task_node,
-    process_verification_node,
 )
 from synthorg.engine.workflow.execution_models import (
     ExecutionFrame,
     WorkflowExecution,
     WorkflowNodeExecution,
+)
+from synthorg.engine.workflow.execution_node_dispatch import (
+    _NODE_HANDLER_REGISTRY,
+    _NodeDispatchContext,
 )
 from synthorg.engine.workflow.execution_walk_state import (
     WalkState,
@@ -361,103 +364,36 @@ class WorkflowExecutionService:
         skipped_nodes: set[str],
         pending_assignments: dict[str, str],
     ) -> WorkflowNodeExecution:
-        """Dispatch a single node in the context of *frame*."""
-        if node.type in {
-            WorkflowNodeType.START,
-            WorkflowNodeType.END,
-            WorkflowNodeType.PARALLEL_SPLIT,
-            WorkflowNodeType.PARALLEL_JOIN,
-        }:
-            logger.debug(
-                WORKFLOW_EXEC_NODE_COMPLETED,
-                execution_id=execution_id,
-                node_id=qualified_id,
-                node_type=node.type.value,
-            )
-            return WorkflowNodeExecution(
-                node_id=qualified_id,
-                node_type=node.type,
-                status=WorkflowNodeExecutionStatus.COMPLETED,
-            )
+        """Dispatch a single node to its registered handler.
 
-        if node.type is WorkflowNodeType.AGENT_ASSIGNMENT:
-            agent_name = node.config.get("agent_name")
-            if agent_name:
-                task_targets = find_downstream_task_ids(
-                    nid,
-                    adjacency,
-                    node_map,
-                )
-                for target_id in task_targets:
-                    pending_assignments[target_id] = str(agent_name)
-            else:
-                logger.warning(
-                    WORKFLOW_EXEC_NODE_COMPLETED,
-                    execution_id=execution_id,
-                    node_id=qualified_id,
-                    note="AGENT_ASSIGNMENT node has no agent_name",
-                )
-            logger.debug(
-                WORKFLOW_EXEC_NODE_COMPLETED,
-                execution_id=execution_id,
-                node_id=qualified_id,
-                node_type=node.type.value,
-            )
-            return WorkflowNodeExecution(
-                node_id=qualified_id,
-                node_type=node.type,
-                status=WorkflowNodeExecutionStatus.COMPLETED,
-            )
-
-        if node.type is WorkflowNodeType.VERIFICATION:
-            verdict_str = str(node.config.get("_verdict_override", "refer"))
-            try:
-                verdict = VerificationVerdict(verdict_str)
-            except ValueError:
-                verdict = VerificationVerdict.REFER
-            verification_execution = process_verification_node(
-                nid,
-                node,
-                outgoing,
-                adjacency,
-                skipped_nodes,
-                execution_id,
-                verdict,
-            )
-            return verification_execution.model_copy(
-                update={"node_id": qualified_id},
-            )
-
-        if node.type is WorkflowNodeType.CONDITIONAL:
-            conditional_execution = process_conditional_node(
-                nid,
-                node,
-                frame_ctx,
-                outgoing,
-                adjacency,
-                skipped_nodes,
-                execution_id,
-            )
-            # Rewrite node_id to the qualified form so persistence is stable.
-            return conditional_execution.model_copy(
-                update={"node_id": qualified_id},
-            )
-
-        if node.type is WorkflowNodeType.SUBWORKFLOW:
-            return await self._process_subworkflow_node(
-                nid=nid,
-                qualified_id=qualified_id,
-                node=node,
-                frame=frame,
-                frame_ctx=frame_ctx,
-                frame_node_task_ids=frame_node_task_ids,
-                state=state,
-                execution_id=execution_id,
-                project=project,
-                activated_by=activated_by,
-            )
-
-        if node.type is not WorkflowNodeType.TASK:
+        The per-:class:`WorkflowNodeType` if-cascade was replaced by a
+        registry dispatch (ADR-0002). An unregistered node type raises
+        :class:`StrategyFactoryNotFoundError` at lookup, which is
+        translated to the historical :class:`WorkflowExecutionError`
+        contract (same message + error log) so callers are unaffected.
+        """
+        ctx = _NodeDispatchContext(
+            nid=nid,
+            qualified_id=qualified_id,
+            node=node,
+            adjacency=adjacency,
+            reverse_adj=reverse_adj,
+            outgoing=outgoing,
+            frame=frame,
+            frame_ctx=frame_ctx,
+            execution_id=execution_id,
+            project=project,
+            activated_by=activated_by,
+            node_map=node_map,
+            frame_node_task_ids=frame_node_task_ids,
+            qualifier_prefix=qualifier_prefix,
+            state=state,
+            skipped_nodes=skipped_nodes,
+            pending_assignments=pending_assignments,
+        )
+        try:
+            handler = _NODE_HANDLER_REGISTRY.get(node.type)
+        except StrategyFactoryNotFoundError:
             msg = f"Unhandled node type {node.type.value!r} for node {nid!r}"
             logger.error(
                 WORKFLOW_EXEC_NODE_COMPLETED,
@@ -466,23 +402,8 @@ class WorkflowExecutionService:
                 node_type=node.type.value,
                 error=msg,
             )
-            raise WorkflowExecutionError(msg)
-
-        return await self._process_task_node_in_frame(
-            nid=nid,
-            qualified_id=qualified_id,
-            node=node,
-            reverse_adj=reverse_adj,
-            node_map=node_map,
-            frame_node_task_ids=frame_node_task_ids,
-            qualifier_prefix=qualifier_prefix,
-            state=state,
-            skipped_nodes=skipped_nodes,
-            pending_assignments=pending_assignments,
-            project=project,
-            activated_by=activated_by,
-            execution_id=execution_id,
-        )
+            raise WorkflowExecutionError(msg) from None
+        return await handler(self, ctx)
 
     async def _process_task_node_in_frame(  # noqa: PLR0913
         self,

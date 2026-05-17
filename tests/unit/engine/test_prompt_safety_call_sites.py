@@ -35,8 +35,8 @@ class TestMemoryConsolidationLLMStrategy:
         from synthorg.core.enums import MemoryCategory
         from synthorg.core.types import NotBlankStr
         from synthorg.memory.consolidation.config import LLMConsolidationConfig
-        from synthorg.memory.consolidation.llm_strategy import (
-            LLMConsolidationStrategy,
+        from synthorg.memory.consolidation.llm_op import (
+            LLMSynthesisOp,
         )
         from synthorg.memory.models import MemoryEntry
         from synthorg.memory.protocol import MemoryBackend
@@ -44,7 +44,7 @@ class TestMemoryConsolidationLLMStrategy:
 
         backend = MagicMock(spec=MemoryBackend)
         provider = MagicMock(spec=CompletionProvider)
-        strategy = LLMConsolidationStrategy(
+        strategy = LLMSynthesisOp(
             backend=backend,
             provider=provider,
             model=NotBlankStr("test-model"),
@@ -82,14 +82,14 @@ class TestMemoryConsolidationLLMStrategy:
         from synthorg.core.enums import MemoryCategory
         from synthorg.core.types import NotBlankStr
         from synthorg.memory.consolidation.config import LLMConsolidationConfig
-        from synthorg.memory.consolidation.llm_strategy import (
-            LLMConsolidationStrategy,
+        from synthorg.memory.consolidation.llm_op import (
+            LLMSynthesisOp,
         )
         from synthorg.memory.models import MemoryEntry
         from synthorg.memory.protocol import MemoryBackend
         from synthorg.providers.protocol import CompletionProvider
 
-        strategy = LLMConsolidationStrategy(
+        strategy = LLMSynthesisOp(
             backend=MagicMock(spec=MemoryBackend),
             provider=MagicMock(spec=CompletionProvider),
             model=NotBlankStr("test-model"),
@@ -117,7 +117,7 @@ class TestMemoryConsolidationLLMStrategy:
 
     def test_system_prompt_appends_untrusted_directive(self) -> None:
         """Base system prompt ends with the untrusted-content directive."""
-        from synthorg.memory.consolidation.llm_strategy import _BASE_SYSTEM_PROMPT
+        from synthorg.memory.consolidation.llm_op import _BASE_SYSTEM_PROMPT
 
         directive = untrusted_content_directive((TAG_MEMORY_ENTRY,))
         assert _BASE_SYSTEM_PROMPT.endswith(directive)
@@ -127,14 +127,14 @@ class TestMemoryConsolidationLLMStrategy:
         from synthorg.core.enums import MemoryCategory
         from synthorg.core.types import NotBlankStr
         from synthorg.memory.consolidation.config import LLMConsolidationConfig
-        from synthorg.memory.consolidation.llm_strategy import (
-            LLMConsolidationStrategy,
+        from synthorg.memory.consolidation.llm_op import (
+            LLMSynthesisOp,
         )
         from synthorg.memory.models import MemoryEntry
         from synthorg.memory.protocol import MemoryBackend
         from synthorg.providers.protocol import CompletionProvider
 
-        strategy = LLMConsolidationStrategy(
+        strategy = LLMSynthesisOp(
             backend=MagicMock(spec=MemoryBackend),
             provider=MagicMock(spec=CompletionProvider),
             model=NotBlankStr("test-model"),

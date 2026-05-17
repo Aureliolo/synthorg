@@ -9,6 +9,7 @@ protocol.
 import re
 from typing import TYPE_CHECKING
 
+from synthorg.core.text_similarity import tokenize_words, word_overlap
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_MEMORY_DRIFT_WARNED,
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.ontology.config import OntologyMemoryConfig
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 
@@ -56,7 +57,7 @@ class OntologyAwareMemoryBackend:
     def __init__(
         self,
         inner: MemoryBackend,
-        ontology: OntologyBackend,
+        ontology: OntologyEntityRepository,
         config: OntologyMemoryConfig,
     ) -> None:
         self._inner = inner
@@ -295,7 +296,7 @@ class OntologyAwareMemoryBackend:
             content: Memory content text.
             entities: Entity names found in content.
         """
-        content_words = set(content.lower().split())
+        content_words = tokenize_words(content)
         for name in entities:
             try:
                 entity = await self._ontology.get(name)
@@ -319,10 +320,10 @@ class OntologyAwareMemoryBackend:
                 continue
             if not entity.definition:
                 continue
-            defn_words = set(entity.definition.lower().split())
+            defn_words = tokenize_words(entity.definition)
             if not defn_words:
                 continue
-            overlap = len(content_words & defn_words) / len(defn_words)
+            overlap = word_overlap(content_words, defn_words)
             if overlap < 0.3:  # noqa: PLR2004
                 logger.warning(
                     ONTOLOGY_MEMORY_DRIFT_WARNED,

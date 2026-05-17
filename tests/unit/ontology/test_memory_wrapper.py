@@ -55,7 +55,7 @@ def _make_ontology(
     entities: tuple[EntityDefinition, ...] = (),
     manifest: dict[str, int] | None = None,
 ) -> AsyncMock:
-    """Create a mock OntologyBackend."""
+    """Create a mock OntologyEntityRepository."""
     backend = AsyncMock()
     backend.list_entities = AsyncMock(return_value=entities)
     if manifest is None:

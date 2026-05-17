@@ -1,13 +1,13 @@
 """Generic HTTP health check."""
 
 import ssl
-import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, cast
 
 import httpcore
 import httpx
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.models import (
     Connection,
     ConnectionStatus,
@@ -177,10 +177,16 @@ class GenericHttpHealthCheck:
             fail-closed default.
     """
 
-    def __init__(self, *, network_policy: NetworkPolicy | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        network_policy: NetworkPolicy | None = None,
+        clock: Clock | None = None,
+    ) -> None:
         self._network_policy = (
             network_policy if network_policy is not None else NetworkPolicy()
         )
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def check(self, connection: Connection) -> HealthReport:
         """Execute a HEAD (or GET fallback) against ``base_url``."""
@@ -210,7 +216,7 @@ class GenericHttpHealthCheck:
                 error_detail=f"ssrf_policy_rejected: {validation}",
                 checked_at=datetime.now(UTC),
             )
-        start = time.monotonic()
+        start = self._clock.monotonic()
         # Pin the TCP connect to the first validated IP returned by
         # ``validate_url_host`` so a malicious DNS server cannot rebind
         # the hostname between the SSRF pre-flight and the actual
@@ -238,7 +244,7 @@ class GenericHttpHealthCheck:
                 resp = await client.head(connection.base_url)
                 if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
                     resp = await client.get(connection.base_url)
-            elapsed = (time.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * 1000
             if resp.status_code < _ERROR_THRESHOLD:
                 logger.info(
                     HEALTH_CHECK_PASSED,
@@ -264,7 +270,7 @@ class GenericHttpHealthCheck:
                 checked_at=datetime.now(UTC),
             )
         except httpx.HTTPError as exc:
-            elapsed = (time.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * 1000
             scrubbed = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,

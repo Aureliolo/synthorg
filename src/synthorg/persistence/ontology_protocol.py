@@ -1,11 +1,10 @@
 """Ontology repository protocols.
 
-Replaces the old parallel ``OntologyBackend`` abstraction from
-``synthorg.ontology.protocol``.  The same method surface (register,
-get, update, delete, list_entities, search, get_version_manifest)
-is now provided by the persistence-layer repository; lifecycle
-methods (``connect`` / ``disconnect`` / ``health_check`` /
-``is_connected`` / ``get_db``) belong to :class:`PersistenceBackend`.
+The entity method surface (register, get, update, delete,
+list_entities, search, get_version_manifest) is provided by the
+persistence-layer repository; lifecycle methods (``connect`` /
+``disconnect`` / ``health_check`` / ``is_connected`` / ``get_db``)
+belong to :class:`PersistenceBackend`.
 """
 
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
@@ -216,13 +215,6 @@ class OntologyEntityRepository(
             :func:`synthorg.persistence._shared.collect_all_mapping`.
         """
         ...
-
-
-# Alias for callers that still type-hint against the old name.  The
-# old ``OntologyBackend`` carried lifecycle methods; those have moved
-# to :class:`PersistenceBackend` and callers who need them reach
-# through the shared backend instead.
-OntologyBackend = OntologyEntityRepository
 
 
 @runtime_checkable

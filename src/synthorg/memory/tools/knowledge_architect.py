@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.consolidation.wiki_export import WikiExporter
     from synthorg.memory.org.protocol import OrgMemoryBackend
-    from synthorg.memory.org.store import OrgFactStore
+    from synthorg.persistence.memory_protocol import OrgFactRepository
 
 logger = get_logger(__name__)
 
@@ -362,7 +362,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         self,
         *,
         org_backend: OrgMemoryBackend,
-        fact_store: OrgFactStore | None = None,
+        fact_store: OrgFactRepository | None = None,
         agent_id: NotBlankStr,
         autonomy_level: AutonomyLevel,
         architect_writes_enabled: bool = False,

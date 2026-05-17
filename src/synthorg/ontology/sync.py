@@ -20,7 +20,7 @@ from synthorg.ontology.injection.prompt import format_entity
 if TYPE_CHECKING:
     from synthorg.ontology.config import OntologySyncConfig
     from synthorg.ontology.models import EntityDefinition
-    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 
@@ -55,7 +55,7 @@ class OntologyOrgMemorySync:
     def __init__(
         self,
         *,
-        ontology: OntologyBackend,
+        ontology: OntologyEntityRepository,
         org_memory: Any,
         config: OntologySyncConfig,
     ) -> None:

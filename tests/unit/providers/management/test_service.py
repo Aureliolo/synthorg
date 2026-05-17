@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from synthorg.api.dto import (
+from synthorg.api.dto_providers import (
     CreateFromPresetRequest,
     CreateProviderRequest,
     UpdateProviderRequest,
 )
-from synthorg.api.dto import TestConnectionRequest as ConnTestRequest
+from synthorg.api.dto_providers import TestConnectionRequest as ConnTestRequest
 from synthorg.api.state import AppState
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.providers.enums import AuthType

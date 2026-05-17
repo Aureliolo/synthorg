@@ -9,6 +9,26 @@ from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
 
 logger = get_logger(__name__)
 
+# One-step elevation ladder (CRITICAL is the ceiling). Shared by the
+# workload-adaptive and time-based classifiers so "elevate one tier"
+# means the same thing everywhere.
+_ELEVATION: Final[MappingProxyType[ApprovalRiskLevel, ApprovalRiskLevel]] = (
+    MappingProxyType(
+        {
+            ApprovalRiskLevel.LOW: ApprovalRiskLevel.MEDIUM,
+            ApprovalRiskLevel.MEDIUM: ApprovalRiskLevel.HIGH,
+            ApprovalRiskLevel.HIGH: ApprovalRiskLevel.CRITICAL,
+            ApprovalRiskLevel.CRITICAL: ApprovalRiskLevel.CRITICAL,
+        }
+    )
+)
+
+
+def elevate_one_tier(level: ApprovalRiskLevel) -> ApprovalRiskLevel:
+    """Return *level* raised one risk tier (``CRITICAL`` is the ceiling)."""
+    return _ELEVATION[level]
+
+
 # Reuses the same risk assignments as security/rules/risk_classifier.py.
 _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxyType(
     {

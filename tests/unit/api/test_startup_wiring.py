@@ -213,6 +213,7 @@ class TestTunnelUnconditionalWiring:
                 ceremony_scheduler=None,
                 db_url="sqlite:///:memory:",
                 resolved_db_path=tmp_path / "synthorg.db",
+                boot_db_path="",
             )
 
         assert bundle.tunnel_provider is not None

@@ -22,10 +22,10 @@ Like an automated burndown chart monitor.
 """
 
 import math
-import time
 from collections import deque
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
 )
@@ -106,6 +106,7 @@ class ThroughputAdaptiveStrategy:
     __slots__ = (
         "_baseline_rate",
         "_blocked_count",
+        "_clock",
         "_completion_timestamps",
         "_drop_threshold_pct",
         "_last_anomaly_state",
@@ -113,7 +114,8 @@ class ThroughputAdaptiveStrategy:
         "_window_size",
     )
 
-    def __init__(self) -> None:
+    def __init__(self, *, clock: Clock | None = None) -> None:
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._completion_timestamps: deque[float] = deque(
             maxlen=_DEFAULT_WINDOW_SIZE,
         )
@@ -358,7 +360,7 @@ class ThroughputAdaptiveStrategy:
             story_points: Points earned for the task.
             context: Evaluation context.
         """
-        self._completion_timestamps.append(time.monotonic())
+        self._completion_timestamps.append(self._clock.monotonic())
 
         if (
             self._baseline_rate is None

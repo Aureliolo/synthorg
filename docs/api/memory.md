@@ -63,8 +63,6 @@ Persistent agent memory: protocol, retrieval pipeline, shared org memory, consol
 
 ::: synthorg.memory.org.models
 
-::: synthorg.memory.org.store
-
 ::: synthorg.memory.org.access_control
 
 ## Consolidation
@@ -81,12 +79,8 @@ Persistent agent memory: protocol, retrieval pipeline, shared org memory, consol
 
 ::: synthorg.memory.consolidation.archival
 
-::: synthorg.memory.consolidation.simple_strategy
-
 ::: synthorg.memory.consolidation.density
 
 ::: synthorg.memory.consolidation.extractive
 
 ::: synthorg.memory.consolidation.abstractive
-
-::: synthorg.memory.consolidation.dual_mode_strategy
