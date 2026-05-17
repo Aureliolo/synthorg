@@ -13,6 +13,7 @@ the monolith fetched it before its group loop.
 """
 
 import asyncio
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -30,9 +31,6 @@ from synthorg.memory.consolidation.axis import (
     SelectionGroup,
 )
 from synthorg.memory.consolidation.config import LLMConsolidationConfig
-from synthorg.memory.consolidation.llm_strategy import (
-    SynthesisOutcome,
-)
 from synthorg.memory.models import (
     MemoryEntry,
     MemoryMetadata,
@@ -56,6 +54,20 @@ if TYPE_CHECKING:
     from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
+
+
+class SynthesisOutcome(StrEnum):
+    """Outcome of an LLM synthesis attempt.
+
+    Makes the synthesis result explicit instead of a bare ``bool``.
+    """
+
+    LLM_SYNTHESIZED = "llm_synthesized"
+    """LLM returned non-empty content -- real synthesis occurred."""
+
+    CONCAT_FALLBACK = "concat_fallback"
+    """LLM call failed or returned empty -- concatenation fallback used."""
+
 
 _DISTILLATION_TAG: NotBlankStr = "distillation"
 _LLM_SYNTHESIZED_TAG: NotBlankStr = "llm-synthesized"

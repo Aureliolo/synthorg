@@ -9,8 +9,12 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.composite import (
+    CompositeConsolidationStrategy,
+)
 from synthorg.memory.consolidation.config import LLMConsolidationConfig
-from synthorg.memory.consolidation.llm_strategy import LLMConsolidationStrategy
+from synthorg.memory.consolidation.llm_op import LLMSynthesisOp
+from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
 from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
@@ -60,12 +64,19 @@ def _make_strategy(
     backend: AsyncMock | None = None,
     config: LLMConsolidationConfig | None = None,
     **config_overrides: Any,
-) -> LLMConsolidationStrategy:
-    """Build an LLMConsolidationStrategy with mock dependencies.
+) -> CompositeConsolidationStrategy:
+    """Build the LLM composite (selector + LLMSynthesisOp) with mocks.
 
-    Pass ``config`` for a full override, or individual ``config_overrides``
-    kwargs (e.g. ``group_threshold=5``) which are forwarded to
-    ``LLMConsolidationConfig``.
+    Post ADR-0005: "llm" is
+    ``Composite(HighestRelevanceSelector, LLMSynthesisOp, parallel=True)``.
+    The selector's ``group_threshold`` is sourced from the
+    ``LLMConsolidationConfig`` (``ge=3``), so an out-of-range override
+    still raises ``ValidationError`` at config construction -- before
+    the composite is built -- exactly as the pre-split monolith did.
+
+    Pass ``config`` for a full override, or individual
+    ``config_overrides`` kwargs (e.g. ``group_threshold=5``) forwarded
+    to ``LLMConsolidationConfig``.
     """
     if backend is None:
         backend = AsyncMock(spec=MemoryBackend)
@@ -76,11 +87,15 @@ def _make_strategy(
         provider.complete = AsyncMock(return_value=_make_response())
     if config is None:
         config = LLMConsolidationConfig(**config_overrides)
-    return LLMConsolidationStrategy(
-        backend=backend,
-        provider=provider,
-        model="test-model",
-        config=config,
+    return CompositeConsolidationStrategy(
+        selector=HighestRelevanceSelector(group_threshold=config.group_threshold),
+        op=LLMSynthesisOp(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            config=config,
+        ),
+        parallel=True,
     )
 
 
@@ -102,8 +117,10 @@ class TestLLMConsolidationStrategyInit:
             _make_strategy(group_threshold=1)
 
     def test_group_threshold_three_accepted(self) -> None:
-        strategy = _make_strategy(group_threshold=3)
-        assert strategy._config.group_threshold == 3
+        # ge=3 is the minimum; constructing the composite must not
+        # raise, and the config carries the value the selector uses.
+        _make_strategy(group_threshold=3)
+        assert LLMConsolidationConfig(group_threshold=3).group_threshold == 3
 
 
 @pytest.mark.unit

@@ -1,12 +1,11 @@
-"""Byte-identical golden regression guard for the RFC#10 axis split.
+"""Byte-identical golden guard for the RFC#10 consolidation axis split.
 
 Pins the exact ``ConsolidationResult`` and stored-summary content for
-Simple / DualMode / LLM on fixed inputs. These assertions are written
-against EXPLICIT expected values (derived from the pre-split monolith
-behaviour and from refactor-stable components like
-``ExtractivePreserver``), not by calling the monolith -- so they keep
-guarding behaviour after the monolithic strategy classes are deleted
-and replaced by ``Composite(selector, op)``.
+the Simple / DualMode / LLM composites on fixed inputs, against
+EXPLICIT expected values (derived from the pre-split monolith
+behaviour and refactor-stable components like ``ExtractivePreserver``).
+These were validated to match the monoliths before the monoliths were
+deleted; they now guard the composites.
 
 The LLM truncation case pins the single point where the selector/op
 split could silently regress: entries dropped by the
@@ -24,21 +23,14 @@ from synthorg.memory.consolidation.composite import (
 )
 from synthorg.memory.consolidation.config import LLMConsolidationConfig
 from synthorg.memory.consolidation.density import ContentDensity
-from synthorg.memory.consolidation.dual_mode_strategy import (
-    DualModeConsolidationStrategy,
-)
 from synthorg.memory.consolidation.extractive import ExtractivePreserver
 from synthorg.memory.consolidation.llm_op import LLMSynthesisOp
-from synthorg.memory.consolidation.llm_strategy import LLMConsolidationStrategy
 from synthorg.memory.consolidation.models import ArchivalMode
 from synthorg.memory.consolidation.ops import (
     ConcatenationOp,
     DensityRoutingOp,
 )
 from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
-from synthorg.memory.consolidation.simple_strategy import (
-    SimpleConsolidationStrategy,
-)
 from synthorg.memory.models import (
     MemoryEntry,
     MemoryMetadata,
@@ -129,181 +121,10 @@ class _FixedProvider:
         return _response(self._content)
 
 
-# ── Simple: Composite(HighestRelevanceSelector, ConcatenationOp) ──
+# ── Simple = Composite(HighestRelevanceSelector, ConcatenationOp) ──
 
 
 async def test_simple_golden() -> None:
-    backend = _RecordingBackend()
-    # Five EPISODIC entries; best = highest relevance (m4 @ 0.4).
-    entries = tuple(
-        _entry(f"m{i}", content=f"Content for m{i}", relevance=0.1 * i)
-        for i in range(5)
-    )
-    strategy = SimpleConsolidationStrategy(backend=backend, group_threshold=3)  # type: ignore[arg-type]
-
-    result = await strategy.consolidate(entries, agent_id=_AGENT)
-
-    # m4 kept (max relevance); m0..m3 removed.
-    assert result.removed_ids == ("m0", "m1", "m2", "m3")
-    assert result.summary_ids == ("sum-1",)
-    assert result.mode_assignments == ()
-    assert backend.deleted == ["m0", "m1", "m2", "m3"]
-
-    agent_id, req = backend.stored[0]
-    assert agent_id == _AGENT
-    assert req.category is MemoryCategory.EPISODIC
-    assert req.metadata.tags == ("consolidated",)
-    # Pinned ConcatenationOp format (Simple._build_summary).
-    expected = (
-        "Consolidated episodic memories:\n"
-        "- Content for m0\n"
-        "- Content for m1\n"
-        "- Content for m2\n"
-        "- Content for m3"
-    )
-    assert req.content == expected
-
-
-# ── DualMode extractive route: provider-free, deterministic ──
-
-
-async def test_dual_mode_extractive_golden() -> None:
-    backend = _RecordingBackend()
-    extractor = ExtractivePreserver()
-
-    class _AllDenseClassifier:
-        """Deterministic stub: every entry is DENSE -> EXTRACTIVE route.
-
-        The real ``DensityClassifier`` has its own tests; this golden
-        pins the dual-mode result shape + ``mode_assignments`` + tags
-        + extractive content, provider-free.
-        """
-
-        def classify_batch(
-            self, entries: tuple[MemoryEntry, ...]
-        ) -> tuple[tuple[MemoryEntry, ContentDensity], ...]:
-            return tuple((e, ContentDensity.DENSE) for e in entries)
-
-    class _UnusedSummarizer:
-        async def summarize(self, content: str, *, agent_id: str) -> str:
-            msg = "abstractive path must not run for dense content"
-            raise AssertionError(msg)
-
-    entries = tuple(
-        _entry(f"d{i}", content=f"id=ABC-{i} ref=DEF-{i} key: value", relevance=0.1 * i)
-        for i in range(4)
-    )
-    strategy = DualModeConsolidationStrategy(
-        backend=backend,  # type: ignore[arg-type]
-        classifier=_AllDenseClassifier(),  # type: ignore[arg-type]
-        extractor=extractor,
-        summarizer=_UnusedSummarizer(),  # type: ignore[arg-type]
-        group_threshold=3,
-    )
-
-    result = await strategy.consolidate(entries, agent_id=_AGENT)
-
-    # d3 kept (max relevance); d0..d2 removed.
-    assert result.removed_ids == ("d0", "d1", "d2")
-    assert result.summary_ids == ("sum-1",)
-    assert tuple(a.original_id for a in result.mode_assignments) == (
-        "d0",
-        "d1",
-        "d2",
-    )
-    assert all(a.mode is ArchivalMode.EXTRACTIVE for a in result.mode_assignments)
-
-    _agent, req = backend.stored[0]
-    assert req.metadata.tags == ("consolidated", "mode:extractive")
-    # Content == the refactor-stable ExtractivePreserver output joined
-    # with the dual-mode separator, over the removed (non-kept) set.
-    to_remove = (entries[0], entries[1], entries[2])
-    expected = "\n---\n".join(extractor.extract(e.content) for e in to_remove)
-    assert req.content == expected
-
-
-# ── LLM: Composite(HighestRelevanceSelector, LLMSynthesisOp) ──
-
-
-async def test_llm_synthesis_golden() -> None:
-    backend = _RecordingBackend()
-    provider = _FixedProvider("SYNTHESIZED")
-    config = LLMConsolidationConfig(
-        group_threshold=3,
-        include_distillation_context=False,
-    )
-    strategy = LLMConsolidationStrategy(
-        backend=backend,  # type: ignore[arg-type]
-        provider=provider,  # type: ignore[arg-type]
-        model="test-model",
-        config=config,
-    )
-    entries = tuple(
-        _entry(f"l{i}", content=f"Content for l{i}", relevance=0.1 * i)
-        for i in range(4)
-    )
-
-    result = await strategy.consolidate(entries, agent_id=_AGENT)
-
-    # l3 kept; l0..l2 synthesized + removed.
-    assert result.removed_ids == ("l0", "l1", "l2")
-    assert result.summary_ids == ("sum-1",)
-    assert provider.calls == 1
-    _agent, req = backend.stored[0]
-    assert req.content == "SYNTHESIZED"
-    assert req.metadata.tags == ("consolidated", "llm-synthesized")
-
-
-async def test_llm_truncation_keeps_dropped_entries() -> None:
-    """Entries dropped by the prompt cap are NOT deleted.
-
-    The single point where the selector/op split could silently
-    regress: ``represented`` (not the selector's full to-remove set)
-    drives deletion.
-    """
-    backend = _RecordingBackend()
-    provider = _FixedProvider("SYNTH")
-    # Each wrapped entry is well over 200 chars; a 300-char total cap
-    # admits only the first removed entry into the prompt.
-    config = LLMConsolidationConfig(
-        group_threshold=3,
-        include_distillation_context=False,
-        max_entry_input_chars=1000,
-        max_total_user_content_chars=1000,
-        fallback_truncate_length=50,
-    )
-    big = "X" * 900
-    entries = tuple(
-        _entry(f"t{i}", content=f"{big}-{i}", relevance=0.1 * i) for i in range(4)
-    )
-    strategy = LLMConsolidationStrategy(
-        backend=backend,  # type: ignore[arg-type]
-        provider=provider,  # type: ignore[arg-type]
-        model="test-model",
-        config=config,
-    )
-
-    result = await strategy.consolidate(entries, agent_id=_AGENT)
-
-    # t3 is kept (max relevance). Of t0,t1,t2 only the entries that
-    # actually fit the 1000-char prompt cap are summarised + deleted;
-    # the rest stay in the backend. The invariant: every removed id is
-    # one that was represented, and at least one over-cap entry is NOT
-    # deleted.
-    assert set(result.removed_ids).issubset({"t0", "t1", "t2"})
-    assert result.removed_ids == tuple(backend.deleted)
-    assert len(result.removed_ids) < 3
-    assert "t3" not in result.removed_ids
-
-
-# ── Composite parity: same expectations as the monolith goldens ──
-#
-# These build Composite(HighestRelevanceSelector, <Op>) and assert
-# the SAME pinned values the monolith goldens above assert. Identical
-# expectations on both sides == byte-identical behaviour.
-
-
-async def test_composite_simple_parity() -> None:
     backend = _RecordingBackend()
     entries = tuple(
         _entry(f"m{i}", content=f"Content for m{i}", relevance=0.1 * i)
@@ -332,7 +153,10 @@ async def test_composite_simple_parity() -> None:
     assert req.content == expected
 
 
-async def test_composite_dual_mode_parity() -> None:
+# ── DualMode = Composite(selector, DensityRoutingOp) ──
+
+
+async def test_dual_mode_golden() -> None:
     backend = _RecordingBackend()
     extractor = ExtractivePreserver()
 
@@ -378,7 +202,10 @@ async def test_composite_dual_mode_parity() -> None:
     assert req.content == expected
 
 
-async def test_composite_llm_parity() -> None:
+# ── LLM = Composite(selector, LLMSynthesisOp, parallel=True) ──
+
+
+async def test_llm_golden() -> None:
     backend = _RecordingBackend()
     provider = _FixedProvider("SYNTHESIZED")
     config = LLMConsolidationConfig(
@@ -410,7 +237,13 @@ async def test_composite_llm_parity() -> None:
     assert req.metadata.tags == ("consolidated", "llm-synthesized")
 
 
-async def test_composite_llm_truncation_parity() -> None:
+async def test_llm_truncation_keeps_dropped_entries() -> None:
+    """Entries dropped by the prompt cap are NOT deleted.
+
+    The single point where the selector/op split could silently
+    regress: ``LLMSynthesisOp`` deletes only the prompt-cap survivors,
+    so over-cap entries stay for the next pass.
+    """
     backend = _RecordingBackend()
     provider = _FixedProvider("SYNTH")
     config = LLMConsolidationConfig(

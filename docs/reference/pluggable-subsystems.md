@@ -14,7 +14,7 @@ On-demand reference. The rule in `CLAUDE.md` is: new cross-cutting subsystems fo
 
 Three registry classes replace the hand-rolled `if config.type == "...": ... elif ...` chains every factory used to carry. Each is immutable after construction (`MappingProxyType`-backed) and emits structured `registry.*` events for built / lookup / failure paths.
 
-- `synthorg.core.registry.StrategyRegistry[T]`: generic strategy dispatch keyed by a `config.type` discriminator. Used across the codebase by factories for pruning, propagation, identity store, evolution triggers, evolution proposers, execution loops, training source selectors, training curation, procedural capture, notification sinks, secret backends, sandbox backends, per-op rate-limit stores, and per-op inflight stores.
+- `synthorg.core.registry.StrategyRegistry[T]`: generic strategy dispatch keyed by a `config.type` discriminator. Used across the codebase by factories for pruning, propagation, identity store, evolution triggers, evolution proposers, execution loops, training source selectors, training curation, procedural capture, notification sinks, secret backends, sandbox backends, per-op rate-limit stores, per-op inflight stores, and memory-consolidation strategies (selector + op composite, ADR-0005).
 - `synthorg.persistence.registry.PersistenceBackendRegistry`: domain-specific dispatch keyed by `PersistenceConfig.backend`; preserves the lazy import of the optional `postgres` extra.
 - `synthorg.memory.registry.MemoryBackendRegistry`: domain-specific dispatch keyed by `CompanyMemoryConfig.backend`; the composite-backend child loop reuses a separate "leaf" registry to keep the wiring acyclic.
 
@@ -114,6 +114,15 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `engine/checkpoint/strategy.py::CheckpointRecoveryStrategy`: resume-from-checkpoint sibling.
 - `engine/recovery_config.py::EngineRecoveryConfig.strategy` (`RecoveryStrategyType`): discriminator.
 - `engine/recovery_factory.py::build_recovery_strategy()`: match-based dispatch; `RecoveryConfigError` surfaces missing `checkpoint_repo` / `checkpoint_config` at boot rather than at recovery time.
+
+### Memory consolidation strategy (axis split, ADR-0005)
+
+- `memory/consolidation/axis.py`: `EntrySelector` + `ConsolidationOp` Protocols; `SelectionGroup` / `ConsolidationContext` / `OpResult` contracts.
+- Selector: `memory/consolidation/selectors.py::HighestRelevanceSelector` (shared by all three shipped strategies).
+- Ops: `memory/consolidation/ops.py` (`ConcatenationOp`, `DensityRoutingOp`, `ExtractivePreservationOp`, `AbstractiveSummarizationOp`) + `memory/consolidation/llm_op.py::LLMSynthesisOp`.
+- `memory/consolidation/composite.py::CompositeConsolidationStrategy`: selector + op aggregator (`parallel=True` for LLM cross-group `TaskGroup` fan-out).
+- `memory/consolidation/config.py::ConsolidationStrategyType` (`SIMPLE` / `DUAL_MODE` / `LLM`): discriminator.
+- `memory/consolidation/factory.py::build_consolidation_strategy()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `MemoryConfigError` surfaces missing op-specific deps at construction.
 
 ### Conflict detector
 

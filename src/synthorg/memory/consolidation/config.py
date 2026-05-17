@@ -5,6 +5,7 @@ archival, LLM consolidation strategy, experience compressor,
 and wiki export settings.
 """
 
+from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, ClassVar, Final, Literal, Self
 
@@ -23,6 +24,24 @@ from synthorg.settings.mirrors import (
 )
 
 logger = get_logger(__name__)
+
+
+class ConsolidationStrategyType(StrEnum):
+    """Discriminator selecting the consolidation composite to build.
+
+    Each value maps (in
+    :mod:`synthorg.memory.consolidation.factory`) to a
+    ``Composite(HighestRelevanceSelector, <op>)``:
+
+    - ``SIMPLE`` -> ``ConcatenationOp`` (truncated-bullet summary).
+    - ``DUAL_MODE`` -> ``DensityRoutingOp`` (density-routed
+      extractive / abstractive).
+    - ``LLM`` -> ``LLMSynthesisOp`` (LLM synthesis, parallel groups).
+    """
+
+    SIMPLE = "simple"
+    DUAL_MODE = "dual_mode"
+    LLM = "llm"
 
 
 class RetentionConfig(BaseModel):
