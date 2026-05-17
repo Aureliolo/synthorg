@@ -212,8 +212,6 @@ async def stop(state: _NatsState) -> None:  # noqa: C901
         for key, sub in list(state.subscriptions.items()):
             try:
                 await sub.unsubscribe()
-            except asyncio.CancelledError:
-                pass
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
@@ -247,8 +245,6 @@ async def stop(state: _NatsState) -> None:  # noqa: C901
                     f"{state.stop_drain_timeout_seconds}s"
                 )
                 raise BusStopTimeoutError(msg) from exc
-            except asyncio.CancelledError:
-                pass
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:

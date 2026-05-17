@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
@@ -184,15 +185,17 @@ class TestConnectionRepository:
 
         assert page == ()
 
-    async def test_list_all_negative_limit_returns_empty(
+    async def test_list_all_invalid_limit_raises_query_error(
         self, backend: PersistenceBackend
     ) -> None:
         await backend.connections.save(_connection("only"))
 
-        # Both ``limit=0`` and ``limit=-1`` are documented as returning ()
-        # without hitting the database.
-        assert await backend.connections.list_items(limit=0) == ()
-        assert await backend.connections.list_items(limit=-1) == ()
+        # Out-of-range pagination is rejected at the boundary with a
+        # domain ``QueryError`` rather than silently returning ().
+        with pytest.raises(QueryError):
+            await backend.connections.list_items(limit=0)
+        with pytest.raises(QueryError):
+            await backend.connections.list_items(limit=-1)
 
     async def test_save_round_trips_partial_zero_rate_limiter(
         self, backend: PersistenceBackend

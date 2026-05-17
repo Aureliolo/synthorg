@@ -18,6 +18,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 from synthorg.security.timeout.parked_context import ParkedContext
 
@@ -111,6 +112,9 @@ INSERT OR REPLACE INTO parked_contexts (
         offset: int = 0,
     ) -> tuple[ParkedContext, ...]:
         """List parked contexts in id order."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT id, execution_id, agent_id, task_id, approval_id, "

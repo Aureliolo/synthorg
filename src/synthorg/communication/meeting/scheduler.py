@@ -116,13 +116,13 @@ class MeetingScheduler:
         self._resolver = participant_resolver
         self._event_publisher = event_publisher
         self._clock = clock or time.monotonic
-        # WP-1 restart-safety: when cooldown_repo is supplied, the
-        # scheduler persists the wall-clock timestamp of every trigger
-        # at trigger_event and rehydrates _last_triggered from the
-        # repo at start(). The runtime cooldown comparison continues
-        # to use the monotonic ``_clock`` for performance; hydration
-        # translates the persisted wall-clock to a monotonic-equivalent
-        # offset by computing (now_wall - persisted_wall).
+        # When cooldown_repo is supplied the scheduler persists the
+        # wall-clock timestamp of every trigger at trigger_event and
+        # rehydrates _last_triggered from the repo at start(), so a
+        # restart inside a cooldown window cannot let a meeting re-fire.
+        # The runtime comparison still uses the monotonic ``_clock`` for
+        # performance; hydration translates the persisted wall-clock to
+        # a monotonic-equivalent offset via (now_wall - persisted_wall).
         self._cooldown_repo = cooldown_repo
         # Loop-bound asyncio primitives are deferred so the scheduler
         # can be safely re-used across event loops (test scenarios
@@ -248,6 +248,11 @@ class MeetingScheduler:
         # post-start hydrate cannot interleave its read-then-write
         # against the bulk hydrate write.
         async with self._cooldown_lock_for_current_loop():
+            # Replace, do not merge: a re-entry after stop() must let
+            # durable state fully supersede in-memory survivors, so a
+            # meeting type absent from the persisted set drops its stale
+            # in-memory cooldown rather than retaining it.
+            self._last_triggered.clear()
             for record in records:
                 elapsed = (now_wall - record.last_triggered_at).total_seconds()
                 self._last_triggered[record.meeting_type_name] = now_monotonic - max(
@@ -259,8 +264,10 @@ class MeetingScheduler:
         """Upsert the wall-clock timestamp for one meeting type's cooldown.
 
         Called inside ``trigger_event`` after the in-memory dict has
-        been updated. Best-effort: a persistence failure logs at WARNING
-        and propagates so the trigger flow can decide whether to bail.
+        been updated. A persistence failure logs at WARNING and then
+        re-raises so the durable cooldown row is never silently lost:
+        the caller surfaces the failure rather than continuing with an
+        in-memory-only cooldown that vanishes on restart.
         """
         if self._cooldown_repo is None:
             return
@@ -287,6 +294,7 @@ class MeetingScheduler:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            raise
 
     async def start(self) -> None:
         """Start periodic tasks for all frequency-based meeting types.
@@ -555,8 +563,12 @@ class MeetingScheduler:
             )
 
             for mt in eligible:
-                self._last_triggered[mt.name] = now
+                # Persist first: if the durable write fails the loop
+                # aborts (via re-raise) before the in-memory cooldown is
+                # set, so we never record a cooldown that vanishes on
+                # restart and lets the meeting re-fire.
                 await self._persist_cooldown(mt.name)
+                self._last_triggered[mt.name] = now
 
         async with asyncio.TaskGroup() as tg:
             tasks = [

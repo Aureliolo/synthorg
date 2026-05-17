@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.tracked_container_protocol import TrackedContainerRecord
@@ -70,3 +71,30 @@ class TestTrackedContainerRepository:
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         deleted = await backend.tracked_containers.delete(NotBlankStr("ghost"))
         assert deleted is False
+
+    async def test_list_items_orders_by_container_id_and_paginates(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for cid in ("ctr-3", "ctr-1", "ctr-2"):
+            await backend.tracked_containers.save(_record(container_id=cid))
+        rows = await backend.tracked_containers.list_items(limit=10)
+        ids = [r.container_id for r in rows]
+        assert ids == sorted(ids)
+        assert {"ctr-1", "ctr-2", "ctr-3"} <= set(ids)
+        page = await backend.tracked_containers.list_items(limit=1, offset=1)
+        assert len(page) == 1
+        assert page[0].container_id == ids[1]
+
+    async def test_list_items_rejects_invalid_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.tracked_containers.list_items(limit=0)
+        with pytest.raises(QueryError):
+            await backend.tracked_containers.list_items(offset=-1)
+
+    async def test_list_items_empty(self, backend: PersistenceBackend) -> None:
+        assert await backend.tracked_containers.list_items() == ()
+
+    async def test_load_all_empty(self, backend: PersistenceBackend) -> None:
+        assert await backend.tracked_containers.load_all() == ()

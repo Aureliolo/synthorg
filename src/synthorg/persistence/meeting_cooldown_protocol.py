@@ -2,10 +2,10 @@
 
 The ``MeetingScheduler`` enforces a ``min_interval_seconds`` cooldown
 between consecutive triggers of the same meeting type, tracking the
-last-triggered wall-clock timestamp per meeting type. Pre-WP-1 this
-lived in a plain ``dict[str, float]`` keyed by meeting-type name and
-was lost on restart, allowing a recurring meeting to fire again
-immediately after a deploy that happened during the cooldown window.
+last-triggered wall-clock timestamp per meeting type. That timestamp is
+persisted (one row per meeting type) rather than held only in memory so
+a recurring meeting cannot fire again immediately after a process
+restart that happens inside the cooldown window.
 
 This repository persists one row per meeting type. The scheduler:
 

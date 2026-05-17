@@ -61,7 +61,10 @@ from synthorg.persistence.preset_protocol import (
     Preset,
     PresetFilterSpec,
 )
-from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.project_protocol import (
+    ProjectFilterSpec,
+    ProjectRepository,
+)
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.settings_protocol import (
     SettingRow,
@@ -129,6 +132,7 @@ __all__ = [
     "PersonalityPresetRepository",
     "Preset",
     "PresetFilterSpec",
+    "ProjectFilterSpec",
     "ProjectRepository",
     "QueryError",
     "RecordNotFoundError",

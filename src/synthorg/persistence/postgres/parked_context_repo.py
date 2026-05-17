@@ -24,6 +24,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.security.timeout.parked_context import ParkedContext
 
 if TYPE_CHECKING:
@@ -139,6 +140,9 @@ ON CONFLICT(id) DO UPDATE SET
         offset: int = 0,
     ) -> tuple[ParkedContext, ...]:
         """List parked contexts in id order."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,

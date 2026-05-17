@@ -1,15 +1,14 @@
 """Generic repository protocol categories for persistence layer composition.
 
-WP-1 consolidates ~44 entity-specific ``*Repository`` protocols into six
-generic categories that compose via Protocol inheritance::
+Entity repository protocols compose from six generic categories via
+Protocol inheritance::
 
     class TaskRepository(
         IdKeyedRepository[Task, NotBlankStr],
         FilteredQueryRepository[Task, TaskFilterSpec],
     ): ...
 
-The six categories cover every persistence pattern present in the
-codebase:
+The six categories cover every persistence pattern in the codebase:
 
 * ``SingletonRepository[T]`` -- one-row global state.
 * ``IdKeyedRepository[T, ID]`` -- CRUD by primary key (composite keys

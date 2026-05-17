@@ -288,7 +288,9 @@ class SQLiteTrainingPlanRepository:
         Raises:
             QueryError: If the operation fails.
         """
-        limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
+        limit = validate_pagination_args(
+            limit, offset, event=HR_TRAINING_PERSISTENCE_ERROR
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM training_plans ORDER BY id ASC LIMIT ? OFFSET ?",
@@ -325,7 +327,9 @@ class SQLiteTrainingPlanRepository:
         Raises:
             QueryError: If the operation fails.
         """
-        limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
+        limit = validate_pagination_args(
+            limit, offset, event=HR_TRAINING_PERSISTENCE_ERROR
+        )
         try:
             where_clauses = []
             params: list[object] = []

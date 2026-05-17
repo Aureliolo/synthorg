@@ -173,8 +173,19 @@ class InMemoryWebhookReceiptRepository:
         self._store: list[WebhookReceipt] = []
 
     async def save(self, receipt: WebhookReceipt) -> None:
-        """Persist a receipt (deep-copied)."""
-        self._store.append(copy.deepcopy(receipt))
+        """Persist a receipt (deep-copied), upserting by id.
+
+        Mirrors the durable repos' insert-or-replace semantics so a
+        re-save of the same id updates in place instead of leaving a
+        duplicate row that ``get`` / ``list_items`` would then disagree
+        on.
+        """
+        snapshot = copy.deepcopy(receipt)
+        for i, existing in enumerate(self._store):
+            if str(existing.id) == str(receipt.id):
+                self._store[i] = snapshot
+                return
+        self._store.append(snapshot)
 
     async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
         """Look up a receipt by id (deep-copied)."""

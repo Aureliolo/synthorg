@@ -26,6 +26,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     coerce_row_timestamp,
     normalize_utc,
+    validate_pagination_args,
 )
 
 if TYPE_CHECKING:
@@ -269,17 +270,16 @@ class PostgresWebhookReceiptRepository:
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List all webhook receipts with pagination."""
-        if limit <= 0:
-            return ()
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED
+        )
         sql = (
             "SELECT id, connection_name, event_type, status, "
             "       received_at, processed_at, payload_json, error "
-            "FROM webhook_receipts ORDER BY received_at DESC, id DESC"
+            "FROM webhook_receipts ORDER BY received_at DESC, id DESC "
+            "LIMIT %s OFFSET %s"
         )
-        params: tuple[object, ...] = ()
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (int(limit), max(0, int(offset)))
+        params: tuple[object, ...] = (limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,

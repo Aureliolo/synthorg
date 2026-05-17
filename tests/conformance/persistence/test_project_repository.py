@@ -3,7 +3,11 @@
 import pytest
 
 from synthorg.core.enums import ProjectStatus
-from synthorg.core.persistence_errors import DuplicateRecordError, RecordNotFoundError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    QueryError,
+    RecordNotFoundError,
+)
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.project_protocol import ProjectFilterSpec
@@ -133,3 +137,28 @@ class TestProjectRepository:
     async def test_update_rejects_missing(self, backend: PersistenceBackend) -> None:
         with pytest.raises(RecordNotFoundError):
             await backend.projects.update(_project(project_id="p-ghost"))
+
+    async def test_list_items_empty(self, backend: PersistenceBackend) -> None:
+        assert await backend.projects.list_items() == ()
+
+    @pytest.mark.parametrize(
+        ("limit", "offset"),
+        [(0, 0), (-1, 0), (1, -1)],
+    )
+    async def test_list_items_rejects_invalid_pagination(
+        self, backend: PersistenceBackend, limit: int, offset: int
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.projects.list_items(limit=limit, offset=offset)
+
+    @pytest.mark.parametrize(
+        ("limit", "offset"),
+        [(0, 0), (-1, 0), (1, -1)],
+    )
+    async def test_query_rejects_invalid_pagination(
+        self, backend: PersistenceBackend, limit: int, offset: int
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.projects.query(
+                ProjectFilterSpec(), limit=limit, offset=offset
+            )

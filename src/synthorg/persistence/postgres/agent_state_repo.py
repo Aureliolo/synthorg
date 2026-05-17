@@ -24,6 +24,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AGENT_STATE_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -134,6 +135,9 @@ ON CONFLICT (agent_id) DO UPDATE SET
         offset: int = 0,
     ) -> tuple[AgentRuntimeState, ...]:
         """List agent runtime states in agent_id order."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_AGENT_STATE_LIST_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,

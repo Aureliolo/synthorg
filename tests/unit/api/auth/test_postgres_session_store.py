@@ -12,11 +12,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import psycopg
 import pytest
 from aiosqlite.core import Connection
 
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.auth.session import Session
+from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.auth_protocol import SessionRepository as SessionStore
 from synthorg.persistence.postgres.session_repo import (
     PostgresSessionRepository as PostgresSessionStore,
@@ -282,3 +284,60 @@ async def test_enforce_session_limit_noop_when_within_cap() -> None:
     revoked = await store.enforce_session_limit("user-1", max_sessions=5)
 
     assert revoked == 0
+
+
+# -- Error translation (psycopg.Error -> QueryError) -----------------
+
+
+class _RaisingCursor(_FakeCursor):
+    """Cursor whose ``execute`` raises a psycopg driver error."""
+
+    async def execute(self, sql: str, params: tuple[Any, ...] = ()) -> None:
+        msg = "connection lost"
+        raise psycopg.OperationalError(msg)
+
+
+def _raising_store() -> PostgresSessionStore:
+    conn = _FakeConnection([_RaisingCursor(), _RaisingCursor()])
+    return PostgresSessionStore(_FakePool(conn))  # type: ignore[arg-type]
+
+
+async def test_save_translates_psycopg_error_to_query_error() -> None:
+    """A driver failure in ``save`` surfaces as the domain ``QueryError``."""
+    with pytest.raises(QueryError):
+        await _raising_store().save(_make_session())
+
+
+async def test_get_translates_psycopg_error_to_query_error() -> None:
+    """A driver failure in ``get`` surfaces as the domain ``QueryError``."""
+    with pytest.raises(QueryError):
+        await _raising_store().get("sess-1")
+
+
+async def test_delete_translates_psycopg_error_to_query_error() -> None:
+    """A driver failure in ``delete`` surfaces as the domain ``QueryError``."""
+    with pytest.raises(QueryError):
+        await _raising_store().delete("sess-1")
+
+
+async def test_load_revoked_translates_psycopg_error_to_query_error() -> None:
+    """A driver failure in ``load_revoked`` surfaces as ``QueryError``."""
+    with pytest.raises(QueryError):
+        await _raising_store().load_revoked()
+
+
+async def test_cleanup_expired_translates_psycopg_error_to_query_error() -> None:
+    """A driver failure in ``cleanup_expired`` surfaces as ``QueryError``."""
+    with pytest.raises(QueryError):
+        await _raising_store().cleanup_expired()
+
+
+@pytest.mark.parametrize(
+    ("limit", "offset"),
+    [(0, 0), (-1, 0), (1, -1)],
+)
+async def test_list_items_rejects_invalid_pagination(limit: int, offset: int) -> None:
+    """Out-of-range pagination args raise ``QueryError`` before any I/O."""
+    store = PostgresSessionStore(_FakePool(_FakeConnection([])))  # type: ignore[arg-type]
+    with pytest.raises(QueryError):
+        await store.list_items(limit=limit, offset=offset)

@@ -39,6 +39,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
+    validate_pagination_args,
 )
 from synthorg.persistence.connection_protocol import ConnectionFilterSpec  # noqa: TC001
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
@@ -237,13 +238,14 @@ class SQLiteConnectionRepository:
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all connections, sorted by name for determinism."""
-        if limit is not None and limit <= 0:
-            return ()
-        sql = f"SELECT {_SELECT_COLS} FROM connections ORDER BY name ASC"  # noqa: S608
-        params: tuple[object, ...] = ()
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (int(limit), max(0, int(offset)))
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CONNECTION_LIST_FAILED
+        )
+        sql = (
+            f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
+            "ORDER BY name ASC LIMIT ? OFFSET ?"
+        )
+        params: tuple[object, ...] = (limit, offset)
         try:
             async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
@@ -274,17 +276,16 @@ class SQLiteConnectionRepository:
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List connections matching the filter spec, sorted by name."""
-        if limit is not None and limit <= 0:
-            return ()
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CONNECTION_LIST_FAILED
+        )
         sql = f"SELECT {_SELECT_COLS} FROM connections"  # noqa: S608
         params: tuple[object, ...] = ()
         if filter_spec.connection_type is not None:
             sql += " WHERE connection_type = ?"
             params = (filter_spec.connection_type.value,)
-        sql += " ORDER BY name ASC"
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), max(0, int(offset)))
+        sql += " ORDER BY name ASC LIMIT ? OFFSET ?"
+        params = (*params, limit, offset)
         try:
             async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()

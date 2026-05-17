@@ -85,21 +85,38 @@ def _iter_import_violations(tree: ast.AST, path: Path) -> Iterable[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            if module.startswith(_DTO_MODULE_PREFIX):
+            is_relative = node.level > 0
+            # ``from synthorg.api.dto_x import Y`` (absolute) or the
+            # relative equivalent ``from ..api.dto_x import Y`` /
+            # ``from ...dto_x import Y`` whose final component is a
+            # ``dto_*`` module.
+            final_component = module.rsplit(".", 1)[-1]
+            module_targets_dto = module.startswith(_DTO_MODULE_PREFIX) or (
+                is_relative and final_component.startswith(_DTO_NAME_PREFIX)
+            )
+            # ``from synthorg.api import dto_x`` (absolute) or the
+            # relative ``from ..api import dto_x`` / ``from . import
+            # dto_x`` where the imported *name* is the DTO module.
+            module_is_api = module == _API_PACKAGE or (
+                is_relative
+                and (module == "api" or module.endswith(".api") or module == "")
+            )
+            if module_targets_dto:
                 names = ", ".join(alias.name for alias in node.names)
+                rel = "." * node.level
                 yield (
                     f"{path}:{node.lineno}: forbidden import "
-                    f"`from {module} import {names}` "
+                    f"`from {rel}{module} import {names}` "
                     f"(persistence/service must not import api.dto_*)"
                 )
-            elif module == _API_PACKAGE:
-                # ``from synthorg.api import dto_capability`` -- the
-                # forbidden DTO is the imported name, not the module.
+            elif module_is_api:
+                # The forbidden DTO is the imported name, not the module.
                 for alias in node.names:
                     if alias.name.startswith(_DTO_NAME_PREFIX):
+                        rel = "." * node.level
                         yield (
                             f"{path}:{node.lineno}: forbidden import "
-                            f"`from {module} import {alias.name}` "
+                            f"`from {rel}{module} import {alias.name}` "
                             f"(persistence/service must not import api.dto_*)"
                         )
         elif isinstance(node, ast.Import):

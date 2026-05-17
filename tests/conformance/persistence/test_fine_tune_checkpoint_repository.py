@@ -215,15 +215,15 @@ class TestFineTuneCheckpointRepository:
         await backend.fine_tune_runs.save(_run())
         await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
 
-        await backend.fine_tune_checkpoints.delete("cp-1")
+        assert await backend.fine_tune_checkpoints.delete("cp-1") is True
         assert await backend.fine_tune_checkpoints.get("cp-1") is None
 
     async def test_delete_missing_checkpoint_silent(
         self, backend: PersistenceBackend
     ) -> None:
         # Mirror SQLite semantics: deleting a non-existent checkpoint
-        # is a no-op (returns silently), not an error.
-        await backend.fine_tune_checkpoints.delete("ghost")
+        # is a no-op (returns False), not an error.
+        assert await backend.fine_tune_checkpoints.delete("ghost") is False
 
     async def test_delete_active_checkpoint_raises(
         self, backend: PersistenceBackend

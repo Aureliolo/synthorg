@@ -653,6 +653,21 @@ ON CONFLICT (id) DO UPDATE SET
                 conn.transaction(),
                 conn.cursor() as cur,
             ):
+                # Single atomic guarded delete: the partial predicate
+                # ``is_active = FALSE`` and ``RETURNING id`` collapse the
+                # former SELECT-then-DELETE into one statement, closing
+                # the window where a concurrent activation could slip
+                # between the two.
+                await cur.execute(
+                    "DELETE FROM fine_tune_checkpoints "
+                    "WHERE id = %s AND is_active = FALSE RETURNING id",
+                    (checkpoint_id,),
+                )
+                if await cur.fetchone() is not None:
+                    return True
+                # Nothing deleted: disambiguate absent vs active so an
+                # absent id returns False but an attempt to delete the
+                # active checkpoint surfaces the domain invariant.
                 await cur.execute(
                     "SELECT is_active FROM fine_tune_checkpoints WHERE id = %s",
                     (checkpoint_id,),
@@ -660,27 +675,13 @@ ON CONFLICT (id) DO UPDATE SET
                 row = await cur.fetchone()
                 if row is None:
                     return False
-                if bool(row[0]):
-                    msg = f"Cannot delete active checkpoint {checkpoint_id}"
-                    logger.warning(
-                        MEMORY_FINE_TUNE_PERSIST_FAILED,
-                        checkpoint_id=checkpoint_id,
-                        error=msg,
-                    )
-                    raise QueryError(msg)
-                await cur.execute(
-                    "DELETE FROM fine_tune_checkpoints "
-                    "WHERE id = %s AND is_active = FALSE",
-                    (checkpoint_id,),
+                msg = f"Cannot delete active checkpoint {checkpoint_id}"
+                logger.warning(
+                    MEMORY_FINE_TUNE_PERSIST_FAILED,
+                    checkpoint_id=checkpoint_id,
+                    error=msg,
                 )
-                if cur.rowcount == 0:
-                    msg = f"Cannot delete active checkpoint {checkpoint_id}"
-                    logger.warning(
-                        MEMORY_FINE_TUNE_PERSIST_FAILED,
-                        checkpoint_id=checkpoint_id,
-                        error="checkpoint became active during delete",
-                    )
-                    raise QueryError(msg)
+                raise QueryError(msg)
         except psycopg.Error as exc:
             msg = f"Failed to delete checkpoint {checkpoint_id}"
             logger.warning(
@@ -690,8 +691,6 @@ ON CONFLICT (id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        else:
-            return True
 
     async def get_active_checkpoint(
         self,

@@ -18,6 +18,7 @@ from synthorg.persistence._shared import (
     DEFAULT_LIST_LIMIT,
     coerce_row_timestamp,
     format_iso_utc,
+    validate_pagination_args,
 )
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
@@ -169,6 +170,9 @@ class SQLiteSsrfViolationRepository:
         offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
         """List violations ordered by id ascending (generic IdKeyed surface)."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608

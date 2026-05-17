@@ -36,6 +36,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     coerce_row_timestamp,
     normalize_utc,
+    validate_pagination_args,
 )
 from synthorg.persistence.connection_protocol import ConnectionFilterSpec  # noqa: TC001
 
@@ -218,13 +219,14 @@ class PostgresConnectionRepository:
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all connections, sorted by name for determinism."""
-        if limit <= 0:
-            return ()
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CONNECTION_LIST_FAILED
+        )
         sql = (
             f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
             "ORDER BY name ASC LIMIT %s OFFSET %s"
         )
-        params: tuple[object, ...] = (int(limit), max(0, int(offset)))
+        params: tuple[object, ...] = (limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -259,15 +261,16 @@ class PostgresConnectionRepository:
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List connections matching the filter spec, sorted by name."""
-        if limit <= 0:
-            return ()
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CONNECTION_LIST_FAILED
+        )
         sql = f"SELECT {_SELECT_COLS} FROM connections"  # noqa: S608
         params: tuple[object, ...] = ()
         if filter_spec.connection_type is not None:
             sql += " WHERE connection_type = %s"
             params = (filter_spec.connection_type.value,)
         sql += " ORDER BY name ASC LIMIT %s OFFSET %s"
-        params = (*params, int(limit), max(0, int(offset)))
+        params = (*params, limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,

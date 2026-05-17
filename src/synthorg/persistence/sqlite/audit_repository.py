@@ -148,6 +148,7 @@ class SQLiteAuditRepository:
             since=filter_spec.since,
             until=filter_spec.until,
             limit=limit,
+            offset=offset,
         )
 
         where, params = self._build_query_clause(
@@ -200,11 +201,13 @@ class SQLiteAuditRepository:
         since: AwareDatetime | None,
         until: AwareDatetime | None,
         limit: int,
+        offset: int,
     ) -> None:
         """Validate query parameters before execution.
 
         Raises:
-            QueryError: If *limit* < 1 or *until* < *since*.
+            QueryError: If *limit* < 1, *offset* < 0, or
+                *until* < *since*.
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
@@ -212,6 +215,15 @@ class SQLiteAuditRepository:
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
                 error=msg,
                 limit=limit,
+            )
+            raise QueryError(msg)
+
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error=msg,
+                offset=offset,
             )
             raise QueryError(msg)
 

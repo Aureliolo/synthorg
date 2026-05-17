@@ -270,12 +270,11 @@ class CeremonyScheduler:
             self._activation_time = self._clock.monotonic()
             self._running = True
 
-            # WP-1 restart-safety: hydrate persisted state for this sprint
-            # so a process restart mid-sprint resumes its trigger counters
-            # instead of starting from zero.  Hydration runs after the
-            # reset above so a sprint with no prior persisted state still
-            # starts cleanly; when a row exists we overwrite the freshly-
-            # reset attributes with the persisted snapshot.
+            # Hydrate persisted sprint state so trigger counters resume
+            # after a process restart mid-sprint instead of restarting
+            # from zero. Runs after the reset above so a sprint with no
+            # prior persisted state still starts cleanly; a persisted
+            # row is merged onto the freshly-reset attributes.
             await self._hydrate_state_from_repo(sprint.id)
 
             try:
@@ -450,9 +449,9 @@ class CeremonyScheduler:
 
         sprint_id = self._active_sprint.id if self._active_sprint else "unknown"
 
-        # WP-1 restart-safety: drop the persisted snapshot when the
-        # sprint deactivates so a future activation of a different
-        # sprint with the same id (test reuse) starts clean.
+        # Drop the persisted snapshot when the sprint deactivates so a
+        # future activation of a different sprint reusing the same id
+        # starts from clean state rather than stale counters.
         if self._state_repo is not None and self._active_sprint is not None:
             try:
                 await self._state_repo.delete(

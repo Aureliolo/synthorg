@@ -48,12 +48,13 @@ fi
 # substrings inside paths or commit messages).
 BYPASS_RE='(--no-verify([[:space:]=]|$)|--no-gpg-sign([[:space:]=]|$)|-c[[:space:]]+commit\.gpgsign=false|-c[[:space:]]+core\.hooksPath=)'
 
-# Short-form ``-n`` is ``--no-verify`` on ``git commit`` (and the
-# documented bypass surface for ``git push``); the long-form regex
-# above does not see it. Match ``-n`` only as a standalone token after
-# a ``commit``/``push`` subcommand so we don't trip on ``-n`` embedded
-# in a path or commit message.
-SHORT_NO_VERIFY_RE='git[[:space:]]([^|;&]*[[:space:]])?(commit|push)([[:space:]][^|;&]*)?[[:space:]]-n([[:space:]]|$)'
+# Short-form ``-n`` is ``--no-verify`` ONLY for ``git commit``. For
+# ``git push`` ``-n`` is ``--dry-run`` (does not push, does not bypass
+# any gate), so it must NOT be blocked. Match ``-n`` only as a
+# standalone token after the ``commit`` subcommand so we don't trip on
+# ``-n`` embedded in a path or commit message, nor on a harmless
+# ``git push -n`` dry-run.
+SHORT_NO_VERIFY_RE='git[[:space:]]([^|;&]*[[:space:]])?commit([[:space:]][^|;&]*)?[[:space:]]-n([[:space:]]|$)'
 
 # Case-insensitive: git config keys are case-insensitive, so
 # ``-c core.hookspath=`` / ``-c commit.gpgSign=false`` are accepted by

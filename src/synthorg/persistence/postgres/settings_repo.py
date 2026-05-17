@@ -28,7 +28,11 @@ from synthorg.observability.events.settings import (
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence._shared import (
+    format_iso_utc,
+    parse_iso_utc,
+    validate_pagination_args,
+)
 from synthorg.persistence.settings_protocol import (
     SettingRow,
     SettingRowKey,
@@ -200,9 +204,12 @@ class PostgresSettingsRepository:
         offset: int = 0,
     ) -> tuple[SettingRow, ...]:
         """List settings across all namespaces (paginated)."""
-        # Settings registry has a few hundred entries by design; the
-        # 1000 cap is a defensive ceiling against misconfigured callers.
-        effective_limit = min(limit, 1_000)
+        # Validate + clamp via the shared helper (rejects limit < 1 /
+        # offset < 0, caps at the repo-wide MAX_LIST_LIMIT ceiling) so
+        # no inline magic ceiling and no sentinel (-1) slips through.
+        effective_limit = validate_pagination_args(
+            limit, offset, event=SETTINGS_FETCH_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
 from synthorg.persistence.protocol import PersistenceBackend
@@ -80,3 +81,18 @@ class TestMeetingCooldownRepository:
         page = await backend.meeting_cooldown.list_items(limit=10)
         names = [r.meeting_type_name for r in page]
         assert names == sorted(names)
+
+    async def test_list_items_paginates(self, backend: PersistenceBackend) -> None:
+        for n in ("a", "b", "c"):
+            await backend.meeting_cooldown.save(_record(name=n))
+        page = await backend.meeting_cooldown.list_items(limit=1, offset=1)
+        assert len(page) == 1
+        assert page[0].meeting_type_name == "b"
+
+    async def test_list_items_rejects_invalid_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.meeting_cooldown.list_items(limit=0)
+        with pytest.raises(QueryError):
+            await backend.meeting_cooldown.list_items(offset=-1)

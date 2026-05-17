@@ -18,6 +18,7 @@ from synthorg.observability.events.preset import (
     PRESET_CUSTOM_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.preset_protocol import Preset, PresetFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
@@ -149,6 +150,7 @@ ON CONFLICT(name) DO UPDATE SET
         Raises:
             QueryError: If the database query fails.
         """
+        limit = validate_pagination_args(limit, offset, event=PRESET_CUSTOM_LIST_FAILED)
         try:
             async with self._db.execute(
                 "SELECT name, config_json, description, created_at, "

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRecord,
@@ -70,3 +71,27 @@ class TestCeremonySchedulerStateRepository:
             NotBlankStr("ghost-sprint")
         )
         assert deleted is False
+
+    async def test_list_items_orders_by_sprint_id_and_paginates(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for sid in ("sprint-3", "sprint-1", "sprint-2"):
+            await backend.ceremony_scheduler_state.save(_record(sprint_id=sid))
+        rows = await backend.ceremony_scheduler_state.list_items(limit=10)
+        ids = [r.sprint_id for r in rows]
+        assert ids == sorted(ids)
+        assert {"sprint-1", "sprint-2", "sprint-3"} <= set(ids)
+        page = await backend.ceremony_scheduler_state.list_items(limit=1, offset=1)
+        assert len(page) == 1
+        assert page[0].sprint_id == ids[1]
+
+    async def test_list_items_rejects_invalid_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.ceremony_scheduler_state.list_items(limit=0)
+        with pytest.raises(QueryError):
+            await backend.ceremony_scheduler_state.list_items(offset=-1)
+
+    async def test_list_items_empty(self, backend: PersistenceBackend) -> None:
+        assert await backend.ceremony_scheduler_state.list_items() == ()

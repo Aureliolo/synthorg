@@ -20,7 +20,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared import normalize_utc, validate_pagination_args
 from synthorg.persistence.provider_audit_protocol import (
     _DEFAULT_LIST_LIMIT_50,
     ProviderAuditFilterSpec,
@@ -193,9 +193,6 @@ class PostgresProviderAuditRepo:
         positions the window, so ``offset`` is forced to 0 to avoid
         skipping rows relative to the cursor.
         """
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            raise QueryError(msg)
         sql = _LIST_BASE_SQL
         params: list[Any] = [filter_spec.provider_name]
         effective_offset = offset
@@ -203,6 +200,12 @@ class PostgresProviderAuditRepo:
             sql += " AND id < %s"
             params.append(filter_spec.after_id)
             effective_offset = 0
+        # Validate the limit and the *effective* offset (after the
+        # mutually-exclusive after_id reset) so a negative caller
+        # offset surfaces as a repository QueryError, not a DB error.
+        limit = validate_pagination_args(
+            limit, effective_offset, event=PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED
+        )
         sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
         params.extend([limit, effective_offset])
         try:

@@ -60,7 +60,23 @@ class PostgresPresetOverrideRepo:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return self._row_to_override(row)
+        try:
+            return self._row_to_override(row)
+        except (
+            ValidationError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+        ) as exc:
+            msg = "Failed to read preset override"
+            logger.warning(
+                PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                preset_name=preset_name,
+            )
+            raise QueryError(msg) from exc
 
     async def save(self, override: PresetOverride) -> None:
         """Insert or replace the override for ``override.preset_name``."""
@@ -144,7 +160,13 @@ class PostgresPresetOverrideRepo:
         for row in rows:
             try:
                 overrides.append(self._row_to_override(row))
-            except (ValidationError, ValueError, TypeError, KeyError) as exc:
+            except (
+                ValidationError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+            ) as exc:
                 msg = "Failed to list preset overrides"
                 logger.warning(
                     PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,

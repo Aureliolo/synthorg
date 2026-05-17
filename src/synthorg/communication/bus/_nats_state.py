@@ -26,6 +26,13 @@ if TYPE_CHECKING:
     PullSubscription = JetStreamContext.PullSubscription
 
 
+# Hard deadline on the ``client.drain()`` call inside ``stop()``.
+# 30s matches the upstream NATS client's own connection-close grace
+# window. Construction-time override via dataclass replace if a
+# deployment ever needs to tune it.
+DEFAULT_STOP_DRAIN_TIMEOUT_SECONDS: float = 30.0
+
+
 @dataclass
 class _NatsState:
     """Internal mutable state shared across JetStream bus submodules.
@@ -61,12 +68,10 @@ class _NatsState:
     # ``stop()``; recovery is to construct a fresh state via
     # ``create_state``.
     stop_failed: bool = False
-    # Hard deadline on the ``client.drain()`` call inside ``stop()``.
-    # 30s matches the upstream NATS client's own connection close grace
-    # window. Construction-time override via dataclass replace if a
-    # deployment ever needs to tune it; no per-cluster ``NatsConfig``
-    # field yet because no caller has asked for one.
-    stop_drain_timeout_seconds: float = 30.0
+    # See ``DEFAULT_STOP_DRAIN_TIMEOUT_SECONDS`` above for the rationale;
+    # no per-cluster ``NatsConfig`` field yet because no caller has
+    # asked for one.
+    stop_drain_timeout_seconds: float = DEFAULT_STOP_DRAIN_TIMEOUT_SECONDS
     # Last time (``time.monotonic`` seconds) a subscriber queue-overflow
     # event was emitted for a given ``(channel, subscriber)``. Used to
     # rate-limit overflow emissions on the NATS receive path so a

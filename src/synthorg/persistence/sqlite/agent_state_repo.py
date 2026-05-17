@@ -24,6 +24,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AGENT_STATE_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -123,6 +124,9 @@ INSERT OR REPLACE INTO agent_states (
         offset: int = 0,
     ) -> tuple[AgentRuntimeState, ...]:
         """List agent runtime states in agent_id order."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_AGENT_STATE_LIST_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT agent_id, execution_id, task_id, status, "

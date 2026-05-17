@@ -18,6 +18,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     format_iso_utc,
     parse_iso_utc,
+    validate_pagination_args,
 )
 from synthorg.persistence.principle_override_protocol import PrincipleOverride
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
@@ -134,6 +135,9 @@ class SQLitePrincipleOverrideRepository:
         offset: int = 0,
     ) -> tuple[PrincipleOverride, ...]:
         """List all overrides ordered by ``scope`` ascending."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 """

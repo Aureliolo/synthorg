@@ -21,6 +21,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CHECKPOINT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import (
@@ -68,6 +69,12 @@ class SQLiteCheckpointRepository:
         async with self._write_context():
             try:
                 data = checkpoint.model_dump(mode="json")
+                # Store created_at in the same canonical ISO-UTC TEXT
+                # form purge_before compares against, regardless of the
+                # caller's original offset.
+                data["created_at"] = format_iso_utc(
+                    normalize_utc(checkpoint.created_at),
+                )
                 await self._db.execute(
                     """\
 INSERT INTO checkpoints (

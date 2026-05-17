@@ -463,7 +463,8 @@ class PostgresWorkflowDefinitionRepository:
         where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
         sql = (
             f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions"  # noqa: S608
-            f"{where_clause} ORDER BY updated_at DESC LIMIT %s OFFSET %s"
+            f"{where_clause} ORDER BY updated_at DESC, id DESC "
+            "LIMIT %s OFFSET %s"
         )
         params.extend([limit, offset])
 

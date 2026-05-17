@@ -6,13 +6,19 @@ pool.connection() as conn``; the context manager auto-commits on
 clean exit and rolls back on exception.
 """
 
+import contextlib
+from collections.abc import AsyncIterator  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+import psycopg
+from psycopg.rows import dict_row
+
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.auth.session import Session
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_SESSION_PERSISTENCE_ERROR,
     API_SESSION_CLEANUP,
@@ -26,17 +32,6 @@ from synthorg.persistence.auth_protocol import SessionFilterSpec  # noqa: TC001
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
-
-
-def _import_dict_row() -> Any:
-    """Lazily resolve ``psycopg.rows.dict_row``.
-
-    Kept out of the module-level import block so Sqlite-only deployments
-    never need the optional ``psycopg`` dependency at import time.
-    """
-    from psycopg.rows import dict_row  # noqa: PLC0415
-
-    return dict_row
 
 
 logger = get_logger(__name__)
@@ -68,14 +63,35 @@ class PostgresSessionRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
         self._revoked: set[str] = set()
-        self._dict_row = _import_dict_row()
+
+    @contextlib.asynccontextmanager
+    async def _translate_errors(
+        self, msg: str, **context: object
+    ) -> AsyncIterator[None]:
+        """Translate ``psycopg.Error`` into the domain ``QueryError``.
+
+        Mirrors the SQLite session repo so both backends surface a
+        storage failure as ``QueryError`` with the same
+        ``API_AUTH_SESSION_PERSISTENCE_ERROR`` event rather than leaking
+        a driver exception (and its connection internals) past the
+        persistence boundary.
+        """
+        try:
+            yield
+        except psycopg.Error as exc:
+            logger.warning(
+                API_AUTH_SESSION_PERSISTENCE_ERROR,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                **context,
+            )
+            raise QueryError(msg) from exc
 
     async def load_revoked(self) -> None:
         """Load revoked session IDs from Postgres into memory."""
-        dict_row = self._dict_row
-
         now = datetime.now(UTC)
         async with (
+            self._translate_errors("Failed to load revoked sessions"),
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
@@ -90,7 +106,13 @@ class PostgresSessionRepository:
     async def save(self, entity: Session) -> None:
         """Persist a session (insert or update by session_id)."""
         session = entity
-        async with self._pool.connection() as conn, conn.cursor() as cur:
+        async with (
+            self._translate_errors(
+                "Failed to save session", session_id=session.session_id
+            ),
+            self._pool.connection() as conn,
+            conn.cursor() as cur,
+        ):
             await cur.execute(
                 "INSERT INTO sessions "
                 "(session_id, user_id, username, role, ip_address, "
@@ -129,9 +151,8 @@ class PostgresSessionRepository:
 
     async def get(self, entity_id: str) -> Session | None:
         """Look up a session by ID."""
-        dict_row = self._dict_row
-
         async with (
+            self._translate_errors("Failed to fetch session", session_id=entity_id),
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
@@ -152,17 +173,13 @@ class PostgresSessionRepository:
         limit = validate_pagination_args(
             limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
         )
-        dict_row = self._dict_row
-
-        sql = "SELECT * FROM sessions ORDER BY session_id ASC"
-        params: tuple[object, ...] = ()
-        sql += " LIMIT %s OFFSET %s"
-        params = (*params, limit, offset)
+        sql = "SELECT * FROM sessions ORDER BY session_id ASC LIMIT %s OFFSET %s"
         async with (
+            self._translate_errors("Failed to list sessions"),
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
-            await cur.execute(sql, params)
+            await cur.execute(sql, (limit, offset))
             rows = await cur.fetchall()
         return tuple(_row_to_session(r) for r in rows)
 
@@ -177,8 +194,6 @@ class PostgresSessionRepository:
         limit = validate_pagination_args(
             limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
         )
-        dict_row = self._dict_row
-
         sql = "SELECT * FROM sessions WHERE TRUE"
         params: list[object] = []
         if filter_spec.user_id is not None:
@@ -187,10 +202,10 @@ class PostgresSessionRepository:
         if filter_spec.revoked is not None:
             sql += " AND revoked = %s"
             params.append(filter_spec.revoked)
-        sql += " ORDER BY session_id ASC"
-        sql += " LIMIT %s OFFSET %s"
+        sql += " ORDER BY session_id ASC LIMIT %s OFFSET %s"
         params = [*params, limit, offset]
         async with (
+            self._translate_errors("Failed to query sessions"),
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
@@ -200,8 +215,6 @@ class PostgresSessionRepository:
 
     async def count(self, filter_spec: SessionFilterSpec) -> int:
         """Count sessions matching the filter spec."""
-        dict_row = self._dict_row
-
         sql = "SELECT COUNT(*) AS cnt FROM sessions WHERE TRUE"
         params: list[object] = []
         if filter_spec.user_id is not None:
@@ -211,6 +224,7 @@ class PostgresSessionRepository:
             sql += " AND revoked = %s"
             params.append(filter_spec.revoked)
         async with (
+            self._translate_errors("Failed to count sessions"),
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
@@ -226,20 +240,18 @@ class PostgresSessionRepository:
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
-        dict_row = self._dict_row
-
         now = datetime.now(UTC)
         sql = (
             "SELECT * FROM sessions "
             "WHERE user_id = %s AND revoked = FALSE "
             "AND expires_at > %s "
-            "ORDER BY created_at DESC, session_id ASC"
+            "ORDER BY created_at DESC, session_id ASC "
+            "LIMIT %s OFFSET %s"
         )
-        params: tuple[object, ...] = (user_id, now)
         effective_offset = max(0, int(offset))
-        sql += " LIMIT %s OFFSET %s"
-        params = (*params, int(limit), effective_offset)
+        params: tuple[object, ...] = (user_id, now, int(limit), effective_offset)
         async with (
+            self._translate_errors("Failed to list sessions for user", user_id=user_id),
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
@@ -254,19 +266,17 @@ class PostgresSessionRepository:
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""
-        dict_row = self._dict_row
-
         now = datetime.now(UTC)
         sql = (
             "SELECT * FROM sessions "
             "WHERE revoked = FALSE AND expires_at > %s "
-            "ORDER BY created_at DESC, session_id ASC"
+            "ORDER BY created_at DESC, session_id ASC "
+            "LIMIT %s OFFSET %s"
         )
-        params: tuple[object, ...] = (now,)
         effective_offset = max(0, int(offset))
-        sql += " LIMIT %s OFFSET %s"
-        params = (*params, int(limit), effective_offset)
+        params: tuple[object, ...] = (now, int(limit), effective_offset)
         async with (
+            self._translate_errors("Failed to list active sessions"),
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
@@ -276,7 +286,11 @@ class PostgresSessionRepository:
 
     async def delete(self, entity_id: str) -> bool:
         """Delete a session by ID."""
-        async with self._pool.connection() as conn, conn.cursor() as cur:
+        async with (
+            self._translate_errors("Failed to delete session", session_id=entity_id),
+            self._pool.connection() as conn,
+            conn.cursor() as cur,
+        ):
             await cur.execute(
                 "DELETE FROM sessions WHERE session_id = %s",
                 (entity_id,),
@@ -291,7 +305,11 @@ class PostgresSessionRepository:
 
     async def revoke(self, session_id: str) -> bool:
         """Revoke a session by ID."""
-        async with self._pool.connection() as conn, conn.cursor() as cur:
+        async with (
+            self._translate_errors("Failed to revoke session", session_id=session_id),
+            self._pool.connection() as conn,
+            conn.cursor() as cur,
+        ):
             await cur.execute(
                 "UPDATE sessions SET revoked = TRUE "
                 "WHERE session_id = %s AND revoked = FALSE",
@@ -309,10 +327,13 @@ class PostgresSessionRepository:
 
     async def revoke_all_for_user(self, user_id: str) -> int:
         """Revoke all active sessions for a user."""
-        dict_row = self._dict_row
-
         now = datetime.now(UTC)
-        async with self._pool.connection() as conn:
+        async with (
+            self._translate_errors(
+                "Failed to revoke sessions for user", user_id=user_id
+            ),
+            self._pool.connection() as conn,
+        ):
             async with conn.cursor() as cur:
                 await cur.execute(
                     "UPDATE sessions SET revoked = TRUE "
@@ -366,10 +387,11 @@ class PostgresSessionRepository:
 
     async def cleanup_expired(self) -> int:
         """Remove expired sessions from the database."""
-        dict_row = self._dict_row
-
         now = datetime.now(UTC)
-        async with self._pool.connection() as conn:
+        async with (
+            self._translate_errors("Failed to clean up expired sessions"),
+            self._pool.connection() as conn,
+        ):
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
                     "SELECT session_id FROM sessions WHERE expires_at <= %s",

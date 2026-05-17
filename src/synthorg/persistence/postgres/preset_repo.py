@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -56,6 +57,26 @@ def _normalize_config_json(value: Any) -> str:
         f"{type(value).__name__}; expected str, dict, or list"
     )
     raise QueryError(msg)
+
+
+def _config_json_to_jsonb(raw: str) -> Jsonb:
+    """Adapt the protocol's JSON-text ``config_json`` for a JSONB column.
+
+    The ``Preset`` contract carries ``config_json`` as JSON source text
+    (SQLite stores it verbatim as TEXT). Postgres' column is JSONB, so
+    passing the raw ``str`` would store it as a JSON *string scalar*
+    rather than the underlying object, corrupting JSONB queries and the
+    read-side ``dict``/``list`` round-trip. Parse then wrap so the value
+    is stored structurally.
+
+    Raises:
+        QueryError: If *raw* is not valid JSON.
+    """
+    try:
+        return Jsonb(json.loads(raw))
+    except (json.JSONDecodeError, ValueError) as exc:
+        msg = "preset config_json is not valid JSON"
+        raise QueryError(msg) from exc
 
 
 def _normalize_timestamp(value: Any) -> str:
@@ -110,7 +131,7 @@ ON CONFLICT(name) DO UPDATE SET
     updated_at=EXCLUDED.updated_at""",
                     (
                         entity.name,
-                        entity.config_json,
+                        _config_json_to_jsonb(entity.config_json),
                         entity.description,
                         entity.created_at,
                         entity.updated_at,

@@ -33,6 +33,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
 from synthorg.persistence import migrations
+from synthorg.persistence._shared import format_iso_utc
 from synthorg.persistence.sqlite._backend_accessors import (
     _BackendRepositoryAccessors,
 )
@@ -831,7 +832,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         """
         from synthorg.persistence.settings_protocol import SettingRow  # noqa: PLC0415
 
-        updated_at = datetime.now(UTC).isoformat()
+        updated_at = format_iso_utc(datetime.now(UTC))
         await self.settings.save(
             SettingRow(
                 namespace=NotBlankStr("_system"),
