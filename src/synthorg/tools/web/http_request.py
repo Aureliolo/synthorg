@@ -20,6 +20,7 @@ from synthorg.observability.events.web import (
     WEB_REQUEST_SUCCESS,
     WEB_REQUEST_TIMEOUT,
 )
+from synthorg.providers.url_utils import redact_url
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.network_validator import (  # noqa: TC001
     DnsValidationOk,
@@ -131,7 +132,7 @@ class HttpRequestTool(BaseWebTool):
         logger.info(
             WEB_REQUEST_START,
             method=method,
-            url=url,
+            url=redact_url(url),
             has_body=body is not None,
         )
 
@@ -177,15 +178,15 @@ class HttpRequestTool(BaseWebTool):
                 request_url, method, pinned_headers, body, timeout
             )
         except httpx.TimeoutException:
-            logger.warning(WEB_REQUEST_TIMEOUT, url=url, timeout=timeout)
+            logger.warning(WEB_REQUEST_TIMEOUT, url=redact_url(url), timeout=timeout)
             return ToolExecutionResult(
-                content=f"Request timed out after {timeout}s: {url}",
+                content=f"Request timed out after {timeout}s: {redact_url(url)}",
                 is_error=True,
             )
         except httpx.HTTPError as exc:
             logger.warning(
                 WEB_REQUEST_FAILED,
-                url=url,
+                url=redact_url(url),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -202,7 +203,7 @@ class HttpRequestTool(BaseWebTool):
 
         logger.info(
             WEB_REQUEST_SUCCESS,
-            url=url,
+            url=redact_url(url),
             method=method,
             status_code=status_code,
             content_length=content_length,

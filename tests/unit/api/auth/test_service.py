@@ -106,6 +106,15 @@ class TestJWT:
         assert claims.iss == USER_ISSUER
         assert claims.aud == USER_AUDIENCE
 
+    def test_create_token_reuses_supplied_session_id(self) -> None:
+        # Refresh rotation passes the consumed record's session id so
+        # the new access token stays in the same session (same jti).
+        svc = _make_service()
+        user = _make_user()
+        token, _, session_id = svc.create_token(user, session_id="fixed-session-xyz")
+        assert session_id == "fixed-session-xyz"
+        assert svc.decode_token(token).jti == "fixed-session-xyz"
+
     def test_expired_token_raises(self) -> None:
         config = AuthConfig(jwt_secret=_SECRET, jwt_expiry_minutes=1)
         svc = AuthService(config)

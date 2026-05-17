@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SELECT_COLS = (
-    "state_token, connection_name, pkce_verifier, "
+    "state_token, connection_name, pkce_verifier, nonce, "
     "scopes_requested, redirect_uri, created_at, expires_at, "
     "consumed_at, connection_name_returned"
 )
@@ -45,12 +45,14 @@ _SELECT_COLS = (
 def _row_to_state(row: dict[str, Any]) -> OAuthState:
     """Deserialize a dict row into an :class:`OAuthState`."""
     pkce = row.get("pkce_verifier")
+    nonce = row.get("nonce")
     consumed_at = row.get("consumed_at")
     connection_name_returned = row.get("connection_name_returned")
     return OAuthState(
         state_token=NotBlankStr(row["state_token"]),
         connection_name=NotBlankStr(row["connection_name"]),
         pkce_verifier=NotBlankStr(pkce) if pkce else None,
+        nonce=NotBlankStr(nonce) if nonce else None,
         scopes_requested=row.get("scopes_requested") or "",
         redirect_uri=row.get("redirect_uri") or "",
         created_at=coerce_row_timestamp(row["created_at"]),
@@ -86,6 +88,7 @@ class PostgresOAuthStateRepository:
             str(state.state_token),
             str(state.connection_name),
             str(state.pkce_verifier) if state.pkce_verifier else None,
+            str(state.nonce) if state.nonce else None,
             state.scopes_requested,
             state.redirect_uri,
             normalize_utc(state.created_at),
@@ -102,13 +105,14 @@ class PostgresOAuthStateRepository:
                 await cur.execute(
                     """
                     INSERT INTO oauth_states (
-                        state_token, connection_name, pkce_verifier,
+                        state_token, connection_name, pkce_verifier, nonce,
                         scopes_requested, redirect_uri, created_at, expires_at,
                         consumed_at, connection_name_returned
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (state_token) DO UPDATE SET
                         connection_name = EXCLUDED.connection_name,
                         pkce_verifier = EXCLUDED.pkce_verifier,
+                        nonce = EXCLUDED.nonce,
                         scopes_requested = EXCLUDED.scopes_requested,
                         redirect_uri = EXCLUDED.redirect_uri,
                         created_at = EXCLUDED.created_at,

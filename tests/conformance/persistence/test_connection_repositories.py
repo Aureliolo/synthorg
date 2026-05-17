@@ -303,13 +303,14 @@ class TestConnectionSecretRepository:
         assert deleted is False
 
 
-def _state(
+def _state(  # noqa: PLR0913
     *,
     state_token: str = "state-abc",  # noqa: S107
     connection_name: str = "github-bot",
     expires_in: timedelta = timedelta(minutes=5),
     pkce_verifier: str | None = "verifier-xyz",
     scopes: str = "repo user",
+    nonce: str | None = "nonce-xyz",
 ) -> OAuthState:
     now = datetime.now(UTC)
     return OAuthState(
@@ -320,6 +321,7 @@ def _state(
         redirect_uri="https://app.example.com/callback",
         created_at=now,
         expires_at=now + expires_in,
+        nonce=NotBlankStr(nonce) if nonce else None,
     )
 
 
@@ -337,6 +339,31 @@ class TestOAuthStateRepository:
         assert fetched.connection_name == "github-bot"
         assert fetched.pkce_verifier == "verifier-xyz"
         assert fetched.scopes_requested == "repo user"
+
+    async def test_nonce_round_trips(self, backend: PersistenceBackend) -> None:
+        # OIDC nonce binding: the nonce persisted at flow start must
+        # survive save/get so the callback can match it against the
+        # id_token ``nonce`` claim.
+        await backend.connections.save(_connection("github-bot"))
+        await backend.oauth_states.save(_state(nonce="n0nce-Abc123"))
+
+        fetched = await backend.oauth_states.get(NotBlankStr("state-abc"))
+
+        assert fetched is not None
+        assert fetched.nonce == "n0nce-Abc123"
+
+    async def test_nonce_absent_round_trips_as_none(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Plain-OAuth2 connections never set a nonce; a NULL column
+        # must deserialise back to ``None`` (not "").
+        await backend.connections.save(_connection("github-bot"))
+        await backend.oauth_states.save(_state(nonce=None))
+
+        fetched = await backend.oauth_states.get(NotBlankStr("state-abc"))
+
+        assert fetched is not None
+        assert fetched.nonce is None
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.oauth_states.get(NotBlankStr("never-saved")) is None

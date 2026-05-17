@@ -1,11 +1,15 @@
 """Tests for SSE periodic revalidation.
 
-Mirrors the WS revalidation test surface: every long-lived stream
-must close on user_deleted / role_demoted, and tolerate up to three
-consecutive transient persistence failures before terminating with a
-backend-unavailable signal.
+Mirrors the WS revalidation surface: every long-lived stream must
+close on user_deleted / role_demoted / session_revoked, and absorb
+transient persistence failures through the SHARED sliding-window
+limiter (``api.auth_revalidate_window_seconds`` /
+``api.auth_revalidate_max_failures``) rather than a streak counter,
+so a flaky backend interleaving one success cannot keep a stale-auth
+stream open.
 """
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
@@ -18,6 +22,7 @@ from synthorg.api.controllers.events import (
 )
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
+from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
 
 pytestmark = pytest.mark.unit
 
@@ -36,13 +41,15 @@ def _make_user(role: HumanRole = HumanRole.CEO) -> User:
 
 
 class _FakeAppState:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         persisted_user: User | None,
         raise_on_get: bool = False,
         has_session_store: bool = False,
         is_revoked: bool = False,
+        auth_revalidate_window_seconds: int = 60,
+        auth_revalidate_max_failures: int = 5,
     ) -> None:
         users_repo = AsyncMock()
         if raise_on_get:
@@ -56,14 +63,14 @@ class _FakeAppState:
             (),
             {"is_revoked": lambda _self, _jti: is_revoked},
         )()
-        # The SSE stream resolves api.sse_keepalive_seconds through
-        # app_state.config_resolver when wired; the fake exposes
-        # has_config_resolver=False so the helper returns the
-        # registered fallback constant (which the test monkeypatches).
+        # api.sse_keepalive_seconds still resolves via config_resolver;
+        # has_config_resolver=False makes the helper use the fallback
+        # constant the test monkeypatches.
         self.has_config_resolver = False
-        # The SSE stream consults app_state.clock for keepalive +
-        # revalidation deadlines; the real AppState exposes a clock
-        # attribute so the test fake mirrors it.
+        # Revalidation failure tolerance is now resolved from AppState
+        # (shared with the WS loop), not config_resolver.
+        self.auth_revalidate_window_seconds = auth_revalidate_window_seconds
+        self.auth_revalidate_max_failures = auth_revalidate_max_failures
         from synthorg.core.clock import SystemClock
 
         self.clock = SystemClock()
@@ -102,8 +109,7 @@ async def test_revocation_reason_signals_not_ok_on_transient_failure() -> None:
 async def test_revocation_reason_session_revoked_kicks_stream() -> None:
     """A revoked JTI on an otherwise-active user surfaces as
     ``session_revoked`` so the SSE stream tears down within one
-    revalidation interval rather than waiting for the access token
-    to expire."""
+    revalidation interval rather than waiting for token expiry."""
     user = _make_user(role=HumanRole.CEO)
     state = _FakeAppState(
         persisted_user=user,
@@ -120,25 +126,18 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
 ) -> None:
     """End-to-end: feed the generator a role-demoted user mid-stream
     and assert it yields a final 'revoked' event before terminating."""
-    import json
-
     from synthorg.api.controllers import events as events_mod
-    from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
     # Fast-path: shrink keepalive + revalidate cadence so the test
-    # doesn't wait minutes for the revalidation tick. The fake
-    # AppState exposes has_config_resolver=False so the helper
-    # returns the fallback constant we patch here.
+    # does not wait minutes for the revalidation tick.
     monkeypatch.setattr(events_mod, "_SSE_KEEPALIVE_FALLBACK_SECONDS", 0.01)
-    monkeypatch.setattr(events_mod, "SSE_REVALIDATE_INTERVAL_SECONDS", 0.02)
+    monkeypatch.setattr(events_mod, "AUTH_REVALIDATE_INTERVAL_SECONDS", 0.02)
 
     demoted = _make_user(role=HumanRole.SYSTEM)
     app_state = _FakeAppState(persisted_user=demoted)
 
     class _FakeQueue:
         async def get(self) -> Any:
-            # Force a TimeoutError by sleeping forever; ``asyncio.wait_for``
-            # will fire the keepalive branch on its 0.01s budget.
             import asyncio
 
             await asyncio.Event().wait()
@@ -164,12 +163,10 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
     )
     saw_revoked = False
     iterations = 0
-    # The loop body sleeps via real asyncio.wait_for, not the injected
-    # clock seam, so the iteration cap is a wall-clock safety net. Set
-    # the cap to handle slow-CI variance without masking a genuine
-    # regression: the role-demoted check fires once per
-    # SSE_REVALIDATE_INTERVAL_SECONDS, and 200 iterations at 20ms
-    # gives 4s of headroom.
+    # Real asyncio.wait_for drives the loop sleep, so the cap is a
+    # wall-clock safety net: the role-demoted check fires once per
+    # AUTH_REVALIDATE_INTERVAL_SECONDS; 200 iterations at 20ms gives
+    # 4s of headroom for slow CI without masking a regression.
     iteration_cap = 200
     async for event in gen:
         iterations += 1
@@ -191,37 +188,89 @@ def _make_auth_user() -> AuthenticatedUser:
     )
 
 
-async def test_revalidation_tick_tolerates_up_to_max_failures() -> None:
-    """The Nth consecutive transient failure (N == max_failures) is
-    tolerated, not revoked: the docstring contract is to allow
-    ``max_failures`` failures and only revoke once that ceiling is
-    exceeded."""
+async def test_revalidation_tick_tolerates_failures_within_window() -> None:
+    """``max_failures`` transient errors inside the window are absorbed
+    (tick returns ``None``); the stream keeps running."""
     state = _FakeAppState(persisted_user=None, raise_on_get=True)
-    verdict = await _run_revalidation_tick(
-        app_state=state,  # type: ignore[arg-type]
-        user=_make_auth_user(),
-        consecutive_failures=2,
-        max_failures=3,
-    )
-    assert verdict.consecutive_failures == 3
-    assert verdict.revoked_event is None
+    limiter = _SlidingWindowRateLimiter(max_events=3, window_seconds=60.0)
+    user = _make_auth_user()
+
+    for _ in range(3):
+        revoked = await _run_revalidation_tick(
+            app_state=state,  # type: ignore[arg-type]
+            user=user,
+            failure_limiter=limiter,
+        )
+        assert revoked is None
 
 
-async def test_revalidation_tick_revokes_after_exceeding_max_failures() -> None:
-    """The (max_failures + 1)th consecutive transient failure revokes
-    the stream with a backend-unavailable frame."""
-    import json
-
+async def test_revalidation_tick_revokes_when_window_saturates() -> None:
+    """The failure that exceeds the window budget tears the stream
+    down with a backend-unavailable frame -- and, unlike a streak
+    counter, an interleaved success does NOT reset the budget."""
     state = _FakeAppState(persisted_user=None, raise_on_get=True)
-    verdict = await _run_revalidation_tick(
+    limiter = _SlidingWindowRateLimiter(max_events=3, window_seconds=60.0)
+    user = _make_auth_user()
+
+    for _ in range(3):
+        assert (
+            await _run_revalidation_tick(
+                app_state=state,  # type: ignore[arg-type]
+                user=user,
+                failure_limiter=limiter,
+            )
+            is None
+        )
+
+    revoked = await _run_revalidation_tick(
         app_state=state,  # type: ignore[arg-type]
-        user=_make_auth_user(),
-        consecutive_failures=3,
-        max_failures=3,
+        user=user,
+        failure_limiter=limiter,
     )
-    assert verdict.consecutive_failures == 4
-    assert verdict.revoked_event is not None
-    assert verdict.revoked_event["event"] == "revoked"
-    assert json.loads(verdict.revoked_event["data"])["reason"] == (
-        "backend_unavailable"
+    assert revoked is not None
+    assert revoked["event"] == "revoked"
+    assert json.loads(revoked["data"])["reason"] == "backend_unavailable"
+
+
+async def test_interleaved_success_does_not_reset_failure_budget() -> None:
+    """The core regression the sliding window exists to prevent: a
+    transient backend that returns one good response between failure
+    clusters must NOT reset the budget (a streak counter would). With
+    max_events=3, the sequence fail, ok, fail, ok, fail, fail must
+    still revoke on the 4th failure despite the interleaved successes.
+    """
+    healthy = _make_user(role=HumanRole.CEO)
+    state = _FakeAppState(persisted_user=healthy)
+    # Alternate transient failure / healthy read; the limiter only
+    # ever sees the failures (ok ticks return None without taking).
+    state.persistence.users.get.side_effect = [
+        RuntimeError("blip"),
+        healthy,
+        RuntimeError("blip"),
+        healthy,
+        RuntimeError("blip"),
+        RuntimeError("blip"),
+    ]
+    limiter = _SlidingWindowRateLimiter(max_events=3, window_seconds=60.0)
+    user = _make_auth_user()
+
+    # F, ok, F, ok, F  -> 3 admitted failures, never revoked.
+    for _ in range(5):
+        assert (
+            await _run_revalidation_tick(
+                app_state=state,  # type: ignore[arg-type]
+                user=user,
+                failure_limiter=limiter,
+            )
+            is None
+        )
+
+    # 4th failure exceeds the window despite the two interleaved
+    # successes -> revoke (a reset-on-success streak would never).
+    revoked = await _run_revalidation_tick(
+        app_state=state,  # type: ignore[arg-type]
+        user=user,
+        failure_limiter=limiter,
     )
+    assert revoked is not None
+    assert json.loads(revoked["data"])["reason"] == "backend_unavailable"

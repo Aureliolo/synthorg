@@ -19,7 +19,7 @@ from typing import Any
 from litestar import WebSocket  # noqa: TC002
 
 from synthorg.api.guards import _READ_ROLES
-from synthorg.core.auth.config import WS_REVALIDATE_INTERVAL_SECONDS
+from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
 from synthorg.observability import get_logger, safe_error_description
@@ -68,7 +68,7 @@ async def _periodic_revalidate(
     socket: WebSocket[Any, Any, Any],
     user: AuthenticatedUser,
     *,
-    interval_seconds: int = WS_REVALIDATE_INTERVAL_SECONDS,
+    interval_seconds: int = AUTH_REVALIDATE_INTERVAL_SECONDS,
     failure_window_seconds: int | None = None,
     failure_max: int | None = None,
 ) -> None:
@@ -89,25 +89,40 @@ async def _periodic_revalidate(
     client can reconnect against a healthy replica.
 
     The defaults track the registered settings
-    ``api.ws_revalidation_window_seconds`` (60s) and
-    ``api.ws_revalidation_max_failures`` (5).  At construction time
-    the parent passes the values resolved from ``AppState`` so the
-    limiter window matches operator config.
+    ``api.auth_revalidate_window_seconds`` (60s) and
+    ``api.auth_revalidate_max_failures`` (5), shared with the SSE
+    revalidation loop.  At construction time the parent passes the
+    values resolved from ``AppState`` so the limiter window matches
+    operator config.
     """
     app_state = socket.app.state["app_state"]
     window = (
         failure_window_seconds
         if failure_window_seconds is not None
-        else app_state.ws_revalidation_window_seconds
+        else app_state.auth_revalidate_window_seconds
     )
     max_failures = (
         failure_max
         if failure_max is not None
-        else app_state.ws_revalidation_max_failures
+        else app_state.auth_revalidate_max_failures
+    )
+    # The loop performs one persistence check per ``interval_seconds``.
+    # A sliding window measured in wall-clock seconds is meaningless
+    # unless it spans several ticks: with the default 60s window and
+    # the 10-minute revalidation cadence, each failed tick ages out of
+    # the window long before the next one, so the limiter could never
+    # saturate and a prolonged persistence outage would keep stale-auth
+    # sockets open indefinitely (fail-open). Clamp the effective window
+    # so ``max_failures`` consecutive failed ticks fall inside it while
+    # still letting isolated old failures age out (the non-streak
+    # property the sliding model exists to preserve).
+    effective_window = max(
+        float(window),
+        float(interval_seconds) * max_failures,
     )
     failure_limiter = _SlidingWindowRateLimiter(
         max_events=max_failures,
-        window_seconds=float(window),
+        window_seconds=effective_window,
     )
     # lint-allow: long-running-loop-kill-switch -- per-connection revalidate.
     while True:

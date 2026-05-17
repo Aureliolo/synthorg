@@ -146,6 +146,23 @@ class PKCEValidationError(OAuthError):
     """PKCE code verifier or challenge validation failed."""
 
 
+class OIDCVerificationError(OAuthError):
+    """An OIDC id_token failed signature or claim verification.
+
+    Not retryable: a failed signature / issuer / audience / expiry
+    check is a security rejection, not a transient fault.
+    """
+
+
+class OIDCNonceMismatchError(OIDCVerificationError):
+    """The id_token ``nonce`` claim did not match the stored nonce.
+
+    Signals a replayed or injected id_token: the authorization-code
+    flow bound a single-use nonce that the returned token does not
+    carry, so the token is rejected.
+    """
+
+
 # -- Webhook errors ------------------------------------------------------
 
 

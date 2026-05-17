@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_PROBE_COMPLETED,
     PROVIDER_PROBE_HIT,
@@ -51,18 +51,24 @@ def _log_probe_miss(
     url: str,
     *,
     status_code: int | None = None,
-    exc_info: bool = False,
+    exc: Exception | None = None,
 ) -> None:
-    """Log a probe miss at DEBUG (or WARNING for unexpected errors).
+    """Log a probe miss at DEBUG, or WARNING for an unexpected error.
+
+    When *exc* is supplied the miss is an unexpected failure on the
+    network code path: log at WARNING with a typed, scrubbed
+    description (``error_type`` + ``error``) and never a traceback.
+    ``exc_info`` would serialise frame locals that can hold OAuth
+    tokens on this network path; the scrubbed description preserves
+    diagnosability without the leak.
 
     Args:
         preset_name: Preset name for context.
         reason: Short reason tag.
         url: URL that was probed (will be redacted).
         status_code: HTTP status code, if applicable.
-        exc_info: Whether to include traceback.
+        exc: The unexpected exception, when this miss is an error.
     """
-    level = logger.warning if exc_info else logger.debug
     kwargs: dict[str, Any] = {
         "preset": preset_name,
         "reason": reason,
@@ -70,7 +76,12 @@ def _log_probe_miss(
     }
     if status_code is not None:
         kwargs["status_code"] = status_code
-    level(PROVIDER_PROBE_MISS, exc_info=exc_info, **kwargs)
+    if exc is not None:
+        kwargs["error_type"] = type(exc).__name__
+        kwargs["error"] = safe_error_description(exc)
+        logger.warning(PROVIDER_PROBE_MISS, **kwargs)
+    else:
+        logger.debug(PROVIDER_PROBE_MISS, **kwargs)
 
 
 async def _probe_and_fetch(
@@ -119,8 +130,8 @@ async def _probe_and_fetch(
         _log_probe_miss(preset_name, "timeout", url)
     except json.JSONDecodeError:
         _log_probe_miss(preset_name, "invalid_json", url)
-    except Exception:
-        _log_probe_miss(preset_name, "unexpected_error", url, exc_info=True)
+    except Exception as exc:
+        _log_probe_miss(preset_name, "unexpected_error", url, exc=exc)
     return None
 
 

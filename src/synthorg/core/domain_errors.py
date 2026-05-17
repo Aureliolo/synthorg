@@ -144,6 +144,19 @@ class SessionRevokedError(UnauthorizedError):
     error_code: ClassVar[ErrorCode] = ErrorCode.SESSION_REVOKED
 
 
+class RefreshTokenInvalidError(UnauthorizedError):
+    """Raised when a presented refresh token cannot rotate (401).
+
+    Covers a missing / expired / replayed refresh token and a
+    revoked session. Distinct ``error_code``
+    (``REFRESH_TOKEN_INVALID``) lets the client distinguish "your
+    refresh failed, log in again" from a generic 401.
+    """
+
+    default_message: ClassVar[str] = "Refresh token is invalid or expired"
+    error_code: ClassVar[ErrorCode] = ErrorCode.REFRESH_TOKEN_INVALID
+
+
 class AccountLockedError(DomainError):
     """Raised when login is blocked by account lockout (429).
 

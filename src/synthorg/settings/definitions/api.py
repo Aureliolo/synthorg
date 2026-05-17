@@ -591,19 +591,49 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
-        key="sse_revalidate_max_failures",
+        key="auth_revalidate_window_seconds",
         type=SettingType.INTEGER,
-        default="3",
+        default="60",
         description=(
-            "Number of consecutive revalidation persistence failures the"
-            " AG-UI SSE stream tolerates before terminating, so the client"
-            " can reconnect against a healthy replica. Lower values fail"
-            " over faster; higher values absorb more transient DB blips."
+            "Sliding-window length (seconds) for authenticated-stream"
+            " (WebSocket AND SSE) session-revalidation failures."
+            " Persistence-backend errors are admitted into a"
+            " per-connection sliding window of this length; once the"
+            " window saturates the stream closes so the client"
+            " reconnects against a healthy replica. Failures age out"
+            " without being reset on success, so a flaky backend"
+            " cannot keep a stale-auth stream alive by interleaving"
+            " successes. Resolved at startup (restart to change)."
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
         min_value=1,
-        max_value=20,
+        max_value=3_600,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="auth_revalidate_max_failures",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Maximum revalidation failures admitted in the"
+            " auth_revalidate_window_seconds window before an"
+            " authenticated stream (WebSocket: close 4011; SSE:"
+            " ``revoked`` frame) drops so the client reconnects"
+            " against a healthy replica. Shared by WS and SSE so the"
+            " failover tolerance is a single tunable, not two."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=1,
+        max_value=100,
     )
 )
 
@@ -721,51 +751,9 @@ _r.register(
     )
 )
 
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
-        key="ws_revalidation_window_seconds",
-        type=SettingType.INTEGER,
-        default="60",
-        description=(
-            "Sliding-window length (seconds) for WebSocket session"
-            " revalidation failures. Persistence backend errors are"
-            " admitted into a per-connection sliding window of this"
-            " length; once the window saturates the connection closes"
-            " (4011). Failures age out of the window without being"
-            " reset on success, so a flaky persistence layer cannot"
-            " indefinitely keep a connection alive by interleaving"
-            " successes."
-        ),
-        group="WebSocket",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
-        min_value=1,
-        max_value=3_600,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
-        key="ws_revalidation_max_failures",
-        type=SettingType.INTEGER,
-        default="5",
-        description=(
-            "Maximum number of revalidation failures admitted in the"
-            " ws_revalidation_window_seconds window before the"
-            " WebSocket is closed with server-error code 4011 so the"
-            " client reconnects against a healthy replica."
-        ),
-        group="WebSocket",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
-        min_value=1,
-        max_value=100,
-    )
-)
+# WS + SSE revalidation failure tolerance is unified above as
+# ``auth_revalidate_window_seconds`` / ``auth_revalidate_max_failures``
+# (single sliding-window model shared by both transports).
 
 _r.register(
     SettingDefinition(
