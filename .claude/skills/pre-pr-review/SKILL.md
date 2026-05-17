@@ -727,7 +727,7 @@ Read the linked issue's title, body, acceptance criteria, labels, and comments i
 
 ## Phase 3.5: Audit-Skill Mini-Pass (diff scope)
 
-The full `/codebase-audit` runs ~155 agents and is too expensive for every PR. But a small, high-recurrence subset is cheap enough to run on the PR diff alone, catching new violations at PR time instead of waiting for the next scheduled audit. This phase adds six extra agents to Phase 4's parallel launch with their file scope constrained to the changed files.
+The full `/codebase-audit` runs ~159 agents and is too expensive for every PR. But a small, high-recurrence subset is cheap enough to run on the PR diff alone, catching new violations at PR time instead of waiting for the next scheduled audit. This phase adds six extra agents to Phase 4's parallel launch with their file scope constrained to the changed files.
 
 **Scope:** the same unified diff captured in Phase 3 (`git diff --staged main`) -- compute the set of changed files and pass it to each mini-pass agent as a hard scope override.
 
@@ -757,7 +757,7 @@ For `mini-pass-missing-event-constants` and `mini-pass-race-conditions`, also in
 
 **Traceability:** every finding emitted by a mini-pass agent MUST set `Source: mini-pass-<agent-name>` in the Phase 5 triage table so users can downweight a category if it gets noisy without affecting the main agent roster.
 
-**Skip condition:** skip the mini-pass only when the diff has zero relevant `.py` changes for any of the five agents after scope expansion above. Concretely:
+**Skip condition:** skip the mini-pass only when the diff has zero relevant `.py` changes for any of the six agents after scope expansion above. Concretely:
 
 - skip the mini-pass entirely when the diff is `docs/`-only, `web/`-only, or `cli/`-only AND has zero `.py` changes under `src/synthorg/` AND zero `.py` changes under `tests/`;
 - when the diff touches `tests/` Python files but has zero `.py` changes under `src/synthorg/`, run only `mini-pass-missing-event-constants` and `mini-pass-race-conditions` (the two agents whose scope already extends into `tests/`) and skip the other three;
@@ -782,6 +782,32 @@ exact scope: other mutation paths (for example, `Bash` commands that
 write via redirection or `sed -i`) are not covered by this hook;
 the project's broader `check_bash_no_write.sh` hook is what blocks
 those, independently of the triage gate.
+
+**Agent-registry preflight (MANDATORY before launch).** The Claude Code
+subagent registry is built once at session start and is NOT hot-reloaded
+when `.claude/agents/*.md` changes. A file that fails YAML frontmatter
+parsing is dropped **silently** (no warning). The known recurring cause
+is an unquoted `description:` scalar containing an internal `: `
+(colon-space), which YAML misparses as a nested mapping; this has
+silently disabled review agents before (issues #1871 / #1875).
+Mitigation in the agent files themselves: keep every `.claude/agents/*.md`
+`description:` value double-quoted.
+
+Before launching, for every agent in the selected roster, confirm its
+`subagent_type` appears in this session's available agent list (the set
+the Task tool accepts; a rejected name returns `Agent type 'X' not
+found`). If ANY rostered agent is missing, do NOT silently fall back.
+Surface, in chat: (a) which agents are unavailable, (b) the root cause
+(session-start registry snapshot; a frontmatter parse failure or a file
+added after this session began), (c) the remediation (`restart Claude
+Code` to rebuild the registry; if it persists, inspect the missing
+agent's `.claude/agents/<name>.md` frontmatter for an unquoted
+`description:` containing an internal `: ` and double-quote it). Only
+after surfacing this, run each missing agent via
+`subagent_type: general-purpose` seeded with the **verbatim body of its
+`.claude/agents/<name>.md`** (highest-fidelity fallback: identical
+specialised prompt, only the backing model differs) so no roster
+coverage is lost in the current run.
 
 Launch ALL selected agents **in parallel** using the Task tool. **Do NOT use `run_in_background`**; launch them as regular parallel Task calls so results arrive together.
 

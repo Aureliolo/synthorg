@@ -1,6 +1,6 @@
 # Audit Category Gate Coverage
 
-The codebase audit (`/codebase-audit`, ~155 agents) finds the FIRST instance of a problem category in the codebase. Every subsequent occurrence should be blocked at CI by a standing gate, not re-discovered by a follow-up audit run. This document classifies audit categories by their resolution path so contributors and reviewers know whether to expect a gate to catch a violation, or whether a category still relies on review-time judgment.
+The codebase audit (`/codebase-audit`, ~159 agents) finds the FIRST instance of a problem category in the codebase. Every subsequent occurrence should be blocked at CI by a standing gate, not re-discovered by a follow-up audit run. This document classifies audit categories by their resolution path so contributors and reviewers know whether to expect a gate to catch a violation, or whether a category still relies on review-time judgment.
 
 The four resolution paths are:
 
@@ -16,6 +16,7 @@ The four resolution paths are:
 | Persistence boundary (DB drivers outside `persistence/`) | Standing gate | `scripts/check_persistence_boundary.py` |
 | Mock without `spec=` | Standing gate | `scripts/check_mock_spec.py` |
 | Settings consumed by services not started at boot ("ghost-wired") | Standing gate + mini-pass | `scripts/check_setting_to_startup_trace.py` + `mini-pass-unwired-settings` |
+| Runtime components (engine / workers / api / budget / security / meta / client / settings) defined and tested but never constructed at boot (ghost-wiring) | Standing gate + mini-pass | `scripts/check_no_ghost_wiring.py` (manifest-driven) + `mini-pass-ghost-wiring` (audit agent 14) |
 | Secret-log redaction (`error=str(exc)`) | Standing gate | `scripts/check_logger_exception_str_exc.py` |
 | Typed boundary (`parse_typed` at every external dict ingestion) | Standing gate | `scripts/check_boundary_typed.py` |
 | Vendor-name leakage (Anthropic / OpenAI / Claude / GPT) | Standing gate | `scripts/check_forbidden_literals.py` |

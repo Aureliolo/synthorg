@@ -1,6 +1,6 @@
 ---
 name: resilience-audit
-description: Audits resilience patterns: retry/backoff in correct layer (BaseCompletionProvider only), rate-limit handling, error hierarchy correctness, circuit breaking, timeout propagation. Flags manual retry loops anywhere in code. Use for changes touching provider/, retry handling, or external service integration.
+description: "Audits resilience patterns: retry/backoff in correct layer (BaseCompletionProvider only), rate-limit handling, error hierarchy correctness, circuit breaking, timeout propagation. Flags manual retry loops anywhere in code. Use for changes touching provider/, retry handling, or external service integration."
 model: sonnet
 color: orange
 tools: Read, Grep, Glob

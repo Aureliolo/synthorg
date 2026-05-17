@@ -1,6 +1,6 @@
 ---
 name: conventions-enforcer
-description: Enforces SynthOrg-specific Python conventions beyond standard style: immutability patterns, vendor-name policy, Python 3.14 / PEP 758, Pydantic configs, code structure limits, observability-logger imports, and error-handling discipline. Use for changes under src/synthorg/ and tests/.
+description: "Enforces SynthOrg-specific Python conventions beyond standard style: immutability patterns, vendor-name policy, Python 3.14 / PEP 758, Pydantic configs, code structure limits, observability-logger imports, and error-handling discipline. Use for changes under src/synthorg/ and tests/."
 model: sonnet
 color: blue
 tools: Read, Grep, Glob

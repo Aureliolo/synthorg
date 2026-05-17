@@ -1,6 +1,6 @@
 ---
 name: pr-test-analyzer
-description: Reviews PR test coverage for behavioural completeness, not line coverage. Identifies critical gaps (untested error paths, missing edge cases, absent negative tests, missing async coverage), evaluates test resilience to refactoring. Rates each suggestion 1-10 by criticality (10 = data loss / security; 7-8 = user-facing errors). Output: Critical Gaps / Important Improvements / Test Quality Issues.
+description: "Reviews PR test coverage for behavioural completeness, not line coverage. Identifies critical gaps (untested error paths, missing edge cases, absent negative tests, missing async coverage), evaluates test resilience to refactoring. Rates each suggestion 1-10 by criticality (10 = data loss / security; 7-8 = user-facing errors). Output: Critical Gaps / Important Improvements / Test Quality Issues."
 model: sonnet
 color: cyan
 ---

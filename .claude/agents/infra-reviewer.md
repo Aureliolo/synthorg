@@ -1,6 +1,6 @@
 ---
 name: infra-reviewer
-description: Reviews infrastructure files for security, correctness, and best practices: Dockerfiles, Docker Compose, GitHub Actions workflows, pre-commit config, .dockerignore, Trivy/Grype scan configs. Use for changes under .github/, Dockerfile, docker-compose.yml, .pre-commit-config.yaml.
+description: "Reviews infrastructure files for security, correctness, and best practices: Dockerfiles, Docker Compose, GitHub Actions workflows, pre-commit config, .dockerignore, Trivy/Grype scan configs. Use for changes under .github/, Dockerfile, docker-compose.yml, .pre-commit-config.yaml."
 model: sonnet
 color: orange
 tools: Read, Grep, Glob

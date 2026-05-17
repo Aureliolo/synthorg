@@ -1,6 +1,6 @@
 ---
 name: comment-quality-rot
-description: Hunts forensic narrative in code, comments, docstrings, log strings, and identifiers: reviewer citations, in-code issue/PR back-references, audit-run callouts, taxonomy shorthand without rationale, and migration framing. Runs on every PR alongside docs-consistency.
+description: "Hunts forensic narrative in code, comments, docstrings, log strings, and identifiers: reviewer citations, in-code issue/PR back-references, audit-run callouts, taxonomy shorthand without rationale, and migration framing. Runs on every PR alongside docs-consistency."
 model: sonnet
 color: gray
 tools: Read, Grep, Glob

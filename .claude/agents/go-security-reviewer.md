@@ -1,6 +1,6 @@
 ---
 name: go-security-reviewer
-description: Reviews Go code in cli/ for security vulnerabilities specific to Go and Docker CLI operations: command injection, path traversal, secrets in logs, TLS/network safety, container hardening, crypto usage, and input validation. Use for changes under cli/.
+description: "Reviews Go code in cli/ for security vulnerabilities specific to Go and Docker CLI operations: command injection, path traversal, secrets in logs, TLS/network safety, container hardening, crypto usage, and input validation. Use for changes under cli/."
 model: sonnet
 color: red
 tools: Read, Grep, Glob
