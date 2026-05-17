@@ -151,6 +151,11 @@ class OAuthState(BaseModel):
         redirect_uri: Redirect URI used for this flow.
         created_at: When the state was created.
         expires_at: When the state expires.
+        nonce: OIDC nonce. Generated at flow start, sent in the
+            authorization request, and matched against the
+            ``id_token`` ``nonce`` claim on callback (OIDC ID-token
+            binding). ``None`` for plain-OAuth2 connections that have
+            no ``jwks_uri`` configured.
         consumed_at: When the callback exchanged this state for tokens.
             ``None`` while the flow is in flight; set when the
             callback handler successfully exchanged the code so that
@@ -166,6 +171,7 @@ class OAuthState(BaseModel):
     state_token: NotBlankStr
     connection_name: NotBlankStr
     pkce_verifier: NotBlankStr | None = None
+    nonce: NotBlankStr | None = None
     scopes_requested: str = ""
     redirect_uri: str = ""
     created_at: AwareDatetime = Field(

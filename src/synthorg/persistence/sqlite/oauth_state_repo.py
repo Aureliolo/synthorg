@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 
 
 _SELECT_COLS = (
-    "state_token, connection_name, pkce_verifier, "
+    "state_token, connection_name, pkce_verifier, nonce, "
     "scopes_requested, redirect_uri, created_at, expires_at, "
     "consumed_at, connection_name_returned"
 )
@@ -43,6 +43,7 @@ def _row_to_state(row: aiosqlite.Row | tuple[Any, ...]) -> OAuthState:
         state_token,
         connection_name,
         pkce_verifier,
+        nonce,
         scopes_requested,
         redirect_uri,
         created_at,
@@ -54,6 +55,7 @@ def _row_to_state(row: aiosqlite.Row | tuple[Any, ...]) -> OAuthState:
         state_token=NotBlankStr(state_token),
         connection_name=NotBlankStr(connection_name),
         pkce_verifier=NotBlankStr(pkce_verifier) if pkce_verifier else None,
+        nonce=NotBlankStr(nonce) if nonce else None,
         scopes_requested=scopes_requested or "",
         redirect_uri=redirect_uri or "",
         created_at=coerce_row_timestamp(created_at),
@@ -93,13 +95,14 @@ class SQLiteOAuthStateRepository:
                 await self._db.execute(
                     """
                     INSERT INTO oauth_states (
-                        state_token, connection_name, pkce_verifier,
+                        state_token, connection_name, pkce_verifier, nonce,
                         scopes_requested, redirect_uri, created_at, expires_at,
                         consumed_at, connection_name_returned
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(state_token) DO UPDATE SET
                         connection_name = excluded.connection_name,
                         pkce_verifier = excluded.pkce_verifier,
+                        nonce = excluded.nonce,
                         scopes_requested = excluded.scopes_requested,
                         redirect_uri = excluded.redirect_uri,
                         created_at = excluded.created_at,
@@ -114,6 +117,7 @@ class SQLiteOAuthStateRepository:
                         str(state.state_token),
                         str(state.connection_name),
                         str(state.pkce_verifier) if state.pkce_verifier else None,
+                        str(state.nonce) if state.nonce else None,
                         state.scopes_requested,
                         state.redirect_uri,
                         format_iso_utc(state.created_at),

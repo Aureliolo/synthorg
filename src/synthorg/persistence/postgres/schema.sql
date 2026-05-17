@@ -943,6 +943,7 @@ CREATE TABLE oauth_states (
     expires_at TIMESTAMPTZ NOT NULL,
     consumed_at TIMESTAMPTZ,
     connection_name_returned TEXT,
+    nonce TEXT,
     CONSTRAINT oauth_states_consumed_pair CHECK (
         (consumed_at IS NULL AND connection_name_returned IS NULL)
         OR
