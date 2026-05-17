@@ -118,20 +118,33 @@ def _opted_out(lines: list[str], lineno: int) -> bool:
 
 def _collect_bindings(
     tree: ast.Module,
-) -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
+) -> tuple[dict[str, str], dict[str, tuple[str, str]], frozenset[str]]:
     """Map local names to the stdlib imports they bind.
 
-    Returns ``(module_aliases, from_imports)`` where *module_aliases*
-    maps a local name to a ``time``/``datetime`` module (``import
-    datetime as _dt`` -> ``{"_dt": "datetime"}``) and *from_imports*
-    maps a local name to the ``(module, symbol)`` it was imported as
-    (``from time import monotonic as m`` -> ``{"m": ("time",
-    "monotonic")}``). Collected across the whole module (any scope) so
-    function-local aliases are still resolved -- conservative on
-    purpose; the per-line opt-out covers the rare reuse case.
+    Returns ``(module_aliases, from_imports, shadowed)``:
+
+    * *module_aliases* maps a local name to a ``time``/``datetime``
+      module (``import datetime as _dt`` -> ``{"_dt": "datetime"}``).
+    * *from_imports* maps a local name to the ``(module, symbol)`` it
+      was imported as (``from time import monotonic as m`` ->
+      ``{"m": ("time", "monotonic")}``).
+    * *shadowed* is every name bound as a function/lambda parameter or
+      an assignment / loop / with / comprehension target anywhere in
+      the module. A bare-name call whose identifier is shadowed is NOT
+      flagged: ``from time import monotonic as m; def f(m): m()`` or
+      ``m = helper; m()`` rebinds ``m`` to a local, so treating it as
+      the stdlib symbol would block clean code. Under-flagging a
+      genuinely-shadowed call is safe (the per-line opt-out and the
+      attribute-call path still cover real misuse); a false positive
+      that blocks the gate is not.
+
+    Bindings are collected across the whole module (any scope) -- the
+    same conservative module-wide scope the matcher uses; the opt-out
+    covers the rare reuse case.
     """
     module_aliases: dict[str, str] = {}
     from_imports: dict[str, tuple[str, str]] = {}
+    shadowed: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -146,13 +159,26 @@ def _collect_bindings(
                     node.module,
                     alias.name,
                 )
-    return module_aliases, from_imports
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            a = node.args
+            for arg in (
+                *a.posonlyargs,
+                *a.args,
+                *a.kwonlyargs,
+                *((a.vararg,) if a.vararg else ()),
+                *((a.kwarg,) if a.kwarg else ()),
+            ):
+                shadowed.add(arg.arg)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            shadowed.add(node.id)
+    return module_aliases, from_imports, frozenset(shadowed)
 
 
 def _call_label(
     node: ast.Call,
     module_aliases: dict[str, str],
     from_imports: dict[str, tuple[str, str]],
+    shadowed: frozenset[str],
 ) -> str | None:
     """Return a human label if *node* is a forbidden time call, else None.
 
@@ -174,7 +200,18 @@ def _call_label(
         origin = from_imports.get(base)
         if origin is not None and (origin[0], attr) in _FORBIDDEN_ATTR:
             return f"{origin[0]}.{attr}()"
-    if isinstance(func, ast.Name):
+    if (
+        isinstance(func, ast.Attribute)
+        and isinstance(func.value, ast.Attribute)
+        and isinstance(func.value.value, ast.Name)
+    ):
+        # ``import datetime [as dt]; dt.datetime.utcnow()`` /
+        # ``datetime.datetime.utcnow()`` -- the module is bound, the
+        # ``datetime`` class is reached through it.
+        mod = module_aliases.get(func.value.value.id)
+        if mod is not None and (mod, func.attr) in _FORBIDDEN_ATTR:
+            return f"{mod}.{func.attr}()"
+    if isinstance(func, ast.Name) and func.id not in shadowed:
         # ``from time import monotonic [as m]; m()``.
         origin = from_imports.get(func.id)
         if origin is not None and origin in _FORBIDDEN_ATTR:
@@ -183,21 +220,25 @@ def _call_label(
 
 
 def _scan_file(path: Path) -> list[_Violation]:
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
+    """Scan *path*, fail-closed on unreadable / unparseable input.
+
+    Propagates ``OSError`` and converts ``SyntaxError`` to
+    ``ValueError`` so the caller can fail the run with exit code 2
+    rather than silently passing a file the gate could not inspect.
+    """
+    source = path.read_text(encoding="utf-8")
     try:
         tree = ast.parse(source, filename=str(path))
-    except SyntaxError:
-        return []
+    except SyntaxError as exc:
+        msg = f"could not parse {path}: {exc}"
+        raise ValueError(msg) from exc
     lines = source.splitlines()
-    module_aliases, from_imports = _collect_bindings(tree)
+    module_aliases, from_imports, shadowed = _collect_bindings(tree)
     out: list[_Violation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        label = _call_label(node, module_aliases, from_imports)
+        label = _call_label(node, module_aliases, from_imports, shadowed)
         if label is None:
             continue
         if _opted_out(lines, node.lineno):
@@ -247,7 +288,16 @@ def main(argv: list[str] | None = None) -> int:
             rel_posix = py.as_posix()
         if _is_whitelisted(rel_posix):
             continue
-        violations.extend(_scan_file(py))
+        try:
+            violations.extend(_scan_file(py))
+        except (OSError, ValueError) as exc:
+            # Fail closed: a file the gate cannot read or parse must
+            # block the run, never pass silently.
+            print(
+                f"error: clock-seam gate could not inspect {py}: {exc}",
+                file=sys.stderr,
+            )
+            return 2
 
     if not violations:
         return 0
