@@ -50,7 +50,7 @@ class TestProviderController:
 @pytest.mark.unit
 class TestProviderResponseSecurity:
     def test_to_provider_response_strips_secrets(self) -> None:
-        from synthorg.api.dto import to_provider_response
+        from synthorg.api.dto_providers import to_provider_response
         from synthorg.config.schema import ProviderConfig
 
         provider = ProviderConfig(
@@ -65,7 +65,7 @@ class TestProviderResponseSecurity:
         )
 
     def test_response_has_credential_indicators(self) -> None:
-        from synthorg.api.dto import to_provider_response
+        from synthorg.api.dto_providers import to_provider_response
         from synthorg.config.schema import ProviderConfig
         from synthorg.providers.enums import AuthType
 
@@ -81,7 +81,7 @@ class TestProviderResponseSecurity:
         assert response.has_oauth_credentials is False
 
     def test_response_never_contains_secrets(self) -> None:
-        from synthorg.api.dto import to_provider_response
+        from synthorg.api.dto_providers import to_provider_response
         from synthorg.config.schema import ProviderConfig
         from synthorg.providers.enums import AuthType
 
@@ -322,7 +322,7 @@ class TestProbeLocalResponseInvariant:
         """Constructing the model with the same name in both maps fails fast."""
         from pydantic import ValidationError
 
-        from synthorg.api.dto import ProbeLocalResponse, ProbePresetResponse
+        from synthorg.api.dto_providers import ProbeLocalResponse, ProbePresetResponse
 
         with pytest.raises(ValidationError, match=r"results.*errors.*overlap"):
             ProbeLocalResponse(
@@ -338,7 +338,7 @@ class TestProbeLocalResponseInvariant:
 
     def test_disjoint_results_and_errors_validate(self) -> None:
         """Disjoint maps construct cleanly (no validation error)."""
-        from synthorg.api.dto import ProbeLocalResponse, ProbePresetResponse
+        from synthorg.api.dto_providers import ProbeLocalResponse, ProbePresetResponse
 
         response = ProbeLocalResponse(
             results={

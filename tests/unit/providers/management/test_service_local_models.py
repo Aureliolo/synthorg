@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pydantic import SecretStr
 
-from synthorg.api.dto import CreateFromPresetRequest
+from synthorg.api.dto_providers import CreateFromPresetRequest
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError

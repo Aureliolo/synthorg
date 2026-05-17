@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import SecretStr
 
-from synthorg.api.dto import UpdateProviderRequest
+from synthorg.api.dto_providers import UpdateProviderRequest
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.providers.enums import AuthType

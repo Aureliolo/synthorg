@@ -213,10 +213,10 @@ from synthorg.api.dto_workflow import (
     BlueprintInfoResponse,
     CreateFromBlueprintRequest,
     CreateWorkflowDefinitionRequest,
-    RollbackWorkflowRequest,
     UpdateWorkflowDefinitionRequest,
     WorkflowIODeclarationRequest,
 )
+from synthorg.versioning.models import RollbackWorkflowRequest
 
 pytestmark = pytest.mark.unit
 
