@@ -292,7 +292,7 @@ ON CONFLICT (id) DO UPDATE SET
 
                 await cur.execute(
                     "SELECT * FROM fine_tune_runs "
-                    "ORDER BY started_at DESC LIMIT %s OFFSET %s",
+                    "ORDER BY started_at DESC, id DESC LIMIT %s OFFSET %s",
                     (limit, offset),
                 )
                 rows = await cur.fetchall()
@@ -557,7 +557,7 @@ ON CONFLICT (id) DO UPDATE SET
 
                 await cur.execute(
                     "SELECT * FROM fine_tune_checkpoints "
-                    "ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                    "ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s",
                     (limit, offset),
                 )
                 rows = await cur.fetchall()

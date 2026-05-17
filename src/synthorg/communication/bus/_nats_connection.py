@@ -244,6 +244,11 @@ async def stop(state: _NatsState) -> None:  # noqa: C901
                     f"JetStreamMessageBus.stop() drain exceeded "
                     f"{state.stop_drain_timeout_seconds}s"
                 )
+                # Release the retained handles before propagating so a
+                # timed-out drain does not leak the dead client.
+                state.client = None
+                state.js = None
+                state.kv = None
                 raise BusStopTimeoutError(msg) from exc
             except MemoryError, RecursionError:
                 raise

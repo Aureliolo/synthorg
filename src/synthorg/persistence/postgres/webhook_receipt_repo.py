@@ -19,6 +19,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+    PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
 )
@@ -319,7 +320,7 @@ class PostgresWebhookReceiptRepository:
         except Exception as exc:
             msg = f"Failed to delete webhook receipt {entity_id!r}"
             logger.warning(
-                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED,
                 receipt_id=str(entity_id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

@@ -14,6 +14,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import format_iso_utc, normalize_utc
 from synthorg.persistence._shared.audit import (
     AUDIT_COLUMNS,
     audit_entry_to_payload,
@@ -80,7 +81,7 @@ class SQLiteAuditRepository:
         payload = audit_entry_to_payload(
             entry,
             json_serializer=json.dumps,
-            timestamp_serializer=lambda dt: dt.isoformat(),
+            timestamp_serializer=lambda dt: format_iso_utc(normalize_utc(dt)),
         )
         placeholders = ", ".join(f":{c}" for c in AUDIT_COLUMNS)
         sql = f"INSERT INTO audit_entries ({_COL_LIST}) VALUES ({placeholders})"  # noqa: S608

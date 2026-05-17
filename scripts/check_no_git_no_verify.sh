@@ -4,8 +4,9 @@
 #
 # Blocks any git invocation that disables pre-commit/pre-push hooks or
 # commit signing:
-#   --no-verify, -n (on commit/push), --no-gpg-sign,
-#   -c commit.gpgsign=false, -c core.hooksPath=...
+#   --no-verify, -n (on commit only -- `git push -n` is --dry-run,
+#   not a hook bypass, so SHORT_NO_VERIFY_RE deliberately excludes it),
+#   --no-gpg-sign, -c commit.gpgsign=false, -c core.hooksPath=...
 #
 # These bypass the project's quality gates. They are only permitted
 # with explicit, per-invocation user approval (the agent must ask via

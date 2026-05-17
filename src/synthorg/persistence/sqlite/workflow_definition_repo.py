@@ -529,15 +529,37 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
-        """List workflow definitions in id order (generic IdKeyed)."""
-        from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
-            WorkflowDefinitionFilterSpec,
-        )
+        """List workflow definitions in ascending id order.
 
-        return await self.query(
-            WorkflowDefinitionFilterSpec(),
-            limit=limit,
-            offset=offset,
+        The :class:`IdKeyedRepository` contract requires a deterministic
+        id ordering; ``query`` uses recency (``updated_at DESC``) so
+        this cannot delegate to it.
+
+        Raises:
+            QueryError: If the database query, deserialization, or
+                pagination validation fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
+        )
+        sql = (
+            f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions "  # noqa: S608
+            "ORDER BY id ASC LIMIT ? OFFSET ?"
+        )
+        try:
+            cursor = await self._db.execute(sql, (limit, offset))
+            rows = await cursor.fetchall()
+        except sqlite3.Error as exc:
+            msg = "Failed to list workflow definitions"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        return tuple(
+            _deserialize_row(row, str(dict(row).get("id", "?"))) for row in rows
         )
 
     async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:

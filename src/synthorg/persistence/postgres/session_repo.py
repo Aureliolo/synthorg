@@ -68,17 +68,20 @@ class PostgresSessionRepository:
     async def _translate_errors(
         self, msg: str, **context: object
     ) -> AsyncIterator[None]:
-        """Translate ``psycopg.Error`` into the domain ``QueryError``.
+        """Translate storage / row-decode failures into ``QueryError``.
 
         Mirrors the SQLite session repo so both backends surface a
-        storage failure as ``QueryError`` with the same
+        failure as ``QueryError`` with the same
         ``API_AUTH_SESSION_PERSISTENCE_ERROR`` event rather than leaking
         a driver exception (and its connection internals) past the
-        persistence boundary.
+        persistence boundary. Also catches ``_row_to_session``
+        deserialisation errors (``ValidationError`` is a ``ValueError``
+        subclass) so a corrupt row fails closed instead of escaping raw
+        when row materialisation runs inside the managed block.
         """
         try:
             yield
-        except psycopg.Error as exc:
+        except (psycopg.Error, ValueError, TypeError, KeyError) as exc:
             logger.warning(
                 API_AUTH_SESSION_PERSISTENCE_ERROR,
                 error_type=type(exc).__name__,
@@ -161,7 +164,7 @@ class PostgresSessionRepository:
                 (entity_id,),
             )
             row = await cur.fetchone()
-        return _row_to_session(row) if row else None
+            return _row_to_session(row) if row else None
 
     async def list_items(
         self,
@@ -181,7 +184,7 @@ class PostgresSessionRepository:
         ):
             await cur.execute(sql, (limit, offset))
             rows = await cur.fetchall()
-        return tuple(_row_to_session(r) for r in rows)
+            return tuple(_row_to_session(r) for r in rows)
 
     async def query(
         self,
@@ -211,7 +214,7 @@ class PostgresSessionRepository:
         ):
             await cur.execute(sql, tuple(params))
             rows = await cur.fetchall()
-        return tuple(_row_to_session(r) for r in rows)
+            return tuple(_row_to_session(r) for r in rows)
 
     async def count(self, filter_spec: SessionFilterSpec) -> int:
         """Count sessions matching the filter spec."""
@@ -240,6 +243,9 @@ class PostgresSessionRepository:
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
+        limit = validate_pagination_args(
+            limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
+        )
         now = datetime.now(UTC)
         sql = (
             "SELECT * FROM sessions "
@@ -248,8 +254,7 @@ class PostgresSessionRepository:
             "ORDER BY created_at DESC, session_id ASC "
             "LIMIT %s OFFSET %s"
         )
-        effective_offset = max(0, int(offset))
-        params: tuple[object, ...] = (user_id, now, int(limit), effective_offset)
+        params: tuple[object, ...] = (user_id, now, limit, offset)
         async with (
             self._translate_errors("Failed to list sessions for user", user_id=user_id),
             self._pool.connection() as conn,
@@ -257,7 +262,7 @@ class PostgresSessionRepository:
         ):
             await cur.execute(sql, params)
             rows = await cur.fetchall()
-        return tuple(_row_to_session(r) for r in rows)
+            return tuple(_row_to_session(r) for r in rows)
 
     async def list_all(
         self,
@@ -266,6 +271,9 @@ class PostgresSessionRepository:
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""
+        limit = validate_pagination_args(
+            limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
+        )
         now = datetime.now(UTC)
         sql = (
             "SELECT * FROM sessions "
@@ -273,8 +281,7 @@ class PostgresSessionRepository:
             "ORDER BY created_at DESC, session_id ASC "
             "LIMIT %s OFFSET %s"
         )
-        effective_offset = max(0, int(offset))
-        params: tuple[object, ...] = (now, int(limit), effective_offset)
+        params: tuple[object, ...] = (now, limit, offset)
         async with (
             self._translate_errors("Failed to list active sessions"),
             self._pool.connection() as conn,
@@ -282,7 +289,7 @@ class PostgresSessionRepository:
         ):
             await cur.execute(sql, params)
             rows = await cur.fetchall()
-        return tuple(_row_to_session(r) for r in rows)
+            return tuple(_row_to_session(r) for r in rows)
 
     async def delete(self, entity_id: str) -> bool:
         """Delete a session by ID."""

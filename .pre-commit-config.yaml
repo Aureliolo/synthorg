@@ -684,6 +684,6 @@ repos:
         name: forbid synthorg.api.dto_* imports inside persistence/ and service/
         entry: uv run python scripts/check_no_api_dto_in_persistence_or_service.py
         language: system
-        files: ^(src/synthorg/(persistence/.*\.py|api/services/.*\.py|.*_service\.py|.*/service\.py)|scripts/check_no_api_dto_in_persistence_or_service\.py|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/(persistence/.*\.py|api/services/.*\.py|.*_service\.py|.*/service(?:/.*)?\.py)|scripts/check_no_api_dto_in_persistence_or_service\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]

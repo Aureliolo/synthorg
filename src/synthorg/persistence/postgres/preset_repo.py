@@ -28,6 +28,7 @@ from synthorg.observability.events.preset import (
     PRESET_CUSTOM_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.preset_protocol import Preset, PresetFilterSpec
 
 if TYPE_CHECKING:
@@ -218,8 +219,10 @@ ON CONFLICT(name) DO UPDATE SET
             offset: Rows to skip before the window.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If the database query fails or pagination is
+                out of range.
         """
+        limit = validate_pagination_args(limit, offset, event=PRESET_CUSTOM_LIST_FAILED)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

@@ -218,7 +218,7 @@ class SQLiteSsrfViolationRepository:
                     await self._db.rollback()
                 msg = f"Failed to delete SSRF violation {violation_id!r}"
                 logger.warning(
-                    PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                    PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
                     violation_id=violation_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),

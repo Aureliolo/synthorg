@@ -384,9 +384,7 @@ class CeremonyScheduler:
             completion_counters_json=json.dumps(
                 self._completion_counters, sort_keys=True
             ),
-            fired_once_triggers_json=json.dumps(
-                sorted(self._fired_once_triggers), sort_keys=True
-            ),
+            fired_once_triggers_json=json.dumps(sorted(self._fired_once_triggers)),
             total_completions=self._total_completions,
             velocity_history_json=json.dumps(
                 [r.model_dump(mode="json") for r in self._velocity_history],

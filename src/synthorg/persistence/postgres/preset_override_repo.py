@@ -82,6 +82,13 @@ class PostgresPresetOverrideRepo:
         """Insert or replace the override for ``override.preset_name``."""
         if override.updated_at is None or override.updated_by is None:
             msg = "PresetOverride.updated_at and updated_by must be set on save"
+            logger.warning(
+                PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED,
+                preset_name=override.preset_name,
+                updated_at=override.updated_at,
+                updated_by=override.updated_by,
+                error=msg,
+            )
             raise QueryError(msg)
         params: tuple[Any, ...] = (
             override.preset_name,

@@ -2,8 +2,10 @@
 
 import contextlib
 import sqlite3
+from typing import Any
 
 import aiosqlite
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -23,6 +25,32 @@ from synthorg.persistence.preset_protocol import Preset, PresetFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
+
+
+def _row_to_preset(row: Any, *, event: str) -> Preset:
+    """Build a ``Preset`` from a DB row, failing closed on bad data.
+
+    A corrupt row (wrong arity, unvalidatable field) must surface as
+    the repository's ``QueryError`` rather than letting a raw
+    ``ValidationError`` / ``ValueError`` escape the persistence
+    boundary.
+    """
+    try:
+        return Preset(
+            name=row[0],
+            config_json=row[1],
+            description=row[2],
+            created_at=row[3],
+            updated_at=row[4],
+        )
+    except (ValidationError, ValueError, TypeError, KeyError, IndexError) as exc:
+        msg = "Failed to deserialize custom preset row"
+        logger.warning(
+            event,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise QueryError(msg) from exc
 
 
 class SQLitePersonalityPresetRepository:
@@ -127,13 +155,7 @@ ON CONFLICT(name) DO UPDATE SET
             )
             return None
         logger.debug(PRESET_CUSTOM_FETCHED, preset_name=entity_id, found=True)
-        return Preset(
-            name=row[0],
-            config_json=row[1],
-            description=row[2],
-            created_at=row[3],
-            updated_at=row[4],
-        )
+        return _row_to_preset(row, event=PRESET_CUSTOM_FETCH_FAILED)
 
     async def list_items(
         self,
@@ -167,14 +189,7 @@ ON CONFLICT(name) DO UPDATE SET
             )
             raise QueryError(msg) from exc
         result = tuple(
-            Preset(
-                name=row[0],
-                config_json=row[1],
-                description=row[2],
-                created_at=row[3],
-                updated_at=row[4],
-            )
-            for row in rows
+            _row_to_preset(row, event=PRESET_CUSTOM_LIST_FAILED) for row in rows
         )
         logger.debug(PRESET_CUSTOM_LISTED, count=len(result))
         return result

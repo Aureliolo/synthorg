@@ -267,7 +267,7 @@ class PostgresProviderAuditRepo:
         return rowcount
 
     async def purge_before_id(self, *, before_id: int) -> int:
-        """Delete events with ``id < before_id`` (bespoke D7)."""
+        """Delete events with ``id < before_id``."""
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

@@ -499,16 +499,40 @@ class PostgresWorkflowDefinitionRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
-        """List workflow definitions in id order (generic IdKeyed)."""
-        from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
-            WorkflowDefinitionFilterSpec,
-        )
+        """List workflow definitions in ascending id order.
 
-        return await self.query(
-            WorkflowDefinitionFilterSpec(),
-            limit=limit,
-            offset=offset,
+        The :class:`IdKeyedRepository` contract requires a deterministic
+        id ordering; ``query`` uses recency (``updated_at DESC``) so
+        this cannot delegate to it.
+
+        Raises:
+            QueryError: If the database query, deserialization, or
+                pagination validation fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
         )
+        sql = (
+            f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions "  # noqa: S608
+            "ORDER BY id ASC LIMIT %s OFFSET %s"
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, (limit, offset))
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list workflow definitions"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        return tuple(_deserialize_row(row, str(row.get("id", "?"))) for row in rows)
 
     async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
         """Count workflow definitions matching the filter spec."""
