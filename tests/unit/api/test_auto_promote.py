@@ -97,6 +97,45 @@ class TestMaybePromoteFirstOwner:
         assert not_promoted is not None
         assert OrgRole.OWNER not in not_promoted.org_roles
 
+    async def test_owner_beyond_first_page_suppresses_promotion(self) -> None:
+        """An owner past page one must still make the sweep idempotent.
+
+        Regression: a single capped ``list_items()`` only saw the first
+        page, so an owner positioned later was missed and ``users[0]``
+        was wrongly promoted to a second owner.
+        """
+        backend = FakePersistenceBackend()
+        await backend.connect()
+        # 150 users (> one DEFAULT_LIST_LIMIT page). Zero-padded ids so
+        # lexical id order is numeric; the sole owner sits on page 2.
+        for i in range(150):
+            roles = (OrgRole.OWNER,) if i == 149 else ()
+            await backend.users.save(_make_user(f"user-{i:03d}", org_roles=roles))
+
+        app_state = await _make_app_state(persistence=backend)
+        await _maybe_promote_first_owner(app_state)
+
+        first = await backend.users.get("user-000")
+        assert first is not None
+        assert OrgRole.OWNER not in first.org_roles
+
+    async def test_no_owner_across_pages_promotes_true_first(self) -> None:
+        """With no owner anywhere, the lexical-first user is promoted."""
+        backend = FakePersistenceBackend()
+        await backend.connect()
+        for i in range(130):
+            await backend.users.save(_make_user(f"user-{i:03d}"))
+
+        app_state = await _make_app_state(persistence=backend)
+        await _maybe_promote_first_owner(app_state)
+
+        promoted = await backend.users.get("user-000")
+        assert promoted is not None
+        assert OrgRole.OWNER in promoted.org_roles
+        last = await backend.users.get("user-129")
+        assert last is not None
+        assert OrgRole.OWNER not in last.org_roles
+
     async def test_persistence_error_graceful_skip(self) -> None:
         """Persistence that raises on list_users should be skipped."""
         backend = FakePersistenceBackend()

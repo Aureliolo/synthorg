@@ -329,10 +329,22 @@ class CeremonyScheduler:
             return
         if record is None:
             return
+        from synthorg.engine.workflow.sprint_velocity import (  # noqa: PLC0415
+            VelocityRecord,
+        )
+
+        # Decode AND validate before mutating any state: a partially
+        # corrupt or stale row must leave the freshly-seeded zeroed
+        # state intact rather than abort activate_sprint or strand a
+        # half-applied snapshot. ``ValidationError`` is a ``ValueError``
+        # subclass, so model_validate failures are covered here too.
         try:
             counters = json.loads(record.completion_counters_json)
             triggers = json.loads(record.fired_once_triggers_json)
             history_raw = json.loads(record.velocity_history_json)
+            velocity_history = tuple(
+                VelocityRecord.model_validate(r) for r in history_raw
+            )
         except (ValueError, TypeError) as exc:
             logger.warning(
                 SPRINT_CEREMONY_SCHEDULER_START_FAILED,
@@ -341,16 +353,19 @@ class CeremonyScheduler:
                 error_type=type(exc).__name__,
             )
             return
-        from synthorg.engine.workflow.sprint_velocity import (  # noqa: PLC0415
-            VelocityRecord,
-        )
 
-        self._completion_counters = dict(counters)
+        # Merge persisted counts onto the seeded map instead of
+        # replacing it: a ceremony present in the current config but
+        # absent from an older snapshot keeps its zero seed rather than
+        # vanishing (which would KeyError on its next completion), and a
+        # stale snapshot key for a removed ceremony is ignored.
+        if isinstance(counters, dict):
+            for name, value in counters.items():
+                if name in self._completion_counters:
+                    self._completion_counters[name] = value
         self._fired_once_triggers = set(triggers)
         self._total_completions = record.total_completions
-        self._velocity_history = tuple(
-            VelocityRecord.model_validate(r) for r in history_raw
-        )
+        self._velocity_history = velocity_history
 
     async def _save_state_unlocked(self, sprint_id: str) -> None:
         """Persist the current ceremony state snapshot under the existing lock.
