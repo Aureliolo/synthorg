@@ -68,7 +68,7 @@ class ReportingLine(BaseModel):
             the template system).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     subordinate: NotBlankStr = Field(description="Subordinate role name or identifier")
     supervisor: NotBlankStr = Field(description="Supervisor role name or identifier")

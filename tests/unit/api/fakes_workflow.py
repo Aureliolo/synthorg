@@ -362,7 +362,11 @@ class FakeSubworkflowRepository:
         offset: int = 0,
     ) -> tuple[SubworkflowSummary, ...]:
         q = query.lower()
-        summaries = await self.list_summaries()
+        # Fetch the full candidate set before filtering: the default
+        # page cap would pre-truncate matches beyond the first page.
+        summaries = await self.list_summaries(
+            limit=max(len(self._rows), DEFAULT_PAGE_SIZE),
+        )
         matched = sorted(
             (
                 s

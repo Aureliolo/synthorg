@@ -430,7 +430,8 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 # ``limit * versions_per_subworkflow``.
                 await cur.execute(
                     "SELECT subworkflow_id FROM subworkflows"
-                    " WHERE name ILIKE %s OR description ILIKE %s"
+                    " WHERE name ILIKE %s ESCAPE '\\'"
+                    " OR description ILIKE %s ESCAPE '\\'"
                     " GROUP BY subworkflow_id"
                     " ORDER BY subworkflow_id LIMIT %s OFFSET %s",
                     (pattern, pattern, limit, offset),

@@ -63,30 +63,24 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
     }))
     try {
       const query = get().searchQuery.trim()
-      if (query) {
-        // Search endpoint is non-paginated: a search returns matches
-        // across the whole registry, and the user expects to see all
-        // matches, not a single page.
-        const results = await searchSubworkflows(query)
-        if (isStaleRequest(token)) return
-        set(() => ({
-          subworkflows: results,
-          listLoading: false,
-          subworkflowsTruncated: false,
-        }))
-        return
-      }
-      // Drain cursored pages eagerly so the page can render a
-      // numeric pager via useListPagination instead of a "Load More"
-      // button. MAX_PAGES bounds the worst case.
+      // Both the unfiltered list and the search endpoint are
+      // cursor-paginated; drain cursored pages eagerly so the page can
+      // render a numeric pager via useListPagination instead of a
+      // "Load More" button. MAX_PAGES bounds the worst case. The user
+      // expects to see every match, so a search drains the same way.
       const collected: SubworkflowSummary[] = []
       let cursor: string | null = null
       let truncated = false
       for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex += 1) {
-        const page = await listSubworkflows({
-          cursor: cursor ?? undefined,
-          limit: PAGE_SIZE,
-        })
+        const page = query
+          ? await searchSubworkflows(query, {
+              cursor: cursor ?? undefined,
+              limit: PAGE_SIZE,
+            })
+          : await listSubworkflows({
+              cursor: cursor ?? undefined,
+              limit: PAGE_SIZE,
+            })
         if (isStaleRequest(token)) return
         collected.push(...page.data)
         if (!page.hasMore || !page.nextCursor) break

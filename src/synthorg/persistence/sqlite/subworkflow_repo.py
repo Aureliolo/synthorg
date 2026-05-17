@@ -589,7 +589,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 raise QueryError(msg) from exc
 
             try:
-                parents = await self.find_parents(subworkflow_id, version)
+                parents = await self._find_parents_unpaged(subworkflow_id, version)
                 if parents:
                     await self._db.rollback()
                     return False, parents
@@ -640,10 +640,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (a subworkflow pinning another subworkflow) are discovered.
         References page in
         ``(parent_type, parent_id, node_id, pinned_version)`` order so
-        a cursor walk is stable. Referential-integrity callers (the
-        delete-if-unreferenced path) MUST drain every page via
-        :func:`synthorg.persistence._shared.collect_all`; a truncated
-        parent set would let a still-referenced version be deleted.
+        a cursor walk is stable. The referential-integrity path
+        (:meth:`delete_if_unreferenced`) bypasses pagination via
+        :meth:`_find_parents_unpaged`; a truncated parent set would let
+        a still-referenced version be deleted.
         """
         limit = validate_pagination_args(
             limit,
@@ -651,6 +651,20 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
             subworkflow_id=subworkflow_id,
         )
+        references = await self._find_parents_unpaged(subworkflow_id, version)
+        return tuple(references[offset : offset + limit])
+
+    async def _find_parents_unpaged(
+        self,
+        subworkflow_id: NotBlankStr,
+        version: NotBlankStr | None = None,
+    ) -> tuple[ParentReference, ...]:
+        """Return every reference to a subworkflow, sorted, unpaged.
+
+        Backs both :meth:`find_parents` (which slices a page off this
+        result) and :meth:`delete_if_unreferenced` (which must see the
+        complete set so a still-referenced version is never deleted).
+        """
         references: list[ParentReference] = []
 
         # Scan workflow_definitions table.
@@ -685,10 +699,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         # The reference scan walks JSON node arrays in both
         # ``workflow_definitions`` and ``subworkflows``; true SQL-level
         # pagination needs a normalized references table (a schema
-        # change tracked separately). Paging in memory is acceptable
-        # here because referential-integrity callers MUST drain every
-        # page anyway, so bounding per-page DB cost would yield no real
-        # saving.
+        # change tracked separately). Sorting the full set in memory is
+        # acceptable because the referential-integrity caller needs
+        # every reference anyway, so per-page DB bounding saves nothing.
         references.sort(
             key=lambda r: (
                 r.parent_type,
@@ -697,7 +710,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 r.pinned_version,
             ),
         )
-        return tuple(references[offset : offset + limit])
+        return tuple(references)
 
     async def _fetch_parent_rows(
         self,

@@ -20,6 +20,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerPairKey,
     CircuitBreakerStateRecord,
@@ -131,6 +132,9 @@ ON CONFLICT(pair_key_a, pair_key_b) DO UPDATE SET
         offset: int = 0,
     ) -> tuple[CircuitBreakerStateRecord, ...]:
         """List records ordered by ``(pair_key_a, pair_key_b)`` ascending."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,

@@ -5382,14 +5382,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[SubworkflowSummary, ...]] */
-        readonly "ApiResponse_tuple_SubworkflowSummary_..._": {
-            readonly data: readonly components["schemas"]["SubworkflowSummary"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[tuple[TeamResponse, ...]] */
         readonly "ApiResponse_tuple_TeamResponse_..._": {
             readonly data: readonly components["schemas"]["TeamResponse"][] | null;
@@ -20446,6 +20438,10 @@ export interface operations {
     readonly ApiV1SubworkflowsSearchSearchSubworkflows: {
         readonly parameters: {
             readonly query: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
                 /** @description Search substring */
                 readonly q: string;
             };
@@ -20461,7 +20457,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_SubworkflowSummary_..._"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_SubworkflowSummary_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

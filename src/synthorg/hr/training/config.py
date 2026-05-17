@@ -4,6 +4,8 @@ Frozen Pydantic configuration model with safe defaults for all
 training pipeline components.
 """
 
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -11,6 +13,13 @@ from synthorg.hr.training.models import ContentType
 
 # Type alias for serialized strategy config values.
 _ConfigValue = int | float | str | bool
+
+# Per-content-type stored-item ceilings: procedural memories accrue
+# fastest, tool patterns moderately, semantic facts slowest, so the
+# caps are tiered to bound storage without starving the rarer types.
+_DEFAULT_CAP_PROCEDURAL: Final[int] = 50
+_DEFAULT_CAP_SEMANTIC: Final[int] = 10
+_DEFAULT_CAP_TOOL_PATTERNS: Final[int] = 20
 
 
 def _default_selector_config() -> dict[str, _ConfigValue]:
@@ -31,9 +40,9 @@ def _default_volume_caps() -> dict[ContentType, int]:
     above.
     """
     return {
-        ContentType.PROCEDURAL: 50,
-        ContentType.SEMANTIC: 10,
-        ContentType.TOOL_PATTERNS: 20,
+        ContentType.PROCEDURAL: _DEFAULT_CAP_PROCEDURAL,
+        ContentType.SEMANTIC: _DEFAULT_CAP_SEMANTIC,
+        ContentType.TOOL_PATTERNS: _DEFAULT_CAP_TOOL_PATTERNS,
     }
 
 

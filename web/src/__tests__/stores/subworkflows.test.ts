@@ -4,12 +4,14 @@ import { useSubworkflowsStore } from '@/stores/subworkflows'
 import { useToastStore } from '@/stores/toast'
 import {
   apiError,
-  apiSuccess,
   emptyPage,
   paginatedFor,
   voidSuccess,
 } from '@/mocks/handlers'
-import type { listSubworkflows } from '@/api/endpoints/subworkflows'
+import type {
+  listSubworkflows,
+  searchSubworkflows,
+} from '@/api/endpoints/subworkflows'
 import type { SubworkflowSummary } from '@/api/types/workflows'
 import { server } from '@/test-setup'
 
@@ -167,7 +169,11 @@ describe('fetchSubworkflows', () => {
       http.get('/api/v1/subworkflows/search', ({ request }) => {
         searchCalls += 1
         searchQuery = new URL(request.url).searchParams.get('q')
-        return HttpResponse.json(apiSuccess([]))
+        return HttpResponse.json(
+          paginatedFor<typeof searchSubworkflows>(
+            emptyPage<SubworkflowSummary>(),
+          ),
+        )
       }),
       http.get('/api/v1/subworkflows', () => {
         listCalls += 1

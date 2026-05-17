@@ -215,28 +215,37 @@ class SubworkflowController(Controller):
                 description="Search substring",
             ),
         ],
-    ) -> Response[ApiResponse[tuple[SubworkflowSummary, ...]]]:
-        """Substring search across name and description.
+        limit: CursorLimit = DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> Response[PaginatedResponse[SubworkflowSummary]]:
+        """Substring search across name and description (cursor-paginated).
 
-        Returns the complete match set in a single ``ApiResponse``
-        envelope: the repository pages internally, so this handler
-        drains every bounded page via ``collect_all`` before
-        responding (this endpoint is not itself cursor-paginated).
+        Applies opaque-cursor pagination at the API boundary over the
+        complete match set: the handler drains every bounded repository
+        page via ``collect_all`` first (a truncated set would break the
+        cursor walk and under-report matches), then slices the
+        requested cursor page for the response.
         """
         registry = _registry(state)
-        # This endpoint returns the full match set in one envelope, so
-        # drain every bounded repo page rather than the first only.
+        # This endpoint applies its own opaque-cursor pagination over
+        # the full match set, so drain every bounded repo page; a
+        # truncated set would break the cursor walk and under-report
+        # matches.
         matches = await collect_all(
-            lambda limit, offset: registry.search(
+            lambda page_limit, offset: registry.search(
                 NotBlankStr(q),
-                limit=limit,
+                limit=page_limit,
                 offset=offset,
             ),
         )
+        page, meta = paginate_cursor(
+            matches,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return Response(
-            content=ApiResponse[tuple[SubworkflowSummary, ...]](
-                data=matches,
-            ),
+            content=PaginatedResponse[SubworkflowSummary](data=page, pagination=meta),
         )
 
     @get("/{subworkflow_id:str}/versions", guards=[require_read_access])

@@ -32,12 +32,17 @@ class TestCollectAll:
 
     async def test_exact_multiple_stops_on_empty_page(self) -> None:
         rows = tuple(range(200))
+        calls: list[tuple[int, int]] = []
 
         async def fetch(limit: int, offset: int) -> tuple[int, ...]:
+            calls.append((limit, offset))
             return rows[offset : offset + limit]
 
         # 200 rows / page 100 -> two full pages then an empty page.
         assert await collect_all(fetch, page_size=100) == rows
+        # The terminating empty fetch at offset 200 must happen, else
+        # an exact-multiple source never stops.
+        assert calls == [(100, 0), (100, 100), (100, 200)]
 
     async def test_empty_source_returns_empty_tuple(self) -> None:
         async def fetch(limit: int, offset: int) -> tuple[int, ...]:

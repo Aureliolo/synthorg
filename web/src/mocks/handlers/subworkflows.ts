@@ -34,7 +34,9 @@ export const subworkflowsHandlers = [
     ),
   ),
   http.get('/api/v1/subworkflows/search', () =>
-    HttpResponse.json(successFor<typeof searchSubworkflows>([])),
+    HttpResponse.json(
+      paginatedFor<typeof searchSubworkflows>(emptyPage<SubworkflowSummary>()),
+    ),
   ),
   http.get('/api/v1/subworkflows/:id/versions', () =>
     HttpResponse.json(paginatedFor<typeof listVersions>(emptyPage<string>())),
