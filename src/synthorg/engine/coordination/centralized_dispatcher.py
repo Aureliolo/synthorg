@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.coordination._dispatch_helpers import (
     execute_waves,
     merge_workspaces,
@@ -33,6 +34,9 @@ class CentralizedDispatcher:
     agents. Merge after all waves complete.
     """
 
+    def __init__(self, *, clock: Clock | None = None) -> None:
+        self._clock: Clock = clock if clock is not None else SystemClock()
+
     async def dispatch(
         self,
         *,
@@ -51,7 +55,7 @@ class CentralizedDispatcher:
 
         if workspace_service is not None and config.enable_workspace_isolation:
             workspaces, setup_phase = await setup_workspaces(
-                workspace_service, routing_result, config
+                workspace_service, routing_result, config, clock=self._clock
             )
             all_phases.append(setup_phase)
             if not setup_phase.success:
@@ -68,6 +72,7 @@ class CentralizedDispatcher:
             waves, exec_phases = await execute_waves(
                 groups,
                 parallel_executor,
+                clock=self._clock,
                 fail_fast=config.fail_fast,
             )
             all_phases.extend(exec_phases)
@@ -75,7 +80,7 @@ class CentralizedDispatcher:
             all_succeeded = all(p.success for p in exec_phases)
             if workspaces and workspace_service is not None and all_succeeded:
                 merge_result, merge_phase = await merge_workspaces(
-                    workspace_service, workspaces
+                    workspace_service, workspaces, clock=self._clock
                 )
                 all_phases.append(merge_phase)
             elif workspaces and workspace_service is not None:

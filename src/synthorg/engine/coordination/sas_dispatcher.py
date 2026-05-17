@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.coordination._dispatch_helpers import execute_waves
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
@@ -22,6 +23,9 @@ class SasDispatcher:
     assigns all subtasks to one agent.
     """
 
+    def __init__(self, *, clock: Clock | None = None) -> None:
+        self._clock: Clock = clock if clock is not None else SystemClock()
+
     async def dispatch(
         self,
         *,
@@ -39,7 +43,10 @@ class SasDispatcher:
         )
 
         waves, phases = await execute_waves(
-            groups, parallel_executor, fail_fast=config.fail_fast
+            groups,
+            parallel_executor,
+            clock=self._clock,
+            fail_fast=config.fail_fast,
         )
 
         return DispatchResult(

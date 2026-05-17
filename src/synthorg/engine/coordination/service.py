@@ -643,7 +643,7 @@ class MultiAgentCoordinator:
 
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
         try:
-            dispatcher = select_dispatcher(topology)
+            dispatcher = select_dispatcher(topology, clock=self._clock)
             return await dispatcher.dispatch(
                 decomposition_result=decomp_result,
                 routing_result=routing_result,
