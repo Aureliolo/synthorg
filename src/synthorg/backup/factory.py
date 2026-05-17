@@ -8,9 +8,8 @@ backend-appropriate ``VACUUM INTO`` or ``pg_dump`` implementation
 without editing this file.
 """
 
-import os
 from pathlib import Path
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING, Final, assert_never
 
 from synthorg.backup.handlers.config_handler import ConfigComponentHandler
 from synthorg.backup.handlers.memory import MemoryComponentHandler
@@ -26,6 +25,12 @@ if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
 
 logger = get_logger(__name__)
+
+# Default company-template filename when no config path was resolved at
+# boot. ``SYNTHORG_CONFIG_PATH`` is read exactly once at the app boot
+# site (``api/app.py``); a resolved value flows in via
+# ``resolved_config_path`` so this module never re-reads the env var.
+_DEFAULT_CONFIG_FILENAME: Final[str] = "company.yaml"
 
 
 def _build_persistence_handler(
@@ -75,9 +80,7 @@ def build_backup_handlers(
                 data_dir=Path(config.memory.storage.data_dir),
             )
         elif component is BackupComponent.CONFIG:
-            cfg_path = resolved_config_path or Path(
-                os.environ.get("SYNTHORG_CONFIG_PATH", "company.yaml"),
-            )
+            cfg_path = resolved_config_path or Path(_DEFAULT_CONFIG_FILENAME)
             handlers[component] = ConfigComponentHandler(
                 config_path=cfg_path,
             )

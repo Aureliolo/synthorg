@@ -495,6 +495,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         ceremony_scheduler=ceremony_scheduler,
         db_url=db_url,
         resolved_db_path=resolved_db_path,
+        boot_db_path=db_path,
     )
     connection_catalog = integrations.connection_catalog
     oauth_token_manager = integrations.oauth_token_manager

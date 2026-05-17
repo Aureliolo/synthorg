@@ -4,7 +4,6 @@ Keeps the integration-heavy auto-wire logic out of :mod:`synthorg.api.app`
 so ``create_app`` stays under the file-size budget.
 """
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
@@ -143,10 +142,20 @@ def _resolve_secret_db_path(
     *,
     resolved_db_path: Path | None,
     db_url: str,
+    boot_db_path: str,
 ) -> str | None:
     """Resolve the SQLite path for the encrypted_sqlite secret backend.
 
     Returns ``None`` in postgres mode (no SQLite file exists).
+
+    Args:
+        persistence: The active persistence backend (may be injected).
+        resolved_db_path: SQLite path resolved during persistence
+            auto-wiring, or ``None`` when persistence was injected.
+        db_url: Postgres URL string; truthy means postgres mode.
+        boot_db_path: ``SYNTHORG_DB_PATH`` resolved exactly once at the
+            app boot site and injected here so this module never
+            re-reads the env var.
     """
     postgres_mode = bool(db_url)
     if resolved_db_path is not None:
@@ -158,8 +167,7 @@ def _resolve_secret_db_path(
     injected_path = getattr(injected_cfg, "path", None)
     if isinstance(injected_path, str) and injected_path and injected_path != ":memory:":
         return injected_path
-    env_db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
-    return env_db_path or None
+    return boot_db_path or None
 
 
 def _wire_rate_limit_coordinator_factory(
@@ -221,6 +229,7 @@ def auto_wire_integrations(  # noqa: PLR0913
     ceremony_scheduler: CeremonyScheduler | None,
     db_url: str,
     resolved_db_path: Path | None,
+    boot_db_path: str,
 ) -> IntegrationsBundle:
     """Wire the MCP catalog, installations repo, and integration services.
 
@@ -264,6 +273,7 @@ def auto_wire_integrations(  # noqa: PLR0913
             persistence,
             resolved_db_path=resolved_db_path,
             db_url=db_url,
+            boot_db_path=boot_db_path,
         )
         pg_pool_getter = persistence.get_db if postgres_mode else None
 

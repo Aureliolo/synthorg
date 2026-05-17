@@ -171,7 +171,7 @@ _r.register(
         default="",
         description=(
             "Log output directory. Sourced from the SYNTHORG_LOG_DIR env"
-            " var > YAML (logging.log_dir) > unset at process start."
+            " var > unset at process start."
             " Read-only post-init: the directory is opened once at"
             " bootstrap_logging and a runtime change requires a"
             " process restart."
@@ -195,8 +195,8 @@ _r.register(
             " logger.  Empty string means 'use the root_log_level / sink"
             " default'.  Accepts debug / info / warning / error / critical"
             " (case-insensitive) or the empty string.  Sourced from"
-            " DB > env (SYNTHORG_LOG_LEVEL) > YAML (logging.console_level)"
-            " > unset.  Mutable at runtime: the next call to"
+            " DB > env (SYNTHORG_LOG_LEVEL) > unset.  Mutable at"
+            " runtime: the next call to"
             " _apply_console_level_override applies the new value."
         ),
         group="Logging",
