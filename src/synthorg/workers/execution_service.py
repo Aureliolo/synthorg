@@ -2,17 +2,26 @@
 
 When the worker pool fetches a JetStream claim, it posts to
 ``POST /api/v1/tasks/{task_id}/execute``. The controller delegates to
-:class:`WorkerExecutionService.execute_once` so the agent-runtime
-invocation is configurable per deployment: a baseline implementation
-walks the task through its lifecycle via the existing :class:`TaskEngine`,
-while production deployments override the service to invoke the full
-:class:`~synthorg.engine.agent_engine.AgentEngine`.
+:class:`WorkerExecutionService.execute_once`, a thin protocol-driven
+seam: the controller does not care which implementation is wired, only
+that ``execute_once`` returns the post-execution :class:`Task`.
 
-The service is intentionally a thin protocol-driven seam: the
-controller does not care which implementation is wired, only that
-``execute_once`` returns the post-execution :class:`Task`. This keeps
-the API contract stable while the agent-runtime invocation evolves
-across deployments.
+Three implementations live here:
+
+* :class:`AgentEngineExecutionService` -- the real agent runtime.
+  Installed at boot behind the provider-present switch (and re-installed
+  on setup-reinit); it resolves the assigned agent identity and runs a
+  fully-wired :class:`~synthorg.engine.agent_engine.AgentEngine`
+  (LLM + tools + per-call sandbox + memory, governed by the SecOps
+  safety spine).
+* :class:`NoProviderExecutionService` -- empty-company backstop. With no
+  provider configured the execute seam fails loudly instead of silently
+  walking status labels (task creation is also rejected upstream).
+* :class:`LifecycleAdvancingExecutionService` -- the lifecycle-only
+  baseline: it advances the task status without invoking an LLM. Used by
+  the dispatcher / queue / worker integration tests that pin the claim
+  round-trip, and as the property's lazy fallback before the boot hook
+  installs the real service.
 """
 
 from typing import TYPE_CHECKING, Final, Protocol
@@ -56,13 +65,13 @@ _EXECUTABLE_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
 class WorkerExecutionService(Protocol):
     """Contract for the worker-callable execution surface.
 
-    Deployments override this protocol to plug a specific
-    agent-runtime invocation. The default implementation
-    (:class:`LifecycleAdvancingExecutionService`) walks the task
-    forward through the lifecycle without invoking an LLM, which is
-    sufficient for smoke tests and for the dispatcher / queue /
-    worker / API integration tests that pin the full claim
-    round-trip.
+    The wired implementation is selected by the runtime builder behind
+    the provider-present switch (see :mod:`synthorg.workers.runtime_builder`):
+    :class:`AgentEngineExecutionService` when a provider is configured,
+    :class:`NoProviderExecutionService` otherwise.
+    :class:`LifecycleAdvancingExecutionService` is the lifecycle-only
+    baseline the dispatcher / queue / worker integration tests pin and
+    the property's lazy fallback before the boot hook runs.
     """
 
     async def execute_once(
@@ -84,21 +93,20 @@ class WorkerExecutionService(Protocol):
 
 
 class LifecycleAdvancingExecutionService:
-    """Default :class:`WorkerExecutionService` implementation.
+    """Lifecycle-only :class:`WorkerExecutionService` baseline.
 
     Advances the task one transition forward when it is in an
     executable state (``ASSIGNED`` or ``IN_PROGRESS``); returns the
-    current state unchanged otherwise. This is the baseline contract
-    the dispatcher + queue + worker tests pin: a claim arrives,
-    the service rolls the lifecycle forward, the worker sees a
+    current state unchanged otherwise. No LLM, no tools: a claim
+    arrives, the service rolls the lifecycle forward, the worker sees a
     terminal-or-not response and acks accordingly.
 
-    Production deployments replace this implementation with one that
-    invokes the :class:`~synthorg.engine.agent_engine.AgentEngine`
-    against the task body. The agent-engine implementation lives
-    outside this baseline because it carries the full agent-runtime
-    dependency chain (LLM provider, tool registry, memory backend),
-    none of which belong in the dispatch path itself.
+    This is what the dispatcher + queue + worker integration tests pin,
+    and the lazy fallback the ``AppState.worker_execution_service``
+    property self-constructs before the boot hook installs the real
+    :class:`AgentEngineExecutionService`. The real agent runtime is a
+    sibling class in this module, selected by the runtime builder
+    behind the provider-present switch.
     """
 
     __slots__ = ("_task_engine",)
