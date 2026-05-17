@@ -106,9 +106,23 @@ async def _periodic_revalidate(
         if failure_max is not None
         else app_state.auth_revalidate_max_failures
     )
+    # The loop performs one persistence check per ``interval_seconds``.
+    # A sliding window measured in wall-clock seconds is meaningless
+    # unless it spans several ticks: with the default 60s window and
+    # the 10-minute revalidation cadence, each failed tick ages out of
+    # the window long before the next one, so the limiter could never
+    # saturate and a prolonged persistence outage would keep stale-auth
+    # sockets open indefinitely (fail-open). Clamp the effective window
+    # so ``max_failures`` consecutive failed ticks fall inside it while
+    # still letting isolated old failures age out (the non-streak
+    # property the sliding model exists to preserve).
+    effective_window = max(
+        float(window),
+        float(interval_seconds) * max_failures,
+    )
     failure_limiter = _SlidingWindowRateLimiter(
         max_events=max_failures,
-        window_seconds=float(window),
+        window_seconds=effective_window,
     )
     # lint-allow: long-running-loop-kill-switch -- per-connection revalidate.
     while True:

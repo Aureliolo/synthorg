@@ -19,6 +19,7 @@ subtype) so the callback fails closed.
 
 import asyncio
 import hmac
+from functools import lru_cache
 from typing import Final
 
 import jwt
@@ -57,30 +58,30 @@ _LEEWAY_SECONDS: Final[int] = 60
 # Bounded JWKS fetch so a slow/hung IdP cannot stall the callback path.
 _JWKS_HTTP_TIMEOUT_SECONDS: Final[float] = 10.0
 
-# Reuse one ``PyJWKClient`` per JWKS URI: it caches the fetched signing
-# keys internally, so callbacks do not refetch the JWKS every time.
-_jwks_clients: dict[str, PyJWKClient] = {}
+# Cap on distinct JWKS URIs whose ``PyJWKClient`` is retained. An
+# unbounded process-global map keyed by ``jwks_uri`` would grow for the
+# lifetime of the process under connection churn (and hold stale
+# clients forever); the LRU eviction bounds memory while still reusing
+# clients for the small set of providers in active use.
+_JWKS_CLIENT_CACHE_MAX_SIZE: Final[int] = 128
 
 
+@lru_cache(maxsize=_JWKS_CLIENT_CACHE_MAX_SIZE)
 def _jwks_client_for(jwks_uri: str) -> PyJWKClient:
-    """Return a cached ``PyJWKClient`` for *jwks_uri* (creating once)."""
-    client = _jwks_clients.get(jwks_uri)
-    if client is None:
-        # ``setdefault`` is the atomic get-or-create: if a concurrent
-        # callback created the client between our ``get`` and here,
-        # that instance wins and ours is discarded. Lock-free; relies
-        # on CPython dict.setdefault atomicity. The rare extra
-        # construct is cheap (no network until first key lookup).
-        client = _jwks_clients.setdefault(
-            jwks_uri,
-            PyJWKClient(jwks_uri, timeout=_JWKS_HTTP_TIMEOUT_SECONDS),
-        )
-    return client
+    """Return a bounded LRU-cached ``PyJWKClient`` for *jwks_uri*.
+
+    ``lru_cache`` is thread-safe (CPython holds an internal lock around
+    the cache lookup/insert), so concurrent callbacks racing on the
+    same URI share one client. Each ``PyJWKClient`` caches the fetched
+    signing keys internally, so callbacks do not refetch the JWKS every
+    time.
+    """
+    return PyJWKClient(jwks_uri, timeout=_JWKS_HTTP_TIMEOUT_SECONDS)
 
 
 def _reset_jwks_cache_for_tests() -> None:
     """Drop the cached JWKS clients (test isolation helper)."""
-    _jwks_clients.clear()
+    _jwks_client_for.cache_clear()
 
 
 async def verify_id_token(

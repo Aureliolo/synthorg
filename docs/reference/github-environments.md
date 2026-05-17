@@ -98,7 +98,7 @@ Expected output for the reconciled environments (`github-pages`, `apko-lock`,
 - `branch_policies` for `release-tags`: `["v*"]`
 - `branch_policies` for `image-push`: `["main", "v*"]`
 
-`cloudflare-preview` is intentionally excluded from the
+`cloudflare-preview` and `lighthouse` are intentionally excluded from the
 `custom_branch_policies` expectation; see the rationale above.
 
 ## Required secrets

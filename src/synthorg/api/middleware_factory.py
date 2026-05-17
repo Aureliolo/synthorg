@@ -335,7 +335,11 @@ def _build_auth_and_csrf(
     auth_middleware = create_auth_middleware_class(auth)
 
     # CSRF middleware: exempt login/setup (they set the cookie, client
-    # cannot carry a CSRF token on the first request), logout (clients
+    # cannot carry a CSRF token on the first request), refresh (the
+    # access token is expected to be expired so the session cookie may
+    # be gone; the refresh cookie is SameSite + narrow-path + single-use
+    # consume, which is the CSRF defence by design -- mirrors the
+    # documented contract in the ``/refresh`` handler), logout (clients
     # may need to clear a stale session whose CSRF cookie was lost;
     # e.g. on app version upgrade; CSRF-protecting logout is low value
     # since forcing a logout is a nuisance, not a compromise), and
@@ -344,6 +348,7 @@ def _build_auth_and_csrf(
         {
             f"{prefix}/auth/login",
             f"{prefix}/auth/setup",
+            f"{prefix}/auth/refresh",
             f"{prefix}/auth/logout",
             f"{prefix}/healthz",
             f"{prefix}/readyz",

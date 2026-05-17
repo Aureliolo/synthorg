@@ -54,6 +54,9 @@ async def test_unexpected_error_logs_scrubbed_without_exc_info() -> None:
     # Scrubbed, typed error context is present instead.
     assert record["error_type"] == "RuntimeError"
     assert "error" in record
+    # The seeded secret in the exception message must not survive
+    # ``safe_error_description`` scrubbing into the structured field.
+    assert "topsecret999" not in str(record["error"])
     # URL stays redacted (userinfo + query stripped).
     assert record["url"] == redact_url(_CRED_URL)
     assert "topsecret999" not in str(record["url"])

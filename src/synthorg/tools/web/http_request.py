@@ -180,7 +180,7 @@ class HttpRequestTool(BaseWebTool):
         except httpx.TimeoutException:
             logger.warning(WEB_REQUEST_TIMEOUT, url=redact_url(url), timeout=timeout)
             return ToolExecutionResult(
-                content=f"Request timed out after {timeout}s: {url}",
+                content=f"Request timed out after {timeout}s: {redact_url(url)}",
                 is_error=True,
             )
         except httpx.HTTPError as exc:

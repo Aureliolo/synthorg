@@ -48,12 +48,12 @@ class TestPersistInitiation:
         original = _state(connection_name="placeholder")
         bound = await service.persist_initiation(
             original,
-            connection_name=NotBlankStr("github-prod"),
+            connection_name=NotBlankStr("example-provider-prod"),
         )
-        assert bound.connection_name == "github-prod"
+        assert bound.connection_name == "example-provider-prod"
         repo.save.assert_awaited_once()
         saved = repo.save.await_args.args[0]
-        assert saved.connection_name == "github-prod"
+        assert saved.connection_name == "example-provider-prod"
         # Frozen Pydantic: the actual passed-in instance is untouched.
         assert original.connection_name == "placeholder"
 
@@ -63,9 +63,9 @@ class TestPersistInitiation:
         service = OAuthStateService(repo=repo)
         bound = await service.persist_initiation(
             _state(connection_name="stale"),
-            connection_name=NotBlankStr("github-prod"),
+            connection_name=NotBlankStr("example-provider-prod"),
         )
-        assert bound.connection_name == "github-prod"
+        assert bound.connection_name == "example-provider-prod"
 
     async def test_repo_failure_propagates_after_audit_log(self) -> None:
         """Save errors propagate; the failure-event logging path runs first.
@@ -86,7 +86,7 @@ class TestPersistInitiation:
         with pytest.raises(PersistenceError, match="backend down"):
             await service.persist_initiation(
                 _state(connection_name="placeholder"),
-                connection_name=NotBlankStr("github-prod"),
+                connection_name=NotBlankStr("example-provider-prod"),
             )
         repo.save.assert_awaited_once()
 
@@ -99,7 +99,7 @@ class TestCallbackStateOps:
 
     async def test_get_delegates_to_repo(self) -> None:
         repo = AsyncMock(spec=OAuthStateRepository)
-        state = _state(connection_name="github-prod")
+        state = _state(connection_name="example-provider-prod")
         repo.get.return_value = state
         service = OAuthStateService(repo=repo)
 
@@ -133,13 +133,13 @@ class TestCallbackStateOps:
 
         won = await service.mark_consumed(
             NotBlankStr("tok-abcdef-12345"),
-            connection_name=NotBlankStr("github-prod"),
+            connection_name=NotBlankStr("example-provider-prod"),
             consumed_at=when,
         )
 
         assert won is True
         repo.mark_consumed.assert_awaited_once_with(
             NotBlankStr("tok-abcdef-12345"),
-            connection_name=NotBlankStr("github-prod"),
+            connection_name=NotBlankStr("example-provider-prod"),
             consumed_at=when,
         )

@@ -130,9 +130,22 @@ def _build_revalidation_limiter(
     else:
         window = _AUTH_REVALIDATE_WINDOW_FALLBACK_SECONDS
         max_failures = _AUTH_REVALIDATE_MAX_FAILURES_FALLBACK
+    # The SSE loop runs one revalidation tick per
+    # ``AUTH_REVALIDATE_INTERVAL_SECONDS`` (10 min). A window measured
+    # in wall-clock seconds shorter than ``max_failures`` ticks can
+    # never saturate -- each failed tick ages out before the next one
+    # -- so a prolonged persistence outage would keep a stale-auth
+    # stream open indefinitely (fail-open). Clamp so ``max_failures``
+    # consecutive failed ticks fall inside the window while isolated
+    # old failures still age out (mirrors the WS ``_periodic_revalidate``
+    # clamp; the two paths must stay in lockstep).
+    effective_window = max(
+        window,
+        float(AUTH_REVALIDATE_INTERVAL_SECONDS) * max_failures,
+    )
     return _SlidingWindowRateLimiter(
         max_events=max_failures,
-        window_seconds=window,
+        window_seconds=effective_window,
     )
 
 
