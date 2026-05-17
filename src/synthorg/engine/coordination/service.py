@@ -5,7 +5,6 @@ topology → dispatch (workspace setup → execute waves → merge) →
 rollup → update parent task.
 """
 
-import time
 from collections.abc import (
     Callable,  # noqa: TC003 -- runtime-read by typing.get_type_hints()
 )
@@ -13,6 +12,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.budget.currency import assert_currencies_match
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import CoordinationTopology, TaskStatus
 from synthorg.engine.coordination.attribution import (
     AgentContribution,
@@ -100,6 +100,7 @@ class MultiAgentCoordinator:
     """
 
     __slots__ = (
+        "_clock",
         "_coordination_chain",
         "_decomposition_service",
         "_default_topology_provider",
@@ -121,7 +122,9 @@ class MultiAgentCoordinator:
         performance_tracker: PerformanceTracker | None = None,
         coordination_chain: CoordinationMiddlewareChain | None = None,
         default_topology_provider: Callable[[], CoordinationTopology] | None = None,
+        clock: Clock | None = None,
     ) -> None:
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._decomposition_service = decomposition_service
         self._routing_service = routing_service
         self._parallel_executor = parallel_executor
@@ -162,7 +165,7 @@ class MultiAgentCoordinator:
         Raises:
             CoordinationPhaseError: When a critical phase fails.
         """
-        pipeline_start = time.monotonic()
+        pipeline_start = self._clock.monotonic()
         task = context.task
         phases: list[CoordinationPhaseResult] = []
 
@@ -239,7 +242,7 @@ class MultiAgentCoordinator:
             # + partial_phases so the caller sees the partial pipeline
             # instead of an opaque traceback.
             topology_phase = "resolve_topology"
-            topology_start = time.monotonic()
+            topology_start = self._clock.monotonic()
             try:
                 topology = self._resolve_topology(routing_result)
             except CoordinationPhaseError as phase_exc:
@@ -253,7 +256,7 @@ class MultiAgentCoordinator:
                 # which phases completed before the failure (the
                 # original exception was raised before this phase
                 # marker existed in ``phases``).
-                elapsed = time.monotonic() - topology_start
+                elapsed = self._clock.monotonic() - topology_start
                 # Always log at WARNING before re-raising. This covers
                 # both (a) mixed-topology errors ``_resolve_topology``
                 # logs internally AND (b) provider-originated failures
@@ -284,7 +287,7 @@ class MultiAgentCoordinator:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                elapsed = time.monotonic() - topology_start
+                elapsed = self._clock.monotonic() - topology_start
                 logger.warning(
                     COORDINATION_PHASE_FAILED,
                     phase=topology_phase,
@@ -343,7 +346,7 @@ class MultiAgentCoordinator:
             # Update parent task
             await self._phase_update_parent(context, rollup, phases)
 
-            total_duration = time.monotonic() - pipeline_start
+            total_duration = self._clock.monotonic() - pipeline_start
             wave_results = tuple(
                 w.execution_result
                 for w in dispatch_result.waves
@@ -439,7 +442,7 @@ class MultiAgentCoordinator:
         phases: list[CoordinationPhaseResult],
     ) -> DecompositionResult:
         """Run decomposition phase."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         phase_name = "decompose"
 
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
@@ -450,7 +453,7 @@ class MultiAgentCoordinator:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed = time.monotonic() - start
+            elapsed = self._clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
@@ -471,7 +474,7 @@ class MultiAgentCoordinator:
                 partial_phases=tuple(phases),
             ) from exc
 
-        elapsed = time.monotonic() - start
+        elapsed = self._clock.monotonic() - start
         phases.append(
             CoordinationPhaseResult(
                 phase=phase_name,
@@ -494,7 +497,7 @@ class MultiAgentCoordinator:
         phases: list[CoordinationPhaseResult],
     ) -> RoutingResult:
         """Run routing phase."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         phase_name = "route"
 
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
@@ -507,7 +510,7 @@ class MultiAgentCoordinator:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed = time.monotonic() - start
+            elapsed = self._clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
@@ -528,7 +531,7 @@ class MultiAgentCoordinator:
                 partial_phases=tuple(phases),
             ) from exc
 
-        elapsed = time.monotonic() - start
+        elapsed = self._clock.monotonic() - start
         phases.append(
             CoordinationPhaseResult(
                 phase=phase_name,
@@ -635,7 +638,7 @@ class MultiAgentCoordinator:
         phases: list[CoordinationPhaseResult],
     ) -> DispatchResult:
         """Run dispatch phase with error wrapping."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         phase_name = "dispatch"
 
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
@@ -653,7 +656,7 @@ class MultiAgentCoordinator:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed = time.monotonic() - start
+            elapsed = self._clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
@@ -687,7 +690,7 @@ class MultiAgentCoordinator:
         (unroutable, blocked by prerequisites, or skipped by
         fail-fast) are counted as BLOCKED.
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
         phase_name = "rollup"
 
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
@@ -719,7 +722,7 @@ class MultiAgentCoordinator:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed = time.monotonic() - start
+            elapsed = self._clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
@@ -736,7 +739,7 @@ class MultiAgentCoordinator:
             )
             return None
 
-        elapsed = time.monotonic() - start
+        elapsed = self._clock.monotonic() - start
         phases.append(
             CoordinationPhaseResult(
                 phase=phase_name,
@@ -778,7 +781,7 @@ class MultiAgentCoordinator:
             )
             return
 
-        start = time.monotonic()
+        start = self._clock.monotonic()
         phase_name = "update_parent"
 
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
@@ -795,7 +798,7 @@ class MultiAgentCoordinator:
                 ),
             )
             result = await self._task_engine.submit(mutation)
-            elapsed = time.monotonic() - start
+            elapsed = self._clock.monotonic() - start
 
             if result.success:
                 logger.info(
@@ -820,7 +823,7 @@ class MultiAgentCoordinator:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed = time.monotonic() - start
+            elapsed = self._clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
