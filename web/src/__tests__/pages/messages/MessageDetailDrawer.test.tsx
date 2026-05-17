@@ -9,8 +9,11 @@ describe('MessageDetailDrawer', () => {
     to: '#engineering',
     type: 'task_update',
     priority: 'high',
-    content: 'PR ready for review.',
-    attachments: [{ type: 'artifact', ref: 'pr-42' }],
+    text: 'PR ready for review.',
+    parts: [
+      { type: 'text', text: 'PR ready for review.' },
+      { type: 'data', data: { ref: 'pr-42' } },
+    ],
     metadata: {
       task_id: 'task-123',
       project_id: 'proj-456',
@@ -63,7 +66,9 @@ describe('MessageDetailDrawer', () => {
   })
 
   it('hides attachments section when no attachments', () => {
-    const noAttachments = makeMessage('msg-3', { attachments: [] })
+    const noAttachments = makeMessage('msg-3', {
+      parts: [{ type: 'text', text: 'no attachments here' }],
+    })
     render(<MessageDetailDrawer message={noAttachments} open={true} onClose={vi.fn()} />)
     expect(screen.queryByText('Attachments')).not.toBeInTheDocument()
   })

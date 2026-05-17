@@ -203,7 +203,8 @@ export function makeMessage(id: string, overrides?: Partial<Message>): Message {
     type: 'task_update',
     priority: 'normal',
     channel: '#engineering',
-    content: `Message ${id} content`,
+    text: `Message ${id} content`,
+    parts: [{ type: 'text', text: `Message ${id} content` }],
     attachments: [],
     metadata: {
       task_id: null,

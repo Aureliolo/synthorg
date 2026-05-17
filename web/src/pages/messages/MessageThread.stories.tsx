@@ -15,17 +15,26 @@ const threadMessages: Message[] = [
   {
     id: 'msg-1', timestamp: '2026-03-28T10:00:00Z', sender: 'sarah_chen', to: '#engineering',
     type: 'delegation', priority: 'normal', channel: '#engineering',
-    content: 'Please implement the user auth endpoint.', attachments: [], metadata: sampleMetadata,
+    text: 'Please implement the user auth endpoint.',
+    parts: [{ type: 'text', text: 'Please implement the user auth endpoint.' }],
+    attachments: [], metadata: sampleMetadata,
   },
   {
     id: 'msg-2', timestamp: '2026-03-28T10:30:00Z', sender: 'bob_dev', to: '#engineering',
     type: 'task_update', priority: 'normal', channel: '#engineering',
-    content: 'Started working on it. Draft PR incoming.', attachments: [], metadata: sampleMetadata,
+    text: 'Started working on it. Draft PR incoming.',
+    parts: [{ type: 'text', text: 'Started working on it. Draft PR incoming.' }],
+    attachments: [], metadata: sampleMetadata,
   },
   {
     id: 'msg-3', timestamp: '2026-03-28T11:00:00Z', sender: 'bob_dev', to: '#engineering',
     type: 'review_request', priority: 'normal', channel: '#engineering',
-    content: 'PR ready for review.', attachments: [{ type: 'artifact', ref: 'pr-42' }], metadata: sampleMetadata,
+    text: 'PR ready for review.',
+    parts: [
+      { type: 'text', text: 'PR ready for review.' },
+      { type: 'data', data: { ref: 'pr-42' } },
+    ],
+    attachments: [], metadata: sampleMetadata,
   },
 ]
 

@@ -8,7 +8,6 @@ import { createLogger } from '@/lib/logger'
 // circular-init risk.
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import {
-  ATTACHMENT_TYPE_VALUES,
   MESSAGE_PRIORITY_VALUES,
   MESSAGE_TYPE_VALUES,
 } from '@/api/types/messages'
@@ -19,20 +18,78 @@ const log = createLogger('messages')
 
 const MESSAGES_FETCH_LIMIT = 50
 
+type WireMessagePart = Message['parts'][number]
+
 /**
- * Each ``attachments`` entry must be a plain ``{type, ref}`` pair with
- * string fields -- without this check, a wire payload like
- * ``[null]`` or ``[{type: 42, ref: undefined}]`` would slip past the
- * ``Array.isArray`` gate and then blow up in the sanitizer when it
- * called ``sanitizeWsString(att.ref, ...)``.
+ * Each ``parts`` / ``attachments`` entry must be a well-formed
+ * structured part (``TextPart`` / ``DataPart`` / ``FilePart`` /
+ * ``UriPart``). Without this the per-type sanitizer would dereference
+ * a missing ``text`` / ``uri`` / ``data`` and throw. Unknown
+ * discriminators are rejected outright (no safe fallback part type).
  */
-function isAttachmentsShape(value: unknown): boolean {
+function isPartsShape(value: unknown): boolean {
   if (!Array.isArray(value)) return false
-  return value.every((att) => {
-    if (typeof att !== 'object' || att === null || Array.isArray(att)) return false
-    const entry = att as { type?: unknown; ref?: unknown }
-    return typeof entry.type === 'string' && typeof entry.ref === 'string'
+  return value.every((part) => {
+    if (typeof part !== 'object' || part === null || Array.isArray(part)) {
+      return false
+    }
+    const p = part as Record<string, unknown>
+    switch (p.type) {
+      case 'text':
+        return typeof p.text === 'string'
+      case 'data':
+        return (
+          typeof p.data === 'object' &&
+          p.data !== null &&
+          !Array.isArray(p.data)
+        )
+      case 'file':
+        return (
+          typeof p.uri === 'string' &&
+          (p.mime_type === null || typeof p.mime_type === 'string')
+        )
+      case 'uri':
+        return typeof p.uri === 'string'
+      default:
+        return false
+    }
   })
+}
+
+/**
+ * Sanitize one structured part by discriminator. Every untrusted
+ * string (``text`` / ``uri`` / ``mime_type``) is clamped via
+ * ``sanitizeWsString``; ``DataPart.data`` is structured JSON kept
+ * verbatim (it is rendered as data, never interpolated).
+ */
+function sanitizePart(part: Record<string, unknown>): WireMessagePart {
+  switch (part.type) {
+    case 'text':
+      return {
+        type: 'text',
+        text: sanitizeWsString(part.text as string, 4096) ?? '',
+      }
+    case 'file':
+      return {
+        type: 'file',
+        uri: sanitizeWsString(part.uri as string, 2048) ?? '',
+        mime_type:
+          part.mime_type === null
+            ? null
+            : sanitizeWsString(part.mime_type as string, 128) ?? '',
+      }
+    case 'uri':
+      return {
+        type: 'uri',
+        uri: sanitizeWsString(part.uri as string, 2048) ?? '',
+      }
+    default:
+      // ``data``: only reachable post-isPartsShape, so type is 'data'.
+      return {
+        type: 'data',
+        data: part.data as Readonly<Record<string, unknown>>,
+      }
+  }
 }
 
 /**
@@ -79,10 +136,11 @@ function isMessageShape(
     typeof c.sender === 'string' &&
     typeof c.to === 'string' &&
     typeof c.channel === 'string' &&
-    typeof c.content === 'string' &&
+    typeof c.text === 'string' &&
     typeof c.type === 'string' &&
     typeof c.priority === 'string' &&
-    isAttachmentsShape(c.attachments) &&
+    isPartsShape(c.parts) &&
+    isPartsShape(c.attachments) &&
     isMessageMetadataShape(c.metadata)
   )
 }
@@ -124,7 +182,7 @@ function parseWsMessage(
   const sender = sanitizeWsString(c.sender) ?? ''
   const to = sanitizeWsString(c.to) ?? ''
   const channel = sanitizeWsString(c.channel) ?? ''
-  const content = sanitizeWsString(c.content, 4096) ?? ''
+  const text = sanitizeWsString(c.text, 4096) ?? ''
   // Route enum-typed fields through sanitizeWsEnum so an unknown
   // backend value falls back to a safe default + emits a structured
   // ws.enum.unknown warning instead of being rendered verbatim. The
@@ -148,18 +206,15 @@ function parseWsMessage(
     return null
   }
 
-  // Sanitize nested structures: both attachment.type and attachment.ref
-  // come straight off the wire (enum-typed on the server side but
-  // still untrusted), and metadata.extra is an array of
-  // ``[string, string]`` tuples whose keys and values are attacker-
-  // reachable.
-  const attachments = c.attachments.map((att) => ({
-    type: sanitizeWsEnum(att.type, ATTACHMENT_TYPE_VALUES, 'file', {
-      maxLen: 64,
-      field: 'message.attachments[].type',
-    }),
-    ref: sanitizeWsString(att.ref, 512) ?? '',
-  }))
+  // Sanitize the structured parts (text/uri/mime strings clamped per
+  // ``sanitizePart``; DataPart JSON kept verbatim). ``isPartsShape``
+  // already validated both arrays, so the casts are sound.
+  const parts = (c.parts as unknown as Record<string, unknown>[]).map(
+    sanitizePart,
+  )
+  const attachments = (
+    c.attachments as unknown as Record<string, unknown>[]
+  ).map(sanitizePart)
   const metadata = {
     task_id:
       c.metadata.task_id === null
@@ -190,9 +245,10 @@ function parseWsMessage(
     sender,
     to,
     channel,
-    content,
+    text,
     type,
     priority,
+    parts,
     attachments,
     metadata,
   }

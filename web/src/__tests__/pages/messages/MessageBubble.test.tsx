@@ -14,7 +14,7 @@ vi.mock('@/hooks/useFlash', () => ({
 
 describe('MessageBubble', () => {
   it('renders sender name and content', () => {
-    const msg = makeMessage('1', { sender: 'alice', content: 'Hello world' })
+    const msg = makeMessage('1', { sender: 'alice', text: 'Hello world' })
     render(<MessageBubble message={msg} />)
     expect(screen.getByText('alice')).toBeInTheDocument()
     expect(screen.getByText('Hello world')).toBeInTheDocument()
@@ -52,7 +52,10 @@ describe('MessageBubble', () => {
 
   it('renders attachments when present', () => {
     const msg = makeMessage('1', {
-      attachments: [{ type: 'artifact', ref: 'pr-42' }],
+      parts: [
+        { type: 'text', text: 'see attachment' },
+        { type: 'data', data: { ref: 'pr-42' } },
+      ],
     })
     render(<MessageBubble message={msg} />)
     expect(screen.getByText('pr-42')).toBeInTheDocument()

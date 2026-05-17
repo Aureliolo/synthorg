@@ -4,7 +4,13 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { MessageTypeBadge } from './MessageTypeBadge'
 import { AttachmentList } from './AttachmentList'
-import { getMessagePriorityColor, getPriorityDotClass, getPriorityBadgeClasses } from '@/utils/messages'
+import {
+  getMessagePriorityColor,
+  getPriorityDotClass,
+  getPriorityBadgeClasses,
+  messageText,
+  partsToAttachments,
+} from '@/utils/messages'
 import { cn } from '@/lib/utils'
 import type { Message } from '@/api/types/messages'
 
@@ -28,6 +34,7 @@ interface MessageDetailContentProps {
 
 function MessageDetailContent({ message }: MessageDetailContentProps) {
   const priorityColor = getMessagePriorityColor(message.priority)
+  const messageAttachments = partsToAttachments(message.parts)
 
   return (
     <div className="space-y-5">
@@ -57,7 +64,9 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
       {/* Content */}
       <div>
         <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Content</h3>
-        <p className="whitespace-pre-wrap text-sm text-foreground">{message.content}</p>
+        <p className="whitespace-pre-wrap text-sm text-foreground">
+          {messageText(message)}
+        </p>
       </div>
 
       {/* Metadata */}
@@ -91,10 +100,10 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
       </div>
 
       {/* Attachments */}
-      {message.attachments.length > 0 && (
+      {messageAttachments.length > 0 && (
         <div>
           <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Attachments</h3>
-          <AttachmentList attachments={message.attachments} />
+          <AttachmentList attachments={messageAttachments} />
         </div>
       )}
     </div>

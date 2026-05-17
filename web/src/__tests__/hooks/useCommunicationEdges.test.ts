@@ -38,7 +38,8 @@ function paginated(
     type: 'task_update',
     priority: 'normal',
     channel: 'direct',
-    content: '',
+    text: '',
+    parts: [],
     attachments: [],
     metadata: {
       task_id: null,

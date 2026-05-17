@@ -7,12 +7,22 @@ import type { Message, MessageMetadata } from '@/api/types/messages'
 const baseMeta: MessageMetadata = { task_id: null, project_id: null, tokens_used: null, cost: null, extra: [] }
 const threadMeta: MessageMetadata = { task_id: 'task-42', project_id: null, tokens_used: 500, cost: 0.01, extra: [] }
 
+type MsgSpec = Omit<Message, 'parts' | 'attachments'> & {
+  parts?: Message['parts']
+}
+
+const mk = (spec: MsgSpec): Message => ({
+  ...spec,
+  parts: spec.parts ?? [{ type: 'text', text: spec.text }],
+  attachments: [],
+})
+
 const sampleMessages: Message[] = [
-  { id: '1', timestamp: '2026-03-28T09:00:00Z', sender: 'alice', to: '#eng', type: 'announcement', priority: 'normal', channel: '#eng', content: 'Sprint planning in 30 minutes.', attachments: [], metadata: baseMeta },
-  { id: '2', timestamp: '2026-03-28T10:00:00Z', sender: 'bob', to: '#eng', type: 'delegation', priority: 'normal', channel: '#eng', content: 'Please implement the auth endpoint.', attachments: [], metadata: threadMeta },
-  { id: '3', timestamp: '2026-03-28T10:30:00Z', sender: 'carol', to: '#eng', type: 'task_update', priority: 'normal', channel: '#eng', content: 'Working on it.', attachments: [], metadata: threadMeta },
-  { id: '4', timestamp: '2026-03-28T14:00:00Z', sender: 'carol', to: '#eng', type: 'review_request', priority: 'high', channel: '#eng', content: 'PR ready for review.', attachments: [{ type: 'artifact', ref: 'pr-42' }], metadata: threadMeta },
-  { id: '5', timestamp: '2026-03-27T16:00:00Z', sender: 'dave', to: '#eng', type: 'status_report', priority: 'normal', channel: '#eng', content: 'EOD: Completed database migration.', attachments: [], metadata: baseMeta },
+  mk({ id: '1', timestamp: '2026-03-28T09:00:00Z', sender: 'alice', to: '#eng', type: 'announcement', priority: 'normal', channel: '#eng', text: 'Sprint planning in 30 minutes.', metadata: baseMeta }),
+  mk({ id: '2', timestamp: '2026-03-28T10:00:00Z', sender: 'bob', to: '#eng', type: 'delegation', priority: 'normal', channel: '#eng', text: 'Please implement the auth endpoint.', metadata: threadMeta }),
+  mk({ id: '3', timestamp: '2026-03-28T10:30:00Z', sender: 'carol', to: '#eng', type: 'task_update', priority: 'normal', channel: '#eng', text: 'Working on it.', metadata: threadMeta }),
+  mk({ id: '4', timestamp: '2026-03-28T14:00:00Z', sender: 'carol', to: '#eng', type: 'review_request', priority: 'high', channel: '#eng', text: 'PR ready for review.', parts: [{ type: 'text', text: 'PR ready for review.' }, { type: 'data', data: { ref: 'pr-42' } }], metadata: threadMeta }),
+  mk({ id: '5', timestamp: '2026-03-27T16:00:00Z', sender: 'dave', to: '#eng', type: 'status_report', priority: 'normal', channel: '#eng', text: 'EOD: Completed database migration.', metadata: baseMeta }),
 ]
 
 const meta: Meta<typeof MessageList> = {

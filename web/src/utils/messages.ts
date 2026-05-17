@@ -1,6 +1,66 @@
-import type { ChannelType, Message, MessagePriority, MessageType } from '@/api/types/messages'
+import type {
+  Attachment,
+  ChannelType,
+  Message,
+  MessagePriority,
+  MessageType,
+} from '@/api/types/messages'
 import type { SemanticColor } from '@/lib/utils'
 import { formatDateOnly } from '@/utils/format'
+
+// ── Wire-parts -> UI adapters ──────────────────────────────
+//
+// The canonical wire ``Message`` carries A2A-style structured
+// ``parts`` (``TextPart`` / ``DataPart`` / ``FilePart`` / ``UriPart``)
+// and a computed ``text`` accessor. The messaging UI consumes a
+// flatter view: a single body string + a simple
+// ``artifact|file|link`` attachment taxonomy. These adapters bridge
+// the two so importers never reach into ``parts`` directly (a future
+// canonical-shape change ripples through here, not every component).
+
+type MessagePart = Message['parts'][number]
+
+/** The message body text (canonical ``Message.text`` accessor). */
+export function messageText(message: Pick<Message, 'text'>): string {
+  return message.text
+}
+
+function dataPartRef(data: Readonly<Record<string, unknown>>): string {
+  for (const key of ['ref', 'id', 'name'] as const) {
+    const value = data[key]
+    if (typeof value === 'string' && value.length > 0) return value
+  }
+  return 'data'
+}
+
+/**
+ * Flatten wire ``parts`` into the UI ``Attachment`` overlay.
+ *
+ * ``TextPart`` is the message body, not an attachment, so it is
+ * dropped. ``DataPart`` -> ``artifact``, ``FilePart`` -> ``file``,
+ * ``UriPart`` -> ``link`` (mirrors the pre-migration taxonomy).
+ */
+export function partsToAttachments(
+  parts: readonly MessagePart[],
+): Attachment[] {
+  const attachments: Attachment[] = []
+  for (const part of parts) {
+    switch (part.type) {
+      case 'text':
+        break
+      case 'data':
+        attachments.push({ type: 'artifact', ref: dataPartRef(part.data) })
+        break
+      case 'file':
+        attachments.push({ type: 'file', ref: part.uri })
+        break
+      case 'uri':
+        attachments.push({ type: 'link', ref: part.uri })
+        break
+    }
+  }
+  return attachments
+}
 
 // ── Message type labels ────────────────────────────────────
 
@@ -180,7 +240,7 @@ export function filterMessages(
     const query = filters.search.toLowerCase()
     result = result.filter(
       (m) =>
-        m.content.toLowerCase().includes(query) ||
+        messageText(m).toLowerCase().includes(query) ||
         m.sender.toLowerCase().includes(query) ||
         m.to.toLowerCase().includes(query),
     )

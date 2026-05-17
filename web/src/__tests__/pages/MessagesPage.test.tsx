@@ -129,7 +129,7 @@ describe('MessagesPage', () => {
       ...defaultReturn,
       channels: [makeChannel('#eng')],
       messages: [
-        makeMessage('1', { content: 'Hello world', sender: 'alice' }),
+        makeMessage('1', { text: 'Hello world', sender: 'alice' }),
       ],
       total: 1,
       expandedThreads: new Set(),

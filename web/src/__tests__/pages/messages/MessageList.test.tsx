@@ -32,11 +32,11 @@ describe('MessageList', () => {
     const msgs = [
       makeMessage('1', {
         timestamp: '2026-03-28T10:00:00Z',
-        content: 'First message',
+        text: 'First message',
       }),
       makeMessage('2', {
         timestamp: '2026-03-28T14:00:00Z',
-        content: 'Second message',
+        text: 'Second message',
       }),
     ]
     render(<MessageList {...defaultProps} messages={msgs} />)
@@ -49,7 +49,7 @@ describe('MessageList', () => {
   })
 
   it('renders Load earlier messages button when hasMore', () => {
-    const msgs = [makeMessage('1', { content: 'Test' })]
+    const msgs = [makeMessage('1', { text: 'Test' })]
     render(<MessageList {...defaultProps} messages={msgs} hasMore={true} />)
     expect(screen.getByRole('button', { name: /load earlier messages/i })).toBeInTheDocument()
   })
@@ -57,7 +57,7 @@ describe('MessageList', () => {
   it('calls onLoadMore when Load button clicked', async () => {
     const user = userEvent.setup()
     const onLoadMore = vi.fn()
-    const msgs = [makeMessage('1', { content: 'Test' })]
+    const msgs = [makeMessage('1', { text: 'Test' })]
     render(<MessageList {...defaultProps} messages={msgs} hasMore={true} onLoadMore={onLoadMore} />)
 
     await user.click(screen.getByRole('button', { name: /load earlier messages/i }))
@@ -65,7 +65,7 @@ describe('MessageList', () => {
   })
 
   it('shows loading state when loadingMore', () => {
-    const msgs = [makeMessage('1', { content: 'Test' })]
+    const msgs = [makeMessage('1', { text: 'Test' })]
     render(<MessageList {...defaultProps} messages={msgs} hasMore={true} loadingMore={true} />)
     expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled()
   })
@@ -73,12 +73,12 @@ describe('MessageList', () => {
   it('groups threaded messages together', () => {
     const msgs = [
       makeMessage('1', {
-        content: 'Thread start',
+        text: 'Thread start',
         timestamp: '2026-03-28T10:00:00Z',
         metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost: null, extra: [] },
       }),
       makeMessage('2', {
-        content: 'Thread reply',
+        text: 'Thread reply',
         timestamp: '2026-03-28T10:05:00Z',
         metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost: null, extra: [] },
       }),
@@ -89,7 +89,7 @@ describe('MessageList', () => {
   })
 
   it('has aria-live attribute for accessibility', () => {
-    const msgs = [makeMessage('1', { content: 'Test' })]
+    const msgs = [makeMessage('1', { text: 'Test' })]
     render(<MessageList {...defaultProps} messages={msgs} />)
     expect(screen.getByLabelText('Messages')).toHaveAttribute('aria-live', 'polite')
   })
