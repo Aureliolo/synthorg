@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_TIMEOUT_POLICY_DECIDER: str = "timeout_policy"
+TIMEOUT_POLICY_DECIDER: str = "timeout_policy"
 
 
 class TimeoutChecker:
@@ -121,7 +121,7 @@ class TimeoutChecker:
                 update={
                     "status": ApprovalStatus.APPROVED,
                     "decided_at": datetime.now(UTC),
-                    "decided_by": _TIMEOUT_POLICY_DECIDER,
+                    "decided_by": TIMEOUT_POLICY_DECIDER,
                     "decision_reason": action.reason,
                 },
             )
@@ -132,7 +132,7 @@ class TimeoutChecker:
                 update={
                     "status": ApprovalStatus.REJECTED,
                     "decided_at": datetime.now(UTC),
-                    "decided_by": _TIMEOUT_POLICY_DECIDER,
+                    "decided_by": TIMEOUT_POLICY_DECIDER,
                     "decision_reason": action.reason,
                 },
             )

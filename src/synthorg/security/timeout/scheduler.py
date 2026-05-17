@@ -12,6 +12,7 @@ import contextlib
 from collections.abc import Awaitable, Callable  # noqa: TC003
 from typing import TYPE_CHECKING
 
+from synthorg.core.actor_context import ActorIdentity, actor_scope
 from synthorg.core.enums import ApprovalStatus, TimeoutActionType
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
@@ -25,6 +26,7 @@ from synthorg.observability.events.timeout import (
     TIMEOUT_SCHEDULER_STOPPED,
     TIMEOUT_SCHEDULER_TICK,
 )
+from synthorg.security.timeout.timeout_checker import TIMEOUT_POLICY_DECIDER
 
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -323,38 +325,50 @@ class ApprovalTimeoutScheduler:
             await self._evaluate_item(item)
 
     async def _evaluate_item(self, item: ApprovalItem) -> None:
-        """Evaluate a single item and apply the action if decisive."""
-        try:
-            updated, action = await self._checker.check_and_resolve(item)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                TIMEOUT_SCHEDULER_ERROR,
-                approval_id=item.id,
-                error="Failed to evaluate item",
-            )
-            return
+        """Evaluate a single item and apply the action if decisive.
 
-        if action.action == TimeoutActionType.WAIT:
-            return
+        RFC#3 / ADR-0003: this is a system-initiated decision path with
+        no human in the loop. The system actor is bound for the whole
+        evaluation so any downstream gate / resume flow resolves
+        ``decided_by`` to the timeout-policy identity via the actor
+        seam -- byte-identical to the value the timeout checker writes
+        directly into the approval row.
+        """
+        with actor_scope(ActorIdentity.system(TIMEOUT_POLICY_DECIDER)):
+            try:
+                updated, action = await self._checker.check_and_resolve(item)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    TIMEOUT_SCHEDULER_ERROR,
+                    approval_id=item.id,
+                    error="Failed to evaluate item",
+                )
+                return
 
-        if action.action in {TimeoutActionType.APPROVE, TimeoutActionType.DENY}:
-            await self._resolve_item(updated, action)
-        elif action.action == TimeoutActionType.ESCALATE:
-            logger.info(
-                TIMEOUT_SCHEDULER_RESOLVED,
-                approval_id=item.id,
-                action=action.action.value,
-                escalate_to=action.escalate_to,
-                reason=action.reason,
-            )
-            self._background_tasks.spawn(
-                self._notify_escalation(item, action),
-                event=NOTIFICATION_ESCALATION_SEND,
-                approval_id=item.id,
-                escalate_to=action.escalate_to,
-            )
+            if action.action == TimeoutActionType.WAIT:
+                return
+
+            if action.action in {
+                TimeoutActionType.APPROVE,
+                TimeoutActionType.DENY,
+            }:
+                await self._resolve_item(updated, action)
+            elif action.action == TimeoutActionType.ESCALATE:
+                logger.info(
+                    TIMEOUT_SCHEDULER_RESOLVED,
+                    approval_id=item.id,
+                    action=action.action.value,
+                    escalate_to=action.escalate_to,
+                    reason=action.reason,
+                )
+                self._background_tasks.spawn(
+                    self._notify_escalation(item, action),
+                    event=NOTIFICATION_ESCALATION_SEND,
+                    approval_id=item.id,
+                    escalate_to=action.escalate_to,
+                )
 
     async def _resolve_item(
         self,
