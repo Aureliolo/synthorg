@@ -156,8 +156,15 @@ class TestReportingLine:
         assert data["subordinate_key"] == "backend-senior"
         assert data["supervisor_key"] == "lead-001"
 
-        # Round-trip: computed fields are ignored on input
-        r2 = ReportingLine.model_validate(data)
+        # Under extra="forbid", computed fields cannot round-trip as
+        # inputs; recompute them by feeding back only the stored fields.
+        r2 = ReportingLine.model_validate(
+            {
+                k: v
+                for k, v in data.items()
+                if k not in {"subordinate_key", "supervisor_key"}
+            },
+        )
         assert r2.subordinate_key == "backend-senior"
         assert r2.supervisor_key == "lead-001"
 
