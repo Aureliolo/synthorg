@@ -189,7 +189,25 @@ async function drainUntilReconnectExhausted(): Promise<void> {
 }
 
 describe('websocket store', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Drain any real macrotask / microtask chain still in flight from a
+    // prior test's MSW + undici ticket fetch BEFORE installing fake
+    // timers. ``queueMicrotask`` is intentionally excluded from
+    // ``toFake`` (so undici can settle), so without this a prior test's
+    // response-cleanup hop survives into this test's fake-timer window
+    // and can call ``close()`` on the brand-new socket -- the documented
+    // residual cross-test race the sibling heartbeat tests annotate
+    // their ``retry`` for. Timers are still real here (the previous
+    // ``afterEach`` restored them via ``vi.useRealTimers()``), so
+    // ``setTimeout(0)`` genuinely yields the macrotask queue and the
+    // interleaved ``Promise.resolve()`` flushes microtasks/setImmediate
+    // hops between each macrotask turn.
+    for (let drain = 0; drain < 4; drain++) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0)
+      })
+      await Promise.resolve()
+    }
     resetStore()
     ticketState.calls = 0
     ticketState.mode = {
