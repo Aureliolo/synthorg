@@ -727,7 +727,7 @@ Read the linked issue's title, body, acceptance criteria, labels, and comments i
 
 ## Phase 3.5: Audit-Skill Mini-Pass (diff scope)
 
-The full `/codebase-audit` runs ~155 agents and is too expensive for every PR. But a small, high-recurrence subset is cheap enough to run on the PR diff alone, catching new violations at PR time instead of waiting for the next scheduled audit. This phase adds five extra agents to Phase 4's parallel launch with their file scope constrained to the changed files.
+The full `/codebase-audit` runs ~155 agents and is too expensive for every PR. But a small, high-recurrence subset is cheap enough to run on the PR diff alone, catching new violations at PR time instead of waiting for the next scheduled audit. This phase adds six extra agents to Phase 4's parallel launch with their file scope constrained to the changed files.
 
 **Scope:** the same unified diff captured in Phase 3 (`git diff --staged main`) -- compute the set of changed files and pass it to each mini-pass agent as a hard scope override.
 
@@ -740,6 +740,7 @@ The full `/codebase-audit` runs ~155 agents and is too expensive for every PR. B
 | `mini-pass-missing-state-transition-log` | Agent 04 (section "Agent 04: missing-state-transition-log") | State / status mutations without an INFO log near the write |
 | `mini-pass-unwired-settings` | Agent 09 (section "Agent 09: unwired-settings") | Settings registered but consumed by no service started at boot |
 | `mini-pass-race-conditions` | Agent 39 (section "Agent 39: race-conditions") | Shared mutable state without locks, TOCTOU patterns, concurrent dict / list mutation, DB read-modify-write without transactions |
+| `mini-pass-ghost-wiring` | Agent 14 (section "Agent 14: ghost-wiring") | New runtime component (engine/workers/api/budget/security/meta/client/settings) defined + tested but not constructed/reachable at boot; boot-wired store with no producer; endpoint gated on a never-wired dep; setting with no constructed consumer. The EPIC #1955 / #1951 defect class. |
 
 **Prompt construction (per agent):** read the source prompt from `.claude/skills/codebase-audit/SKILL.md` by section header (line numbers drift; section headers are stable). Prepend a hard scope override:
 
@@ -750,7 +751,9 @@ SCOPE OVERRIDE (mini-pass): only inspect the following files (the PR diff). Do n
 
 For `mini-pass-missing-event-constants` and `mini-pass-race-conditions`, also include `tests/` paths from the diff so test-side regressions are caught. For `mini-pass-unwired-settings`, the diff scope must include `src/synthorg/settings/definitions/` AND `src/synthorg/api/lifecycle_helpers.py` whenever either changed (settings can be defined in one PR and ghost-wired in another -- the diff scope alone is too narrow).
 
-**Launch:** add the five mini-pass agents to the parallel Task call in Phase 4. Use `subagent_type: general-purpose`. The triage gate lock from Phase 4 covers their output too -- no separate lock needed.
+**Launch:** add the six mini-pass agents to the parallel Task call in Phase 4. Use `subagent_type: general-purpose`. The triage gate lock from Phase 4 covers their output too -- no separate lock needed.
+
+`mini-pass-ghost-wiring` is src-targeted (runtime modules only). Give it the changed `.py` files under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` as scope, but allow it to read `src/synthorg/api/{app,auto_wire,lifecycle,lifecycle_builder,lifecycle_helpers}.py` and `scripts/_ghost_wiring_manifest.txt` for boot-path tracing even when those are not in the diff (proving non-reachability requires reading the boot path, not just the new file). It must apply the SCOPE RULE in Agent 14's prompt and must not re-flag symbols whose manifest line is `PENDING` (those are tracked by EPIC #1955).
 
 **Traceability:** every finding emitted by a mini-pass agent MUST set `Source: mini-pass-<agent-name>` in the Phase 5 triage table so users can downweight a category if it gets noisy without affecting the main agent roster.
 
@@ -759,6 +762,7 @@ For `mini-pass-missing-event-constants` and `mini-pass-race-conditions`, also in
 - skip the mini-pass entirely when the diff is `docs/`-only, `web/`-only, or `cli/`-only AND has zero `.py` changes under `src/synthorg/` AND zero `.py` changes under `tests/`;
 - when the diff touches `tests/` Python files but has zero `.py` changes under `src/synthorg/`, run only `mini-pass-missing-event-constants` and `mini-pass-race-conditions` (the two agents whose scope already extends into `tests/`) and skip the other three;
 - `mini-pass-unwired-settings` runs whenever EITHER `src/synthorg/settings/definitions/` OR `src/synthorg/api/lifecycle_helpers.py` changed (settings can be defined in one PR and ghost-wired in another -- requiring both is too narrow).
+- `mini-pass-ghost-wiring` runs whenever any `.py` under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` changed (a PR that adds a new runtime class/factory/store/endpoint without wiring it at boot is exactly the regression this catches). Skip it only when the diff has zero `.py` changes under those runtime modules.
 
 ## Phase 4: Launch Review Agents (parallel)
 

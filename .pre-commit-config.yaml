@@ -240,6 +240,18 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: no-ghost-wiring
+        name: no ghost-wiring regressions (ENFORCED runtime components must be reachable)
+        entry: uv run python scripts/check_no_ghost_wiring.py
+        language: system
+        # Trigger on any src/synthorg Python file (a change could remove
+        # the only construction site of an ENFORCED component), the
+        # manifest, the gate script itself (cannot weaken the gate
+        # silently), or this config.
+        files: ^(src/synthorg/.*\.py|scripts/_ghost_wiring_manifest\.txt|scripts/check_no_ghost_wiring\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: no-loop-bound-init
         name: block new asyncio primitives in __init__ of lifecycle-managed classes
         entry: uv

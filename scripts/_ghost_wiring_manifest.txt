@@ -1,0 +1,30 @@
+# Anti-ghost-wiring manifest -- consumed by scripts/check_no_ghost_wiring.py
+#
+# A "ghost" is a runtime component that is defined and unit-tested but never
+# constructed/called in the shipped src/ boot path, so it can never run in a
+# real deployment. This class of defect (issue #1951 / EPIC #1955) hid for a
+# long time because nothing enforced "if it ships, it must be reachable".
+#
+# Each line: <STATE> <symbol> <issue> -- <note>
+#
+#   ENFORCED  the symbol MUST have >=1 construction/call site in
+#             src/synthorg/ outside its own defining module and outside
+#             tests/. If it has zero, the gate FAILS. This is the
+#             anti-regression lock: once a runtime component is wired, it
+#             cannot silently become a ghost again.
+#
+#   PENDING   a known ghost currently being wired by an EPIC #1955 issue.
+#             NOT enforced yet (it would fail until the wiring PR lands).
+#             Per the Convention Rollout rule (CLAUDE.md), the PR that
+#             wires the symbol moves its line PENDING -> ENFORCED in the
+#             SAME PR, shipping the lock with the fix. The gate prints an
+#             advisory nudge if a PENDING symbol already looks constructed.
+#
+# Symbol = the class or factory-function name (the thing that is
+# instantiated/called). Bare name match on ast.Call(func=Name|Attribute).
+
+PENDING AgentEngine #1956 -- runtime root; construct at boot behind the provider switch
+PENDING build_coordinator #1958 -- call at boot to populate app_state.coordinator
+PENDING BaselineStore #1959 -- construct at boot (window from budget.baseline_window_size)
+PENDING CoordinationMetricsCollector #1959 -- construct at boot, thread into execution
+PENDING IntakeEngine #1961 -- wire via the client-simulation runtime
