@@ -6,6 +6,7 @@ from typing import Final
 
 PROVIDER_REGISTRY_BUILT: Final[str] = "provider.registry.built"
 PROVIDER_DRIVER_INSTANTIATED: Final[str] = "provider.driver.instantiated"
+PROVIDER_SCRIPTED_DRIVER_INSTANTIATED: Final[str] = "provider.scripted.instantiated"
 PROVIDER_DRIVER_FACTORY_MISSING: Final[str] = "provider.driver.factory_missing"
 PROVIDER_DRIVER_NOT_REGISTERED: Final[str] = "provider.driver.not_registered"
 PROVIDER_CALL_START: Final[str] = "provider.call.start"

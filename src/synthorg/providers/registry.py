@@ -138,9 +138,11 @@ class ProviderRegistry:
         from .drivers.litellm_driver import (  # noqa: PLC0415
             LiteLLMDriver,
         )
+        from .drivers.scripted import ScriptedDriver  # noqa: PLC0415
 
         defaults: dict[str, type[BaseCompletionProvider]] = {
             "litellm": LiteLLMDriver,
+            "scripted": ScriptedDriver,
         }
         overrides = factory_overrides or {}
         drivers: dict[str, BaseCompletionProvider] = {}
