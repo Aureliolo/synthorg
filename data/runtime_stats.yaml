@@ -1,13 +1,13 @@
 schema_version: 1
-last_generated_utc: '2026-05-16T21:47:36Z'
-generator_revision: 7088ff365
+last_generated_utc: '2026-05-17T00:45:32Z'
+generator_revision: 3bc7d0d44
 stats:
   tests:
-    raw: 30667
+    raw: 30935
     rounded: 30000
     display: 30,000+
   mem0_stars:
-    raw: 55866
+    raw: 55879
     rounded: 55000
     display: 55k+
   providers_curated:
@@ -20,8 +20,8 @@ stats:
     raw: 26
     display: '26'
   convention_gates:
-    raw: 46
-    display: '46'
+    raw: 47
+    display: '47'
 sources:
   tests: uv run python -m pytest --collect-only -q
   mem0_stars: gh api repos/mem0ai/mem0 --jq .stargazers_count
