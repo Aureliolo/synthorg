@@ -8,6 +8,7 @@ import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import type { PaginatedResult } from '@/api/client'
 import type { SubworkflowSummary } from '@/api/types/workflows'
 
 const log = createLogger('subworkflows')
@@ -72,7 +73,7 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
       let cursor: string | null = null
       let truncated = false
       for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex += 1) {
-        const page = query
+        const page: PaginatedResult<SubworkflowSummary> = query
           ? await searchSubworkflows(query, {
               cursor: cursor ?? undefined,
               limit: PAGE_SIZE,
