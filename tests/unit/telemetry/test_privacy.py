@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.telemetry.privacy import PrivacyScrubber, PrivacyViolationError
 from synthorg.telemetry.protocol import TelemetryEvent
@@ -20,6 +21,30 @@ def _make_event(
         os_platform="Linux",
         timestamp=datetime.now(UTC),
         properties=properties,
+    )
+
+
+def _make_raw_event(
+    event_type: str = "deployment.heartbeat",
+    **properties: object,
+) -> TelemetryEvent:
+    """Build an event bypassing the model validator.
+
+    ``model_construct`` skips the construction-time property guard so
+    the scrubber's *delivery-path* guard can be tested in isolation
+    (the post-construction tamper path: a value mutated after a valid
+    object was built, or a raw dict that never went through Pydantic).
+    """
+    return TelemetryEvent.model_construct(
+        event_type=event_type,
+        deployment_id="test-id",
+        synthorg_version="0.6.4",
+        python_version="3.14.0",
+        os_platform="Linux",
+        timestamp=datetime.now(UTC),
+        # Intentionally widened: this helper exists to inject the very
+        # values the contract forbids, bypassing validation.
+        properties=properties,  # type: ignore[arg-type]
     )
 
 
@@ -135,7 +160,9 @@ class TestPrivacyScrubber:
             self.scrubber.validate(event)
 
     def test_rejects_unknown_property_key(self) -> None:
-        event = _make_event(
+        # Construction now rejects this; the scrubber guards the
+        # delivery path for a raw/tampered event that skipped it.
+        event = _make_raw_event(
             "deployment.heartbeat",
             agent_count=5,
             unknown_field=42,
@@ -165,18 +192,28 @@ class TestPrivacyScrubber:
         """
         from types import MappingProxyType
 
-        from synthorg.telemetry import privacy
+        from synthorg.telemetry import property_rules
 
-        original = privacy._ALLOWED_PROPERTIES["deployment.heartbeat"]
-        patched = dict(privacy._ALLOWED_PROPERTIES)
+        # Patch the single-source allowlist so the key passes the
+        # allowlist check and the *forbidden-pattern* rule is what
+        # fires. A raw event skips construction-time validation so the
+        # scrubber's delivery-path guard is the one under test.
+        original = property_rules._ALLOWED_PROPERTIES["deployment.heartbeat"]
+        patched = dict(property_rules._ALLOWED_PROPERTIES)
         patched["deployment.heartbeat"] = original | {bad_key}
-        monkeypatch.setattr(privacy, "_ALLOWED_PROPERTIES", MappingProxyType(patched))
-        event_with_bad = _make_event("deployment.heartbeat", **{bad_key: "value"})
+        monkeypatch.setattr(
+            property_rules,
+            "_ALLOWED_PROPERTIES",
+            MappingProxyType(patched),
+        )
+        event_with_bad = _make_raw_event("deployment.heartbeat", **{bad_key: "value"})
         with pytest.raises(PrivacyViolationError, match="Forbidden pattern"):
             self.scrubber.validate(event_with_bad)
 
     def test_rejects_long_string_values(self) -> None:
-        event = _make_event(
+        # Raw event skips construction-time validation; the scrubber
+        # still catches the over-length string at the delivery path.
+        event = _make_raw_event(
             "deployment.heartbeat",
             template_name="x" * 100,
         )
@@ -195,3 +232,53 @@ class TestPrivacyScrubber:
         event = _make_event("deployment.heartbeat")
         result = self.scrubber.validate(event)
         assert result is event
+
+
+@pytest.mark.unit
+class TestTelemetryEventConstructionGuard:
+    """The property contract is enforced at construction (REWORK #11).
+
+    A telemetry property typo no longer silently drops downstream --
+    it raises ``ValidationError`` where the event is built.
+    """
+
+    def test_unknown_property_raises_at_construction(self) -> None:
+        with pytest.raises(ValidationError, match="Disallowed property"):
+            _make_event("deployment.heartbeat", agent_count=5, oops=1)
+
+    def test_over_length_string_raises_at_construction(self) -> None:
+        with pytest.raises(ValidationError, match="exceeds"):
+            _make_event("deployment.heartbeat", template_name="x" * 100)
+
+    def test_forbidden_pattern_raises_at_construction(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from types import MappingProxyType
+
+        from synthorg.telemetry import property_rules
+
+        original = property_rules._ALLOWED_PROPERTIES["deployment.heartbeat"]
+        patched = dict(property_rules._ALLOWED_PROPERTIES)
+        patched["deployment.heartbeat"] = original | {"api_token"}
+        monkeypatch.setattr(
+            property_rules,
+            "_ALLOWED_PROPERTIES",
+            MappingProxyType(patched),
+        )
+        with pytest.raises(ValidationError, match="Forbidden pattern"):
+            _make_event("deployment.heartbeat", api_token="v")
+
+    def test_valid_event_constructs(self) -> None:
+        event = _make_event(
+            "deployment.heartbeat",
+            agent_count=5,
+            uptime_hours=1.0,
+        )
+        assert event.properties["agent_count"] == 5
+
+    def test_unknown_event_type_with_no_properties_constructs(self) -> None:
+        # event_type allowlisting is the scrubber's delivery-path
+        # concern; construction only guards properties, so an event
+        # with no properties for an unknown type still builds.
+        event = _make_event("user.logged_in")
+        assert event.properties == {}

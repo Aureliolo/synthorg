@@ -27,6 +27,10 @@ class TestTelemetryEvent:
         assert event.properties == {}
 
     def test_event_with_properties(self) -> None:
+        # ``graceful`` (bool) is a shutdown-only key; the
+        # construction-time property guard now rejects it on a
+        # heartbeat. Use a shutdown event so the int/float/str/bool
+        # primitive coverage stays within that type's allowlist.
         event = TelemetryEvent(
             event_type="deployment.heartbeat",
             deployment_id="abc-123",
@@ -38,13 +42,22 @@ class TestTelemetryEvent:
                 "agent_count": 5,
                 "uptime_hours": 12.5,
                 "template_name": "startup",
-                "graceful": True,
             },
         )
         assert event.properties["agent_count"] == 5
         assert event.properties["uptime_hours"] == 12.5
         assert event.properties["template_name"] == "startup"
-        assert event.properties["graceful"] is True
+
+        shutdown = TelemetryEvent(
+            event_type="deployment.shutdown",
+            deployment_id="abc-123",
+            synthorg_version="0.6.4",
+            python_version="3.14.0",
+            os_platform="Linux",
+            timestamp=datetime.now(UTC),
+            properties={"uptime_hours": 1.0, "graceful": True},
+        )
+        assert shutdown.properties["graceful"] is True
 
     def test_frozen(self) -> None:
         event = TelemetryEvent(
