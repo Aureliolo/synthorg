@@ -113,6 +113,13 @@ class AuthorizationCodeFlow:
         # encrypt it at rest so a DB leak alone is not enough to
         # complete an intercepted authorization code.
         encrypted_verifier = encrypt_pkce_verifier(verifier)
+        # OIDC nonce: an independent secret bound into the issued
+        # id_token's ``nonce`` claim. Sent in the authorization
+        # request and matched on callback so a stolen/replayed
+        # id_token cannot be injected. Persisted in plaintext (it is
+        # single-use, short-lived, and only useful paired with a
+        # signed id_token from the right issuer).
+        nonce = stdlib_secrets.token_urlsafe(get_auth_token_bytes())
 
         params = {
             "response_type": "code",
@@ -120,6 +127,7 @@ class AuthorizationCodeFlow:
             "redirect_uri": redirect_uri,
             "scope": " ".join(scopes),
             "state": state_token,
+            "nonce": nonce,
             "code_challenge": challenge,
             "code_challenge_method": "S256",
         }
@@ -130,6 +138,7 @@ class AuthorizationCodeFlow:
             state_token=NotBlankStr(state_token),
             connection_name=NotBlankStr("pending"),
             pkce_verifier=NotBlankStr(encrypted_verifier),
+            nonce=NotBlankStr(nonce),
             scopes_requested=" ".join(scopes),
             redirect_uri=redirect_uri,
             created_at=now,
@@ -247,7 +256,7 @@ class AuthorizationCodeFlow:
             )
             raise TokenRefreshFailedError(safe_error_description(exc)) from exc
 
-    def _parse_token_response(  # noqa: C901, PLR0912
+    def _parse_token_response(  # noqa: C901, PLR0912, PLR0915
         self,
         data: object,
         operation: str,
@@ -324,6 +333,21 @@ class AuthorizationCodeFlow:
         else:
             scope = ""
 
+        if "id_token" in data:
+            id_token_value = data.get("id_token")
+            if id_token_value is None:
+                id_token: str | None = None
+            elif isinstance(id_token_value, str):
+                id_token = id_token_value or None
+            else:
+                msg = (
+                    f"Token {operation} response has non-string "
+                    f"id_token: {type(id_token_value).__name__}"
+                )
+                raise TokenExchangeFailedError(msg)
+        else:
+            id_token = None
+
         event = (
             OAUTH_TOKEN_EXCHANGED if operation == "exchange" else OAUTH_TOKEN_REFRESHED
         )
@@ -335,4 +359,5 @@ class AuthorizationCodeFlow:
             token_type=token_type,
             expires_at=expires_at,
             scope_granted=scope,
+            id_token=id_token,
         )

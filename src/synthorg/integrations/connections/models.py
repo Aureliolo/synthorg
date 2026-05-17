@@ -246,6 +246,10 @@ class OAuthToken(BaseModel):
         token_type: Token type (usually "Bearer").
         expires_at: When the access token expires.
         scope_granted: Space-separated scopes actually granted.
+        id_token: Raw OIDC ID token (compact JWS), when the provider
+            is an OIDC IdP. Transient and sensitive (carries identity
+            claims); used only to verify the ``nonce`` binding on
+            callback, never persisted.
         issued_at: When the tokens were issued.
     """
 
@@ -263,6 +267,7 @@ class OAuthToken(BaseModel):
     token_type: str = "Bearer"  # noqa: S105
     expires_at: AwareDatetime | None = None
     scope_granted: str = ""
+    id_token: str | None = Field(default=None, repr=False, exclude=True)
     issued_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )
