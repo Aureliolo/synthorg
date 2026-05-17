@@ -204,6 +204,15 @@ repos:
         files: ^src/synthorg/(api/app\.py|settings/definitions/security\.py)$
         stages: [pre-commit, pre-push]
 
+      - id: no-bare-time-in-business-logic
+        name: clock-seam (no bare time.monotonic/time.time/datetime.utcnow)
+        entry: uv
+        args: [run, python, scripts/check_no_bare_time_in_business_logic.py]
+        language: system
+        pass_filenames: false
+        files: ^src/synthorg/.*\.py$
+        stages: [pre-commit, pre-push]
+
       - id: no-new-logger-exception-str-exc
         name: block new logger.exception(..., error=str(exc)) sites
         entry: uv

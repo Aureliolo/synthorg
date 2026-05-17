@@ -42,7 +42,7 @@ from synthorg.api.controllers.ws_revalidation import (
 from synthorg.api.guards import _READ_ROLES
 from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole
-from synthorg.core.clock import Clock  # noqa: TC001
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_WS_AUTH_OK,
@@ -354,8 +354,9 @@ async def _trip_breaker_and_close(
     # Clock seam (CLAUDE.md): tests inject ``FakeClock`` so the
     # rolling-window rollover in ``_BackpressureTracker.note_drop``
     # can be exercised deterministically. Production callers omit
-    # ``clock`` and fall through to the system ``time.monotonic``.
-    now = clock.monotonic() if clock is not None else time.monotonic()
+    # ``clock`` and fall through to ``SystemClock``.
+    resolved_clock = clock if clock is not None else SystemClock()
+    now = resolved_clock.monotonic()
     tripped = backpressure.note_drop(now=now)
     if not tripped:
         return
@@ -808,6 +809,8 @@ async def ws_handler(
     # lifetime into the ``synthorg_ws_connection_lifetime_seconds``
     # histogram. ``time.monotonic`` so a wall-clock NTP step does not
     # push the bucket bound.
+    # lint-allow: clock-seam -- Litestar @websocket route handler has
+    # no clock-injection seam; lifetime histogram needs NTP-immune monotonic
     connection_started_at = time.monotonic()
     _record_ws_connection_opened(socket)
 
@@ -891,6 +894,8 @@ async def ws_handler(
         if consumer_task is not None:
             _record_ws_connection_closed(
                 socket,
+                # lint-allow: clock-seam -- pairs with the route-handler
+                # baseline above; same no-injection-seam justification
                 duration_sec=time.monotonic() - connection_started_at,
             )
             await _teardown_connection(

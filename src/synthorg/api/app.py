@@ -7,7 +7,6 @@ lifecycle hooks (startup/shutdown).
 
 import os
 import sys
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -87,6 +86,7 @@ from synthorg.communication.meeting.orchestrator import (
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig
+from synthorg.core.clock import SystemClock
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
@@ -513,7 +513,12 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if trust_service is None:
         trust_service = _build_configured_trust_service(effective_config.trust)
 
+    # One boot clock shared between the uptime baseline and AppState so
+    # ``app_state.clock`` and ``startup_time`` cannot diverge, and a
+    # FakeClock injected via AppState in tests governs both.
+    _boot_clock = SystemClock()
     app_state = AppState(
+        clock=_boot_clock,
         config=effective_config,
         persistence=persistence,
         message_bus=message_bus,
@@ -547,7 +552,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         mcp_catalog_service=mcp_catalog_service,
         mcp_installations_repo=mcp_installations_repo,
         training_service=training_service,
-        startup_time=time.monotonic(),
+        startup_time=_boot_clock.monotonic(),
     )
     if distributed_task_queue is not None:
         app_state.set_distributed_task_queue(distributed_task_queue)
