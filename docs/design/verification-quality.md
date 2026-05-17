@@ -5,6 +5,10 @@ description: Verification stage, harness middleware layer, review pipeline, and 
 
 # Verification & Quality
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The verification pipeline and intake engine run with the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
+
 This page covers the quality-assurance pipeline attached to agent output: the verification stage that runs after an agent completes a task, the harness middleware that wraps every agent invocation, the review pipeline that validates produced artifacts, and the intake engine that ingests new work.
 
 ## Verification Stage

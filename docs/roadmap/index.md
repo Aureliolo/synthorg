@@ -1,57 +1,90 @@
 # Roadmap
 
-## Current Status
+## Current status
 
-SynthOrg is in **active development**. The core subsystems are built, tested (<!--RS:tests-->30,000+<!--/RS--> tests in the latest run, 80%+ coverage), and integrated through a REST + WebSocket API, React 19 dashboard, and Go CLI. See the [releases page](https://github.com/Aureliolo/synthorg/releases) for the latest tagged build.
+SynthOrg is in **active development**. The platform, infrastructure, and
+subsystem libraries are built and tested (<!--RS:tests-->30,000+<!--/RS-->
+tests in the latest run, 80%+ coverage) and integrated through a REST +
+WebSocket API, a React 19 dashboard, and a Go CLI. The autonomous agent
+**runtime** that makes the organisation actually execute work is the focus of
+current development and is tracked openly on the
+[issue tracker](https://github.com/Aureliolo/synthorg/issues). Be specific
+about what this means: starting SynthOrg brings up the platform and
+dashboard; running a company end to end is the work in flight.
 
-What works today:
+## Available now
 
-- **Agent engine** with ReAct, Plan-and-Execute, Hybrid execution loops, crash recovery, task decomposition, and agent identity versioning (list, diff, rollback, append-only history)
-- **Agent evolution** with pluggable triggers (batched, inflection, per-task), proposers (separate-analyzer, self-report, composite), and guards (rollback, review, rate limit, shadow evaluation)
-- **Dynamic workforce scaling** with closed-loop hiring and pruning, safety guards, and approval gates
-- **Budget & cost management** with per-agent limits, auto-downgrade at task boundaries, spending reports, anomaly detection, and hierarchical project cascades
-- **Security** with fail-closed rule engine, 4 autonomy tiers, progressive trust, output scanning, audit logging, two-stage safety classifier, and hallucination detection via cross-provider uncertainty check
-- **Memory** with hybrid retrieval (dense + BM25 sparse with RRF fusion), tool-based injection, procedural memory auto-generation from failures, consolidation (LLM Merge, Search-and-Ask), and MVCC snapshot reads on the shared knowledge store
-- **Communication** with message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), meeting protocols, and an A2A gateway for external agent systems
-- **Workflow engine** with Kanban, Agile sprints, ceremony scheduling (8 strategies), visual workflow editor, and workflow execution from graph definitions
-- **Tool ecosystem** with 12+ categories (file system, code execution, version control, web, database, terminal, design, communication, analytics, deployment, memory, MCP servers) and sandbox security (auth proxy, gVisor, Chainguard packages)
-- **Persistence** with SQLite (single-node default) and PostgreSQL (multi-instance, dual-backend conformance-tested) backends, yoyo-managed schema migrations, and ISO 4217 currency stamping on every cost-bearing row
-- **Distributed runtime** with NATS JetStream message bus and distributed task queue for multi-instance deployments
-- **Web dashboard** (React 19 + shadcn/ui) with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, setup wizard, and WebSocket / SSE resilience
-- **CLI** (Go) with init, start, stop, doctor, config, wipe, cleanup, worker, backup, completion, and cosign / SLSA verification
-- **Docker deployment** with Chainguard distroless images, Trivy + Grype scanning, cosign signatures, and SLSA L3 provenance
-- **Multi-user access** with HttpOnly cookie sessions, CSRF protection, concurrent session control, JWT auth, and session management
-- **Local model management** for Ollama and LM Studio (browse, pull, delete, configure launch parameters)
-- **Observability** with structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, and OTLP
-- **Notification sinks** with operator alerts via Slack, ntfy, email, and HTTP relay (severity filtering and per-channel routing)
+Shipped and exercised today:
 
-What's not there yet:
+- **API, dashboard, CLI**: REST + WebSocket API, the React 19 dashboard, and
+  the Go CLI for Docker orchestration and supply-chain verification.
+- **Persistence**: SQLite (single-node default) and PostgreSQL
+  (multi-instance), dual-backend conformance-tested, with in-process
+  yoyo-managed migrations and ISO 4217 currency stamping on every
+  cost-bearing row.
+- **Provider layer**: any LLM via LiteLLM with retry and rate-limit handling;
+  local model management for Ollama and LM Studio.
+- **Configuration and templates**: define a company in YAML; importable
+  agent, department, and company templates with personality presets and
+  locale-aware name generation.
+- **Operations**: structured logging with correlation tracking and
+  redaction, log shipping, Prometheus metrics, OTLP.
+- **Multi-user access**: HttpOnly cookie sessions, CSRF protection,
+  concurrent session control, JWT auth.
+- **Supply chain**: Chainguard distroless images, Trivy + Grype scanning,
+  cosign signatures, SLSA L3 provenance.
+- **Distributed dispatch plumbing**: the NATS JetStream queue and worker
+  pool exist; the task-execute endpoint currently advances task state and
+  does not yet invoke an agent.
+- **Subsystem libraries**: the engine, memory, budget, security,
+  coordination, and intake modules exist as importable, unit-tested
+  components. They are exercised by their test suites, not yet by a running
+  agent (see below).
 
-- **End-to-end production runs**: subsystems are integrated but the full autonomous loop (agents receiving work, executing, producing artifacts, iterating) has not been validated as a cohesive product
-- **Runtime configuration surface for agent evolution**: the evolution service is implemented but wired at app init; runtime configuration via REST or UI is not yet exposed
+## In active development
 
-## Planned
+These make SynthOrg an autonomous studio. They are designed and largely
+written as components, but not yet wired into a running product. Each is
+tracked as an epic:
 
-Prioritised by dependency order. All work is tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues).
-
-- Operational guides: runtime settings reference, notifications and event subscriptions, workflow API tutorials, agent lifecycle, memory admin API
-- OpenAPI TypeScript codegen for the web dashboard
-- REST API and dashboard UI for agent evolution configuration and triggering
-- TimescaleDB hypertable support for append-only time-series tables
-- Dynamic company scaling across clusters
-- Multi-project support with project-scoped teams and isolated budgets
-- Plugin system and benchmarking suite
-- A2A protocol compatibility: finalise inter-org communication surface
+- **Agent runtime online**
+  ([EPIC #1955](https://github.com/Aureliolo/synthorg/issues/1955)):
+  agents actually executing tasks (LLM + sandboxed tools) under a minimal
+  safety spine. The foundational item; everything else depends on it. Until
+  it lands, multi-agent coordination, coordination metrics, the intake
+  engine, the approval-queue producer, autonomy/trust enforcement on a live
+  run, and the self-improvement loop are implemented and unit-tested but not
+  exercised end to end.
+- **Conversational org interface**
+  ([EPIC #1967](https://github.com/Aureliolo/synthorg/issues/1967)): talk to
+  the company in natural language; it clarifies, proposes, and later acts
+  under governance.
+- **Autonomous product studio substrate**
+  ([EPIC #1973](https://github.com/Aureliolo/synthorg/issues/1973)):
+  persistent project workspace with pluggable git, brownfield codebase
+  intake, living documentation, and a deep requirements interview.
+- **Best-in-class operate tier**
+  ([EPIC #1979](https://github.com/Aureliolo/synthorg/issues/1979)): a
+  golden-company benchmark, mission control with run replay, a cost
+  forecast/kill-switch dial, a measurable learning curve, deterministic
+  replay, run narratives, and an adversarial red-team.
+- **Agent capability layer**
+  ([EPIC #1987](https://github.com/Aureliolo/synthorg/issues/1987)): a
+  knowledge and provenance retrieval substrate, research mode, continual
+  improvement, governed external API access, headless-browser and
+  virtual-desktop testing, and more.
 
 ## Backlog
 
-Research candidates and longer-term ideas without a scheduled timeframe. See [Future Vision](future-vision.md) for detail.
+Research candidates and longer-term ideas without a scheduled timeframe. See
+[Future Vision](future-vision.md) for detail.
 
-- Advanced memory architecture (GraphRAG, consistency protocols, RL consolidation)
+- Advanced memory architecture (GraphRAG, consistency protocols, RL
+  consolidation)
 - Community template marketplace
 - Kubernetes sandbox backend
 - Shift system for agents
 - Training mode (learn from senior agents)
-- Self-improving company (meta-loop signal aggregation, staged rollout)
+- TimescaleDB hypertable support for append-only time-series tables
 
 See [Open Questions](open-questions.md) for unresolved design decisions.

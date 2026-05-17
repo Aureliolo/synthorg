@@ -99,7 +99,7 @@ competitors:
     slug: synthorg
     url: "https://synthorg.io"
     repo: "https://github.com/Aureliolo/synthorg"
-    description: "Framework for building synthetic organizations, autonomous AI agents orchestrated as a virtual company"
+    description: "An autonomous product studio you operate: a self-hostable platform for synthetic organisations of role-based AI agents. Platform, infrastructure, and subsystem libraries are built and tested; the agent runtime that executes the organisation is in active development."
     license: "BUSL-1.1"
     language: "Python"
     category: virtual_org
@@ -107,20 +107,20 @@ competitors:
     self_hosted: "true"
     is_synthorg: true
     features:
-      org_structure: {support: full, note: "Departments, hierarchy, 8 seniority levels, reporting lines, HR"}
-      multi_agent: {support: partial, note: "6 assignment strategies, 4 coordination dispatchers, and conflict resolution shipped; multi-project support and formal coordination models still in progress"}
-      task_delegation: {support: full, note: "DAG decomposition, 6 assignment strategies, delegation chains"}
-      memory: {support: full, note: "Pluggable architecture with 3 backends (Mem0, composite, in-memory); 5 memory types (working, episodic, semantic, procedural, social); hybrid retrieval (dense + BM25 sparse, linear-weighted fusion)"}
-      tool_use: {support: full, note: "MCP protocol, sandbox isolation, invocation tracking; 14 ToolCategory values (file_system, code_execution, version_control, web, database, terminal, design, communication, analytics, deployment, memory, ontology, mcp, other)"}
-      human_in_loop: {support: full, note: "Approval gates, review workflows, 4 autonomy tiers (FULL, SEMI, SUPERVISED, LOCKED), two-stage safety classifier, LLM fallback evaluator"}
-      budget_tracking: {support: full, note: "Per-token, per-agent, hierarchical cascades, CFO optimization, automatic model downgrade, and risk-unit action budgets"}
-      security_model: {support: full, note: "Rule engine + LLM evaluator, progressive trust, audit trail, output scanning, hallucination detection, and self-healing SSRF validation"}
-      observability: {support: full, note: "Structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, OTLP"}
-      web_dashboard: {support: full, note: "React 19 dashboard with org chart, tasks, budgets, workflow editor, setup wizard, WebSocket + SSE resilience"}
-      cli: {support: partial, note: "Go binary for container management and verification; not used for agent orchestration"}
-      production_ready: {support: full, note: "Docker + CI/CD + cosign + SLSA L3 provenance; stable REST API; SQLite + PostgreSQL backends GA"}
-      workflow_types: {support: partial, note: "Sequential, parallel, Kanban, Agile sprints, velocity tracking, and ceremony scheduling shipped; throughput-adaptive and milestone-driven strategies still in progress"}
-      template_system: {support: full, note: "9 company templates, 23 personality presets, locale-aware name generation"}
+      org_structure: {support: planned, note: "Departments, hierarchy, seniority levels, reporting lines, HR are modelled and unit-tested as components; exercised once the agent runtime lands (in active development)"}
+      multi_agent: {support: planned, note: "Assignment strategies, coordination dispatchers, and conflict resolution are written and tested; multi-agent coordination is not wired into a running product yet (the /coordinate path is not active)"}
+      task_delegation: {support: planned, note: "DAG decomposition, assignment strategies, and delegation chains are implemented and tested; they run via the agent runtime, which is in active development"}
+      memory: {support: planned, note: "Pluggable backends and memory types with hybrid retrieval exist as tested code; the memory pipeline runs only inside a live agent, which is in active development"}
+      tool_use: {support: planned, note: "MCP protocol, sandbox isolation, and invocation tracking are implemented; tool execution runs via the agent runtime (in active development)"}
+      human_in_loop: {support: planned, note: "Approval gates, review workflows, and four autonomy tiers are designed and tested; the approval producer and enforcement run with the agent runtime (in active development)"}
+      budget_tracking: {support: planned, note: "Per-token/per-agent budgets, hierarchical cascades, and model downgrade are implemented and tested; enforced on a live run with the agent runtime (in active development)"}
+      security_model: {support: planned, note: "Rule engine + LLM evaluator, progressive trust, audit trail, and output scanning are designed and tested; enforced on a live run with the agent runtime (in active development)"}
+      observability: {support: full, note: "Structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, and OTLP ship and run today"}
+      web_dashboard: {support: full, note: "React 19 dashboard (org chart, tasks, budgets, workflow editor, setup wizard, WebSocket + SSE) ships and runs; populated as the agent runtime comes online"}
+      cli: {support: partial, note: "Go binary for container orchestration and supply-chain verification; deliberately not used for agent orchestration"}
+      production_ready: {support: partial, note: "Infrastructure ships (Docker + CI/CD + cosign + SLSA L3, SQLite + PostgreSQL backends, backup/restore); the product is not runnable end to end until the agent runtime lands"}
+      workflow_types: {support: planned, note: "Sequential, parallel, Kanban, Agile sprints, velocity, and ceremony scheduling are implemented and tested; they execute via the agent runtime (in active development)"}
+      template_system: {support: full, note: "Company templates, personality presets, and locale-aware name generation ship and are usable today without the runtime"}
 
   - name: "CrewAI"
     slug: crewai

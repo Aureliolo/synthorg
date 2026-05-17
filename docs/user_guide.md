@@ -76,17 +76,17 @@ After the containers are running, open the web dashboard at [http://localhost:30
 1. **Account** (conditional): create the first admin user. This step only appears when no admin account exists yet.
 2. **Template**: choose a company template. Templates are displayed in a searchable grid with category and size filters, grouped into Recommended and Other sections. Each card shows structural metadata (agent count, departments, autonomy level, workflow). Side-by-side comparison is available.
 3. **Providers**: configure LLM providers. Local providers (e.g. Ollama) are auto-detected with a re-scan button; additional providers can be added via the full provider form supporting API key, subscription, and custom configurations. Model discovery runs automatically after adding a provider.
-4. **Company**: name your synthetic organization, set a description, choose a display currency, and select a model tier profile (Economy, Balanced, or Premium).
+4. **Company**: name your synthetic organisation, set a description, choose a display currency, and select a model tier profile (Economy, Balanced, or Premium).
 5. **Agents**: customize agent names, personality presets, and model assignments. Agents are pre-populated from the selected template with models matched to configured providers.
 6. **Theme**: set UI preferences including color palette, typography, layout density, animation level, and sidebar position.
-7. **Complete**: review a summary of your configuration and launch the organization.
+7. **Complete**: review a summary of your configuration and finish setup. This stores the company and brings up the platform; the agent runtime that puts the organisation to work is in active development (see the [Roadmap](roadmap/index.md)).
 
 The backend validates that a company and at least one provider exist before allowing setup to finish. Agents are optional (Quick Setup skips agent configuration). Steps are completed sequentially; a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 
 To start fresh, use `synthorg wipe` (offers an interactive backup, wipes all data, and optionally restarts with a clean slate to re-open the setup wizard) or delete the `api.setup_complete` setting via the settings API.
 
-!!! info "Active Development"
-    SynthOrg is under active development. The web dashboard is available for monitoring and managing the organization. Templates and some features described here may evolve. Check the [GitHub repository](https://github.com/Aureliolo/synthorg) for current status.
+!!! info "Honest status"
+    The platform, dashboard, CLI, and setup wizard are built and available. The autonomous agent runtime that makes the organisation execute work end to end is in active development and not yet wired, so a configured company does not yet run agents. See the [Roadmap](roadmap/index.md) for exactly what is available now versus in active development.
 
 ## Templates
 

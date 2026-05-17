@@ -2,19 +2,19 @@
 const faqs = [
   {
     question: "Why not just use CrewAI or AutoGen?",
-    answer: "CrewAI and AutoGen are excellent frameworks with strong communities and proven track records. CrewAI excels at role-based agent crews with a clean developer experience. AutoGen is powerful for conversation-driven agent systems (though now in maintenance mode as Microsoft merges it into the Agent Framework). SynthOrg targets a different niche: modeling entire organizations with departments, budgets, HR, and security policies. If your use case is a multi-agent pipeline or crew, CrewAI or AutoGen may be simpler and more mature. If you need organizational structure around your agents, SynthOrg is designed for that.",
+    answer: "CrewAI and AutoGen are excellent frameworks with strong communities and proven track records. CrewAI excels at role-based agent crews with a clean developer experience. AutoGen is powerful for conversation-driven agent systems (though now in maintenance mode as Microsoft merges it into the Agent Framework). SynthOrg targets a different niche: modelling entire organisations with departments, budgets, HR, and security policies. If your use case is a multi-agent pipeline or crew, CrewAI or AutoGen may be simpler and more mature. If you need organisational structure around your agents, SynthOrg is designed for that (with the runtime in active development).",
   },
   {
     question: "How is SynthOrg different from ChatDev or MetaGPT?",
-    answer: "ChatDev and MetaGPT simulate software companies for code generation. SynthOrg is a general-purpose framework for building any kind of synthetic organization, not limited to software development. It also includes production infrastructure (Docker, persistence, backup/restore, observability) that research projects typically lack.",
+    answer: "ChatDev and MetaGPT simulate software companies for code generation. SynthOrg is designed as a general-purpose platform for building any kind of synthetic organisation, not limited to software development, and it ships the production infrastructure (Docker, dual-backend persistence, backup/restore, observability) that research projects typically lack. The organisation runtime itself is in active development.",
   },
   {
     question: "Is SynthOrg production-ready?",
-    answer: "Not yet. SynthOrg is in active pre-alpha development. The framework includes production infrastructure (Docker images with Chainguard distroless base, cosign verification, SLSA provenance, backup/restore, structured logging with redaction), but the API is not yet stable and there are no known production deployments. We rate ourselves as 'partial' on production readiness and will upgrade to 'full' when the API stabilizes and the framework has been battle-tested at scale. We recommend it for experimentation and early adoption.",
+    answer: "Not yet, and we are specific about why. The platform and infrastructure are built and tested (Docker images with Chainguard distroless base, cosign verification, SLSA provenance, backup/restore, structured logging with redaction, dual-backend persistence, API, dashboard, CLI). However, the autonomous agent runtime that makes the organisation actually execute work is in active development; today, starting SynthOrg brings up the platform but does not yet run a company end to end. We rate ourselves 'planned' on the capabilities that depend on the runtime and 'full' only on what verifiably ships. Recommended for evaluation and following along, not production workloads.",
   },
   {
     question: "What about LangGraph for complex workflows?",
-    answer: "LangGraph excels at graph-based agent workflows with checkpointing. SynthOrg includes similar workflow capabilities (DAG execution, parallel tasks, Kanban boards, Agile sprints) but adds organizational structure on top: budget tracking, security policies, role-based delegation, and team coordination that LangGraph leaves to the application layer.",
+    answer: "LangGraph excels at graph-based agent workflows with checkpointing. SynthOrg is designed to include similar workflow capabilities (DAG execution, parallel tasks, Kanban boards, Agile sprints) and to add organisational structure on top: budget tracking, security policies, role-based delegation, and team coordination that LangGraph leaves to the application layer. These are built and unit-tested as components; running them is the runtime work in active development.",
   },
   {
     question: "Does SynthOrg support my LLM provider?",
@@ -22,7 +22,7 @@ const faqs = [
   },
   {
     question: "What about commercial platforms like Bedrock, Vertex, or Agentforce?",
-    answer: "Cloud platforms like Amazon Bedrock Agents, Google Vertex AI Agent Builder, and Salesforce Agentforce offer managed infrastructure, enterprise compliance, and deep ecosystem integration. The trade-off is vendor lock-in and less control. SynthOrg is self-hosted and source-available (BUSL-1.1), giving you full control over your infrastructure, data, and agent behavior, but you manage the ops yourself. If your organization already lives in AWS, GCP, or Salesforce, their native agent platform may be the pragmatic choice.",
+    answer: "Cloud platforms like Amazon Bedrock Agents, Google Vertex AI Agent Builder, and Salesforce Agentforce offer managed infrastructure, enterprise compliance, and deep ecosystem integration. The trade-off is vendor lock-in and less control. SynthOrg is self-hosted and source-available (BUSL-1.1), giving you full control over your infrastructure, data, and agent behaviour, but you manage the ops yourself. If your organization already lives in AWS, GCP, or Salesforce, their native agent platform may be the pragmatic choice.",
   },
   {
     question: "What license is SynthOrg under and what does it mean?",

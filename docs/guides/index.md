@@ -5,11 +5,11 @@ description: Practical how-to guides for configuring and operating SynthOrg.
 
 # Guides
 
-Practical guides for configuring, operating, and extending your synthetic organization. Each guide is self-contained with a clear goal. Start with the Quickstart Tutorial if you are new to SynthOrg.
+Practical guides for configuring, operating, and extending your synthetic organisation. Each guide is self-contained with a clear goal. Start with the Quickstart Tutorial if you are new to SynthOrg. Note: the platform and configuration surface are available today; the agent runtime that executes work is in active development (see the [Roadmap](../roadmap/index.md)).
 
 !!! tip "New to SynthOrg?"
 
-    Start with the [Quickstart Tutorial](quickstart.md) to get a synthetic org running in under 5 minutes.
+    Start with the [Quickstart Tutorial](quickstart.md) to stand up the platform and configure a company in about 5 minutes.
 
 ---
 
@@ -19,7 +19,7 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     ---
 
-    Install the CLI, pick a template, and run your first synthetic org in 5 minutes.
+    Install the CLI, pick a template, and stand up the platform in about 5 minutes.
 
     [:octicons-arrow-right-24: Quickstart](quickstart.md)
 

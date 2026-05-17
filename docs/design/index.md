@@ -1,6 +1,6 @@
 ---
 title: Design Overview
-description: Core vision, design principles, and foundational concepts of the SynthOrg framework for building synthetic organizations.
+description: Core vision, design principles, and foundational concepts of SynthOrg, an autonomous product studio for synthetic organisations.
 ---
 
 # Design Overview
@@ -74,11 +74,20 @@ development, business operations, creative work, or any domain.
 - Not a toy/demo: designed for real, production-quality output
 - Not a reasoning parallelizer. Single-agent reasoning is typically more token-efficient on isolated multi-hop questions, and SynthOrg's [auto topology selector](coordination.md#task-decomposability--coordination-topology) defaults to single-agent for such tasks. SynthOrg's value is role-specialized work-stream parallelism, organizational simulation fidelity, and audit-grade decision trails, not reasoning parallelism. See [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md) for the full reconciliation.
 
-!!! info "How to read the design specification"
+!!! warning "How to read the design specification (important)"
 
-    Sections describe the full vision. The full design is documented upfront to inform
-    architecture decisions; protocol interfaces are designed even for features that are
-    not yet implemented. For current implementation status, see the
+    These pages describe the **designed** behaviour of SynthOrg and are the
+    source of truth for that design. They are documented upfront to inform
+    architecture; protocol interfaces are designed even where the behaviour
+    is not yet wired. Be specific about current state: the autonomous agent
+    **runtime** that makes the organisation execute work is in active
+    development and not yet wired (`AgentEngine` is not constructed in the
+    shipped path), so subsystems that depend on a running agent
+    (coordination, coordination metrics, intake, approval enforcement,
+    self-improvement, and the agent execution loop itself) are designed and
+    unit-tested as components but not exercised end to end. Treat any gap
+    between a spec and the code as the work, not the spec. For exactly what
+    is available now versus in active development, see the
     [Roadmap](../roadmap/index.md).
 
 ## Configuration Philosophy

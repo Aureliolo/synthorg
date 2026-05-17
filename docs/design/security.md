@@ -5,6 +5,10 @@ description: Approval workflow, autonomy levels, security operations agent, outp
 
 # Security & Approval System
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The approval producer and runtime enforcement run with the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet enforced on a live run.
+
 SynthOrg enforces a fail-closed security model: every agent action is evaluated by a rule engine (with an optional LLM fallback) before execution, every output is scanned for leaked secrets, and every credential flows through an isolated **hands** plane that never enters the model context. Four configurable autonomy levels (`full`, `semi`, `supervised`, `locked`) control which actions require human approval, and a pluggable trust system lets agents earn higher tool access over time.
 
 ## Approval Workflow

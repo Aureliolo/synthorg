@@ -5,6 +5,10 @@ description: Synthetic client framework for generating task requirements, review
 
 # Client Simulation
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The intake engine and simulation runtime are not wired into the shipped product yet; this is in active development (see the [Roadmap](../roadmap/index.md)). The code described here is built and unit-tested as components but not yet run end to end.
+
 The client simulation subsystem generates synthetic workloads that exercise the full
 task lifecycle end-to-end. Simulated clients (AI-driven, human, or hybrid) submit task
 requirements through an intake pipeline and review completed deliverables via a

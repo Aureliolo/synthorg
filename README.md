@@ -1,6 +1,6 @@
 <p align="center">
   <strong>SynthOrg</strong><br>
-  <em>Build AI teams that actually collaborate, with roles, budgets, memory, and governance.</em>
+  <em>An autonomous product studio you operate: describe what to build, a synthetic organisation of AI agents plans and delivers it.</em>
 </p>
 
 <p align="center">
@@ -15,22 +15,36 @@
 
 ---
 
-SynthOrg is a Python framework for building **synthetic organizations**, autonomous AI agents orchestrated as a virtual company. Unlike task-queue or DAG-based agent frameworks, SynthOrg models agents as members of an actual organization with roles, departments, hierarchies, persistent memory, budgets, and structured communication.
+SynthOrg is a self-contained, self-hostable platform for **synthetic organisations**: role-based AI agents modelled as an actual company (roles, departments, hierarchies, persistent memory, budgets, governance, structured communication) rather than a task queue or a DAG of function calls. The goal is an autonomous product studio you operate: you describe a product or service to build, or hand it an existing codebase, and the organisation plans, executes, and delivers it under budgets and your steering.
 
-Define your company in YAML. Agents collaborate through a message bus, follow workflows (Kanban, Agile sprints, or custom), track costs against budgets, and produce real artifacts. The framework is provider-agnostic (<!--RS:providers_via_litellm-->2700+<!--/RS--> LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and designed for the full autonomy spectrum, from human approval on every action to fully autonomous operation.
+It is provider-agnostic (<!--RS:providers_via_litellm-->2700+<!--/RS--> LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and licensed BUSL-1.1 (converts to Apache 2.0 at the Change Date).
 
-> **Early access.** Core subsystems are built and tested (<!--RS:tests-->30,000+<!--/RS--> tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
+> **Project status (read this).** The framework and infrastructure are built and tested (<!--RS:tests-->30,000+<!--/RS--> tests, 80%+ coverage): API, dashboard, CLI, dual-backend persistence, the provider layer, and every subsystem as importable, unit-tested components. The autonomous agent **runtime** that makes the organisation actually execute work is **in active development** and tracked openly on the [roadmap](https://synthorg.io/docs/roadmap/) and the [issue tracker](https://github.com/Aureliolo/synthorg/issues). Today, starting SynthOrg brings up the platform and dashboard; running a company end to end is the work in flight. We would rather you see exactly what is built versus in progress than discover it later.
 
-## Why SynthOrg?
+## What is available now
 
-Most agent frameworks give you **functions that call LLMs**. SynthOrg gives you a **company that thinks**.
+A tested platform you can run, inspect, and build on:
 
-- **Roles, not functions.** Agents are CEO, engineer, designer, QA, with personality, goals, seniority, and autonomy levels. 9 company templates and 23 personality presets get you started fast.
-- **Shared organizational memory.** Hybrid retrieval pipeline (dense + BM25 sparse with RRF fusion), tool-based and context injection strategies, procedural memory auto-generation from failures, consolidation, and archival. Agents remember across sessions.
-- **Cost-aware by design.** Per-agent token budgets, automatic model downgrade at task boundaries, spending reports, trend analysis, and CFO-level optimization with anomaly detection.
-- **Trust spectrum.** From locked-down (human approves every tool call) to fully autonomous, with a fail-closed security rule engine, output scanning, progressive trust, and audit logging in between.
-- **Real workflows.** Kanban boards, Agile sprints with velocity tracking, ceremony scheduling (8 strategies), visual workflow editor with starter blueprints and version history with diff/rollback, and workflow execution from graph definitions.
-- **Provider-agnostic.** Any LLM via LiteLLM: Ollama, LM Studio, vLLM, and <!--RS:providers_via_litellm-->2700+<!--/RS--> cloud models. Local model management with pull/delete/configure for Ollama and LM Studio.
+- **REST + WebSocket API** (Litestar) and a **React 19 dashboard** (org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony settings, setup wizard) with live WebSocket / SSE updates.
+- **Go CLI** for Docker orchestration: `init`, `start`, `stop`, `status`, `doctor`, `config`, `wipe`, `cleanup`, `worker`, `backup`, with cosign signature and SLSA provenance verification at pull time.
+- **Dual-backend persistence**: SQLite (single-node default) and PostgreSQL (multi-instance), conformance-tested for parity, with in-process yoyo schema migrations and ISO 4217 currency stamping on every cost-bearing row.
+- **Provider layer**: any LLM via LiteLLM with built-in retry and rate-limit handling; local model management for Ollama and LM Studio.
+- **Configuration and templates**: define a company in YAML; importable/shareable agent, department, and company templates with personality presets.
+- **Subsystem libraries, tested as components**: the engine, memory, budget, security, coordination, and intake modules exist as importable, unit-tested code. Note honestly: these are exercised by their test suites, not yet by a running agent (see below).
+- **Operations**: structured logging with redaction and correlation, Prometheus metrics and OTLP, HttpOnly-cookie multi-user sessions with CSRF protection, Chainguard distroless images with Trivy + Grype scanning, cosign signatures, and SLSA L3 provenance.
+- **Distributed dispatch plumbing**: NATS JetStream queue and a worker pool. The dispatch path exists; the task-execute endpoint currently advances task state and does not yet invoke an agent.
+
+## In active development
+
+These are the capabilities that make SynthOrg an autonomous studio. They are designed and largely written as components, but not yet wired into a running product. Each is tracked in the open:
+
+- **Agent runtime online** ([EPIC #1955](https://github.com/Aureliolo/synthorg/issues/1955)): agents actually executing tasks (LLM + sandboxed tools) under a minimal safety spine. This is the foundational item everything else depends on.
+- **Conversational org interface** ([EPIC #1967](https://github.com/Aureliolo/synthorg/issues/1967)): talk to the company in natural language; it clarifies, proposes, and (later) acts under governance.
+- **Autonomous product studio substrate** ([EPIC #1973](https://github.com/Aureliolo/synthorg/issues/1973)): persistent project workspace with pluggable git, brownfield codebase intake, living documentation, and a deep requirements interview.
+- **Best-in-class operate tier** ([EPIC #1979](https://github.com/Aureliolo/synthorg/issues/1979)): a golden-company benchmark, mission control with run replay, a cost forecast/kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
+- **Agent capability layer** ([EPIC #1987](https://github.com/Aureliolo/synthorg/issues/1987)): a knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing, and more.
+
+Until the runtime lands, multi-agent coordination, coordination metrics, the intake engine, autonomy/trust enforcement on a live run, and the self-improvement loop are designed and unit-tested but not exercised end to end. The design for each lives in the [Design Specification](https://synthorg.io/docs/design/).
 
 ## Quick Start
 
@@ -54,9 +68,9 @@ synthorg init --persistence-backend postgres    # auto-provision a Postgres cont
 synthorg start                                  # pull images + start containers
 ```
 
-Open [localhost:3000](http://localhost:3000); the **setup wizard** walks you through LLM providers, company config, agent setup with personality presets, and theme selection. Choose **Guided Setup** for the full experience or **Quick Setup** (provider + company name only, configure the rest later).
+Open [localhost:3000](http://localhost:3000); the **setup wizard** covers LLM providers, company config, agent setup with personality presets, and theme selection. Choose **Guided Setup** for the full experience or **Quick Setup** (provider + company name only). This brings up the platform and dashboard. Configuring a provider stores the company; running it as an autonomous organisation is the runtime work in active development, so skipping provider setup yields an empty company by design.
 
-**Persistence backends:** SQLite (default) for single-node and development, Postgres for multi-instance and production deployments. The CLI orchestrates both. `--persistence-backend postgres` generates a `dhi.io/postgres` DHI service (image tag pinned via `DefaultPostgresImageTag` in `cli/internal/config/state.go`), random credentials, and a named data volume. `synthorg stop` preserves the data volume unless `--volumes` is passed.
+**Persistence backends:** SQLite (default) for single-node and development, Postgres for multi-instance deployments. The CLI orchestrates both. `--persistence-backend postgres` generates a `dhi.io/postgres` DHI service (image tag pinned via `DefaultPostgresImageTag` in `cli/internal/config/state.go`), random credentials, and a named data volume. `synthorg stop` preserves the data volume unless `--volumes` is passed.
 
 ### From source
 
@@ -77,37 +91,11 @@ docker compose -f docker/compose.yml up -d
 curl http://localhost:3001/api/v1/readyz
 ```
 
-## What's Inside
+## Target architecture
 
-**[Agent Orchestration](https://synthorg.io/docs/design/engine/)**: task decomposition, 6 routing strategies, execution loops (ReAct, Plan-and-Execute, Hybrid, auto-selection by complexity), crash recovery with checkpoint resume, multi-agent coordination, and multi-project support with project-scoped teams and isolated budgets.
-
-**[Agent Evolution](https://synthorg.io/docs/design/agents/)**: continuous identity evolution based on performance trends with pluggable triggers (batched, inflection, per-task), proposers (separate-analyzer, self-report, composite), and guards (rollback, review, shadow evaluation).
-
-**[Dynamic Workforce Scaling](https://synthorg.io/docs/design/agents/#dynamic-scaling)**: closed-loop hiring and pruning with pluggable strategies (workload, budget cap, skill gap, performance), safety guards (conflict resolution, cooldowns, rate limits, approval gates), and a dashboard for manual evaluation triggers.
-
-**[Budget & Cost Management](https://synthorg.io/docs/design/budget/)**: per-agent and per-project cost limits with hierarchical cascading, auto-downgrade to cheaper models at task boundaries, spending reports, budget forecasting, and anomaly detection.
-
-**[Security & Trust](https://synthorg.io/docs/security/)**: SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels (4 tiers), approval gates, LLM fallback evaluator, and audit logging. Container images are cosign-signed with [SLSA L3](https://slsa.dev) provenance.
-
-**[Memory](https://synthorg.io/docs/design/memory/)**: 5 memory types (episodic, semantic, procedural, working, social) with hybrid retrieval, three injection strategies (context, tool-based, and self-editing memory), query reformulation, procedural memory auto-generation from failures, consolidation, and pluggable backends.
-
-**[Communication](https://synthorg.io/docs/design/communication/)**: message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), meeting protocols (round-robin, position papers, structured phases), and A2A federation with external agent systems.
-
-**[Tools & MCP](https://synthorg.io/docs/guides/mcp-tools/)**: built-in tools (file system, git, sandbox, code runner) plus MCP bridge for external tools. SynthOrg's own MCP server exposes 200+ tools across 15 domains (agents, tasks, workflows, approvals, budget, memory, quality, organization, communication, coordination, analytics, integrations, infrastructure, signals, meta), split across `read_tool` / `write_tool` / `admin_tool` capability actions; destructive `admin_tool` calls enforce confirm + reason + actor guardrails with attributed audit trail. Layered sandboxing with subprocess and Docker backends. SSRF prevention with configurable allowlists.
-
-**[Client Simulation](https://synthorg.io/docs/design/client-simulation/)**: synthetic workload generation with AI, human, and hybrid clients. 5 requirement generators (template, LLM, dataset, procedural, hybrid), 4 feedback strategies (binary, scored, criteria-check, adversarial), multi-stage review pipeline, intake engine with lifecycle management, and batch simulation runner with configurable concurrency.
-
-**[Web Dashboard](https://synthorg.io/docs/design/page-structure/)**: React 19 + shadcn/ui dashboard with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, and setup wizard. Real-time WebSocket updates.
-
-**[Notifications](https://synthorg.io/docs/design/notifications/)**: pluggable notification sinks (console, ntfy, Slack, email) with severity filtering. Approval gates, budget thresholds, and timeout escalations emit alerts through a fan-out dispatcher.
-
-**[Integrations](https://synthorg.io/docs/design/integrations/)**: typed connection catalog (GitHub, Slack, SMTP, database, generic HTTP, OAuth apps) with pluggable secret backends (Fernet-encrypted SQLite or Postgres, auto-selected to match the persistence backend; env-var fallback; Vault/AWS/Azure stubs). Full OAuth 2.1 (authorization code + PKCE, device flow, client credentials) with proactive token refresh. Webhook receiver with pluggable signature verifiers (GitHub HMAC, Slack signing, generic HMAC) and replay protection. Per-connection health checks with background prober and status smoothing. Tool-side `@with_connection_rate_limit` decorator backed by a bus-coordinated sliding window. Bundled MCP server catalog and local-dev ngrok tunnel.
-
-**[Self-Improvement](https://synthorg.io/docs/design/self-improvement/)**: company-level meta-loop that observes 7 signal domains (performance, budget, coordination, scaling, errors, evolution, telemetry), evaluates 9 built-in rules plus user-defined custom rules (visual rule builder in the dashboard), and produces improvement proposals at 4 altitudes (config tuning, architecture, prompt tuning, code modification). Mandatory human approval, concrete rollback plans, staged rollout with canary selection and A/B testing (Welch's t-test for statistical significance, plus a practical-significance gate requiring a configured practical-improvement threshold on the relative mean improvement over control, not a standardized statistic like Cohen's d, before declaring a win), dispatcher-backed inverse-action rollback, and tiered regression detection (threshold + statistical). Chief of Staff agent with proposal outcome learning (EMA/Bayesian confidence adjustment), proactive org-level inflection alerts between scheduled cycles, and LLM-powered natural language explanations via chat interface. Feature is disabled by default.
-
-**[CLI](https://synthorg.io/get/)**: Go binary with init, start, stop, status, doctor, config, wipe, cleanup commands. Cosign signature and SLSA provenance verification at pull time.
-
-## Architecture
+The diagram below is the designed architecture. Components exist as code; the
+edges into and out of the agent engine are what the runtime work (above)
+brings online.
 
 ```mermaid
 graph TB
@@ -135,27 +123,26 @@ graph TB
 
 ## Compare
 
-SynthOrg vs [44 agent frameworks](https://synthorg.io/compare/) across 14 dimensions: org structure, multi-agent coordination, memory, budget tracking, security, observability, and more. <!-- lint-allow: doc-numeric-macros -- competitor count is sourced from data/competitors.yaml via generate_comparison.py, not runtime_stats -->
-
+SynthOrg vs [other agent frameworks](https://synthorg.io/compare/) across organisation structure, multi-agent coordination, memory, budget tracking, security, and observability. The comparison marks SynthOrg capabilities honestly as available now versus planned, matching the status sections above. <!-- lint-allow: doc-numeric-macros -- competitor count is sourced from data/competitors.yaml via generate_comparison.py, not runtime_stats -->
 
 ## Documentation
 
 | Section | What's there |
 |---------|-------------|
-| [User Guide](https://synthorg.io/docs/user_guide/) | Install, configure, run, customize |
+| [User Guide](https://synthorg.io/docs/user_guide/) | Install, configure, run, customise |
 | [Guides](https://synthorg.io/docs/guides/) | Quickstart, company config, agents, budget, security, MCP tools, deployment, logging, memory |
-| [Design Specification](https://synthorg.io/docs/design/) | Agents, HR lifecycle, org structure, communication, engine, coordination, verification, memory, providers, budget, tools, security, observability, notifications, backup, deployment, brand & UX, strategy |
+| [Design Specification](https://synthorg.io/docs/design/) | The designed behaviour of every subsystem (the source of truth; states current wiring status per area) |
 | [Architecture](https://synthorg.io/docs/architecture/) | System overview, tech stack, decision log |
 | [REST API](https://synthorg.io/docs/rest-api/) | Scalar/OpenAPI reference |
-| [Library Reference](https://synthorg.io/docs/api/) | Auto-generated from docstrings (14 modules) |
-| [Security](https://synthorg.io/docs/security/) | Application security, container hardening, CI/CD security (8 scanners) |
-| [Licensing](https://synthorg.io/docs/licensing/) | BSL 1.1 terms, Additional Use Grant, commercial options |
-| [Roadmap](https://synthorg.io/docs/roadmap/) | Current status, open questions, future vision |
+| [Library Reference](https://synthorg.io/docs/api/) | Auto-generated from docstrings |
+| [Security](https://synthorg.io/docs/security/) | Application security, container hardening, CI/CD security |
+| [Licensing](https://synthorg.io/docs/licensing/) | BUSL 1.1 terms, Additional Use Grant, commercial options |
+| [Roadmap](https://synthorg.io/docs/roadmap/) | Current status, what works today, what is in active development |
 
-> **Contributors:** Start with the [Design Specification](https://synthorg.io/docs/design/) before implementing any feature. See [`DESIGN_SPEC.md`](docs/DESIGN_SPEC.md) for the full design set.
+> **Contributors:** Start with the [Design Specification](https://synthorg.io/docs/design/) before implementing any feature. See [`DESIGN_SPEC.md`](docs/DESIGN_SPEC.md) for the full design set. The design pages describe intended behaviour and mark per-area current wiring status; treat any gap between a spec and `src/` as the work, not the spec.
 >
 > **Forking?** CI runs out of the box for code changes; the release pipeline needs setup (environments, labels, branch protection, a release-bot GitHub App). On your first push, the **CI Preflight** workflow opens a tracking issue listing exactly what is missing; see [Fork Setup](https://synthorg.io/docs/guides/fork-setup/) for the long-form walkthrough.
 
 ## License
 
-[Business Source License 1.1](LICENSE): free production use for non-competing organizations with fewer than 500 employees and contractors. Converts to Apache 2.0 on the change date specified in [LICENSE](LICENSE). See [licensing details](https://synthorg.io/docs/licensing/) for the full rationale and what's permitted.
+[Business Source License 1.1](LICENSE): free production use for non-competing organisations with fewer than 500 employees and contractors. Converts to Apache 2.0 on the change date specified in [LICENSE](LICENSE). See [licensing details](https://synthorg.io/docs/licensing/) for the full rationale and what is permitted.

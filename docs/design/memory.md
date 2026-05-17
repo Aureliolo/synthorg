@@ -5,6 +5,10 @@ description: Agent memory architecture, memory types, memory levels, MemoryBacke
 
 # Memory and Persistence
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The memory components exist as tested code, but the memory pipeline runs only inside a live agent, which is in active development (see the [Roadmap](../roadmap/index.md)). Persistence storage (SQLite/Postgres) is shipped and available now.
+
 The SynthOrg framework separates two distinct storage concerns:
 
 - **Agent memory**: what agents know, remember, and learn (working, episodic, semantic, procedural, social)
