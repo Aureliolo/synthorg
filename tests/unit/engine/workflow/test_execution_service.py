@@ -29,8 +29,10 @@ from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
 )
-from synthorg.engine.workflow.execution_service import (
+from synthorg.engine.workflow.execution_node_dispatch import (
     _NODE_HANDLER_REGISTRY,
+)
+from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
 from synthorg.persistence.workflow_execution_protocol import (

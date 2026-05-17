@@ -59,7 +59,7 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
       onClick={onClick}
       aria-label={ariaLabel}
       className={cn(
-        'flex w-full gap-3 rounded-lg p-3 text-left transition-colors',
+        'flex w-full gap-3 rounded-lg p-card text-left transition-colors',
         'hover:bg-card-hover',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
       )}
@@ -77,7 +77,7 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
               aria-label={`${message.priority} priority`}
             />
           )}
-          <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+          <span className="ml-auto shrink-0 font-mono text-micro text-muted-foreground">
             {relativeTime}
           </span>
         </div>

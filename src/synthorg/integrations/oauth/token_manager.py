@@ -19,7 +19,7 @@ from synthorg.integrations.errors import TokenRefreshFailedError
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_EXPIRED,
     OAUTH_TOKEN_REFRESH_FAILED,
@@ -195,10 +195,12 @@ class OAuthTokenManager:
                 await self._check_and_refresh()
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.error(
                     OAUTH_TOKEN_REFRESH_FAILED,
-                    error="unexpected error in refresh loop",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    reason="unexpected error in refresh loop",
                 )
             await asyncio.sleep(self._interval)
 
@@ -268,11 +270,13 @@ class OAuthTokenManager:
         """
         try:
             credentials = await self._catalog.get_credentials(conn.name)
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 connection_name=conn.name,
-                error="credential load failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="credential load failed",
             )
             await self._catalog.update_health(
                 conn.name,
@@ -344,16 +348,20 @@ class OAuthTokenManager:
                 meta_updates = dict(conn.metadata)
                 meta_updates["token_expires_at"] = refreshed.expires_at.isoformat()
                 await self._catalog.update(conn.name, metadata=meta_updates)
-        except Exception:
+        except Exception as exc:
             # A write failure after a successful refresh leaves the
             # connection state inconsistent. Swallow the exception
             # so the sweep continues with the next connection, but
-            # flip health to ``DEGRADED`` and log the failure with
-            # the exception chain.
-            logger.exception(
+            # flip health to ``DEGRADED`` so an operator notices.
+            # The traceback is deliberately not logged: the stack
+            # frames here hold the OAuth client secret and refresh
+            # token, so only a redacted description is emitted.
+            logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 connection_name=conn.name,
-                error="failed to persist refreshed tokens",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="failed to persist refreshed tokens",
             )
             try:
                 await self._catalog.update_health(
@@ -361,11 +369,13 @@ class OAuthTokenManager:
                     status=ConnectionStatus.DEGRADED,
                     checked_at=now,
                 )
-            except Exception:
-                logger.exception(
+            except Exception as health_exc:
+                logger.warning(
                     OAUTH_TOKEN_REFRESH_FAILED,
                     connection_name=conn.name,
-                    error="update_health failed after persistence failure",
+                    error_type=type(health_exc).__name__,
+                    error=safe_error_description(health_exc),
+                    reason="update_health failed after persistence failure",
                 )
             return
 
