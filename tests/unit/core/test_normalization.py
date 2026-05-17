@@ -12,8 +12,47 @@ from synthorg.core.normalization import (
     normalize_identifier,
     normalize_optional_string,
     normalize_path,
+    parse_comma_list,
+    parse_comma_list_stripped,
     strip_trailing_slash,
 )
+
+
+@pytest.mark.unit
+class TestParseCommaList:
+    """parse_comma_list / parse_comma_list_stripped."""
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (None, []),
+            ("", []),
+            ("a", ["a"]),
+            ("a,b,c", ["a", "b", "c"]),
+            ("a,,b", ["a", "b"]),
+            (" a , b ", [" a ", " b "]),
+            (",", []),
+        ],
+    )
+    def test_parse_comma_list(self, value: str | None, expected: list[str]) -> None:
+        assert parse_comma_list(value) == expected
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (None, []),
+            ("", []),
+            ("  ", []),
+            (" a , b ,c", ["a", "b", "c"]),
+            ("a, ,b", ["a", "b"]),
+            (",,", []),
+            ("usd, eur ,", ["usd", "eur"]),
+        ],
+    )
+    def test_parse_comma_list_stripped(
+        self, value: str | None, expected: list[str]
+    ) -> None:
+        assert parse_comma_list_stripped(value) == expected
 
 
 @pytest.mark.unit
