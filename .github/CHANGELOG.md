@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.8.5](https://github.com/Aureliolo/synthorg/compare/v0.8.4...v0.8.5) (2026-05-17)
+
+
+### Features
+
+* **codegen:** pydantic-to-typescript DTO pipeline + parity gate (closes [#1889](https://github.com/Aureliolo/synthorg/issues/1889)) ([#1909](https://github.com/Aureliolo/synthorg/issues/1909)) ([0265ef5](https://github.com/Aureliolo/synthorg/commit/0265ef57ada24b6f86dbb75cef514334f8b5cafe))
+* **storybook:** enable changeDetection + trim web/CLAUDE.md ([#1939](https://github.com/Aureliolo/synthorg/issues/1939)) ([3b1f4c0](https://github.com/Aureliolo/synthorg/commit/3b1f4c0dfbbde15e1bdb8404d920905c4ee0ed95))
+* **web,setup:** WP-6 frontend + UX polish ([#1941](https://github.com/Aureliolo/synthorg/issues/1941)) ([d9ca76d](https://github.com/Aureliolo/synthorg/commit/d9ca76da4bb04691128cfb63da06a39c0f393238))
+
+
+### Bug Fixes
+
+* correct invalid git for-each-ref syntax in post-merge-cleanup skill ([#1946](https://github.com/Aureliolo/synthorg/issues/1946)) ([69a1649](https://github.com/Aureliolo/synthorg/commit/69a16496bc981c4d67ded4b1365ff24171f0c311))
+* dashboard polish, training endpoint dispatch, and observability cleanup ([#1911](https://github.com/Aureliolo/synthorg/issues/1911)) ([b61e9e8](https://github.com/Aureliolo/synthorg/commit/b61e9e878b0de0fd3079959fc20418a119fbeba8))
+* per-worktree git-hook isolation + hookify gate migration + MSW drift fix ([#1949](https://github.com/Aureliolo/synthorg/issues/1949)) ([e3f8495](https://github.com/Aureliolo/synthorg/commit/e3f8495f329ecdfa1d37523ac799df76ae461f6f))
+* **providers:** read supports_native_streaming from litellm model info ([#1942](https://github.com/Aureliolo/synthorg/issues/1942)) ([60364ca](https://github.com/Aureliolo/synthorg/commit/60364ca4497a5427ac460059b95c21d10dad6f32))
+* security and audit coverage (closes [#1883](https://github.com/Aureliolo/synthorg/issues/1883)) ([#1904](https://github.com/Aureliolo/synthorg/issues/1904)) ([d8ebf55](https://github.com/Aureliolo/synthorg/commit/d8ebf5532fd6671189dd062670528682d0dbab9d))
+
+
+### Performance
+
+* **ci:** mypy --num-workers=4 + enable ruff TID255 ([#1944](https://github.com/Aureliolo/synthorg/issues/1944)) ([484c1d3](https://github.com/Aureliolo/synthorg/commit/484c1d3e5780bc0ddbd369f7ddc62833469dc13a))
+
+
+### Refactoring
+
+* **ci:** drop aquasecurity/trivy-action, use direct trivy binary ([#1940](https://github.com/Aureliolo/synthorg/issues/1940)) ([df1f946](https://github.com/Aureliolo/synthorg/commit/df1f9463cd45e7a52373bf5d9e902a1a5a8aa8ed))
+* **memory:** per-call processing_kwargs + observability for ST encode ([#1943](https://github.com/Aureliolo/synthorg/issues/1943)) ([3aa9d20](https://github.com/Aureliolo/synthorg/commit/3aa9d2095881d08c861e2f1a096e9fa7eb3e8f9b))
+* Phase 7 follow-up — complete RootConfig mirror coverage (closes [#1907](https://github.com/Aureliolo/synthorg/issues/1907)) ([#1914](https://github.com/Aureliolo/synthorg/issues/1914)) ([605500b](https://github.com/Aureliolo/synthorg/commit/605500b410e48d754e08e8b2085a65ca7b2cf4c2))
+* **settings:** collapse precedence to three categories; drop YAML tier (closes [#1890](https://github.com/Aureliolo/synthorg/issues/1890)) ([#1910](https://github.com/Aureliolo/synthorg/issues/1910)) ([efd54c9](https://github.com/Aureliolo/synthorg/commit/efd54c9e355f5ae8f140ed9040345004af6752fd))
+* WP-3 API conventions + query performance + project-wide extra=forbid ([#1953](https://github.com/Aureliolo/synthorg/issues/1953)) ([504d579](https://github.com/Aureliolo/synthorg/commit/504d579d04aee092fa7f5319b8ba62330df6fc23)), closes [#1918](https://github.com/Aureliolo/synthorg/issues/1918)
+* WP-4 settings + cross-cutting (clock seam, contextvars, dispatch, plugin surfaces) ([#1954](https://github.com/Aureliolo/synthorg/issues/1954)) ([7207d92](https://github.com/Aureliolo/synthorg/commit/7207d92a7a3acacd6582ada2a25c424175ab89fb))
+* **wp1:** persistence + layer discipline + restart safety ([#1945](https://github.com/Aureliolo/synthorg/issues/1945)) ([57586fb](https://github.com/Aureliolo/synthorg/commit/57586fb69ad81710a96b11629e5d51c486490b89))
+
+
+### Documentation
+
+* **wp5:** public-facing truth refresh ([#1924](https://github.com/Aureliolo/synthorg/issues/1924)) ([afb5cc5](https://github.com/Aureliolo/synthorg/commit/afb5cc545587dba4ce8f8039545ca62baf352716))
+
+
+### CI/CD
+
+* split test job by marker with airtight aggregate coverage gate ([#1948](https://github.com/Aureliolo/synthorg/issues/1948)) ([0b818d5](https://github.com/Aureliolo/synthorg/commit/0b818d52afdff046e2118cad3d991a84e1a42bdd)), closes [#1938](https://github.com/Aureliolo/synthorg/issues/1938) [#1937](https://github.com/Aureliolo/synthorg/issues/1937)
+
+
+### Maintenance
+
+* **codebase-audit:** tighten skill to prevent 2026-05-15 FP classes ([#1923](https://github.com/Aureliolo/synthorg/issues/1923)) ([9317ed1](https://github.com/Aureliolo/synthorg/commit/9317ed112b359d81b645a296aca814bd2ed2c1f6))
+* Lock file maintenance ([#1913](https://github.com/Aureliolo/synthorg/issues/1913)) ([c08a355](https://github.com/Aureliolo/synthorg/commit/c08a355fe4ee4ab893e0d9b5466b5e1953886a5d))
+* Lock file maintenance ([#1950](https://github.com/Aureliolo/synthorg/issues/1950)) ([8940ab1](https://github.com/Aureliolo/synthorg/commit/8940ab1333c319089f94ae8146a118c9907f4fc3))
+* remove TS DTO type-tightening overlays ([#1915](https://github.com/Aureliolo/synthorg/issues/1915)) ([d296214](https://github.com/Aureliolo/synthorg/commit/d29621464962cd2524fb20d027121f75fa69a715)), closes [#1906](https://github.com/Aureliolo/synthorg/issues/1906)
+* Update Infrastructure dependencies ([#1928](https://github.com/Aureliolo/synthorg/issues/1928)) ([d19fae5](https://github.com/Aureliolo/synthorg/commit/d19fae521314437b549f32adc1d3d3f53f397239))
+* Update Python dependencies ([#1929](https://github.com/Aureliolo/synthorg/issues/1929)) ([75cc2c8](https://github.com/Aureliolo/synthorg/commit/75cc2c88d20826461dffa0c52cd577b2ebeeacb4))
+* **wp7:** hygiene, stubs, test/CI/tooling, doc gaps, boundary patterns doc ([#1926](https://github.com/Aureliolo/synthorg/issues/1926)) ([c29eb32](https://github.com/Aureliolo/synthorg/commit/c29eb32717727f77bea8485d6bd6fa516e3221b5))
+
 ## [0.8.4](https://github.com/Aureliolo/synthorg/compare/v0.8.3...v0.8.4) (2026-05-14)
 
 
