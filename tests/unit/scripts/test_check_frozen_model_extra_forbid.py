@@ -7,6 +7,7 @@ section-8 carve-out) or carries a reasoned per-line opt-out.
 
 import importlib.util
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -35,7 +36,8 @@ def _walk(tmp_path: Path, source: str) -> list[tuple[Path, int, str]]:
     gate = _load_gate()
     target = tmp_path / "mod.py"
     target.write_text(source, encoding="utf-8")
-    return gate._walk(target)  # type: ignore[attr-defined]
+    result = gate._walk(target)  # type: ignore[attr-defined]
+    return cast("list[tuple[Path, int, str]]", result)
 
 
 def test_frozen_with_forbid_passes(tmp_path: Path) -> None:

@@ -847,6 +847,8 @@ class TestPeerReadExponentialBackoff:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        import time as _time_mod
+
         from synthorg.telemetry import collector as collector_mod
 
         id_path = tmp_path / "deployment_id"
@@ -861,7 +863,10 @@ class TestPeerReadExponentialBackoff:
             if len(sleeps) == 2:
                 id_path.write_text(valid_uuid, encoding="utf-8")
 
-        monkeypatch.setattr(collector_mod.time, "sleep", _fake_sleep)
+        # ``collector`` does ``import time`` then ``time.sleep(...)``;
+        # patching the stdlib module's ``sleep`` affects that same
+        # reference without poking a not-explicitly-exported attribute.
+        monkeypatch.setattr(_time_mod, "sleep", _fake_sleep)
 
         result = collector_mod._read_peer_deployment_id(str(id_path))
 
