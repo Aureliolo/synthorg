@@ -43,18 +43,20 @@ fi
 # pipeline string (the pipe + pager can straddle a line break).
 FLAT=$(printf '%s' "$COMMAND" | tr '\n\r' '  ')
 
-# Match a `git` or `uv` invocation at a command-token boundary,
-# followed (anywhere later in the same flattened command) by a pipe
-# into a `head`/`tail` token. Nested pipes
-# (`uv run pytest | grep x | tail`) must still match, so the pattern
-# is: a git/uv token ... a `|` ... `head`/`tail` as the next command
-# token. `2>&1 | tail` is covered because the `|` and pager survive
-# the redirect.
-CMD_REGEX='(^|[[:space:]]|[|&;(])(git|uv)[[:space:]]'
-PAGER_REGEX='\|[[:space:]]*(head|tail)([[:space:]]|$)'
+# Split FLAT into statement segments on `;`, `&&`, `||` (each becomes
+# its own line), then require a `git`/`uv` token AND a pipe into
+# `head`/`tail` WITHIN THE SAME segment. Two independent global greps
+# would false-positive on `git status; ls | tail` (git in one
+# statement, pager in an unrelated one). A single `&` is deliberately
+# NOT a split point: `git push 2>&1 | tail` must stay one segment and
+# still be denied, so the between-token gap is `.*` (newlines are the
+# only segment boundary after the split, and grep is line-oriented).
+# Nested pipes (`uv run pytest | grep x | tail`) stay within one
+# segment and still match.
+SEGMENTS=$(printf '%s' "$FLAT" | sed -E 's/&&|\|\||;/\n/g')
+CMD_PAGER_REGEX='(^|[[:space:]]|[|&(])(git|uv)[[:space:]].*\|[[:space:]]*(head|tail)([[:space:]]|$)'
 
-if printf '%s\n' "$FLAT" | grep -qE "$CMD_REGEX" \
-    && printf '%s\n' "$FLAT" | grep -qE "$PAGER_REGEX"; then
+if printf '%s\n' "$SEGMENTS" | grep -qE "$CMD_PAGER_REGEX"; then
     cat <<'ENDJSON'
 {
   "hookSpecificOutput": {
