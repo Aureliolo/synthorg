@@ -23,10 +23,12 @@ import inspect
 from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
-from typing import TYPE_CHECKING, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, ClassVar, ParamSpec, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -108,6 +110,66 @@ def current_actor() -> ActorIdentity | None:
     :meth:`ActorIdentity.system` explicitly.
     """
     return _actor_var.get()
+
+
+class ActorContextMissingError(DomainError):
+    """A decision leaf required an actor but none was bound.
+
+    A 500: every decision path is reached either through the
+    authenticated HTTP boundary (where ``AuthContextMiddleware`` binds
+    the human actor) or through a system path that binds
+    :meth:`ActorIdentity.system` explicitly. An unbound read is a
+    wiring bug, not a client error -- the seam deliberately refuses to
+    invent a human.
+    """
+
+    default_message: ClassVar[str] = "Actor context is not bound"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
+
+
+def require_actor() -> ActorIdentity:
+    """Return the bound actor, raising if none is bound.
+
+    Use at a decision leaf that must attribute an actor. The seam
+    never coerces ``None`` to a human; an unbound context is a wiring
+    bug surfaced as :class:`ActorContextMissingError`.
+
+    Raises:
+        ActorContextMissingError: If no actor is bound.
+    """
+    actor = _actor_var.get()
+    if actor is None:
+        raise ActorContextMissingError
+    return actor
+
+
+def resolve_decided_by(explicit: str | None = None) -> str:
+    """Resolve the ``decided_by`` attribution string (RFC#3).
+
+    Precedence: an explicit system-override argument wins (used by
+    automated paths such as the approval-timeout scheduler);
+    otherwise the bound actor's human-readable identity
+    (``label`` if set, else ``actor_id``) is used so the value matches
+    what callers historically threaded (the username), keeping
+    self-review (``decided_by == task.assigned_to``) byte-for-byte
+    unchanged.
+
+    Args:
+        explicit: Optional caller-supplied override for non-HTTP /
+            system decision paths.
+
+    Returns:
+        The decider identity string.
+
+    Raises:
+        ActorContextMissingError: If no override and no bound actor.
+    """
+    if explicit is not None:
+        return explicit
+    actor = require_actor()
+    return actor.label or actor.actor_id
 
 
 def clear_actor() -> None:

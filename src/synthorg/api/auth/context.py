@@ -29,6 +29,11 @@ from litestar.enums import ScopeType
 from litestar.middleware import ASGIMiddleware
 from litestar.types import ASGIApp, Receive, Scope, Send  # noqa: TC002
 
+from synthorg.core.actor_context import (
+    ActorIdentity,
+    ActorKind,
+    actor_scope,
+)
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -185,6 +190,20 @@ class AuthContextMiddleware(ASGIMiddleware):
         # the prior binding.
         token = _authenticated_user.set(bound_user)
         try:
-            await next_app(scope, receive, send)
+            if bound_user is not None:
+                # Bind the actor seam (RFC#3 / ADR-0003) so decision
+                # leaves resolve ``decided_by`` via ``current_actor()``
+                # instead of every caller threading it. ``actor_id`` is
+                # the immutable user id; ``label`` is the human-readable
+                # username recorded in audit rows.
+                actor = ActorIdentity(
+                    actor_id=bound_user.user_id,
+                    kind=ActorKind.HUMAN,
+                    label=bound_user.username,
+                )
+                with actor_scope(actor):
+                    await next_app(scope, receive, send)
+            else:
+                await next_app(scope, receive, send)
         finally:
             _authenticated_user.reset(token)

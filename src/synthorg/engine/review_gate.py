@@ -18,6 +18,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.enums import DecisionOutcome, TaskStatus
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
@@ -84,7 +85,7 @@ class ReviewGateService:
         self,
         *,
         task_id: str,
-        decided_by: str,
+        decided_by: str | None = None,
     ) -> Task:
         """Preflight check: task exists and decider is not the executor.
 
@@ -93,7 +94,9 @@ class ReviewGateService:
 
         Args:
             task_id: The task identifier.
-            decided_by: The identity attempting the decision.
+            decided_by: Optional explicit decider override (system /
+                non-HTTP paths). When omitted the bound actor (RFC#3 /
+                ADR-0003) supplies it via :func:`resolve_decided_by`.
 
         Returns:
             The validated ``Task`` fetched from the engine.  Returned
@@ -106,6 +109,7 @@ class ReviewGateService:
             SelfReviewError: If the decider is the task's original
                 executing agent.
         """
+        decided_by = resolve_decided_by(decided_by)
         task = await self._task_engine.get_task(task_id)
         if task is None:
             logger.warning(
@@ -125,7 +129,7 @@ class ReviewGateService:
         task_id: str,
         requested_by: str,
         approved: bool,
-        decided_by: str,
+        decided_by: str | None = None,
         reason: str | None = None,
         approval_id: str | None = None,
     ) -> None:
@@ -135,10 +139,15 @@ class ReviewGateService:
         On reject: IN_REVIEW -> IN_PROGRESS (rework).
         Self-review check runs again as defense in depth.
 
+        ``decided_by`` is an optional explicit override (system /
+        non-HTTP paths); when omitted the bound actor supplies it via
+        :func:`resolve_decided_by` (RFC#3 / ADR-0003).
+
         Raises:
             TaskNotFoundError: If the task cannot be found.
             SelfReviewError: If the decider is the task executor.
         """
+        decided_by = resolve_decided_by(decided_by)
         task = await self.check_can_decide(task_id=task_id, decided_by=decided_by)
 
         # Normalize the reason once at the service boundary: empty or
