@@ -173,22 +173,30 @@ class TestBackupComponentDispatch:
         assert isinstance(handler, ConfigComponentHandler)
         assert handler._config_path == explicit
 
-    def test_config_component_falls_back_to_env_var(
+    def test_config_component_uses_injected_resolved_path(
         self,
-        monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """``SYNTHORG_CONFIG_PATH`` is read when no path is resolved."""
+        """The factory consumes the resolved path injected by boot.
+
+        ``SYNTHORG_CONFIG_PATH`` is read exactly once at app boot
+        (``api/app.py``) and the resolved ``Path`` is threaded in as
+        ``resolved_config_path`` -- this module never re-reads the env
+        var (config-soup dedupe, RFC#4 section 6).
+        """
         config = RootConfig(company_name="test-co")
         backup_config = BackupConfig(include=(BackupComponent.CONFIG,))
-        env_path = tmp_path / "env-company.yaml"
-        monkeypatch.setenv("SYNTHORG_CONFIG_PATH", str(env_path))
+        resolved = tmp_path / "resolved-company.yaml"
 
-        handlers = build_backup_handlers(config, backup_config)
+        handlers = build_backup_handlers(
+            config,
+            backup_config,
+            resolved_config_path=resolved,
+        )
 
         handler = handlers[BackupComponent.CONFIG]
         assert isinstance(handler, ConfigComponentHandler)
-        assert handler._config_path == env_path
+        assert handler._config_path == resolved
 
     def test_config_component_defaults_to_company_yaml(
         self,

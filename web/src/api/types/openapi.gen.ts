@@ -10184,6 +10184,43 @@ export type components = {
             readonly total_daily_risk_limit: number;
         };
         /**
+         * RiskClassifierConfig
+         * @description Risk-tier-classifier plugin selection. Default-constructed (kind=DEFAULT) is byte-identical with the pre-plugin static classifier.
+         */
+        readonly RiskClassifierConfig: {
+            readonly custom_map: {
+                readonly [key: string]: components["schemas"]["ApprovalRiskLevel"];
+            };
+            readonly kind: components["schemas"]["RiskClassifierType"];
+            /** @default 6 */
+            readonly off_hours_end_hour: number;
+            /** @default 20 */
+            readonly off_hours_start_hour: number;
+            readonly operator_map: {
+                readonly [key: string]: components["schemas"]["ApprovalRiskLevel"];
+            };
+            /** @default true */
+            readonly weekend_elevation: boolean;
+            /** @default 10 */
+            readonly workload_threshold: number;
+        };
+        /**
+         * RiskClassifierType
+         * @description Discriminator selecting the risk-tier-classifier composition.
+         *
+         *     - ``DEFAULT`` -- the static action-type -> risk map (pre-plugin
+         *       behaviour; unknown types -> HIGH per ADR-0001 D19).
+         *     - ``WORKLOAD_ADAPTIVE`` -- wraps a base classifier and elevates one
+         *       tier when an injected in-flight probe exceeds a threshold.
+         *     - ``OPERATOR_CONFIGURABLE`` -- an operator-defined
+         *       action-type -> tier map; unknown types fail safe to HIGH (D19).
+         *     - ``TIME_BASED`` -- elevates one tier during configured off-hours /
+         *       weekend windows (uses the ``Clock`` seam).
+         * @default default
+         * @enum {string}
+         */
+        readonly RiskClassifierType: "default" | "workload_adaptive" | "operator_configurable" | "time_based";
+        /**
          * RiskTolerance
          * @description Risk tolerance level for agent personality.
          * @default medium
@@ -11079,6 +11116,7 @@ export type components = {
              * @constant
              */
             readonly policy: "tiered";
+            readonly risk_classifier: components["schemas"]["RiskClassifierConfig"];
             /** @description Tier configs keyed by risk level (low/medium/high/critical) */
             readonly tiers: {
                 readonly [key: string]: components["schemas"]["TierConfig"];

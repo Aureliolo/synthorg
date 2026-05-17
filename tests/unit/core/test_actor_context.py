@@ -144,6 +144,6 @@ class TestDecorators:
     def test_with_actor_async_rejects_sync(self) -> None:
         with pytest.raises(TypeError, match="requires an async"):
 
-            @with_actor_async(_human())
+            @with_actor_async(_human())  # type: ignore[arg-type]
             def _sync() -> None:  # pragma: no cover - decoration raises
                 return None

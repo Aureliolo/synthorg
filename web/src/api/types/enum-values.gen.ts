@@ -536,6 +536,14 @@ export const REVIEW_VERDICT_VALUES = [
 ] as const
 export type ReviewVerdict = (typeof REVIEW_VERDICT_VALUES)[number]
 
+export const RISK_CLASSIFIER_TYPE_VALUES = [
+    'default',
+    'workload_adaptive',
+    'operator_configurable',
+    'time_based',
+] as const
+export type RiskClassifierType = (typeof RISK_CLASSIFIER_TYPE_VALUES)[number]
+
 export const RISK_TOLERANCE_VALUES = [
     'low',
     'medium',
