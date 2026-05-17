@@ -67,6 +67,35 @@ promotion via REST API (no agent, including CEO, can escalate privileges). Autom
 on: high error rate (one level down), budget exhausted (supervised), security incident (locked).
 Recovery from auto-downgrade is human-only.
 
+### Autonomy change strategy plugin surface
+
+The `AutonomyChangeStrategy` protocol (`security/autonomy/protocol.py`:
+`request_promotion` / `auto_downgrade` / `request_recovery`) is a
+pluggable subsystem following the risk-tier-classifier pattern: a
+`StrEnum` discriminator + frozen config + safe default +
+`StrategyRegistry` factory. The wrapping strategies delegate
+downgrade, recovery, and the override store to a base
+`HumanOnlyPromotionStrategy` (where the override store lives) and
+override only the promotion decision.
+
+| `AutonomyStrategyType` | Implementation | Behaviour |
+|---|---|---|
+| `HUMAN_ONLY` | `HumanOnlyPromotionStrategy` | Promotions + recovery always require human approval. Byte-identical with the pre-plugin default. |
+| `PERFORMANCE_GATED` | `PerformanceGatedPromotionStrategy` | Auto-grants promotion when the agent's rolling success rate (injected `PerformanceSignalProvider`) is at/above `promotion_success_threshold`; `None` history defers. |
+| `BUDGET_AWARE` | `BudgetAwarePromotionStrategy` | Denies promotion while risk-budget headroom (injected `RiskBudgetSignalProvider`) is below `budget_warn_fraction`; otherwise delegates the decision to the base. |
+| `ESCALATION_CHAIN` | `EscalationChainPromotionStrategy` | Records the configured approver-role `escalation_chain` and returns pending (`False`); per-role approvals arrive out-of-band. |
+
+Selection: `AutonomyStrategyConfig` (frozen, default
+`kind=HUMAN_ONLY`) + `AutonomyStrategyDeps` (the base strategy and
+signal providers that cannot live in frozen config).
+`change_strategy_factory.build_autonomy_change_strategy(config, deps)`
+dispatches via the `StrEnum`-keyed `StrategyRegistry`; a wrapping
+strategy missing its required signal provider raises
+`AutonomyStrategyConfigError` at construction. No production seam wires
+a non-default strategy yet (the autonomy controller path constructs no
+strategy); operators opt in by configuring it -- the surface is the
+deliverable, end-to-end production wiring is the natural follow-up.
+
 ## Security Operations Agent
 
 A special meta-agent that reviews all actions before execution:

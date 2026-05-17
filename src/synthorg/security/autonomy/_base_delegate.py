@@ -1,0 +1,54 @@
+"""Shared base-delegation mixin for wrapping autonomy strategies.
+
+The performance-gated / budget-aware / escalation-chain strategies all
+wrap an override-store-bearing base (``HumanOnlyPromotionStrategy``)
+and delegate everything except ``request_promotion`` (and, for the
+budget-aware strategy, ``auto_downgrade``) to it. This mixin holds the
+base and provides the delegated methods so each strategy only writes
+the behaviour it actually overrides.
+"""
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from synthorg.core.enums import AutonomyLevel, DowngradeReason
+    from synthorg.core.types import NotBlankStr
+    from synthorg.security.autonomy.change_strategy import (
+        HumanOnlyPromotionStrategy,
+    )
+    from synthorg.security.autonomy.models import AutonomyOverride
+
+
+class BaseDelegatingStrategy:
+    """Delegates downgrade / recovery / override-store ops to a base.
+
+    Args:
+        base: The override-store-bearing strategy to delegate to.
+    """
+
+    def __init__(self, *, base: HumanOnlyPromotionStrategy) -> None:
+        self._base = base
+
+    def auto_downgrade(
+        self,
+        agent_id: NotBlankStr,
+        reason: DowngradeReason,
+        current_level: AutonomyLevel | None = None,
+    ) -> AutonomyLevel:
+        """Delegate to the base downgrade map."""
+        return self._base.auto_downgrade(agent_id, reason, current_level)
+
+    def request_recovery(self, agent_id: NotBlankStr) -> bool:
+        """Delegate recovery to the base (human approval)."""
+        return self._base.request_recovery(agent_id)
+
+    def get_override(
+        self,
+        agent_id: NotBlankStr,
+    ) -> AutonomyOverride | None:
+        """Delegate to the base override store."""
+        return self._base.get_override(agent_id)
+
+    def clear_override(self, agent_id: NotBlankStr) -> bool:
+        """Delegate to the base override store."""
+        return self._base.clear_override(agent_id)
