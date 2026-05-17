@@ -10,11 +10,7 @@ from synthorg.observability.events.ontology import (
 )
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import (
-    DEFAULT_LIST_LIMIT,
-    safe_float,
-    safe_int,
-)
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -52,8 +48,8 @@ def _row_to_report(row: dict[str, Any]) -> DriftReport:
         )
         return DriftReport(
             entity_name=str(row["entity_name"]),
-            divergence_score=safe_float(row["divergence_score"], default=0.0),
-            canonical_version=safe_int(row["canonical_version"], default=0),
+            divergence_score=float(row["divergence_score"]),
+            canonical_version=int(row["canonical_version"]),
             recommendation=DriftAction(str(row["recommendation"])),
             divergent_agents=agents,
         )

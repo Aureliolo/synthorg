@@ -1,4 +1,4 @@
-"""Time-based risk-elevation classifier (REWORK #9).
+"""Time-based risk-elevation classifier.
 
 Wraps a base classifier and elevates one tier during configured
 off-hours and (optionally) weekends -- riskier to action an approval

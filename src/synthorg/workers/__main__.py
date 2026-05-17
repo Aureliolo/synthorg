@@ -23,6 +23,7 @@ runs).
 
 import argparse
 import asyncio
+import math
 import os
 import sys
 from typing import Final
@@ -269,7 +270,7 @@ def _resolve_executor(
         )
         raise SystemExit(msg)
     http_timeout = _resolve_http_timeout(args.http_timeout_seconds)
-    if http_timeout is None or http_timeout <= 0.0:
+    if http_timeout is None or not math.isfinite(http_timeout) or http_timeout <= 0.0:
         msg = (
             "invalid executor HTTP timeout (flag --http-timeout-seconds /"
             " env SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS must be a positive"

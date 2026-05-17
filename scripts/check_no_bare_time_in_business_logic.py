@@ -83,7 +83,7 @@ _FORBIDDEN_ATTR: Final[frozenset[tuple[str, str]]] = frozenset(
     }
 )
 # Bare names when imported via ``from time import monotonic`` etc.
-_FORBIDDEN_NAME: Final[frozenset[str]] = frozenset({"utcnow"})
+_FORBIDDEN_NAME: Final[frozenset[str]] = frozenset({"monotonic", "time", "utcnow"})
 
 
 class _Violation:

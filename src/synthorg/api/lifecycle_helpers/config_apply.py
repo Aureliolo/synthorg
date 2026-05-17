@@ -21,6 +21,8 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from synthorg.api.state import AppState
     from synthorg.config.schema import RootConfig
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
@@ -175,6 +177,45 @@ async def _apply_notification_dispatcher_config(
         )
 
 
+async def _apply_bridge_snapshot[T](
+    app_state: AppState,
+    *,
+    bridge: str,
+    getter: Callable[[], Awaitable[T]],
+    setter: Callable[[T], None],
+) -> None:
+    """Resolve a bridge-config snapshot once and atomically swap it in.
+
+    Shared body for the ``api`` / ``workers`` / ``memory`` snapshot
+    appliers. On any non-fatal resolve failure the default snapshot
+    installed by ``AppState.__init__`` is retained and a single
+    structured warning is emitted -- the fail-safe rule: a
+    settings-backend hiccup must never perturb the live config.
+
+    No-op when no resolver is wired (dev/test rigs that bypass
+    ``create_app``); ``getter`` is only invoked after that guard so
+    binding it to ``app_state.config_resolver`` stays safe.
+    """
+    if not app_state.has_config_resolver:
+        return
+    try:
+        snapshot = await getter()
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_BRIDGE_CONFIG_RESOLVE_FAILED,
+            bridge=bridge,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback="module_defaults",
+        )
+        return
+    setter(snapshot)
+
+
 async def _apply_api_bridge_config_snapshot(app_state: AppState) -> None:
     """Snapshot ``ApiBridgeConfig`` onto ``AppState`` at startup.
 
@@ -189,24 +230,14 @@ async def _apply_api_bridge_config_snapshot(app_state: AppState) -> None:
     No-op when no resolver is wired (dev/test rigs that bypass
     ``create_app``); the default snapshot remains in place.
     """
-    if not app_state.has_config_resolver:
-        return
-    try:
-        snapshot = await app_state.config_resolver.get_api_bridge_config()
-    except asyncio.CancelledError:
-        raise
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            API_BRIDGE_CONFIG_RESOLVE_FAILED,
-            bridge="api",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            fallback="module_defaults",
-        )
-        return
-    app_state.swap_api_bridge_config(snapshot)
+    await _apply_bridge_snapshot(
+        app_state,
+        bridge="api",
+        # Lambda is required: ``config_resolver`` raises until wired, so
+        # access must defer past the helper's has_config_resolver guard.
+        getter=lambda: app_state.config_resolver.get_api_bridge_config(),  # noqa: PLW0108
+        setter=app_state.swap_api_bridge_config,
+    )
 
 
 async def _apply_workers_bridge_config_snapshot(app_state: AppState) -> None:
@@ -222,24 +253,14 @@ async def _apply_workers_bridge_config_snapshot(app_state: AppState) -> None:
 
     No-op when no resolver is wired.
     """
-    if not app_state.has_config_resolver:
-        return
-    try:
-        snapshot = await app_state.config_resolver.get_workers_bridge_config()
-    except asyncio.CancelledError:
-        raise
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            API_BRIDGE_CONFIG_RESOLVE_FAILED,
-            bridge="workers",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            fallback="module_defaults",
-        )
-        return
-    app_state.swap_workers_bridge_config(snapshot)
+    await _apply_bridge_snapshot(
+        app_state,
+        bridge="workers",
+        # Lambda is required: ``config_resolver`` raises until wired, so
+        # access must defer past the helper's has_config_resolver guard.
+        getter=lambda: app_state.config_resolver.get_workers_bridge_config(),  # noqa: PLW0108
+        setter=app_state.swap_workers_bridge_config,
+    )
 
 
 async def _apply_memory_bridge_config_snapshot(app_state: AppState) -> None:
@@ -255,24 +276,14 @@ async def _apply_memory_bridge_config_snapshot(app_state: AppState) -> None:
 
     No-op when no resolver is wired.
     """
-    if not app_state.has_config_resolver:
-        return
-    try:
-        snapshot = await app_state.config_resolver.get_memory_bridge_config()
-    except asyncio.CancelledError:
-        raise
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            API_BRIDGE_CONFIG_RESOLVE_FAILED,
-            bridge="memory",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            fallback="module_defaults",
-        )
-        return
-    app_state.swap_memory_bridge_config(snapshot)
+    await _apply_bridge_snapshot(
+        app_state,
+        bridge="memory",
+        # Lambda is required: ``config_resolver`` raises until wired, so
+        # access must defer past the helper's has_config_resolver guard.
+        getter=lambda: app_state.config_resolver.get_memory_bridge_config(),  # noqa: PLW0108
+        setter=app_state.swap_memory_bridge_config,
+    )
 
 
 async def _apply_ws_ticket_settings(app_state: AppState) -> None:

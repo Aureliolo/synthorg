@@ -62,7 +62,7 @@ class ConsolidationDeps:
     summarizer: AbstractiveSummarizer | None = None
 
 
-def _require(value: object, name: str, strategy: str) -> object:
+def _require[T](value: T | None, name: str, strategy: str) -> T:
     """Return *value* or raise if it is ``None``."""
     if value is None:
         msg = (
@@ -88,9 +88,9 @@ def _build_dual_mode(deps: ConsolidationDeps) -> CompositeConsolidationStrategy:
         selector=HighestRelevanceSelector(group_threshold=deps.group_threshold),
         op=DensityRoutingOp(
             backend=deps.backend,
-            classifier=classifier,  # type: ignore[arg-type]
-            extractor=extractor,  # type: ignore[arg-type]
-            summarizer=summarizer,  # type: ignore[arg-type]
+            classifier=classifier,
+            extractor=extractor,
+            summarizer=summarizer,
         ),
     )
 
@@ -102,8 +102,8 @@ def _build_llm(deps: ConsolidationDeps) -> CompositeConsolidationStrategy:
         selector=HighestRelevanceSelector(group_threshold=deps.group_threshold),
         op=LLMSynthesisOp(
             backend=deps.backend,
-            provider=provider,  # type: ignore[arg-type]
-            model=model,  # type: ignore[arg-type]
+            provider=provider,
+            model=model,
             config=deps.llm_config,
             cost_tracker=deps.cost_tracker,
         ),

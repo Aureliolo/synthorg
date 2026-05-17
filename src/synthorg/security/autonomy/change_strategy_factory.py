@@ -1,12 +1,12 @@
-"""Autonomy change-strategy factory (REWORK #9 + RFC#2).
+"""Autonomy change-strategy factory.
 
 Maps :class:`AutonomyStrategyType` to a concrete
 :class:`AutonomyChangeStrategy` via the ``StrEnum``-keyed
 :class:`~synthorg.core.registry.StrategyRegistry`. ``HUMAN_ONLY``
-returns a bare :class:`HumanOnlyPromotionStrategy` (byte-identical
-with the pre-plugin default); the wrapping strategies require a signal
-provider and raise :class:`AutonomyStrategyConfigError` when it is
-absent (fail fast at construction).
+returns a bare :class:`HumanOnlyPromotionStrategy`; the wrapping
+strategies require a signal provider and raise
+:class:`AutonomyStrategyConfigError` when it is absent (fail fast at
+construction).
 """
 
 from typing import TYPE_CHECKING
@@ -123,7 +123,7 @@ def build_autonomy_change_strategy(
     Returns:
         A strategy satisfying the ``AutonomyChangeStrategy`` protocol.
         ``config.kind == HUMAN_ONLY`` yields behaviour byte-identical
-        with the pre-plugin default.
+        with a bare ``HumanOnlyPromotionStrategy()``.
 
     Raises:
         StrategyFactoryNotFoundError: Unknown ``config.kind``.

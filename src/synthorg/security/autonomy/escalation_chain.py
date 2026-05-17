@@ -1,4 +1,4 @@
-"""Escalation-chain autonomy promotion strategy (REWORK #9).
+"""Escalation-chain autonomy promotion strategy.
 
 Promotion is routed through a configured ordered role chain
 (supervisor -> manager -> CEO, etc.). The strategy itself never

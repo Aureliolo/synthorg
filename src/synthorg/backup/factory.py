@@ -61,7 +61,7 @@ def build_backup_handlers(
             backend (SQLite only; ignored for Postgres). Falls back to
             ``config.persistence.sqlite.path``.
         resolved_config_path: Actual company YAML path loaded at
-            startup (falls back to SYNTHORG_CONFIG_PATH / company.yaml).
+            startup (falls back to ``company.yaml`` when absent).
 
     Returns:
         Handler map keyed by component enum.
@@ -113,7 +113,7 @@ def build_backup_service(
         resolved_db_path: Actual DB path used by the persistence
             backend (SQLite only). Falls back to the config value.
         resolved_config_path: Actual company YAML path loaded at
-            startup (falls back to SYNTHORG_CONFIG_PATH / company.yaml).
+            startup (falls back to ``company.yaml`` when absent).
 
     Returns:
         Configured backup service, or ``None`` if handler construction

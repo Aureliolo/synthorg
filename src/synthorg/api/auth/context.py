@@ -191,10 +191,10 @@ class AuthContextMiddleware(ASGIMiddleware):
         token = _authenticated_user.set(bound_user)
         try:
             if bound_user is not None:
-                # Bind the actor seam (RFC#3 / ADR-0003) so decision
-                # leaves resolve ``decided_by`` via ``current_actor()``
-                # instead of every caller threading it. ``actor_id`` is
-                # the immutable user id; ``label`` is the human-readable
+                # Bind actor identity so decision leaves resolve
+                # ``decided_by`` via ``current_actor()`` instead of
+                # every caller threading it. ``actor_id`` is the
+                # immutable user id; ``label`` is the human-readable
                 # username recorded in audit rows.
                 actor = ActorIdentity(
                     actor_id=bound_user.user_id,

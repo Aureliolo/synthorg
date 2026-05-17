@@ -14,6 +14,7 @@ from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
     ConnectionStatus,
+    OAuthToken,
 )
 from synthorg.integrations.errors import TokenRefreshFailedError
 from synthorg.integrations.oauth.flows.authorization_code import (
@@ -195,6 +196,8 @@ class OAuthTokenManager:
                 await self._check_and_refresh()
             except asyncio.CancelledError:
                 raise
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 logger.error(
                     OAUTH_TOKEN_REFRESH_FAILED,
@@ -270,6 +273,8 @@ class OAuthTokenManager:
         """
         try:
             credentials = await self._catalog.get_credentials(conn.name)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
@@ -321,41 +326,61 @@ class OAuthTokenManager:
             )
             return
 
-        if not refreshed.access_token:
+        if not await self._persist_refreshed_tokens(conn, refreshed, now):
+            return
+
+        logger.info(
+            OAUTH_TOKEN_REFRESHED,
+            connection_name=conn.name,
+            has_refresh=refreshed.refresh_token is not None,
+            note="proactive refresh completed",
+        )
+
+    async def _persist_refreshed_tokens(
+        self,
+        conn: Connection,
+        refreshed: OAuthToken,
+        now: datetime,
+    ) -> bool:
+        """Persist refreshed tokens; ``False`` if the write failed.
+
+        On failure the connection is flipped to ``DEGRADED`` so an
+        operator notices, and the exception is swallowed so the sweep
+        continues with the next connection. The traceback is
+        deliberately not logged: the stack frames here hold the OAuth
+        client secret and refresh token, so only a redacted
+        description is emitted.
+        """
+        access_token = refreshed.access_token
+        if not access_token:
             logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 connection_name=conn.name,
                 reason="refresh returned no access_token",
             )
-            # Treat an empty refresh result as a failure path so
-            # the connection's health flips to ``DEGRADED`` and an
-            # operator notices it, instead of silently returning
-            # and leaving the old expired token in place.
+            # Treat an empty refresh result as a failure path so the
+            # connection's health flips to ``DEGRADED`` and an operator
+            # notices it, instead of silently leaving the old expired
+            # token in place.
             await self._catalog.update_health(
                 conn.name,
                 status=ConnectionStatus.DEGRADED,
                 checked_at=now,
             )
-            return
-
+            return False
         try:
             await self._catalog.store_oauth_tokens(
                 conn.name,
-                access_token=refreshed.access_token,
+                access_token=access_token,
                 refresh_token=refreshed.refresh_token,
             )
             if refreshed.expires_at is not None:
                 meta_updates = dict(conn.metadata)
                 meta_updates["token_expires_at"] = refreshed.expires_at.isoformat()
                 await self._catalog.update(conn.name, metadata=meta_updates)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            # A write failure after a successful refresh leaves the
-            # connection state inconsistent. Swallow the exception
-            # so the sweep continues with the next connection, but
-            # flip health to ``DEGRADED`` so an operator notices.
-            # The traceback is deliberately not logged: the stack
-            # frames here hold the OAuth client secret and refresh
-            # token, so only a redacted description is emitted.
             logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 connection_name=conn.name,
@@ -369,6 +394,8 @@ class OAuthTokenManager:
                     status=ConnectionStatus.DEGRADED,
                     checked_at=now,
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception as health_exc:
                 logger.warning(
                     OAUTH_TOKEN_REFRESH_FAILED,
@@ -377,11 +404,5 @@ class OAuthTokenManager:
                     error=safe_error_description(health_exc),
                     reason="update_health failed after persistence failure",
                 )
-            return
-
-        logger.info(
-            OAUTH_TOKEN_REFRESHED,
-            connection_name=conn.name,
-            has_refresh=refreshed.refresh_token is not None,
-            note="proactive refresh completed",
-        )
+            return False
+        return True

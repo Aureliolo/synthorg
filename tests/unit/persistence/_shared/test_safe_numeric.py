@@ -31,6 +31,12 @@ class TestSafeInt:
         assert safe_int(None, default=None) is None
         assert safe_int("3", default=None) == 3
 
+    def test_overflow_returns_default(self) -> None:
+        # ``int(float("inf"))`` raises ``OverflowError``; the helper
+        # must honour its no-raise fallback contract.
+        assert safe_int(float("inf")) == 0
+        assert safe_int(float("inf"), default=7) == 7
+
 
 @pytest.mark.unit
 class TestSafeFloat:

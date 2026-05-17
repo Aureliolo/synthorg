@@ -46,6 +46,17 @@ logger = get_logger(__name__)
 # in-flight working set for a single org.
 _MAX_REQUEST_LOCKS: int = 10_000
 
+# Validation bounds for the operator-tunable WS / auth-revalidation
+# knobs. These mirror the ``Field(ge=..., le=...)`` bounds on the
+# corresponding bridge-config models; centralised here so the check,
+# the structured-warning fields, and the error message can't drift.
+_WS_FRAME_TIMEOUT_MIN_SECONDS: int = 1
+_WS_FRAME_TIMEOUT_MAX_SECONDS: int = 600
+_AUTH_REVALIDATE_WINDOW_MIN_SECONDS: int = 1
+_AUTH_REVALIDATE_WINDOW_MAX_SECONDS: int = 3_600
+_AUTH_REVALIDATE_MAX_FAILURES_MIN: int = 1
+_AUTH_REVALIDATE_MAX_FAILURES_MAX: int = 100
+
 
 def _reject_non_int(value: object, *, field: str) -> None:
     """Raise ``TypeError`` (with a structured warning) for non-int settings.
@@ -319,18 +330,21 @@ class _RequestLockAuthMixin:
     def set_ws_frame_timeout_seconds(self, value: int) -> None:
         """Validate + cache the per-frame WebSocket idle timeout."""
         _reject_non_int(value, field="ws_frame_timeout_seconds")
-        if not 1 <= value <= 600:  # noqa: PLR2004 -- bounds mirror Field(ge=1, le=600)
+        if not (
+            _WS_FRAME_TIMEOUT_MIN_SECONDS <= value <= _WS_FRAME_TIMEOUT_MAX_SECONDS
+        ):
             logger.warning(
                 API_BRIDGE_CONFIG_REJECTED,
                 field="ws_frame_timeout_seconds",
                 reason="out_of_range",
                 provided_value=value,
-                min_value=1,
-                max_value=600,
+                min_value=_WS_FRAME_TIMEOUT_MIN_SECONDS,
+                max_value=_WS_FRAME_TIMEOUT_MAX_SECONDS,
             )
             msg = (
-                "ws_frame_timeout_seconds must be between 1 and"
-                f" 600 seconds, got {value}"
+                "ws_frame_timeout_seconds must be between"
+                f" {_WS_FRAME_TIMEOUT_MIN_SECONDS} and"
+                f" {_WS_FRAME_TIMEOUT_MAX_SECONDS} seconds, got {value}"
             )
             raise ValueError(msg)
         self._ws_frame_timeout_seconds = value
@@ -343,18 +357,24 @@ class _RequestLockAuthMixin:
     def set_auth_revalidate_window_seconds(self, value: int) -> None:
         """Validate + cache the revalidation sliding-window length."""
         _reject_non_int(value, field="auth_revalidate_window_seconds")
-        if not 1 <= value <= 3_600:  # noqa: PLR2004 -- bounds mirror Field(ge=1, le=3600)
+        if not (
+            _AUTH_REVALIDATE_WINDOW_MIN_SECONDS
+            <= value
+            <= _AUTH_REVALIDATE_WINDOW_MAX_SECONDS
+        ):
             logger.warning(
                 API_BRIDGE_CONFIG_REJECTED,
                 field="auth_revalidate_window_seconds",
                 reason="out_of_range",
                 provided_value=value,
-                min_value=1,
-                max_value=3_600,
+                min_value=_AUTH_REVALIDATE_WINDOW_MIN_SECONDS,
+                max_value=_AUTH_REVALIDATE_WINDOW_MAX_SECONDS,
             )
             msg = (
-                "auth_revalidate_window_seconds must be between 1 and"
-                f" 3600 seconds, got {value}"
+                "auth_revalidate_window_seconds must be between"
+                f" {_AUTH_REVALIDATE_WINDOW_MIN_SECONDS} and"
+                f" {_AUTH_REVALIDATE_WINDOW_MAX_SECONDS} seconds,"
+                f" got {value}"
             )
             raise ValueError(msg)
         self._auth_revalidate_window_seconds = value
@@ -367,16 +387,24 @@ class _RequestLockAuthMixin:
     def set_auth_revalidate_max_failures(self, value: int) -> None:
         """Validate + cache the revalidation max-failures cap."""
         _reject_non_int(value, field="auth_revalidate_max_failures")
-        if not 1 <= value <= 100:  # noqa: PLR2004 -- bounds mirror Field(ge=1, le=100)
+        if not (
+            _AUTH_REVALIDATE_MAX_FAILURES_MIN
+            <= value
+            <= _AUTH_REVALIDATE_MAX_FAILURES_MAX
+        ):
             logger.warning(
                 API_BRIDGE_CONFIG_REJECTED,
                 field="auth_revalidate_max_failures",
                 reason="out_of_range",
                 provided_value=value,
-                min_value=1,
-                max_value=100,
+                min_value=_AUTH_REVALIDATE_MAX_FAILURES_MIN,
+                max_value=_AUTH_REVALIDATE_MAX_FAILURES_MAX,
             )
-            msg = f"auth_revalidate_max_failures must be between 1 and 100, got {value}"
+            msg = (
+                "auth_revalidate_max_failures must be between"
+                f" {_AUTH_REVALIDATE_MAX_FAILURES_MIN} and"
+                f" {_AUTH_REVALIDATE_MAX_FAILURES_MAX}, got {value}"
+            )
             raise ValueError(msg)
         self._auth_revalidate_max_failures = value
 

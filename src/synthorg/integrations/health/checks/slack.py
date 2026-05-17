@@ -22,6 +22,7 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 _TIMEOUT: Final[float] = 10.0
+_MILLISECONDS_PER_SECOND: Final[float] = 1000.0
 _DEFAULT_SLACK_BASE_URL: Final[str] = "https://slack.com"
 _ALLOWED_BASE_URL_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^https://([a-z0-9-]+\.)?slack\.com$",
@@ -158,7 +159,7 @@ class SlackHealthCheck:
                     headers={"Authorization": f"Bearer {token}"},
                 )
         except httpx.HTTPError as exc:
-            elapsed = (self._clock.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
             scrubbed = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,
@@ -174,7 +175,7 @@ class SlackHealthCheck:
                 checked_at=datetime.now(UTC),
             )
 
-        elapsed = (self._clock.monotonic() - start) * 1000
+        elapsed = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         if resp.is_error:
             logger.warning(
                 HEALTH_CHECK_FAILED,

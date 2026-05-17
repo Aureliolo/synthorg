@@ -624,6 +624,7 @@ def build_shutdown_strategy(
     config: GracefulShutdownConfig,
     *,
     checkpoint_saver: CheckpointSaver | None = None,
+    clock: Clock | None = None,
 ) -> ShutdownStrategy:
     """Build a shutdown strategy from configuration.
 
@@ -631,6 +632,9 @@ def build_shutdown_strategy(
         config: Shutdown configuration with strategy name and params.
         checkpoint_saver: Optional checkpoint callback for the
             ``"checkpoint"`` strategy.
+        clock: Injectable time source threaded into the strategy so
+            factory-built call sites keep deterministic-time injection;
+            defaults to ``SystemClock`` inside each strategy.
 
     Returns:
         Configured shutdown strategy instance.
@@ -643,18 +647,22 @@ def build_shutdown_strategy(
         "cooperative_timeout": lambda: CooperativeTimeoutStrategy(
             grace_seconds=config.grace_seconds,
             cleanup_seconds=config.cleanup_seconds,
+            clock=clock,
         ),
         "immediate": lambda: ImmediateCancelStrategy(
             cleanup_seconds=config.cleanup_seconds,
+            clock=clock,
         ),
         "finish_tool": lambda: FinishCurrentToolStrategy(
             tool_timeout_seconds=config.tool_timeout_seconds,
             cleanup_seconds=config.cleanup_seconds,
+            clock=clock,
         ),
         "checkpoint": lambda: CheckpointAndStopStrategy(
             grace_seconds=config.grace_seconds,
             cleanup_seconds=config.cleanup_seconds,
             checkpoint_saver=checkpoint_saver,
+            clock=clock,
         ),
     }
 

@@ -131,7 +131,7 @@ class TelemetryPropertyError(ValueError):
     # lint-allow: domain-error-hierarchy -- intentional stdlib base
     # (see class docstring): Pydantic's ``model_validator`` only wraps
     # ``ValueError`` / ``AssertionError`` into ``ValidationError``; a
-    # ``DomainError`` base would propagate raw and break the REWORK #11
+    # ``DomainError`` base would propagate raw and break the
     # construction-time guard contract.
     """A telemetry property violates the privacy contract.
 

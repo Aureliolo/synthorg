@@ -146,7 +146,7 @@ def require_actor() -> ActorIdentity:
 
 
 def resolve_decided_by(explicit: str | None = None) -> str:
-    """Resolve the ``decided_by`` attribution string (RFC#3).
+    """Resolve the ``decided_by`` attribution string.
 
     Precedence: an explicit system-override argument wins (used by
     automated paths such as the approval-timeout scheduler);

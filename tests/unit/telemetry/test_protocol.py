@@ -29,8 +29,20 @@ class TestTelemetryEvent:
     def test_event_with_properties(self) -> None:
         # ``graceful`` (bool) is a shutdown-only key; the
         # construction-time property guard now rejects it on a
-        # heartbeat. Use a shutdown event so the int/float/str/bool
+        # heartbeat. Lock that contract before exercising the valid
+        # path, then use a shutdown event so the int/float/str/bool
         # primitive coverage stays within that type's allowlist.
+        with pytest.raises(ValidationError):
+            TelemetryEvent(
+                event_type="deployment.heartbeat",
+                deployment_id="abc-123",
+                synthorg_version="0.6.4",
+                python_version="3.14.0",
+                os_platform="Linux",
+                timestamp=datetime.now(UTC),
+                properties={"uptime_hours": 1.0, "graceful": True},
+            )
+
         event = TelemetryEvent(
             event_type="deployment.heartbeat",
             deployment_id="abc-123",

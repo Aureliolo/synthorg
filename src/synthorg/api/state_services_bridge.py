@@ -43,6 +43,8 @@ from synthorg.settings.bridge_configs import (  # noqa: TC001
 if TYPE_CHECKING:
     import threading
 
+    from pydantic import BaseModel
+
     from synthorg.a2a.agent_card import AgentCardBuilder
     from synthorg.a2a.client import A2AClient
     from synthorg.a2a.peer_registry import PeerRegistry
@@ -220,6 +222,70 @@ class _BridgeIntegrationsMixin:
         """
         return self._api_bridge_config
 
+    def _swap_bridge_config(
+        self,
+        *,
+        lock: threading.Lock,
+        attr: str,
+        service: str,
+        config: BaseModel,
+    ) -> None:
+        """Replace a bridge-config snapshot wholesale under its lock.
+
+        Shared body for the ``api`` / ``workers`` / ``memory`` swap
+        accessors. Acquiring *lock* keeps a concurrent ``mutate_*``
+        from interleaving its read with this assignment and losing the
+        partial update.
+        """
+        with lock:
+            previous: BaseModel = getattr(self, attr)
+            setattr(self, attr, config)
+        if previous is config:
+            return
+        prev_fields = previous.model_dump()
+        new_fields = config.model_dump()
+        changed = sorted(k for k in new_fields if prev_fields.get(k) != new_fields[k])
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service=service,
+            transition="swap",
+            changed_fields=changed,
+        )
+
+    def _mutate_bridge_config(
+        self,
+        *,
+        lock: threading.Lock,
+        attr: str,
+        service: str,
+        updates: dict[str, object],
+    ) -> None:
+        """Re-validate ``updates`` onto a bridge snapshot under its lock.
+
+        Shared body for the ``api`` / ``workers`` / ``memory`` mutate
+        accessors. Re-validation is forced via ``model_validate(...)``
+        rather than ``model_copy(update=...)`` because Pydantic v2
+        skips validators on the bare ``update=`` path -- an
+        out-of-range operator value would otherwise land silently in
+        the snapshot. Re-validation raises ``ValidationError``, leaving
+        the prior snapshot in place and propagating the failure to the
+        subscriber's error log. The whole read-modify-write runs inside
+        *lock* so two concurrent operator edits cannot both build from
+        the same prior value and lose each other's update.
+        """
+        with lock:
+            previous: BaseModel = getattr(self, attr)
+            merged = previous.model_dump()
+            merged.update(updates)
+            new_config = type(previous).model_validate(merged)
+            setattr(self, attr, new_config)
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service=service,
+            transition="mutate",
+            changed_fields=sorted(updates),
+        )
+
     def swap_api_bridge_config(self, config: ApiBridgeConfig) -> None:
         """Replace the ``ApiBridgeConfig`` snapshot wholesale.
 
@@ -233,19 +299,11 @@ class _BridgeIntegrationsMixin:
         ``mutate_api_bridge_config`` cannot interleave its read with
         this assignment and lose the partial update.
         """
-        with self._api_bridge_config_lock:
-            previous = self._api_bridge_config
-            self._api_bridge_config = config
-        if previous is config:
-            return
-        prev_fields = previous.model_dump()
-        new_fields = config.model_dump()
-        changed = sorted(k for k in new_fields if prev_fields.get(k) != new_fields[k])
-        logger.info(
-            SETTINGS_SERVICE_SWAPPED,
+        self._swap_bridge_config(
+            lock=self._api_bridge_config_lock,
+            attr="_api_bridge_config",
             service="api_bridge_config",
-            transition="swap",
-            changed_fields=changed,
+            config=config,
         )
 
     def mutate_api_bridge_config(self, updates: dict[str, object]) -> None:
@@ -268,17 +326,11 @@ class _BridgeIntegrationsMixin:
         leaving the prior snapshot in place and propagating the failure
         to the subscriber's error log.
         """
-        with self._api_bridge_config_lock:
-            previous = self._api_bridge_config
-            merged = previous.model_dump()
-            merged.update(updates)
-            new_config = type(previous).model_validate(merged)
-            self._api_bridge_config = new_config
-        logger.info(
-            SETTINGS_SERVICE_SWAPPED,
+        self._mutate_bridge_config(
+            lock=self._api_bridge_config_lock,
+            attr="_api_bridge_config",
             service="api_bridge_config",
-            transition="mutate",
-            changed_fields=sorted(updates),
+            updates=updates,
         )
 
     @property
@@ -300,19 +352,11 @@ class _BridgeIntegrationsMixin:
         resolved through ``ConfigResolver.get_workers_bridge_config``.
         Hot-reload paths must use :meth:`mutate_workers_bridge_config`.
         """
-        with self._workers_bridge_config_lock:
-            previous = self._workers_bridge_config
-            self._workers_bridge_config = config
-        if previous is config:
-            return
-        prev_fields = previous.model_dump()
-        new_fields = config.model_dump()
-        changed = sorted(k for k in new_fields if prev_fields.get(k) != new_fields[k])
-        logger.info(
-            SETTINGS_SERVICE_SWAPPED,
+        self._swap_bridge_config(
+            lock=self._workers_bridge_config_lock,
+            attr="_workers_bridge_config",
             service="workers_bridge_config",
-            transition="swap",
-            changed_fields=changed,
+            config=config,
         )
 
     def mutate_workers_bridge_config(self, updates: dict[str, object]) -> None:
@@ -322,17 +366,11 @@ class _BridgeIntegrationsMixin:
         value raises ``ValidationError`` and the prior snapshot is
         retained (mirrors :meth:`mutate_api_bridge_config`).
         """
-        with self._workers_bridge_config_lock:
-            previous = self._workers_bridge_config
-            merged = previous.model_dump()
-            merged.update(updates)
-            new_config = type(previous).model_validate(merged)
-            self._workers_bridge_config = new_config
-        logger.info(
-            SETTINGS_SERVICE_SWAPPED,
+        self._mutate_bridge_config(
+            lock=self._workers_bridge_config_lock,
+            attr="_workers_bridge_config",
             service="workers_bridge_config",
-            transition="mutate",
-            changed_fields=sorted(updates),
+            updates=updates,
         )
 
     @property
@@ -355,19 +393,11 @@ class _BridgeIntegrationsMixin:
         resolved through ``ConfigResolver.get_memory_bridge_config``.
         Hot-reload paths must use :meth:`mutate_memory_bridge_config`.
         """
-        with self._memory_bridge_config_lock:
-            previous = self._memory_bridge_config
-            self._memory_bridge_config = config
-        if previous is config:
-            return
-        prev_fields = previous.model_dump()
-        new_fields = config.model_dump()
-        changed = sorted(k for k in new_fields if prev_fields.get(k) != new_fields[k])
-        logger.info(
-            SETTINGS_SERVICE_SWAPPED,
+        self._swap_bridge_config(
+            lock=self._memory_bridge_config_lock,
+            attr="_memory_bridge_config",
             service="memory_bridge_config",
-            transition="swap",
-            changed_fields=changed,
+            config=config,
         )
 
     def mutate_memory_bridge_config(self, updates: dict[str, object]) -> None:
@@ -377,17 +407,11 @@ class _BridgeIntegrationsMixin:
         value raises ``ValidationError`` and the prior snapshot is
         retained (mirrors :meth:`mutate_api_bridge_config`).
         """
-        with self._memory_bridge_config_lock:
-            previous = self._memory_bridge_config
-            merged = previous.model_dump()
-            merged.update(updates)
-            new_config = type(previous).model_validate(merged)
-            self._memory_bridge_config = new_config
-        logger.info(
-            SETTINGS_SERVICE_SWAPPED,
+        self._mutate_bridge_config(
+            lock=self._memory_bridge_config_lock,
+            attr="_memory_bridge_config",
             service="memory_bridge_config",
-            transition="mutate",
-            changed_fields=sorted(updates),
+            updates=updates,
         )
 
     @property

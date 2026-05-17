@@ -11,7 +11,6 @@ perturbs the retry budget.
 """
 
 from typing import Any, cast
-from unittest.mock import create_autospec
 
 import pytest
 
@@ -23,6 +22,7 @@ from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.settings.bridge_configs import WorkersBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -37,13 +37,13 @@ def _make_state(*, config_resolver: ConfigResolver | None) -> AppState:
 
 
 def _resolver_returning(snapshot: WorkersBridgeConfig) -> ConfigResolver:
-    resolver = create_autospec(ConfigResolver, instance=True)
+    resolver = mock_of[ConfigResolver]()
     resolver.get_workers_bridge_config.return_value = snapshot
     return cast("ConfigResolver", resolver)
 
 
 def _resolver_raising(exc: BaseException) -> ConfigResolver:
-    resolver = create_autospec(ConfigResolver, instance=True)
+    resolver = mock_of[ConfigResolver]()
     resolver.get_workers_bridge_config.side_effect = exc
     return cast("ConfigResolver", resolver)
 

@@ -10217,12 +10217,12 @@ export type components = {
          * RiskClassifierType
          * @description Discriminator selecting the risk-tier-classifier composition.
          *
-         *     - ``DEFAULT`` -- the static action-type -> risk map (pre-plugin
-         *       behaviour; unknown types -> HIGH per ADR-0001 D19).
+         *     - ``DEFAULT`` -- the static action-type -> risk map; unknown
+         *       types fail safe to HIGH.
          *     - ``WORKLOAD_ADAPTIVE`` -- wraps a base classifier and elevates one
          *       tier when an injected in-flight probe exceeds a threshold.
          *     - ``OPERATOR_CONFIGURABLE`` -- an operator-defined
-         *       action-type -> tier map; unknown types fail safe to HIGH (D19).
+         *       action-type -> tier map; unknown types fail safe to HIGH.
          *     - ``TIME_BASED`` -- elevates one tier during configured off-hours /
          *       weekend windows (uses the ``Clock`` seam).
          * @default default
