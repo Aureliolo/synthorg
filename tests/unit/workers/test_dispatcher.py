@@ -10,8 +10,10 @@ import pytest
 from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.task_engine_models import TaskStateChanged
+from synthorg.settings.bridge_configs import WorkersBridgeConfig
 from synthorg.workers.claim import TaskClaim
 from synthorg.workers.dispatcher import DistributedDispatcher
+from tests._shared import FakeClock
 
 
 class _FakeTaskQueue:
@@ -226,3 +228,55 @@ def test_dispatcher_handler_matches_engine_observer_type() -> None:
     queue = _FakeTaskQueue()
     dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
     _assert_signature_matches(dispatcher)
+
+
+@pytest.mark.unit
+def test_default_provider_uses_registered_workers_bridge_defaults() -> None:
+    """Without a bound provider the retry budget equals the registered defaults.
+
+    The dispatcher is built before ``AppState``; the fail-safe default
+    must keep the publish retry budget identical to the registered
+    ``workers.dispatcher_publish_*`` defaults (3 / 0.1s / 1.0s) so a
+    settings-backend hiccup never silently disables publish retries.
+    """
+    queue = _FakeTaskQueue()
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+
+    retry = dispatcher._build_retry()
+
+    cfg = WorkersBridgeConfig()
+    assert retry.max_attempts == cfg.dispatcher_publish_max_attempts == 3
+
+
+@pytest.mark.unit
+def test_set_workers_bridge_provider_takes_effect_on_next_publish() -> None:
+    """A late-bound provider's snapshot is read per publish (hot-reload).
+
+    Mutating the value the provider returns between two
+    ``_build_retry`` calls is reflected on the next call, proving the
+    snapshot is read per publish rather than cached at construction.
+    """
+    queue = _FakeTaskQueue()
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+
+    snapshot = WorkersBridgeConfig(dispatcher_publish_max_attempts=7)
+    holder = {"cfg": snapshot}
+    dispatcher.set_workers_bridge_provider(lambda: holder["cfg"])
+
+    assert dispatcher._build_retry().max_attempts == 7
+
+    holder["cfg"] = WorkersBridgeConfig(dispatcher_publish_max_attempts=2)
+    assert dispatcher._build_retry().max_attempts == 2
+
+
+@pytest.mark.unit
+def test_build_retry_propagates_clock_seam() -> None:
+    """The construction-time clock is forwarded into every rebuilt handler."""
+    queue = _FakeTaskQueue()
+    clock = FakeClock()
+    dispatcher = DistributedDispatcher(
+        task_queue=queue,  # type: ignore[arg-type]
+        clock=clock,
+    )
+
+    assert dispatcher._build_retry()._clock is clock

@@ -440,6 +440,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     provider_registry = phase1.provider_registry
     provider_health_tracker = phase1.provider_health_tracker
     distributed_task_queue = phase1.distributed_task_queue
+    distributed_dispatcher = phase1.distributed_dispatcher
 
     # Pre-meetings; versioning wires on startup once persistence.connect() runs.
     if agent_registry is None:
@@ -556,6 +557,15 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     )
     if distributed_task_queue is not None:
         app_state.set_distributed_task_queue(distributed_task_queue)
+    if distributed_dispatcher is not None:
+        # Late-bind the live bridge-config provider now that AppState
+        # exists (the dispatcher is built in auto_wire_phase1 before
+        # AppState). Each publish then reads the current snapshot, so
+        # an operator hot-reload of a workers.dispatcher_publish_*
+        # setting takes effect without restarting the dispatcher.
+        distributed_dispatcher.set_workers_bridge_provider(
+            lambda: app_state.workers_bridge_config,
+        )
 
     # Opaque pagination cursor HMAC secret.  Loaded from the
     # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var; rolling with a

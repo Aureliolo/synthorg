@@ -112,7 +112,10 @@ from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
 from synthorg.security.audit import AuditLog  # noqa: TC001
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.security.trust.service import TrustService  # noqa: TC001
-from synthorg.settings.bridge_configs import ApiBridgeConfig
+from synthorg.settings.bridge_configs import (
+    ApiBridgeConfig,
+    WorkersBridgeConfig,
+)
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.telemetry.collector import TelemetryCollector  # noqa: TC001
@@ -283,6 +286,8 @@ class AppState(AppStateServicesMixin):
         "_webhook_replay_protector",
         "_webhook_service",
         "_worker_execution_service",
+        "_workers_bridge_config",
+        "_workers_bridge_config_lock",
         "_workflow_execution_service",
         "_workflow_rollback_service",
         "_workflow_service",
@@ -460,6 +465,8 @@ class AppState(AppStateServicesMixin):
         # ``swap_api_bridge_config`` based on a stale read.
         self._api_bridge_config: ApiBridgeConfig = ApiBridgeConfig()
         self._api_bridge_config_lock: threading.Lock = threading.Lock()
+        self._workers_bridge_config: WorkersBridgeConfig = WorkersBridgeConfig()
+        self._workers_bridge_config_lock: threading.Lock = threading.Lock()
         self._provider_management: ProviderManagementService | None = None
         self._org_mutation_service: OrgMutationService | None = None
         # Shutdown flag observable by long-lived subsystems.

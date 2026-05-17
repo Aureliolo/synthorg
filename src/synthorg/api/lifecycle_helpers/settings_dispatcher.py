@@ -19,6 +19,7 @@ from synthorg.settings.subscribers import (
     PerOpRateLimitSettingsSubscriber,
     ProviderSettingsSubscriber,
     SecurityTimeoutSettingsSubscriber,
+    WorkersBridgeSettingsSubscriber,
 )
 
 if TYPE_CHECKING:
@@ -63,12 +64,17 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         app_state=app_state,
         settings_service=settings_service,
     )
+    workers_bridge_sub = WorkersBridgeSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
     subs: list[SettingsSubscriber] = [
         provider_sub,
         memory_sub,
         observability_sub,
         per_op_rl_sub,
         api_bridge_sub,
+        workers_bridge_sub,
     ]
     if backup_service is not None:
         subs.append(

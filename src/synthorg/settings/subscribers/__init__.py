@@ -21,6 +21,9 @@ from synthorg.settings.subscribers.provider_subscriber import (
 from synthorg.settings.subscribers.security_timeout_subscriber import (
     SecurityTimeoutSettingsSubscriber,
 )
+from synthorg.settings.subscribers.workers_bridge_subscriber import (
+    WorkersBridgeSettingsSubscriber,
+)
 
 __all__ = [
     "ApiBridgeSettingsSubscriber",
@@ -30,4 +33,5 @@ __all__ = [
     "PerOpRateLimitSettingsSubscriber",
     "ProviderSettingsSubscriber",
     "SecurityTimeoutSettingsSubscriber",
+    "WorkersBridgeSettingsSubscriber",
 ]

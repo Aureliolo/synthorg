@@ -12,7 +12,7 @@ through the normal ``TaskEngine`` mutation queue. The dispatcher only
 reacts to successful mutations and publishes the enqueue signal.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.observability import get_logger, safe_error_description
@@ -23,9 +23,12 @@ from synthorg.observability.events.workers import (
     WORKERS_DISPATCHER_PUBLISH_RETRYING,
     WORKERS_DISPATCHER_QUEUE_NOT_RUNNING,
 )
+from synthorg.settings.bridge_configs import WorkersBridgeConfig
 from synthorg.workers.claim import TaskClaim
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from synthorg.core.clock import Clock
     from synthorg.engine.task_engine_models import TaskStateChanged
     from synthorg.workers.claim import JetStreamTaskQueue
@@ -49,32 +52,30 @@ so it is deliberately omitted.
 Values are matched case-insensitively against ``TaskStatus.value``.
 """
 
-_PUBLISH_MAX_ATTEMPTS: Final[int] = 3
-"""Max publish attempts per claim before giving up.
 
-A transient NATS hiccup (reconnect, brief server unavailability)
-should not orphan a task in ``ASSIGNED`` status. We retry publishes
-up to this many times before logging an exhaustion event and
-returning. The dispatcher cannot roll the task back itself without
-breaking the single-writer invariant -- workers are the only
-component allowed to transition tasks through the HTTP API -- so
-once retries are exhausted we emit a structured error that
-operators can observe and act on. Tasks left in ``ASSIGNED`` will
-eventually be picked up again the next time the engine replays
-observer events (e.g., on engine restart).
-"""
+def _default_workers_bridge() -> WorkersBridgeConfig:
+    """Fail-safe provider used until the live snapshot is bound.
 
-_PUBLISH_BACKOFF_BASE_SECONDS: Final[float] = 0.1
-"""Base delay for exponential backoff between publish retries."""
+    Returns a config whose Field defaults equal the registered
+    ``workers.dispatcher_publish_*`` defaults (max attempts 3, backoff
+    base 0.1s, cap 1.0s). The dispatcher is constructed in
+    :func:`synthorg.api.auto_wire.auto_wire_phase1` before ``AppState``
+    exists, so until the startup hook late-binds the live provider this
+    keeps the retry budget identical to the registered defaults rather
+    than silently disabling retries on a settings-backend hiccup.
 
-_PUBLISH_BACKOFF_CAP_SECONDS: Final[float] = 1.0
-"""Upper bound on a single inter-attempt delay.
-
-With ``base=0.1`` and ``max_attempts=3`` the unbounded delays are
-``0.1`` and ``0.2`` seconds, well under the cap.  The cap exists
-defensively so a future bump to ``max_attempts`` does not silently
-push the publish path into multi-second sleeps.
-"""
+    Rationale for the retry budget: a transient NATS hiccup (reconnect,
+    brief server unavailability) must not orphan a task in ``ASSIGNED``.
+    The dispatcher cannot roll the task back itself without breaking the
+    single-writer invariant -- workers are the only component allowed to
+    transition tasks through the HTTP API -- so once retries are
+    exhausted it emits a structured error operators can act on. Tasks
+    left in ``ASSIGNED`` are re-picked the next time the engine replays
+    observer events (e.g. on engine restart). The cap bounds a single
+    inter-attempt delay so a future operator bump to ``max_attempts``
+    cannot silently push the publish path into multi-second sleeps.
+    """
+    return WorkersBridgeConfig()
 
 
 class DistributedDispatcher:
@@ -82,6 +83,13 @@ class DistributedDispatcher:
 
     Args:
         task_queue: Connected :class:`JetStreamTaskQueue`.
+        clock: Optional clock seam for deterministic retry backoff in
+            tests; ``GeneralRetryHandler`` defaults to ``SystemClock``.
+        workers_bridge_provider: Optional callable returning the live
+            :class:`WorkersBridgeConfig` snapshot. Omitted at
+            construction (the dispatcher is built before ``AppState``);
+            the API startup hook late-binds the live provider via
+            :meth:`set_workers_bridge_provider`.
 
     The dispatcher assumes the task queue is already started. Start
     it before registering the observer with the engine.
@@ -92,21 +100,50 @@ class DistributedDispatcher:
         *,
         task_queue: JetStreamTaskQueue,
         clock: Clock | None = None,
+        workers_bridge_provider: (Callable[[], WorkersBridgeConfig] | None) = None,
     ) -> None:
         self._task_queue = task_queue
-        # See docs/reference/retry-patterns.md: Pattern A -- transient
-        # I/O retry for the NATS publish hot path. Forwards the clock so
-        # tests can inject ``FakeClock`` and drive retry backoff
-        # deterministically; ``GeneralRetryHandler`` defaults to
-        # ``SystemClock`` when omitted.
-        self._retry = GeneralRetryHandler(
+        self._clock = clock
+        self._workers_bridge_provider: Callable[[], WorkersBridgeConfig] = (
+            workers_bridge_provider
+            if workers_bridge_provider is not None
+            else _default_workers_bridge
+        )
+
+    def set_workers_bridge_provider(
+        self,
+        provider: Callable[[], WorkersBridgeConfig],
+    ) -> None:
+        """Late-bind the live bridge-config provider after AppState exists.
+
+        Mirrors :meth:`OAuthTokenManager.set_config_resolver`: the
+        dispatcher is instantiated in ``auto_wire_phase1`` before
+        ``AppState``, so the API startup hook injects
+        ``lambda: app_state.workers_bridge_config`` here. Each publish
+        then reads the current snapshot, so an operator hot-reload of a
+        ``workers.dispatcher_publish_*`` setting takes effect on the
+        next publish without restarting the dispatcher.
+        """
+        self._workers_bridge_provider = provider
+
+    def _build_retry(self) -> GeneralRetryHandler:
+        """Build a retry handler from the current bridge snapshot.
+
+        See docs/reference/retry-patterns.md: Pattern A -- transient
+        I/O retry for the NATS publish hot path. Rebuilt per publish
+        (a cheap object) so a hot-reloaded retry budget applies without
+        subscriber-to-consumer plumbing, mirroring how controllers read
+        ``app_state.api_bridge_config`` per request.
+        """
+        cfg = self._workers_bridge_provider()
+        return GeneralRetryHandler(
             retryable=lambda _exc: True,
-            max_attempts=_PUBLISH_MAX_ATTEMPTS,
-            base=_PUBLISH_BACKOFF_BASE_SECONDS,
-            cap=_PUBLISH_BACKOFF_CAP_SECONDS,
+            max_attempts=cfg.dispatcher_publish_max_attempts,
+            base=cfg.dispatcher_publish_backoff_base_seconds,
+            cap=cfg.dispatcher_publish_backoff_cap_seconds,
             event=WORKERS_DISPATCHER_PUBLISH_RETRYING,
             jitter=False,
-            clock=clock,
+            clock=self._clock,
         )
 
     async def on_task_state_changed(
@@ -156,8 +193,10 @@ class DistributedDispatcher:
         async def publish() -> None:
             await self._task_queue.publish_claim(claim)
 
+        retry = self._build_retry()
+        max_attempts = retry.max_attempts
         try:
-            await self._retry.execute(publish, task_id=task_id)
+            await retry.execute(publish, task_id=task_id)
         except MemoryError, RecursionError:
             # System-fatal exceptions must propagate so the process can
             # crash deliberately rather than silently turning into a
@@ -189,7 +228,7 @@ class DistributedDispatcher:
             logger.error(
                 WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
                 task_id=task_id,
-                attempts=_PUBLISH_MAX_ATTEMPTS,
+                attempts=max_attempts,
                 error_type=type(root_exc).__name__,
                 error=safe_error_description(root_exc),
             )
