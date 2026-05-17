@@ -38,13 +38,10 @@ from synthorg.observability.events.workers import (
 )
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import parse_int
+from synthorg.settings.mirrors import parse_float, parse_int
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
-from synthorg.workers.executor import (
-    DEFAULT_HTTP_TIMEOUT_SECONDS,
-    TaskExecutionExecutor,
-)
+from synthorg.workers.executor import TaskExecutionExecutor
 from synthorg.workers.worker import TaskExecutor, run_worker_pool
 
 logger = get_logger(__name__)
@@ -125,6 +122,17 @@ def _build_parser() -> argparse.ArgumentParser:
             "(NATS-only smoke tests)."
         ),
     )
+    parser.add_argument(
+        "--http-timeout-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Per-request HTTP timeout (seconds) for backend task "
+            "transitions. Precedence: this flag > env "
+            "SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS > registered "
+            "workers.executor_http_timeout_seconds default."
+        ),
+    )
     return parser
 
 
@@ -147,6 +155,33 @@ def _resolve_worker_count(explicit: int | None) -> int | None:
         parse=parse_int,
     )
     if isinstance(resolved.value, int):
+        return resolved.value
+    return None
+
+
+def _resolve_http_timeout(explicit: float | None) -> float | None:
+    """Resolve the effective executor HTTP timeout from flag + env var.
+
+    Precedence: explicit ``--http-timeout-seconds`` >
+    ``SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS`` env var > registered
+    ``workers.executor_http_timeout_seconds`` default. Returns ``None``
+    when the env var is set but not a valid float so the caller can
+    surface a structured usage error instead of silently masking
+    operator intent (mirrors :func:`_resolve_worker_count`). The worker
+    subprocess has no settings backend, so this is a Cat-2 boot knob
+    (env > registered default), not a DB-backed bridge config.
+    """
+    if explicit is not None:
+        return explicit
+    env_raw = os.environ.get("SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS", "").strip()
+    if env_raw and parse_float(env_raw) is None:
+        return None
+    resolved = resolve_init_value(
+        SettingNamespace.WORKERS,
+        "executor_http_timeout_seconds",
+        parse=parse_float,
+    )
+    if isinstance(resolved.value, float):
         return resolved.value
     return None
 
@@ -233,15 +268,31 @@ def _resolve_executor(
             error=msg,
         )
         raise SystemExit(msg)
+    http_timeout = _resolve_http_timeout(args.http_timeout_seconds)
+    if http_timeout is None or http_timeout <= 0.0:
+        msg = (
+            "invalid executor HTTP timeout (flag --http-timeout-seconds /"
+            " env SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS must be a positive"
+            " number)"
+        )
+        logger.error(
+            WORKERS_MAIN_INVALID_EXECUTOR_CONFIG,
+            executor=args.executor,
+            missing_flag="--http-timeout-seconds",
+            missing_env="SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS",
+            error=msg,
+        )
+        raise SystemExit(msg)
     # Match the executor's per-request timeout at the client level so
     # the connection-pool defaults line up with the other AsyncClient
     # call sites in the codebase (every other site passes ``timeout=``
     # explicitly rather than relying on the 5 s httpx default).
-    http_client = httpx.AsyncClient(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
+    http_client = httpx.AsyncClient(timeout=http_timeout)
     executor = TaskExecutionExecutor(
         api_base_url=args.api_base_url,
         auth_token=args.auth_token,
         http_client=http_client,
+        timeout_seconds=http_timeout,
     )
     return executor, http_client
 

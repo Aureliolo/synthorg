@@ -203,6 +203,18 @@ def _resolve_api_str(key: str) -> str:
     return str(resolved.value)
 
 
+def _resolve_budget_int(key: str) -> int:
+    """Resolve an integer-typed budget.* setting at boot.
+
+    Cat-2 boot knob: the store is constructed before the
+    ``SettingsService`` connects, so the value is sourced env >
+    registered default via the bootstrap resolver (a runtime change
+    requires a restart -- the consumer is a fixed-length ring buffer).
+    """
+    resolved = resolve_init_value(SettingNamespace.BUDGET, key, parse=parse_int)
+    return int(resolved.value)
+
+
 def _build_default_approval_timeout_scheduler(
     *,
     approval_store: ApprovalStoreProtocol,
@@ -510,7 +522,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if audit_log is None:
         audit_log = AuditLog()
     if coordination_metrics_store is None:
-        coordination_metrics_store = CoordinationMetricsStore()
+        coordination_metrics_store = CoordinationMetricsStore(
+            max_entries=_resolve_budget_int("coordination_metrics_max_entries"),
+        )
     if trust_service is None:
         trust_service = _build_configured_trust_service(effective_config.trust)
 

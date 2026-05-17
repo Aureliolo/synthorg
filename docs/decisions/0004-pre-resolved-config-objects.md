@@ -52,8 +52,12 @@ This PR performs the full sweep (big-bang), not a single pilot:
    -- are not constructed in production today; constructing them into
    startup (which activates those fields) is the enumerated next phase
    below, not a silent gap.
-2. `OptionalSettingsGate` and its callers: the gate resolves once into
-   a frozen snapshot.
+2. Cluster-2 carry-over knobs whose consumers still read a per-call
+   resolver: `TaskExecutionExecutor.executor_http_timeout` and
+   `CoordinationMetricsStore` (`budget.coordination_metrics_max_entries`).
+   (The plan's `OptionalSettingsGate` item is dropped: no such class or
+   concept exists in `src/synthorg/`; it was an aspirational plan
+   reference, verified absent during implementation.)
 3. Full sweep: every service constructed with `config_resolver=` that
    performs per-call `ConfigResolver.get_*`. The implementation
    inventory is built by enumerating `config_resolver.get_` across
@@ -88,7 +92,8 @@ Within this PR:
    provider (reference conversion).
 2. `MemoryBridgeConfig` -- full infra chain + the live fine-tune
    preflight VRAM-table consumer.
-3. `OptionalSettingsGate`.
+3. Cluster-2 carry-over: `TaskExecutionExecutor.executor_http_timeout`
+   and `CoordinationMetricsStore` enforce-bound.
 4. Remaining namespaces, one commit per namespace bridge, each
    verified green by the ghost-wired
    (`check_setting_to_startup_trace.py`) and full test suites before

@@ -13,6 +13,7 @@ from synthorg.api.app import (
     _resolve_api_int,
     _resolve_api_str,
     _resolve_api_str_tuple,
+    _resolve_budget_int,
     _resolve_rate_limiter_enabled,
 )
 
@@ -129,3 +130,43 @@ class TestResolveApiStr:
     ) -> None:
         monkeypatch.delenv("SYNTHORG_API_API_PREFIX", raising=False)
         assert _resolve_api_str("api_prefix") == "/api/v1"
+
+
+@pytest.mark.unit
+class TestResolveBudgetInt:
+    """Cat-2 boot resolution for ``budget.coordination_metrics_max_entries``.
+
+    The ``CoordinationMetricsStore`` ring buffer is sized before the
+    ``SettingsService`` connects, so the value is env > registered
+    default via the bootstrap resolver.
+    """
+
+    _ENV = "SYNTHORG_BUDGET_COORDINATION_METRICS_MAX_ENTRIES"
+
+    def test_env_set_to_valid_int(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV, "250")
+        assert _resolve_budget_int("coordination_metrics_max_entries") == 250
+
+    def test_env_unset_returns_registered_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv(self._ENV, raising=False)
+        assert _resolve_budget_int("coordination_metrics_max_entries") == 10000
+
+    def test_invalid_int_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv(self._ENV, raising=False)
+        expected_default = _resolve_budget_int("coordination_metrics_max_entries")
+        # parse_int returns None on a non-numeric env so the resolver
+        # falls back to the registered default rather than crashing
+        # app construction.
+        monkeypatch.setenv(self._ENV, "not-a-number")
+        assert (
+            _resolve_budget_int("coordination_metrics_max_entries") == expected_default
+        )
