@@ -976,6 +976,36 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         effective_config=effective_config,
     )
 
+    _worker_service_installed = False
+
+    async def _install_worker_execution_service() -> None:
+        # The flip: install the real agent runtime behind the
+        # provider-present switch. Appended first (runs immediately
+        # after the core startup hooks that connect persistence and
+        # wire SettingsService / ConfigResolver), and before any other
+        # appended hook, so the once-only ``set_worker_execution_service``
+        # cannot lose a race with the property's lazy lifecycle-only
+        # default. With no provider this installs the empty-company
+        # backstop; a provider added later swaps in the live service via
+        # ``post_setup_reinit`` (no restart). The closure flag keeps the
+        # one-shot ``set_`` idempotent across a lifespan re-entry
+        # (shared-app test fixtures), mirroring ``_wire_chief_of_staff_chat``.
+        nonlocal _worker_service_installed
+        if _worker_service_installed:
+            return
+        from synthorg.workers.runtime_builder import (  # noqa: PLC0415
+            build_worker_execution_service,
+        )
+
+        service = await build_worker_execution_service(
+            app_state,
+            workspace_root=app_state.agent_workspace_root,
+        )
+        app_state.set_worker_execution_service(service)
+        _worker_service_installed = True
+
+    startup = [*startup, _install_worker_execution_service]
+
     # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for
     # opt-in, defaults to disabled). Attach to app_state so the health
     # endpoint can report the state, and hook start()/shutdown() into the
