@@ -18,7 +18,7 @@ class SandboxLifecycleConfig(BaseModel):
             threshold.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: Literal["per-agent", "per-task", "per-call"] = "per-agent"
     grace_period_seconds: float = Field(default=30.0, ge=0.0)

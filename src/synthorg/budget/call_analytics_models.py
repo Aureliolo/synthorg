@@ -30,7 +30,7 @@ class AnalyticsAggregation(BaseModel):
             sorted tuple of ``(reason_str, count)`` pairs.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total_calls: int = Field(ge=0, description="Total LLM calls recorded.")
     success_count: int = Field(ge=0, description="Calls with success=True.")

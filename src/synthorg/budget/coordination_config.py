@@ -79,7 +79,7 @@ class DetectorCategoryConfig(BaseModel):
         scope: Detection scope level.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     variants: tuple[DetectorVariant, ...] = Field(
         default=(DetectorVariant.HEURISTIC,),
@@ -217,7 +217,7 @@ class OrchestrationAlertThresholds(BaseModel):
             orchestration; stop routing and triage).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     info: float = Field(
         default=_DEFAULT_INFO_THRESHOLD,
@@ -263,7 +263,7 @@ class CoordinationMetricsConfig(BaseModel):
         orchestration_alerts: Orchestration overhead alert thresholds.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,

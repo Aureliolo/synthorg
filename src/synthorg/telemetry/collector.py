@@ -103,8 +103,11 @@ sees an empty / truncated string. Retries inside the same
 
 
 _PEER_READ_RETRY_DELAY_SECONDS: float = 0.005
-"""Sleep between peer-read retries (5 ms). Short enough to converge
-within a typical write window, long enough to yield CPU to the peer."""
+"""Base sleep between peer-read retries, doubled each attempt
+(5 / 10 / 20 ms for the 3-attempt budget). Exponential rather than a
+flat 5 ms so a slow NFS / stale-handle write window is waited out
+without re-stat'ing the handle every 5 ms, while the first retry
+still converges fast on the common local-disk case."""
 
 
 _TEMP_ROOT: str | None
@@ -1085,14 +1088,24 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
     Defends against the window where a peer has just won the
     ``O_CREAT|O_EXCL`` race but has not yet finished ``write()``
     (the file exists but is empty or truncated). Retries up to
-    :data:`_PEER_READ_RETRY_ATTEMPTS` times with
-    :data:`_PEER_READ_RETRY_DELAY_SECONDS` between attempts.
+    :data:`_PEER_READ_RETRY_ATTEMPTS` times with an exponential
+    backoff of :data:`_PEER_READ_RETRY_DELAY_SECONDS` doubled per
+    attempt (5 / 10 / 20 ms) between attempts.
 
     Returns the peer's UUID on success, ``None`` if all attempts
     return empty / corrupt / unreadable. Distinguishes the failure
     modes (file deleted, permission denied, decode error, validation
     error) in the logs so operators can tell "peer file disappeared"
     from "peer wrote garbage".
+
+    This is a synchronous helper run via ``to_thread``; the blocking
+    ``time.sleep`` backoff is intentional in that context and is hard-
+    bounded by ``_PEER_READ_RETRY_ATTEMPTS`` (not cancellation-aware,
+    but it cannot run longer than the summed backoff). A persistently
+    empty peer file after exhaustion is deliberately NOT distinguished
+    from "deleted then recreated empty": both return ``None`` and the
+    caller repairs the file via the atomic-create branch, so the
+    distinction would add complexity with no behavioural gain.
     """
     # See docs/reference/retry-patterns.md: Pattern A -- transient I/O.
     for attempt in range(_PEER_READ_RETRY_ATTEMPTS):
@@ -1133,15 +1146,17 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
             return None
 
         if not stored:
-            # Peer is mid-write. Sleep briefly and retry.
-            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS)
+            # Peer is mid-write. Exponential backoff (5/10/20 ms) so a
+            # slow NFS write window is waited out without hammering the
+            # handle every 5 ms.
+            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS * (2**attempt))
             continue
         try:
             uuid.UUID(stored)
         except ValueError:
-            # Peer wrote partial UUID. Sleep briefly and retry; the
-            # peer may finish before our next attempt.
-            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS)
+            # Peer wrote partial UUID. Exponential backoff (5/10/20 ms);
+            # the peer may finish before the next, longer wait.
+            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS * (2**attempt))
             continue
         return stored
 
@@ -1150,6 +1165,11 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
         detail="deployment_id_peer_read_exhausted",
         attempts=_PEER_READ_RETRY_ATTEMPTS,
         using_generated_id=True,
+        impact=(
+            "caller falls back to a fresh per-process deployment_id; "
+            "telemetry from this process will not correlate with the "
+            "peer until the on-disk id file is repaired"
+        ),
     )
     return None
 

@@ -37,7 +37,7 @@ class _SpendingTotals(BaseModel):
         record_count: Number of cost records aggregated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total_cost: float = Field(
         default=0.0,
@@ -139,7 +139,7 @@ class SpendingSummary(BaseModel):
         alert_level: Current budget alert level.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     period: PeriodSpending = Field(description="Time-period aggregation")
     by_agent: tuple[AgentSpending, ...] = Field(

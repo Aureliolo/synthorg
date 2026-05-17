@@ -25,7 +25,7 @@ class RetryConfig(BaseModel):
         jitter: Whether to add random jitter to delay.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_retries: int = Field(
         default=3,
@@ -83,7 +83,7 @@ class RateLimiterConfig(BaseModel):
             (0 means unlimited).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_requests_per_minute: int = Field(
         default=0,

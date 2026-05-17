@@ -24,7 +24,7 @@ class ToolDisclosureConfig(BaseModel):
             which auto-unload triggers.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     l1_token_budget: int = Field(
         default=3000,

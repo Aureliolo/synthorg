@@ -42,7 +42,7 @@ class GroupSamples(BaseModel):
         spend_samples: Total spend per agent (display currency).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_ids: tuple[NotBlankStr, ...] = ()
     quality_samples: tuple[float, ...] = ()

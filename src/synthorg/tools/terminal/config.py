@@ -18,7 +18,7 @@ class TerminalConfig(BaseModel):
         default_timeout: Default command execution timeout in seconds.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     command_allowlist: tuple[NotBlankStr, ...] = Field(
         default=(),

@@ -210,6 +210,7 @@ class ProviderAuditEvent(BaseModel):
         # field after the validator below converts the input dict into
         # a :class:`MappingProxyType`.
         arbitrary_types_allowed=True,
+        extra="forbid",
     )
 
     id: int | None = Field(default=None, ge=1, description="Repo-assigned row id")

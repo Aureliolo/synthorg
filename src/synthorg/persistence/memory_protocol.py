@@ -170,12 +170,18 @@ class OrgFactRepository(Protocol):
     async def snapshot_at(
         self,
         timestamp: AwareDatetime,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[OperationLogSnapshot, ...]:
-        """Materialize fact state at a specific timestamp.
+        """Materialize a bounded page of fact state at a timestamp.
 
-        Returns the state of all facts (active and retracted) as they
-        were at the given timestamp. Used for point-in-time audits and
-        historical reconstruction.
+        Returns one ``limit``-sized page (not the whole set) of facts
+        (active and retracted) as they were at the given timestamp,
+        ordered for a stable cursor walk. Callers needing the complete
+        point-in-time snapshot drain every page via
+        :func:`synthorg.persistence._shared.collect_all`. Used for
+        point-in-time audits and historical reconstruction.
 
         ``timestamp`` MUST be timezone-aware. Implementations route it
         through :func:`format_iso_utc` (SQLite) or bind it directly as
@@ -188,10 +194,15 @@ class OrgFactRepository(Protocol):
         Args:
             timestamp: The UTC timestamp for point-in-time snapshot.
                 Must be timezone-aware.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Snapshot rows (one per fact) capturing state at
-            ``timestamp``. Order is by fact_id ascending.
+            A page of snapshot rows (one per fact) capturing state at
+            ``timestamp``, in ``fact_id`` ascending order so a cursor
+            walk is repeatable across the same snapshot. Callers
+            needing the whole snapshot drain via
+            :func:`synthorg.persistence._shared.collect_all`.
 
         Raises:
             ValueError: If ``timestamp`` is naive.
@@ -202,18 +213,29 @@ class OrgFactRepository(Protocol):
     async def get_operation_log(
         self,
         fact_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[OperationLogEntry, ...]:
-        """Retrieve the complete audit trail for a fact.
+        """Retrieve a bounded page of the audit trail for a fact.
 
-        Returns all PUBLISH and RETRACT operations for the fact in
-        chronological order (oldest first), indexed by version number.
+        Returns one ``limit``-sized page (not the whole trail) of
+        PUBLISH and RETRACT operations for the fact in chronological
+        order (oldest first), indexed by version number. Version is
+        unique per fact so the page order is stable; callers needing
+        the full trail drain every page via
+        :func:`synthorg.persistence._shared.collect_all`.
 
         Args:
             fact_id: The fact identifier.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Tuple of OperationLogEntry rows in ascending version order.
-            Empty tuple if the fact does not exist.
+            A page of OperationLogEntry rows in ascending version
+            order. Empty tuple if the fact does not exist. Callers
+            needing the full trail drain via
+            :func:`synthorg.persistence._shared.collect_all`.
 
         Raises:
             PersistenceError: If the operation fails.

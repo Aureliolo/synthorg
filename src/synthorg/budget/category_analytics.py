@@ -180,7 +180,7 @@ class OrchestrationRatio(BaseModel):
         system_tokens: System category tokens.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     ratio: float = Field(ge=0.0, le=1.0, description="Orchestration ratio")
     alert_level: OrchestrationAlertLevel = Field(

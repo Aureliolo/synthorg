@@ -50,6 +50,9 @@ Clients should dispatch on `error_code` (most specific) and fall back to `error_
 | 2002 | `ARTIFACT_TOO_LARGE` | Upload exceeds `artifact.max_bytes` |
 | 2003 | `TOOL_PARAMETER_ERROR` | Tool parameters failed schema validation |
 | 2004 | `PROVIDER_TIER_COVERAGE_INSUFFICIENT` | Setup wizard cannot apply a template because no configured provider exposes any models |
+| 2005 | `IMMUTABLE_FIELD_MISMATCH` | A restore/rollback would change an immutable field (e.g. agent id/name/department) |
+| 2006 | `CHECKPOINT_ROLLBACK_UNAVAILABLE` | Fine-tune checkpoint rollback target is missing or unusable |
+| 2007 | `CHECKPOINT_ROLLBACK_CORRUPT` | Fine-tune checkpoint rollback backup data is corrupt |
 
 ## Not Found (3xxx)
 
@@ -70,8 +73,12 @@ The NotFound hierarchy is driven by a single `NotFoundError` class with domain-s
 | 3010 | `CONNECTION_NOT_FOUND` | Integration connection |
 | 3011 | `MODEL_NOT_FOUND` | Provider model |
 | 3012 | `ESCALATION_NOT_FOUND` | Escalation queue entry |
+| 3013 | `WORKFLOW_DEFINITION_NOT_FOUND` | Workflow definition record |
+| 3014 | `AB_TEST_NOT_FOUND` | A/B test record for a proposal |
+| 3015 | `BACKUP_NOT_FOUND` | Backup archive |
+| 3016 | `MEMORY_ENTRY_NOT_FOUND` | Agent memory entry |
 
-All 13 share the same `type` URI; the numeric code is the discriminator.
+All share the same `type` URI; the numeric code is the discriminator.
 
 ## Conflict (4xxx)
 
@@ -86,6 +93,11 @@ All 13 share the same `type` URI; the numeric code is the discriminator.
 | 4006 | `ESCALATION_ALREADY_DECIDED` | Late decision on a closed escalation |
 | 4007 | `MIXED_CURRENCY_AGGREGATION` | Cross-currency aggregation attempted |
 | 4008 | `WORKFLOW_EXECUTION_ALREADY_TERMINAL` | Cancel hit an execution already in a terminal status (no retry will succeed) |
+| 4009 | `BACKUP_IN_PROGRESS` | A backup/restore operation is already running |
+| 4010 | `CHECKPOINT_OPERATION_CONFLICT` | Checkpoint deploy/delete rejected (e.g. active checkpoint) |
+| 4011 | `FINE_TUNE_RUN_ACTIVE` | A fine-tune run is already active (start/resume blocked) |
+| 4012 | `TRAINING_PLAN_NOT_MODIFIABLE` | Training plan cannot be modified after execution or failure |
+| 4013 | `BACKUP_UNRESTARTABLE` | Backup service stopped in an unrestartable state |
 
 ## Rate Limit (5xxx)
 
@@ -135,6 +147,11 @@ All 13 share the same `type` URI; the numeric code is the discriminator.
 | 8008 | `TOOL_EXECUTION_ERROR` | Tool runtime failure (subclass of `TOOL_ERROR`) |
 | 8009 | `FEATURE_NOT_IMPLEMENTED` | Active backend or deployment fundamentally does not implement the requested operation (501) |
 | 8010 | `ARTIFACT_NO_STORAGE_BACKEND` | Artifact service was constructed without a storage backend; controller-helper misconfiguration |
+| 8011 | `AGENT_IDENTITY_ROLLBACK_FAILED` | Unexpected server failure during agent-identity rollback |
+| 8012 | `BACKUP_RESTORE_FAILED` | Restore operation failed (non-recoverable backend error) |
+| 8013 | `BACKUP_MANIFEST_ERROR` | Backup manifest could not be parsed or validated |
+| 8014 | `SETTINGS_ENCRYPTION_ERROR` | Internal error processing a sensitive (encrypted) setting |
+| 8015 | `SINK_CONFIG_VALIDATION_ERROR` | Internal error validating an observability sink configuration |
 
 ## Content negotiation
 

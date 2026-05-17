@@ -401,8 +401,19 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
     async def search(
         self,
         query: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[SubworkflowSummary, ...]:
-        """Search subworkflows by name or description substring."""
+        """Return a bounded page of summaries matching a substring.
+
+        Summaries page in ``subworkflow_id`` order so a cursor walk is
+        stable; callers needing every match drain via
+        :func:`synthorg.persistence._shared.collect_all`.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED, query=query
+        )
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         try:
@@ -410,10 +421,28 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
+                # A summary aggregates every version row of a
+                # subworkflow into one entry, so the page boundary is
+                # the distinct ``subworkflow_id`` set, not raw rows.
+                # Page the ids at the DB first, then fetch only that
+                # page's rows: this bounds both scan cost and the rows
+                # materialised in memory to roughly
+                # ``limit * versions_per_subworkflow``.
+                await cur.execute(
+                    "SELECT subworkflow_id FROM subworkflows"
+                    " WHERE name ILIKE %s ESCAPE '\\'"
+                    " OR description ILIKE %s ESCAPE '\\'"
+                    " GROUP BY subworkflow_id"
+                    " ORDER BY subworkflow_id LIMIT %s OFFSET %s",
+                    (pattern, pattern, limit, offset),
+                )
+                page_ids = [str(r["subworkflow_id"]) for r in await cur.fetchall()]
+                if not page_ids:
+                    return ()
                 await cur.execute(
                     f"SELECT {_SELECT_COLUMNS} FROM subworkflows"  # noqa: S608
-                    " WHERE name ILIKE %s OR description ILIKE %s",
-                    (pattern, pattern),
+                    " WHERE subworkflow_id = ANY(%s)",
+                    (page_ids,),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -513,18 +542,50 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         self,
         subworkflow_id: NotBlankStr,
         version: NotBlankStr | None = None,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[ParentReference, ...]:
-        """Return workflows referencing a subworkflow.
+        """Return a bounded page of workflows referencing a subworkflow.
 
         Scans both ``workflow_definitions`` and ``subworkflows`` tables.
+        References page in
+        ``(parent_type, parent_id, node_id, pinned_version)`` order so
+        a cursor walk is stable. Referential-integrity callers (the
+        delete-if-unreferenced path) MUST drain every page via
+        :func:`synthorg.persistence._shared.collect_all`; a truncated
+        parent set would let a still-referenced version be deleted.
         """
+        limit = validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+            subworkflow_id=subworkflow_id,
+        )
         try:
             async with self._pool.connection() as conn:
-                return await self._find_parents_with_conn(
+                refs = await self._find_parents_with_conn(
                     conn,
                     subworkflow_id,
                     version,
                 )
+                # The reference scan walks JSON node arrays in both
+                # ``workflow_definitions`` and ``subworkflows``; true
+                # SQL-level pagination needs a normalized references
+                # table (a schema change tracked separately). Paging in
+                # memory is acceptable here because referential-
+                # integrity callers MUST drain every page anyway, so
+                # bounding per-page DB cost would yield no real saving.
+                ordered = sorted(
+                    refs,
+                    key=lambda r: (
+                        r.parent_type,
+                        r.parent_id,
+                        r.node_id,
+                        r.pinned_version,
+                    ),
+                )
+                return tuple(ordered[offset : offset + limit])
         except psycopg.Error as exc:
             msg = f"Failed to find parents for subworkflow {subworkflow_id!r}"
             logger.warning(

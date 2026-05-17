@@ -382,7 +382,7 @@ CREATE TABLE heartbeats (
 );
 
 CREATE INDEX idx_hb_last_heartbeat
-    ON heartbeats(last_heartbeat_at);
+    ON heartbeats(last_heartbeat_at, execution_id);
 
 -- ── Agent states ──────────────────────────────────────────────
 CREATE TABLE agent_states (
@@ -1183,6 +1183,14 @@ CREATE INDEX idx_approvals_task_id ON approvals(task_id);
 -- created_at).
 CREATE INDEX idx_approvals_status_created_at
     ON approvals(status, created_at DESC);
+-- Risk / action triage inboxes newest-first: lets the dashboard
+-- "high-risk pending, newest first" and "by action type, newest first"
+-- views hit one index range scan instead of a single-column index
+-- (idx_approvals_risk_level / idx_approvals_action_type) plus a sort.
+CREATE INDEX idx_approvals_risk_created_at
+    ON approvals(risk_level, created_at DESC);
+CREATE INDEX idx_approvals_action_created_at
+    ON approvals(action_type, created_at DESC);
 
 -- Org memory: MVCC operation log + materialized snapshot.
 -- Tags are TEXT JSON to match the SQLite backend's serialization;
@@ -1212,6 +1220,11 @@ CREATE INDEX idx_oplog_ts_fact ON org_facts_operation_log (timestamp, fact_id);
 -- inline (linear in the matching window).
 CREATE INDEX idx_oplog_category_ts
     ON org_facts_operation_log (category, timestamp DESC);
+-- Operation-type audit queries ("all RETRACT ops") scan the whole
+-- log without this; the column is low-cardinality but the index lets
+-- the planner skip the full table for the (rare) retract sweep.
+CREATE INDEX idx_oplog_operation_type
+    ON org_facts_operation_log (operation_type);
 
 CREATE TABLE org_facts_snapshot (
     fact_id TEXT PRIMARY KEY,
@@ -1228,6 +1241,13 @@ CREATE TABLE org_facts_snapshot (
 );
 CREATE INDEX idx_snapshot_category ON org_facts_snapshot (category);
 CREATE INDEX idx_snapshot_active ON org_facts_snapshot (retracted_at)
+    WHERE retracted_at IS NULL;
+-- "Live facts in category X" is the hot ontology read. The partial
+-- index keeps only non-retracted rows so the planner does a single
+-- covered range scan instead of (idx_snapshot_category -> filter
+-- retracted_at) across the full category.
+CREATE INDEX idx_snapshot_category_active
+    ON org_facts_snapshot (category)
     WHERE retracted_at IS NULL;
 
 -- Ontology drift reports.

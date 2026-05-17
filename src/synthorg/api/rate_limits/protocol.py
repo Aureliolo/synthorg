@@ -27,7 +27,7 @@ class RateLimitOutcome(BaseModel):
             are rejected by the ``ge=0`` validator at construction time.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     allowed: bool
     retry_after_seconds: float | None = Field(default=None, ge=0.0)

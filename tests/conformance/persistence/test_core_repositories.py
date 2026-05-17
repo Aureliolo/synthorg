@@ -249,6 +249,36 @@ class TestMessageRepository:
         assert len(await backend.messages.get_history("chan1")) == 1
         assert len(await backend.messages.get_history("chan2")) == 1
 
+    async def test_get_by_id_returns_matching_message(
+        self, backend: PersistenceBackend
+    ) -> None:
+        msg_id = uuid4()
+        await backend.messages.append(
+            make_message(msg_id=msg_id, channel="chan1", content="needle")
+        )
+        await backend.messages.append(
+            make_message(msg_id=uuid4(), channel="chan1", content="haystack")
+        )
+        found = await backend.messages.get_by_id("chan1", str(msg_id))
+        assert found is not None
+        assert str(found.id) == str(msg_id)
+        assert found.channel == "chan1"
+
+    async def test_get_by_id_unknown_id_returns_none(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.messages.append(make_message(msg_id=uuid4(), channel="chan1"))
+        assert await backend.messages.get_by_id("chan1", str(uuid4())) is None
+
+    async def test_get_by_id_wrong_channel_returns_none(
+        self, backend: PersistenceBackend
+    ) -> None:
+        msg_id = uuid4()
+        await backend.messages.append(make_message(msg_id=msg_id, channel="chan1"))
+        # The id exists but on a different channel: the channel scoping
+        # predicate must reject the cross-channel read.
+        assert await backend.messages.get_by_id("chan2", str(msg_id)) is None
+
     async def test_delete_removes_row_and_returns_true(
         self, backend: PersistenceBackend
     ) -> None:

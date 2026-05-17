@@ -197,8 +197,24 @@ ON CONFLICT(id) DO UPDATE SET
 
         return self._row_to_model(row)
 
-    async def get_by_agent(self, agent_id: NotBlankStr) -> tuple[ParkedContext, ...]:
-        """Retrieve all parked contexts for an agent."""
+    async def get_by_agent(
+        self,
+        agent_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        """Bounded page of parked contexts for an agent, newest first.
+
+        ``id`` is the stable secondary sort so rows sharing a
+        ``parked_at`` page deterministically.
+        """
+        limit = validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
+            agent_id=agent_id,
+        )
         try:
             async with (
                 self._pool.connection() as conn,
@@ -208,8 +224,9 @@ ON CONFLICT(id) DO UPDATE SET
                     "SELECT id, execution_id, agent_id, task_id, approval_id, "
                     "parked_at, context_json, metadata "
                     "FROM parked_contexts WHERE agent_id = %s "
-                    "ORDER BY parked_at DESC",
-                    (agent_id,),
+                    "ORDER BY parked_at DESC, id "
+                    "LIMIT %s OFFSET %s",
+                    (agent_id, limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

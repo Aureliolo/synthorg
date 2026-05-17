@@ -183,23 +183,36 @@ inline with the consumer. Examples:
 ## 8. Frozen `ConfigDict` pattern
 
 Every Pydantic model declares
-`model_config = ConfigDict(frozen=True, allow_inf_nan=False)`. The
-project standard is to add `extra="forbid"` on every model that does
-not need to round-trip through `model_dump()` -- which is most of
-them. Around 489 ConfigDicts across `src/synthorg/` carry the strict
-form today; the carve-out is the ~46 classes that declare a
-`@computed_field`, where Pydantic v2 includes the computed value in
-`model_dump()` output and a strict-extra reconstruction would reject
-that key on the round trip. Request DTOs are always strict because
-the caller-side reject-unknown-keys property is what `extra="forbid"`
-exists for.
+`model_config = ConfigDict(frozen=True, allow_inf_nan=False)` with
+`extra="forbid"`. This is enforced project-wide (not API-DTO-only)
+by `scripts/check_frozen_model_extra_forbid.py`: every class under
+`src/synthorg/` whose own `model_config` is a `ConfigDict` (or dict
+literal) with `frozen=True` MUST also set `extra="forbid"`.
 
+Two carve-outs:
+
+* **`@computed_field` (automatic).** Classes declaring a
+  `@computed_field` are exempt without annotation: Pydantic v2
+  includes the computed value in `model_dump()` output and a
+  strict-extra reconstruction would reject that key on the round
+  trip. The gate detects the decorator via AST so the ~68 such
+  classes carry no per-line noise.
+* **Per-line opt-out.** Genuine exceptions (an `extra="allow"`
+  envelope that must accept arbitrary provider keys, a
+  validator-gated boundary using `extra="ignore"` for
+  forward-compat) declare
+  `# lint-allow: frozen-extra-forbid -- <reason>` on the class
+  definition line. Bare opt-outs without a reason are violations.
+
+Request DTOs are always strict because the caller-side
+reject-unknown-keys property is what `extra="forbid"` exists for.
 Combined with the framework's `frozen` guarantee this gives us the
 "create new objects, never mutate existing ones" property the
 immutability covenant relies on.
 
-References: 489+ occurrences across `src/synthorg/`. Canonical example:
-`src/synthorg/approval/models.py:28`.
+Canonical example: `src/synthorg/approval/models.py:28`. Gate:
+`scripts/check_frozen_model_extra_forbid.py` (pre-push +
+`.pre-commit-config.yaml` `frozen-extra-forbid`).
 
 ## 9. Typed args models at system boundaries (#1611)
 
@@ -754,8 +767,9 @@ API boundary. The naming suffix encodes its role:
 * `*Info`: derived metadata (e.g. `ProviderInfo`).
 * `*Summary`: aggregate / rollup view (e.g. `BudgetSummary`).
 
-The `dto-forbid-extra` gate scans for any DTO carrying one of these
-suffixes and verifies it sets `extra="forbid"`.
+The project-wide `frozen-extra-forbid` gate (section 8) covers every
+DTO carrying one of these suffixes along with every other frozen
+model, verifying each sets `extra="forbid"`.
 
 ## 30. Import order
 

@@ -206,7 +206,7 @@ class TestExceptionHandlers:
             assert body["error"] == "Backup not found: abc123"
             _assert_error_detail(
                 body,
-                error_code=ErrorCode.RECORD_NOT_FOUND,
+                error_code=ErrorCode.BACKUP_NOT_FOUND,
                 error_category=ErrorCategory.NOT_FOUND,
                 retryable=False,
             )
@@ -233,7 +233,7 @@ class TestExceptionHandlers:
             assert body["error"] == "A backup is already in progress"
             _assert_error_detail(
                 body,
-                error_code=ErrorCode.RESOURCE_CONFLICT,
+                error_code=ErrorCode.BACKUP_IN_PROGRESS,
                 error_category=ErrorCategory.CONFLICT,
                 retryable=False,
             )
@@ -256,12 +256,13 @@ class TestExceptionHandlers:
             assert resp.status_code == 500
             body = resp.json()
             assert body["success"] is False
-            # 5xx scrubs the upstream message; the structured envelope
-            # surfaces the category title, not the raw exception text.
-            assert body["error"] == "Backup operation failed"
+            # 5xx scrubs the upstream message to the class default; the
+            # distinct ``BACKUP_MANIFEST_ERROR`` code lets clients tell
+            # a corrupt-manifest failure apart from a generic 500.
+            assert body["error"] == "Backup manifest is invalid or corrupt"
             _assert_error_detail(
                 body,
-                error_code=ErrorCode.INTERNAL_ERROR,
+                error_code=ErrorCode.BACKUP_MANIFEST_ERROR,
                 error_category=ErrorCategory.INTERNAL,
                 retryable=False,
             )
@@ -298,20 +299,21 @@ class TestExceptionHandlers:
 
     @pytest.mark.parametrize(
         "exc_cls",
-        [RestoreError, RetentionError, ComponentBackupError],
-        ids=["restore_error", "retention_error", "component_backup_error"],
+        [RetentionError, ComponentBackupError],
+        ids=["retention_error", "component_backup_error"],
     )
     def test_other_backup_subtypes_map_to_structured_500(
         self,
         exc_cls: type[BackupError],
     ) -> None:
-        """``RestoreError``, ``RetentionError``, ``ComponentBackupError``.
+        """``RetentionError``, ``ComponentBackupError``.
 
         Pin the contract that every non-special-cased ``BackupError``
         subtype routes through ``handle_backup_error``'s catch-all
         branch and produces a structured 5xx with ``INTERNAL_ERROR``.
         Adding an explicit branch for any of these in a future refactor
-        must update this test.
+        must update this test. ``RestoreError`` and ``ManifestError``
+        now carry distinct codes and have their own tests.
         """
 
         @get("/test")
@@ -327,6 +329,33 @@ class TestExceptionHandlers:
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.INTERNAL_ERROR,
+                error_category=ErrorCategory.INTERNAL,
+                retryable=False,
+            )
+
+    def test_restore_error_maps_to_structured_500_with_distinct_code(
+        self,
+    ) -> None:
+        """``RestoreError`` carries the distinct ``BACKUP_RESTORE_FAILED``.
+
+        5xx still scrubs the upstream message to the class default, but
+        the distinct code lets clients/operators alert on restore
+        failures specifically rather than a generic internal error.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "restore subtype failure"
+            raise RestoreError(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 500
+            body = resp.json()
+            assert body["error"] == "Restore operation failed"
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.BACKUP_RESTORE_FAILED,
                 error_category=ErrorCategory.INTERNAL,
                 retryable=False,
             )

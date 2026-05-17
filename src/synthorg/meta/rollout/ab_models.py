@@ -49,7 +49,7 @@ class GroupAssignment(BaseModel):
         assigned_at: When the assignment was computed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     proposal_id: UUID
     control_agent_ids: tuple[NotBlankStr, ...] = ()
@@ -193,7 +193,7 @@ class ABTestComparison(BaseModel):
         compared_at: When the comparison was performed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     verdict: ABTestVerdict
     control_metrics: GroupMetrics

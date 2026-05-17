@@ -19,6 +19,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_HEARTBEAT_QUERY_FAILED,
     PERSISTENCE_HEARTBEAT_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -108,20 +110,35 @@ INSERT OR REPLACE INTO heartbeats (
 
         return self._row_to_model(dict(row))
 
-    async def get_stale(self, threshold: AwareDatetime) -> tuple[Heartbeat, ...]:
-        """Retrieve heartbeats older than the threshold.
+    async def get_stale(
+        self,
+        threshold: AwareDatetime,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Heartbeat, ...]:
+        """Bounded page of heartbeats older than the threshold.
+
+        ``execution_id`` is the stable secondary sort so rows sharing
+        a ``last_heartbeat_at`` page deterministically.
 
         Args:
             threshold: Heartbeats with ``last_heartbeat_at`` before
                 this timestamp are considered stale.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
         """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_HEARTBEAT_QUERY_FAILED
+        )
         threshold_iso = threshold.astimezone(UTC).isoformat()
         try:
             cursor = await self._db.execute(
                 "SELECT execution_id, agent_id, task_id, last_heartbeat_at "
                 "FROM heartbeats WHERE last_heartbeat_at < ? "
-                "ORDER BY last_heartbeat_at",
-                (threshold_iso,),
+                "ORDER BY last_heartbeat_at, execution_id "
+                "LIMIT ? OFFSET ?",
+                (threshold_iso, limit, offset),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

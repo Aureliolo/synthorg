@@ -62,7 +62,7 @@ class SettingDefinition(BaseModel):
         max_value: Maximum for numeric types (inclusive).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     namespace: SettingNamespace = Field(description="Setting namespace")
     key: NotBlankStr = Field(description="Setting key within namespace")
@@ -254,7 +254,7 @@ class SettingValue(BaseModel):
         updated_at: ISO 8601 timestamp for DB-sourced values.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     namespace: SettingNamespace = Field(description="Setting namespace")
     key: NotBlankStr = Field(description="Setting key")
@@ -279,7 +279,7 @@ class SettingEntry(BaseModel):
         updated_at: ISO 8601 timestamp for DB-sourced values.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     definition: SettingDefinition = Field(description="Setting metadata")
     value: str = Field(description="Resolved value as string")

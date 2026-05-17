@@ -92,7 +92,12 @@ class TrajectoryScore(BaseModel):
         consistent: Whether the candidate passed self-consistency.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    # ``extra="forbid"`` is safe here despite the ``joint_score``
+    # @computed_field carve-out: ``TrajectoryScore`` is constructed
+    # once in ``engine/trajectory/scorer.py`` and never reconstructed
+    # via ``model_dump -> model_validate``, so the computed key never
+    # round-trips back into a constructor.
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     candidate_index: int = Field(
         ge=0,

@@ -36,7 +36,7 @@ class SQLiteConfig(BaseModel):
             (default 64 MB).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     path: NotBlankStr = Field(
         default="synthorg.db",
@@ -116,7 +116,7 @@ class PostgresConfig(BaseModel):
             connection attempt before raising.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     # Defaults target a local-loopback Postgres for development. The
     # Go CLI overrides both host and port by injecting a complete
@@ -252,7 +252,7 @@ class PersistenceConfig(BaseModel):
             ``backend="postgres"``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset({"sqlite", "postgres"})
 

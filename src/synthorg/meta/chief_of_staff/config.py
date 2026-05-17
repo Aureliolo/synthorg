@@ -42,7 +42,7 @@ class ChiefOfStaffConfig(BaseModel):
         chat_max_tokens: Token budget for chat responses.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     # ── Learning ──────────────────────────────────────────────────
 

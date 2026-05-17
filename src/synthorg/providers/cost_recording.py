@@ -66,6 +66,7 @@ class CostRecordingContext(BaseModel):
         frozen=True,
         allow_inf_nan=False,
         arbitrary_types_allowed=True,
+        extra="forbid",
     )
 
     cost_tracker: Any = Field(description="CostTracker reference")

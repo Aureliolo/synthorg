@@ -24,7 +24,7 @@ class ConnectionsConfig(BaseModel):
         max_connections_per_type: Upper bound per connection type.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_connections_per_type: int = Field(default=100, ge=1)
 
@@ -43,7 +43,7 @@ class EncryptedSqliteConfig(BaseModel):
             key orphans all previously stored ciphertext.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     master_key_env: NotBlankStr = "SYNTHORG_MASTER_KEY"
 
@@ -60,7 +60,7 @@ class EncryptedPostgresConfig(BaseModel):
             32-byte Fernet key.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     master_key_env: NotBlankStr = "SYNTHORG_MASTER_KEY"
 
@@ -72,7 +72,7 @@ class EnvVarConfig(BaseModel):
         prefix: Environment variable prefix for secret lookups.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     prefix: NotBlankStr = "SYNTHORG_SECRET_"
 
@@ -87,7 +87,7 @@ class SecretBackendConfig(BaseModel):
         env_var: Settings for the env-var backend.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     # Neutral, vendor-agnostic discriminators so the public config
     # surface does not embed specific vendor names. The factory maps
@@ -130,7 +130,7 @@ class OAuthConfig(BaseModel):
             this window.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(
@@ -165,7 +165,7 @@ class WebhooksConfig(BaseModel):
         receipt_retention_days: How long to keep webhook receipts.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(
@@ -197,7 +197,7 @@ class IntegrationHealthConfig(BaseModel):
         degraded_threshold: Consecutive failures before ``degraded``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     check_interval_seconds: int = Field(default=300, gt=0)
     unhealthy_threshold: int = Field(default=3, ge=1)
@@ -223,7 +223,7 @@ class TunnelConfig(BaseModel):
         auth_token_env: Env var holding the ngrok auth token.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     auth_token_env: NotBlankStr = "NGROK_AUTHTOKEN"  # noqa: S105
 
@@ -235,7 +235,7 @@ class McpCatalogConfig(BaseModel):
         enabled: Whether the catalog is available.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
 
@@ -254,7 +254,7 @@ class IntegrationsConfig(BaseModel):
         mcp_catalog: Bundled MCP server catalog settings.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     connections: ConnectionsConfig = Field(

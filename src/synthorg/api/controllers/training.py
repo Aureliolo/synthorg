@@ -22,7 +22,11 @@ from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
-from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.domain_errors import (
+    NotFoundError,
+    TrainingPlanNotModifiableError,
+    ValidationError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
     ContentType,
@@ -157,7 +161,10 @@ class TrainingController(Controller):
 
     @post(
         "/plan",
-        guards=[require_org_mutation()],
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("training.create_plan", key="user"),
+        ],
         status_code=HTTP_200_OK,
     )
     async def create_plan(
@@ -167,6 +174,9 @@ class TrainingController(Controller):
         data: CreateTrainingPlanRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
         """Create a training plan for the specified agent.
+
+        Rate-limited per user by the ``training.create_plan`` policy
+        guard; burst traffic is rejected with HTTP 429.
 
         Args:
             state: Application state.
@@ -409,7 +419,13 @@ class TrainingController(Controller):
 
     @put(
         "/plan/{plan_id:str}/overrides",
-        guards=[require_org_mutation()],
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy(
+                "training.update_overrides",
+                key="user",
+            ),
+        ],
         status_code=HTTP_200_OK,
     )
     async def update_overrides(
@@ -420,6 +436,9 @@ class TrainingController(Controller):
         data: UpdateTrainingOverridesRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
         """Update training plan overrides.
+
+        Rate-limited per user by the ``training.update_overrides``
+        policy guard; burst traffic is rejected with HTTP 429.
 
         Args:
             state: Application state.
@@ -469,7 +488,7 @@ class TrainingController(Controller):
                 error="Attempt to modify non-pending training plan",
             )
             msg = "Cannot modify plan after execution or failure"
-            raise ConflictError(msg)
+            raise TrainingPlanNotModifiableError(msg)
 
         updates: dict[str, object] = {}
         if data.override_sources is not None:

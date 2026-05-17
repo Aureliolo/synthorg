@@ -51,7 +51,7 @@ class ReportScheduleConfig(BaseModel):
         templates: Which report templates to include.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     periods: tuple[ReportPeriod, ...] = ()
@@ -82,7 +82,7 @@ class AutomatedReportingConfig(BaseModel):
         retention_days: How long to keep generated reports.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     schedule: ReportScheduleConfig = Field(
         default_factory=ReportScheduleConfig,

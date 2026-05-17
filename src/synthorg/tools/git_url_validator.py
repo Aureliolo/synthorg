@@ -102,7 +102,7 @@ class GitCloneNetworkPolicy(BaseModel):
             IPs legitimately vary between queries.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     hostname_allowlist: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -157,7 +157,7 @@ class DnsValidationOk(BaseModel):
             for ``http.curloptResolve`` pinning).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     hostname: NotBlankStr
     port: int | None = Field(default=None, gt=0, le=65535)

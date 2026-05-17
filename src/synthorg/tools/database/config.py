@@ -20,7 +20,7 @@ class DatabaseConnectionConfig(BaseModel):
         read_only: Whether the connection is read-only by default.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     database_path: NotBlankStr = Field(
         description="Path to the SQLite database file",
@@ -51,7 +51,7 @@ class DatabaseConfig(BaseModel):
         default_connection: Name of the default connection.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     connections: dict[NotBlankStr, DatabaseConnectionConfig] = Field(
         default_factory=dict,

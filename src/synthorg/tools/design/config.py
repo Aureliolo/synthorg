@@ -15,7 +15,7 @@ class DesignToolsConfig(BaseModel):
             generated assets.  ``None`` means in-memory only.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     image_timeout: float = Field(
         default=60.0,

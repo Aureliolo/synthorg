@@ -31,7 +31,7 @@ class Skill(BaseModel):
             unspecified.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique skill identifier")
     name: NotBlankStr = Field(description="Human-readable display name")
@@ -87,7 +87,7 @@ class Authority(BaseModel):
         budget_limit: Maximum spend per task in base currency units.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     can_approve: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -118,7 +118,7 @@ class SeniorityInfo(BaseModel):
         cost_tier: Cost tier identifier (built-in ``CostTier`` or user-defined string).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     level: SeniorityLevel = Field(description="Seniority level")
     authority_scope: NotBlankStr = Field(
@@ -146,7 +146,7 @@ class Role(BaseModel):
         description: Human-readable description.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Role name")
     department: DepartmentName = Field(
@@ -190,7 +190,7 @@ class CustomRole(BaseModel):
         suggested_model: Suggested model tier.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Custom role name")
     department: DepartmentName | str = Field(

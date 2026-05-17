@@ -6,7 +6,7 @@ unchanged, and emits the audit-grade
 ``COMMUNICATION_MEETING_DELETED`` event on success only.
 """
 
-from unittest.mock import MagicMock
+from typing import Any
 
 import pytest
 import structlog.testing
@@ -17,13 +17,14 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.communication import (
     COMMUNICATION_MEETING_DELETED,
 )
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _make_service(*, deleted: bool) -> tuple[MeetingService, MagicMock]:
-    orch = MagicMock(spec=MeetingOrchestrator)
-    orch.delete_record = MagicMock(return_value=deleted)
+def _make_service(*, deleted: bool) -> tuple[MeetingService, Any]:
+    orch = mock_of[MeetingOrchestrator]()
+    orch.delete_record.return_value = deleted
     service = MeetingService(orchestrator=orch)
     return service, orch
 
@@ -63,3 +64,26 @@ class TestMeetingServiceDelete:
         orch.delete_record.assert_called_once_with("missing")
         audit = [e for e in events if e.get("event") == COMMUNICATION_MEETING_DELETED]
         assert audit == []
+
+
+class TestMeetingServiceGetMeeting:
+    """``get_meeting`` is an O(1) delegate, not a full-record scan."""
+
+    async def test_delegates_to_get_record_and_never_scans(self) -> None:
+        sentinel = object()
+        orch = mock_of[MeetingOrchestrator]()
+        orch.get_record.return_value = sentinel
+        service = MeetingService(orchestrator=orch)
+
+        result = await service.get_meeting(NotBlankStr("meet-1"))
+
+        assert result is sentinel
+        orch.get_record.assert_called_once_with("meet-1")
+        orch.get_records.assert_not_called()
+
+    async def test_returns_none_when_record_absent(self) -> None:
+        orch = mock_of[MeetingOrchestrator]()
+        orch.get_record.return_value = None
+        service = MeetingService(orchestrator=orch)
+
+        assert await service.get_meeting(NotBlankStr("nope")) is None

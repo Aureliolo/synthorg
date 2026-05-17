@@ -6,6 +6,7 @@ audit-grade ``COMMUNICATION_MESSAGE_DELETED`` event on success only.
 """
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,13 +18,15 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.communication import (
     COMMUNICATION_MESSAGE_DELETED,
 )
+from synthorg.persistence.message_protocol import MessageRepository
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _make_service(*, deleted: bool) -> tuple[MessageService, AsyncMock]:
-    repo = AsyncMock()
-    repo.delete = AsyncMock(return_value=deleted)
+def _make_service(*, deleted: bool) -> tuple[MessageService, Any]:
+    repo = mock_of[MessageRepository]()
+    repo.delete.return_value = deleted
     persistence = SimpleNamespace(messages=repo)
     bus = AsyncMock(spec=MessageBus)
     service = MessageService(bus=bus, persistence=persistence)
@@ -66,3 +69,43 @@ class TestMessageServiceDelete:
         repo.delete.assert_awaited_once_with("missing")
         audit = [e for e in events if e.get("event") == COMMUNICATION_MESSAGE_DELETED]
         assert audit == []
+
+
+class TestMessageServiceGetMessage:
+    """``get_message`` is a single indexed point read, not a scan."""
+
+    async def test_delegates_to_get_by_id_and_never_scans_history(
+        self,
+    ) -> None:
+        sentinel = object()
+        repo = mock_of[MessageRepository]()
+        repo.get_by_id.return_value = sentinel
+        persistence = SimpleNamespace(messages=repo)
+        service = MessageService(
+            bus=AsyncMock(spec=MessageBus),
+            persistence=persistence,
+        )
+
+        result = await service.get_message(
+            channel=NotBlankStr("chan1"),
+            message_id="msg-9",
+        )
+
+        assert result is sentinel
+        repo.get_by_id.assert_awaited_once_with("chan1", "msg-9")
+        repo.get_history.assert_not_awaited()
+
+    async def test_returns_none_when_repo_returns_none(self) -> None:
+        repo = mock_of[MessageRepository]()
+        repo.get_by_id.return_value = None
+        service = MessageService(
+            bus=AsyncMock(spec=MessageBus),
+            persistence=SimpleNamespace(messages=repo),
+        )
+
+        result = await service.get_message(
+            channel=NotBlankStr("chan1"),
+            message_id="nope",
+        )
+
+        assert result is None

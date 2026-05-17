@@ -310,7 +310,7 @@ for non-Docker deployments where torch is installed directly.
 
 ```python
 class EmbeddingFineTuneConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     checkpoint_path: NotBlankStr | None = None

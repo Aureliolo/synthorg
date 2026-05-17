@@ -37,7 +37,7 @@ class AgentPerformanceSummary(BaseModel):
         total_risk_units: Total risk units accumulated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     tasks_completed: int = Field(default=0, ge=0)
@@ -63,7 +63,7 @@ class PerformanceMetricsReport(BaseModel):
         generated_at: When the report was generated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_snapshots: tuple[AgentPerformanceSummary, ...] = ()
     average_quality_score: float | None = Field(
@@ -93,7 +93,7 @@ class DepartmentTaskSummary(BaseModel):
         failed: Tasks failed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     department: NotBlankStr = Field(description="Department name")
     assigned: int = Field(default=0, ge=0)
@@ -144,7 +144,7 @@ class DailyRiskPoint(BaseModel):
         record_count: Number of risk records.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     date: _dt.date = Field(description="Date")
     total_risk_units: float = Field(default=0.0, ge=0.0)
@@ -162,7 +162,7 @@ class RiskTrendsReport(BaseModel):
         generated_at: When the report was generated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total_risk_units: float = Field(default=0.0, ge=0.0)
     risk_by_agent: tuple[tuple[NotBlankStr, float], ...] = ()
@@ -206,7 +206,7 @@ class ComprehensiveReport(BaseModel):
         generated_at: When the report was generated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     period: ReportPeriod = Field(description="Report period")
     start: AwareDatetime = Field(description="Period start (inclusive)")

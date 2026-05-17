@@ -41,7 +41,7 @@ class ProposalOutcome(BaseModel):
         decision_reason: Rationale for the decision, if provided.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     proposal_id: UUID
     title: NotBlankStr
@@ -166,7 +166,7 @@ class Alert(BaseModel):
         emitted_at: When the alert was emitted.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: UUID = Field(default_factory=uuid4)
     severity: RuleSeverity
@@ -199,7 +199,7 @@ class ChatQuery(BaseModel):
         alert_id: Alert to explain (optional).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     question: NotBlankStr
     proposal_id: UUID | None = None

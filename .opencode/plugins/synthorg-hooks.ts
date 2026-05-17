@@ -13,6 +13,7 @@
  *   PreToolUse (Bash): scripts/check_bash_no_write.sh
  *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
  *   PreToolUse (Bash): scripts/check_no_pr_create.sh
+ *   PreToolUse (Bash): scripts/check_no_git_no_verify.sh
  *   PreToolUse (Bash): scripts/check_no_cd_prefix.sh
  *   PreToolUse (Bash): scripts/check_no_local_coverage.sh
  *   PreToolUse (Bash): scripts/check_enforce_parallel_tests.sh
@@ -342,6 +343,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             // -n=8 --dist=loadfile).
             for (const script of [
               "scripts/check_no_pr_create.sh",
+              "scripts/check_no_git_no_verify.sh",
               "scripts/check_no_cd_prefix.sh",
               "scripts/check_no_local_coverage.sh",
               "scripts/check_enforce_parallel_tests.sh",

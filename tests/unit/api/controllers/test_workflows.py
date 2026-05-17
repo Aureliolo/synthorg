@@ -293,11 +293,17 @@ class TestWorkflowController:
         assert body["data"]["name"] == "test-workflow"
 
     def test_get_workflow_not_found(self, test_client: TestClient[Any]) -> None:
+        from synthorg.core.error_taxonomy import ErrorCode
+
         resp = test_client.get("/api/v1/workflows/nonexistent")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
         assert "not found" in body["error"].lower()
+        assert (
+            body["error_detail"]["error_code"]
+            == ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND
+        )
 
     # ── Update ───────────────────────────────────────────────────
 
@@ -395,11 +401,17 @@ class TestWorkflowController:
     # exhaustively in tests/unit/engine/workflow/.
 
     def test_validate_workflow_not_found(self, test_client: TestClient[Any]) -> None:
+        from synthorg.core.error_taxonomy import ErrorCode
+
         resp = test_client.post("/api/v1/workflows/nonexistent/validate")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
         assert "not found" in body["error"].lower()
+        assert (
+            body["error_detail"]["error_code"]
+            == ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND
+        )
 
     def test_validate_workflow(self, test_client: TestClient[Any]) -> None:
         """A valid 3-node graph should pass validation."""
@@ -438,11 +450,17 @@ class TestWorkflowController:
     # ── Export ───────────────────────────────────────────────────
 
     def test_export_workflow_not_found(self, test_client: TestClient[Any]) -> None:
+        from synthorg.core.error_taxonomy import ErrorCode
+
         resp = test_client.post("/api/v1/workflows/nonexistent/export")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
         assert "not found" in body["error"].lower()
+        assert (
+            body["error_detail"]["error_code"]
+            == ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND
+        )
 
     def test_export_workflow(self, test_client: TestClient[Any]) -> None:
         wf_id = _seed(test_client, "wfdef-exp001")

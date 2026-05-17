@@ -5,7 +5,6 @@ from uuid import UUID  # noqa: TC003
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.controllers.custom_rules import rule_to_dict
@@ -13,7 +12,11 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.domain_errors import (
+    ServiceUnavailableError,
+    resource_not_found,
+)
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.chief_of_staff.models import ChatQuery
@@ -232,8 +235,12 @@ class MetaController(Controller):
         # A/B test registry not yet implemented -- every proposal id
         # currently lacks a durable A/B record.  See get /ab-tests
         # above for the scoped follow-up note.
-        msg = f"No active A/B test for proposal {proposal_id}"
-        raise NotFoundException(msg)
+        resource_type = "ab_test"
+        raise resource_not_found(
+            resource_type,
+            proposal_id,
+            code=ErrorCode.AB_TEST_NOT_FOUND,
+        )
 
     @get("/proposals")
     async def list_proposals(

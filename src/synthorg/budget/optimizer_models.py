@@ -67,7 +67,7 @@ class SpendingAnomaly(BaseModel):
         period_end: End of the window that triggered the anomaly.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     anomaly_type: AnomalyType = Field(description="Anomaly classification")
@@ -112,7 +112,7 @@ class AnomalyDetectionResult(BaseModel):
         scan_timestamp: When the scan was performed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     anomalies: tuple[SpendingAnomaly, ...] = Field(
         default=(),
@@ -248,7 +248,7 @@ class DowngradeRecommendation(BaseModel):
         reason: Human-readable explanation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     current_model: NotBlankStr = Field(description="Current model identifier")
@@ -320,7 +320,7 @@ class ApprovalDecision(BaseModel):
         conditions: Any conditions attached to approval.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     approved: bool = Field(description="Whether the operation is approved")
     reason: NotBlankStr = Field(description="Explanation for the decision")
@@ -372,7 +372,7 @@ class CostOptimizerConfig(BaseModel):
             required before anomaly detection activates.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     anomaly_sigma_threshold: float = Field(
         default=2.0,

@@ -46,7 +46,7 @@ class MCPToolDef(BaseModel):
     """
 
     model_config = ConfigDict(
-        frozen=True, allow_inf_nan=False, arbitrary_types_allowed=True
+        frozen=True, allow_inf_nan=False, arbitrary_types_allowed=True, extra="forbid"
     )
 
     name: NotBlankStr = Field(description="Tool name (synthorg_{domain}_{action})")

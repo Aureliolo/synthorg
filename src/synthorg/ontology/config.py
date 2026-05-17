@@ -76,7 +76,7 @@ class OntologyInjectionConfig(BaseModel):
         tool_name: Name of the on-demand lookup tool.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: InjectionStrategy = Field(
         default=InjectionStrategy.HYBRID,
@@ -102,7 +102,7 @@ class DriftDetectionConfig(BaseModel):
         threshold: Divergence score above which drift is flagged.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: DriftStrategy = Field(
         default=DriftStrategy.PASSIVE,
@@ -128,7 +128,7 @@ class DelegationGuardConfig(BaseModel):
         guard_mode: Enforcement level for entity validation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     guard_mode: GuardMode = Field(
         default=GuardMode.STAMP,
@@ -146,7 +146,7 @@ class OntologyMemoryConfig(BaseModel):
             canonical definitions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     wrapper_enabled: bool = Field(
         default=True,
@@ -170,7 +170,7 @@ class OntologySyncConfig(BaseModel):
             organizational memory.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     org_memory_enabled: bool = Field(
         default=True,
@@ -192,7 +192,7 @@ class EntityEntry(BaseModel):
         disambiguation: Optional disambiguation text.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Entity name")
     definition: str = Field(
@@ -220,7 +220,7 @@ class EntitiesConfig(BaseModel):
         entries: Tuple of user-defined entity entries.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     entries: tuple[EntityEntry, ...] = Field(
         default=(),
@@ -252,7 +252,7 @@ class OntologyConfig(BaseModel):
         entities: User-defined entity entries.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backend: Literal["sqlite"] = Field(
         default="sqlite",

@@ -158,7 +158,7 @@ class WsEvent(BaseModel):
         payload: Event-specific data.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     version: int = Field(
         default=WS_PROTOCOL_VERSION,

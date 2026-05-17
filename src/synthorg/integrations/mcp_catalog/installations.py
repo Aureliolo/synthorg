@@ -30,7 +30,7 @@ class McpInstallation(BaseModel):
         installed_at: When the install was recorded.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     catalog_entry_id: NotBlankStr
     connection_name: NotBlankStr | None = None

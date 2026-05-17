@@ -36,7 +36,9 @@ from synthorg.integrations.webhooks.replay_protection import (
 )
 
 
-class WebhookEventPayload(BaseModel):
+class WebhookEventPayload(
+    BaseModel
+):  # lint-allow: frozen-extra-forbid -- external webhook providers send arbitrary keys; envelope-only validation uses extra="allow" by design (docs/reference/typed-boundaries.md)  # noqa: E501
     """Typed boundary for an incoming webhook event payload.
 
     The wire shape is provider-defined (each external service sends

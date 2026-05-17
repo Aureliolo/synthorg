@@ -4,6 +4,8 @@ Frozen Pydantic configuration model with safe defaults for all
 training pipeline components.
 """
 
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -12,6 +14,13 @@ from synthorg.hr.training.models import ContentType
 # Type alias for serialized strategy config values.
 _ConfigValue = int | float | str | bool
 
+# Per-content-type stored-item ceilings: procedural memories accrue
+# fastest, tool patterns moderately, semantic facts slowest, so the
+# caps are tiered to bound storage without starving the rarer types.
+_DEFAULT_CAP_PROCEDURAL: Final[int] = 50
+_DEFAULT_CAP_SEMANTIC: Final[int] = 10
+_DEFAULT_CAP_TOOL_PATTERNS: Final[int] = 20
+
 
 def _default_selector_config() -> dict[str, _ConfigValue]:
     return {"top_n": 3}
@@ -19,6 +28,22 @@ def _default_selector_config() -> dict[str, _ConfigValue]:
 
 def _default_curation_config() -> dict[str, _ConfigValue]:
     return {"top_k": 50}
+
+
+def _default_volume_caps() -> dict[ContentType, int]:
+    """Default per-content-type hard limits for stored training items.
+
+    A named factory (not an inline ``lambda``) so the mutable dict is
+    rebuilt per model instance with a referenceable, testable symbol
+    instead of an anonymous closure -- the same shape as
+    :func:`_default_selector_config` / :func:`_default_curation_config`
+    above.
+    """
+    return {
+        ContentType.PROCEDURAL: _DEFAULT_CAP_PROCEDURAL,
+        ContentType.SEMANTIC: _DEFAULT_CAP_SEMANTIC,
+        ContentType.TOOL_PATTERNS: _DEFAULT_CAP_TOOL_PATTERNS,
+    }
 
 
 class TrainingConfig(BaseModel):
@@ -64,11 +89,7 @@ class TrainingConfig(BaseModel):
         description="Serialized config for curation",
     )
     default_volume_caps: dict[ContentType, int] = Field(
-        default_factory=lambda: {
-            ContentType.PROCEDURAL: 50,
-            ContentType.SEMANTIC: 10,
-            ContentType.TOOL_PATTERNS: 20,
-        },
+        default_factory=_default_volume_caps,
         description="Default per-content-type hard limits",
     )
     require_review_by_default: bool = Field(

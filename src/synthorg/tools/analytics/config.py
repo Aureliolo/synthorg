@@ -15,7 +15,7 @@ class AnalyticsToolsConfig(BaseModel):
             can query.  ``None`` means all metrics are accessible.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     query_timeout: float = Field(
         default=60.0,

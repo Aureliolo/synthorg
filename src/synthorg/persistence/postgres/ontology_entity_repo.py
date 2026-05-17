@@ -367,8 +367,21 @@ class PostgresOntologyEntityRepository:
                 continue
         return tuple(results)
 
-    async def get_version_manifest(self) -> dict[NotBlankStr, int]:
-        """Return the latest version number for each entity."""
+    async def get_version_manifest(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> dict[NotBlankStr, int]:
+        """Return a bounded page of the latest version per entity.
+
+        Entities page in ``entity_id`` order so a cursor walk is
+        stable; callers needing the whole manifest drain via
+        :func:`synthorg.persistence._shared.collect_all_mapping`.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
+        )
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
@@ -377,7 +390,10 @@ class PostgresOntologyEntityRepository:
             await cur.execute(
                 """SELECT entity_id, MAX(version) AS latest_version
                    FROM entity_definition_versions
-                   GROUP BY entity_id""",
+                   GROUP BY entity_id
+                   ORDER BY entity_id
+                   LIMIT %s OFFSET %s""",
+                (limit, offset),
             )
             rows = await cur.fetchall()
         return {NotBlankStr(row["entity_id"]): row["latest_version"] for row in rows}

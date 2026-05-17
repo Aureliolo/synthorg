@@ -105,7 +105,7 @@ class MetricDescriptor(BaseModel):
         nullable: Whether the snapshot field can be ``None``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     path: NotBlankStr
     label: NotBlankStr
@@ -369,7 +369,7 @@ class CustomRuleDefinition(BaseModel):
         updated_at: When the rule was last modified.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: UUID = Field(default_factory=uuid4)
     name: NotBlankStr

@@ -19,12 +19,13 @@ export async function listSubworkflows(
 
 export async function searchSubworkflows(
   query: string,
-): Promise<readonly SubworkflowSummary[]> {
-  const response = await apiClient.get<ApiResponse<readonly SubworkflowSummary[]>>(
+  params?: PaginationParams,
+): Promise<PaginatedResult<SubworkflowSummary>> {
+  const response = await apiClient.get<PaginatedResponse<SubworkflowSummary>>(
     '/subworkflows/search',
-    { params: { q: query } },
+    { params: { q: query, ...params } },
   )
-  return unwrap(response)
+  return unwrapPaginated<SubworkflowSummary>(response)
 }
 
 export async function listVersions(

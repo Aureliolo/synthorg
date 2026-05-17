@@ -40,7 +40,7 @@ class ImageResult(BaseModel):
         height: Image height in pixels.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     data: str = Field(min_length=1, description="Base64-encoded image data")
     content_type: str = Field(

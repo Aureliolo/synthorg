@@ -31,7 +31,7 @@ class Project(BaseModel):
         status: Current project status.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique project identifier")
     name: NotBlankStr = Field(description="Project display name")

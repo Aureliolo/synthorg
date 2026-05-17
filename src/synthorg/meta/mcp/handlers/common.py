@@ -75,7 +75,7 @@ class PaginationMeta(BaseModel):
         limit: Page size applied to this page.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total: int = Field(ge=0)
     offset: int = Field(ge=0)

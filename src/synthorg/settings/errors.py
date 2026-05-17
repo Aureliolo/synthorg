@@ -49,6 +49,34 @@ class SettingsEncryptionError(SettingsError):
     """Raised when encryption key is unavailable or decryption fails."""
 
 
+class SettingsEncryptionFailedError(SettingsError):
+    """API-boundary 500 when a sensitive setting cannot be processed.
+
+    Distinct ``error_code`` (``SETTINGS_ENCRYPTION_ERROR``) so a client
+    can tell "the server could not encrypt/decrypt this value" apart
+    from a generic internal error. The controller raises this after a
+    low-level :class:`SettingsEncryptionError`; the scrubbed message
+    keeps key/cipher detail out of the response.
+    """
+
+    default_message: ClassVar[str] = "Internal error processing sensitive setting"
+    error_code: ClassVar[ErrorCode] = ErrorCode.SETTINGS_ENCRYPTION_ERROR
+
+
+class SinkConfigValidationError(SettingsError):
+    """API-boundary 500 when an observability sink config check fails.
+
+    Raised by the settings controller's sink-config test endpoint when
+    validation itself errors unexpectedly (not a user-visible invalid
+    config, which returns a structured ``valid=False`` body). Distinct
+    ``error_code`` (``SINK_CONFIG_VALIDATION_ERROR``) so operators can
+    alert on broken sink validation specifically.
+    """
+
+    default_message: ClassVar[str] = "Internal error validating sink configuration"
+    error_code: ClassVar[ErrorCode] = ErrorCode.SINK_CONFIG_VALIDATION_ERROR
+
+
 class SettingsRegistryError(SettingsError):
     """Raised when the registry lookup itself fails its own invariants.
 

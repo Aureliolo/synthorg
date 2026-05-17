@@ -65,7 +65,7 @@ class AuthConfig(BaseModel):
     before the first request is served.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(

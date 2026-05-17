@@ -836,3 +836,72 @@ class TestCollectorEnvironmentPropagation:
 
         monkeypatch.delenv("CI", raising=False)
         assert _looks_like_ci(None) is False
+
+
+class TestPeerReadExponentialBackoff:
+    """``_read_peer_deployment_id`` waits out a slow peer write with
+    exponential backoff (5 / 10 / 20 ms), not a flat 5 ms."""
+
+    def test_backoff_doubles_per_attempt_and_returns_late_write(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import time as _time_mod
+
+        from synthorg.telemetry import collector as collector_mod
+
+        id_path = tmp_path / "deployment_id"
+        id_path.write_text("", encoding="utf-8")
+        valid_uuid = "11111111-2222-4333-8444-555555555555"
+        sleeps: list[float] = []
+
+        def _fake_sleep(seconds: float) -> None:
+            sleeps.append(round(seconds, 6))
+            # The peer finishes its write during the second backoff
+            # window, so the third read attempt succeeds.
+            if len(sleeps) == 2:
+                id_path.write_text(valid_uuid, encoding="utf-8")
+
+        # ``collector`` does ``import time`` then ``time.sleep(...)``;
+        # patching the stdlib module's ``sleep`` affects that same
+        # reference without poking a not-explicitly-exported attribute.
+        monkeypatch.setattr(_time_mod, "sleep", _fake_sleep)
+
+        result = collector_mod._read_peer_deployment_id(str(id_path))
+
+        assert result == valid_uuid
+        # 2 sleeps for the 2 empty reads; exponential 5 ms -> 10 ms
+        # (base * 2**attempt), never a flat 5/5.
+        assert sleeps == [0.005, 0.01]
+
+    def test_exhausted_peer_read_returns_none_after_full_backoff(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A peer that never finishes its write exhausts all attempts.
+
+        The file stays empty for every attempt, so the helper backs
+        off once per attempt and finally returns ``None`` (the caller
+        then unlinks + repairs via the atomic-create branch).
+        """
+        import time as _time_mod
+
+        from synthorg.telemetry import collector as collector_mod
+
+        id_path = tmp_path / "deployment_id"
+        id_path.write_text("", encoding="utf-8")
+        sleeps: list[float] = []
+        monkeypatch.setattr(
+            _time_mod,
+            "sleep",
+            lambda seconds: sleeps.append(round(seconds, 6)),
+        )
+
+        result = collector_mod._read_peer_deployment_id(str(id_path))
+
+        assert result is None
+        # One backoff per attempt, doubling: 5 / 10 / 20 ms.
+        assert sleeps == [0.005, 0.01, 0.02]
+        assert len(sleeps) == collector_mod._PEER_READ_RETRY_ATTEMPTS

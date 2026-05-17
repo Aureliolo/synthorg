@@ -89,7 +89,7 @@ class EntityField(BaseModel):
         description: Human-readable description of the field.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Field name")
     type_hint: NotBlankStr = Field(description="Type annotation as string")
@@ -108,7 +108,7 @@ class EntityRelation(BaseModel):
         description: Human-readable description of the relationship.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     target: NotBlankStr = Field(description="Related entity name")
     relation: NotBlankStr = Field(description="Relationship type")
@@ -143,7 +143,7 @@ class EntityDefinition(BaseModel):
         updated_at: Last update timestamp (must be UTC).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Unique entity name")
     tier: EntityTier = Field(description="Protection tier")
@@ -217,7 +217,7 @@ class AgentDrift(BaseModel):
         details: Human-readable description of the divergence.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Divergent agent identifier")
     divergence_score: float = Field(
@@ -242,7 +242,7 @@ class DriftReport(BaseModel):
         recommendation: Recommended corrective action.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     entity_name: NotBlankStr = Field(description="Entity being analyzed")
     divergence_score: float = Field(

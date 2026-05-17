@@ -84,7 +84,7 @@ class QueueConfig(BaseModel):
             tasks. ``None`` means "derive from env at runtime".
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,

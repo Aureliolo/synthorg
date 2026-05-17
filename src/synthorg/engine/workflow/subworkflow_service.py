@@ -45,6 +45,7 @@ from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_PUBLISH_FAILED,
     SUBWORKFLOW_REGISTERED,
 )
+from synthorg.persistence._shared import collect_all
 
 logger = get_logger(__name__)
 
@@ -155,7 +156,17 @@ class SubworkflowService:
             raise ValueError(msg)
 
         if query is not None and query.strip():
-            summaries = await self._registry.search(NotBlankStr(query.strip()))
+            search_term = NotBlankStr(query.strip())
+            # This endpoint sorts + paginates the full match set in
+            # memory, so drain every bounded repo page rather than
+            # silently showing only the first.
+            summaries = await collect_all(
+                lambda limit, offset: self._registry.search(
+                    search_term,
+                    limit=limit,
+                    offset=offset,
+                ),
+            )
         else:
             summaries = await self._registry.list_all()
         sorted_summaries = sorted(
@@ -282,7 +293,18 @@ class SubworkflowService:
                 conflict without a second query.
             SubworkflowNotFoundError: If the coordinate does not exist.
         """
-        parents = await self._registry.find_parents(subworkflow_id, version)
+        # Referential-integrity gate: the conflict error reports the
+        # exact parent count + names, so the complete set is required
+        # (a truncated page would under-report and could let a
+        # still-referenced version be deleted).
+        parents = await collect_all(
+            lambda limit, offset: self._registry.find_parents(
+                subworkflow_id,
+                version,
+                limit=limit,
+                offset=offset,
+            ),
+        )
         if parents:
             names = ", ".join(f"{p.parent_name!r}" for p in parents)
             msg = (
@@ -322,9 +344,13 @@ class SubworkflowService:
             # never mask a real storage failure behind a secondary
             # observability lookup error.
             try:
-                late_parents = await self._registry.find_parents(
-                    subworkflow_id,
-                    version,
+                late_parents = await collect_all(
+                    lambda limit, offset: self._registry.find_parents(
+                        subworkflow_id,
+                        version,
+                        limit=limit,
+                        offset=offset,
+                    ),
                 )
             except MemoryError, RecursionError:
                 raise
