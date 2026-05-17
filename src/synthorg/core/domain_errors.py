@@ -245,6 +245,24 @@ class ProviderTierCoverageInsufficientError(ValidationError):
     error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT
 
 
+class AgentRuntimeNotConfiguredError(ConflictError):
+    """Raised when work is submitted but no LLM provider is configured (409).
+
+    The company is running in empty mode: with no provider, no agent can
+    execute. Surfaced at the task-submission boundary (and, as
+    defence-in-depth, at the worker-execute seam) so the operator gets a
+    clear, actionable message instead of a task that silently never
+    runs. Distinct ``error_code`` lets the dashboard route the operator
+    to the setup / providers step.
+    """
+
+    default_message: ClassVar[str] = (
+        "No LLM provider is configured. Add a provider in setup before "
+        "submitting tasks; the company is running in empty mode."
+    )
+    error_code: ClassVar[ErrorCode] = ErrorCode.AGENT_RUNTIME_NOT_CONFIGURED
+
+
 class ArtifactStorageRejectedFullError(DomainError):
     """Raised when the artifact-storage subsystem reports it is full (507).
 

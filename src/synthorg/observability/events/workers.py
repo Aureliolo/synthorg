@@ -69,3 +69,10 @@ WORKERS_EXECUTOR_INVALID_INIT_ARG: Final[str] = "workers.executor.invalid_init_a
 WORKERS_EXECUTION_SERVICE_ATTEMPTED: Final[str] = "workers.execution_service.attempted"
 WORKERS_EXECUTION_SERVICE_COMPLETED: Final[str] = "workers.execution_service.completed"
 WORKERS_EXECUTION_SERVICE_NO_OP: Final[str] = "workers.execution_service.no_op"
+WORKERS_EXECUTION_SERVICE_AGENT_RUN: Final[str] = "workers.execution_service.agent_run"
+WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED: Final[str] = (
+    "workers.execution_service.autonomy_degraded"
+)
+WORKERS_EXECUTION_SERVICE_NO_PROVIDER: Final[str] = (
+    "workers.execution_service.no_provider"
+)

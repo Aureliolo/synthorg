@@ -448,6 +448,17 @@ class AppStateServicesMixin(
         return self._provider_registry is not None
 
     @property
+    def has_active_provider(self) -> bool:
+        """Check whether at least one LLM provider is registered.
+
+        The single source of truth for the provider-present switch:
+        the task-submission guard and the worker-execution-service
+        builder both consult this so "empty company" means exactly the
+        same thing in both places.
+        """
+        return self._provider_registry is not None and len(self._provider_registry) > 0
+
+    @property
     def provider_registry(self) -> ProviderRegistry:
         """Return provider registry or raise 503."""
         return self._require_service(
