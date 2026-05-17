@@ -243,7 +243,7 @@ async def test_interleaved_success_does_not_reset_failure_budget() -> None:
     state = _FakeAppState(persisted_user=healthy)
     # Alternate transient failure / healthy read; the limiter only
     # ever sees the failures (ok ticks return None without taking).
-    state.persistence.users.get.side_effect = [  # type: ignore[attr-defined]
+    state.persistence.users.get.side_effect = [
         RuntimeError("blip"),
         healthy,
         RuntimeError("blip"),
