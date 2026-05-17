@@ -14,7 +14,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PRINCIPLE_OVERRIDE_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared import normalize_utc, validate_pagination_args
 from synthorg.persistence.principle_override_protocol import PrincipleOverride
 
 if TYPE_CHECKING:
@@ -118,7 +118,14 @@ class PostgresPrincipleOverrideRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[PrincipleOverride, ...]:
-        """List all overrides ordered by ``scope`` ascending."""
+        """List all overrides ordered by ``scope`` ascending.
+
+        Raises:
+            QueryError: If the query fails or pagination is out of range.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED
+        )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -128,7 +135,7 @@ class PostgresPrincipleOverrideRepository:
                     ORDER BY scope ASC
                     LIMIT %s OFFSET %s
                     """,
-                    (int(limit), int(offset)),
+                    (limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

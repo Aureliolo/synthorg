@@ -6,7 +6,8 @@
 # commit signing:
 #   --no-verify, -n (on commit only -- `git push -n` is --dry-run,
 #   not a hook bypass, so SHORT_NO_VERIFY_RE deliberately excludes it),
-#   --no-gpg-sign, -c commit.gpgsign=false, -c core.hooksPath=...
+#   --no-gpg-sign, -c commit.gpgsign=false, -c core.hooksPath=...,
+#   --config-env=<key>=<envvar> targeting core.hooksPath/commit.gpgsign
 #
 # These bypass the project's quality gates. They are only permitted
 # with explicit, per-invocation user approval (the agent must ask via
@@ -47,7 +48,7 @@ fi
 
 # Bypass-flag patterns (word-boundary anchored so we don't trip on
 # substrings inside paths or commit messages).
-BYPASS_RE='(--no-verify([[:space:]=]|$)|--no-gpg-sign([[:space:]=]|$)|-c[[:space:]]+commit\.gpgsign=false|-c[[:space:]]+core\.hooksPath=)'
+BYPASS_RE='(--no-verify([[:space:]=]|$)|--no-gpg-sign([[:space:]=]|$)|-c[[:space:]]+commit\.gpgsign=false|-c[[:space:]]+core\.hooksPath=|--config-env[[:space:]]*=[^[:space:]]*(core\.hooksPath|commit\.gpgsign))'
 
 # Short-form ``-n`` is ``--no-verify`` ONLY for ``git commit``. For
 # ``git push`` ``-n`` is ``--dry-run`` (does not push, does not bypass

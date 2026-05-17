@@ -280,6 +280,11 @@ class CeremonyScheduler:
             try:
                 await strategy.on_sprint_activated(sprint, config)
                 await self._fire_sprint_start_ceremonies(sprint, config)
+                # Persist inside the protected block so a failed
+                # snapshot write rolls back like any other activation
+                # failure -- otherwise the scheduler stays running with
+                # ceremonies already fired and a retry double-triggers.
+                await self._save_state_unlocked(sprint.id)
             except MemoryError, RecursionError:
                 raise
             except Exception:
@@ -291,7 +296,6 @@ class CeremonyScheduler:
                 await self._deactivate_sprint_unlocked()
                 raise
 
-            await self._save_state_unlocked(sprint.id)
             logger.info(
                 SPRINT_CEREMONY_SCHEDULER_STARTED,
                 sprint_id=sprint.id,
@@ -354,15 +358,37 @@ class CeremonyScheduler:
             )
             return
 
+        # Structurally validate the decoded payloads before touching
+        # any state: a stale / hand-edited row whose JSON parses but
+        # carries the wrong shape (non-int counts, non-string triggers)
+        # must leave the freshly-seeded zeroed state intact rather than
+        # poison the in-memory counters.
+        counters_ok = isinstance(counters, dict) and all(
+            isinstance(k, str)
+            and isinstance(v, int)
+            and not isinstance(v, bool)
+            and v >= 0
+            for k, v in counters.items()
+        )
+        triggers_ok = isinstance(triggers, list) and all(
+            isinstance(t, str) for t in triggers
+        )
+        if not (counters_ok and triggers_ok):
+            logger.warning(
+                SPRINT_CEREMONY_SCHEDULER_START_FAILED,
+                sprint_id=sprint_id,
+                note="state_repo_payload_shape_invalid",
+            )
+            return
+
         # Merge persisted counts onto the seeded map instead of
         # replacing it: a ceremony present in the current config but
         # absent from an older snapshot keeps its zero seed rather than
         # vanishing (which would KeyError on its next completion), and a
         # stale snapshot key for a removed ceremony is ignored.
-        if isinstance(counters, dict):
-            for name, value in counters.items():
-                if name in self._completion_counters:
-                    self._completion_counters[name] = value
+        for name, value in counters.items():
+            if name in self._completion_counters:
+                self._completion_counters[name] = value
         self._fired_once_triggers = set(triggers)
         self._total_completions = record.total_completions
         self._velocity_history = velocity_history

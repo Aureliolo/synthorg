@@ -42,7 +42,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, normalize_utc
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    normalize_utc,
+    validate_pagination_args,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -232,11 +236,17 @@ class PostgresTaskRepository:
 
         Ordering is deterministic on the primary key ``id`` so paginated
         callers see stable windows.
+
+        Raises:
+            QueryError: If the query fails or pagination is out of range.
         """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
+        )
         query = (
             f"SELECT {self._TASK_COLUMNS} FROM tasks ORDER BY id ASC LIMIT %s OFFSET %s"  # noqa: S608
         )
-        params: list[object] = [int(limit), int(offset)]
+        params: list[object] = [limit, offset]
 
         try:
             async with (

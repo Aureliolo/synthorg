@@ -319,6 +319,9 @@ ON CONFLICT (id) DO UPDATE SET
                     "DELETE FROM fine_tune_runs WHERE id = %s",
                     (run_id,),
                 )
+                # Capture rowcount while the cursor is still open;
+                # reading it after the context exits is undefined.
+                deleted = cur.rowcount > 0
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete fine-tune run {run_id}"
@@ -330,7 +333,7 @@ ON CONFLICT (id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
         else:
-            return cur.rowcount > 0
+            return deleted
 
     async def update_run(self, run: FineTuneRun) -> None:
         """Update all mutable fields for a run."""
