@@ -42,6 +42,7 @@ from synthorg.observability.events.versioning import (
     VERSION_LISTED,
     VERSION_SAVE_FAILED,
 )
+from synthorg.persistence._shared import safe_int
 from synthorg.persistence._shared.datetime_marshaller import coerce_row_timestamp
 from synthorg.persistence.version_protocol import _DEFAULT_LIST_LIMIT_50
 from synthorg.versioning.models import VersionSnapshot
@@ -121,7 +122,7 @@ class PostgresVersionRepository[T: BaseModel]:
         """Reconstruct a VersionSnapshot from a database row."""
         try:
             entity_id_str: str = str(row["entity_id"])
-            version_int: int = int(row["version"])  # type: ignore[call-overload]
+            version_int: int = safe_int(row["version"], default=0)
             content_hash_str: str = str(row["content_hash"])
             saved_by_str: str = str(row["saved_by"])
             return VersionSnapshot(

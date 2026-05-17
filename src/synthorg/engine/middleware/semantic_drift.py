@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.text_similarity import cosine_word_similarity
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware, ModelCallable
 from synthorg.observability import get_logger
@@ -168,16 +169,4 @@ class SemanticDriftDetector(BaseAgentMiddleware):
         Returns:
             Similarity score in [0.0, 1.0].
         """
-        # Simple token-overlap cosine similarity (bag-of-words).
-        tokens_a = set(text_a.lower().split())
-        tokens_b = set(text_b.lower().split())
-        if not tokens_a or not tokens_b:
-            return 0.0
-        intersection = tokens_a & tokens_b
-        # Cosine of binary vectors = |A & B| / sqrt(|A| * |B|).
-        import math  # noqa: PLC0415
-
-        denom = math.sqrt(len(tokens_a) * len(tokens_b))
-        if denom == 0:
-            return 0.0
-        return len(intersection) / denom
+        return cosine_word_similarity(text_a, text_b)

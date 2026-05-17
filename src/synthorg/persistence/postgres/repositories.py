@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import Message
+from synthorg.core.normalization import parse_comma_list
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -45,6 +46,8 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     DEFAULT_LIST_LIMIT,
     normalize_utc,
+    safe_float,
+    safe_int,
     validate_pagination_args,
 )
 
@@ -548,11 +551,11 @@ class PostgresCostRecordRepository:
                 error=msg,
             )
             raise QueryError(msg)
-        distinct_count = int(row[0] or 0)
+        distinct_count = safe_int(row[0], default=0)
         currencies_csv = row[1]
-        total = float(row[2])
+        total = safe_float(row[2], default=0.0)
         if distinct_count > 1:
-            distinct = frozenset(c for c in (currencies_csv or "").split(",") if c)
+            distinct = frozenset(parse_comma_list(currencies_csv))
             logger.error(
                 PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
                 agent_id=agent_id,
