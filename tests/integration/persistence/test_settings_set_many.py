@@ -17,7 +17,7 @@ import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
-from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 
@@ -25,102 +25,100 @@ def _iso(minute: int) -> str:
     return datetime(2026, 4, 11, 12, minute, 0, tzinfo=UTC).isoformat()
 
 
+def _row(ns: str, key: str, value: str, ts: str) -> SettingRow:
+    return SettingRow(
+        namespace=NotBlankStr(ns),
+        key=NotBlankStr(key),
+        value=value,
+        updated_at=ts,
+    )
+
+
 async def _run_all_success(repo: SettingsRepository) -> None:
-    ns = NotBlankStr("company")
     ok = await repo.set_many(
         [
-            (ns, NotBlankStr("departments"), "[]", _iso(0)),
-            (ns, NotBlankStr("agents"), "[]", _iso(0)),
-            (ns, NotBlankStr("company_name"), "Acme", _iso(0)),
+            _row("company", "departments", "[]", _iso(0)),
+            _row("company", "agents", "[]", _iso(0)),
+            _row("company", "company_name", "Acme", _iso(0)),
         ],
     )
     assert ok is True
     for key in ("departments", "agents", "company_name"):
-        row = await repo.get(ns, NotBlankStr(key))
+        row = await repo.get((NotBlankStr("company"), NotBlankStr(key)))
         assert row is not None
-        assert row[0] in ("[]", "Acme")
+        assert row.value in ("[]", "Acme")
 
 
 async def _run_cas_conflict_rolls_back(repo: SettingsRepository) -> None:
-    ns = NotBlankStr("company")
-
-    await repo.set(
-        ns,
-        NotBlankStr("departments"),
-        "[]",
-        _iso(0),
+    await repo.set_if_unchanged(
+        _row("company", "departments", "[]", _iso(0)),
         expected_updated_at="",
     )
-    await repo.set(
-        ns,
-        NotBlankStr("agents"),
-        "[]",
-        _iso(0),
+    await repo.set_if_unchanged(
+        _row("company", "agents", "[]", _iso(0)),
         expected_updated_at="",
     )
-    stale_dept_row = await repo.get(ns, NotBlankStr("departments"))
-    live_agents_row = await repo.get(ns, NotBlankStr("agents"))
+    stale_dept_row = await repo.get(
+        (NotBlankStr("company"), NotBlankStr("departments")),
+    )
+    live_agents_row = await repo.get(
+        (NotBlankStr("company"), NotBlankStr("agents")),
+    )
     assert stale_dept_row is not None
     assert live_agents_row is not None
-    stale_dept_version = stale_dept_row[1]
-    live_agents_version = live_agents_row[1]
+    stale_dept_version = stale_dept_row.updated_at
+    live_agents_version = live_agents_row.updated_at
     # Bump departments out from under the upcoming set_many so the
     # CAS check fails when the batch runs.
-    await repo.set(
-        ns,
-        NotBlankStr("departments"),
-        '["bumped"]',
-        _iso(5),
+    await repo.set_if_unchanged(
+        _row("company", "departments", '["bumped"]', _iso(5)),
         expected_updated_at=stale_dept_version,
     )
 
     ok = await repo.set_many(
         [
-            (ns, NotBlankStr("departments"), '["new"]', _iso(10)),
-            (ns, NotBlankStr("agents"), '["new-agent"]', _iso(10)),
+            _row("company", "departments", '["new"]', _iso(10)),
+            _row("company", "agents", '["new-agent"]', _iso(10)),
         ],
         expected_updated_at_map={
-            ("company", "departments"): stale_dept_version,
-            ("company", "agents"): live_agents_version,
+            (NotBlankStr("company"), NotBlankStr("departments")): stale_dept_version,
+            (NotBlankStr("company"), NotBlankStr("agents")): live_agents_version,
         },
     )
     assert ok is False
-    dept_row = await repo.get(ns, NotBlankStr("departments"))
-    agents_row = await repo.get(ns, NotBlankStr("agents"))
+    dept_row = await repo.get((NotBlankStr("company"), NotBlankStr("departments")))
+    agents_row = await repo.get((NotBlankStr("company"), NotBlankStr("agents")))
     assert dept_row is not None
     assert agents_row is not None
-    assert dept_row[0] == '["bumped"]'
-    assert agents_row[0] == "[]"
+    assert dept_row.value == '["bumped"]'
+    assert agents_row.value == "[]"
 
 
 async def _run_first_write_sentinel(repo: SettingsRepository) -> None:
-    ns = NotBlankStr("company")
     ok = await repo.set_many(
-        [(ns, NotBlankStr("departments"), "[]", _iso(0))],
-        expected_updated_at_map={("company", "departments"): ""},
+        [_row("company", "departments", "[]", _iso(0))],
+        expected_updated_at_map={
+            (NotBlankStr("company"), NotBlankStr("departments")): "",
+        },
     )
     assert ok is True
-    row = await repo.get(ns, NotBlankStr("departments"))
+    row = await repo.get((NotBlankStr("company"), NotBlankStr("departments")))
     assert row is not None
-    assert row[0] == "[]"
+    assert row.value == "[]"
 
 
 async def _run_no_cas_upserts(repo: SettingsRepository) -> None:
-    ns = NotBlankStr("company")
-    await repo.set(
-        ns,
-        NotBlankStr("company_name"),
-        "Acme",
-        _iso(0),
+    await repo.set_if_unchanged(
+        _row("company", "company_name", "Acme", _iso(0)),
         expected_updated_at="",
     )
     ok = await repo.set_many(
-        [(ns, NotBlankStr("company_name"), "Zeta", _iso(10))],
+        [_row("company", "company_name", "Zeta", _iso(10))],
     )
     assert ok is True
-    row = await repo.get(ns, NotBlankStr("company_name"))
+    row = await repo.get((NotBlankStr("company"), NotBlankStr("company_name")))
     assert row is not None
-    assert row[0] == "Zeta"
+    assert row.value == "Zeta"
 
 
 async def _run_empty_noop(repo: SettingsRepository) -> None:
@@ -129,34 +127,32 @@ async def _run_empty_noop(repo: SettingsRepository) -> None:
 
 
 async def _run_mixed(repo: SettingsRepository) -> None:
-    ns = NotBlankStr("company")
-    await repo.set(
-        ns,
-        NotBlankStr("departments"),
-        "[]",
-        _iso(0),
+    await repo.set_if_unchanged(
+        _row("company", "departments", "[]", _iso(0)),
         expected_updated_at="",
     )
-    live_dept_row = await repo.get(ns, NotBlankStr("departments"))
+    live_dept_row = await repo.get(
+        (NotBlankStr("company"), NotBlankStr("departments")),
+    )
     assert live_dept_row is not None
-    live_dept_version = live_dept_row[1]
+    live_dept_version = live_dept_row.updated_at
 
     ok = await repo.set_many(
         [
-            (ns, NotBlankStr("departments"), '["a"]', _iso(10)),
-            (ns, NotBlankStr("autonomy_level"), "L3", _iso(10)),
+            _row("company", "departments", '["a"]', _iso(10)),
+            _row("company", "autonomy_level", "L3", _iso(10)),
         ],
         expected_updated_at_map={
-            ("company", "departments"): live_dept_version,
+            (NotBlankStr("company"), NotBlankStr("departments")): live_dept_version,
         },
     )
     assert ok is True
-    dept_row = await repo.get(ns, NotBlankStr("departments"))
-    auton_row = await repo.get(ns, NotBlankStr("autonomy_level"))
+    dept_row = await repo.get((NotBlankStr("company"), NotBlankStr("departments")))
+    auton_row = await repo.get((NotBlankStr("company"), NotBlankStr("autonomy_level")))
     assert dept_row is not None
-    assert dept_row[0] == '["a"]'
+    assert dept_row.value == '["a"]'
     assert auton_row is not None
-    assert auton_row[0] == "L3"
+    assert auton_row.value == "L3"
 
 
 @pytest.mark.integration

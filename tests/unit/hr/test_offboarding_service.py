@@ -35,41 +35,37 @@ class FakeTaskRepository:
     def __init__(self) -> None:
         self._tasks: dict[str, Task] = {}
 
-    async def save(self, task: Task) -> None:
-        self._tasks[task.id] = task
+    async def save(self, entity: Task) -> None:
+        self._tasks[entity.id] = entity
 
-    async def get(self, task_id: str) -> Task | None:
-        return self._tasks.get(task_id)
+    async def get(self, entity_id: str) -> Task | None:
+        return self._tasks.get(entity_id)
 
-    async def list_tasks(
+    async def list_items(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
-        result = list(self._tasks.values())
-        if status is not None:
-            result = [t for t in result if t.status == status]
-        if assigned_to is not None:
-            result = [t for t in result if t.assigned_to == assigned_to]
-        if project is not None:
-            result = [t for t in result if t.project == project]
-        if offset:
-            result = result[offset:]
-        if limit is not None:
-            result = result[:limit]
-        return tuple(result)
+        result = sorted(self._tasks.values(), key=lambda t: t.id)
+        return tuple(result[offset : offset + limit])
 
-    async def count_tasks(
+    async def query(
         self,
+        filter_spec: object,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-    ) -> int:
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Task, ...]:
+        return tuple(self._filtered(filter_spec)[offset : offset + limit])
+
+    async def count(self, filter_spec: object) -> int:
+        return len(self._filtered(filter_spec))
+
+    def _filtered(self, filter_spec: object) -> list[Task]:
+        status = getattr(filter_spec, "status", None)
+        assigned_to = getattr(filter_spec, "assigned_to", None)
+        project = getattr(filter_spec, "project", None)
         result = list(self._tasks.values())
         if status is not None:
             result = [t for t in result if t.status == status]
@@ -77,10 +73,10 @@ class FakeTaskRepository:
             result = [t for t in result if t.assigned_to == assigned_to]
         if project is not None:
             result = [t for t in result if t.project == project]
-        return len(result)
+        return result
 
-    async def delete(self, task_id: str) -> bool:
-        return self._tasks.pop(task_id, None) is not None
+    async def delete(self, entity_id: str) -> bool:
+        return self._tasks.pop(entity_id, None) is not None
 
 
 class FakeReassignmentStrategy:

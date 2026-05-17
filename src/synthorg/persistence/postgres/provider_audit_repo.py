@@ -13,20 +13,26 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from synthorg.api.dto_provider_capabilities import (
-    ProviderAuditActor,
-    ProviderAuditEvent,
-)
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
-from synthorg.persistence._shared import normalize_utc
-from synthorg.persistence.provider_audit_protocol import _DEFAULT_LIST_LIMIT_50
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import normalize_utc, validate_pagination_args
+from synthorg.persistence.provider_audit_protocol import (
+    _DEFAULT_LIST_LIMIT_50,
+    ProviderAuditFilterSpec,
+)
+from synthorg.providers.management.capability_dtos import (
+    ProviderAuditActor,
+    ProviderAuditEvent,
+)
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from psycopg_pool import AsyncConnectionPool
 
     from synthorg.core.types import NotBlankStr
@@ -164,6 +170,101 @@ class PostgresProviderAuditRepo:
             provider_name=provider_name,
         )
         return events, has_more
+
+    async def append(self, event: ProviderAuditEvent) -> None:
+        """Insert one audit event (generic AppendOnly surface).
+
+        Discards the assigned id; callers that need the persisted id
+        use :meth:`record`, which returns it.
+        """
+        await self.record(event)
+
+    async def query(
+        self,
+        filter_spec: ProviderAuditFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ProviderAuditEvent, ...]:
+        """Offset-paginated query (generic AppendOnly surface).
+
+        ``after_id`` and ``offset`` are mutually exclusive paging
+        modes: when ``after_id`` is set the cursor predicate already
+        positions the window, so ``offset`` is forced to 0 to avoid
+        skipping rows relative to the cursor.
+        """
+        sql = _LIST_BASE_SQL
+        params: list[Any] = [filter_spec.provider_name]
+        effective_offset = offset
+        if filter_spec.after_id is not None:
+            sql += " AND id < %s"
+            params.append(filter_spec.after_id)
+            effective_offset = 0
+        # Validate the limit and the *effective* offset (after the
+        # mutually-exclusive after_id reset) so a negative caller
+        # offset surfaces as a repository QueryError, not a DB error.
+        limit = validate_pagination_args(
+            limit, effective_offset, event=PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED
+        )
+        sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
+        params.extend([limit, effective_offset])
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, tuple(params))
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to query provider audit events"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                provider_name=filter_spec.provider_name,
+                after_id=filter_spec.after_id,
+                limit=limit,
+                offset=offset,
+            )
+            raise QueryError(msg) from exc
+        try:
+            return tuple(self._row_to_event(r) for r in rows)
+        except QueryError:
+            raise
+        except Exception as exc:
+            # Fail closed on a corrupt audit row instead of letting
+            # raw Pydantic / datetime / enum errors escape as 500.
+            msg = "Failed to query provider audit events"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                provider_name=filter_spec.provider_name,
+                after_id=filter_spec.after_id,
+                limit=limit,
+                offset=offset,
+            )
+            raise QueryError(msg) from exc
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete events with ``occurred_at < threshold`` (generic)."""
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM provider_audit_events WHERE occurred_at < %s",
+                    (normalize_utc(threshold),),
+                )
+                rowcount = cur.rowcount
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = "Failed to purge provider audit events by timestamp"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return rowcount
 
     async def purge_before_id(self, *, before_id: int) -> int:
         """Delete events with ``id < before_id``."""

@@ -345,7 +345,7 @@ class TestReadThroughErrorWrapping:
             msg = "disk I/O"
             raise OSError(msg)
 
-        persistence.tasks.get = exploding_get  # type: ignore[method-assign]
+        persistence.tasks.get = exploding_get  # type: ignore[method-assign,assignment]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
         try:
@@ -364,7 +364,7 @@ class TestReadThroughErrorWrapping:
             msg = "connection refused"
             raise ConnectionError(msg)
 
-        persistence.tasks.list_tasks = exploding_list  # type: ignore[assignment,method-assign]
+        persistence.tasks.query = exploding_list  # type: ignore[assignment,method-assign]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
         try:
@@ -380,7 +380,7 @@ class TestReadThroughErrorWrapping:
         async def oom_get(task_id: str) -> None:
             raise MemoryError
 
-        persistence.tasks.get = oom_get  # type: ignore[method-assign]
+        persistence.tasks.get = oom_get  # type: ignore[method-assign,assignment]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
         try:
@@ -393,10 +393,11 @@ class TestReadThroughErrorWrapping:
         self,
         persistence: FakePersistence,
     ) -> None:
-        async def oom_list(**kwargs: object) -> None:
+        async def oom_list(filter_spec: object, **kwargs: object) -> None:
+            del filter_spec, kwargs
             raise MemoryError
 
-        persistence.tasks.list_tasks = oom_list  # type: ignore[assignment,method-assign]
+        persistence.tasks.query = oom_list  # type: ignore[assignment,method-assign]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
         try:
@@ -419,15 +420,17 @@ class TestListTasksSafetyCap:
     ) -> None:
         """When persistence returns more than cap, result is truncated."""
 
-        original_list = persistence.tasks.list_tasks
+        original_list = persistence.tasks.query
 
-        async def oversized_list(**kwargs: object) -> tuple[Task, ...]:
+        async def oversized_list(
+            filter_spec: object, **kwargs: object
+        ) -> tuple[Task, ...]:
             # Return a few real tasks, then monkey-patch to simulate > cap
-            result = await original_list(**kwargs)  # type: ignore[arg-type]
+            result = await original_list(filter_spec, **kwargs)  # type: ignore[arg-type]
             # Create a list longer than cap by repeating
             return result * 20_000 if result else result
 
-        persistence.tasks.list_tasks = oversized_list  # type: ignore[method-assign]
+        persistence.tasks.query = oversized_list  # type: ignore[method-assign]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
         try:
@@ -467,29 +470,30 @@ class TestListTasksPushDownPagination:
                     requested_by="alice",
                 )
             list_spy = AsyncMock(
-                spec=persistence.tasks.list_tasks,
-                wraps=persistence.tasks.list_tasks,
+                spec=persistence.tasks.query,
+                wraps=persistence.tasks.query,
             )
             count_spy = AsyncMock(
-                spec=persistence.tasks.count_tasks,
-                wraps=persistence.tasks.count_tasks,
+                spec=persistence.tasks.count,
+                wraps=persistence.tasks.count,
             )
-            persistence.tasks.list_tasks = list_spy  # type: ignore[method-assign]
-            persistence.tasks.count_tasks = count_spy  # type: ignore[method-assign]
+            persistence.tasks.query = list_spy  # type: ignore[method-assign]
+            persistence.tasks.count = count_spy  # type: ignore[method-assign]
 
             tasks, total = await eng.list_tasks(limit=2, offset=0)
 
             assert len(tasks) == 2
             assert total == 5  # total reflects full cardinality
             assert list_spy.await_count == 1
-            # limit + offset forwarded; filter kwargs default to None/None/None.
-            list_spy.assert_awaited_with(
-                status=None,
-                assigned_to=None,
-                project=None,
-                limit=2,
-                offset=0,
-            )
+            # limit + offset forwarded as kwargs; filter passed positionally
+            # as a TaskFilterSpec with all-None defaults.
+            call = list_spy.await_args
+            assert call is not None
+            assert call.kwargs == {"limit": 2, "offset": 0}
+            (spec,) = call.args
+            assert spec.status is None
+            assert spec.assigned_to is None
+            assert spec.project is None
             # include_total=True (default) triggers exactly one count.
             assert count_spy.await_count == 1
         finally:
@@ -511,10 +515,10 @@ class TestListTasksPushDownPagination:
                     requested_by="alice",
                 )
             list_spy = AsyncMock(
-                spec=persistence.tasks.list_tasks,
-                wraps=persistence.tasks.list_tasks,
+                spec=persistence.tasks.query,
+                wraps=persistence.tasks.query,
             )
-            persistence.tasks.list_tasks = list_spy  # type: ignore[method-assign]
+            persistence.tasks.query = list_spy  # type: ignore[method-assign]
 
             first, _ = await eng.list_tasks(limit=10, offset=0)
             second, _ = await eng.list_tasks(limit=10, offset=2)
@@ -538,10 +542,10 @@ class TestListTasksPushDownPagination:
         try:
             await eng.create_task(make_create_data(), requested_by="alice")
             count_spy = AsyncMock(
-                spec=persistence.tasks.count_tasks,
-                wraps=persistence.tasks.count_tasks,
+                spec=persistence.tasks.count,
+                wraps=persistence.tasks.count,
             )
-            persistence.tasks.count_tasks = count_spy  # type: ignore[method-assign]
+            persistence.tasks.count = count_spy  # type: ignore[method-assign]
 
             tasks, total = await eng.list_tasks(
                 limit=10,
@@ -640,7 +644,7 @@ class TestListTasksPushDownPagination:
         test: ``TaskEngine.list_tasks`` rejects ``offset > 0`` without a
         matching ``limit`` (see
         :meth:`TaskEngine._validate_pagination`), but callers that go
-        straight to ``persistence.tasks.list_tasks`` are a legitimate
+        straight to ``persistence.tasks.query`` are a legitimate
         downstream scenario (ad-hoc admin scripts, future services that
         don't need the engine's total-count guarantees).  The repository
         must therefore preserve offset-only semantics: ``limit=None,
@@ -664,7 +668,10 @@ class TestListTasksPushDownPagination:
             full, _ = await eng.list_tasks(limit=10, offset=0)
             # Go directly to the repository -- the engine would reject
             # ``limit=None, offset=2`` at the validation boundary.
-            tail_tuple = await persistence.tasks.list_tasks(
+            from synthorg.persistence.task_protocol import TaskFilterSpec
+
+            tail_tuple = await persistence.tasks.query(
+                TaskFilterSpec(),
                 limit=None,
                 offset=2,
             )

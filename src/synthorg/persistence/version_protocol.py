@@ -1,4 +1,4 @@
-"""Generic repository protocol for versioned entity persistence."""
+"""Bespoke repository protocol for versioned entity persistence."""
 
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
@@ -9,18 +9,35 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 if TYPE_CHECKING:
     from synthorg.versioning.models import VersionSnapshot
 
-
+#: Default limit for list_versions pagination.
 _DEFAULT_LIST_LIMIT_50: Final[int] = 50
 
 
 @runtime_checkable
 class VersionRepository[T: BaseModel](Protocol):
-    """CRUD interface for versioned entity snapshots.
+    """Bespoke CRUD interface for versioned entity snapshots.
 
     Version records are immutable once created -- they capture the
-    exact state of an entity at a specific point in time.  The
-    ``save_version`` method uses ``INSERT OR IGNORE`` semantics for
-    idempotency.
+    exact state of an entity at a specific point in time. The composite
+    key is ``(entity_id, version)`` tuple. The ``save_version`` method
+    uses ``INSERT OR IGNORE`` semantics for idempotency.
+
+    Bespoke per ADR-0001 D7:
+
+    * Composite-key (entity_id, version) with int second component differs
+      from typical str-keyed CRUD and does not fit IdKeyedRepository cleanly.
+    * ``get_latest_version`` returns the single newest row by version
+      for an entity; the generic ``query`` + sorting cannot express the
+      ``LIMIT 1 ORDER BY version DESC`` shape efficiently.
+    * ``get_by_content_hash`` is an alternate-key lookup on the
+      ``content_hash`` column for content-addressable deduplication;
+      routing through a generic filter is wasteful for a targeted lookup.
+    * ``delete_versions_for_entity`` is a bulk delete keyed on
+      ``entity_id`` scope (all versions for one entity); the generic
+      ``delete((entity_id, version))`` deletes only one row at a time.
+
+    These constraints do not compose cleanly into FilteredQueryRepository
+    or IdKeyedRepository, so VersionRepository remains completely bespoke.
 
     Implementations must parameterise ``T`` with the concrete entity
     type they manage (e.g., ``VersionRepository[AgentIdentity]``).
@@ -50,7 +67,7 @@ class VersionRepository[T: BaseModel](Protocol):
         entity_id: NotBlankStr,
         version: int,
     ) -> VersionSnapshot[T] | None:
-        """Retrieve a specific version snapshot.
+        """Retrieve a specific version snapshot by composite key.
 
         Args:
             entity_id: The entity's string primary key.
@@ -70,6 +87,9 @@ class VersionRepository[T: BaseModel](Protocol):
     ) -> VersionSnapshot[T] | None:
         """Retrieve the most recent version snapshot for an entity.
 
+        Bespoke method (D7): more efficient than a generic query for this
+        common case.
+
         Args:
             entity_id: The entity's string primary key.
 
@@ -88,8 +108,11 @@ class VersionRepository[T: BaseModel](Protocol):
     ) -> VersionSnapshot[T] | None:
         """Retrieve a version by its content hash.
 
-        Useful for content-addressable deduplication: if the hash
-        already exists, no new version is needed.
+        Bespoke method (D7): alternate-key lookup for content-addressable
+        deduplication.
+
+        Useful for deduplication: if the hash already exists, no new
+        version is needed.
 
         Args:
             entity_id: The entity's string primary key.
@@ -110,17 +133,17 @@ class VersionRepository[T: BaseModel](Protocol):
         limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[VersionSnapshot[T], ...]:
-        """List version snapshots for an entity.
+        """List version snapshots for an entity with pagination.
 
         Results are ordered by version descending (newest first).
 
         Args:
             entity_id: The entity's string primary key.
-            limit: Maximum number of results.
-            offset: Number of results to skip.
+            limit: Maximum number of results (default 50).
+            offset: Number of results to skip (default 0).
 
         Returns:
-            Matching version snapshots as a tuple.
+            Version snapshots as a tuple.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -134,7 +157,7 @@ class VersionRepository[T: BaseModel](Protocol):
             entity_id: The entity's string primary key.
 
         Returns:
-            Number of version records for the entity.
+            Total number of versions for this entity.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -143,6 +166,10 @@ class VersionRepository[T: BaseModel](Protocol):
 
     async def delete_versions_for_entity(self, entity_id: NotBlankStr) -> int:
         """Delete all version snapshots for an entity.
+
+        Bespoke method (D7): bulk delete by entity scope. The generic
+        ``delete((entity_id, version))`` deletes only one row at a time,
+        making this batch operation inefficient to express generically.
 
         Args:
             entity_id: The entity's string primary key.

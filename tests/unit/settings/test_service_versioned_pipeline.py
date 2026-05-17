@@ -12,7 +12,8 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingNamespace, SettingType
 from synthorg.settings.errors import SettingsEncryptionError
@@ -23,6 +24,21 @@ from synthorg.settings.service import SettingsService
 
 class _FakeConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
+
+
+def _row(
+    value: str,
+    updated_at: str,
+    *,
+    namespace: str,
+    key: str,
+) -> SettingRow:
+    return SettingRow(
+        namespace=NotBlankStr(namespace),
+        key=NotBlankStr(key),
+        value=value,
+        updated_at=updated_at,
+    )
 
 
 def _plain_def() -> SettingDefinition:
@@ -113,7 +129,9 @@ class TestGetVersionedSharedPipeline:
         service: SettingsService,
         mock_repo: AsyncMock,
     ) -> None:
-        mock_repo.get.return_value = ("[]", "2026-04-11T10:00:00Z")
+        mock_repo.get.return_value = _row(
+            "[]", "2026-04-11T10:00:00Z", namespace="company", key="departments"
+        )
         value, updated_at = await service.get_versioned("company", "departments")
         assert value == "[]"
         assert updated_at == "2026-04-11T10:00:00Z"
@@ -126,7 +144,12 @@ class TestGetVersionedSharedPipeline:
     ) -> None:
         """Locks the new unified behaviour: get_versioned must decrypt."""
         ciphertext = encryptor.encrypt("sk-secret-plaintext")
-        mock_repo.get.return_value = (ciphertext, "2026-04-11T10:00:00Z")
+        mock_repo.get.return_value = _row(
+            ciphertext,
+            "2026-04-11T10:00:00Z",
+            namespace="providers",
+            key="openai_api_key",
+        )
         value, updated_at = await service.get_versioned("providers", "openai_api_key")
         assert value == "sk-secret-plaintext"
         assert updated_at == "2026-04-11T10:00:00Z"
@@ -158,7 +181,9 @@ class TestGetVersionedSharedPipeline:
         mock_repo: AsyncMock,
     ) -> None:
         """get() and get_versioned() both funnel through _resolve_db."""
-        mock_repo.get.return_value = ("[]", "2026-04-11T10:00:00Z")
+        mock_repo.get.return_value = _row(
+            "[]", "2026-04-11T10:00:00Z", namespace="company", key="departments"
+        )
 
         await service.get("company", "departments")
         await service.get_versioned("company", "departments")
@@ -180,9 +205,11 @@ class TestResolveDbErrorPaths:
         mock_repo: AsyncMock,
     ) -> None:
         """get_versioned on a sensitive key without encryptor raises."""
-        mock_repo.get.return_value = (
+        mock_repo.get.return_value = _row(
             "ciphertext",
             "2026-04-11T10:00:00Z",
+            namespace="providers",
+            key="openai_api_key",
         )
         with pytest.raises(SettingsEncryptionError, match="no encryptor"):
             await service_no_encryptor.get_versioned("providers", "openai_api_key")
@@ -194,6 +221,11 @@ class TestResolveDbErrorPaths:
         encryptor: SettingsEncryptor,
     ) -> None:
         """Corrupted ciphertext in the DB raises SettingsEncryptionError."""
-        mock_repo.get.return_value = ("not-valid-fernet", "2026-04-11T10:00:00Z")
+        mock_repo.get.return_value = _row(
+            "not-valid-fernet",
+            "2026-04-11T10:00:00Z",
+            namespace="providers",
+            key="openai_api_key",
+        )
         with pytest.raises(SettingsEncryptionError):
             await service.get_versioned("providers", "openai_api_key")

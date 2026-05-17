@@ -8272,6 +8272,11 @@ export type components = {
         readonly MemoryLevel: "persistent" | "project" | "session" | "none";
         /** Message */
         readonly Message: {
+            /**
+             * @description Out-of-band parts attached to the message (files, data blobs, URIs) that are not part of the primary content flow. Persisted alongside the message and round-tripped by both backends.
+             * @default []
+             */
+            readonly attachments: readonly (components["schemas"]["TextPart"] | components["schemas"]["DataPart"] | components["schemas"]["FilePart"] | components["schemas"]["UriPart"])[];
             /** @description Channel the message is sent through */
             readonly channel: string;
             /**

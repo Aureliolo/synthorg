@@ -90,7 +90,7 @@ class TestTaskTreeLoader:
 
     async def test_load_with_no_children(self) -> None:
         repo = AsyncMock(spec=TaskRepository)
-        repo.list_tasks = AsyncMock(return_value=())
+        repo.query = AsyncMock(return_value=())
 
         loader = TaskTreeLoader(task_repo=repo)
         er = _execution_result()
@@ -98,7 +98,7 @@ class TestTaskTreeLoader:
 
         assert ctx.scope == DetectionScope.TASK_TREE
         assert ctx.delegation_requests == ()
-        repo.list_tasks.assert_awaited_once()
+        repo.query.assert_awaited_once()
 
     async def test_load_with_child_tasks(self) -> None:
         child = _task(
@@ -109,7 +109,7 @@ class TestTaskTreeLoader:
             description="Child task description",
         )
         repo = AsyncMock(spec=TaskRepository)
-        repo.list_tasks = AsyncMock(return_value=(child,))
+        repo.query = AsyncMock(return_value=(child,))
 
         loader = TaskTreeLoader(task_repo=repo)
         er = _execution_result()
@@ -124,7 +124,7 @@ class TestTaskTreeLoader:
     async def test_load_survives_repo_failure(self) -> None:
         """Repository failure produces empty delegation requests."""
         repo = AsyncMock(spec=TaskRepository)
-        repo.list_tasks = AsyncMock(
+        repo.query = AsyncMock(
             side_effect=RuntimeError("connection lost"),
         )
 
@@ -138,7 +138,7 @@ class TestTaskTreeLoader:
     async def test_load_memory_error_propagates(self) -> None:
         """MemoryError from repository propagates."""
         repo = AsyncMock(spec=TaskRepository)
-        repo.list_tasks = AsyncMock(side_effect=MemoryError)
+        repo.query = AsyncMock(side_effect=MemoryError)
 
         loader = TaskTreeLoader(task_repo=repo)
         er = _execution_result()
@@ -153,7 +153,7 @@ class TestTaskTreeLoader:
             description="Visit https://secret.example.com/admin",
         )
         repo = AsyncMock(spec=TaskRepository)
-        repo.list_tasks = AsyncMock(return_value=(child,))
+        repo.query = AsyncMock(return_value=(child,))
 
         loader = TaskTreeLoader(task_repo=repo)
         er = _execution_result()

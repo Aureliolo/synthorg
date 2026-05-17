@@ -41,6 +41,9 @@ from synthorg.observability.events.meeting import (
 
 if TYPE_CHECKING:
     from synthorg.communication.config import MeetingsConfig, MeetingTypeConfig
+    from synthorg.persistence.meeting_cooldown_protocol import (
+        MeetingCooldownRepository,
+    )
 
 # Map meeting status values to WS event name strings.
 # Mirrors WsEventType.MEETING_* values without importing the API layer.
@@ -80,10 +83,13 @@ class MeetingScheduler:
     """
 
     __slots__ = (
+        "_background_drain_task",
         "_clock",
         "_config",
+        "_cooldown_hydrated",
         "_cooldown_lock",
         "_cooldown_lock_loop",
+        "_cooldown_repo",
         "_event_publisher",
         "_last_triggered",
         "_lifecycle_lock",
@@ -95,7 +101,7 @@ class MeetingScheduler:
         "_tasks",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- scheduler wiring needs the full dep set
         self,
         *,
         config: MeetingsConfig,
@@ -103,12 +109,21 @@ class MeetingScheduler:
         participant_resolver: ParticipantResolver,
         event_publisher: Callable[[str, dict[str, Any]], None] | None = None,
         clock: Callable[[], float] | None = None,
+        cooldown_repo: MeetingCooldownRepository | None = None,
     ) -> None:
         self._config = config
         self._orchestrator = orchestrator
         self._resolver = participant_resolver
         self._event_publisher = event_publisher
         self._clock = clock or time.monotonic
+        # When cooldown_repo is supplied the scheduler persists the
+        # wall-clock timestamp of every trigger at trigger_event and
+        # rehydrates _last_triggered from the repo at start(), so a
+        # restart inside a cooldown window cannot let a meeting re-fire.
+        # The runtime comparison still uses the monotonic ``_clock`` for
+        # performance; hydration translates the persisted wall-clock to
+        # a monotonic-equivalent offset via (now_wall - persisted_wall).
+        self._cooldown_repo = cooldown_repo
         # Loop-bound asyncio primitives are deferred so the scheduler
         # can be safely re-used across event loops (test scenarios
         # where pytest-asyncio creates a fresh loop per test while a
@@ -122,6 +137,12 @@ class MeetingScheduler:
         self._lifecycle_lock: asyncio.Lock | None = None
         self._lifecycle_lock_loop: asyncio.AbstractEventLoop | None = None
         self._tasks: list[asyncio.Task[None]] = []
+        # Holds the shielded drain task spawned in stop() so the orphan
+        # (timeout case) is observable to tests / operators. Cleared on
+        # the next stop() entry, reassigned on completion.
+        self._background_drain_task: asyncio.Task[list[BaseException | None]] | None = (
+            None
+        )
         self._running = False
         # Set to True when a stop() drain exceeds the hard deadline.
         # Prevents a subsequent start() from spawning a second set of
@@ -130,6 +151,10 @@ class MeetingScheduler:
         # scheduler.
         self._stop_failed = False
         self._last_triggered: dict[str, float] = {}
+        # Tracks whether the cooldown dict has been hydrated from the
+        # persistent repo this lifetime. Reset on stop so a fresh start
+        # re-hydrates from durable state instead of stale in-memory.
+        self._cooldown_hydrated = False
 
     @property
     def running(self) -> bool:
@@ -139,11 +164,18 @@ class MeetingScheduler:
     def _lifecycle_lock_for_current_loop(self) -> asyncio.Lock:
         """Return a lifecycle lock bound to the running loop, rebinding if needed.
 
-        A pre-seeded lock with ``_lifecycle_lock_loop is None`` (e.g. a
-        test double injected before any ``start()`` ran) is preserved
-        unless the recorded loop is concretely different from the
-        current one.  Without this guard, the helper would replace the
-        injected lock on first call and silently weaken race tests.
+        Three paths:
+
+        1. No running loop (``RuntimeError`` from ``get_running_loop``):
+           build a lock if absent and return it; the caller will
+           ``await`` it once a loop is up.
+        2. Recorded loop is ``None`` (pre-seeded by a test double
+           before any ``start()`` ran): keep the injected lock as-is so
+           race tests that pre-acquired it stay deterministic.
+        3. Recorded loop is set and differs from ``current`` (a stale
+           lock from a previous pytest-asyncio loop): rebind to the
+           current running loop so the next ``await`` does not raise
+           "loop is closed".
         """
         try:
             current = asyncio.get_running_loop()
@@ -179,6 +211,90 @@ class MeetingScheduler:
             self._cooldown_lock = asyncio.Lock()
             self._cooldown_lock_loop = current
         return self._cooldown_lock
+
+    async def _hydrate_cooldowns_from_repo(self) -> None:
+        """Load persisted cooldown timestamps into ``_last_triggered``.
+
+        Idempotent within one lifetime: hydrates on the first start()
+        call after construction; subsequent re-entries after stop()
+        also re-hydrate so durable state takes precedence over any
+        stale in-memory survivors.
+
+        Converts persisted wall-clock timestamps to monotonic-equivalent
+        offsets: a meeting last fired ``elapsed`` seconds ago in wall
+        time is recorded as ``now_monotonic - max(0, elapsed)`` so the
+        runtime cooldown comparison (which uses monotonic) still
+        respects the persisted interval.
+        """
+        if self._cooldown_repo is None:
+            return
+        try:
+            records = await self._cooldown_repo.load_all()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                MEETING_SCHEDULER_ERROR,
+                phase="hydrate_cooldown_repo",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        now_wall = datetime.now(UTC)
+        now_monotonic = self._clock()
+        # Acquire the cooldown lock so a trigger_event that races the
+        # post-start hydrate cannot interleave its read-then-write
+        # against the bulk hydrate write.
+        async with self._cooldown_lock_for_current_loop():
+            # Replace, do not merge: a re-entry after stop() must let
+            # durable state fully supersede in-memory survivors, so a
+            # meeting type absent from the persisted set drops its stale
+            # in-memory cooldown rather than retaining it.
+            self._last_triggered.clear()
+            for record in records:
+                elapsed = (now_wall - record.last_triggered_at).total_seconds()
+                self._last_triggered[record.meeting_type_name] = now_monotonic - max(
+                    0.0, elapsed
+                )
+            self._cooldown_hydrated = True
+
+    async def _persist_cooldown(self, meeting_type_name: str) -> None:
+        """Upsert the wall-clock timestamp for one meeting type's cooldown.
+
+        Called inside ``trigger_event`` after the in-memory dict has
+        been updated. A persistence failure logs at WARNING and then
+        re-raises so the durable cooldown row is never silently lost:
+        the caller surfaces the failure rather than continuing with an
+        in-memory-only cooldown that vanishes on restart.
+        """
+        if self._cooldown_repo is None:
+            return
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+        from synthorg.persistence.meeting_cooldown_protocol import (  # noqa: PLC0415
+            MeetingCooldownRecord,
+        )
+
+        record = MeetingCooldownRecord(
+            meeting_type_name=NotBlankStr(meeting_type_name),
+            last_triggered_at=datetime.now(UTC),
+        )
+        try:
+            await self._cooldown_repo.save(record)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                MEETING_SCHEDULER_ERROR,
+                phase="persist_cooldown",
+                meeting_type=meeting_type_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
 
     async def start(self) -> None:
         """Start periodic tasks for all frequency-based meeting types.
@@ -232,6 +348,7 @@ class MeetingScheduler:
                 )
                 return
 
+            await self._hydrate_cooldowns_from_repo()
             self._running = True
 
             scheduled = self.get_scheduled_types()
@@ -354,6 +471,11 @@ class MeetingScheduler:
                 drain_task: asyncio.Task[list[BaseException | None]] = (
                     asyncio.create_task(_drain())
                 )
+                # Park the reference so tests can assert "drain finished"
+                # / "drain orphaned after stop_failed" without grepping
+                # the asyncio task registry. Cleared at the head of the
+                # next stop() invocation.
+                self._background_drain_task = drain_task
                 try:
                     results = await asyncio.wait_for(
                         asyncio.shield(drain_task),
@@ -441,6 +563,11 @@ class MeetingScheduler:
             )
 
             for mt in eligible:
+                # Persist first: if the durable write fails the loop
+                # aborts (via re-raise) before the in-memory cooldown is
+                # set, so we never record a cooldown that vanishes on
+                # restart and lets the meeting re-fire.
+                await self._persist_cooldown(mt.name)
                 self._last_triggered[mt.name] = now
 
         async with asyncio.TaskGroup() as tg:

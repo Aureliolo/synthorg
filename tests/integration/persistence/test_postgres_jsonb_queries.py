@@ -82,7 +82,7 @@ class TestJsonbContains:
 
         for i in range(20):
             rules = ("rule-high",) if i % 2 == 0 else ("rule-low",)
-            await repo.save(
+            await repo.append(
                 _make_audit_entry(
                     entry_id=f"entry-contains-{i}",
                     matched_rules=rules,
@@ -107,7 +107,7 @@ class TestJsonbContains:
         assert isinstance(repo, JsonbQueryCapability)
 
         for i in range(10):
-            await repo.save(
+            await repo.append(
                 _make_audit_entry(
                     entry_id=f"entry-page-{i}",
                     matched_rules=("rule-high",),
@@ -142,14 +142,14 @@ class TestJsonbContains:
         assert isinstance(repo, JsonbQueryCapability)
 
         now = datetime.now(UTC)
-        await repo.save(
+        await repo.append(
             _make_audit_entry(
                 entry_id="entry-old",
                 matched_rules=("rule-high",),
                 timestamp=now - timedelta(days=10),
             ),
         )
-        await repo.save(
+        await repo.append(
             _make_audit_entry(
                 entry_id="entry-new",
                 matched_rules=("rule-high",),
@@ -186,13 +186,13 @@ class TestJsonbKeyExists:
         repo = postgres_backend.audit_entries
         assert isinstance(repo, JsonbQueryCapability)
 
-        await repo.save(
+        await repo.append(
             _make_audit_entry(
                 entry_id="entry-key-1",
                 matched_rules=("severity", "rule-a"),
             ),
         )
-        await repo.save(
+        await repo.append(
             _make_audit_entry(
                 entry_id="entry-key-2",
                 matched_rules=("rule-b",),
@@ -224,7 +224,7 @@ class TestGinIndexUsage:
 
         for i in range(500):
             rules = ("rule-high", f"rule-{i}")
-            await repo.save(
+            await repo.append(
                 _make_audit_entry(
                     entry_id=f"gin-entry-{i}",
                     matched_rules=rules,
@@ -285,13 +285,15 @@ class TestSqlInjectionSafety:
         with pytest.raises(ValueError, match="not allowed"):
             await repo.query_jsonb_contains("password", ["foo"])
 
-        await repo.save(
+        await repo.append(
             _make_audit_entry(
                 entry_id="intact-1",
                 matched_rules=("rule-check",),
             ),
         )
-        entries = await repo.query(limit=10)
+        from synthorg.persistence.audit_protocol import AuditFilterSpec
+
+        entries = await repo.query(AuditFilterSpec(), limit=10)
         assert any(e.id == "intact-1" for e in entries)
 
 

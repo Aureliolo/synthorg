@@ -194,7 +194,7 @@ async def create_session_record(
             last_active_at=now,
             expires_at=now + timedelta(seconds=expires_in),
         )
-        await store.create(session)
+        await store.save(session)
         logger.info(
             SECURITY_SESSION_CREATED,
             session_id=session_id,

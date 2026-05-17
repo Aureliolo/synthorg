@@ -48,6 +48,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.observability.config import ContainerLogShippingConfig
+    from synthorg.persistence.tracked_container_protocol import (
+        TrackedContainerRepository,
+    )
     from synthorg.tools.sandbox.runtime_resolver import SandboxRuntimeResolver
 
 _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
@@ -122,6 +125,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         workspace: Path,
         log_shipping_config: ContainerLogShippingConfig | None = None,
         clock: Clock | None = None,
+        tracked_container_repo: TrackedContainerRepository | None = None,
     ) -> None:
         """Initialize the Docker sandbox.
 
@@ -133,6 +137,12 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             clock: Time source for execution-duration measurements.
                 Defaults to ``SystemClock()``; tests inject ``FakeClock``
                 to drive elapsed-ms assertions deterministically.
+            tracked_container_repo: Optional persistence handle. When
+                provided, every mutation of ``_tracked_containers`` is
+                mirrored to the backing store so a crashed process can
+                reconcile orphaned containers on restart. When omitted
+                (tests, ad-hoc instantiation), the in-memory dict is
+                still authoritative and reconciliation is skipped.
 
         Raises:
             ValueError: If *workspace* is not absolute or does not exist.
@@ -150,6 +160,9 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         self._workspace = resolved
         self._docker: aiodocker.Docker | None = None
         self._tracked_containers: dict[str, str | None] = {}
+        self._tracked_container_repo: TrackedContainerRepository | None = (
+            tracked_container_repo
+        )
         self._lock = asyncio.Lock()
         self._clock = clock or SystemClock()
         self._credential_manager = SandboxCredentialManager()
@@ -166,6 +179,65 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
     def config(self) -> DockerSandboxConfig:
         """Docker sandbox configuration."""
         return self._config
+
+    async def _track_container(
+        self,
+        container_id: str,
+        sidecar_id: str | None,
+    ) -> None:
+        """Track a container in-memory and (if configured) on disk.
+
+        Mirrors the dict mutation to ``tracked_container_repo.save`` so a
+        crashed process can reconcile orphans via the persisted record
+        on restart. Persistence failures are logged and swallowed: the
+        in-memory dict is authoritative for the current process and a
+        DB blip must not block container creation.
+        """
+        self._tracked_containers[container_id] = sidecar_id
+        repo = self._tracked_container_repo
+        if repo is None or container_id.startswith("_sidecar:"):
+            return
+        try:
+            from synthorg.persistence.tracked_container_protocol import (  # noqa: PLC0415
+                TrackedContainerRecord,
+            )
+
+            await repo.save(
+                TrackedContainerRecord(
+                    container_id=container_id,
+                    sidecar_id=sidecar_id,
+                    created_at=self._clock.now(),
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                container_id=container_id[:12],
+                reason="tracked_container_save_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+    async def _untrack_container(self, container_id: str) -> None:
+        """Untrack a container in-memory and (if configured) on disk."""
+        self._tracked_containers.pop(container_id, None)
+        repo = self._tracked_container_repo
+        if repo is None or container_id.startswith("_sidecar:"):
+            return
+        try:
+            await repo.delete(container_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                container_id=container_id[:12],
+                reason="tracked_container_delete_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     @property
     def workspace(self) -> Path:
@@ -300,7 +372,16 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         host_config = self._build_host_config(category=category)
         if network_mode is not None:
             host_config["NetworkMode"] = network_mode
-        labels: dict[str, str] = {"synthorg.sandbox": "true"}
+        # WP-1: ``synthorg.managed=true`` is the canonical label the
+        # reconciliation pass filters on at sandbox-subsystem start
+        # (see ``synthorg.tools.sandbox.reconciliation``).  Operators
+        # MUST NOT strip this label or the orphan cleanup will treat
+        # the container as a foreign daemon process and leave it
+        # running on restart.
+        labels: dict[str, str] = {
+            "synthorg.sandbox": "true",
+            "synthorg.managed": "true",
+        }
         if owner_id is not None:
             labels["synthorg.sandbox.owner_id"] = owner_id
         container_config: dict[str, Any] = {
@@ -514,8 +595,11 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         if self._needs_sidecar():
             sidecar_id = await self._create_sidecar(docker)
             # Track sidecar immediately so cleanup() can find it
-            # even if start/health-check fails or is cancelled.
-            self._tracked_containers[f"_sidecar:{sidecar_id}"] = None
+            # even if start/health-check fails or is cancelled. The
+            # ``_sidecar:`` prefix marks this entry as transient; the
+            # DB repo only learns about the sandbox container, never
+            # the temp sidecar key.
+            await self._track_container(f"_sidecar:{sidecar_id}", None)
             try:
                 sidecar_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
                 await sidecar_obj.start()
@@ -536,10 +620,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     sidecar_id,
                 )
                 if removed:
-                    self._tracked_containers.pop(
-                        f"_sidecar:{sidecar_id}",
-                        None,
-                    )
+                    await self._untrack_container(f"_sidecar:{sidecar_id}")
                 raise
             except Exception as exc:
                 # Clean up the sidecar before wrapping ordinary
@@ -553,10 +634,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     sidecar_id,
                 )
                 if removed:
-                    self._tracked_containers.pop(
-                        f"_sidecar:{sidecar_id}",
-                        None,
-                    )
+                    await self._untrack_container(f"_sidecar:{sidecar_id}")
                 msg = f"Sidecar startup failed: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
             except BaseException:
@@ -569,10 +647,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     sidecar_id,
                 )
                 if removed:
-                    self._tracked_containers.pop(
-                        f"_sidecar:{sidecar_id}",
-                        None,
-                    )
+                    await self._untrack_container(f"_sidecar:{sidecar_id}")
                 raise
             # Don't pop the _sidecar: temp key yet -- keep it tracked
             # until the sandbox container is created and takes over.
@@ -599,10 +674,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     sidecar_id,
                 )
                 if removed:
-                    self._tracked_containers.pop(
-                        f"_sidecar:{sidecar_id}",
-                        None,
-                    )
+                    await self._untrack_container(f"_sidecar:{sidecar_id}")
             error_desc = safe_error_description(exc)
             msg = f"Failed to create container: {error_desc}"
             logger.warning(
@@ -614,13 +686,10 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             raise SandboxStartError(msg) from exc
 
         container_id = container.id
-        self._tracked_containers[container_id] = sidecar_id
+        await self._track_container(container_id, sidecar_id)
         # Sandbox now tracks the sidecar -- remove the temp key.
         if sidecar_id:
-            self._tracked_containers.pop(
-                f"_sidecar:{sidecar_id}",
-                None,
-            )
+            await self._untrack_container(f"_sidecar:{sidecar_id}")
         logger.debug(
             DOCKER_CONTAINER_CREATED,
             container_id=container_id[:12],
@@ -677,7 +746,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                 container_id,
             )
             if sandbox_removed:
-                self._tracked_containers.pop(container_id, None)
+                await self._untrack_container(container_id)
             if sidecar_id:
                 sidecar_removed = await self._remove_container(
                     docker,

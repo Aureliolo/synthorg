@@ -417,7 +417,9 @@ async def _fetch_trend_data_points(
     # tracked, so report the current snapshot across all buckets.
     # Fetch the current task list so the runtime-state active count
     # reflects genuinely busy agents (not the config count).
-    all_tasks = await app_state.persistence.tasks.list_tasks()
+    from synthorg.persistence.task_protocol import TaskFilterSpec  # noqa: PLC0415
+
+    all_tasks = await app_state.persistence.tasks.query(TaskFilterSpec())
     active_count, _ = await _resolve_agent_counts(
         app_state,
         0,
@@ -529,13 +531,15 @@ class AnalyticsController(Controller):
         Returns:
             Overview metrics envelope.
         """
+        from synthorg.persistence.task_protocol import TaskFilterSpec  # noqa: PLC0415
+
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
 
         try:
             async with asyncio.TaskGroup() as tg:
                 t_tasks = tg.create_task(
-                    app_state.persistence.tasks.list_tasks(),
+                    app_state.persistence.tasks.query(TaskFilterSpec()),
                 )
                 t_cost = tg.create_task(
                     app_state.cost_tracker.get_total_cost(),

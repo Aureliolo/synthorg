@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Literal
 import pytest
 
 from synthorg.core.auth.roles import HumanRole
-from synthorg.core.enums import WorkflowExecutionStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.hr.persistence_protocol import (
@@ -34,8 +33,6 @@ from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,
-    PresetListRow,
-    PresetRow,
 )
 from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
@@ -51,13 +48,18 @@ from synthorg.persistence.training_protocol import (
     TrainingResultRepository,
 )
 from synthorg.persistence.user_protocol import (
+    ApiKeyFilterSpec,
     ApiKeyRepository,
+    UserFilterSpec,
     UserRepository,
 )
 from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionFilterSpec,
     WorkflowDefinitionRepository,
 )
-from synthorg.persistence.workflow_execution_protocol import WorkflowExecutionRepository
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionRepository,
+)
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -66,13 +68,6 @@ if TYPE_CHECKING:
     from synthorg.communication.message import Message
     from synthorg.core.artifact import Artifact
     from synthorg.core.auth.models import ApiKey, User
-    from synthorg.core.enums import (
-        ApprovalRiskLevel,
-        ArtifactType,
-        ProjectStatus,
-        TaskStatus,
-        WorkflowType,
-    )
     from synthorg.core.project import Project
     from synthorg.core.task import Task
     from synthorg.engine.agent_state import AgentRuntimeState
@@ -85,64 +80,75 @@ if TYPE_CHECKING:
         CollaborationMetricRecord,
         TaskMetricRecord,
     )
-    from synthorg.security.models import AuditEntry, AuditVerdictStr
+    from synthorg.security.models import AuditEntry
     from synthorg.security.timeout.parked_context import ParkedContext
 
 
 class _FakeTaskRepository:
-    async def save(self, task: Task) -> None:
+    async def save(self, entity: Task) -> None:
         pass
 
-    async def get(self, task_id: str) -> Task | None:
+    async def get(self, entity_id: NotBlankStr) -> Task | None:
         return None
 
-    async def list_tasks(
+    async def list_items(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
     ) -> tuple[Task, ...]:
+        del limit, offset
         return ()
 
-    async def count_tasks(
+    async def query(
         self,
+        filter_spec: Any,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-    ) -> int:
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Task, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
         return 0
 
-    async def delete(self, task_id: str) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
         return False
 
 
 class _FakeCostRecordRepository:
-    async def save(self, record: CostRecord) -> None:
+    async def append(self, event: CostRecord) -> None:
         pass
 
     async def query(
         self,
+        filter_spec: Any,
         *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[CostRecord, ...]:
+        del filter_spec, limit, offset
         return ()
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        del threshold
+        return 0
 
     async def aggregate(
         self,
         *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
+        agent_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
     ) -> float:
+        del agent_id, task_id
         return 0.0
 
 
 class _FakeMessageRepository:
-    async def save(self, message: Message) -> None:
+    async def append(self, message: Message) -> None:
         pass
 
     async def get_history(
@@ -152,6 +158,18 @@ class _FakeMessageRepository:
         limit: int | None = None,
     ) -> tuple[Message, ...]:
         return ()
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Message, ...]:
+        return ()
+
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
 
     async def delete(self, message_id: str) -> bool:
         return False
@@ -209,6 +227,15 @@ class _FakeParkedContextRepository:
     async def get(self, parked_id: str) -> ParkedContext | None:
         return None
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        del limit, offset
+        return ()
+
     async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
         return None
 
@@ -220,23 +247,21 @@ class _FakeParkedContextRepository:
 
 
 class _FakeAuditRepository:
-    async def save(self, entry: AuditEntry) -> None:
+    async def append(self, entry: AuditEntry) -> None:
         pass
 
-    async def query(  # noqa: PLR0913
+    async def query(
         self,
+        filter_spec: Any,
         *,
-        agent_id: str | None = None,
-        action_type: str | None = None,
-        verdict: AuditVerdictStr | None = None,
-        risk_level: ApprovalRiskLevel | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[AuditEntry, ...]:
+        del filter_spec, limit, offset
         return ()
 
     async def purge_before(self, cutoff: AwareDatetime) -> int:
+        del cutoff
         return 0
 
 
@@ -273,6 +298,9 @@ class _FakePresetOverrideRepo:
 
 
 class _FakeDecisionRepository:
+    async def append(self, event: Any) -> None:
+        pass
+
     async def append_with_next_version(
         self,
         **_kwargs: object,
@@ -281,6 +309,16 @@ class _FakeDecisionRepository:
 
     async def get(self, record_id: str) -> DecisionRecord | None:
         return None
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[DecisionRecord, ...]:
+        del limit, offset
+        return ()
 
     async def list_by_task(self, task_id: str) -> tuple[DecisionRecord, ...]:
         return ()
@@ -293,60 +331,104 @@ class _FakeDecisionRepository:
     ) -> tuple[DecisionRecord, ...]:
         return ()
 
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
+
 
 class _FakeUserRepository:
-    async def save(self, user: User) -> None:
+    async def save(self, entity: User) -> None:
         pass
 
-    async def get(self, user_id: str) -> User | None:
+    async def get(self, entity_id: str) -> User | None:
         return None
 
     async def get_by_username(self, username: str) -> User | None:
         return None
 
-    async def list_users(self, *, limit: int = 100) -> tuple[User, ...]:
-        del limit
-        return ()
-
-    async def list_users_paginated(
+    async def list_items(
         self,
         *,
-        after_id: str | None,
-        limit: int,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[User, ...]:
-        del after_id, limit
         return ()
 
-    async def count(self) -> int:
+    async def list_after_id(
+        self,
+        *,
+        after_id: str | None = None,
+        limit: int = 100,
+    ) -> tuple[User, ...]:
+        return ()
+
+    async def query(
+        self,
+        filter_spec: UserFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[User, ...]:
+        return ()
+
+    async def count(self, filter_spec: UserFilterSpec) -> int:
         return 0
 
     async def count_by_role(self, role: HumanRole) -> int:
         return 0
 
-    async def delete(self, user_id: str) -> bool:
+    async def delete(self, entity_id: str) -> bool:
         return False
 
 
 class _FakeApiKeyRepository:
-    async def save(self, key: ApiKey) -> None:
+    async def save(self, entity: ApiKey) -> None:
         pass
 
-    async def get(self, key_id: str) -> ApiKey | None:
+    async def get(self, entity_id: str) -> ApiKey | None:
         return None
 
     async def get_by_hash(self, key_hash: str) -> ApiKey | None:
         return None
 
-    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
         return ()
 
-    async def delete(self, key_id: str) -> bool:
+    async def query(
+        self,
+        filter_spec: ApiKeyFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        return ()
+
+    async def count(self, filter_spec: ApiKeyFilterSpec) -> int:
+        return 0
+
+    async def delete(self, entity_id: str) -> bool:
         return False
 
 
 class _FakeCheckpointRepository:
-    async def save(self, checkpoint: Checkpoint) -> None:
+    async def append(self, checkpoint: Checkpoint) -> None:
         pass
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Checkpoint, ...]:
+        return ()
+
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
 
     async def get_latest(
         self,
@@ -384,6 +466,15 @@ class _FakeAgentStateRepository:
     async def get(self, agent_id: str) -> AgentRuntimeState | None:
         return None
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[AgentRuntimeState, ...]:
+        del limit, offset
+        return ()
+
     async def get_active(self) -> tuple[AgentRuntimeState, ...]:
         return ()
 
@@ -392,56 +483,93 @@ class _FakeAgentStateRepository:
 
 
 class _FakeSettingsRepository:
-    async def get(self, namespace: str, key: str) -> tuple[str, str] | None:
+    async def save(self, entity: Any) -> None:
+        del entity
+
+    async def get(self, entity_id: tuple[NotBlankStr, NotBlankStr]) -> Any | None:
+        del entity_id
         return None
 
-    async def get_namespace(self, namespace: str) -> tuple[tuple[str, str, str], ...]:
+    async def delete(self, entity_id: tuple[NotBlankStr, NotBlankStr]) -> bool:
+        del entity_id
+        return False
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
         return ()
 
-    async def get_all(self) -> tuple[tuple[str, str, str, str], ...]:
+    async def get_namespace(self, namespace: NotBlankStr) -> tuple[Any, ...]:
+        del namespace
         return ()
 
-    async def set(self, namespace: str, key: str, value: str, updated_at: str) -> None:
-        pass
+    async def set_if_unchanged(
+        self,
+        entity: Any,
+        *,
+        expected_updated_at: str | None = None,
+    ) -> bool:
+        del entity, expected_updated_at
+        return True
 
     async def set_many(
         self,
-        items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
+        items: Sequence[Any],
         *,
-        expected_updated_at_map: Mapping[tuple[str, str], str] | None = None,
+        expected_updated_at_map: (
+            Mapping[tuple[NotBlankStr, NotBlankStr], str] | None
+        ) = None,
     ) -> bool:
+        del items, expected_updated_at_map
         return True
 
-    async def delete(self, namespace: str, key: str) -> bool:
-        return False
-
-    async def delete_namespace(self, namespace: str) -> int:
+    async def delete_namespace(self, namespace: NotBlankStr) -> int:
+        del namespace
         return 0
 
     async def delete_namespace_returning_keys(
         self,
-        namespace: str,
+        namespace: NotBlankStr,
     ) -> tuple[NotBlankStr, ...]:
+        del namespace
         return ()
 
 
 class _FakeArtifactRepository:
-    async def save(self, artifact: Artifact) -> bool:
+    async def save(self, entity: Artifact) -> None:
+        pass
+
+    async def save_returning_outcome(self, artifact: Artifact) -> bool:
         return True
 
-    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
+    async def get(self, entity_id: NotBlankStr) -> Artifact | None:
         return None
 
-    async def list_artifacts(
+    async def list_items(
         self,
         *,
-        task_id: NotBlankStr | None = None,
-        created_by: NotBlankStr | None = None,
-        artifact_type: ArtifactType | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Artifact, ...]:
         return ()
 
-    async def delete(self, artifact_id: NotBlankStr) -> bool:
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Artifact, ...]:
+        return ()
+
+    async def count(self, filter_spec: object) -> int:
+        return 0
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         return False
 
 
@@ -452,38 +580,70 @@ class _FakeProjectRepository:
     async def update(self, project: Project) -> None:
         pass
 
-    async def save(self, project: Project) -> None:
+    async def save(self, entity: Project) -> None:
         pass
 
-    async def get(self, project_id: NotBlankStr) -> Project | None:
+    async def get(self, entity_id: NotBlankStr) -> Project | None:
+        del entity_id
         return None
 
-    async def list_projects(
+    async def list_items(
         self,
         *,
-        status: ProjectStatus | None = None,
-        lead: NotBlankStr | None = None,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[Project, ...]:
+        del limit, offset
         return ()
 
-    async def delete(self, project_id: NotBlankStr) -> bool:
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Project, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
+        return 0
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
         return False
 
 
 class _FakeSsrfViolationRepository:
-    async def save(self, violation: Any) -> None:
+    async def save(self, entity: Any) -> None:
         pass
 
-    async def get(self, violation_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> Any | None:
+        del entity_id
         return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
+        return ()
 
     async def list_violations(
         self,
         *,
         status: Any | None = None,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
     ) -> tuple[Any, ...]:
+        del status, limit
         return ()
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
 
     async def update_status(
         self,
@@ -493,34 +653,44 @@ class _FakeSsrfViolationRepository:
         resolved_by: NotBlankStr,
         resolved_at: AwareDatetime,
     ) -> bool:
+        del violation_id, status, resolved_by, resolved_at
         return False
 
 
 class _FakePersonalityPresetRepository:
-    async def save(
-        self,
-        name: NotBlankStr,
-        config_json: str,
-        description: str,
-        created_at: str,
-        updated_at: str,
-    ) -> None:
-        pass
+    async def save(self, entity: Any) -> None:
+        del entity
 
-    async def get(
-        self,
-        name: NotBlankStr,
-    ) -> PresetRow | None:
+    async def get(self, entity_id: NotBlankStr) -> Any | None:
+        del entity_id
         return None
 
-    async def list_all(self) -> tuple[PresetListRow, ...]:
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
         return ()
 
-    async def delete(self, name: NotBlankStr) -> bool:
-        return False
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del filter_spec, limit, offset
+        return ()
 
-    async def count(self) -> int:
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
         return 0
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
 
 
 class _FakeWorkflowDefinitionRepository:
@@ -536,54 +706,73 @@ class _FakeWorkflowDefinitionRepository:
     async def get(self, definition_id: NotBlankStr) -> WorkflowDefinition | None:
         return None
 
-    async def list_definitions(
+    async def list_items(
         self,
         *,
-        workflow_type: WorkflowType | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
-        del workflow_type, limit
+        del limit, offset
         return ()
+
+    async def query(
+        self,
+        filter_spec: WorkflowDefinitionFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
+        del filter_spec
+        return 0
 
     async def delete(self, definition_id: NotBlankStr) -> bool:
         return False
 
 
 class _FakeWorkflowExecutionRepository:
-    async def save(self, execution: WorkflowExecution) -> None:
-        pass
+    async def save(self, entity: WorkflowExecution) -> None:
+        del entity
 
-    async def get(
-        self,
-        execution_id: NotBlankStr,
-    ) -> WorkflowExecution | None:
+    async def get(self, entity_id: NotBlankStr) -> WorkflowExecution | None:
+        del entity_id
         return None
 
-    async def list_by_definition(
+    async def list_items(
         self,
-        definition_id: NotBlankStr,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        del definition_id, limit
+        del limit, offset
         return ()
 
-    async def list_by_status(
+    async def query(
         self,
-        status: WorkflowExecutionStatus,
+        filter_spec: Any,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        del status, limit
+        del filter_spec, limit, offset
         return ()
+
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
+        return 0
 
     async def find_by_task_id(
         self,
         task_id: NotBlankStr,
     ) -> WorkflowExecution | None:
+        del task_id
         return None
 
-    async def delete(self, execution_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
         return False
 
 
@@ -670,22 +859,15 @@ class _FakeIdempotencyRepository:
 class _FakePrincipleOverrideRepository:
     """Minimal PrincipleOverrideRepository conforming to the protocol shape."""
 
-    async def save(
-        self,
-        scope: NotBlankStr,
-        text: NotBlankStr,
-        *,
-        restored_from: NotBlankStr,
-        now: Any = None,
-    ) -> None:
-        del scope, text, restored_from, now
+    async def save(self, entity: Any) -> None:
+        del entity
 
-    async def get(self, scope: NotBlankStr) -> Any:
-        del scope
+    async def get(self, entity_id: NotBlankStr) -> Any:
+        del entity_id
         return None
 
-    async def delete(self, scope: NotBlankStr) -> bool:
-        del scope
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
         return False
 
     async def list_items(
@@ -872,6 +1054,18 @@ class _FakeBackend:
 
     @property
     def circuit_breaker_state(self) -> Any:
+        return object()
+
+    @property
+    def ceremony_scheduler_state(self) -> Any:
+        return object()
+
+    @property
+    def meeting_cooldown(self) -> Any:
+        return object()
+
+    @property
+    def tracked_containers(self) -> Any:
         return object()
 
     @property
@@ -1122,28 +1316,83 @@ class TestProtocolCompliance:
 
 
 class _FakeTrainingPlanRepository:
-    async def save(self, plan: Any) -> None:
-        pass
+    async def save(self, entity: Any) -> None:
+        del entity
 
-    async def get(self, plan_id: Any) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> Any | None:
+        del entity_id
         return None
 
-    async def latest_pending(self, agent_id: Any) -> Any | None:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
+        return ()
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
+        return 0
+
+    async def latest_pending(self, agent_id: NotBlankStr) -> Any | None:
+        del agent_id
         return None
 
-    async def latest_by_agent(self, agent_id: Any) -> Any | None:
+    async def latest_by_agent(self, agent_id: NotBlankStr) -> Any | None:
+        del agent_id
         return None
 
-    async def list_by_agent(self, agent_id: Any) -> tuple[Any, ...]:
+    async def list_by_agent(
+        self,
+        agent_id: NotBlankStr,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+    ) -> tuple[Any, ...]:
+        del agent_id, limit
         return ()
 
 
 class _FakeTrainingResultRepository:
-    async def save(self, result: Any) -> None:
-        pass
+    async def save(self, entity: Any) -> None:
+        del entity
 
-    async def get_by_plan(self, plan_id: Any) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> Any | None:
+        del entity_id
         return None
 
-    async def get_latest(self, agent_id: Any) -> Any | None:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
+        return ()
+
+    async def get_by_plan(self, plan_id: NotBlankStr) -> Any | None:
+        del plan_id
+        return None
+
+    async def get_latest(self, agent_id: NotBlankStr) -> Any | None:
+        del agent_id
         return None

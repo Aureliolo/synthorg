@@ -32,10 +32,11 @@ class TestPrincipleOverridePromptMutator:
         )
 
         save_mock.assert_awaited_once()
-        args, kwargs = save_mock.call_args
-        assert str(args[0]) == "planning.scope.alpha"
-        assert str(args[1]) == "Restored principle text"
-        assert str(kwargs["restored_from"]) == "rollback"
+        args = save_mock.call_args.args
+        entity = args[0]
+        assert str(entity.scope) == "planning.scope.alpha"
+        assert str(entity.text) == "Restored principle text"
+        assert str(entity.restored_from) == "rollback"
 
     async def test_restore_persists_operation_id_provenance(self) -> None:
         """``operation_id`` is woven into ``restored_from`` for forensic audit."""
@@ -48,8 +49,9 @@ class TestPrincipleOverridePromptMutator:
             operation_id="rb-2026-05-14-abc",
         )
 
-        kwargs = save_mock.call_args.kwargs
-        assert str(kwargs["restored_from"]) == "rollback:rb-2026-05-14-abc"
+        args = save_mock.call_args.args
+        entity = args[0]
+        assert str(entity.restored_from) == "rollback:rb-2026-05-14-abc"
 
     async def test_blank_scope_rejected(self) -> None:
         repo, save_mock = _make_repo()

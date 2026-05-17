@@ -21,6 +21,9 @@ from synthorg.engine.workflow.execution_models import (
 from synthorg.persistence.sqlite.workflow_execution_repo import (
     SQLiteWorkflowExecutionRepository,
 )
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionFilterSpec,
+)
 from tests._shared.persistence import make_private_write_context
 
 
@@ -232,7 +235,7 @@ class TestListByDefinition:
         )
         await repo.save(_make_execution("wfexec-003", definition_id="wfdef-b"))
 
-        results = await repo.list_by_definition("wfdef-a")
+        results = await repo.query(WorkflowExecutionFilterSpec(definition_id="wfdef-a"))
         assert len(results) == 2
         assert all(e.definition_id == "wfdef-a" for e in results)
         # Must be ordered by updated_at descending
@@ -244,7 +247,9 @@ class TestListByDefinition:
         self,
         repo: SQLiteWorkflowExecutionRepository,
     ) -> None:
-        results = await repo.list_by_definition("nonexistent")
+        results = await repo.query(
+            WorkflowExecutionFilterSpec(definition_id="nonexistent")
+        )
         assert results == ()
 
 
@@ -280,7 +285,9 @@ class TestListByStatus:
             ),
         )
 
-        results = await repo.list_by_status(WorkflowExecutionStatus.RUNNING)
+        results = await repo.query(
+            WorkflowExecutionFilterSpec(status=WorkflowExecutionStatus.RUNNING)
+        )
         assert len(results) == 2
         assert all(e.status is WorkflowExecutionStatus.RUNNING for e in results)
         # Must be ordered by updated_at descending

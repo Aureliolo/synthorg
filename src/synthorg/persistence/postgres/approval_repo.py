@@ -29,7 +29,9 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FETCHED,
     API_APPROVAL_REPO_LISTED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, coerce_row_timestamp
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import coerce_row_timestamp, validate_pagination_args
+from synthorg.persistence.approval_protocol import ApprovalFilterSpec  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -389,47 +391,30 @@ class PostgresApprovalRepository:
     async def list_items(
         self,
         *,
-        status: ApprovalStatus | None = None,
-        risk_level: ApprovalRiskLevel | None = None,
-        action_type: NotBlankStr | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ApprovalItem, ...]:
-        """List approval items with optional filters (paginated)."""
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            logger.warning(
-                API_APPROVAL_REPO_FAILED,
-                error=msg,
-                param="limit",
-                value=limit,
-            )
-            raise QueryError(msg)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            logger.warning(
-                API_APPROVAL_REPO_FAILED,
-                error=msg,
-                param="offset",
-                value=offset,
-            )
-            raise QueryError(msg)
-        # Clamp limit at ``_MAX_PAGE_LIMIT`` so a runaway caller cannot
-        # exhaust memory with a single oversized fetch.
-        effective_limit = min(limit, _MAX_PAGE_LIMIT)
-        clauses: list[str] = []
-        params: list[object] = []
-        if status is not None:
-            clauses.append("status = %s")
-            params.append(status.value)
-        if risk_level is not None:
-            clauses.append("risk_level = %s")
-            params.append(risk_level.value)
-        if action_type is not None:
-            clauses.append("action_type = %s")
-            params.append(action_type)
-        where_sql = " AND ".join(clauses) if clauses else "TRUE"
-        params.extend([effective_limit, offset])
+        """List all approval items (paginated, newest-first).
+
+        Results are ordered by ``(created_at DESC, id DESC)``.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Approval items in descending creation order.
+
+        Raises:
+            QueryError: If the database query fails or
+                pagination args are invalid.
+        """
+        effective_limit = validate_pagination_args(
+            limit,
+            offset,
+            event=API_APPROVAL_REPO_FAILED,
+        )
+        effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -437,9 +422,9 @@ class PostgresApprovalRepository:
             ):
                 await cur.execute(
                     f"SELECT {_SELECT_COLS} FROM approvals "  # noqa: S608
-                    f"WHERE {where_sql} ORDER BY created_at DESC, id DESC "
-                    f"LIMIT %s OFFSET %s",
-                    params,
+                    "ORDER BY created_at DESC, id DESC "
+                    "LIMIT %s OFFSET %s",
+                    (effective_limit, offset),
                 )
                 rows = await cur.fetchall()
                 items = tuple(_row_to_item(r) for r in rows)
@@ -453,6 +438,185 @@ class PostgresApprovalRepository:
             raise QueryError(msg) from exc
         logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
         return items
+
+    async def query(
+        self,
+        filter_spec: ApprovalFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]:
+        """List approval items matching the filter spec (paginated).
+
+        Results are ordered by ``(created_at DESC, id DESC)``.
+
+        Args:
+            filter_spec: Carries optional status, risk_level, action_type
+                filters (all optional).
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Matching approval items in descending creation order.
+
+        Raises:
+            QueryError: If the database query fails or
+                pagination args are invalid.
+        """
+        effective_limit = validate_pagination_args(
+            limit,
+            offset,
+            event=API_APPROVAL_REPO_FAILED,
+        )
+        effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
+        clauses: list[str] = []
+        params: list[object] = []
+        if filter_spec.status is not None:
+            clauses.append("status = %s")
+            params.append(filter_spec.status.value)
+        if filter_spec.risk_level is not None:
+            clauses.append("risk_level = %s")
+            params.append(filter_spec.risk_level.value)
+        if filter_spec.action_type is not None:
+            clauses.append("action_type = %s")
+            params.append(filter_spec.action_type)
+        where_sql = " AND ".join(clauses) if clauses else "TRUE"
+        params.extend([effective_limit, offset])
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    f"SELECT {_SELECT_COLS} FROM approvals "  # noqa: S608
+                    f"WHERE {where_sql} ORDER BY created_at DESC, id DESC "
+                    "LIMIT %s OFFSET %s",
+                    params,
+                )
+                rows = await cur.fetchall()
+                items = tuple(_row_to_item(r) for r in rows)
+        except psycopg.Error as exc:
+            msg = "Failed to query approvals"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
+        return items
+
+    async def count(self, filter_spec: ApprovalFilterSpec) -> int:
+        """Count approval items matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional status, risk_level, action_type
+                filters (all optional).
+
+        Returns:
+            Count of matching approval items.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        clauses: list[str] = []
+        params: list[object] = []
+        if filter_spec.status is not None:
+            clauses.append("status = %s")
+            params.append(filter_spec.status.value)
+        if filter_spec.risk_level is not None:
+            clauses.append("risk_level = %s")
+            params.append(filter_spec.risk_level.value)
+        if filter_spec.action_type is not None:
+            clauses.append("action_type = %s")
+            params.append(filter_spec.action_type)
+        where_sql = " AND ".join(clauses) if clauses else "TRUE"
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor() as cur,
+            ):
+                await cur.execute(
+                    f"SELECT COUNT(*) FROM approvals WHERE {where_sql}",  # noqa: S608
+                    params,
+                )
+                row = await cur.fetchone()
+                assert row is not None  # noqa: S101  -- COUNT always returns a row
+                return int(row[0])
+        except psycopg.Error as exc:
+            msg = "Failed to count approvals"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def transition_if(
+        self,
+        entity_id: NotBlankStr,
+        from_state: ApprovalStatus,
+        to_state: ApprovalStatus,
+        **updates: object,
+    ) -> bool:
+        """Atomic compare-and-set for approval state transitions.
+
+        Transitions the approval from ``from_state`` to ``to_state`` iff
+        the current persisted status matches ``from_state``. Returns ``True``
+        iff the state transition succeeded.
+
+        Decision metadata (``decided_at`` / ``decided_by`` /
+        ``decision_json``) is governed by a table CHECK constraint that
+        requires the full triple together, so partial writes through
+        this method are rejected rather than silently dropped: pass an
+        empty ``updates`` and persist the decision triple via the
+        dedicated decision path.
+
+        Args:
+            entity_id: The approval id.
+            from_state: Expected current status.
+            to_state: Target status.
+            **updates: Must be empty; any keys raise ``QueryError``.
+
+        Returns:
+            ``True`` iff the transition succeeded, ``False`` on state
+            mismatch or when no row exists.
+
+        Raises:
+            QueryError: On database errors, or if ``updates`` is
+                non-empty (status-correlated writes are not supported
+                through this CAS path).
+        """
+        if updates:
+            msg = (
+                "transition_if does not persist decision metadata "
+                f"(got keys {sorted(updates)!r}); the approvals CHECK "
+                "constraint requires the full decision triple, so use "
+                "the dedicated decision path instead"
+            )
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                approval_id=entity_id,
+                error=msg,
+            )
+            raise QueryError(msg)
+        sql = "UPDATE approvals SET status = %s WHERE id = %s AND status = %s"
+        params = (to_state.value, entity_id, from_state.value)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, params)
+                updated = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to transition approval {entity_id!r}"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                approval_id=entity_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return updated
 
     async def delete(self, approval_id: NotBlankStr) -> bool:
         """Delete an approval item; returns True when a row was removed.

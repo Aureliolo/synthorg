@@ -16,24 +16,29 @@ explicitly cleared with ``delete``.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.api.dto_provider_capabilities import PresetOverride  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
+from synthorg.providers.management.capability_dtos import PresetOverride
 
 
 @runtime_checkable
-class PresetOverrideRepo(Protocol):
+class PresetOverrideRepo(
+    IdKeyedRepository[PresetOverride, NotBlankStr],
+    Protocol,
+):
     """Persistence interface for operator preset overrides.
 
-    Implementations live under ``persistence/sqlite/`` and
-    ``persistence/postgres/`` with a shared dual-backend conformance
-    suite under ``tests/integration/persistence/``.
+    Composes :class:`IdKeyedRepository` (ADR-0001): the natural key is
+    ``preset_name``. Implementations live under ``persistence/sqlite/``
+    and ``persistence/postgres/`` with a shared dual-backend
+    conformance suite under ``tests/integration/persistence/``.
     """
 
-    async def get(self, preset_name: NotBlankStr) -> PresetOverride | None:
-        """Read the override for ``preset_name``, if any.
+    async def get(self, entity_id: NotBlankStr) -> PresetOverride | None:
+        """Read the override for ``entity_id``, if any.
 
         Args:
-            preset_name: Preset to read.
+            entity_id: Preset name whose override to read.
 
         Returns:
             The persisted override or ``None`` when no row exists.
@@ -43,28 +48,25 @@ class PresetOverrideRepo(Protocol):
         """
         ...
 
-    async def upsert(self, override: PresetOverride) -> PresetOverride:
-        """Insert or replace the override for ``override.preset_name``.
+    async def save(self, entity: PresetOverride) -> None:
+        """Insert or replace the override for ``entity.preset_name``.
 
         ``updated_at`` and ``updated_by`` are required by the schema;
         the service layer fills them before calling.
 
         Args:
-            override: Full override row to persist.
-
-        Returns:
-            The persisted override (echo of input).
+            entity: Full override row to persist.
 
         Raises:
             QueryError: If the underlying write fails.
         """
         ...
 
-    async def delete(self, preset_name: NotBlankStr) -> bool:
-        """Remove the override for ``preset_name``.
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        """Remove the override for ``entity_id``.
 
         Args:
-            preset_name: Preset whose override to remove.
+            entity_id: Preset name whose override to remove.
 
         Returns:
             ``True`` when a row was removed, ``False`` when no row
@@ -72,5 +74,25 @@ class PresetOverrideRepo(Protocol):
 
         Raises:
             QueryError: If the underlying DELETE fails.
+        """
+        ...
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[PresetOverride, ...]:
+        """List overrides ordered by ``preset_name`` ascending.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Paginated overrides in ascending preset-name order.
+
+        Raises:
+            QueryError: If the underlying read fails.
         """
         ...

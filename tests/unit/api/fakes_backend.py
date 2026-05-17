@@ -75,6 +75,15 @@ class FakeRiskOverrideRepository:
     ) -> RiskTierOverride | None:
         return self._overrides.get(override_id)
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[RiskTierOverride, ...]:
+        ordered = sorted(self._overrides.values(), key=lambda o: o.id)
+        return tuple(ordered[offset : offset + limit])
+
     async def list_active(
         self,
         *,
@@ -84,6 +93,9 @@ class FakeRiskOverrideRepository:
         active = [o for o in self._overrides.values() if o.is_active]
         active.sort(key=lambda o: o.created_at, reverse=True)
         return tuple(active[:limit])
+
+    async def delete(self, override_id: NotBlankStr) -> bool:
+        return self._overrides.pop(override_id, None) is not None
 
     async def revoke(
         self,
@@ -118,6 +130,18 @@ class FakeSsrfViolationRepository:
         violation_id: NotBlankStr,
     ) -> SsrfViolation | None:
         return self._violations.get(violation_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[SsrfViolation, ...]:
+        ordered = sorted(self._violations.values(), key=lambda v: v.id)
+        return tuple(ordered[offset : offset + limit])
+
+    async def delete(self, violation_id: NotBlankStr) -> bool:
+        return self._violations.pop(violation_id, None) is not None
 
     async def list_violations(
         self,
@@ -171,13 +195,24 @@ class FakeCircuitBreakerStateRepository:
     async def save(self, record: Any) -> None:
         self._store[(record.pair_key_a, record.pair_key_b)] = record
 
+    async def get(self, entity_id: tuple[str, str]) -> Any:
+        return self._store.get(entity_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        ordered = sorted(self._store.items(), key=lambda kv: kv[0])
+        return tuple(v for _, v in ordered[offset : offset + limit])
+
     async def load_all(self) -> tuple[Any, ...]:
         return tuple(self._store.values())
 
-    async def delete(self, pair_key_a: str, pair_key_b: str) -> bool:
-        key = (pair_key_a, pair_key_b)
-        if key in self._store:
-            del self._store[key]
+    async def delete(self, entity_id: tuple[str, str]) -> bool:
+        if entity_id in self._store:
+            del self._store[entity_id]
             return True
         return False
 
@@ -345,6 +380,9 @@ class _FakeProviderAuditRepo:
         self._events.append(saved)
         return saved
 
+    async def append(self, event: Any) -> None:
+        await self.record(event)
+
     async def list(
         self,
         *,
@@ -362,6 +400,27 @@ class _FakeProviderAuditRepo:
         page = rows[:limit]
         has_more = len(rows) > limit
         return tuple(page), has_more
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        rows = sorted(
+            (e for e in self._events if e.provider_name == filter_spec.provider_name),
+            key=lambda e: e.id,
+            reverse=True,
+        )
+        if filter_spec.after_id is not None:
+            rows = [e for e in rows if e.id < filter_spec.after_id]
+        return tuple(rows[offset : offset + limit])
+
+    async def purge_before(self, threshold: Any) -> int:
+        before = len(self._events)
+        self._events = [e for e in self._events if e.occurred_at >= threshold]
+        return before - len(self._events)
 
     async def purge_before_id(self, *, before_id: int) -> int:
         before = len(self._events)
@@ -382,12 +441,20 @@ class _FakePresetOverrideRepo:
     async def get(self, preset_name: NotBlankStr) -> Any | None:
         return self._overrides.get(preset_name)
 
-    async def upsert(self, override: Any) -> Any:
+    async def save(self, override: Any) -> None:
         self._overrides[override.preset_name] = override
-        return override
 
     async def delete(self, preset_name: NotBlankStr) -> bool:
         return self._overrides.pop(preset_name, None) is not None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        items = sorted(self._overrides.values(), key=lambda o: o.preset_name)
+        return tuple(items[offset : offset + limit])
 
 
 class FakeCustomRuleRepository:
@@ -425,17 +492,41 @@ class FakeCustomRuleRepository:
                 return r
         return None
 
-    async def list_rules(
+    async def list_items(
         self,
         *,
-        enabled_only: bool = False,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[CustomRuleDefinition, ...]:
-        limit = validate_pagination_args(limit, offset=0, event="fake.list_rules")
+        from synthorg.persistence.custom_rule_protocol import (
+            CustomRuleFilterSpec,
+        )
+
+        return await self.query(
+            CustomRuleFilterSpec(),
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[CustomRuleDefinition, ...]:
+        limit = validate_pagination_args(limit, offset=offset, event="fake.query")
         rules = list(self._rules.values())
-        if enabled_only:
+        if filter_spec.enabled_only:
             rules = [r for r in rules if r.enabled]
-        return tuple(sorted(rules, key=lambda r: r.name)[:limit])
+        ordered = sorted(rules, key=lambda r: r.name)
+        return tuple(ordered[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        rules = list(self._rules.values())
+        if filter_spec.enabled_only:
+            rules = [r for r in rules if r.enabled]
+        return len(rules)
 
     async def delete(self, rule_id: NotBlankStr) -> bool:
         key = str(rule_id)
@@ -500,7 +591,7 @@ def _clear_attr(value: object) -> None:
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
-    def __init__(self) -> None:
+    def __init__(self) -> None:  # noqa: PLR0915 -- one assignment per repo; splitting blurs the inventory
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
         self._custom_presets = FakePersonalityPresetRepository()
@@ -558,6 +649,10 @@ class FakePersistenceBackend:
         self._project_cost_aggregates_stub: object | None = None
         self._fine_tune_checkpoints_stub: object | None = None
         self._fine_tune_runs_stub: object | None = None
+        self._meeting_cooldown_stub: object | None = None
+        self._ceremony_scheduler_state_stub: object | None = None
+        self._tracked_container_stub: object | None = None
+        self._idempotency_stub: object | None = None
 
     def clear(self) -> None:
         """Reset all in-memory state for test isolation.
@@ -857,6 +952,50 @@ class FakePersistenceBackend:
         if self._fine_tune_runs_stub is None:
             self._fine_tune_runs_stub = AsyncMock()
         return self._fine_tune_runs_stub
+
+    @property
+    def meeting_cooldown(self) -> Any:
+        """Cached fake meeting cooldown repository (WP-1)."""
+        from unittest.mock import AsyncMock
+
+        if self._meeting_cooldown_stub is None:
+            stub = AsyncMock()
+            stub.load_all = AsyncMock(return_value=())
+            self._meeting_cooldown_stub = stub
+        return self._meeting_cooldown_stub
+
+    @property
+    def ceremony_scheduler_state(self) -> Any:
+        """Cached fake ceremony scheduler state repository (WP-1)."""
+        from unittest.mock import AsyncMock
+
+        if self._ceremony_scheduler_state_stub is None:
+            stub = AsyncMock()
+            stub.get = AsyncMock(return_value=None)
+            stub.list_items = AsyncMock(return_value=())
+            self._ceremony_scheduler_state_stub = stub
+        return self._ceremony_scheduler_state_stub
+
+    @property
+    def tracked_containers(self) -> Any:
+        """Cached fake tracked-container repository (WP-1)."""
+        from unittest.mock import AsyncMock
+
+        if self._tracked_container_stub is None:
+            stub = AsyncMock()
+            stub.load_all = AsyncMock(return_value=())
+            stub.list_items = AsyncMock(return_value=())
+            self._tracked_container_stub = stub
+        return self._tracked_container_stub
+
+    @property
+    def idempotency(self) -> Any:
+        """Cached fake idempotency repository."""
+        from unittest.mock import AsyncMock
+
+        if self._idempotency_stub is None:
+            self._idempotency_stub = AsyncMock()
+        return self._idempotency_stub
 
     def build_lockouts(self, auth_config: Any) -> Any:
         """Fake lockout repository builder.

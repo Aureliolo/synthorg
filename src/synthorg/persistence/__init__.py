@@ -16,14 +16,28 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.persistence.agent_state_protocol import AgentStateRepository
-from synthorg.persistence.artifact_protocol import ArtifactRepository
+from synthorg.persistence.artifact_protocol import (
+    ArtifactFilterSpec,
+    ArtifactRepository,
+)
 from synthorg.persistence.audit_protocol import AuditRepository
+from synthorg.persistence.auth_protocol import (
+    LockoutRepository,
+    RefreshTokenRepository,
+    SessionFilterSpec,
+    SessionRepository,
+)
+from synthorg.persistence.ceremony_scheduler_state_protocol import (
+    CeremonySchedulerStateRecord,
+    CeremonySchedulerStateRepository,
+)
 from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
 )
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.connection_protocol import (
+    ConnectionFilterSpec,
     ConnectionRepository,
     ConnectionSecretRepository,
     OAuthStateRepository,
@@ -31,36 +45,82 @@ from synthorg.persistence.connection_protocol import (
 )
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import (
+    DecisionFilterSpec,
     DecisionRepository,
     DecisionRole,
 )
 from synthorg.persistence.factory import create_backend
+from synthorg.persistence.meeting_cooldown_protocol import (
+    MeetingCooldownRecord,
+    MeetingCooldownRepository,
+)
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
-from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.preset_protocol import (
+    PersonalityPresetRepository,
+    Preset,
+    PresetFilterSpec,
+)
+from synthorg.persistence.project_protocol import (
+    ProjectFilterSpec,
+    ProjectRepository,
+)
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.persistence.settings_protocol import (
+    SettingRow,
+    SettingRowKey,
+    SettingsRepository,
+)
+from synthorg.persistence.subworkflow_protocol import (
+    SubworkflowKey,
+    SubworkflowRepository,
+)
 from synthorg.persistence.task_protocol import TaskRepository
+from synthorg.persistence.tracked_container_protocol import (
+    TrackedContainerRecord,
+    TrackedContainerRepository,
+)
+from synthorg.persistence.training_protocol import (
+    TrainingPlanFilterSpec,
+    TrainingPlanRepository,
+    TrainingResultRepository,
+)
 from synthorg.persistence.user_protocol import (
+    ApiKeyFilterSpec,
     ApiKeyRepository,
+    UserFilterSpec,
     UserRepository,
+)
+from synthorg.persistence.version_protocol import VersionRepository
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionFilterSpec,
+    WorkflowExecutionRepository,
 )
 
 __all__ = [
     "AgentStateRepository",
+    "ApiKeyFilterSpec",
     "ApiKeyRepository",
+    "ArtifactFilterSpec",
     "ArtifactRepository",
     "ArtifactStorageFullError",
     "ArtifactTooLargeError",
     "AuditRepository",
+    "CeremonySchedulerStateRecord",
+    "CeremonySchedulerStateRepository",
     "CheckpointRepository",
+    "ConnectionFilterSpec",
     "ConnectionRepository",
     "ConnectionSecretRepository",
     "CostRecordRepository",
+    "DecisionFilterSpec",
     "DecisionRepository",
     "DecisionRole",
     "DuplicateRecordError",
     "HeartbeatRepository",
+    "LockoutRepository",
+    "MeetingCooldownRecord",
+    "MeetingCooldownRepository",
     "MessageRepository",
     "MigrationError",
     "OAuthStateRepository",
@@ -69,13 +129,33 @@ __all__ = [
     "PersistenceConfig",
     "PersistenceConnectionError",
     "PersistenceError",
+    "PersonalityPresetRepository",
+    "Preset",
+    "PresetFilterSpec",
+    "ProjectFilterSpec",
     "ProjectRepository",
     "QueryError",
     "RecordNotFoundError",
+    "RefreshTokenRepository",
     "SQLiteConfig",
+    "SessionFilterSpec",
+    "SessionRepository",
+    "SettingRow",
+    "SettingRowKey",
     "SettingsRepository",
+    "SubworkflowKey",
+    "SubworkflowRepository",
     "TaskRepository",
+    "TrackedContainerRecord",
+    "TrackedContainerRepository",
+    "TrainingPlanFilterSpec",
+    "TrainingPlanRepository",
+    "TrainingResultRepository",
+    "UserFilterSpec",
     "UserRepository",
+    "VersionRepository",
     "WebhookReceiptRepository",
+    "WorkflowExecutionFilterSpec",
+    "WorkflowExecutionRepository",
     "create_backend",
 ]

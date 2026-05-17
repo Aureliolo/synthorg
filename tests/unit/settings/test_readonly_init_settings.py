@@ -14,7 +14,8 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
 from synthorg.settings.enums import SettingNamespace, SettingType
 from synthorg.settings.errors import SettingReadOnlyError, SettingValidationError
 from synthorg.settings.models import SettingDefinition
@@ -69,11 +70,11 @@ def repo() -> AsyncMock:
     # fresh ``AsyncMock`` (the prior pattern was redundant).
     repo = AsyncMock(spec=SettingsRepository)
     repo.get.return_value = None
-    repo.set.return_value = True
+    repo.save.return_value = True
     repo.set_many.return_value = True
     repo.delete.return_value = True
     repo.get_namespace.return_value = ()
-    repo.get_all.return_value = ()
+    repo.list_items.return_value = ()
     repo.delete_namespace_returning_keys.return_value = ("log_directory",)
     return repo
 
@@ -94,7 +95,7 @@ async def test_set_rejects_read_only_post_init(
 ) -> None:
     with pytest.raises(SettingReadOnlyError):
         await service.set("observability", "log_directory", "/var/log/synthorg")
-    repo.set.assert_not_awaited()
+    repo.save.assert_not_awaited()
 
 
 async def test_set_read_only_error_is_validation_error_subclass(
@@ -111,7 +112,7 @@ async def test_set_writable_setting_still_works(
     service: SettingsService, repo: AsyncMock
 ) -> None:
     await service.set("observability", "root_log_level", "debug")
-    repo.set.assert_awaited_once()
+    repo.save.assert_awaited_once()
 
 
 # ── set_many() ───────────────────────────────────────────────────
@@ -201,7 +202,12 @@ async def test_get_bypasses_db_for_read_only_post_init(
     # node) must not surface from get() -- the running process has
     # already locked in the boot-time value, so reading the DB would
     # show a value the runtime no longer honours.
-    repo.get.return_value = ("/from/db", "2026-04-27T12:00:00+00:00")
+    repo.get.return_value = SettingRow(
+        namespace=NotBlankStr("observability"),
+        key=NotBlankStr("log_directory"),
+        value="/from/db",
+        updated_at="2026-04-27T12:00:00+00:00",
+    )
     value = await service.get("observability", "log_directory")
     assert value.value == ""  # falls through to env (unset) -> default
     repo.get.assert_not_awaited()
@@ -211,7 +217,12 @@ async def test_get_namespace_bypasses_db_for_read_only_post_init(
     service: SettingsService, repo: AsyncMock
 ) -> None:
     repo.get_namespace.return_value = (
-        ("log_directory", "/from/db", "2026-04-27T12:00:00+00:00"),
+        SettingRow(
+            namespace=NotBlankStr("observability"),
+            key=NotBlankStr("log_directory"),
+            value="/from/db",
+            updated_at="2026-04-27T12:00:00+00:00",
+        ),
     )
     entries = await service.get_namespace("observability")
     log_dir = next(e for e in entries if e.definition.key == "log_directory")
@@ -224,7 +235,12 @@ async def test_get_namespace_bypasses_db_for_read_only_post_init(
 async def test_get_versioned_returns_no_override_for_read_only_post_init(
     service: SettingsService, repo: AsyncMock
 ) -> None:
-    repo.get.return_value = ("/from/db", "2026-04-27T12:00:00+00:00")
+    repo.get.return_value = SettingRow(
+        namespace=NotBlankStr("observability"),
+        key=NotBlankStr("log_directory"),
+        value="/from/db",
+        updated_at="2026-04-27T12:00:00+00:00",
+    )
     value, updated_at = await service.get_versioned("observability", "log_directory")
     assert (value, updated_at) == ("", "")
     repo.get.assert_not_awaited()

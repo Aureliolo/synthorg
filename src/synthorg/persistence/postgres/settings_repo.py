@@ -3,7 +3,7 @@
 Postgres stores ``updated_at`` as a native ``TIMESTAMPTZ`` column
 (SQLite stores ISO 8601 strings).  The repository converts to and
 from ISO strings at the boundary so the protocol surface
-(``tuple[str, str]``) is identical for both backends.
+(SettingRow instances) is identical for both backends.
 """
 
 from collections.abc import Mapping, Sequence  # noqa: TC003
@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, cast
 
 import psycopg
 from psycopg.rows import dict_row
+from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
 
@@ -26,8 +27,16 @@ from synthorg.observability.events.settings import (
     SETTINGS_SET_FAILED,
     SETTINGS_VALUE_SET,
 )
-from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
-from synthorg.persistence.settings_protocol import _DEFAULT_LIST_LIMIT_200
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import (
+    format_iso_utc,
+    parse_iso_utc,
+    validate_pagination_args,
+)
+from synthorg.persistence.settings_protocol import (
+    SettingRow,
+    SettingRowKey,
+)
 
 logger = get_logger(__name__)
 
@@ -57,19 +66,52 @@ class PostgresSettingsRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
+    async def save(self, entity: SettingRow) -> None:
+        """Persist a setting (upsert by composite key)."""
+        updated_at_dt = self._safe_parse_iso(
+            entity.updated_at, entity.namespace, entity.key
+        )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "INSERT INTO settings "
+                    "(namespace, key, value, updated_at) "
+                    "VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (namespace, key) DO UPDATE SET "
+                    "value = EXCLUDED.value, "
+                    "updated_at = EXCLUDED.updated_at",
+                    (entity.namespace, entity.key, entity.value, updated_at_dt),
+                )
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to save setting {entity.namespace}/{entity.key}"
+            logger.warning(
+                SETTINGS_SET_FAILED,
+                namespace=entity.namespace,
+                key=entity.key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug(
+            SETTINGS_VALUE_SET,
+            namespace=entity.namespace,
+            key=entity.key,
+        )
+
     async def get(
         self,
-        namespace: NotBlankStr,
-        key: NotBlankStr,
-    ) -> tuple[str, str] | None:
-        """Retrieve (value, updated_at) or None."""
+        entity_id: SettingRowKey,
+    ) -> SettingRow | None:
+        """Retrieve a setting by composite key."""
+        namespace, key = entity_id
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT value, updated_at FROM settings "
+                    "SELECT namespace, key, value, updated_at FROM settings "
                     "WHERE namespace = %s AND key = %s",
                     (namespace, key),
                 )
@@ -86,20 +128,37 @@ class PostgresSettingsRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return (str(row["value"]), format_iso_utc(cast("datetime", row["updated_at"])))
+        try:
+            return SettingRow(
+                namespace=row["namespace"],
+                key=row["key"],
+                value=row["value"],
+                updated_at=format_iso_utc(cast("datetime", row["updated_at"])),
+            )
+        except (ValidationError, ValueError) as exc:
+            msg = f"Failed to deserialize setting row {namespace}/{key}"
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key=key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="deserialization failed",
+            )
+            raise QueryError(msg) from exc
 
     async def get_namespace(
         self,
         namespace: NotBlankStr,
-    ) -> tuple[tuple[str, str, str], ...]:
-        """Return all (key, value, updated_at) for a namespace."""
+    ) -> tuple[SettingRow, ...]:
+        """Retrieve all settings in a namespace."""
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT key, value, updated_at FROM settings "
+                    "SELECT namespace, key, value, updated_at FROM settings "
                     "WHERE namespace = %s ORDER BY key",
                     (namespace,),
                 )
@@ -113,43 +172,44 @@ class PostgresSettingsRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(
-            (
-                str(r["key"]),
-                str(r["value"]),
-                format_iso_utc(cast("datetime", r["updated_at"])),
-            )
-            for r in rows
-        )
 
-    async def get_all(
+        results: list[SettingRow] = []
+        for r in rows:
+            try:
+                results.append(
+                    SettingRow(
+                        namespace=r["namespace"],
+                        key=r["key"],
+                        value=r["value"],
+                        updated_at=format_iso_utc(cast("datetime", r["updated_at"])),
+                    )
+                )
+            except (ValidationError, ValueError) as exc:
+                msg = f"Failed to deserialize setting row {namespace}/{r['key']}"
+                logger.warning(
+                    SETTINGS_FETCH_FAILED,
+                    namespace=namespace,
+                    key=r["key"],
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="deserialization failed",
+                )
+                raise QueryError(msg) from exc
+        return tuple(results)
+
+    async def list_items(
         self,
         *,
-        limit: int = _DEFAULT_LIST_LIMIT_200,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
-    ) -> tuple[tuple[str, str, str, str], ...]:
-        """Return all (namespace, key, value, updated_at) (paginated)."""
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                error=msg,
-                param="limit",
-                value=limit,
-            )
-            raise QueryError(msg)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                error=msg,
-                param="offset",
-                value=offset,
-            )
-            raise QueryError(msg)
-        # Settings registry has a few hundred entries by design; the
-        # 1000 cap is a defensive ceiling against misconfigured callers.
-        effective_limit = min(limit, 1_000)
+    ) -> tuple[SettingRow, ...]:
+        """List settings across all namespaces (paginated)."""
+        # Validate + clamp via the shared helper (rejects limit < 1 /
+        # offset < 0, caps at the repo-wide MAX_LIST_LIMIT ceiling) so
+        # no inline magic ceiling and no sentinel (-1) slips through.
+        effective_limit = validate_pagination_args(
+            limit, offset, event=SETTINGS_FETCH_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,
@@ -162,49 +222,58 @@ class PostgresSettingsRepository:
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
-            msg = "Failed to get all settings"
+            msg = "Failed to list settings"
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(
-            (
-                str(r["namespace"]),
-                str(r["key"]),
-                str(r["value"]),
-                format_iso_utc(cast("datetime", r["updated_at"])),
-            )
-            for r in rows
-        )
 
-    async def set(
+        results: list[SettingRow] = []
+        for r in rows:
+            try:
+                results.append(
+                    SettingRow(
+                        namespace=r["namespace"],
+                        key=r["key"],
+                        value=r["value"],
+                        updated_at=format_iso_utc(cast("datetime", r["updated_at"])),
+                    )
+                )
+            except (ValidationError, ValueError) as exc:
+                msg = f"Failed to deserialize setting row {r['namespace']}/{r['key']}"
+                logger.warning(
+                    SETTINGS_FETCH_FAILED,
+                    namespace=r["namespace"],
+                    key=r["key"],
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="deserialization failed",
+                )
+                raise QueryError(msg) from exc
+        return tuple(results)
+
+    async def set_if_unchanged(
         self,
-        namespace: NotBlankStr,
-        key: NotBlankStr,
-        value: str,
-        updated_at: str,
-        *,
+        entity: SettingRow,
         expected_updated_at: str | None = None,
     ) -> bool:
-        """Upsert a setting.
+        """Upsert a setting with optional compare-and-swap (bespoke per D7).
 
         Args:
-            namespace: Setting namespace.
-            key: Setting key.
-            value: Serialized setting value.
-            updated_at: New ``updated_at`` timestamp (ISO 8601 string).
-            expected_updated_at: When provided, enforces atomic
-                compare-and-swap -- the row is only updated if the
-                current ``updated_at`` matches.  An empty string
-                signals "only insert if no row exists".
+            entity: The setting to upsert.
+            expected_updated_at: When provided, enforces atomic CAS -- the
+                row is only updated if the current ``updated_at`` matches.
+                Empty string ``""`` signals "only insert if no row exists".
 
         Returns:
-            ``True`` if the write succeeded, ``False`` if the
-            compare-and-swap condition was not met.
+            ``True`` if the write succeeded, ``False`` if the CAS condition
+            was not met.
         """
-        updated_at_dt = self._safe_parse_iso(updated_at, namespace, key)
+        updated_at_dt = self._safe_parse_iso(
+            entity.updated_at, entity.namespace, entity.key
+        )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 if expected_updated_at is not None:
@@ -214,13 +283,13 @@ class PostgresSettingsRepository:
                             "(namespace, key, value, updated_at) "
                             "VALUES (%s, %s, %s, %s) "
                             "ON CONFLICT (namespace, key) DO NOTHING",
-                            (namespace, key, value, updated_at_dt),
+                            (entity.namespace, entity.key, entity.value, updated_at_dt),
                         )
                     else:
                         expected_dt = self._safe_parse_iso(
                             expected_updated_at,
-                            namespace,
-                            key,
+                            entity.namespace,
+                            entity.key,
                         )
                         await cur.execute(
                             "UPDATE settings "
@@ -228,10 +297,10 @@ class PostgresSettingsRepository:
                             "WHERE namespace = %s AND key = %s "
                             "AND updated_at = %s",
                             (
-                                value,
+                                entity.value,
                                 updated_at_dt,
-                                namespace,
-                                key,
+                                entity.namespace,
+                                entity.key,
                                 expected_dt,
                             ),
                         )
@@ -246,23 +315,23 @@ class PostgresSettingsRepository:
                         "ON CONFLICT (namespace, key) DO UPDATE SET "
                         "value = EXCLUDED.value, "
                         "updated_at = EXCLUDED.updated_at",
-                        (namespace, key, value, updated_at_dt),
+                        (entity.namespace, entity.key, entity.value, updated_at_dt),
                     )
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = f"Failed to set setting {namespace}/{key}"
+            msg = f"Failed to set setting {entity.namespace}/{entity.key}"
             logger.warning(
                 SETTINGS_SET_FAILED,
-                namespace=namespace,
-                key=key,
+                namespace=entity.namespace,
+                key=entity.key,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(
             SETTINGS_VALUE_SET,
-            namespace=namespace,
-            key=key,
+            namespace=entity.namespace,
+            key=entity.key,
         )
         return True
 
@@ -299,25 +368,25 @@ class PostgresSettingsRepository:
 
     async def set_many(
         self,
-        items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
+        items: Sequence[SettingRow],
         *,
-        expected_updated_at_map: (Mapping[tuple[str, str], str] | None) = None,
+        expected_updated_at_map: (Mapping[SettingRowKey, str] | None) = None,
     ) -> bool:
-        """Atomically upsert multiple settings (see protocol docstring)."""
+        """Atomically upsert multiple settings."""
         if not items:
             return True
-        cas_map: Mapping[tuple[str, str], str] = expected_updated_at_map or {}
+        cas_map: Mapping[SettingRowKey, str] = expected_updated_at_map or {}
         try:
             async with self._pool.connection() as conn:
                 try:
                     async with conn.transaction(), conn.cursor() as cur:
-                        for namespace, key, value, updated_at in items:
+                        for entity in items:
                             updated_at_dt = self._safe_parse_iso(
-                                updated_at,
-                                str(namespace),
-                                str(key),
+                                entity.updated_at,
+                                entity.namespace,
+                                entity.key,
                             )
-                            expected = cas_map.get((str(namespace), str(key)))
+                            expected = cas_map.get((entity.namespace, entity.key))
                             if expected is None:
                                 await cur.execute(
                                     "INSERT INTO settings "
@@ -327,7 +396,12 @@ class PostgresSettingsRepository:
                                     "DO UPDATE SET "
                                     "value = EXCLUDED.value, "
                                     "updated_at = EXCLUDED.updated_at",
-                                    (namespace, key, value, updated_at_dt),
+                                    (
+                                        entity.namespace,
+                                        entity.key,
+                                        entity.value,
+                                        updated_at_dt,
+                                    ),
                                 )
                                 continue
                             if expected == "":
@@ -337,15 +411,20 @@ class PostgresSettingsRepository:
                                     "VALUES (%s, %s, %s, %s) "
                                     "ON CONFLICT (namespace, key) "
                                     "DO NOTHING",
-                                    (namespace, key, value, updated_at_dt),
+                                    (
+                                        entity.namespace,
+                                        entity.key,
+                                        entity.value,
+                                        updated_at_dt,
+                                    ),
                                 )
                                 if cur.rowcount == 0:
                                     raise _CASConflictError  # noqa: TRY301
                                 continue
                             expected_dt = self._safe_parse_iso(
                                 expected,
-                                str(namespace),
-                                str(key),
+                                entity.namespace,
+                                entity.key,
                             )
                             await cur.execute(
                                 "UPDATE settings "
@@ -353,10 +432,10 @@ class PostgresSettingsRepository:
                                 "WHERE namespace = %s AND key = %s "
                                 "AND updated_at = %s",
                                 (
-                                    value,
+                                    entity.value,
                                     updated_at_dt,
-                                    namespace,
-                                    key,
+                                    entity.namespace,
+                                    entity.key,
                                     expected_dt,
                                 ),
                             )
@@ -373,20 +452,17 @@ class PostgresSettingsRepository:
                 item_count=len(items),
             )
             raise QueryError(msg) from exc
-        for namespace, key, _value, _updated_at in items:
+        for entity in items:
             logger.debug(
                 SETTINGS_VALUE_SET,
-                namespace=namespace,
-                key=key,
+                namespace=entity.namespace,
+                key=entity.key,
             )
         return True
 
-    async def delete(
-        self,
-        namespace: NotBlankStr,
-        key: NotBlankStr,
-    ) -> bool:
-        """Delete a setting. Return True if deleted."""
+    async def delete(self, entity_id: SettingRowKey) -> bool:
+        """Delete a setting by composite key."""
+        namespace, key = entity_id
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

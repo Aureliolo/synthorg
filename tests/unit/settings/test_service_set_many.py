@@ -12,7 +12,8 @@ from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.domain_errors import VersionConflictError
-from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingNamespace, SettingType
 from synthorg.settings.errors import (
@@ -127,7 +128,7 @@ class TestSetManyEncryption:
         assert call_args is not None
         prepared = call_args.args[0]
         assert len(prepared) == 1
-        stored_value = prepared[0][2]
+        stored_value = prepared[0].value
         # The stored value must be ciphertext, not the plaintext input.
         assert stored_value != "sk-secret-plaintext"
         # And the ciphertext must decrypt back to the original.
@@ -143,7 +144,7 @@ class TestSetManyEncryption:
             expected_updated_at_map={("company", "departments"): ""},
         )
         prepared = mock_repo.set_many.await_args.args[0]
-        assert prepared[0][2] == "[]"
+        assert prepared[0].value == "[]"
 
     async def test_sensitive_without_encryptor_raises(
         self,
@@ -203,7 +204,12 @@ class TestSetManyCacheInvalidation:
         service: SettingsService,
         mock_repo: AsyncMock,
     ) -> None:
-        mock_repo.get.return_value = ("[]", "2026-04-11T10:00:00Z")
+        mock_repo.get.return_value = SettingRow(
+            namespace=NotBlankStr("company"),
+            key=NotBlankStr("departments"),
+            value="[]",
+            updated_at="2026-04-11T10:00:00Z",
+        )
         # Prime the cache via get()
         await service.get("company", "departments")
         assert ("company", "departments") in service._cache

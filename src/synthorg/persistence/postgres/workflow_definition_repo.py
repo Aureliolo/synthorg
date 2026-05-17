@@ -35,13 +35,17 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_LISTED,
     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
+
+    from synthorg.persistence.workflow_definition_protocol import (
+        WorkflowDefinitionFilterSpec,
+    )
 
 logger = get_logger(__name__)
 
@@ -425,49 +429,51 @@ class PostgresWorkflowDefinitionRepository:
         )
         return definition
 
-    async def list_definitions(
+    async def query(
         self,
+        filter_spec: WorkflowDefinitionFilterSpec,
         *,
-        workflow_type: WorkflowType | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
-        """List workflow definitions with optional filters.
+        """List workflow definitions matching the filter spec.
 
         Args:
-            workflow_type: Filter by workflow type.
-            limit: Maximum definitions to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            filter_spec: Carries optional ``workflow_type`` filter.
+            limit: Maximum definitions to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Matching definitions as a tuple, capped at *limit* rows.
+            Matching definitions, ordered by ``updated_at`` descending.
 
         Raises:
             QueryError: If the database query, deserialization, or
                 pagination validation fails.
         """
         limit = validate_pagination_args(
-            limit, 0, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
+            limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
         )
         conditions: list[str] = []
         params: list[object] = []
 
-        if workflow_type is not None:
+        if filter_spec.workflow_type is not None:
             conditions.append("workflow_type = %s")
-            params.append(workflow_type.value)
+            params.append(filter_spec.workflow_type.value)
 
         where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
-        query = (
+        sql = (
             f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions"  # noqa: S608
-            f"{where_clause} ORDER BY updated_at DESC LIMIT %s"
+            f"{where_clause} ORDER BY updated_at DESC, id DESC "
+            "LIMIT %s OFFSET %s"
         )
-        params.append(limit)
+        params.extend([limit, offset])
 
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(query, params)
+                await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list workflow definitions"
@@ -486,6 +492,73 @@ class PostgresWorkflowDefinitionRepository:
             count=len(definitions),
         )
         return definitions
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        """List workflow definitions in ascending id order.
+
+        The :class:`IdKeyedRepository` contract requires a deterministic
+        id ordering; ``query`` uses recency (``updated_at DESC``) so
+        this cannot delegate to it.
+
+        Raises:
+            QueryError: If the database query, deserialization, or
+                pagination validation fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
+        )
+        sql = (
+            f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions "  # noqa: S608
+            "ORDER BY id ASC LIMIT %s OFFSET %s"
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, (limit, offset))
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list workflow definitions"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        return tuple(_deserialize_row(row, str(row.get("id", "?"))) for row in rows)
+
+    async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
+        """Count workflow definitions matching the filter spec."""
+        conditions: list[str] = []
+        params: list[object] = []
+        if filter_spec.workflow_type is not None:
+            conditions.append("workflow_type = %s")
+            params.append(filter_spec.workflow_type.value)
+        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        sql = (
+            f"SELECT COUNT(*) FROM workflow_definitions"  # noqa: S608
+            f"{where_clause}"
+        )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, params)
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = "Failed to count workflow definitions"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return int(row[0]) if row else 0
 
     async def delete(self, definition_id: NotBlankStr) -> bool:
         """Delete a workflow definition by primary key.

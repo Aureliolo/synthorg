@@ -41,7 +41,7 @@ class TestMessageControllerDelete:
         fake_persistence: Any,
     ) -> None:
         msg = make_message(msg_id=uuid4(), channel="ops")
-        await fake_persistence.messages.save(msg)
+        await fake_persistence.messages.append(msg)
 
         resp = test_client.delete(f"/api/v1/messages/{msg.id}")
 

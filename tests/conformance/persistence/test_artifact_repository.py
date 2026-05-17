@@ -7,6 +7,7 @@ import pytest
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration
@@ -57,14 +58,16 @@ class TestArtifactRepository:
         assert fetched is not None
         assert fetched.description == "refined"
 
-    async def test_save_returns_true_on_insert(
+    async def test_save_returning_outcome_true_on_insert(
         self, backend: PersistenceBackend
     ) -> None:
         """First-write returns ``True`` so the service can audit CREATED."""
-        created = await backend.artifacts.save(_artifact(artifact_id="new-row"))
+        created = await backend.artifacts.save_returning_outcome(
+            _artifact(artifact_id="new-row")
+        )
         assert created is True
 
-    async def test_save_returns_false_on_update(
+    async def test_save_returning_outcome_false_on_update(
         self, backend: PersistenceBackend
     ) -> None:
         """Second write to the same id returns ``False`` (UPDATED audit)."""
@@ -72,7 +75,7 @@ class TestArtifactRepository:
         await backend.artifacts.save(a)
         updated = a.model_copy(update={"description": "changed"})
 
-        created = await backend.artifacts.save(updated)
+        created = await backend.artifacts.save_returning_outcome(updated)
         assert created is False
 
     async def test_project_id_round_trips_when_set(
@@ -131,22 +134,27 @@ class TestArtifactRepository:
         assert fetched is not None
         assert fetched.project_id is None
 
-    async def test_list_all(self, backend: PersistenceBackend) -> None:
+    async def test_list_items_returns_all(self, backend: PersistenceBackend) -> None:
+        """list_items returns all artifacts in id order."""
         await backend.artifacts.save(_artifact(artifact_id="a1"))
         await backend.artifacts.save(_artifact(artifact_id="a2"))
 
-        rows = await backend.artifacts.list_artifacts()
+        rows = await backend.artifacts.list_items()
         ids = {r.id for r in rows}
         assert {"a1", "a2"} <= ids
 
-    async def test_list_filter_by_task_id(self, backend: PersistenceBackend) -> None:
+    async def test_query_filter_by_task_id(self, backend: PersistenceBackend) -> None:
+        """query filters by task_id."""
         await backend.artifacts.save(_artifact(artifact_id="x", task_id="t1"))
         await backend.artifacts.save(_artifact(artifact_id="y", task_id="t2"))
 
-        rows = await backend.artifacts.list_artifacts(task_id=NotBlankStr("t1"))
+        rows = await backend.artifacts.query(
+            ArtifactFilterSpec(task_id=NotBlankStr("t1"))
+        )
         assert [r.id for r in rows] == ["x"]
 
-    async def test_list_filter_by_type(self, backend: PersistenceBackend) -> None:
+    async def test_query_filter_by_type(self, backend: PersistenceBackend) -> None:
+        """query filters by artifact_type."""
         await backend.artifacts.save(
             _artifact(artifact_id="code", artifact_type=ArtifactType.CODE),
         )
@@ -154,10 +162,21 @@ class TestArtifactRepository:
             _artifact(artifact_id="doc", artifact_type=ArtifactType.DOCUMENTATION),
         )
 
-        rows = await backend.artifacts.list_artifacts(
-            artifact_type=ArtifactType.DOCUMENTATION,
+        rows = await backend.artifacts.query(
+            ArtifactFilterSpec(artifact_type=ArtifactType.DOCUMENTATION)
         )
         assert [r.id for r in rows] == ["doc"]
+
+    async def test_count(self, backend: PersistenceBackend) -> None:
+        """count returns the number of matching artifacts."""
+        await backend.artifacts.save(_artifact(artifact_id="a1", task_id="t1"))
+        await backend.artifacts.save(_artifact(artifact_id="a2", task_id="t1"))
+        await backend.artifacts.save(_artifact(artifact_id="a3", task_id="t2"))
+
+        count = await backend.artifacts.count(
+            ArtifactFilterSpec(task_id=NotBlankStr("t1"))
+        )
+        assert count == 2
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.artifacts.save(_artifact())

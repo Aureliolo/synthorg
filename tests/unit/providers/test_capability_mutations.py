@@ -52,6 +52,9 @@ class _FakeAuditRepo:
         self.records.append(saved)
         return saved
 
+    async def append(self, event: ProviderAuditEvent) -> None:
+        await self.record(event)
+
     async def list(
         self,
         *,
@@ -60,6 +63,18 @@ class _FakeAuditRepo:
         limit: int = 50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
         return ((), False)
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[ProviderAuditEvent, ...]:
+        return ()
+
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
 
     async def purge_before_id(self, *, before_id: int) -> int:
         return 0
@@ -72,12 +87,20 @@ class _FakeOverrideRepo:
     async def get(self, preset_name: Any) -> PresetOverride | None:
         return self.store.get(preset_name)
 
-    async def upsert(self, override: PresetOverride) -> PresetOverride:
+    async def save(self, override: PresetOverride) -> None:
         self.store[override.preset_name] = override
-        return override
 
     async def delete(self, preset_name: Any) -> bool:
         return self.store.pop(preset_name, None) is not None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[PresetOverride, ...]:
+        items = sorted(self.store.values(), key=lambda o: o.preset_name)
+        return tuple(items[offset : offset + limit])
 
 
 def _make_provider_config(
@@ -601,6 +624,9 @@ class TestAuditFailureIsolation:
                 msg = "audit backend down"
                 raise RuntimeError(msg)
 
+            async def append(self, event: ProviderAuditEvent) -> None:
+                await self.record(event)
+
             async def list(
                 self,
                 *,
@@ -609,6 +635,18 @@ class TestAuditFailureIsolation:
                 limit: int = 50,
             ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
                 return (), False
+
+            async def query(
+                self,
+                filter_spec: Any,
+                *,
+                limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+                offset: int = 0,
+            ) -> tuple[ProviderAuditEvent, ...]:
+                return ()
+
+            async def purge_before(self, threshold: Any) -> int:
+                return 0
 
             async def purge_before_id(
                 self,

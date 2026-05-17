@@ -9,10 +9,13 @@ See ``docs/design/ceremony-scheduling.md`` for the full design.
 """
 
 import asyncio
+import json
 from collections.abc import Callable  # noqa: TC003 -- runtime annotation on __init__
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_bridge import (
     build_trigger_event_name,
 )
@@ -43,6 +46,9 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_TRIGGERED,
     SPRINT_STATUS_TRANSITIONED,
 )
+from synthorg.persistence.ceremony_scheduler_state_protocol import (
+    CeremonySchedulerStateRecord,
+)
 
 if TYPE_CHECKING:
     from synthorg.communication.meeting.scheduler import MeetingScheduler
@@ -54,6 +60,9 @@ if TYPE_CHECKING:
         SprintConfig,
     )
     from synthorg.engine.workflow.sprint_velocity import VelocityRecord
+    from synthorg.persistence.ceremony_scheduler_state_protocol import (
+        CeremonySchedulerStateRepository,
+    )
 
 logger = get_logger(__name__)
 
@@ -97,6 +106,7 @@ class CeremonyScheduler:
         "_meeting_scheduler",
         "_running",
         "_sprint_config",
+        "_state_repo",
         "_total_completions",
         "_velocity_history",
     )
@@ -107,6 +117,7 @@ class CeremonyScheduler:
         meeting_scheduler: MeetingScheduler,
         clock: Clock | None = None,
         budget_snapshot: Callable[[], tuple[float, float]] | None = None,
+        state_repo: CeremonySchedulerStateRepository | None = None,
     ) -> None:
         """Wire the scheduler against the meeting subsystem.
 
@@ -123,10 +134,16 @@ class CeremonyScheduler:
                 logs a single ``SPRINT_CEREMONY_BUDGET_BRIDGE_OFF``
                 event at scheduler activation so operators know the
                 strategy is running blind.
+            state_repo: Optional persistence repository for ceremony
+                scheduler state snapshots. When supplied the scheduler
+                writes one snapshot per mutation (under its own lock)
+                and rehydrates the four state attributes at sprint
+                activation so trigger position survives restarts.
         """
         self._meeting_scheduler = meeting_scheduler
         self._clock = clock or SystemClock()
         self._budget_snapshot = budget_snapshot
+        self._state_repo = state_repo
         self._active_strategy: CeremonySchedulingStrategy | None = None
         self._active_sprint: Sprint | None = None
         self._sprint_config: SprintConfig | None = None
@@ -253,9 +270,21 @@ class CeremonyScheduler:
             self._activation_time = self._clock.monotonic()
             self._running = True
 
+            # Hydrate persisted sprint state so trigger counters resume
+            # after a process restart mid-sprint instead of restarting
+            # from zero. Runs after the reset above so a sprint with no
+            # prior persisted state still starts cleanly; a persisted
+            # row is merged onto the freshly-reset attributes.
+            await self._hydrate_state_from_repo(sprint.id)
+
             try:
                 await strategy.on_sprint_activated(sprint, config)
                 await self._fire_sprint_start_ceremonies(sprint, config)
+                # Persist inside the protected block so a failed
+                # snapshot write rolls back like any other activation
+                # failure -- otherwise the scheduler stays running with
+                # ceremonies already fired and a retry double-triggers.
+                await self._save_state_unlocked(sprint.id)
             except MemoryError, RecursionError:
                 raise
             except Exception:
@@ -280,6 +309,127 @@ class CeremonyScheduler:
                 sprint,
                 previous_velocity_history_size,
             )
+
+    async def _hydrate_state_from_repo(self, sprint_id: str) -> None:
+        """Load persisted ceremony state for ``sprint_id`` if available.
+
+        Called from inside ``activate_sprint`` AFTER the fresh-state
+        reset, so a sprint with no prior persisted state continues
+        to start cleanly. The caller already holds ``self._lock``.
+        """
+        if self._state_repo is None:
+            return
+        try:
+            record = await self._state_repo.get(NotBlankStr(sprint_id))
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                SPRINT_CEREMONY_SCHEDULER_START_FAILED,
+                sprint_id=sprint_id,
+                note="state_repo_get_failed",
+                error_type=type(exc).__name__,
+            )
+            return
+        if record is None:
+            return
+        from synthorg.engine.workflow.sprint_velocity import (  # noqa: PLC0415
+            VelocityRecord,
+        )
+
+        # Decode AND validate before mutating any state: a partially
+        # corrupt or stale row must leave the freshly-seeded zeroed
+        # state intact rather than abort activate_sprint or strand a
+        # half-applied snapshot. ``ValidationError`` is a ``ValueError``
+        # subclass, so model_validate failures are covered here too.
+        try:
+            counters = json.loads(record.completion_counters_json)
+            triggers = json.loads(record.fired_once_triggers_json)
+            history_raw = json.loads(record.velocity_history_json)
+            velocity_history = tuple(
+                VelocityRecord.model_validate(r) for r in history_raw
+            )
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                SPRINT_CEREMONY_SCHEDULER_START_FAILED,
+                sprint_id=sprint_id,
+                note="state_repo_payload_decode_failed",
+                error_type=type(exc).__name__,
+            )
+            return
+
+        # Structurally validate the decoded payloads before touching
+        # any state: a stale / hand-edited row whose JSON parses but
+        # carries the wrong shape (non-int counts, non-string triggers)
+        # must leave the freshly-seeded zeroed state intact rather than
+        # poison the in-memory counters.
+        counters_ok = isinstance(counters, dict) and all(
+            isinstance(k, str)
+            and isinstance(v, int)
+            and not isinstance(v, bool)
+            and v >= 0
+            for k, v in counters.items()
+        )
+        triggers_ok = isinstance(triggers, list) and all(
+            isinstance(t, str) for t in triggers
+        )
+        if not (counters_ok and triggers_ok):
+            logger.warning(
+                SPRINT_CEREMONY_SCHEDULER_START_FAILED,
+                sprint_id=sprint_id,
+                note="state_repo_payload_shape_invalid",
+            )
+            return
+
+        # Merge persisted counts onto the seeded map instead of
+        # replacing it: a ceremony present in the current config but
+        # absent from an older snapshot keeps its zero seed rather than
+        # vanishing (which would KeyError on its next completion), and a
+        # stale snapshot key for a removed ceremony is ignored.
+        for name, value in counters.items():
+            if name in self._completion_counters:
+                self._completion_counters[name] = value
+        self._fired_once_triggers = set(triggers)
+        self._total_completions = record.total_completions
+        self._velocity_history = velocity_history
+
+    async def _save_state_unlocked(self, sprint_id: str) -> None:
+        """Persist the current ceremony state snapshot under the existing lock.
+
+        Caller already holds ``self._lock``; this method does NOT
+        acquire it. Best-effort: a persistence failure logs at WARNING
+        and propagates so the surrounding mutation method can decide
+        whether to re-raise. The mutation has already landed in
+        memory, so a missed save just means a restart will rehydrate
+        from the prior persisted snapshot rather than the most recent.
+        """
+        if self._state_repo is None:
+            return
+        record = CeremonySchedulerStateRecord(
+            sprint_id=NotBlankStr(sprint_id),
+            completion_counters_json=json.dumps(
+                self._completion_counters, sort_keys=True
+            ),
+            fired_once_triggers_json=json.dumps(sorted(self._fired_once_triggers)),
+            total_completions=self._total_completions,
+            velocity_history_json=json.dumps(
+                [r.model_dump(mode="json") for r in self._velocity_history],
+                sort_keys=True,
+            ),
+            updated_at=datetime.now(UTC),
+        )
+        try:
+            await self._state_repo.save(record)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                SPRINT_CEREMONY_SCHEDULER_START_FAILED,
+                sprint_id=sprint_id,
+                note="state_repo_save_failed",
+                error_type=type(exc).__name__,
+            )
+            raise
 
     def _detect_migration(
         self,
@@ -337,6 +487,24 @@ class CeremonyScheduler:
                 )
 
         sprint_id = self._active_sprint.id if self._active_sprint else "unknown"
+
+        # Drop the persisted snapshot when the sprint deactivates so a
+        # future activation of a different sprint reusing the same id
+        # starts from clean state rather than stale counters.
+        if self._state_repo is not None and self._active_sprint is not None:
+            try:
+                await self._state_repo.delete(
+                    NotBlankStr(self._active_sprint.id),
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    SPRINT_CEREMONY_SCHEDULER_STOPPED,
+                    sprint_id=sprint_id,
+                    note="state_repo_delete_failed",
+                    error_type=type(exc).__name__,
+                )
 
         self._active_sprint = None
         self._sprint_config = None
@@ -404,7 +572,9 @@ class CeremonyScheduler:
                 return sprint
             await self._evaluate_ceremonies(sprint)
             await self._check_one_shot_triggers(sprint, context)
-            return self._check_auto_transition(sprint, context)
+            transitioned = self._check_auto_transition(sprint, context)
+            await self._save_state_unlocked(sprint.id)
+            return transitioned
 
     # -- Ceremony evaluation -------------------------------------------
 

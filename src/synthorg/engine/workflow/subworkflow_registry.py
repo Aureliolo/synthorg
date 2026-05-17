@@ -152,7 +152,7 @@ class SubworkflowRegistry:
             SubworkflowNotFoundError: If the version is not in the
                 registry.
         """
-        definition = await self._repo.get(subworkflow_id, version)
+        definition = await self._repo.get((subworkflow_id, version))
         if definition is None:
             msg = (
                 f"Subworkflow {subworkflow_id!r} version {version!r} "

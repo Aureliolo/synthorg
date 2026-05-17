@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.principle_override_protocol import PrincipleOverride
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration
@@ -22,11 +23,15 @@ def _now() -> datetime:
 class TestPrincipleOverrideSave:
     async def test_first_save_inserts(self, backend: PersistenceBackend) -> None:
         repo = backend.principle_overrides
-        await repo.save(
-            NotBlankStr("planning.scope.alpha"),
-            NotBlankStr("Restored text alpha"),
+        now = _now()
+        entity = PrincipleOverride(
+            scope=NotBlankStr("planning.scope.alpha"),
+            text=NotBlankStr("Restored text alpha"),
             restored_from=NotBlankStr("op-001"),
+            created_at=now,
+            updated_at=now,
         )
+        await repo.save(entity)
         loaded = await repo.get(NotBlankStr("planning.scope.alpha"))
         assert loaded is not None
         assert loaded.text == "Restored text alpha"
@@ -38,18 +43,24 @@ class TestPrincipleOverrideSave:
     ) -> None:
         repo = backend.principle_overrides
         scope = NotBlankStr("planning.scope.beta")
-        await repo.save(
-            scope,
-            NotBlankStr("first"),
+        now_1 = _now() - timedelta(hours=1)
+        entity_1 = PrincipleOverride(
+            scope=scope,
+            text=NotBlankStr("first"),
             restored_from=NotBlankStr("op-001"),
-            now=_now() - timedelta(hours=1),
+            created_at=now_1,
+            updated_at=now_1,
         )
-        await repo.save(
-            scope,
-            NotBlankStr("second"),
+        await repo.save(entity_1)
+        now_2 = _now()
+        entity_2 = PrincipleOverride(
+            scope=scope,
+            text=NotBlankStr("second"),
             restored_from=NotBlankStr("op-002"),
-            now=_now(),
+            created_at=now_1,
+            updated_at=now_2,
         )
+        await repo.save(entity_2)
         loaded = await repo.get(scope)
         assert loaded is not None
         assert loaded.text == "second"
@@ -78,11 +89,15 @@ class TestPrincipleOverrideDelete:
     ) -> None:
         repo = backend.principle_overrides
         scope = NotBlankStr("planning.scope.delete-me")
-        await repo.save(
-            scope,
-            NotBlankStr("doomed"),
+        now = _now()
+        entity = PrincipleOverride(
+            scope=scope,
+            text=NotBlankStr("doomed"),
             restored_from=NotBlankStr("op-x"),
+            created_at=now,
+            updated_at=now,
         )
+        await repo.save(entity)
         deleted = await repo.delete(scope)
         assert deleted is True
         assert await repo.get(scope) is None
@@ -103,21 +118,20 @@ class TestPrincipleOverrideList:
         backend: PersistenceBackend,
     ) -> None:
         repo = backend.principle_overrides
-        await repo.save(
-            NotBlankStr("z.last"),
-            NotBlankStr("zzz"),
-            restored_from=NotBlankStr("op-z"),
-        )
-        await repo.save(
-            NotBlankStr("a.first"),
-            NotBlankStr("aaa"),
-            restored_from=NotBlankStr("op-a"),
-        )
-        await repo.save(
-            NotBlankStr("m.mid"),
-            NotBlankStr("mmm"),
-            restored_from=NotBlankStr("op-m"),
-        )
+        now = _now()
+        for scope_str, text_str, op_str in [
+            ("z.last", "zzz", "op-z"),
+            ("a.first", "aaa", "op-a"),
+            ("m.mid", "mmm", "op-m"),
+        ]:
+            entity = PrincipleOverride(
+                scope=NotBlankStr(scope_str),
+                text=NotBlankStr(text_str),
+                restored_from=NotBlankStr(op_str),
+                created_at=now,
+                updated_at=now,
+            )
+            await repo.save(entity)
         rows = await repo.list_items()
         scopes = [r.scope for r in rows]
         # Ordering is alphabetical by scope.

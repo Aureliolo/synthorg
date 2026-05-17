@@ -15,6 +15,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.classification import (
     CONTEXT_LOADER_ERROR,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import paginate
+from synthorg.persistence.task_protocol import TaskFilterSpec
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
@@ -131,7 +134,15 @@ class TaskTreeLoader:
             Delegation requests found in the task tree.
         """
         try:
-            all_tasks: tuple[Task, ...] = await self._task_repo.list_tasks()
+            collected: list[Task] = []
+            async for page in paginate(
+                lambda limit, offset: self._task_repo.query(
+                    TaskFilterSpec(), limit=limit, offset=offset
+                ),
+                page_size=DEFAULT_PAGE_SIZE,
+            ):
+                collected.extend(page)
+            all_tasks: tuple[Task, ...] = tuple(collected)
         except MemoryError, RecursionError:
             raise
         except Exception:

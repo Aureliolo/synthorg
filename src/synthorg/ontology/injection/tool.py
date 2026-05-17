@@ -103,18 +103,10 @@ class LookupEntityTool(BaseTool):
         """
         try:
             entity = await self._backend.get(name)
-        except OntologyNotFoundError:
-            logger.debug(
-                ONTOLOGY_TOOL_LOOKUP,
-                name=name,
-                found=False,
-            )
-            return ToolExecutionResult(
-                content=f"Entity '{name}' not found in the ontology.",
-                is_error=True,
-            )
         except MemoryError, RecursionError:
             raise
+        except OntologyNotFoundError:
+            entity = None
         except Exception as exc:
             logger.warning(
                 ONTOLOGY_TOOL_LOOKUP,
@@ -124,6 +116,16 @@ class LookupEntityTool(BaseTool):
             )
             return ToolExecutionResult(
                 content="Entity lookup failed. Try again later.",
+                is_error=True,
+            )
+        if entity is None:
+            logger.debug(
+                ONTOLOGY_TOOL_LOOKUP,
+                name=name,
+                found=False,
+            )
+            return ToolExecutionResult(
+                content=f"Entity '{name}' not found in the ontology.",
                 is_error=True,
             )
         logger.debug(

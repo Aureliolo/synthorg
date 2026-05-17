@@ -519,7 +519,11 @@ async def load_custom_rules(
     Returns:
         Tuple of ``DeclarativeRule`` instances for enabled custom rules.
     """
-    definitions = await repo.list_rules(enabled_only=True)
+    from synthorg.persistence.custom_rule_protocol import (  # noqa: PLC0415
+        CustomRuleFilterSpec,
+    )
+
+    definitions = await repo.query(CustomRuleFilterSpec(enabled_only=True))
     rules = tuple(DeclarativeRule(d) for d in definitions)
     logger.info(
         META_CUSTOM_RULE_LISTED,

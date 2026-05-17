@@ -2,25 +2,50 @@
 
 from typing import Protocol, runtime_checkable
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from synthorg.core.enums import WorkflowType  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.workflow.definition import WorkflowDefinition  # noqa: TC001
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.definition import WorkflowDefinition
+from synthorg.persistence._generics import (
+    DEFAULT_PAGE_SIZE,
+    FilteredQueryRepository,
+    IdKeyedRepository,
+)
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT  # noqa: F401
+
+
+class WorkflowDefinitionFilterSpec(BaseModel):
+    """Filter spec for ``WorkflowDefinitionRepository.query`` (ADR-0001)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    workflow_type: WorkflowType | None = Field(default=None)
 
 
 @runtime_checkable
-class WorkflowDefinitionRepository(Protocol):
+class WorkflowDefinitionRepository(
+    IdKeyedRepository[WorkflowDefinition, NotBlankStr],
+    FilteredQueryRepository[WorkflowDefinition, WorkflowDefinitionFilterSpec],
+    Protocol,
+):
     """CRUD interface for workflow definition persistence.
 
     Workflow definitions are design-time blueprints for visual
     workflow graphs, stored with their full node/edge data.
+
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
+    (ADR-0001). Bespoke per D7: ``create_if_absent`` and
+    ``update_if_exists`` are atomic CAS variants that the upsert-based
+    :meth:`save` cannot express; they preserve distinct create-vs-update
+    audit semantics that the service layer depends on.
     """
 
-    async def save(self, definition: WorkflowDefinition) -> None:
+    async def save(self, entity: WorkflowDefinition) -> None:
         """Persist a workflow definition (insert or update).
 
         Args:
-            definition: The workflow definition to persist.
+            entity: The workflow definition to persist.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -76,11 +101,11 @@ class WorkflowDefinitionRepository(Protocol):
         """
         ...
 
-    async def get(self, definition_id: NotBlankStr) -> WorkflowDefinition | None:
+    async def get(self, entity_id: NotBlankStr) -> WorkflowDefinition | None:
         """Retrieve a workflow definition by its ID.
 
         Args:
-            definition_id: The definition identifier.
+            entity_id: The definition identifier.
 
         Returns:
             The definition, or ``None`` if not found.
@@ -90,32 +115,54 @@ class WorkflowDefinitionRepository(Protocol):
         """
         ...
 
-    async def list_definitions(
+    async def list_items(
         self,
         *,
-        workflow_type: WorkflowType | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
-        """List workflow definitions with optional filters.
+        """List workflow definitions in id order.
 
         Args:
-            workflow_type: Filter by workflow type.
-            limit: Maximum definitions to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Matching definitions as a tuple, capped at *limit* rows.
+            Definitions in ascending id order.
+        """
+        ...
+
+    async def query(
+        self,
+        filter_spec: WorkflowDefinitionFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        """List workflow definitions matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional ``workflow_type`` filter.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Matching definitions in ascending id order.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def delete(self, definition_id: NotBlankStr) -> bool:
+    async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
+        """Count workflow definitions matching the filter spec."""
+        ...
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a workflow definition by ID.
 
         Args:
-            definition_id: The definition identifier.
+            entity_id: The definition identifier.
 
         Returns:
             ``True`` if the definition was deleted, ``False`` if not found.

@@ -121,7 +121,7 @@ class TestSaveAndGet:
         )
         await repo.save(sub)
 
-        loaded = await repo.get("sub-quarterly-close", "1.0.0")
+        loaded = await repo.get(("sub-quarterly-close", "1.0.0"))
         assert loaded is not None
         assert loaded.id == sub.id
         assert loaded.version == "1.0.0"
@@ -137,7 +137,7 @@ class TestSaveAndGet:
         self,
         repo: SQLiteSubworkflowRepository,
     ) -> None:
-        result = await repo.get("sub-nonexistent", "1.0.0")
+        result = await repo.get(("sub-nonexistent", "1.0.0"))
         assert result is None
 
     async def test_duplicate_version_rejected(
@@ -268,13 +268,13 @@ class TestDelete:
         repo: SQLiteSubworkflowRepository,
     ) -> None:
         await repo.save(_make_subworkflow())
-        assert await repo.delete("sub-quarterly-close", "1.0.0") is True
+        assert await repo.delete(("sub-quarterly-close", "1.0.0")) is True
 
     async def test_delete_missing_returns_false(
         self,
         repo: SQLiteSubworkflowRepository,
     ) -> None:
-        assert await repo.delete("sub-nonexistent", "1.0.0") is False
+        assert await repo.delete(("sub-nonexistent", "1.0.0")) is False
 
     async def test_delete_version_leaves_other_versions_intact(
         self,
@@ -283,7 +283,7 @@ class TestDelete:
         await repo.save(_make_subworkflow(version="1.0.0"))
         await repo.save(_make_subworkflow(version="2.0.0"))
 
-        await repo.delete("sub-quarterly-close", "1.0.0")
+        await repo.delete(("sub-quarterly-close", "1.0.0"))
         remaining = await repo.list_versions("sub-quarterly-close")
         assert remaining == ("2.0.0",)
 

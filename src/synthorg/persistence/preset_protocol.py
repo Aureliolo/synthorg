@@ -10,23 +10,30 @@ and not worth normalising on its own.  This file is the preset
 slice.
 """
 
-from typing import NamedTuple, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from pydantic import BaseModel, ConfigDict
 
-
-class PresetRow(NamedTuple):
-    """Single custom preset row returned by ``get``."""
-
-    config_json: str
-    description: str
-    created_at: str
-    updated_at: str
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import (
+    DEFAULT_PAGE_SIZE,
+    FilteredQueryRepository,
+    IdKeyedRepository,
+)
 
 
-class PresetListRow(NamedTuple):
-    """Custom preset row returned by ``list_all``."""
+class Preset(BaseModel):
+    """A custom personality preset entity.
+
+    Attributes:
+        name: Lowercase preset identifier (primary key).
+        config_json: Serialized ``PersonalityConfig`` as JSON.
+        description: Human-readable description.
+        created_at: ISO 8601 creation timestamp.
+        updated_at: ISO 8601 last-update timestamp.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr
     config_json: str
@@ -35,90 +42,122 @@ class PresetListRow(NamedTuple):
     updated_at: str
 
 
+class PresetFilterSpec(BaseModel):
+    """Filter spec for ``PersonalityPresetRepository.query`` (ADR-0001).
+
+    Currently empty (no filtering criteria), but reserved for future
+    expansion (e.g., filter by creation time, description keywords).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+
 @runtime_checkable
-class PersonalityPresetRepository(Protocol):
-    """CRUD interface for user-defined personality preset persistence.
+class PersonalityPresetRepository(
+    IdKeyedRepository[Preset, NotBlankStr],
+    FilteredQueryRepository[Preset, PresetFilterSpec],
+    Protocol,
+):
+    """CRUD + query interface for custom personality preset persistence.
 
     Stores custom presets as JSON blobs alongside metadata.
     Builtin presets live in code and are never persisted here.
+
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
+    (ADR-0001).
     """
 
-    async def save(
-        self,
-        name: NotBlankStr,
-        config_json: str,
-        description: str,
-        created_at: str,
-        updated_at: str,
-    ) -> None:
-        """Persist a custom preset (insert or update on conflict).
+    async def save(self, entity: Preset) -> None:
+        """Persist a custom preset (insert or update by name).
 
         Args:
-            name: Lowercase preset identifier (primary key).
-            config_json: Serialized ``PersonalityConfig`` as JSON.
-            description: Human-readable description.
-            created_at: ISO 8601 creation timestamp.
-            updated_at: ISO 8601 last-update timestamp.
+            entity: The preset to persist.
 
         Raises:
-            QueryError: If the operation fails.
+            PersistenceError: If the operation fails.
         """
         ...
 
-    async def get(
-        self,
-        name: NotBlankStr,
-    ) -> PresetRow | None:
+    async def get(self, entity_id: NotBlankStr) -> Preset | None:
         """Retrieve a custom preset by name.
 
         Args:
-            name: Preset identifier.
+            entity_id: Preset identifier (name).
 
         Returns:
-            A ``PresetRow`` or ``None`` if not found.
+            A ``Preset`` or ``None`` if not found.
 
         Raises:
-            QueryError: If the operation fails.
+            PersistenceError: If the operation fails.
         """
         ...
 
-    async def list_all(
+    async def list_items(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
-    ) -> tuple[PresetListRow, ...]:
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Preset, ...]:
         """List custom presets ordered by name.
 
         Args:
-            limit: Maximum presets to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum presets to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Tuple of ``PresetListRow`` named tuples, capped at *limit*.
+            Presets in ascending ``name`` order.
 
         Raises:
-            QueryError: If the operation fails.
+            PersistenceError: If the operation fails.
         """
         ...
 
-    async def delete(self, name: NotBlankStr) -> bool:
+    async def query(
+        self,
+        filter_spec: PresetFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Preset, ...]:
+        """List custom presets matching the filter spec.
+
+        Args:
+            filter_spec: Filter criteria (currently unused, reserved for future).
+            limit: Maximum presets to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Presets in ascending ``name`` order.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def count(self, filter_spec: PresetFilterSpec) -> int:
+        """Count custom presets matching the filter spec.
+
+        Args:
+            filter_spec: Filter criteria (currently unused, reserved for future).
+
+        Returns:
+            Number of matching presets.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a custom preset by name.
 
         Args:
-            name: Preset identifier.
+            entity_id: Preset identifier (name).
 
         Returns:
             ``True`` if a row was deleted, ``False`` if not found.
 
         Raises:
-            QueryError: If the operation fails.
-        """
-        ...
-
-    async def count(self) -> int:
-        """Return the number of stored custom presets.
-
-        Raises:
-            QueryError: If the operation fails.
+            PersistenceError: If the operation fails.
         """
         ...

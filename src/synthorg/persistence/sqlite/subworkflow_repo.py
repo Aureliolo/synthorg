@@ -40,10 +40,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_LISTED,
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
 )
-from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,
-    validate_pagination_args,
-)
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -305,10 +303,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 
     async def get(
         self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
+        entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> WorkflowDefinition | None:
-        """Fetch a specific subworkflow version."""
+        """Fetch a specific subworkflow version by composite key."""
+        subworkflow_id, version = entity_id
         try:
             cursor = await self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
@@ -345,15 +343,53 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         )
         return definition
 
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        """List subworkflows by composite key in ascending order (paginated).
+
+        Ordering is ``(subworkflow_id, semver)`` as a SQL string
+        comparison -- lexicographic, not semantic-version order (so
+        ``1.10.0`` sorts before ``1.2.0``). This is deliberate: the
+        contract here is a stable, deterministic pagination window, not
+        a semver ranking. Callers that need semantic ordering use
+        :meth:`list_versions`, which sorts versions client-side.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
+        )
+        try:
+            cursor = await self._db.execute(
+                f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
+                "ORDER BY subworkflow_id, semver LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except sqlite3.Error as exc:
+            msg = "Failed to list subworkflows"
+            logger.warning(
+                PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(_deserialize_row(row, str(row["subworkflow_id"])) for row in rows)
+
     async def list_versions(
         self,
         subworkflow_id: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[str, ...]:
         """List semver strings for a subworkflow, newest first.
 
-        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`). The
+        Bounded by *limit* (default :data:`DEFAULT_PAGE_SIZE`). The
         SQL fetches every matching row; client-side semver sorting
         then orders them descending and the page size is applied
         last so the "newest first" contract is honoured against
@@ -389,7 +425,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
     async def list_summaries(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[SubworkflowSummary, ...]:
         """Return summaries (latest version per subworkflow).
 
@@ -482,10 +518,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 
     async def delete(
         self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
+        entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> bool:
-        """Delete a subworkflow version, returning ``True`` on success."""
+        """Delete a subworkflow version by composite key (``True`` on success)."""
+        subworkflow_id, version = entity_id
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

@@ -297,7 +297,7 @@ class TestWebhookCleanupKillSwitch:
         resolver.get_bool.return_value = False
         resolver.get_float.return_value = 86_400.0
         connections_repo = AsyncMock(spec=ConnectionRepository)
-        connections_repo.list_all.return_value = ()
+        connections_repo.list_items.return_value = ()
         persistence = SimpleNamespace(connections=connections_repo)
         app_state = cast(
             AppState,
@@ -322,8 +322,8 @@ class TestWebhookCleanupKillSwitch:
         with pytest.raises(asyncio.CancelledError):
             await task
 
-        # Disabled => the tick body never reached ``connections.list_all``.
-        connections_repo.list_all.assert_not_awaited()
+        # Disabled => the tick body never reached ``connections.list_items``.
+        connections_repo.list_items.assert_not_awaited()
         assert resolver.get_bool.await_count >= 1
 
     async def test_loop_runs_sweep_when_enabled(self) -> None:
@@ -333,7 +333,7 @@ class TestWebhookCleanupKillSwitch:
         resolver.get_int.return_value = 30
         resolver.get_float.return_value = 86_400.0
         connections_repo = AsyncMock(spec=ConnectionRepository)
-        connections_repo.list_all.return_value = ()
+        connections_repo.list_items.return_value = ()
         persistence = SimpleNamespace(connections=connections_repo)
         app_state = cast(
             AppState,
@@ -356,4 +356,4 @@ class TestWebhookCleanupKillSwitch:
         with pytest.raises(asyncio.CancelledError):
             await task
 
-        connections_repo.list_all.assert_awaited()
+        connections_repo.list_items.assert_awaited()

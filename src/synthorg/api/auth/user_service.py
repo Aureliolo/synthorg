@@ -82,7 +82,7 @@ class UserService:
         Callers paginating over large user bases should use
         :meth:`list_users_page` instead, which exposes a stable cursor.
         """
-        users = await self._repo.list_users(limit=limit)
+        users = await self._repo.list_items(limit=limit)
         logger.debug(API_USER_LISTED, count=len(users))
         return users
 
@@ -116,8 +116,10 @@ class UserService:
             requested page.
         """
         # Over-fetch by one row to detect has_more without a COUNT.
+        # The keyset predicate is pushed into the repository so this
+        # stays O(page) regardless of table size.
         try:
-            rows = await self._repo.list_users_paginated(
+            rows = await self._repo.list_after_id(
                 after_id=after_id,
                 limit=limit + 1,
             )

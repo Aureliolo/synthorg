@@ -19,13 +19,15 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+    PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
-    DEFAULT_LIST_LIMIT,
     coerce_row_timestamp,
     normalize_utc,
+    validate_pagination_args,
 )
 
 if TYPE_CHECKING:
@@ -79,8 +81,9 @@ class PostgresWebhookReceiptRepository:
         """Bind to the shared *pool*."""
         self._pool = pool
 
-    async def log(self, receipt: WebhookReceipt) -> None:
-        """Append a webhook receipt row (idempotent on receipt id)."""
+    async def save(self, entity: WebhookReceipt) -> None:
+        """Persist a webhook receipt (idempotent on receipt id)."""
+        receipt = entity
         # ``payload_json`` is stored as JSONB; parse the model's
         # string representation at the boundary so reads can return
         # a structured value without a second parse.
@@ -261,11 +264,75 @@ class PostgresWebhookReceiptRepository:
             )
             raise QueryError(msg) from exc
 
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WebhookReceipt, ...]:
+        """List all webhook receipts with pagination."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED
+        )
+        sql = (
+            "SELECT id, connection_name, event_type, status, "
+            "       received_at, processed_at, payload_json, error "
+            "FROM webhook_receipts ORDER BY received_at DESC, id DESC "
+            "LIMIT %s OFFSET %s"
+        )
+        params: tuple[object, ...] = (limit, offset)
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, params)
+                rows = await cur.fetchall()
+        except Exception as exc:
+            msg = "Failed to list webhook receipts"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            return tuple(_row_to_receipt(row) for row in rows)
+        except (ValueError, TypeError) as exc:
+            msg = "Failed to deserialize webhook receipt rows"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        """Delete a webhook receipt by ID."""
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM webhook_receipts WHERE id = %s",
+                    (str(entity_id),),
+                )
+                deleted = cur.rowcount > 0
+                await conn.commit()
+        except Exception as exc:
+            msg = f"Failed to delete webhook receipt {entity_id!r}"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED,
+                receipt_id=str(entity_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return deleted
+
     async def get_by_connection(
         self,
         connection_name: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List receipts for *connection_name*, newest-first up to *limit*."""

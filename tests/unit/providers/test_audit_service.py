@@ -1,6 +1,7 @@
 """Tests for ``ProviderAuditService``."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -66,6 +67,30 @@ class _FakeRepo:
         self.purged.append(before_id)
         before = len(self.records)
         self.records = [e for e in self.records if _row_id(e) >= before_id]
+        return before - len(self.records)
+
+    async def append(self, event: ProviderAuditEvent) -> None:
+        await self.record(event)
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
+        offset: int = 0,
+    ) -> tuple[ProviderAuditEvent, ...]:
+        rows = sorted(
+            (e for e in self.records if e.provider_name == filter_spec.provider_name),
+            key=_row_id,
+            reverse=True,
+        )
+        if filter_spec.after_id is not None:
+            rows = [e for e in rows if _row_id(e) < filter_spec.after_id]
+        return tuple(rows[offset : offset + limit])
+
+    async def purge_before(self, threshold: Any) -> int:
+        before = len(self.records)
+        self.records = [e for e in self.records if e.occurred_at >= threshold]
         return before - len(self.records)
 
 

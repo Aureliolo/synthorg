@@ -49,6 +49,12 @@ mandatory_rules:
     file: CLAUDE.md
     header: Persistence Boundary
     gate: scripts/check_persistence_boundary.py
+    # Sibling layer-discipline gate also enforces this MANDATORY:
+    # scripts/check_no_api_dto_in_persistence_or_service.py (forbids
+    # synthorg.api.dto_* imports in persistence/ and service/). The
+    # inventory tracks one primary gate per (file, header); the
+    # sibling lives in docs/reference/convention-gates.md alongside
+    # the rest of the gate inventory.
 
   - id: claude-md::convention-rollout
     file: CLAUDE.md

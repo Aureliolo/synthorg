@@ -29,8 +29,8 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_INTERRUPTED,
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
-from synthorg.persistence.fine_tune_protocol import _DEFAULT_LIST_LIMIT_50
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -141,8 +141,9 @@ class PostgresFineTuneRunRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save_run(self, run: FineTuneRun) -> None:
-        """Persist a run (upsert semantics)."""
+    async def save(self, entity: FineTuneRun) -> None:
+        """Upsert a run by id (idempotent semantics)."""
+        run = entity
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -188,8 +189,9 @@ ON CONFLICT (id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-    async def get_run(self, run_id: str) -> FineTuneRun | None:
-        """Retrieve a run by ID."""
+    async def get(self, entity_id: str) -> FineTuneRun | None:
+        """Retrieve a run by id."""
+        run_id = entity_id
         try:
             async with (
                 self._pool.connection() as conn,
@@ -239,13 +241,41 @@ ON CONFLICT (id) DO UPDATE SET
             return None
         return _run_from_row(row)
 
-    async def list_runs(
+    async def list_items(
         self,
         *,
-        limit: int = _DEFAULT_LIST_LIMIT_50,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[FineTuneRun, ...]:
+        """List runs in ascending id order (paginated)."""
+        limit, offset = _clamp_pagination(limit, offset)
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT * FROM fine_tune_runs ORDER BY id ASC LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list fine-tune runs"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(_run_from_row(r) for r in rows)
+
+    async def list_items_page(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
-        """List runs ordered by start time descending.
+        """List runs ordered by start time descending with total count.
 
         Returns:
             Tuple of (runs, total_count).
@@ -262,7 +292,7 @@ ON CONFLICT (id) DO UPDATE SET
 
                 await cur.execute(
                     "SELECT * FROM fine_tune_runs "
-                    "ORDER BY started_at DESC LIMIT %s OFFSET %s",
+                    "ORDER BY started_at DESC, id DESC LIMIT %s OFFSET %s",
                     (limit, offset),
                 )
                 rows = await cur.fetchall()
@@ -275,6 +305,35 @@ ON CONFLICT (id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
         return tuple(_run_from_row(r) for r in rows), total
+
+    async def delete(self, entity_id: str) -> bool:
+        """Delete a run by id.
+
+        Returns:
+            ``True`` if deleted, ``False`` if not found.
+        """
+        run_id = entity_id
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM fine_tune_runs WHERE id = %s",
+                    (run_id,),
+                )
+                # Capture rowcount while the cursor is still open;
+                # reading it after the context exits is undefined.
+                deleted = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to delete fine-tune run {run_id}"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                run_id=run_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        else:
+            return deleted
 
     async def update_run(self, run: FineTuneRun) -> None:
         """Update all mutable fields for a run."""
@@ -366,11 +425,9 @@ class PostgresFineTuneCheckpointRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save_checkpoint(
-        self,
-        checkpoint: CheckpointRecord,
-    ) -> None:
-        """Persist a checkpoint (upsert semantics)."""
+    async def save(self, entity: CheckpointRecord) -> None:
+        """Upsert a checkpoint by id (idempotent semantics)."""
+        checkpoint = entity
         eval_payload: Jsonb | None = None
         if checkpoint.eval_metrics is not None:
             eval_payload = Jsonb(
@@ -423,11 +480,9 @@ ON CONFLICT (id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-    async def get_checkpoint(
-        self,
-        checkpoint_id: str,
-    ) -> CheckpointRecord | None:
-        """Retrieve a checkpoint by ID."""
+    async def get(self, entity_id: str) -> CheckpointRecord | None:
+        """Retrieve a checkpoint by id."""
+        checkpoint_id = entity_id
         try:
             async with (
                 self._pool.connection() as conn,
@@ -451,13 +506,42 @@ ON CONFLICT (id) DO UPDATE SET
             return None
         return _checkpoint_from_row(row)
 
-    async def list_checkpoints(
+    async def list_items(
         self,
         *,
-        limit: int = _DEFAULT_LIST_LIMIT_50,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[CheckpointRecord, ...]:
+        """List checkpoints in ascending id order (paginated)."""
+        limit, offset = _clamp_pagination(limit, offset)
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT * FROM fine_tune_checkpoints "
+                    "ORDER BY id ASC LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list checkpoints"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(_checkpoint_from_row(r) for r in rows)
+
+    async def list_items_page(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[CheckpointRecord, ...], int]:
-        """List checkpoints ordered by creation time descending.
+        """List checkpoints ordered by creation time descending with total count.
 
         Returns:
             Tuple of (checkpoints, total_count).
@@ -476,7 +560,7 @@ ON CONFLICT (id) DO UPDATE SET
 
                 await cur.execute(
                     "SELECT * FROM fine_tune_checkpoints "
-                    "ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                    "ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s",
                     (limit, offset),
                 )
                 rows = await cur.fetchall()
@@ -556,51 +640,51 @@ ON CONFLICT (id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-    async def delete_checkpoint(
-        self,
-        checkpoint_id: str,
-    ) -> None:
-        """Delete a checkpoint. Raises if it is the active one.
+    async def delete(self, entity_id: str) -> bool:
+        """Delete a checkpoint by id.
 
-        Mirrors SQLite semantics: missing rows are silent no-ops; the
-        active row may not be deleted.  The DELETE includes the
-        ``is_active = FALSE`` predicate so a row that flipped to active
-        between the SELECT and the DELETE is still rejected.
+        Raises when deleting the active checkpoint (domain invariant).
+        Returns ``False`` if checkpoint does not exist.
+
+        Returns:
+            ``True`` if deleted, ``False`` if not found.
         """
+        checkpoint_id = entity_id
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.transaction(),
                 conn.cursor() as cur,
             ):
+                # Single atomic guarded delete: the partial predicate
+                # ``is_active = FALSE`` and ``RETURNING id`` collapse the
+                # former SELECT-then-DELETE into one statement, closing
+                # the window where a concurrent activation could slip
+                # between the two.
+                await cur.execute(
+                    "DELETE FROM fine_tune_checkpoints "
+                    "WHERE id = %s AND is_active = FALSE RETURNING id",
+                    (checkpoint_id,),
+                )
+                if await cur.fetchone() is not None:
+                    return True
+                # Nothing deleted: disambiguate absent vs active so an
+                # absent id returns False but an attempt to delete the
+                # active checkpoint surfaces the domain invariant.
                 await cur.execute(
                     "SELECT is_active FROM fine_tune_checkpoints WHERE id = %s",
                     (checkpoint_id,),
                 )
                 row = await cur.fetchone()
                 if row is None:
-                    return
-                if bool(row[0]):
-                    msg = f"Cannot delete active checkpoint {checkpoint_id}"
-                    logger.warning(
-                        MEMORY_FINE_TUNE_PERSIST_FAILED,
-                        checkpoint_id=checkpoint_id,
-                        error=msg,
-                    )
-                    raise QueryError(msg)
-                await cur.execute(
-                    "DELETE FROM fine_tune_checkpoints "
-                    "WHERE id = %s AND is_active = FALSE",
-                    (checkpoint_id,),
+                    return False
+                msg = f"Cannot delete active checkpoint {checkpoint_id}"
+                logger.warning(
+                    MEMORY_FINE_TUNE_PERSIST_FAILED,
+                    checkpoint_id=checkpoint_id,
+                    error=msg,
                 )
-                if cur.rowcount == 0:
-                    msg = f"Cannot delete active checkpoint {checkpoint_id}"
-                    logger.warning(
-                        MEMORY_FINE_TUNE_PERSIST_FAILED,
-                        checkpoint_id=checkpoint_id,
-                        error="checkpoint became active during delete",
-                    )
-                    raise QueryError(msg)
+                raise QueryError(msg)
         except psycopg.Error as exc:
             msg = f"Failed to delete checkpoint {checkpoint_id}"
             logger.warning(

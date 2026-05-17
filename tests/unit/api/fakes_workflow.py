@@ -1,7 +1,7 @@
 """In-memory fake workflow repositories for API unit tests."""
 
 import copy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from packaging.version import InvalidVersion, Version
 
@@ -14,9 +14,11 @@ from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionFilterSpec,
+)
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import WorkflowType
     from synthorg.core.types import NotBlankStr
     from synthorg.engine.workflow.definition import WorkflowDefinition
     from synthorg.engine.workflow.execution_models import WorkflowExecution
@@ -48,16 +50,32 @@ class FakeWorkflowDefinitionRepository:
         stored = self._definitions.get(definition_id)
         return copy.deepcopy(stored) if stored is not None else None
 
-    async def list_definitions(
+    async def query(
         self,
+        filter_spec: Any,
         *,
-        workflow_type: WorkflowType | None = None,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
         result = list(self._definitions.values())
-        if workflow_type is not None:
-            result = [d for d in result if d.workflow_type == workflow_type]
-        return tuple(copy.deepcopy(d) for d in result[:limit])
+        if filter_spec.workflow_type is not None:
+            result = [d for d in result if d.workflow_type == filter_spec.workflow_type]
+        return tuple(copy.deepcopy(d) for d in result[offset : offset + limit])
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        result = sorted(self._definitions.values(), key=lambda d: d.id)
+        return tuple(copy.deepcopy(d) for d in result[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        result = list(self._definitions.values())
+        if filter_spec.workflow_type is not None:
+            result = [d for d in result if d.workflow_type == filter_spec.workflow_type]
+        return len(result)
 
     async def delete(self, definition_id: str) -> bool:
         return self._definitions.pop(definition_id, None) is not None
@@ -94,31 +112,52 @@ class FakeWorkflowExecutionRepository:
         stored = self._executions.get(execution_id)
         return copy.deepcopy(stored) if stored is not None else None
 
-    async def list_by_definition(
+    async def list_items(
         self,
-        definition_id: str,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
-        result = sorted(
-            [e for e in self._executions.values() if e.definition_id == definition_id],
-            key=lambda e: e.updated_at,
-            reverse=True,
+        executions = sorted(
+            self._executions.values(),
+            key=lambda e: e.id,
         )
-        return tuple(copy.deepcopy(e) for e in result[:limit])
+        return tuple(copy.deepcopy(e) for e in executions[offset : offset + limit])
 
-    async def list_by_status(
+    async def query(
         self,
-        status: WorkflowExecutionStatus,
+        filter_spec: WorkflowExecutionFilterSpec,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WorkflowExecution, ...]:
+        result = list(self._executions.values())
+
+        if filter_spec.definition_id is not None:
+            result = [e for e in result if e.definition_id == filter_spec.definition_id]
+
+        if filter_spec.status is not None:
+            result = [e for e in result if e.status == filter_spec.status]
+
         result = sorted(
-            [e for e in self._executions.values() if e.status == status],
-            key=lambda e: e.updated_at,
-            reverse=True,
+            result,
+            key=lambda e: (e.updated_at, e.id),
+            reverse=False,
         )
-        return tuple(copy.deepcopy(e) for e in result[:limit])
+        result.reverse()  # Sort by updated_at DESC then id ASC
+
+        return tuple(copy.deepcopy(e) for e in result[offset : offset + limit])
+
+    async def count(self, filter_spec: WorkflowExecutionFilterSpec) -> int:
+        result = list(self._executions.values())
+
+        if filter_spec.definition_id is not None:
+            result = [e for e in result if e.definition_id == filter_spec.definition_id]
+
+        if filter_spec.status is not None:
+            result = [e for e in result if e.status == filter_spec.status]
+
+        return len(result)
 
     async def find_by_task_id(
         self,
@@ -259,11 +298,24 @@ class FakeSubworkflowRepository:
 
     async def get(
         self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
+        entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> WorkflowDefinition | None:
+        subworkflow_id, version = entity_id
         stored = self._rows.get((subworkflow_id, version))
         return copy.deepcopy(stored) if stored is not None else None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        """List subworkflows by composite key, ordered ascending."""
+        items = sorted(self._rows.items())
+        return tuple(
+            copy.deepcopy(definition)
+            for _, definition in items[offset : offset + limit]
+        )
 
     async def list_versions(
         self,
@@ -315,12 +367,10 @@ class FakeSubworkflowRepository:
 
     async def delete(
         self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
+        entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> bool:
-        key = (subworkflow_id, version)
-        if key in self._rows:
-            del self._rows[key]
+        if entity_id in self._rows:
+            del self._rows[entity_id]
             return True
         return False
 
@@ -332,7 +382,7 @@ class FakeSubworkflowRepository:
         parents = await self.find_parents(subworkflow_id, version)
         if parents:
             return False, parents
-        deleted = await self.delete(subworkflow_id, version)
+        deleted = await self.delete((subworkflow_id, version))
         return deleted, ()
 
     async def find_parents(

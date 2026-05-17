@@ -165,7 +165,7 @@ class TestUpsertValidation:
             updated_by=None,
         )
         with pytest.raises(QueryError, match="updated_at"):
-            await repo.upsert(override)
+            await repo.save(override)
 
 
 class TestGetWrapsCorruptionAsQueryError:

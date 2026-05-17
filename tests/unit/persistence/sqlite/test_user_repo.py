@@ -13,6 +13,7 @@ from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
 )
+from synthorg.persistence.user_protocol import ApiKeyFilterSpec, UserFilterSpec
 from tests._shared.persistence import make_private_write_context
 
 
@@ -80,13 +81,13 @@ class TestSQLiteUserRepository:
     async def test_list_users(self, user_repo: SQLiteUserRepository) -> None:
         await user_repo.save(_make_user(user_id="u1", username="alice"))
         await user_repo.save(_make_user(user_id="u2", username="bob"))
-        users = await user_repo.list_users()
+        users = await user_repo.list_items()
         assert len(users) == 2
 
     async def test_count(self, user_repo: SQLiteUserRepository) -> None:
-        assert await user_repo.count() == 0
+        assert await user_repo.count(UserFilterSpec()) == 0
         await user_repo.save(_make_user())
-        assert await user_repo.count() == 1
+        assert await user_repo.count(UserFilterSpec()) == 1
 
     async def test_list_users_excludes_system_user(
         self, user_repo: SQLiteUserRepository
@@ -95,7 +96,7 @@ class TestSQLiteUserRepository:
         await user_repo.save(
             _make_user(user_id="system", username="system", role=HumanRole.SYSTEM),
         )
-        users = await user_repo.list_users()
+        users = await user_repo.list_items()
         assert len(users) == 1
         assert users[0].id == "u1"
 
@@ -106,7 +107,7 @@ class TestSQLiteUserRepository:
         await user_repo.save(
             _make_user(user_id="system", username="system", role=HumanRole.SYSTEM),
         )
-        assert await user_repo.count() == 1
+        assert await user_repo.count(UserFilterSpec()) == 1
 
     async def test_delete_rejects_system_user(
         self, user_repo: SQLiteUserRepository
@@ -157,7 +158,7 @@ class TestSQLiteUserRepository:
         fetched = await user_repo.get("user-001")
         assert fetched is not None
         assert fetched.username == "new-admin"
-        assert await user_repo.count() == 1
+        assert await user_repo.count(UserFilterSpec()) == 1
 
 
 @pytest.mark.unit
@@ -219,7 +220,7 @@ class TestSQLiteApiKeyRepository:
                 created_at=now,
             )
             await api_key_repo.save(key)
-        keys = await api_key_repo.list_by_user("user-001")
+        keys = await api_key_repo.query(ApiKeyFilterSpec(user_id="user-001"))
         assert len(keys) == 3
 
     async def test_delete(

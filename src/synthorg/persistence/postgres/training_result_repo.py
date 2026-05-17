@@ -26,6 +26,9 @@ from synthorg.observability.events.training import (
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.pagination import validate_pagination_args
+
 logger = get_logger(__name__)
 
 _UPSERT_SQL = """\
@@ -186,6 +189,121 @@ class PostgresTrainingResultRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+
+    async def get(
+        self,
+        result_id: NotBlankStr,
+    ) -> TrainingResult | None:
+        """Retrieve a training result by ID.
+
+        Args:
+            result_id: Training result identifier.
+
+        Returns:
+            The result, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT * FROM training_results WHERE id = %s",
+                    (str(result_id),),
+                )
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = f"Failed to fetch training result {result_id!r}"
+            logger.warning(
+                HR_TRAINING_PERSISTENCE_ERROR,
+                result_id=str(result_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        return _row_to_result(row)
+
+    async def delete(
+        self,
+        result_id: NotBlankStr,
+    ) -> bool:
+        """Delete a training result by ID.
+
+        Args:
+            result_id: Training result identifier.
+
+        Returns:
+            ``True`` if a row was deleted, ``False`` if not found.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor() as cur,
+            ):
+                await cur.execute(
+                    "DELETE FROM training_results WHERE id = %s",
+                    (str(result_id),),
+                )
+                await conn.commit()
+                return cur.rowcount > 0
+        except psycopg.Error as exc:
+            msg = f"Failed to delete training result {result_id!r}"
+            logger.warning(
+                HR_TRAINING_PERSISTENCE_ERROR,
+                result_id=str(result_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[TrainingResult, ...]:
+        """List training results with pagination.
+
+        Args:
+            limit: Maximum results to return (must be >= 1).
+            offset: Rows to skip before the window.
+
+        Returns:
+            Tuple of results ordered by id ascending.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=HR_TRAINING_PERSISTENCE_ERROR
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT * FROM training_results ORDER BY id ASC LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list training results"
+            logger.warning(
+                HR_TRAINING_PERSISTENCE_ERROR,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(_row_to_result(row) for row in rows)
 
     async def get_by_plan(
         self,

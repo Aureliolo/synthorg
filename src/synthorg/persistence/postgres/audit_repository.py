@@ -13,13 +13,14 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.audit import (
     AUDIT_COLUMNS,
     audit_entry_to_payload,
     classify_audit_save_error,
     row_to_audit_entry,
 )
+from synthorg.security.models import AuditVerdictStr  # noqa: TC001
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -27,7 +28,8 @@ if TYPE_CHECKING:
 
     from synthorg.core.enums import ApprovalRiskLevel
     from synthorg.core.types import NotBlankStr
-    from synthorg.security.models import AuditEntry, AuditVerdictStr
+    from synthorg.persistence.audit_protocol import AuditFilterSpec
+    from synthorg.security.models import AuditEntry
 
 logger = get_logger(__name__)
 
@@ -55,7 +57,7 @@ class PostgresAuditRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save(self, entry: AuditEntry) -> None:
+    async def append(self, entry: AuditEntry) -> None:
         """Persist an audit entry (append-only, no upsert).
 
         Args:
@@ -91,53 +93,49 @@ class PostgresAuditRepository:
         # -- the service layer is the canonical logging point so audit
         # trails do not duplicate when multiple callers share a repo."
 
-    async def query(  # noqa: PLR0913
+    async def query(
         self,
+        filter_spec: AuditFilterSpec,
         *,
-        agent_id: NotBlankStr | None = None,
-        action_type: NotBlankStr | None = None,
-        verdict: AuditVerdictStr | None = None,
-        risk_level: ApprovalRiskLevel | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[AuditEntry, ...]:
-        """Query audit entries with optional filters (newest first).
+        """Return audit entries matching the filter spec (paginated).
 
-        Filters are AND-combined. Results ordered by timestamp
-        descending.
+        Results are ordered by timestamp descending (newest first).
 
         Args:
-            agent_id: Filter by agent identifier.
-            action_type: Filter by action type string.
-            verdict: Filter by verdict string.
-            risk_level: Filter by risk level.
-            since: Only return entries at or after this timestamp.
-            until: Only return entries at or before this timestamp.
-            limit: Maximum number of entries (must be >= 1).
+            filter_spec: Audit filter specification with optional filters.
+            limit: Maximum number of entries to return (must be >= 1).
+            offset: Number of entries to skip (for pagination).
 
         Returns:
             Matching audit entries as a tuple.
 
         Raises:
             QueryError: If the operation fails, *limit* < 1, or
-                *until* is earlier than *since*.
+                *until* is earlier than *since* in the filter spec.
         """
-        self._validate_query_args(since=since, until=until, limit=limit)
+        self._validate_query_args(
+            since=filter_spec.since,
+            until=filter_spec.until,
+            limit=limit,
+        )
 
         where, params = self._build_query_clause(
-            agent_id=agent_id,
-            action_type=action_type,
-            verdict=verdict,
-            risk_level=risk_level,
-            since=since,
-            until=until,
+            agent_id=filter_spec.agent_id,
+            action_type=filter_spec.action_type,
+            verdict=filter_spec.verdict,
+            risk_level=filter_spec.risk_level,
+            since=filter_spec.since,
+            until=filter_spec.until,
         )
         sql = (
             f"SELECT {_COL_LIST} FROM audit_entries{where} "  # noqa: S608
-            "ORDER BY timestamp DESC LIMIT %s"
+            "ORDER BY timestamp DESC LIMIT %s OFFSET %s"
         )
         params.append(limit)
+        params.append(offset)
 
         try:
             async with (
@@ -152,13 +150,16 @@ class PostgresAuditRepository:
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                agent_id=agent_id,
-                action_type=action_type,
-                verdict=verdict,
-                risk_level=(risk_level.value if risk_level else None),
-                since=since.isoformat() if since else None,
-                until=until.isoformat() if until else None,
+                agent_id=filter_spec.agent_id,
+                action_type=filter_spec.action_type,
+                verdict=filter_spec.verdict,
+                risk_level=(
+                    filter_spec.risk_level.value if filter_spec.risk_level else None
+                ),
+                since=filter_spec.since.isoformat() if filter_spec.since else None,
+                until=filter_spec.until.isoformat() if filter_spec.until else None,
                 limit=limit,
+                offset=offset,
             )
             raise QueryError(msg) from exc
 
@@ -357,7 +358,7 @@ class PostgresAuditRepository:
         *,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
         """Query audit entries where *column* contains *value*.
@@ -382,7 +383,7 @@ class PostgresAuditRepository:
         *,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
         """Query audit entries where *column* has a top-level *key*.

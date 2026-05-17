@@ -31,10 +31,14 @@ from synthorg.observability.events.hr import (
     HR_FIRING_REASSIGNMENT_FAILED,
     HR_FIRING_TEAM_NOTIFIED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import paginate
+from synthorg.persistence.task_protocol import TaskFilterSpec
 
 if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.core.agent import AgentIdentity
+    from synthorg.core.task import Task
     from synthorg.hr.reassignment_protocol import TaskReassignmentStrategy
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.memory.consolidation.archival import ArchivalStore
@@ -187,11 +191,20 @@ class OffboardingService:
         """
         if self._task_repository is None:
             return ()
+        task_repo = self._task_repository
 
         try:
-            assigned_tasks = await self._task_repository.list_tasks(
-                assigned_to=NotBlankStr(agent_id),
-            )
+            collected: list[Task] = []
+            async for page in paginate(
+                lambda limit, offset: task_repo.query(
+                    TaskFilterSpec(assigned_to=NotBlankStr(agent_id)),
+                    limit=limit,
+                    offset=offset,
+                ),
+                page_size=DEFAULT_PAGE_SIZE,
+            ):
+                collected.extend(page)
+            assigned_tasks = tuple(collected)
             active_tasks = tuple(
                 t
                 for t in assigned_tasks

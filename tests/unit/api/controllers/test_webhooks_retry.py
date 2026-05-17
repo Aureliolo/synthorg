@@ -18,12 +18,36 @@ from litestar import Router
 
 from synthorg.api.controllers import webhooks as webhooks_module
 from synthorg.api.controllers.webhooks import WebhooksController
+from synthorg.api.services.idempotency_service import IdempotencyResult
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
 )
+
+
+class _PassThroughIdempotencyService:
+    """Test stub: invokes callback directly and returns its result.
+
+    Tests assert on the controller's transition lifecycle (CAS + plain
+    status writes + log emission). The real ``IdempotencyService``
+    semantics (claim/poll/replay) are tested in
+    ``tests/unit/api/services/test_idempotency_service.py``; here we
+    pass through so the controller's callback runs exactly once and
+    its exceptions reach the test as-is.
+    """
+
+    async def run_idempotent(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        callback: Any,
+    ) -> IdempotencyResult:
+        result = await callback()
+        return IdempotencyResult(result=result, fresh=True, timed_out=False)
+
 
 # Litestar's ``@post`` decorator wraps the controller method into an
 # ``HTTPRouteHandler``; the original async function is preserved at
@@ -95,6 +119,7 @@ def _build_state(
     class _AppState:
         persistence = _Persistence()
         message_bus = object()
+        idempotency_service = _PassThroughIdempotencyService()
 
     state: dict[str, Any] = {"app_state": _AppState()}
     return state, get_mock, cas_mock, plain_mock

@@ -21,6 +21,9 @@ from synthorg.communication.meeting.models import (
     MeetingRecord,
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
 
 
 def _make_minutes() -> MeetingMinutes:
@@ -536,3 +539,104 @@ class TestMeetingSchedulerCooldown:
         clock_time = 1031.0
         records = await scheduler.trigger_event("task_done")
         assert len(records) == 1
+
+
+class _FakeCooldownRepo:
+    """In-memory ``MeetingCooldownRepository`` double for scheduler tests."""
+
+    def __init__(
+        self,
+        *,
+        initial: tuple[MeetingCooldownRecord, ...] = (),
+        fail_save: bool = False,
+    ) -> None:
+        self._rows: dict[str, MeetingCooldownRecord] = {
+            r.meeting_type_name: r for r in initial
+        }
+        self._fail_save = fail_save
+        self.saved: list[MeetingCooldownRecord] = []
+
+    async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
+        return tuple(self._rows.values())
+
+    async def save(self, entity: MeetingCooldownRecord) -> None:
+        if self._fail_save:
+            msg = "cooldown write failed"
+            raise QueryError(msg)
+        self.saved.append(entity)
+        self._rows[entity.meeting_type_name] = entity
+
+    async def get(self, entity_id: NotBlankStr) -> MeetingCooldownRecord | None:
+        return self._rows.get(entity_id)
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._rows.pop(entity_id, None) is not None
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[MeetingCooldownRecord, ...]:
+        return tuple(self._rows.values())[offset : offset + limit]
+
+
+@pytest.mark.unit
+class TestMeetingSchedulerCooldownPersistence:
+    """Cooldown durability: persist re-raise + hydrate replace semantics."""
+
+    @pytest.fixture
+    def orchestrator(self) -> MagicMock:
+        orch = MagicMock()
+        orch.run_meeting = AsyncMock(return_value=_make_record())
+        return orch
+
+    @pytest.fixture
+    def resolver(self) -> MagicMock:
+        res = MagicMock()
+        res.resolve = AsyncMock(
+            return_value=("leader-id", "participant-1", "participant-2"),
+        )
+        return res
+
+    async def test_persist_failure_propagates_and_skips_in_memory_set(
+        self, orchestrator: MagicMock, resolver: MagicMock
+    ) -> None:
+        """A cooldown persist failure re-raises before the in-memory set.
+
+        Persisting must happen before ``_last_triggered`` is updated so a
+        write failure cannot leave a phantom cooldown that vanishes on
+        restart and lets the meeting immediately re-fire.
+        """
+        trigger_type = _make_trigger_type(min_interval_seconds=60)
+        config = _make_config(types=(trigger_type,))
+        scheduler = MeetingScheduler(
+            config=config,
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+            cooldown_repo=_FakeCooldownRepo(fail_save=True),
+        )
+
+        with pytest.raises(QueryError):
+            await scheduler.trigger_event("code_review_complete")
+
+        assert scheduler._last_triggered == {}
+
+    async def test_hydrate_replaces_stale_in_memory_entries(
+        self, orchestrator: MagicMock, resolver: MagicMock
+    ) -> None:
+        """Hydration drops in-memory types absent from the persisted set."""
+        persisted = MeetingCooldownRecord(
+            meeting_type_name=NotBlankStr("persisted_type"),
+            last_triggered_at=datetime.now(UTC),
+        )
+        config = _make_config(types=(_make_trigger_type(),))
+        scheduler = MeetingScheduler(
+            config=config,
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+            cooldown_repo=_FakeCooldownRepo(initial=(persisted,)),
+        )
+        scheduler._last_triggered["stale_type"] = 999.0
+
+        await scheduler._hydrate_cooldowns_from_repo()
+
+        assert "stale_type" not in scheduler._last_triggered
+        assert "persisted_type" in scheduler._last_triggered

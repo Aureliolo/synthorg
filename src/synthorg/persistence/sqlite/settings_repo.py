@@ -4,6 +4,7 @@ import sqlite3
 from collections.abc import Mapping, Sequence  # noqa: TC003
 
 import aiosqlite
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -14,7 +15,12 @@ from synthorg.observability.events.settings import (
     SETTINGS_SET_FAILED,
     SETTINGS_VALUE_SET,
 )
-from synthorg.persistence.settings_protocol import _DEFAULT_LIST_LIMIT_200
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
+from synthorg.persistence.settings_protocol import (
+    SettingRow,
+    SettingRowKey,
+)
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -45,15 +51,45 @@ class SQLiteSettingsRepository:
         self._db = db
         self._write_context = write_context
 
+    async def save(self, entity: SettingRow) -> None:
+        """Persist a setting (upsert by composite key)."""
+        async with self._write_context():
+            try:
+                await self._db.execute(
+                    """\
+INSERT OR REPLACE INTO settings (
+    namespace, key, value, updated_at
+) VALUES (
+    :namespace, :key, :value, :updated_at
+)""",
+                    entity.model_dump(mode="json"),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save setting {entity.namespace}/{entity.key}"
+                logger.warning(
+                    SETTINGS_SET_FAILED,
+                    namespace=entity.namespace,
+                    key=entity.key,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        logger.debug(
+            SETTINGS_VALUE_SET,
+            namespace=entity.namespace,
+            key=entity.key,
+        )
+
     async def get(
         self,
-        namespace: NotBlankStr,
-        key: NotBlankStr,
-    ) -> tuple[str, str] | None:
-        """Retrieve (value, updated_at) or None."""
+        entity_id: SettingRowKey,
+    ) -> SettingRow | None:
+        """Retrieve a setting by composite key."""
+        namespace, key = entity_id
         try:
             cursor = await self._db.execute(
-                "SELECT value, updated_at FROM settings "
+                "SELECT namespace, key, value, updated_at FROM settings "
                 "WHERE namespace = ? AND key = ?",
                 (namespace, key),
             )
@@ -68,18 +104,31 @@ class SQLiteSettingsRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+
         if row is None:
             return None
-        return (str(row[0]), str(row[1]))
+        try:
+            return SettingRow.model_validate(dict(row))
+        except ValidationError as exc:
+            msg = f"Failed to deserialize setting row {namespace}/{key}"
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key=key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="deserialization failed",
+            )
+            raise QueryError(msg) from exc
 
     async def get_namespace(
         self,
         namespace: NotBlankStr,
-    ) -> tuple[tuple[str, str, str], ...]:
-        """Return all (key, value, updated_at) for a namespace."""
+    ) -> tuple[SettingRow, ...]:
+        """Retrieve all settings in a namespace."""
         try:
             cursor = await self._db.execute(
-                "SELECT key, value, updated_at FROM settings "
+                "SELECT namespace, key, value, updated_at FROM settings "
                 "WHERE namespace = ? ORDER BY key",
                 (namespace,),
             )
@@ -93,36 +142,37 @@ class SQLiteSettingsRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple((str(r[0]), str(r[1]), str(r[2])) for r in rows)
 
-    async def get_all(
+        results: list[SettingRow] = []
+        for row in rows:
+            try:
+                results.append(SettingRow.model_validate(dict(row)))
+            except ValidationError as exc:
+                msg = f"Failed to deserialize setting row {namespace}/{row['key']}"
+                logger.warning(
+                    SETTINGS_FETCH_FAILED,
+                    namespace=namespace,
+                    key=row["key"] if row else "unknown",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="deserialization failed",
+                )
+                raise QueryError(msg) from exc
+        return tuple(results)
+
+    async def list_items(
         self,
         *,
-        limit: int = _DEFAULT_LIST_LIMIT_200,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
-    ) -> tuple[tuple[str, str, str, str], ...]:
-        """Return all (namespace, key, value, updated_at) (paginated)."""
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                error=msg,
-                param="limit",
-                value=limit,
-            )
-            raise QueryError(msg)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                error=msg,
-                param="offset",
-                value=offset,
-            )
-            raise QueryError(msg)
-        # Settings registry has a few hundred entries by design; the
-        # 1000 cap is a defensive ceiling against misconfigured callers.
-        effective_limit = min(limit, 1_000)
+    ) -> tuple[SettingRow, ...]:
+        """List settings across all namespaces (paginated)."""
+        # Validate + clamp via the shared helper (rejects limit < 1 /
+        # offset < 0, caps at the repo-wide MAX_LIST_LIMIT ceiling) so
+        # no inline magic ceiling and no sentinel (-1) slips through.
+        effective_limit = validate_pagination_args(
+            limit, offset, event=SETTINGS_FETCH_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 "SELECT namespace, key, value, updated_at FROM settings "
@@ -131,38 +181,49 @@ class SQLiteSettingsRepository:
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to get all settings"
+            msg = "Failed to list settings"
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple((str(r[0]), str(r[1]), str(r[2]), str(r[3])) for r in rows)
 
-    async def set(
+        results: list[SettingRow] = []
+        for row in rows:
+            try:
+                results.append(SettingRow.model_validate(dict(row)))
+            except ValidationError as exc:
+                msg = (
+                    f"Failed to deserialize setting row {row['namespace']}/{row['key']}"
+                )
+                logger.warning(
+                    SETTINGS_FETCH_FAILED,
+                    namespace=row["namespace"] if row else "unknown",
+                    key=row["key"] if row else "unknown",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="deserialization failed",
+                )
+                raise QueryError(msg) from exc
+        return tuple(results)
+
+    async def set_if_unchanged(
         self,
-        namespace: NotBlankStr,
-        key: NotBlankStr,
-        value: str,
-        updated_at: str,
-        *,
+        entity: SettingRow,
         expected_updated_at: str | None = None,
     ) -> bool:
-        """Upsert a setting.
+        """Upsert a setting with optional compare-and-swap (bespoke per D7).
 
         Args:
-            namespace: Setting namespace.
-            key: Setting key.
-            value: Serialized setting value.
-            updated_at: New ``updated_at`` timestamp.
-            expected_updated_at: When provided, enforces atomic
-                compare-and-swap -- the row is only updated if
-                the current ``updated_at`` matches.
+            entity: The setting to upsert.
+            expected_updated_at: When provided, enforces atomic CAS -- the
+                row is only updated if the current ``updated_at`` matches.
+                Empty string ``""`` signals "only insert if no row exists".
 
         Returns:
-            ``True`` if the write succeeded, ``False`` if the
-            compare-and-swap condition was not met.
+            ``True`` if the write succeeded, ``False`` if the CAS condition
+            was not met.
         """
         async with self._write_context():
             try:
@@ -171,17 +232,27 @@ class SQLiteSettingsRepository:
                         "UPDATE settings SET value = ?, updated_at = ? "
                         "WHERE namespace = ? AND key = ? "
                         "AND updated_at = ?",
-                        (value, updated_at, namespace, key, expected_updated_at),
+                        (
+                            entity.value,
+                            entity.updated_at,
+                            entity.namespace,
+                            entity.key,
+                            expected_updated_at,
+                        ),
                     )
                     await self._db.commit()
                     if cursor.rowcount == 0:
                         if expected_updated_at == "":
-                            # No DB row yet -- try insert.
                             cursor = await self._db.execute(
                                 "INSERT OR IGNORE INTO settings "
                                 "(namespace, key, value, updated_at) "
                                 "VALUES (?, ?, ?, ?)",
-                                (namespace, key, value, updated_at),
+                                (
+                                    entity.namespace,
+                                    entity.key,
+                                    entity.value,
+                                    entity.updated_at,
+                                ),
                             )
                             await self._db.commit()
                             if cursor.rowcount == 0:
@@ -194,47 +265,44 @@ class SQLiteSettingsRepository:
                         "VALUES (?, ?, ?, ?) "
                         "ON CONFLICT(namespace, key) DO UPDATE SET "
                         "value=excluded.value, updated_at=excluded.updated_at",
-                        (namespace, key, value, updated_at),
+                        (entity.namespace, entity.key, entity.value, entity.updated_at),
                     )
                     await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                msg = f"Failed to set setting {namespace}/{key}"
+                msg = f"Failed to set setting {entity.namespace}/{entity.key}"
                 logger.warning(
                     SETTINGS_SET_FAILED,
-                    namespace=namespace,
-                    key=key,
+                    namespace=entity.namespace,
+                    key=entity.key,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
         logger.debug(
             SETTINGS_VALUE_SET,
-            namespace=namespace,
-            key=key,
+            namespace=entity.namespace,
+            key=entity.key,
         )
         return True
 
     async def set_many(
         self,
-        items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
+        items: Sequence[SettingRow],
         *,
-        expected_updated_at_map: (Mapping[tuple[str, str], str] | None) = None,
+        expected_updated_at_map: (Mapping[SettingRowKey, str] | None) = None,
     ) -> bool:
-        """Atomically upsert multiple settings (see protocol docstring)."""
+        """Atomically upsert multiple settings."""
         if not items:
             return True
-        cas_map: Mapping[tuple[str, str], str] = expected_updated_at_map or {}
+        cas_map: Mapping[SettingRowKey, str] = expected_updated_at_map or {}
         async with self._write_context():
             try:
                 await self._db.execute("BEGIN IMMEDIATE")
                 try:
-                    for namespace, key, value, updated_at in items:
-                        expected = cas_map.get((str(namespace), str(key)))
+                    for entity in items:
+                        expected = cas_map.get((entity.namespace, entity.key))
                         if not await self._upsert_one(
-                            namespace,
-                            key,
-                            value,
-                            updated_at,
+                            entity,
                             expected,
                         ):
                             await self._db.rollback()
@@ -252,20 +320,17 @@ class SQLiteSettingsRepository:
                     item_count=len(items),
                 )
                 raise QueryError(msg) from exc
-        for namespace, key, _value, _updated_at in items:
+        for entity in items:
             logger.debug(
                 SETTINGS_VALUE_SET,
-                namespace=namespace,
-                key=key,
+                namespace=entity.namespace,
+                key=entity.key,
             )
         return True
 
     async def _upsert_one(
         self,
-        namespace: str,
-        key: str,
-        value: str,
-        updated_at: str,
+        entity: SettingRow,
         expected: str | None,
     ) -> bool:
         """Write a single setting inside an open transaction.
@@ -280,7 +345,7 @@ class SQLiteSettingsRepository:
                 "ON CONFLICT(namespace, key) DO UPDATE SET "
                 "value=excluded.value, "
                 "updated_at=excluded.updated_at",
-                (namespace, key, value, updated_at),
+                (entity.namespace, entity.key, entity.value, entity.updated_at),
             )
             return True
         if expected == "":
@@ -288,23 +353,20 @@ class SQLiteSettingsRepository:
                 "INSERT OR IGNORE INTO settings "
                 "(namespace, key, value, updated_at) "
                 "VALUES (?, ?, ?, ?)",
-                (namespace, key, value, updated_at),
+                (entity.namespace, entity.key, entity.value, entity.updated_at),
             )
             return cursor.rowcount != 0
         cursor = await self._db.execute(
             "UPDATE settings SET value = ?, updated_at = ? "
             "WHERE namespace = ? AND key = ? "
             "AND updated_at = ?",
-            (value, updated_at, namespace, key, expected),
+            (entity.value, entity.updated_at, entity.namespace, entity.key, expected),
         )
         return cursor.rowcount != 0
 
-    async def delete(
-        self,
-        namespace: NotBlankStr,
-        key: NotBlankStr,
-    ) -> bool:
-        """Delete a setting. Return True if deleted."""
+    async def delete(self, entity_id: SettingRowKey) -> bool:
+        """Delete a setting by composite key."""
+        namespace, key = entity_id
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

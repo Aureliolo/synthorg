@@ -25,11 +25,12 @@ import copy
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import (
     Connection,  # noqa: TC001
-    ConnectionType,  # noqa: TC001
     OAuthState,  # noqa: TC001
     WebhookReceipt,  # noqa: TC001
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence.connection_protocol import ConnectionFilterSpec  # noqa: TC001
 
 
 class InMemoryConnectionRepository:
@@ -47,10 +48,10 @@ class InMemoryConnectionRepository:
         existing = self._store.get(name)
         return copy.deepcopy(existing) if existing is not None else None
 
-    async def list_all(
+    async def list_items(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all (deep-copied)."""
@@ -60,21 +61,32 @@ class InMemoryConnectionRepository:
         effective_offset = max(0, int(offset))
         return rows[effective_offset : effective_offset + max(0, int(limit))]
 
-    async def list_by_type(
+    async def query(
         self,
-        connection_type: ConnectionType,
+        filter_spec: ConnectionFilterSpec,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List by type (deep-copied)."""
-        matches = tuple(
-            copy.deepcopy(c)
-            for c in sorted(self._store.values(), key=lambda c: c.name)
-            if c.connection_type == connection_type
-        )
+        """List matching the filter spec (deep-copied)."""
+        ordered = sorted(self._store.values(), key=lambda c: c.name)
+        if filter_spec.connection_type is not None:
+            ordered = [
+                c for c in ordered if c.connection_type == filter_spec.connection_type
+            ]
         effective_offset = max(0, int(offset))
-        return matches[effective_offset : effective_offset + max(0, int(limit))]
+        sliced = ordered[effective_offset : effective_offset + max(0, int(limit))]
+        return tuple(copy.deepcopy(c) for c in sliced)
+
+    async def count(self, filter_spec: ConnectionFilterSpec) -> int:
+        """Count connections matching filter (in-memory)."""
+        if filter_spec.connection_type is None:
+            return len(self._store)
+        return sum(
+            1
+            for c in self._store.values()
+            if c.connection_type == filter_spec.connection_type
+        )
 
     async def delete(self, name: str) -> bool:
         """Delete by name."""
@@ -124,7 +136,32 @@ class InMemoryOAuthStateRepository:
         """Delete by token."""
         return self._store.pop(state_token, None) is not None
 
-    async def cleanup_expired(self) -> int:
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[OAuthState, ...]:
+        """List OAuth states in token order (deep-copied)."""
+        ordered = sorted(self._store.values(), key=lambda s: s.state_token)
+        effective_offset = max(0, int(offset))
+        sliced = ordered[effective_offset : effective_offset + max(0, int(limit))]
+        return tuple(copy.deepcopy(s) for s in sliced)
+
+    async def mark_consumed(
+        self,
+        state_token: NotBlankStr,
+        *,
+        connection_name: NotBlankStr,  # noqa: ARG002
+        consumed_at: object,  # noqa: ARG002
+    ) -> bool:
+        """In-memory CAS not enforced; treat as no-op success when present."""
+        return state_token in self._store
+
+    async def cleanup_expired(
+        self,
+        retention_seconds: float,  # noqa: ARG002
+    ) -> int:
         """In-memory: no durable TTL enforcement; callers may run GC."""
         return 0
 
@@ -135,9 +172,70 @@ class InMemoryWebhookReceiptRepository:
     def __init__(self) -> None:
         self._store: list[WebhookReceipt] = []
 
-    async def log(self, receipt: WebhookReceipt) -> None:
-        """Persist a receipt (deep-copied)."""
-        self._store.append(copy.deepcopy(receipt))
+    async def save(self, receipt: WebhookReceipt) -> None:
+        """Persist a receipt (deep-copied), upserting by id.
+
+        Mirrors the durable repos' insert-or-replace semantics so a
+        re-save of the same id updates in place instead of leaving a
+        duplicate row that ``get`` / ``list_items`` would then disagree
+        on.
+        """
+        snapshot = copy.deepcopy(receipt)
+        for i, existing in enumerate(self._store):
+            if str(existing.id) == str(receipt.id):
+                self._store[i] = snapshot
+                return
+        self._store.append(snapshot)
+
+    async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
+        """Look up a receipt by id (deep-copied)."""
+        for r in self._store:
+            if str(r.id) == str(receipt_id):
+                return copy.deepcopy(r)
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WebhookReceipt, ...]:
+        """List webhook receipts in id order (deep-copied)."""
+        ordered = sorted(self._store, key=lambda r: str(r.id))
+        effective_offset = max(0, int(offset))
+        sliced = ordered[effective_offset : effective_offset + max(0, int(limit))]
+        return tuple(copy.deepcopy(r) for r in sliced)
+
+    async def delete(self, receipt_id: NotBlankStr) -> bool:
+        """Delete a receipt by id."""
+        for i, r in enumerate(self._store):
+            if str(r.id) == str(receipt_id):
+                self._store.pop(i)
+                return True
+        return False
+
+    async def update_status(
+        self,
+        receipt_id: NotBlankStr,  # noqa: ARG002
+        *,
+        status: str,  # noqa: ARG002
+        processed_at: object,  # noqa: ARG002
+        error: str | None,  # noqa: ARG002
+    ) -> bool:
+        """In-memory stub: no status update."""
+        return False
+
+    async def update_status_if_current(
+        self,
+        receipt_id: NotBlankStr,  # noqa: ARG002
+        *,
+        expected_status: str,  # noqa: ARG002
+        status: str,  # noqa: ARG002
+        processed_at: object,  # noqa: ARG002
+        error: str | None,  # noqa: ARG002
+    ) -> bool:
+        """In-memory stub: no CAS update."""
+        return False
 
     async def get_by_connection(
         self,

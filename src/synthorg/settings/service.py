@@ -32,6 +32,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_VERSION_CONFLICT,
 )
 from synthorg.observability.metrics_hub import record_settings_mutation
+from synthorg.persistence.settings_protocol import SettingRow
 from synthorg.settings.enums import SettingsImportSource, SettingSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
@@ -256,19 +257,17 @@ class SettingsService:
         setting cannot be decrypted.
         """
         result = await self._repository.get(
-            NotBlankStr(definition.namespace),
-            NotBlankStr(definition.key),
+            (NotBlankStr(definition.namespace), NotBlankStr(definition.key)),
         )
         if result is None:
             return None
-        raw_value, updated_at = result
-        value = self._decrypt_if_sensitive(definition, raw_value)
+        value = self._decrypt_if_sensitive(definition, result.value)
         return SettingValue(
             namespace=definition.namespace,
             key=definition.key,
             value=value,
             source=SettingSource.DATABASE,
-            updated_at=updated_at,
+            updated_at=result.updated_at,
         )
 
     def _decrypt_if_sensitive(
@@ -414,7 +413,9 @@ class SettingsService:
         db_rows = await self._repository.get_namespace(
             NotBlankStr(namespace),
         )
-        db_lookup: dict[str, tuple[str, str]] = {k: (v, ts) for k, v, ts in db_rows}
+        db_lookup: dict[str, tuple[str, str]] = {
+            row.key: (row.value, row.updated_at) for row in db_rows
+        }
 
         entries: list[SettingEntry] = []
         for defn in definitions:
@@ -435,9 +436,9 @@ class SettingsService:
             return ()
 
         # Batch-fetch all DB values in one query.
-        db_rows = await self._repository.get_all()
+        db_rows = await self._repository.list_items(limit=10_000)
         db_lookup: dict[tuple[str, str], tuple[str, str]] = {
-            (ns, k): (v, ts) for ns, k, v, ts in db_rows
+            (row.namespace, row.key): (row.value, row.updated_at) for row in db_rows
         }
 
         entries: list[SettingEntry] = []
@@ -492,9 +493,9 @@ class SettingsService:
         # Single DB round-trip for the override values; bounded by the
         # number of overridden settings (typically << total definition
         # count) so we keep the existing batch shape.
-        db_rows = await self._repository.get_all()
+        db_rows = await self._repository.list_items(limit=10_000)
         db_lookup: dict[tuple[str, str], tuple[str, str]] = {
-            (ns, k): (v, ts) for ns, k, v, ts in db_rows
+            (row.namespace, row.key): (row.value, row.updated_at) for row in db_rows
         }
         resolved: list[SettingEntry] = []
         for defn in page_defs:
@@ -698,13 +699,20 @@ class SettingsService:
 
         store_value = self._encrypt_if_sensitive(definition, value)
         updated_at = _now_iso()
-        written = await self._repository.set(
-            NotBlankStr(namespace),
-            NotBlankStr(key),
-            store_value,
-            updated_at,
-            expected_updated_at=expected_updated_at,
+        entity = SettingRow(
+            namespace=NotBlankStr(namespace),
+            key=NotBlankStr(key),
+            value=store_value,
+            updated_at=updated_at,
         )
+        if expected_updated_at is not None:
+            written = await self._repository.set_if_unchanged(
+                entity,
+                expected_updated_at=expected_updated_at,
+            )
+        else:
+            await self._repository.save(entity)
+            written = True
         if not written:
             from synthorg.core.domain_errors import (  # noqa: PLC0415
                 VersionConflictError,
@@ -813,7 +821,7 @@ class SettingsService:
         *,
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> tuple[
-        list[tuple[NotBlankStr, NotBlankStr, str, str]],
+        list[SettingRow],
         list[tuple[str, str, SettingDefinition]],
     ]:
         """Validate, encrypt, and shape items for a batch ``set_many`` write.
@@ -823,7 +831,7 @@ class SettingsService:
         can invalidate cache + publish change events after the
         transactional write succeeds.
         """
-        prepared: list[tuple[NotBlankStr, NotBlankStr, str, str]] = []
+        prepared: list[SettingRow] = []
         definitions: list[tuple[str, str, SettingDefinition]] = []
         seen: set[tuple[str, str]] = set()
         for namespace, key, value in items:
@@ -866,11 +874,11 @@ class SettingsService:
 
             store_value = self._encrypt_if_sensitive(definition, value)
             prepared.append(
-                (
-                    NotBlankStr(namespace),
-                    NotBlankStr(key),
-                    store_value,
-                    updated_at,
+                SettingRow(
+                    namespace=NotBlankStr(namespace),
+                    key=NotBlankStr(key),
+                    value=store_value,
+                    updated_at=updated_at,
                 )
             )
             definitions.append((namespace, key, definition))
@@ -934,7 +942,9 @@ class SettingsService:
 
         _reject_if_read_only(definition, action="delete")
 
-        await self._repository.delete(NotBlankStr(namespace), NotBlankStr(key))
+        await self._repository.delete(
+            (NotBlankStr(namespace), NotBlankStr(key)),
+        )
 
         self._invalidate_cache(namespace, key)
 

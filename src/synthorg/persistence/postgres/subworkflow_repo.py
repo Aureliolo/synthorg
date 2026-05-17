@@ -37,10 +37,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_LISTED,
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
 )
-from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,
-    validate_pagination_args,
-)
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -249,10 +247,10 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
 
     async def get(
         self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
+        entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> WorkflowDefinition | None:
-        """Fetch a specific subworkflow version."""
+        """Fetch a specific subworkflow version by composite key."""
+        subworkflow_id, version = entity_id
         try:
             async with (
                 self._pool.connection() as conn,
@@ -284,15 +282,50 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         )
         return _deserialize_row(row, f"{subworkflow_id}@{version}")
 
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinition, ...]:
+        """List subworkflows by composite key in ascending order (paginated).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    f"SELECT {_SELECT_COLUMNS} FROM subworkflows "  # noqa: S608
+                    "ORDER BY subworkflow_id, semver LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list subworkflows"
+            logger.warning(
+                PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(_deserialize_row(row, str(row["subworkflow_id"])) for row in rows)
+
     async def list_versions(
         self,
         subworkflow_id: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[NotBlankStr, ...]:
         """List semver strings for a subworkflow, newest first.
 
-        Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+        Bounded by *limit* (default :data:`DEFAULT_PAGE_SIZE`).
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
@@ -327,7 +360,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
     async def list_summaries(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[SubworkflowSummary, ...]:
         """Return summaries (latest version per subworkflow).
 
@@ -397,10 +430,10 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
 
     async def delete(
         self,
-        subworkflow_id: NotBlankStr,
-        version: NotBlankStr,
+        entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> bool:
-        """Delete a subworkflow version, returning True on success."""
+        """Delete a subworkflow version by composite key, returning True on success."""
+        subworkflow_id, version = entity_id
         try:
             async with self._pool.connection() as conn:
                 result = await conn.execute(

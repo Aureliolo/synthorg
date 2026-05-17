@@ -69,9 +69,9 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
     config_resolver.get_bool.return_value = True
     connections_repo = AsyncMock(spec=ConnectionRepository)
     if list_all_side_effect is not None:
-        connections_repo.list_all.side_effect = list_all_side_effect
+        connections_repo.list_items.side_effect = list_all_side_effect
     else:
-        connections_repo.list_all.return_value = tuple(connections or [])
+        connections_repo.list_items.return_value = tuple(connections or [])
     webhook_repo = AsyncMock(spec=WebhookReceiptRepository)
 
     side_effects = cleanup_side_effects or {}
@@ -105,7 +105,7 @@ async def test_tick_skips_when_persistence_absent() -> None:
 
     await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
-    app_state.persistence.connections.list_all.assert_not_awaited()
+    app_state.persistence.connections.list_items.assert_not_awaited()
     app_state.persistence.webhook_receipts.cleanup_old_for_connection.assert_not_awaited()
 
 

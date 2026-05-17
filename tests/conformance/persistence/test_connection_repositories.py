@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
@@ -111,7 +112,7 @@ class TestConnectionRepository:
         await backend.connections.save(_connection("a-alpha"))
         await backend.connections.save(_connection("b-bravo"))
 
-        rows = await backend.connections.list_all()
+        rows = await backend.connections.list_items()
 
         names = [c.name for c in rows]
         # The fixture's database is per-test, so only our 3 names exist.
@@ -130,8 +131,16 @@ class TestConnectionRepository:
             ),
         )
 
-        github_rows = await backend.connections.list_by_type(ConnectionType.GITHUB)
-        slack_rows = await backend.connections.list_by_type(ConnectionType.SLACK)
+        from synthorg.persistence.connection_protocol import (
+            ConnectionFilterSpec,
+        )
+
+        github_rows = await backend.connections.query(
+            ConnectionFilterSpec(connection_type=ConnectionType.GITHUB),
+        )
+        slack_rows = await backend.connections.query(
+            ConnectionFilterSpec(connection_type=ConnectionType.SLACK),
+        )
 
         assert {c.name for c in github_rows} == {"gh"}
         assert {c.name for c in slack_rows} == {"slack"}
@@ -157,9 +166,9 @@ class TestConnectionRepository:
         for name in ("a", "b", "c", "d", "e"):
             await backend.connections.save(_connection(name))
 
-        page_one = await backend.connections.list_all(limit=2, offset=0)
-        page_two = await backend.connections.list_all(limit=2, offset=2)
-        unbounded = await backend.connections.list_all()
+        page_one = await backend.connections.list_items(limit=2, offset=0)
+        page_two = await backend.connections.list_items(limit=2, offset=2)
+        unbounded = await backend.connections.list_items()
 
         # Sorted by name ASC; per-test database means only our 5 rows exist.
         assert [c.name for c in page_one] == ["a", "b"]
@@ -172,19 +181,21 @@ class TestConnectionRepository:
         for name in ("a", "b", "c"):
             await backend.connections.save(_connection(name))
 
-        page = await backend.connections.list_all(limit=10, offset=100)
+        page = await backend.connections.list_items(limit=10, offset=100)
 
         assert page == ()
 
-    async def test_list_all_negative_limit_returns_empty(
+    async def test_list_all_invalid_limit_raises_query_error(
         self, backend: PersistenceBackend
     ) -> None:
         await backend.connections.save(_connection("only"))
 
-        # Both ``limit=0`` and ``limit=-1`` are documented as returning ()
-        # without hitting the database.
-        assert await backend.connections.list_all(limit=0) == ()
-        assert await backend.connections.list_all(limit=-1) == ()
+        # Out-of-range pagination is rejected at the boundary with a
+        # domain ``QueryError`` rather than silently returning ().
+        with pytest.raises(QueryError):
+            await backend.connections.list_items(limit=0)
+        with pytest.raises(QueryError):
+            await backend.connections.list_items(limit=-1)
 
     async def test_save_round_trips_partial_zero_rate_limiter(
         self, backend: PersistenceBackend
@@ -214,8 +225,12 @@ class TestConnectionRepository:
                 _connection(name, connection_type=ConnectionType.GITHUB),
             )
 
-        page = await backend.connections.list_by_type(
-            ConnectionType.GITHUB,
+        from synthorg.persistence.connection_protocol import (
+            ConnectionFilterSpec,
+        )
+
+        page = await backend.connections.query(
+            ConnectionFilterSpec(connection_type=ConnectionType.GITHUB),
             limit=1,
             offset=1,
         )
@@ -519,7 +534,7 @@ class TestWebhookReceiptRepository:
         await backend.connections.save(_connection("github-bot"))
         receipt = _receipt()
 
-        await backend.webhook_receipts.log(receipt)
+        await backend.webhook_receipts.save(receipt)
         rows = await backend.webhook_receipts.get_by_connection(
             NotBlankStr("github-bot"),
         )
@@ -533,13 +548,13 @@ class TestWebhookReceiptRepository:
     ) -> None:
         await backend.connections.save(_connection("github-bot"))
         now = datetime.now(UTC)
-        await backend.webhook_receipts.log(
+        await backend.webhook_receipts.save(
             _receipt(receipt_id="oldest", received_at=now - timedelta(seconds=20)),
         )
-        await backend.webhook_receipts.log(
+        await backend.webhook_receipts.save(
             _receipt(receipt_id="middle", received_at=now - timedelta(seconds=10)),
         )
-        await backend.webhook_receipts.log(
+        await backend.webhook_receipts.save(
             _receipt(receipt_id="newest", received_at=now),
         )
 
@@ -554,7 +569,7 @@ class TestWebhookReceiptRepository:
     ) -> None:
         await backend.connections.save(_connection("github-bot"))
         for i in range(5):
-            await backend.webhook_receipts.log(
+            await backend.webhook_receipts.save(
                 _receipt(receipt_id=f"r-{i}"),
             )
 
@@ -569,7 +584,7 @@ class TestWebhookReceiptRepository:
         await backend.connections.save(_connection("github-bot"))
         now = datetime.now(UTC)
         for i in range(4):
-            await backend.webhook_receipts.log(
+            await backend.webhook_receipts.save(
                 _receipt(
                     receipt_id=f"r-{i}",
                     received_at=now - timedelta(seconds=i),
@@ -589,7 +604,7 @@ class TestWebhookReceiptRepository:
         self, backend: PersistenceBackend
     ) -> None:
         await backend.connections.save(_connection("github-bot"))
-        await backend.webhook_receipts.log(_receipt())
+        await backend.webhook_receipts.save(_receipt())
 
         rows = await backend.webhook_receipts.get_by_connection(
             NotBlankStr("github-bot"),
@@ -604,8 +619,8 @@ class TestWebhookReceiptRepository:
     ) -> None:
         await backend.connections.save(_connection("a"))
         await backend.connections.save(_connection("b"))
-        await backend.webhook_receipts.log(_receipt(connection_name="a"))
-        await backend.webhook_receipts.log(_receipt(connection_name="b"))
+        await backend.webhook_receipts.save(_receipt(connection_name="a"))
+        await backend.webhook_receipts.save(_receipt(connection_name="b"))
 
         rows_a = await backend.webhook_receipts.get_by_connection(NotBlankStr("a"))
         rows_b = await backend.webhook_receipts.get_by_connection(NotBlankStr("b"))
@@ -619,7 +634,7 @@ class TestWebhookReceiptRepository:
         self, backend: PersistenceBackend
     ) -> None:
         await backend.connections.save(_connection("github-bot"))
-        await backend.webhook_receipts.log(_receipt())
+        await backend.webhook_receipts.save(_receipt())
 
         rows = await backend.webhook_receipts.get_by_connection(
             NotBlankStr("github-bot"),
@@ -633,7 +648,7 @@ class TestWebhookReceiptRepository:
     ) -> None:
         await backend.connections.save(_connection("github-bot"))
         receipt = _receipt(receipt_id="rcpt-target")
-        await backend.webhook_receipts.log(receipt)
+        await backend.webhook_receipts.save(receipt)
 
         fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-target"))
 
@@ -649,7 +664,7 @@ class TestWebhookReceiptRepository:
 
     async def test_update_status_round_trip(self, backend: PersistenceBackend) -> None:
         await backend.connections.save(_connection("github-bot"))
-        await backend.webhook_receipts.log(_receipt(receipt_id="rcpt-update"))
+        await backend.webhook_receipts.save(_receipt(receipt_id="rcpt-update"))
 
         updated_at = datetime.now(UTC)
         updated = await backend.webhook_receipts.update_status(
@@ -682,7 +697,7 @@ class TestWebhookReceiptRepository:
     ) -> None:
         """CAS transitions the row when the current status matches the expected."""
         await backend.connections.save(_connection("github-bot"))
-        await backend.webhook_receipts.log(
+        await backend.webhook_receipts.save(
             _receipt(receipt_id="rcpt-cas-win", status="failed"),
         )
 
@@ -710,7 +725,7 @@ class TestWebhookReceiptRepository:
         ``expected_status='failed'`` and must NOT mutate the row.
         """
         await backend.connections.save(_connection("github-bot"))
-        await backend.webhook_receipts.log(
+        await backend.webhook_receipts.save(
             _receipt(receipt_id="rcpt-cas-lose", status="retrying"),
         )
 
@@ -745,7 +760,7 @@ class TestWebhookReceiptRepository:
         self, backend: PersistenceBackend
     ) -> None:
         await backend.connections.save(_connection("github-bot"))
-        await backend.webhook_receipts.log(_receipt())
+        await backend.webhook_receipts.save(_receipt())
 
         zero = await backend.webhook_receipts.cleanup_old_for_connection(
             NotBlankStr("github-bot"),
@@ -769,10 +784,10 @@ class TestWebhookReceiptRepository:
         await backend.connections.save(_connection("github-bot"))
         old = datetime.now(UTC) - timedelta(days=30)
         recent = datetime.now(UTC)
-        await backend.webhook_receipts.log(
+        await backend.webhook_receipts.save(
             _receipt(receipt_id="old", received_at=old),
         )
-        await backend.webhook_receipts.log(
+        await backend.webhook_receipts.save(
             _receipt(receipt_id="recent", received_at=recent),
         )
 
@@ -794,14 +809,14 @@ class TestWebhookReceiptRepository:
         await backend.connections.save(_connection("github-bot"))
         await backend.connections.save(_connection("slack-bot"))
         old = datetime.now(UTC) - timedelta(days=30)
-        await backend.webhook_receipts.log(
+        await backend.webhook_receipts.save(
             _receipt(
                 receipt_id="github-old",
                 connection_name="github-bot",
                 received_at=old,
             ),
         )
-        await backend.webhook_receipts.log(
+        await backend.webhook_receipts.save(
             _receipt(
                 receipt_id="slack-old",
                 connection_name="slack-bot",

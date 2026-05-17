@@ -109,8 +109,14 @@ class InMemoryMessageBus:
         self._clock = clock or SystemClock()
         # Eager init: ``publish`` / ``subscribe`` / ``receive`` may be
         # called before any background lifecycle task runs, so the
-        # bus lock must exist before the first hot-path acquire.
+        # hot-path bus lock must exist before the first acquire.
         self._lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
+        # Per docs/reference/lifecycle-sync.md: serialize start/stop +
+        # _running check-and-set under a dedicated lifecycle lock so a
+        # concurrent restart cannot race the hot-path mutations.  Hot-
+        # path publish/subscribe/receive continue to use ``_lock`` so
+        # routine traffic does not serialise against lifecycle calls.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._channels: dict[str, Channel] = {}
         self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope | None]] = {}
         self._history: dict[str, deque[Message]] = {}
@@ -161,25 +167,32 @@ class InMemoryMessageBus:
         Raises:
             MessageBusAlreadyRunningError: If already running.
         """
-        async with self._lock:
+        async with self._lifecycle_lock:
             if self._running:
                 msg = "Message bus is already running"
                 logger.warning(COMM_BUS_ALREADY_RUNNING)
                 raise MessageBusAlreadyRunningError(msg)
-            self._channels.clear()
-            self._queues.clear()
-            self._history.clear()
-            self._known_agents.clear()
-            self._waiters.clear()
-            self._running = True
-            self._shutdown_event.clear()
-            self._idle_poll_count = 0
-            self._last_idle_summary = self._clock.monotonic()
-            maxlen = self._config.retention.max_messages_per_channel
-            for name in self._config.channels:
-                ch = Channel(name=name, type=ChannelType.TOPIC)
-                self._channels[name] = ch
-                self._history[name] = deque(maxlen=maxlen)
+            async with self._lock:
+                self._channels.clear()
+                self._queues.clear()
+                self._history.clear()
+                self._known_agents.clear()
+                self._waiters.clear()
+                self._running = True
+                # Allocate a fresh event per generation rather than
+                # clearing the existing one. A receive() in flight from
+                # the previous run captured the old event; clearing it
+                # would let a fast restart resurrect that waiter against
+                # the new generation. The new object leaves the old
+                # waiter bound to its now-set old event.
+                self._shutdown_event = asyncio.Event()  # lint-allow: loop-bound-init
+                self._idle_poll_count = 0
+                self._last_idle_summary = self._clock.monotonic()
+                maxlen = self._config.retention.max_messages_per_channel
+                for name in self._config.channels:
+                    ch = Channel(name=name, type=ChannelType.TOPIC)
+                    self._channels[name] = ch
+                    self._history[name] = deque(maxlen=maxlen)
         logger.info(
             COMM_BUS_STARTED,
             channels_created=len(self._config.channels),
@@ -190,15 +203,20 @@ class InMemoryMessageBus:
 
         Signals all pending :meth:`receive` calls to return ``None``.
         """
-        async with self._lock:
+        async with self._lifecycle_lock:
             if not self._running:
                 return
             self._running = False
-        self._shutdown_event.set()
+            # Signal shutdown while still holding the lock so a
+            # concurrent start() cannot clear the event between the
+            # _running flip and the set(), leaving a running bus stuck
+            # in permanent shutdown state.
+            self._shutdown_event.set()
+            queues_signalled = len(self._queues)
         logger.info(COMM_BUS_STOPPED)
         logger.debug(
             COMM_BUS_SHUTDOWN_SIGNAL,
-            queues_signalled=len(self._queues),
+            queues_signalled=queues_signalled,
         )
 
     def _require_running(self) -> None:
@@ -618,18 +636,32 @@ class InMemoryMessageBus:
             queue = self._ensure_queue(channel_name, subscriber_id)
             key = (channel_name, subscriber_id)
             self._waiters.setdefault(key, set()).add(unsub_future)
+            # Bind to this generation's shutdown event while holding
+            # the lock. A concurrent stop()+start() swaps in a fresh
+            # event; capturing here ties this waiter to the event
+            # stop() will actually set, so a fast restart cannot strand
+            # it on a stale generation.
+            shutdown_event = self._shutdown_event
         try:
-            result = await self._await_with_shutdown(queue, timeout, unsub_future)
+            result = await self._await_with_shutdown(
+                queue, timeout, unsub_future, shutdown_event
+            )
         finally:
             # Remove this waiter's future from the active set so the
             # next ``unsubscribe`` only targets still-live waiters.
-            # No ``await`` separates the read and write of
-            # ``_waiters``, so no other coroutine can interleave on
-            # the single-threaded asyncio event loop. The asymmetry
-            # with the lock-guarded add is intentional -- the remove
-            # must run after ``_await_with_shutdown`` completes,
-            # which means after at least one ``await`` already
-            # released the lock.
+            #
+            # Safety: asyncio is single-threaded; the ``get`` /
+            # ``discard`` / ``pop`` sequence below has no ``await``
+            # between operations, so no other coroutine can run in
+            # the gap and observe a half-cleared entry. The asymmetry
+            # with the lock-guarded add at line 627 is deliberate:
+            # the add must happen before the await inside
+            # ``_await_with_shutdown`` reaches the lock-held block on
+            # the producer side, so it pays for the lock; the remove
+            # only needs to land before the next ``unsubscribe`` runs,
+            # and asyncio's run-to-completion guarantee delivers that
+            # for free. If this bus is ever migrated to real threads,
+            # the discard must move inside ``async with self._lock``.
             active = self._waiters.get(key)
             if active is not None:
                 active.discard(unsub_future)
@@ -684,6 +716,7 @@ class InMemoryMessageBus:
         queue: asyncio.Queue[DeliveryEnvelope | None],
         timeout: float | None,  # noqa: ASYNC109
         unsub_future: asyncio.Future[None],
+        shutdown_event: asyncio.Event,
     ) -> DeliveryEnvelope | None:
         """Await next envelope, returning ``None`` on timeout, shutdown, or unsubscribe.
 
@@ -694,13 +727,18 @@ class InMemoryMessageBus:
                 resolves to wake this receive. Resolving the future is
                 how the caller cancels an in-flight receive without
                 needing to send a sentinel through the bounded queue.
+            shutdown_event: The generation-scoped shutdown event the
+                caller captured under ``self._lock``. Awaiting this
+                captured reference (not ``self._shutdown_event``) keeps
+                the waiter bound to the event ``stop()`` will set, even
+                if a concurrent restart swaps in a new one.
 
         Returns:
             The next envelope, or ``None``.
         """
         get_task = asyncio.create_task(queue.get())
         shutdown_task = asyncio.create_task(
-            self._shutdown_event.wait(),
+            shutdown_event.wait(),
         )
         # ``asyncio.wait`` requires awaitables of the same type. Cast
         # the heterogeneous {get_task, shutdown_task, unsub_future} set

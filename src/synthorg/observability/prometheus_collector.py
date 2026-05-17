@@ -79,7 +79,22 @@ async def _fetch_workflow_definitions(
         wf_repo = getattr(persistence, "workflow_definitions", None)
         if wf_repo is None:
             return frozenset()
-        definitions = await wf_repo.list_definitions()
+        from synthorg.persistence._generics import (  # noqa: PLC0415
+            DEFAULT_PAGE_SIZE,
+        )
+        from synthorg.persistence._shared import paginate  # noqa: PLC0415
+        from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
+            WorkflowDefinitionFilterSpec,
+        )
+
+        definitions: list[Any] = []
+        async for page in paginate(
+            lambda limit, offset: wf_repo.query(
+                WorkflowDefinitionFilterSpec(), limit=limit, offset=offset
+            ),
+            page_size=DEFAULT_PAGE_SIZE,
+        ):
+            definitions.extend(page)
     except MemoryError, RecursionError:
         raise
     except Exception:

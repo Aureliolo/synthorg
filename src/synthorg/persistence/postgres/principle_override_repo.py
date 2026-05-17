@@ -1,6 +1,5 @@
 """Postgres implementation of :class:`PrincipleOverrideRepository`."""
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import psycopg
@@ -14,11 +13,9 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED,
     PERSISTENCE_PRINCIPLE_OVERRIDE_SAVE_FAILED,
 )
-from synthorg.persistence._shared import normalize_utc
-from synthorg.persistence.principle_override_protocol import (
-    _DEFAULT_LIST_LIMIT_100,
-    PrincipleOverride,
-)
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import normalize_utc, validate_pagination_args
+from synthorg.persistence.principle_override_protocol import PrincipleOverride
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -32,16 +29,8 @@ class PostgresPrincipleOverrideRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save(
-        self,
-        scope: NotBlankStr,
-        text: NotBlankStr,
-        *,
-        restored_from: NotBlankStr,
-        now: datetime | None = None,
-    ) -> None:
+    async def save(self, entity: PrincipleOverride) -> None:
         """Insert or update the override at ``scope``."""
-        moment = normalize_utc(now or datetime.now(UTC))
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -54,13 +43,19 @@ class PostgresPrincipleOverrideRepository:
                         restored_from = EXCLUDED.restored_from,
                         updated_at = EXCLUDED.updated_at
                     """,
-                    (str(scope), str(text), str(restored_from), moment, moment),
+                    (
+                        str(entity.scope),
+                        str(entity.text),
+                        str(entity.restored_from),
+                        normalize_utc(entity.created_at),
+                        normalize_utc(entity.updated_at),
+                    ),
                 )
         except psycopg.Error as exc:
-            msg = f"Failed to save principle override for scope {scope!r}"
+            msg = f"Failed to save principle override for scope {entity.scope!r}"
             logger.warning(
                 PERSISTENCE_PRINCIPLE_OVERRIDE_SAVE_FAILED,
-                scope=str(scope),
+                scope=str(entity.scope),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -120,10 +115,17 @@ class PostgresPrincipleOverrideRepository:
     async def list_items(
         self,
         *,
-        limit: int = _DEFAULT_LIST_LIMIT_100,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[PrincipleOverride, ...]:
-        """List all overrides ordered by ``scope`` ascending."""
+        """List all overrides ordered by ``scope`` ascending.
+
+        Raises:
+            QueryError: If the query fails or pagination is out of range.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED
+        )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -133,7 +135,7 @@ class PostgresPrincipleOverrideRepository:
                     ORDER BY scope ASC
                     LIMIT %s OFFSET %s
                     """,
-                    (int(limit), int(offset)),
+                    (limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

@@ -35,11 +35,13 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CONNECTION_LIST_FAILED,
     PERSISTENCE_CONNECTION_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
-    DEFAULT_LIST_LIMIT,
     coerce_row_timestamp,
     format_iso_utc,
+    validate_pagination_args,
 )
+from synthorg.persistence.connection_protocol import ConnectionFilterSpec  # noqa: TC001
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -229,20 +231,21 @@ class SQLiteConnectionRepository:
             )
             raise QueryError(msg) from exc
 
-    async def list_all(
+    async def list_items(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all connections, sorted by name for determinism."""
-        if limit is not None and limit <= 0:
-            return ()
-        sql = f"SELECT {_SELECT_COLS} FROM connections ORDER BY name ASC"  # noqa: S608
-        params: tuple[object, ...] = ()
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (int(limit), max(0, int(offset)))
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CONNECTION_LIST_FAILED
+        )
+        sql = (
+            f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
+            "ORDER BY name ASC LIMIT ? OFFSET ?"
+        )
+        params: tuple[object, ...] = (limit, offset)
         try:
             async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
@@ -265,32 +268,31 @@ class SQLiteConnectionRepository:
             )
             raise QueryError(msg) from exc
 
-    async def list_by_type(
+    async def query(
         self,
-        connection_type: ConnectionType,
+        filter_spec: ConnectionFilterSpec,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List connections of *connection_type*, sorted by name."""
-        if limit is not None and limit <= 0:
-            return ()
-        sql = (
-            f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
-            "WHERE connection_type = ? ORDER BY name ASC"
+        """List connections matching the filter spec, sorted by name."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_CONNECTION_LIST_FAILED
         )
-        params: tuple[object, ...] = (connection_type.value,)
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), max(0, int(offset)))
+        sql = f"SELECT {_SELECT_COLS} FROM connections"  # noqa: S608
+        params: tuple[object, ...] = ()
+        if filter_spec.connection_type is not None:
+            sql += " WHERE connection_type = ?"
+            params = (filter_spec.connection_type.value,)
+        sql += " ORDER BY name ASC LIMIT ? OFFSET ?"
+        params = (*params, limit, offset)
         try:
             async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to list connections of type {connection_type.value!r}"
+            msg = "Failed to list connections matching filter"
             logger.warning(
                 PERSISTENCE_CONNECTION_LIST_FAILED,
-                connection_type=connection_type.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -298,13 +300,29 @@ class SQLiteConnectionRepository:
         try:
             return tuple(_row_to_connection(row) for row in rows)
         except (ValueError, TypeError) as exc:
-            msg = (
-                f"Failed to deserialize connection rows of type "
-                f"{connection_type.value!r}"
-            )
+            msg = "Failed to deserialize connection rows"
             logger.warning(
                 PERSISTENCE_CONNECTION_DESERIALIZE_FAILED,
-                connection_type=connection_type.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def count(self, filter_spec: ConnectionFilterSpec) -> int:
+        """Count connections matching the filter spec."""
+        sql = "SELECT COUNT(*) FROM connections"
+        params: tuple[object, ...] = ()
+        if filter_spec.connection_type is not None:
+            sql += " WHERE connection_type = ?"
+            params = (filter_spec.connection_type.value,)
+        try:
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else 0
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count connections"
+            logger.warning(
+                PERSISTENCE_CONNECTION_LIST_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

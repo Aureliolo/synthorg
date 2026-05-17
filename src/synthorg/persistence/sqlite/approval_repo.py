@@ -22,11 +22,13 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FETCHED,
     API_APPROVAL_REPO_LISTED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
-    DEFAULT_LIST_LIMIT,
     coerce_row_timestamp,
     format_iso_utc,
+    validate_pagination_args,
 )
+from synthorg.persistence.approval_protocol import ApprovalFilterSpec  # noqa: TC001
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -453,51 +455,97 @@ class SQLiteApprovalRepository:
     async def list_items(
         self,
         *,
-        status: ApprovalStatus | None = None,
-        risk_level: ApprovalRiskLevel | None = None,
-        action_type: NotBlankStr | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ApprovalItem, ...]:
-        """List approval items with optional filters (paginated, newest-first).
+        """List all approval items (paginated, newest-first).
 
-        ``ORDER BY created_at DESC, id DESC`` keeps cursor pagination
-        stable when two approvals share a ``created_at`` timestamp;
-        the ``id`` tiebreaker prevents duplicates / gaps under
-        concurrent inserts.
+        Results are ordered by ``(created_at DESC, id DESC)``.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Approval items in descending creation order.
+
+        Raises:
+            QueryError: If the database query fails or
+                pagination args are invalid.
         """
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
+        effective_limit = validate_pagination_args(
+            limit,
+            offset,
+            event=API_APPROVAL_REPO_FAILED,
+        )
+        effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
+        sql = """
+            SELECT id, action_type, title, description, requested_by,
+                   risk_level, status, created_at, expires_at,
+                   decided_at, decided_by, decision_reason,
+                   task_id, evidence_package, metadata
+            FROM approvals
+            ORDER BY created_at DESC, id DESC
+            LIMIT ? OFFSET ?
+        """
+        try:
+            cursor = await self._db.execute(sql, (effective_limit, offset))
+            rows = await cursor.fetchall()
+            items = tuple(_row_to_item(r) for r in rows)
+        except QueryError:
+            raise
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list approvals"
             logger.warning(
                 API_APPROVAL_REPO_FAILED,
-                error=msg,
-                param="limit",
-                value=limit,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            raise QueryError(msg)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            logger.warning(
-                API_APPROVAL_REPO_FAILED,
-                error=msg,
-                param="offset",
-                value=offset,
-            )
-            raise QueryError(msg)
-        # Clamp limit at ``_MAX_PAGE_LIMIT`` so a runaway caller cannot
-        # exhaust memory with a single oversized fetch.
-        effective_limit = min(limit, _MAX_PAGE_LIMIT)
+            raise QueryError(msg) from exc
+        logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
+        return items
+
+    async def query(
+        self,
+        filter_spec: ApprovalFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]:
+        """List approval items matching the filter spec (paginated).
+
+        Results are ordered by ``(created_at DESC, id DESC)``.
+
+        Args:
+            filter_spec: Carries optional status, risk_level, action_type
+                filters (all optional).
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Matching approval items in descending creation order.
+
+        Raises:
+            QueryError: If the database query fails or
+                pagination args are invalid.
+        """
+        effective_limit = validate_pagination_args(
+            limit,
+            offset,
+            event=API_APPROVAL_REPO_FAILED,
+        )
+        effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
         clauses: list[str] = []
         params: list[object] = []
-        if status is not None:
+        if filter_spec.status is not None:
             clauses.append("status = ?")
-            params.append(status.value)
-        if risk_level is not None:
+            params.append(filter_spec.status.value)
+        if filter_spec.risk_level is not None:
             clauses.append("risk_level = ?")
-            params.append(risk_level.value)
-        if action_type is not None:
+            params.append(filter_spec.risk_level.value)
+        if filter_spec.action_type is not None:
             clauses.append("action_type = ?")
-            params.append(action_type)
+            params.append(filter_spec.action_type)
         where = " AND ".join(clauses) if clauses else "1=1"
         params.extend([effective_limit, offset])
         sql = f"""
@@ -516,7 +564,7 @@ class SQLiteApprovalRepository:
         except QueryError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to list approvals"
+            msg = "Failed to query approvals"
             logger.warning(
                 API_APPROVAL_REPO_FAILED,
                 error_type=type(exc).__name__,
@@ -525,6 +573,99 @@ class SQLiteApprovalRepository:
             raise QueryError(msg) from exc
         logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
         return items
+
+    async def count(self, filter_spec: ApprovalFilterSpec) -> int:
+        """Count approval items matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional status, risk_level, action_type
+                filters (all optional).
+
+        Returns:
+            Count of matching approval items.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        clauses: list[str] = []
+        params: list[object] = []
+        if filter_spec.status is not None:
+            clauses.append("status = ?")
+            params.append(filter_spec.status.value)
+        if filter_spec.risk_level is not None:
+            clauses.append("risk_level = ?")
+            params.append(filter_spec.risk_level.value)
+        if filter_spec.action_type is not None:
+            clauses.append("action_type = ?")
+            params.append(filter_spec.action_type)
+        where = " AND ".join(clauses) if clauses else "1=1"
+        sql = f"""
+            SELECT COUNT(*) FROM approvals WHERE {where}
+        """  # noqa: S608  -- ``where`` is built from a closed set of column predicates
+        try:
+            cursor = await self._db.execute(sql, params)
+            row = await cursor.fetchone()
+            assert row is not None  # noqa: S101  -- COUNT always returns a row
+            return int(row[0])
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count approvals"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def transition_if(
+        self,
+        entity_id: NotBlankStr,
+        from_state: ApprovalStatus,
+        to_state: ApprovalStatus,
+        **updates: object,  # noqa: ARG002
+    ) -> bool:
+        """Atomic compare-and-set for approval state transitions (ADR-0001 D7).
+
+        Transitions the approval from ``from_state`` to ``to_state`` iff
+        the current persisted status matches ``from_state``. Returns ``True``
+        iff the state transition succeeded.
+
+        ``**updates`` is ignored for now; future versions may support
+        ``expired_at`` and other status-correlated fields.
+
+        Args:
+            entity_id: The approval id.
+            from_state: Expected current status.
+            to_state: Target status.
+            **updates: Status-correlated fields (reserved, currently unused).
+
+        Returns:
+            ``True`` iff the transition succeeded, ``False`` on state
+            mismatch or when no row exists.
+
+        Raises:
+            QueryError: On database errors.
+        """
+        sql = "UPDATE approvals SET status = ? WHERE id = ? AND status = ?"
+        params = (to_state.value, entity_id, from_state.value)
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(sql, params)
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await _safe_rollback(
+                    self._db,
+                    operation="transition_if",
+                    approval_id=entity_id,
+                )
+                msg = f"Failed to transition approval {entity_id!r}"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    approval_id=entity_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return cursor.rowcount > 0
 
     async def delete(self, approval_id: NotBlankStr) -> bool:
         """Delete an approval item by ID.

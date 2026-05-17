@@ -127,7 +127,7 @@ async def _seed_user_with_dependencies(  # noqa: PLR0913
         user_id=user.id,
         username=user.username,
     )
-    await on_disk_backend.sessions.create(session)
+    await on_disk_backend.sessions.save(session)
 
     expires = datetime.now(UTC) + timedelta(hours=1)
     await on_disk_backend.refresh_tokens.create(

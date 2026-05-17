@@ -336,36 +336,18 @@ Group findings by file. For each file:
 
 If a fix changes test expectations: update the test in the same round. If a fix introduces a new code path: add coverage in the same round.
 
-## Phase 9: verify locally
+## Phase 9: verification is delegated to the commit/push hooks (do NOT re-run them)
 
-Conditional gates by file type touched:
+**Do not manually run `ruff` / `mypy` / `pytest` / `eslint` / `go test` here.** This repo's `.pre-commit-config.yaml` already hard-gates every push:
 
-- **Python** (`.py` in `src/` or `tests/`):
+- **pre-commit stage** (fires on Phase 10's `git commit`): `ruff`, `ruff-format`.
+- **pre-push stage** (fires on Phase 10's `git push`): `mypy` (affected modules, via `run_affected_mypy.py`), `pytest-unit` (affected modules, via `run_affected_tests.py`), `eslint-web`, `go-vet` / `go-test`, plus every convention gate (kill-switch, list-pagination, no-migration-framing, schema-drift, no-magic-numbers, boundary-typed, and the rest).
 
-  ```bash
-  uv run ruff check src/ tests/ --fix
-  uv run ruff format src/ tests/
-  uv run mypy --num-workers=4 src/ tests/
-  uv run python -m pytest tests/ -m unit -n 8
-  ```
+A failing hook **aborts the commit or push locally**, so nothing reaches CI or CodeRabbit and no review cycle is burned. The affected-subset hooks are also strictly faster than a manual full-suite run, so re-running the full `pytest -m unit` or whole-tree `mypy` here is pure duplicated wall-clock with no extra safety.
 
-- **Web** (`.tsx`/`.ts`/`.css` in `web/src/`):
+The `skip:` list in `.pre-commit-config.yaml` only suppresses these on **pre-commit.ci** (the cloud mirror); locally they all run. Do not mistake that skip list for "these do not run on my push".
 
-  ```bash
-  npm --prefix web run lint
-  npm --prefix web run type-check
-  npm --prefix web run test
-  ```
-
-- **Go** (`.go` in `cli/`):
-
-  ```bash
-  go -C cli vet ./...
-  go -C cli test ./...
-  go -C cli build ./...
-  ```
-
-Failure handling: if a gate fails, fix the failure in this round (don't push broken code). If you can't, surface it via `AskUserQuestion` and pause the loop.
+What this phase actually does: **nothing but proceed to Phase 10.** The push there is the gate. If the commit or push is rejected by a hook, Phase 10 step 4 owns the fix-forward loop (triage the hook output, fix the real issue, new commit, re-push; never `--no-verify`, never `--amend`). If a hook failure cannot be fixed this round, surface it via `AskUserQuestion` and pause the loop. The only manual check worth running here is one a hook genuinely does NOT cover (rare, e.g. a one-off repro the reviewer explicitly asked for), and even then scope it to the single file, never the whole tree.
 
 ## Phase 9b: pre-push completeness sweep (mandatory before EVERY push)
 

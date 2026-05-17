@@ -5,15 +5,20 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from pydantic import ValidationError
 
-from synthorg.api.dto_provider_capabilities import PresetOverride
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
-    PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+    PERSISTENCE_PRESET_OVERRIDE_DELETE_FAILED,
+    PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
+    PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.providers.enums import AuthType
+from synthorg.providers.management.capability_dtos import PresetOverride
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -47,7 +52,7 @@ class PostgresPresetOverrideRepo:
         except psycopg.Error as exc:
             msg = "Failed to read preset override"
             logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 preset_name=preset_name,
@@ -55,12 +60,35 @@ class PostgresPresetOverrideRepo:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return self._row_to_override(row)
+        try:
+            return self._row_to_override(row)
+        except (
+            ValidationError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+        ) as exc:
+            msg = "Failed to read preset override"
+            logger.warning(
+                PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                preset_name=preset_name,
+            )
+            raise QueryError(msg) from exc
 
-    async def upsert(self, override: PresetOverride) -> PresetOverride:
+    async def save(self, override: PresetOverride) -> None:
         """Insert or replace the override for ``override.preset_name``."""
         if override.updated_at is None or override.updated_by is None:
-            msg = "PresetOverride.updated_at and updated_by must be set on upsert"
+            msg = "PresetOverride.updated_at and updated_by must be set on save"
+            logger.warning(
+                PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED,
+                preset_name=override.preset_name,
+                updated_at=override.updated_at,
+                updated_by=override.updated_by,
+                error=msg,
+            )
             raise QueryError(msg)
         params: tuple[Any, ...] = (
             override.preset_name,
@@ -95,15 +123,66 @@ class PostgresPresetOverrideRepo:
                 await cur.execute(sql, params)
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = "Failed to upsert preset override"
+            msg = "Failed to save preset override"
             logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 preset_name=override.preset_name,
             )
             raise QueryError(msg) from exc
-        return override
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[PresetOverride, ...]:
+        """List overrides ordered by preset_name ascending."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED
+        )
+        sql = (
+            "SELECT preset_name, default_models, supported_auth_types, "
+            "candidate_urls, base_url, updated_at, updated_by "
+            "FROM preset_overrides "
+            "ORDER BY preset_name ASC LIMIT %s OFFSET %s"
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, (limit, offset))
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list preset overrides"
+            logger.warning(
+                PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        overrides: list[PresetOverride] = []
+        for row in rows:
+            try:
+                overrides.append(self._row_to_override(row))
+            except (
+                ValidationError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+            ) as exc:
+                msg = "Failed to list preset overrides"
+                logger.warning(
+                    PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    preset_name=row.get("preset_name"),
+                )
+                raise QueryError(msg) from exc
+        return tuple(overrides)
 
     async def delete(self, preset_name: NotBlankStr) -> bool:
         """Remove the override for ``preset_name``."""
@@ -118,7 +197,7 @@ class PostgresPresetOverrideRepo:
         except psycopg.Error as exc:
             msg = "Failed to delete preset override"
             logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                PERSISTENCE_PRESET_OVERRIDE_DELETE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 preset_name=preset_name,

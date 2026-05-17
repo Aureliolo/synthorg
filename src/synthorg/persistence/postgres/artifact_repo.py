@@ -26,12 +26,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_LISTED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.enums import ArtifactType
 
 logger = get_logger(__name__)
 
@@ -52,7 +51,18 @@ class PostgresArtifactRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save(self, artifact: Artifact) -> bool:
+    async def save(self, entity: Artifact) -> None:
+        """Persist an artifact (insert or update by id).
+
+        Args:
+            entity: Artifact model to persist.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
+        await self.save_returning_outcome(entity)
+
+    async def save_returning_outcome(self, artifact: Artifact) -> bool:
         """Persist an artifact atomically; return whether it was inserted.
 
         Uses Postgres' ``RETURNING (xmax = 0) AS created`` trick on
@@ -138,11 +148,11 @@ RETURNING (xmax = 0) AS created""",
             raise QueryError(msg)
         return bool(row[0])
 
-    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
+    async def get(self, entity_id: NotBlankStr) -> Artifact | None:
         """Retrieve an artifact by primary key.
 
         Args:
-            artifact_id: Unique artifact identifier.
+            entity_id: Unique artifact identifier.
 
         Returns:
             The matching ``Artifact``, or ``None`` if not found.
@@ -150,6 +160,7 @@ RETURNING (xmax = 0) AS created""",
         Raises:
             QueryError: If the database query or deserialization fails.
         """
+        artifact_id = entity_id
         try:
             async with (
                 self._pool.connection() as conn,
@@ -194,13 +205,24 @@ RETURNING (xmax = 0) AS created""",
         logger.debug(PERSISTENCE_ARTIFACT_FETCHED, artifact_id=artifact_id, found=True)
         return artifact
 
-    async def list_artifacts(
+    async def list_items(
         self,
         *,
-        task_id: NotBlankStr | None = None,
-        created_by: NotBlankStr | None = None,
-        artifact_type: ArtifactType | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Artifact, ...]:
+        """List all artifacts with pagination (no filters)."""
+        return await self.query(
+            ArtifactFilterSpec(),
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query(
+        self,
+        filter_spec: ArtifactFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
         """List artifacts with optional filters (paginated)."""
@@ -226,15 +248,15 @@ RETURNING (xmax = 0) AS created""",
         conditions: list[str] = []
         params: list[object] = []
 
-        if task_id is not None:
+        if filter_spec.task_id is not None:
             conditions.append("task_id = %s")
-            params.append(task_id)
-        if created_by is not None:
+            params.append(filter_spec.task_id)
+        if filter_spec.created_by is not None:
             conditions.append("created_by = %s")
-            params.append(created_by)
-        if artifact_type is not None:
+            params.append(filter_spec.created_by)
+        if filter_spec.artifact_type is not None:
             conditions.append("type = %s")
-            params.append(artifact_type.value)
+            params.append(filter_spec.artifact_type.value)
 
         query = (
             "SELECT id, type, path, task_id, created_by, "
@@ -277,11 +299,48 @@ RETURNING (xmax = 0) AS created""",
         logger.debug(PERSISTENCE_ARTIFACT_LISTED, count=len(artifacts))
         return artifacts
 
-    async def delete(self, artifact_id: NotBlankStr) -> bool:
+    async def count(self, filter_spec: ArtifactFilterSpec) -> int:
+        """Count artifacts matching the filter spec."""
+        conditions: list[str] = []
+        params: list[object] = []
+
+        if filter_spec.task_id is not None:
+            conditions.append("task_id = %s")
+            params.append(filter_spec.task_id)
+        if filter_spec.created_by is not None:
+            conditions.append("created_by = %s")
+            params.append(filter_spec.created_by)
+        if filter_spec.artifact_type is not None:
+            conditions.append("type = %s")
+            params.append(filter_spec.artifact_type.value)
+
+        query = "SELECT COUNT(*) FROM artifacts"
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor() as cur,
+            ):
+                await cur.execute(query, params)
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = "Failed to count artifacts"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        return row[0] if row else 0
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete an artifact by primary key.
 
         Args:
-            artifact_id: Unique artifact identifier.
+            entity_id: Unique artifact identifier.
 
         Returns:
             ``True`` if a row was deleted, ``False`` if not found.
@@ -289,6 +348,7 @@ RETURNING (xmax = 0) AS created""",
         Raises:
             QueryError: If the database operation fails.
         """
+        artifact_id = entity_id
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

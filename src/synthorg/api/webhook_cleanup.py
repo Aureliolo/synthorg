@@ -13,7 +13,7 @@ Per-connection retention semantics follow ``Connection.webhook_receipt_retention
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 from synthorg.core.clock import SystemClock
 from synthorg.observability import get_logger, safe_error_description
@@ -22,6 +22,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED,
 )
+from synthorg.persistence._shared import paginate
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float, registered_default_int
 
@@ -39,6 +40,10 @@ class _CleanupOutcome(NamedTuple):
 
 
 logger = get_logger(__name__)
+
+# Page size for the connection sweep; the loop pages until a short
+# page so retention guarantees hold regardless of connection count.
+_CONNECTION_SWEEP_PAGE_SIZE: Final[int] = 1_000
 
 
 class _ResolverThrottleState:
@@ -245,7 +250,15 @@ async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
         return
     default_days = await _resolve_webhook_receipt_retention(app_state)
     try:
-        connections = await app_state.persistence.connections.list_all()
+        collected: list[Connection] = []
+        async for page in paginate(
+            lambda limit, offset: app_state.persistence.connections.list_items(
+                limit=limit, offset=offset
+            ),
+            page_size=_CONNECTION_SWEEP_PAGE_SIZE,
+        ):
+            collected.extend(page)
+        connections = tuple(collected)
     except asyncio.CancelledError:
         raise
     except MemoryError, RecursionError:

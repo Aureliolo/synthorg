@@ -13,9 +13,7 @@ from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.enums import (
     ApprovalRiskLevel,
-    ArtifactType,
     ExecutionStatus,
-    ProjectStatus,
     TaskStatus,
 )
 from synthorg.core.persistence_errors import (
@@ -34,7 +32,7 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from synthorg.persistence.preset_protocol import PresetListRow, PresetRow
+from synthorg.persistence.preset_protocol import Preset
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
 
@@ -45,34 +43,43 @@ class FakeTaskRepository:
     def __init__(self) -> None:
         self._tasks: dict[str, Task] = {}
 
-    async def save(self, task: Task) -> None:
-        self._tasks[task.id] = task
+    async def save(self, entity: Task) -> None:
+        self._tasks[entity.id] = entity
 
-    async def get(self, task_id: str) -> Task | None:
-        return self._tasks.get(task_id)
+    async def get(self, entity_id: str) -> Task | None:
+        return self._tasks.get(entity_id)
 
-    async def list_tasks(
+    async def list_items(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
-        result = self._filtered(status, assigned_to, project)
-        if limit is None:
-            return tuple(result[offset:])
+        result = sorted(self._tasks.values(), key=lambda t: t.id)
         return tuple(result[offset : offset + limit])
 
-    async def count_tasks(
+    async def query(
         self,
+        filter_spec: object,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-    ) -> int:
-        return len(self._filtered(status, assigned_to, project))
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Task, ...]:
+        result = self._filtered(
+            getattr(filter_spec, "status", None),
+            getattr(filter_spec, "assigned_to", None),
+            getattr(filter_spec, "project", None),
+        )
+        return tuple(result[offset : offset + limit])
+
+    async def count(self, filter_spec: object) -> int:
+        return len(
+            self._filtered(
+                getattr(filter_spec, "status", None),
+                getattr(filter_spec, "assigned_to", None),
+                getattr(filter_spec, "project", None),
+            )
+        )
 
     def _filtered(
         self,
@@ -89,8 +96,8 @@ class FakeTaskRepository:
             result = [t for t in result if t.project == project]
         return result
 
-    async def delete(self, task_id: str) -> bool:
-        return self._tasks.pop(task_id, None) is not None
+    async def delete(self, entity_id: str) -> bool:
+        return self._tasks.pop(entity_id, None) is not None
 
 
 class FakeCostRecordRepository:
@@ -99,21 +106,28 @@ class FakeCostRecordRepository:
     def __init__(self) -> None:
         self._records: list[CostRecord] = []
 
-    async def save(self, record: CostRecord) -> None:
-        self._records.append(record)
+    async def append(self, event: CostRecord) -> None:
+        self._records.append(event)
 
     async def query(
         self,
+        filter_spec: object,
         *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         result = self._records
+        agent_id = getattr(filter_spec, "agent_id", None)
+        task_id = getattr(filter_spec, "task_id", None)
         if agent_id is not None:
             result = [r for r in result if r.agent_id == agent_id]
         if task_id is not None:
             result = [r for r in result if r.task_id == task_id]
-        return tuple(result)
+        return tuple(result[offset : offset + limit])
+
+    async def purge_before(self, threshold: object) -> int:
+        del threshold
+        return 0
 
     async def aggregate(
         self,
@@ -121,7 +135,13 @@ class FakeCostRecordRepository:
         agent_id: str | None = None,
         task_id: str | None = None,
     ) -> float:
-        records = await self.query(agent_id=agent_id, task_id=task_id)
+        from synthorg.persistence.cost_record_protocol import (
+            CostRecordFilterSpec,
+        )
+
+        records = await self.query(
+            CostRecordFilterSpec(agent_id=agent_id, task_id=task_id),
+        )
         return sum(r.cost for r in records)
 
 
@@ -131,7 +151,7 @@ class FakeMessageRepository:
     def __init__(self) -> None:
         self._messages: list[Message] = []
 
-    async def save(self, message: Message) -> None:
+    async def append(self, message: Message) -> None:
         if any(m.id == message.id for m in self._messages):
             msg = f"Message {message.id} already exists"
             raise DuplicateRecordError(msg)
@@ -154,6 +174,27 @@ class FakeMessageRepository:
         if limit is not None:
             result = result[:limit]
         return tuple(result)
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Message, ...]:
+        result = sorted(
+            self._messages,
+            key=lambda m: m.timestamp,
+            reverse=True,
+        )
+        if filter_spec.channel is not None:
+            result = [m for m in result if m.channel == filter_spec.channel]
+        return tuple(result[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        before = len(self._messages)
+        self._messages = [m for m in self._messages if m.timestamp >= threshold]
+        return before - len(self._messages)
 
     async def delete(self, message_id: str) -> bool:
         for i, m in enumerate(self._messages):
@@ -254,6 +295,15 @@ class FakeParkedContextRepository:
     async def get(self, parked_id: str) -> ParkedContext | None:
         return self._contexts.get(parked_id)
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        ordered = sorted(self._contexts.values(), key=lambda c: c.id)
+        return tuple(ordered[offset : offset + limit])
+
     async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
         for ctx in self._contexts.values():
             if ctx.approval_id == approval_id:
@@ -352,11 +402,11 @@ class FakeApiKeyRepository:
     def __init__(self) -> None:
         self._keys: dict[str, ApiKey] = {}
 
-    async def save(self, key: ApiKey) -> None:
-        self._keys[key.id] = key
+    async def save(self, entity: ApiKey) -> None:
+        self._keys[entity.id] = entity
 
-    async def get(self, key_id: str) -> ApiKey | None:
-        return self._keys.get(key_id)
+    async def get(self, entity_id: str) -> ApiKey | None:
+        return self._keys.get(entity_id)
 
     async def get_by_hash(self, key_hash: str) -> ApiKey | None:
         for key in self._keys.values():
@@ -364,11 +414,40 @@ class FakeApiKeyRepository:
                 return key
         return None
 
-    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
-        return tuple(k for k in self._keys.values() if k.user_id == user_id)
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        keys = sorted(self._keys.values(), key=lambda k: k.id)
+        return tuple(keys[offset : offset + limit])
 
-    async def delete(self, key_id: str) -> bool:
-        return self._keys.pop(key_id, None) is not None
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        results = list(self._keys.values())
+        if filter_spec.user_id is not None:
+            results = [k for k in results if k.user_id == filter_spec.user_id]
+        if filter_spec.revoked_only:
+            results = [k for k in results if k.revoked]
+        results.sort(key=lambda k: k.id)
+        return tuple(results[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        results = list(self._keys.values())
+        if filter_spec.user_id is not None:
+            results = [k for k in results if k.user_id == filter_spec.user_id]
+        if filter_spec.revoked_only:
+            results = [k for k in results if k.revoked]
+        return len(results)
+
+    async def delete(self, entity_id: str) -> bool:
+        return self._keys.pop(entity_id, None) is not None
 
 
 class FakeCheckpointRepository:
@@ -377,7 +456,7 @@ class FakeCheckpointRepository:
     def __init__(self) -> None:
         self._checkpoints: dict[str, Checkpoint] = {}
 
-    async def save(self, checkpoint: Checkpoint) -> None:
+    async def append(self, checkpoint: Checkpoint) -> None:
         self._checkpoints[checkpoint.id] = checkpoint
 
     async def get_latest(
@@ -397,6 +476,30 @@ class FakeCheckpointRepository:
         if not candidates:
             return None
         return max(candidates, key=lambda c: c.turn_number)
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Checkpoint, ...]:
+        candidates = list(self._checkpoints.values())
+        if filter_spec.execution_id is not None:
+            candidates = [
+                c for c in candidates if c.execution_id == filter_spec.execution_id
+            ]
+        if filter_spec.task_id is not None:
+            candidates = [c for c in candidates if c.task_id == filter_spec.task_id]
+        candidates.sort(key=lambda c: c.turn_number, reverse=True)
+        return tuple(candidates[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        before = len(self._checkpoints)
+        self._checkpoints = {
+            k: v for k, v in self._checkpoints.items() if v.created_at >= threshold
+        }
+        return before - len(self._checkpoints)
 
     async def delete_by_execution(self, execution_id: str) -> int:
         to_delete = [
@@ -436,35 +539,68 @@ class FakeArtifactRepository:
     def __init__(self) -> None:
         self._artifacts: dict[str, Artifact] = {}
 
-    async def save(self, artifact: Artifact) -> bool:
+    async def save(self, entity: Artifact) -> None:
+        self._artifacts[entity.id] = entity
+
+    async def save_returning_outcome(self, artifact: Artifact) -> bool:
         created = artifact.id not in self._artifacts
         self._artifacts[artifact.id] = artifact
         return created
 
-    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
-        return self._artifacts.get(artifact_id)
+    async def get(self, entity_id: NotBlankStr) -> Artifact | None:
+        return self._artifacts.get(entity_id)
 
-    async def list_artifacts(
+    async def list_items(
         self,
         *,
-        task_id: NotBlankStr | None = None,
-        created_by: NotBlankStr | None = None,
-        artifact_type: ArtifactType | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Artifact, ...]:
+        from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
+
+        return await self.query(
+            ArtifactFilterSpec(),
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Artifact, ...]:
         result = list(self._artifacts.values())
-        if task_id is not None:
-            result = [a for a in result if a.task_id == task_id]
-        if created_by is not None:
-            result = [a for a in result if a.created_by == created_by]
-        if artifact_type is not None:
-            result = [a for a in result if a.type == artifact_type]
+        if hasattr(filter_spec, "task_id") and filter_spec.task_id is not None:
+            result = [a for a in result if a.task_id == filter_spec.task_id]
+        if hasattr(filter_spec, "created_by") and filter_spec.created_by is not None:
+            result = [a for a in result if a.created_by == filter_spec.created_by]
+        if (
+            hasattr(filter_spec, "artifact_type")
+            and filter_spec.artifact_type is not None
+        ):
+            result = [a for a in result if a.type == filter_spec.artifact_type]
         # Match the SQLite repo contract (``ORDER BY id``) so tests
         # asserting list order do not depend on dict insertion order.
         result.sort(key=lambda a: a.id)
-        return tuple(result)
+        return tuple(result[offset : offset + limit])
 
-    async def delete(self, artifact_id: NotBlankStr) -> bool:
-        return self._artifacts.pop(artifact_id, None) is not None
+    async def count(self, filter_spec: object) -> int:
+        result = list(self._artifacts.values())
+        if hasattr(filter_spec, "task_id") and filter_spec.task_id is not None:
+            result = [a for a in result if a.task_id == filter_spec.task_id]
+        if hasattr(filter_spec, "created_by") and filter_spec.created_by is not None:
+            result = [a for a in result if a.created_by == filter_spec.created_by]
+        if (
+            hasattr(filter_spec, "artifact_type")
+            and filter_spec.artifact_type is not None
+        ):
+            result = [a for a in result if a.type == filter_spec.artifact_type]
+        return len(result)
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._artifacts.pop(entity_id, None) is not None
 
 
 class FakeProjectRepository:
@@ -491,19 +627,40 @@ class FakeProjectRepository:
     async def get(self, project_id: NotBlankStr) -> Project | None:
         return self._projects.get(project_id)
 
-    async def list_projects(
+    async def list_items(
         self,
         *,
-        status: ProjectStatus | None = None,
-        lead: NotBlankStr | None = None,
-        limit: int = 100,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[Project, ...]:
         result = sorted(self._projects.values(), key=lambda p: p.id)
+        return tuple(result[offset : offset + limit])
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Project, ...]:
+        result = sorted(self._projects.values(), key=lambda p: p.id)
+        status = getattr(filter_spec, "status", None)
+        lead = getattr(filter_spec, "lead", None)
         if status is not None:
             result = [p for p in result if p.status == status]
         if lead is not None:
             result = [p for p in result if p.lead == lead]
-        return tuple(result[:limit])
+        return tuple(result[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        status = getattr(filter_spec, "status", None)
+        lead = getattr(filter_spec, "lead", None)
+        result = list(self._projects.values())
+        if status is not None:
+            result = [p for p in result if p.status == status]
+        if lead is not None:
+            result = [p for p in result if p.lead == lead]
+        return len(result)
 
     async def delete(self, project_id: NotBlankStr) -> bool:
         return self._projects.pop(project_id, None) is not None
@@ -575,6 +732,15 @@ class FakeAgentStateRepository:
     async def get(self, agent_id: str) -> AgentRuntimeState | None:
         return self._states.get(agent_id)
 
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[AgentRuntimeState, ...]:
+        ordered = sorted(self._states.values(), key=lambda s: s.agent_id)
+        return tuple(ordered[offset : offset + limit])
+
     async def get_active(self) -> tuple[AgentRuntimeState, ...]:
         active = (s for s in self._states.values() if s.status != ExecutionStatus.IDLE)
         return tuple(sorted(active, key=lambda s: s.last_activity_at, reverse=True))
@@ -587,37 +753,40 @@ class FakePersonalityPresetRepository:
     """In-memory custom personality preset repository for tests."""
 
     def __init__(self) -> None:
-        self._presets: dict[str, PresetRow] = {}
+        self._presets: dict[str, Preset] = {}
 
-    async def save(
+    async def save(self, entity: Preset) -> None:
+        existing = self._presets.get(entity.name)
+        created_at = existing.created_at if existing else entity.created_at
+        self._presets[entity.name] = entity.model_copy(
+            update={"created_at": created_at},
+        )
+
+    async def get(self, entity_id: NotBlankStr) -> Preset | None:
+        return self._presets.get(entity_id)
+
+    async def list_items(
         self,
-        name: NotBlankStr,
-        config_json: str,
-        description: str,
-        created_at: str,
-        updated_at: str,
-    ) -> None:
-        existing = self._presets.get(name)
-        self._presets[name] = PresetRow(
-            config_json,
-            description,
-            existing.created_at if existing else created_at,
-            updated_at,
-        )
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Preset, ...]:
+        rows = tuple(p for _, p in sorted(self._presets.items()))
+        return rows[offset : offset + limit]
 
-    async def get(self, name: NotBlankStr) -> PresetRow | None:
-        return self._presets.get(name)
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Preset, ...]:
+        return await self.list_items(limit=limit, offset=offset)
 
-    async def list_all(self, *, limit: int = 100) -> tuple[PresetListRow, ...]:
-        rows = tuple(
-            PresetListRow(name, *row) for name, row in sorted(self._presets.items())
-        )
-        return rows[:limit]
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._presets.pop(entity_id, None) is not None
 
-    async def delete(self, name: NotBlankStr) -> bool:
-        return self._presets.pop(name, None) is not None
-
-    async def count(self) -> int:
+    async def count(self, filter_spec: object | None = None) -> int:
         return len(self._presets)
 
 
@@ -625,34 +794,59 @@ class FakeSettingsRepository:
     """In-memory namespaced settings repository for tests."""
 
     def __init__(self) -> None:
+        from synthorg.persistence.settings_protocol import SettingRow
+
+        self._SettingRow = SettingRow
         self._store: dict[tuple[str, str], tuple[str, str]] = {}
 
-    async def get(self, namespace: str, key: str) -> tuple[str, str] | None:
-        return self._store.get((namespace, key))
+    def _row(self, namespace: str, key: str, value: str, ts: str) -> Any:
+        return self._SettingRow(
+            namespace=NotBlankStr(namespace),
+            key=NotBlankStr(key),
+            value=value,
+            updated_at=ts,
+        )
 
-    async def get_namespace(self, namespace: str) -> tuple[tuple[str, str, str], ...]:
-        result = [
-            (k, v, ts)
+    async def get(self, entity_id: tuple[str, str]) -> Any:
+        namespace, key = entity_id
+        existing = self._store.get((namespace, key))
+        if existing is None:
+            return None
+        value, ts = existing
+        return self._row(namespace, key, value, ts)
+
+    async def get_namespace(self, namespace: str) -> tuple[Any, ...]:
+        return tuple(
+            self._row(ns, k, v, ts)
             for (ns, k), (v, ts) in sorted(self._store.items())
             if ns == namespace
-        ]
-        return tuple(result)
+        )
 
-    async def get_all(self) -> tuple[tuple[str, str, str, str], ...]:
-        result = [(ns, k, v, ts) for (ns, k), (v, ts) in sorted(self._store.items())]
-        return tuple(result)
-
-    async def set(
+    async def list_items(
         self,
-        namespace: str,
-        key: str,
-        value: str,
-        updated_at: str,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        rows = [
+            self._row(ns, k, v, ts) for (ns, k), (v, ts) in sorted(self._store.items())
+        ]
+        return tuple(rows[offset : offset + limit])
+
+    async def save(self, entity: Any) -> None:
+        self._store = {
+            **self._store,
+            (entity.namespace, entity.key): (entity.value, entity.updated_at),
+        }
+
+    async def set_if_unchanged(
+        self,
+        entity: Any,
         *,
         expected_updated_at: str | None = None,
     ) -> bool:
         if expected_updated_at is not None:
-            current = self._store.get((namespace, key))
+            current = self._store.get((entity.namespace, entity.key))
             if current is None:
                 if expected_updated_at != "":
                     return False
@@ -660,13 +854,13 @@ class FakeSettingsRepository:
                 return False
         self._store = {
             **self._store,
-            (namespace, key): (value, updated_at),
+            (entity.namespace, entity.key): (entity.value, entity.updated_at),
         }
         return True
 
     async def set_many(
         self,
-        items: Sequence[tuple[str, str, str, str]],
+        items: Sequence[Any],
         *,
         expected_updated_at_map: Mapping[tuple[str, str], str] | None = None,
     ) -> bool:
@@ -674,24 +868,22 @@ class FakeSettingsRepository:
             return True
         cas_map = expected_updated_at_map or {}
         draft = dict(self._store)
-        for namespace, key, value, updated_at in items:
-            expected = cas_map.get((namespace, key))
+        for row in items:
+            expected = cas_map.get((row.namespace, row.key))
             if expected is not None:
-                current = draft.get((namespace, key))
+                current = draft.get((row.namespace, row.key))
                 if current is None:
                     if expected != "":
                         return False
                 elif current[1] != expected:
                     return False
-            draft[(namespace, key)] = (value, updated_at)
+            draft[(row.namespace, row.key)] = (row.value, row.updated_at)
         self._store = draft
         return True
 
-    async def delete(self, namespace: str, key: str) -> bool:
-        if (namespace, key) in self._store:
-            self._store = {
-                k: v for k, v in self._store.items() if k != (namespace, key)
-            }
+    async def delete(self, entity_id: tuple[str, str]) -> bool:
+        if entity_id in self._store:
+            self._store = {k: v for k, v in self._store.items() if k != entity_id}
             return True
         return False
 

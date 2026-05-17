@@ -42,6 +42,8 @@ from synthorg.observability.events.integrations import (
     SECRET_DELETED,
     SECRET_RETRIEVAL_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import paginate
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,  # noqa: TC001
 )
@@ -121,8 +123,19 @@ class ConnectionCatalog:
         async with self._cache_lock:
             # Re-check under lock (double-checked locking)
             if not self._cache_valid:
-                all_conns = await self._repo.list_all()
-                self._cache = {c.name: c for c in all_conns}
+                # The catalog needs every persisted connection to
+                # satisfy synchronous ``by_name`` lookups, so page
+                # through the full set: a single capped read would
+                # silently drop connections past the backend page cap.
+                collected: list[Connection] = []
+                async for page in paginate(
+                    lambda limit, offset: self._repo.list_items(
+                        limit=limit, offset=offset
+                    ),
+                    page_size=DEFAULT_PAGE_SIZE,
+                ):
+                    collected.extend(page)
+                self._cache = {c.name: c for c in collected}
                 self._cache_valid = True
 
     def _invalidate_cache(self) -> None:

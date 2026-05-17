@@ -114,7 +114,7 @@ class TestSnapshotPublishing:
 
         # All futures resolved
         assert len(results) == 5
-        stored = await persistence.tasks.list_tasks()
+        stored = await persistence.tasks.list_items()
         assert len(stored) == 5
 
 
@@ -296,7 +296,7 @@ class TestDrainTimeout:
             await block.wait()
             await original_save(task)  # type: ignore[arg-type]
 
-        persistence.tasks.save = slow_save  # type: ignore[method-assign]
+        persistence.tasks.save = slow_save  # type: ignore[method-assign,assignment]
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()

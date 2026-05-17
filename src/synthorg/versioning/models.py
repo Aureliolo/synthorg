@@ -77,3 +77,28 @@ class VersionSnapshot[T: BaseModel](BaseModel):
             msg = f"saved_at must be UTC, got offset {v.utcoffset()}"
             raise ValueError(msg)
         return v
+
+
+class RollbackWorkflowRequest(BaseModel):
+    """Request body for rolling back a workflow to a previous version.
+
+    Lives in the versioning domain layer so the rollback service can
+    validate input without importing from ``synthorg.api.dto_workflow``.
+
+    Attributes:
+        target_version: Snapshot version number to restore content from
+            (monotonic counter in the workflow_definition_versions table).
+        expected_revision: Current definition revision for optimistic
+            concurrency on the live workflow_definitions row.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    target_version: int = Field(
+        ge=1,
+        description="Snapshot version to rollback to",
+    )
+    expected_revision: int = Field(
+        ge=1,
+        description="Optimistic concurrency guard on the definition revision",
+    )

@@ -112,20 +112,28 @@ class TestWorkflowDefinitionRepository:
         result = await repo.get("nonexistent-id")
         assert result is None
 
-    async def test_list_definitions_empty(
+    async def test_query_empty(
         self,
         backend: PersistenceBackend,
     ) -> None:
-        """List definitions on empty repository returns empty tuple."""
+        """Query on empty repository returns empty tuple."""
+        from synthorg.persistence.workflow_definition_protocol import (
+            WorkflowDefinitionFilterSpec,
+        )
+
         repo = backend.workflow_definitions
-        definitions = await repo.list_definitions()
+        definitions = await repo.query(WorkflowDefinitionFilterSpec())
         assert len(definitions) == 0
 
-    async def test_list_definitions_with_filter(
+    async def test_query_with_filter(
         self,
         backend: PersistenceBackend,
     ) -> None:
-        """List definitions filters by workflow type."""
+        """Query filters by workflow type."""
+        from synthorg.persistence.workflow_definition_protocol import (
+            WorkflowDefinitionFilterSpec,
+        )
+
         repo = backend.workflow_definitions
         defn1 = _make_workflow_definition(
             definition_id="wf-sequential",
@@ -141,8 +149,10 @@ class TestWorkflowDefinitionRepository:
         await repo.save(defn1)
         await repo.save(defn2)
 
-        sequential_only = await repo.list_definitions(
-            workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
+        sequential_only = await repo.query(
+            WorkflowDefinitionFilterSpec(
+                workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
+            ),
         )
         assert len(sequential_only) >= 1
         assert any(d.id == "wf-sequential" for d in sequential_only)
@@ -155,15 +165,19 @@ class TestWorkflowDefinitionRepository:
         )
         assert not any(d.id == "wf-parallel" for d in sequential_only)
 
-    async def test_list_definitions_respects_limit(
+    async def test_query_respects_limit(
         self,
         backend: PersistenceBackend,
     ) -> None:
+        from synthorg.persistence.workflow_definition_protocol import (
+            WorkflowDefinitionFilterSpec,
+        )
+
         repo = backend.workflow_definitions
         for i in range(5):
             await repo.save(_make_workflow_definition(definition_id=f"wf-lim-{i}"))
 
-        rows = await repo.list_definitions(limit=3)
+        rows = await repo.query(WorkflowDefinitionFilterSpec(), limit=3)
         assert len(rows) == 3
 
     async def test_update_workflow_definition(

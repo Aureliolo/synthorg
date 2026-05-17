@@ -522,7 +522,7 @@ class TestClear:
     ) -> None:
         await connected.store("a", _req())
         await connected.store("a", _req())
-        removed = connected.clear("a")
+        removed = await connected.clear("a")
         assert removed == 2
         assert await connected.count("a") == 0
 
@@ -530,7 +530,7 @@ class TestClear:
         self,
         connected: InMemoryBackend,
     ) -> None:
-        assert connected.clear("a") == 0
+        assert await connected.clear("a") == 0
 
     async def test_clear_does_not_affect_other_agents(
         self,
@@ -538,5 +538,5 @@ class TestClear:
     ) -> None:
         await connected.store("a", _req())
         await connected.store("b", _req())
-        connected.clear("a")
+        await connected.clear("a")
         assert await connected.count("b") == 1

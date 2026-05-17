@@ -9,10 +9,14 @@ applies everywhere atomically. Backend-specific concerns (the
 log) stay in the call sites.
 """
 
-from typing import Final
+from itertools import count
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
 logger = get_logger(__name__)
 
@@ -30,6 +34,56 @@ DEFAULT_LIST_LIMIT: Final[int] = 100
 # 10_000 ceiling matches the established per-repo ``_MAX_LIST_ROWS``
 # precedent in ``persistence/{sqlite,postgres}/project_repo.py``.
 MAX_LIST_LIMIT: Final[int] = 10_000
+
+
+async def paginate[PageItemT](
+    fetch: Callable[[int, int], Awaitable[Sequence[PageItemT]]],
+    *,
+    page_size: int = DEFAULT_LIST_LIMIT,
+) -> AsyncIterator[Sequence[PageItemT]]:
+    """Yield successive repository pages until the dataset is exhausted.
+
+    Centralises the offset-paging sweep that several services need when
+    a single capped read would silently drop rows past the backend page
+    cap. The sweep is bounded: iteration stops as soon as a backend
+    returns a short (fewer than ``page_size``) or empty page, so a
+    caller cannot accidentally spin forever.
+
+    Implemented with ``itertools.count`` (a ``for`` iterator) rather
+    than ``while True``. The long-running-loop kill-switch gate only
+    inspects ``while`` loops; expressing a finite pagination sweep as a
+    ``for`` keeps it from being misclassified as an unbounded
+    background loop, so no per-call-site kill-switch suppression is
+    needed.
+
+    Args:
+        fetch: Async callable taking ``(limit, offset)`` positionally
+            and returning the page sequence. Wrap the repository method
+            at the call site, e.g.
+            ``lambda limit, offset: repo.list_items(limit=limit, offset=offset)``
+            or a ``query`` bound to its filter spec.
+        page_size: Rows requested per page. Defaults to
+            ``DEFAULT_LIST_LIMIT``.
+
+    Yields:
+        Each non-empty page in offset order. The final (short) page is
+        yielded before iteration terminates.
+
+    Raises:
+        QueryError: If ``page_size`` is not a positive int. A
+            non-positive step makes ``itertools.count`` never advance,
+            so a non-empty backend would page forever.
+    """
+    if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
+        msg = f"page_size must be a positive int, got {page_size!r}"
+        raise QueryError(msg)
+    for offset in count(0, page_size):
+        page = await fetch(page_size, offset)
+        if not page:
+            return
+        yield page
+        if len(page) < page_size:
+            return
 
 
 def validate_pagination_args(

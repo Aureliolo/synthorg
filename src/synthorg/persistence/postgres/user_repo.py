@@ -22,6 +22,7 @@ from synthorg.core.persistence_errors import ConstraintViolationError, QueryErro
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
+    PERSISTENCE_API_KEY_COUNT_FAILED,
     PERSISTENCE_API_KEY_DELETE_FAILED,
     PERSISTENCE_API_KEY_FETCH_FAILED,
     PERSISTENCE_API_KEY_FETCHED,
@@ -39,8 +40,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.pagination import (
-    DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
 from synthorg.persistence.constraint_tokens import (
@@ -48,6 +49,10 @@ from synthorg.persistence.constraint_tokens import (
     LAST_CEO_TRIGGER,
     LAST_OWNER_TRIGGER,
     USERS_USERNAME_UNIQUE,
+)
+from synthorg.persistence.user_protocol import (  # noqa: TC001
+    ApiKeyFilterSpec,
+    UserFilterSpec,
 )
 
 _PG_CONSTRAINT_MAP: dict[str, str] = {
@@ -237,26 +242,27 @@ class PostgresUserRepository:
             )
             raise QueryError(msg) from exc
 
-    async def list_users(
+    async def list_items(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[User, ...]:
-        """List human users ordered by creation date (excludes system user).
-
-        Bounded by *limit* so an unauth'd caller cannot materialise an
-        unbounded tuple of users. For cursor-stable pagination across
-        large user bases use :meth:`list_users_paginated` instead.
+        """List human users (excludes system user) with pagination.
 
         Args:
-            limit: Maximum users to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum users to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Human users ordered by id ascending.
 
         Raises:
-            QueryError: If the database query, deserialization, or
-                pagination validation fails.
+            QueryError: If the database query or deserialization fails.
         """
-        limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_USER_LIST_FAILED
+        )
         try:
             async with (
                 self._pool.connection() as conn,
@@ -264,8 +270,8 @@ class PostgresUserRepository:
             ):
                 await cur.execute(
                     "SELECT * FROM users WHERE role != %s "
-                    "ORDER BY created_at, id LIMIT %s",
-                    (HumanRole.SYSTEM.value, limit),
+                    "ORDER BY id LIMIT %s OFFSET %s",
+                    (HumanRole.SYSTEM.value, limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -289,32 +295,30 @@ class PostgresUserRepository:
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users
 
-    async def list_users_paginated(
+    async def list_after_id(
         self,
         *,
-        after_id: NotBlankStr | None,
-        limit: int,
+        after_id: NotBlankStr | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[User, ...]:
-        """Return a single keyset page of human users sorted by ``id``."""
+        """Keyset page of human users with ``id > after_id``."""
+        limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
+        sql = "SELECT * FROM users WHERE role != %s"
+        params: list[object] = [HumanRole.SYSTEM.value]
+        if after_id is not None:
+            sql += " AND id > %s"
+            params.append(after_id)
+        sql += " ORDER BY id LIMIT %s"
+        params.append(limit)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                if after_id is None:
-                    await cur.execute(
-                        "SELECT * FROM users WHERE role != %s ORDER BY id LIMIT %s",
-                        (HumanRole.SYSTEM.value, limit),
-                    )
-                else:
-                    await cur.execute(
-                        "SELECT * FROM users WHERE role != %s AND id > %s "
-                        "ORDER BY id LIMIT %s",
-                        (HumanRole.SYSTEM.value, after_id, limit),
-                    )
+                await cur.execute(sql, tuple(params))
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
-            msg = "Failed to list users (paginated)"
+            msg = "Failed to list users"
             logger.warning(
                 PERSISTENCE_USER_LIST_FAILED,
                 error_type=type(exc).__name__,
@@ -324,7 +328,7 @@ class PostgresUserRepository:
         try:
             users = tuple(_row_to_user(row) for row in rows)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
-            msg = "Failed to deserialize users (paginated)"
+            msg = "Failed to deserialize users"
             logger.warning(
                 PERSISTENCE_USER_LIST_FAILED,
                 error_type=type(exc).__name__,
@@ -334,14 +338,84 @@ class PostgresUserRepository:
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users
 
-    async def count(self) -> int:
-        """Return the number of human users (excludes system user)."""
+    async def query(
+        self,
+        filter_spec: UserFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[User, ...]:
+        """List users matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filter for role.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Matching users ordered by id ascending.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_USER_LIST_FAILED
+        )
+        sql = "SELECT * FROM users WHERE role != %s"
+        params: list[object] = [HumanRole.SYSTEM.value]
+        if filter_spec.role is not None:
+            sql += " AND role = %s"
+            params.append(filter_spec.role.value)
+        sql += " ORDER BY id LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, tuple(params))
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to query users"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            users = tuple(_row_to_user(row) for row in rows)
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+            msg = "Failed to deserialize users"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
+        return users
+
+    async def count(self, filter_spec: UserFilterSpec) -> int:
+        """Count users matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filter for role.
+
+        Returns:
+            Total number of matching users.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        sql = "SELECT COUNT(*) FROM users WHERE role != %s"
+        params: list[object] = [HumanRole.SYSTEM.value]
+        if filter_spec.role is not None:
+            sql += " AND role = %s"
+            params.append(filter_spec.role.value)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT COUNT(*) FROM users WHERE role != %s",
-                    (HumanRole.SYSTEM.value,),
-                )
+                await cur.execute(sql, tuple(params))
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to count users"
@@ -528,40 +602,41 @@ class PostgresApiKeyRepository:
             )
             raise QueryError(msg) from exc
 
-    async def list_by_user(
+    async def list_items(
         self,
-        user_id: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
-        """List up to ``limit`` API keys for a user, ordered by creation date.
+        """List API keys with pagination.
 
-        Defaults to :data:`DEFAULT_LIST_LIMIT`; callers needing more
-        must paginate with ``offset``.
+        Args:
+            limit: Maximum keys to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            API keys ordered by id ascending.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
         """
         limit = validate_pagination_args(
-            limit,
-            offset,
-            event=PERSISTENCE_API_KEY_LIST_FAILED,
-            user_id=user_id,
+            limit, offset, event=PERSISTENCE_API_KEY_LIST_FAILED
         )
-        sql = "SELECT * FROM api_keys WHERE user_id = %s ORDER BY created_at, id"
-        params: tuple[object, ...] = (user_id,)
-        sql += " LIMIT %s OFFSET %s"
-        params = (*params, limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(sql, params)
+                await cur.execute(
+                    "SELECT * FROM api_keys ORDER BY id LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
-            msg = f"Failed to list API keys for user {user_id!r}"
+            msg = "Failed to list API keys"
             logger.warning(
                 PERSISTENCE_API_KEY_LIST_FAILED,
-                user_id=user_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -569,16 +644,110 @@ class PostgresApiKeyRepository:
         try:
             keys = tuple(_row_to_api_key(row) for row in rows)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
-            msg = f"Failed to deserialize API keys for user {user_id!r}"
+            msg = "Failed to deserialize API keys"
             logger.warning(
                 PERSISTENCE_API_KEY_LIST_FAILED,
-                user_id=user_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_API_KEY_LISTED, user_id=user_id, count=len(keys))
+        logger.debug(PERSISTENCE_API_KEY_LISTED, count=len(keys))
         return keys
+
+    async def query(
+        self,
+        filter_spec: ApiKeyFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        """List API keys matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters for user_id and revoked_only.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Matching API keys ordered by id ascending.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_API_KEY_LIST_FAILED
+        )
+        sql = "SELECT * FROM api_keys WHERE TRUE"
+        params: list[object] = []
+        if filter_spec.user_id is not None:
+            sql += " AND user_id = %s"
+            params.append(filter_spec.user_id)
+        if filter_spec.revoked_only:
+            sql += " AND revoked = TRUE"
+        sql += " ORDER BY id LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, tuple(params))
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to query API keys"
+            logger.warning(
+                PERSISTENCE_API_KEY_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            keys = tuple(_row_to_api_key(row) for row in rows)
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+            msg = "Failed to deserialize API keys"
+            logger.warning(
+                PERSISTENCE_API_KEY_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug(PERSISTENCE_API_KEY_LISTED, count=len(keys))
+        return keys
+
+    async def count(self, filter_spec: ApiKeyFilterSpec) -> int:
+        """Count API keys matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters.
+
+        Returns:
+            Total number of matching API keys.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        sql = "SELECT COUNT(*) FROM api_keys WHERE TRUE"
+        params: list[object] = []
+        if filter_spec.user_id is not None:
+            sql += " AND user_id = %s"
+            params.append(filter_spec.user_id)
+        if filter_spec.revoked_only:
+            sql += " AND revoked = TRUE"
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, tuple(params))
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = "Failed to count API keys"
+            logger.warning(
+                PERSISTENCE_API_KEY_COUNT_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        result = int(row[0]) if row else 0
+        logger.debug(PERSISTENCE_API_KEY_LISTED, count=result)
+        return result
 
     async def delete(self, key_id: NotBlankStr) -> bool:
         """Delete an API key by primary key."""

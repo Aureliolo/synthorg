@@ -100,10 +100,10 @@ class TestCheckpointCallbackBoundaryTurns:
 
         ctx1 = _make_ctx_at_turn(agent, task, 1)
         await callback(ctx1)
-        assert cp_repo.save.await_count == 1
+        assert cp_repo.append.await_count == 1
 
         # Verify checkpoint model content
-        saved_cp = cp_repo.save.call_args_list[0][0][0]
+        saved_cp = cp_repo.append.call_args_list[0][0][0]
         assert saved_cp.agent_id == str(agent.id)
         assert saved_cp.task_id == task.id
         assert saved_cp.turn_number == 1
@@ -117,7 +117,7 @@ class TestCheckpointCallbackBoundaryTurns:
 
         ctx2 = _make_ctx_at_turn(agent, task, 2)
         await callback(ctx2)
-        assert cp_repo.save.await_count == 2
+        assert cp_repo.append.await_count == 2
 
     async def test_skips_non_boundary_turns(self) -> None:
         """persist_every_n_turns=2 skips odd turns."""
@@ -137,17 +137,17 @@ class TestCheckpointCallbackBoundaryTurns:
         # Turn 1: 1 % 2 != 0 → skip
         ctx1 = _make_ctx_at_turn(agent, task, 1)
         await callback(ctx1)
-        assert cp_repo.save.await_count == 0
+        assert cp_repo.append.await_count == 0
 
         # Turn 2: 2 % 2 == 0 → save
         ctx2 = _make_ctx_at_turn(agent, task, 2)
         await callback(ctx2)
-        assert cp_repo.save.await_count == 1
+        assert cp_repo.append.await_count == 1
 
         # Turn 3: 3 % 2 != 0 → skip
         ctx3 = _make_ctx_at_turn(agent, task, 3)
         await callback(ctx3)
-        assert cp_repo.save.await_count == 1
+        assert cp_repo.append.await_count == 1
 
     @pytest.mark.parametrize(
         ("persist_every_n", "turn", "should_save"),
@@ -191,7 +191,7 @@ class TestCheckpointCallbackBoundaryTurns:
         await callback(ctx)
 
         expected_count = 1 if should_save else 0
-        assert cp_repo.save.await_count == expected_count
+        assert cp_repo.append.await_count == expected_count
 
 
 @pytest.mark.unit
@@ -249,7 +249,7 @@ class TestCheckpointCallbackErrorHandling:
         agent = _make_agent()
         task = _make_task(agent)
         cp_repo, hb_repo = _make_repos()
-        cp_repo.save = AsyncMock(side_effect=RuntimeError("DB write failed"))
+        cp_repo.append = AsyncMock(side_effect=RuntimeError("DB write failed"))
         config = CheckpointConfig(persist_every_n_turns=1)
 
         callback = make_checkpoint_callback(
@@ -285,11 +285,11 @@ class TestCheckpointCallbackErrorHandling:
         await callback(ctx)
 
     async def test_memory_error_not_swallowed_from_checkpoint(self) -> None:
-        """MemoryError from checkpoint save propagates."""
+        """MemoryError from checkpoint append propagates."""
         agent = _make_agent()
         task = _make_task(agent)
         cp_repo, hb_repo = _make_repos()
-        cp_repo.save = AsyncMock(side_effect=MemoryError)
+        cp_repo.append = AsyncMock(side_effect=MemoryError)
         config = CheckpointConfig(persist_every_n_turns=1)
 
         callback = make_checkpoint_callback(
@@ -305,11 +305,11 @@ class TestCheckpointCallbackErrorHandling:
             await callback(ctx)
 
     async def test_recursion_error_not_swallowed_from_checkpoint(self) -> None:
-        """RecursionError from checkpoint save propagates."""
+        """RecursionError from checkpoint append propagates."""
         agent = _make_agent()
         task = _make_task(agent)
         cp_repo, hb_repo = _make_repos()
-        cp_repo.save = AsyncMock(side_effect=RecursionError)
+        cp_repo.append = AsyncMock(side_effect=RecursionError)
         config = CheckpointConfig(persist_every_n_turns=1)
 
         callback = make_checkpoint_callback(
@@ -369,7 +369,7 @@ class TestCheckpointCallbackErrorHandling:
         agent = _make_agent()
         task = _make_task(agent)
         cp_repo, hb_repo = _make_repos()
-        cp_repo.save = AsyncMock(side_effect=RuntimeError("checkpoint failed"))
+        cp_repo.append = AsyncMock(side_effect=RuntimeError("checkpoint failed"))
         config = CheckpointConfig(persist_every_n_turns=1)
 
         callback = make_checkpoint_callback(
@@ -383,7 +383,7 @@ class TestCheckpointCallbackErrorHandling:
         ctx = _make_ctx_at_turn(agent, task, 1)
         await callback(ctx)
 
-        # Checkpoint save was attempted
-        cp_repo.save.assert_awaited_once()
+        # Checkpoint append was attempted
+        cp_repo.append.assert_awaited_once()
         # Heartbeat should NOT be called when checkpoint failed
         hb_repo.save.assert_not_awaited()

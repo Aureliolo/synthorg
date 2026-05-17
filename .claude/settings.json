@@ -41,6 +41,11 @@
           },
           {
             "type": "command",
+            "command": "bash scripts/check_no_git_no_verify.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
             "command": "python3 scripts/check_no_bulk_edit.py",
             "timeout": 5000
           },

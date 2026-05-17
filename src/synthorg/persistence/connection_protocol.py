@@ -7,58 +7,83 @@ authorization states, and webhook receipts.
 from datetime import datetime  # noqa: TC003 -- runtime annotation
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
-    Connection,  # noqa: TC001
-    ConnectionType,  # noqa: TC001
-    OAuthState,  # noqa: TC001
-    WebhookReceipt,  # noqa: TC001
+    Connection,
+    ConnectionType,
+    OAuthState,
+    WebhookReceipt,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import (
+    DEFAULT_PAGE_SIZE,
+    FilteredQueryRepository,
+    IdKeyedRepository,
+)
+
+
+class ConnectionFilterSpec(BaseModel):
+    """Filter spec for ``ConnectionRepository.query`` (ADR-0001)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    connection_type: ConnectionType | None = Field(
+        default=None,
+        description="Filter by connection type",
+    )
 
 
 @runtime_checkable
-class ConnectionRepository(Protocol):
-    """CRUD + query interface for Connection persistence."""
+class ConnectionRepository(
+    IdKeyedRepository[Connection, NotBlankStr],
+    FilteredQueryRepository[Connection, ConnectionFilterSpec],
+    Protocol,
+):
+    """CRUD + query interface for Connection persistence.
 
-    async def save(self, connection: Connection) -> None:
-        """Persist a connection (insert or upsert)."""
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
+    (ADR-0001). Entity is keyed by ``name`` field.
+    """
+
+    async def save(self, entity: Connection) -> None:
+        """Persist a connection (insert or upsert by name)."""
         ...
 
-    async def get(self, name: NotBlankStr) -> Connection | None:
+    async def get(self, entity_id: NotBlankStr) -> Connection | None:
         """Retrieve a connection by name."""
         ...
 
-    async def list_all(
+    async def list_items(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List all connections, optionally bounded by *limit* / *offset*.
+        """List all connections with pagination.
 
-        Sorted by ``name`` ascending; ``limit`` defaults to
-        ``DEFAULT_LIST_LIMIT`` so callers receive at most that many
-        connections unless they pass a larger positive integer.
-        ``limit <= 0`` returns ``()``; negative ``offset`` is treated
-        as ``0``.
+        Sorted by ``name`` ascending.
         """
         ...
 
-    async def list_by_type(
+    async def query(
         self,
-        connection_type: ConnectionType,
+        filter_spec: ConnectionFilterSpec,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List connections of a specific type with optional limit/offset.
+        """List connections matching the filter spec.
 
-        ``limit <= 0`` returns ``()``; negative ``offset`` is treated as ``0``.
+        Sorted by ``name`` ascending.
         """
         ...
 
-    async def delete(self, name: NotBlankStr) -> bool:
+    async def count(self, filter_spec: ConnectionFilterSpec) -> int:
+        """Count connections matching the filter spec."""
+        ...
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a connection by name.
 
         Returns:
@@ -94,18 +119,36 @@ class ConnectionSecretRepository(Protocol):
 
 
 @runtime_checkable
-class OAuthStateRepository(Protocol):
-    """CRUD for transient OAuth authorization states."""
+class OAuthStateRepository(
+    IdKeyedRepository[OAuthState, NotBlankStr],
+    Protocol,
+):
+    """CRUD for transient OAuth authorization states.
 
-    async def save(self, state: OAuthState) -> None:
+    Composes :class:`IdKeyedRepository` (ADR-0001). Entity is keyed by
+    ``state_token`` field. Bespoke per ADR-0001 D7: :meth:`mark_consumed`
+    (compare-and-set for idempotency) and :meth:`cleanup_expired` (TTL-based
+    garbage collection).
+    """
+
+    async def save(self, entity: OAuthState) -> None:
         """Persist an OAuth state."""
         ...
 
-    async def get(self, state_token: NotBlankStr) -> OAuthState | None:
+    async def get(self, entity_id: NotBlankStr) -> OAuthState | None:
         """Retrieve by state token."""
         ...
 
-    async def delete(self, state_token: NotBlankStr) -> bool:
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[OAuthState, ...]:
+        """List all OAuth states with pagination."""
+        ...
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a state token (consumed or expired)."""
         ...
 
@@ -156,18 +199,45 @@ class OAuthStateRepository(Protocol):
 
 
 @runtime_checkable
-class WebhookReceiptRepository(Protocol):
-    """CRUD for webhook receipt log entries."""
+class WebhookReceiptRepository(
+    IdKeyedRepository[WebhookReceipt, NotBlankStr],
+    Protocol,
+):
+    """CRUD for webhook receipt log entries.
 
-    async def log(self, receipt: WebhookReceipt) -> None:
+    Composes :class:`IdKeyedRepository` (ADR-0001). Entity is keyed by
+    ``receipt_id`` field. Bespoke per ADR-0001 D7: :meth:`update_status`
+    and :meth:`update_status_if_current` (lifecycle updates), :meth:`get_by_connection`
+    (alternate-key query), and :meth:`cleanup_old_for_connection` (retention
+    policy).
+    """
+
+    async def save(self, entity: WebhookReceipt) -> None:
         """Persist a webhook receipt."""
         ...
 
-    async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
+    async def get(self, entity_id: NotBlankStr) -> WebhookReceipt | None:
         """Fetch a single receipt by ID, or ``None`` when absent.
 
         Used by the retry endpoint to look up a failed receipt before
         re-publishing its captured payload to the bus.
+        """
+        ...
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[WebhookReceipt, ...]:
+        """List all webhook receipts with pagination."""
+        ...
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        """Delete a webhook receipt by ID.
+
+        Returns:
+            ``True`` if the receipt existed and was deleted.
         """
         ...
 
@@ -213,7 +283,7 @@ class WebhookReceiptRepository(Protocol):
         self,
         connection_name: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List receipts for a connection, newest first.

@@ -1,10 +1,18 @@
 """Tests for SQLiteProjectRepository."""
 
+from unittest.mock import patch
+
 import aiosqlite
 import pytest
 
 from synthorg.core.enums import ProjectStatus
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    QueryError,
+    RecordNotFoundError,
+)
 from synthorg.core.project import Project
+from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.sqlite.project_repo import SQLiteProjectRepository
 from tests._shared.persistence import make_private_write_context
 
@@ -70,31 +78,33 @@ class TestSQLiteProjectRepository:
         assert fetched is not None
         assert fetched.name == "Updated Name"
 
-    async def test_list_all(self, repo: SQLiteProjectRepository) -> None:
+    async def test_list_items_in_id_order(self, repo: SQLiteProjectRepository) -> None:
         await repo.save(_make_project(project_id="p1", name="P1"))
         await repo.save(_make_project(project_id="p2", name="P2"))
-        result = await repo.list_projects()
+        result = await repo.list_items()
         assert len(result) == 2
+        assert result[0].id == "p1"
+        assert result[1].id == "p2"
 
-    async def test_list_filter_by_status(self, repo: SQLiteProjectRepository) -> None:
+    async def test_query_filter_by_status(self, repo: SQLiteProjectRepository) -> None:
         await repo.save(
             _make_project(project_id="p1", name="P1", status=ProjectStatus.ACTIVE)
         )
         await repo.save(
             _make_project(project_id="p2", name="P2", status=ProjectStatus.COMPLETED)
         )
-        result = await repo.list_projects(status=ProjectStatus.ACTIVE)
+        result = await repo.query(ProjectFilterSpec(status=ProjectStatus.ACTIVE))
         assert len(result) == 1
         assert result[0].status is ProjectStatus.ACTIVE
 
-    async def test_list_filter_by_lead(self, repo: SQLiteProjectRepository) -> None:
+    async def test_query_filter_by_lead(self, repo: SQLiteProjectRepository) -> None:
         await repo.save(_make_project(project_id="p1", name="P1", lead="alice"))
         await repo.save(_make_project(project_id="p2", name="P2", lead="bob"))
-        result = await repo.list_projects(lead="alice")
+        result = await repo.query(ProjectFilterSpec(lead="alice"))
         assert len(result) == 1
         assert result[0].lead == "alice"
 
-    async def test_list_combined_filters(self, repo: SQLiteProjectRepository) -> None:
+    async def test_query_combined_filters(self, repo: SQLiteProjectRepository) -> None:
         await repo.save(
             _make_project(
                 project_id="p1",
@@ -119,7 +129,9 @@ class TestSQLiteProjectRepository:
                 lead="alice",
             )
         )
-        result = await repo.list_projects(status=ProjectStatus.ACTIVE, lead="alice")
+        result = await repo.query(
+            ProjectFilterSpec(status=ProjectStatus.ACTIVE, lead="alice"),
+        )
         assert len(result) == 1
         assert result[0].id == "p1"
 
@@ -176,3 +188,103 @@ class TestSQLiteProjectRepository:
         assert fetched is not None
         assert fetched.team == ()
         assert fetched.task_ids == ()
+
+    async def test_create_inserts_then_rejects_duplicate(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        await repo.create(_make_project(project_id="p-dup"))
+        fetched = await repo.get("p-dup")
+        assert fetched is not None
+        with pytest.raises(DuplicateRecordError):
+            await repo.create(_make_project(project_id="p-dup"))
+
+    async def test_update_modifies_then_rejects_missing(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        original = _make_project(project_id="p-up", name="Original")
+        await repo.create(original)
+        renamed = original.model_copy(update={"name": "Renamed"})
+        await repo.update(renamed)
+        fetched = await repo.get("p-up")
+        assert fetched is not None
+        assert fetched.name == "Renamed"
+        with pytest.raises(RecordNotFoundError):
+            await repo.update(_make_project(project_id="p-ghost"))
+
+    async def test_list_items_and_query_empty(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        assert await repo.list_items() == ()
+        assert await repo.query(ProjectFilterSpec()) == ()
+
+
+@pytest.mark.unit
+class TestSQLiteProjectRepositoryErrorPaths:
+    """DB failures in every method translate to ``QueryError``."""
+
+    @pytest.fixture
+    def repo(self, migrated_db: aiosqlite.Connection) -> SQLiteProjectRepository:
+        return SQLiteProjectRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
+
+    async def test_create_translates_db_error(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.create(_make_project())
+
+    async def test_update_translates_db_error(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.update(_make_project())
+
+    async def test_save_translates_db_error(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.save(_make_project())
+
+    async def test_get_translates_db_error(self, repo: SQLiteProjectRepository) -> None:
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.get("proj-001")
+
+    async def test_delete_translates_db_error(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.delete("proj-001")
+
+    async def test_list_items_translates_db_error(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.list_items(limit=10, offset=0)
+
+    async def test_query_translates_db_error(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.query(ProjectFilterSpec(), limit=10, offset=0)

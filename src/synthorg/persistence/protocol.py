@@ -41,6 +41,9 @@ from synthorg.persistence.auth_protocol import (
     RefreshTokenRepository,  # noqa: TC001
     SessionRepository,  # noqa: TC001
 )
+from synthorg.persistence.ceremony_scheduler_state_protocol import (
+    CeremonySchedulerStateRepository,  # noqa: TC001
+)
 from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,  # noqa: TC001
     HeartbeatRepository,  # noqa: TC001
@@ -73,6 +76,9 @@ from synthorg.persistence.idempotency_protocol import (
 )
 from synthorg.persistence.mcp_protocol import (
     McpInstallationRepository,  # noqa: TC001
+)
+from synthorg.persistence.meeting_cooldown_protocol import (
+    MeetingCooldownRepository,  # noqa: TC001
 )
 from synthorg.persistence.memory_protocol import (
     OrgFactRepository,  # noqa: TC001
@@ -115,6 +121,9 @@ from synthorg.persistence.subworkflow_protocol import (
     SubworkflowRepository,  # noqa: TC001
 )
 from synthorg.persistence.task_protocol import TaskRepository  # noqa: TC001
+from synthorg.persistence.tracked_container_protocol import (
+    TrackedContainerRepository,  # noqa: TC001
+)
 from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,  # noqa: TC001
     TrainingResultRepository,  # noqa: TC001
@@ -464,6 +473,21 @@ class PersistenceBackend(Protocol):
     @property
     def circuit_breaker_state(self) -> CircuitBreakerStateRepository:
         """Repository for circuit breaker state persistence."""
+        ...
+
+    @property
+    def ceremony_scheduler_state(self) -> CeremonySchedulerStateRepository:
+        """Repository for ceremony scheduler per-sprint state snapshots."""
+        ...
+
+    @property
+    def meeting_cooldown(self) -> MeetingCooldownRepository:
+        """Repository for meeting cooldown last-triggered timestamps."""
+        ...
+
+    @property
+    def tracked_containers(self) -> TrackedContainerRepository:
+        """Repository for Docker sandbox tracked-container records."""
         ...
 
     @property

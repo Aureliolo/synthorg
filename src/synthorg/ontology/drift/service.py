@@ -100,7 +100,7 @@ class DriftDetectionService:
 
         if self._store is not None:
             try:
-                await self._store.store_report(report)
+                await self._store.append(report)
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:

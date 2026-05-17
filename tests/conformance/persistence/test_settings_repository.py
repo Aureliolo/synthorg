@@ -10,6 +10,7 @@ import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.settings_protocol import SettingRow
 
 
 def _ts(year: int, month: int, day: int, hour: int = 12) -> str:
@@ -27,21 +28,23 @@ class TestSettingsGetSet:
         self,
         backend: PersistenceBackend,
     ) -> None:
-        assert await backend.settings.get(NS, NotBlankStr("missing")) is None
+        assert await backend.settings.get((NS, NotBlankStr("missing"))) is None
 
     async def test_set_then_get_round_trip(
         self,
         backend: PersistenceBackend,
     ) -> None:
-        assert (
-            await backend.settings.set(NS, NotBlankStr("k1"), "v1", _ts(2026, 4, 10))
-            is True
+        entity = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("k1"),
+            value="v1",
+            updated_at=_ts(2026, 4, 10),
         )
-        result = await backend.settings.get(NS, NotBlankStr("k1"))
+        await backend.settings.save(entity)
+        result = await backend.settings.get((NS, NotBlankStr("k1")))
         assert result is not None
-        value, updated_at = result
-        assert value == "v1"
-        assert datetime.fromisoformat(updated_at) == datetime(
+        assert result.value == "v1"
+        assert datetime.fromisoformat(result.updated_at) == datetime(
             2026, 4, 10, 12, tzinfo=UTC
         )
 
@@ -49,11 +52,23 @@ class TestSettingsGetSet:
         self,
         backend: PersistenceBackend,
     ) -> None:
-        await backend.settings.set(NS, NotBlankStr("k2"), "initial", _ts(2026, 1, 1))
-        await backend.settings.set(NS, NotBlankStr("k2"), "updated", _ts(2026, 2, 1))
-        result = await backend.settings.get(NS, NotBlankStr("k2"))
+        entity1 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("k2"),
+            value="initial",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity1)
+        entity2 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("k2"),
+            value="updated",
+            updated_at=_ts(2026, 2, 1),
+        )
+        await backend.settings.save(entity2)
+        result = await backend.settings.get((NS, NotBlankStr("k2")))
         assert result is not None
-        assert result[0] == "updated"
+        assert result.value == "updated"
 
 
 @pytest.mark.integration
@@ -62,50 +77,62 @@ class TestSettingsCompareAndSwap:
         self,
         backend: PersistenceBackend,
     ) -> None:
-        ok = await backend.settings.set(
-            NS,
-            NotBlankStr("cas_new"),
-            "first",
-            _ts(2026, 1, 1),
-            expected_updated_at="",
+        entity = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("cas_new"),
+            value="first",
+            updated_at=_ts(2026, 1, 1),
         )
+        ok = await backend.settings.set_if_unchanged(entity, expected_updated_at="")
         assert ok is True
-        result = await backend.settings.get(NS, NotBlankStr("cas_new"))
+        result = await backend.settings.get((NS, NotBlankStr("cas_new")))
         assert result is not None
-        assert result[0] == "first"
+        assert result.value == "first"
 
     async def test_cas_empty_string_rejects_existing(
         self,
         backend: PersistenceBackend,
     ) -> None:
-        await backend.settings.set(
-            NS, NotBlankStr("cas_exist"), "first", _ts(2026, 1, 1)
+        entity1 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("cas_exist"),
+            value="first",
+            updated_at=_ts(2026, 1, 1),
         )
-        ok = await backend.settings.set(
-            NS,
-            NotBlankStr("cas_exist"),
-            "second",
-            _ts(2026, 2, 1),
-            expected_updated_at="",
+        await backend.settings.save(entity1)
+        entity2 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("cas_exist"),
+            value="second",
+            updated_at=_ts(2026, 2, 1),
         )
+        ok = await backend.settings.set_if_unchanged(entity2, expected_updated_at="")
         assert ok is False
-        result = await backend.settings.get(NS, NotBlankStr("cas_exist"))
+        result = await backend.settings.get((NS, NotBlankStr("cas_exist")))
         assert result is not None
-        assert result[0] == "first"
+        assert result.value == "first"
 
     async def test_cas_matching_updates(
         self,
         backend: PersistenceBackend,
     ) -> None:
-        await backend.settings.set(NS, NotBlankStr("cas_m"), "v1", _ts(2026, 1, 1))
-        current = await backend.settings.get(NS, NotBlankStr("cas_m"))
+        entity1 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("cas_m"),
+            value="v1",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity1)
+        current = await backend.settings.get((NS, NotBlankStr("cas_m")))
         assert current is not None
-        ok = await backend.settings.set(
-            NS,
-            NotBlankStr("cas_m"),
-            "v2",
-            _ts(2026, 2, 1),
-            expected_updated_at=current[1],
+        entity2 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("cas_m"),
+            value="v2",
+            updated_at=_ts(2026, 2, 1),
+        )
+        ok = await backend.settings.set_if_unchanged(
+            entity2, expected_updated_at=current.updated_at
         )
         assert ok is True
 
@@ -113,18 +140,26 @@ class TestSettingsCompareAndSwap:
         self,
         backend: PersistenceBackend,
     ) -> None:
-        await backend.settings.set(NS, NotBlankStr("cas_mm"), "v1", _ts(2026, 1, 1))
-        ok = await backend.settings.set(
-            NS,
-            NotBlankStr("cas_mm"),
-            "v2",
-            _ts(2026, 2, 1),
-            expected_updated_at=_ts(2020, 1, 1),
+        entity1 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("cas_mm"),
+            value="v1",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity1)
+        entity2 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("cas_mm"),
+            value="v2",
+            updated_at=_ts(2026, 2, 1),
+        )
+        ok = await backend.settings.set_if_unchanged(
+            entity2, expected_updated_at=_ts(2020, 1, 1)
         )
         assert ok is False
-        result = await backend.settings.get(NS, NotBlankStr("cas_mm"))
+        result = await backend.settings.get((NS, NotBlankStr("cas_mm")))
         assert result is not None
-        assert result[0] == "v1"
+        assert result.value == "v1"
 
 
 @pytest.mark.integration
@@ -133,25 +168,53 @@ class TestSettingsListAndDelete:
         self,
         backend: PersistenceBackend,
     ) -> None:
-        await backend.settings.set(NS, NotBlankStr("b_key"), "b_val", _ts(2026, 1, 1))
-        await backend.settings.set(NS, NotBlankStr("a_key"), "a_val", _ts(2026, 1, 1))
-        await backend.settings.set(
-            NS_OTHER, NotBlankStr("x_key"), "x_val", _ts(2026, 1, 1)
+        entity1 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("b_key"),
+            value="b_val",
+            updated_at=_ts(2026, 1, 1),
         )
+        await backend.settings.save(entity1)
+        entity2 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("a_key"),
+            value="a_val",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity2)
+        entity3 = SettingRow(
+            namespace=NS_OTHER,
+            key=NotBlankStr("x_key"),
+            value="x_val",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity3)
 
         result = await backend.settings.get_namespace(NS)
         assert len(result) == 2
-        assert result[0][0] == "a_key"
-        assert result[1][0] == "b_key"
+        assert result[0].key == "a_key"
+        assert result[1].key == "b_key"
 
-    async def test_get_all_returns_all_namespaces(
+    async def test_list_items_returns_all_namespaces(
         self,
         backend: PersistenceBackend,
     ) -> None:
-        await backend.settings.set(NS, NotBlankStr("k"), "v", _ts(2026, 1, 1))
-        await backend.settings.set(NS_OTHER, NotBlankStr("k"), "v", _ts(2026, 1, 1))
-        result = await backend.settings.get_all()
-        namespaces = {row[0] for row in result}
+        entity1 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("k"),
+            value="v",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity1)
+        entity2 = SettingRow(
+            namespace=NS_OTHER,
+            key=NotBlankStr("k"),
+            value="v",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity2)
+        result = await backend.settings.list_items()
+        namespaces = {row.namespace for row in result}
         assert "test_ns" in namespaces
         assert "other_ns" in namespaces
 
@@ -159,23 +222,47 @@ class TestSettingsListAndDelete:
         self,
         backend: PersistenceBackend,
     ) -> None:
-        await backend.settings.set(NS, NotBlankStr("k"), "v", _ts(2026, 1, 1))
-        assert await backend.settings.delete(NS, NotBlankStr("k")) is True
-        assert await backend.settings.get(NS, NotBlankStr("k")) is None
+        entity = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("k"),
+            value="v",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity)
+        assert await backend.settings.delete((NS, NotBlankStr("k"))) is True
+        assert await backend.settings.get((NS, NotBlankStr("k"))) is None
 
     async def test_delete_returns_false_when_missing(
         self,
         backend: PersistenceBackend,
     ) -> None:
-        assert await backend.settings.delete(NS, NotBlankStr("missing")) is False
+        assert await backend.settings.delete((NS, NotBlankStr("missing"))) is False
 
     async def test_delete_namespace_removes_all_keys(
         self,
         backend: PersistenceBackend,
     ) -> None:
-        await backend.settings.set(NS, NotBlankStr("k1"), "v1", _ts(2026, 1, 1))
-        await backend.settings.set(NS, NotBlankStr("k2"), "v2", _ts(2026, 1, 1))
-        await backend.settings.set(NS_OTHER, NotBlankStr("k"), "v", _ts(2026, 1, 1))
+        entity1 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("k1"),
+            value="v1",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity1)
+        entity2 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("k2"),
+            value="v2",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity2)
+        entity3 = SettingRow(
+            namespace=NS_OTHER,
+            key=NotBlankStr("k"),
+            value="v",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity3)
 
         count = await backend.settings.delete_namespace(NS)
         assert count == 2
@@ -196,9 +283,27 @@ class TestSettingsListAndDelete:
         deleted rows would either drop a publish or fire a phantom
         one.
         """
-        await backend.settings.set(NS, NotBlankStr("k1"), "v1", _ts(2026, 1, 1))
-        await backend.settings.set(NS, NotBlankStr("k2"), "v2", _ts(2026, 1, 1))
-        await backend.settings.set(NS_OTHER, NotBlankStr("k"), "v", _ts(2026, 1, 1))
+        entity1 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("k1"),
+            value="v1",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity1)
+        entity2 = SettingRow(
+            namespace=NS,
+            key=NotBlankStr("k2"),
+            value="v2",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity2)
+        entity3 = SettingRow(
+            namespace=NS_OTHER,
+            key=NotBlankStr("k"),
+            value="v",
+            updated_at=_ts(2026, 1, 1),
+        )
+        await backend.settings.save(entity3)
 
         removed = await backend.settings.delete_namespace_returning_keys(NS)
         assert sorted(str(k) for k in removed) == ["k1", "k2"]

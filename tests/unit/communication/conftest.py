@@ -54,6 +54,21 @@ class MessageFactory(ModelFactory[Message]):
         """Generate at least one TextPart for the message."""
         return (TextPart(text="Sample message content"),)
 
+    @classmethod
+    def attachments(cls) -> tuple[TextPart, ...]:
+        """Pin ``attachments`` to a safe fixed value.
+
+        ``attachments: tuple[Part, ...]`` is part of the ``Part``
+        discriminated union. Without this override polyfactory rolls
+        the union and, when it picks ``DataPart``, instantiates its
+        frozen ``data: MappingProxyType[str, Any]`` field by calling
+        ``MappingProxyType()`` with no argument, raising ``TypeError``
+        nondeterministically. Same rationale as the ``parts`` override
+        above; the model default is empty so an explicit empty tuple
+        keeps factory-built messages deterministic.
+        """
+        return ()
+
 
 class ChannelFactory(ModelFactory[Channel]):
     __model__ = Channel

@@ -72,13 +72,17 @@ one level up in `src/synthorg/persistence/`:
 | Protocol module                        | Concerns |
 |----------------------------------------|-----------|
 | `protocol.py` (`PersistenceBackend`)   | Backend aggregate: connect / disconnect, migrate, and accessors for every repository below |
+| `_generics.py`                         | Six generic categories (`SingletonRepository`, `IdKeyedRepository`, `FilteredQueryRepository`, `AppendOnlyRepository`, `StatefulRepository`, `MVCCRepository`) that concrete protocols compose via Protocol inheritance. See [ADR-0001](../decisions/0001-repository-protocol-consolidation.md) for the consolidation rationale and the per-entity migration inventory. |
 | `approval_protocol.py`                 | `ApprovalRepository`: human-in-the-loop approval queue |
 | `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` |
+| `ceremony_scheduler_state_protocol.py` | `CeremonySchedulerStateRepository`: per-sprint ceremony-trigger state (completion counters, fired-once flags, velocity history) so restarts re-hydrate position |
 | `escalation_protocol.py`               | Conflict-resolution escalation queue |
 | `fine_tune_protocol.py`                | `FineTuneRunRepository`, `FineTuneCheckpointRepository` |
 | `mcp_protocol.py`                      | MCP catalog installation repository |
+| `meeting_cooldown_protocol.py`         | `MeetingCooldownRepository`: per-meeting-type last-triggered timestamp for the recurring-meeting cooldown |
 | `memory_protocol.py`                   | Org-memory fact repository with MVCC log + snapshot |
 | `ontology_protocol.py`                 | Ontology entity + drift-report repositories |
+| `tracked_container_protocol.py`        | `TrackedContainerRepository`: Docker sandbox container registry so a restart can reconcile orphans on both the daemon and DB sides |
 | `version_repo.py`                      | Generic version-snapshot repository reused by ontology + future versioned entities |
 | `secret_backends/protocol.py`          | `SecretBackend` protocol used by the secret-backend factory |
 
@@ -87,6 +91,11 @@ inventory is the set of properties / factory methods on
 ``PersistenceBackend`` in ``src/synthorg/persistence/protocol.py``, and the
 concrete repositories live alongside the dialect-specific backends in
 ``src/synthorg/persistence/{sqlite,postgres}/``.
+
+New repository protocols should inherit one or more generic categories
+from ``_generics.py`` per [ADR-0001](../decisions/0001-repository-protocol-consolidation.md).
+Bespoke methods are permitted only under the ADR's D7 rule (a real
+performance optimisation or a domain invariant callers must not bypass).
 
 The dialect-specific subdirectories share a third sibling at
 ``src/synthorg/persistence/_shared/``.  This is the canonical home for

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
     CeremonyStrategyType,
@@ -19,6 +20,9 @@ from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategies.calendar import CalendarStrategy
 from synthorg.engine.workflow.strategies.task_driven import (
     TaskDrivenStrategy,
+)
+from synthorg.persistence.ceremony_scheduler_state_protocol import (
+    CeremonySchedulerStateRecord,
 )
 
 
@@ -530,3 +534,87 @@ class TestCeremonySchedulerStrategyMigration:
             CalendarStrategy(),
         )
         assert result is None
+
+
+class _FakeStateRepo:
+    """Minimal ``CeremonySchedulerStateRepository`` returning one record."""
+
+    def __init__(self, record: CeremonySchedulerStateRecord | None) -> None:
+        self._record = record
+
+    async def save(self, entity: CeremonySchedulerStateRecord) -> None:
+        self._record = entity
+
+    async def get(self, entity_id: NotBlankStr) -> CeremonySchedulerStateRecord | None:
+        return self._record
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        had = self._record is not None
+        self._record = None
+        return had
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[CeremonySchedulerStateRecord, ...]:
+        if self._record is None:
+            return ()
+        return (self._record,)[offset : offset + limit]
+
+
+def _state_record(
+    *,
+    counters_json: str,
+    history_json: str = "[]",
+) -> CeremonySchedulerStateRecord:
+    from datetime import UTC, datetime
+
+    return CeremonySchedulerStateRecord(
+        sprint_id=NotBlankStr("sprint-1"),
+        completion_counters_json=counters_json,
+        fired_once_triggers_json="[]",
+        total_completions=0,
+        velocity_history_json=history_json,
+        updated_at=datetime.now(UTC),
+    )
+
+
+@pytest.mark.unit
+class TestCeremonySchedulerHydrationTolerance:
+    """``_hydrate_state_from_repo`` must tolerate partial/corrupt rows."""
+
+    async def test_merges_persisted_counters_onto_seeded_map(self) -> None:
+        """A persisted snapshot missing a config ceremony keeps its seed.
+
+        Stale snapshot keys for removed ceremonies are ignored; counts
+        for current ceremonies are overwritten from the snapshot.
+        """
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+            state_repo=_FakeStateRepo(
+                _state_record(counters_json='{"alpha": 7, "gamma": 99}')
+            ),
+        )
+        # Simulate the fresh seed activate_sprint sets for current config.
+        scheduler._completion_counters = {"alpha": 0, "beta": 0}
+
+        await scheduler._hydrate_state_from_repo("sprint-1")
+
+        assert scheduler._completion_counters == {"alpha": 7, "beta": 0}
+
+    async def test_corrupt_velocity_history_keeps_fresh_state(self) -> None:
+        """A row that fails VelocityRecord validation retains zeroed state."""
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+            state_repo=_FakeStateRepo(
+                _state_record(
+                    counters_json='{"alpha": 5}',
+                    history_json='[{"not": "a-velocity-record"}]',
+                )
+            ),
+        )
+        scheduler._completion_counters = {"alpha": 0}
+
+        # Must not raise; fresh seed retained because the row is corrupt.
+        await scheduler._hydrate_state_from_repo("sprint-1")
+
+        assert scheduler._completion_counters == {"alpha": 0}

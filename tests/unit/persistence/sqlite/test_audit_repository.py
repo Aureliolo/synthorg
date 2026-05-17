@@ -6,10 +6,11 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
-from synthorg.persistence.audit_protocol import AuditRepository
+from synthorg.persistence.audit_protocol import AuditFilterSpec, AuditRepository
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
@@ -60,16 +61,16 @@ def _make_entry(  # noqa: PLR0913
 @pytest.mark.unit
 class TestSQLiteAuditRepository:
     async def test_save_and_query_all(self, migrated_db: aiosqlite.Connection) -> None:
-        """Save 2 entries, query without filters, verify both returned."""
+        """Append 2 entries, query without filters, verify both returned."""
         repo = SQLiteAuditRepository(
             migrated_db, write_context=make_private_write_context()
         )
         e1 = _make_entry(entry_id="ae-001")
         e2 = _make_entry(entry_id="ae-002")
-        await repo.save(e1)
-        await repo.save(e2)
+        await repo.append(e1)
+        await repo.append(e2)
 
-        results = await repo.query()
+        results = await repo.query(AuditFilterSpec())
         assert len(results) == 2
         ids = {r.id for r in results}
         assert "ae-001" in ids
@@ -87,11 +88,11 @@ class TestSQLiteAuditRepository:
 
         e_old = _make_entry(entry_id="ae-old", timestamp=earlier)
         e_new = _make_entry(entry_id="ae-new", timestamp=now)
-        # Save in chronological order to ensure DB ordering is not insertion order.
-        await repo.save(e_old)
-        await repo.save(e_new)
+        # Append in chronological order to ensure DB ordering is not insertion order.
+        await repo.append(e_old)
+        await repo.append(e_new)
 
-        results = await repo.query()
+        results = await repo.query(AuditFilterSpec())
         assert len(results) == 2
         assert results[0].id == "ae-new"
         assert results[1].id == "ae-old"
@@ -105,10 +106,10 @@ class TestSQLiteAuditRepository:
         )
         e1 = _make_entry(entry_id="ae-a1", agent_id="agent-a")
         e2 = _make_entry(entry_id="ae-b1", agent_id="agent-b")
-        await repo.save(e1)
-        await repo.save(e2)
+        await repo.append(e1)
+        await repo.append(e2)
 
-        results = await repo.query(agent_id="agent-a")
+        results = await repo.query(AuditFilterSpec(agent_id="agent-a"))
         assert len(results) == 1
         assert results[0].id == "ae-a1"
 
@@ -121,10 +122,10 @@ class TestSQLiteAuditRepository:
         )
         e1 = _make_entry(entry_id="ae-cw", action_type="code:write")
         e2 = _make_entry(entry_id="ae-cr", action_type="code:read")
-        await repo.save(e1)
-        await repo.save(e2)
+        await repo.append(e1)
+        await repo.append(e2)
 
-        results = await repo.query(action_type="code:write")
+        results = await repo.query(AuditFilterSpec(action_type="code:write"))
         assert len(results) == 1
         assert results[0].id == "ae-cw"
 
@@ -137,10 +138,10 @@ class TestSQLiteAuditRepository:
         )
         e1 = _make_entry(entry_id="ae-allow", verdict="allow")
         e2 = _make_entry(entry_id="ae-deny", verdict="deny")
-        await repo.save(e1)
-        await repo.save(e2)
+        await repo.append(e1)
+        await repo.append(e2)
 
-        results = await repo.query(verdict="deny")
+        results = await repo.query(AuditFilterSpec(verdict="deny"))
         assert len(results) == 1
         assert results[0].id == "ae-deny"
 
@@ -153,10 +154,10 @@ class TestSQLiteAuditRepository:
         )
         e1 = _make_entry(entry_id="ae-low", risk_level=ApprovalRiskLevel.LOW)
         e2 = _make_entry(entry_id="ae-high", risk_level=ApprovalRiskLevel.HIGH)
-        await repo.save(e1)
-        await repo.save(e2)
+        await repo.append(e1)
+        await repo.append(e2)
 
-        results = await repo.query(risk_level=ApprovalRiskLevel.HIGH)
+        results = await repo.query(AuditFilterSpec(risk_level=ApprovalRiskLevel.HIGH))
         assert len(results) == 1
         assert results[0].id == "ae-high"
 
@@ -173,10 +174,10 @@ class TestSQLiteAuditRepository:
 
         e_old = _make_entry(entry_id="ae-old", timestamp=old)
         e_new = _make_entry(entry_id="ae-new", timestamp=now)
-        await repo.save(e_old)
-        await repo.save(e_new)
+        await repo.append(e_old)
+        await repo.append(e_new)
 
-        results = await repo.query(since=cutoff)
+        results = await repo.query(AuditFilterSpec(since=cutoff))
         assert len(results) == 1
         assert results[0].id == "ae-new"
 
@@ -202,11 +203,13 @@ class TestSQLiteAuditRepository:
             agent_id="agent-x",
             verdict="allow",
         )
-        await repo.save(e1)
-        await repo.save(e2)
-        await repo.save(e3)
+        await repo.append(e1)
+        await repo.append(e2)
+        await repo.append(e3)
 
-        results = await repo.query(agent_id="agent-x", verdict="deny")
+        results = await repo.query(
+            AuditFilterSpec(agent_id="agent-x", verdict="deny"),
+        )
         assert len(results) == 1
         assert results[0].id == "ae-match"
 
@@ -217,14 +220,14 @@ class TestSQLiteAuditRepository:
         )
         base = datetime(2026, 3, 1, tzinfo=UTC)
         for i in range(5):
-            await repo.save(
+            await repo.append(
                 _make_entry(
                     entry_id=f"ae-{i}",
                     timestamp=base + timedelta(minutes=i),
                 )
             )
 
-        results = await repo.query(limit=2)
+        results = await repo.query(AuditFilterSpec(), limit=2)
         assert [e.id for e in results] == ["ae-4", "ae-3"]
 
     async def test_query_empty(self, migrated_db: aiosqlite.Connection) -> None:
@@ -232,7 +235,7 @@ class TestSQLiteAuditRepository:
         repo = SQLiteAuditRepository(
             migrated_db, write_context=make_private_write_context()
         )
-        results = await repo.query()
+        results = await repo.query(AuditFilterSpec())
         assert results == ()
 
     async def test_query_invalid_limit_raises(
@@ -243,9 +246,9 @@ class TestSQLiteAuditRepository:
             migrated_db, write_context=make_private_write_context()
         )
         with pytest.raises(QueryError, match="limit"):
-            await repo.query(limit=0)
+            await repo.query(AuditFilterSpec(), limit=0)
         with pytest.raises(QueryError, match="limit"):
-            await repo.query(limit=-1)
+            await repo.query(AuditFilterSpec(), limit=-1)
 
     async def test_round_trip_all_fields(
         self, migrated_db: aiosqlite.Connection
@@ -268,9 +271,9 @@ class TestSQLiteAuditRepository:
             evaluation_duration_ms=42.5,
             approval_id="approval-123",
         )
-        await repo.save(entry)
+        await repo.append(entry)
 
-        results = await repo.query()
+        results = await repo.query(AuditFilterSpec())
         assert len(results) == 1
         result = results[0]
         assert result.id == entry.id
@@ -301,9 +304,9 @@ class TestSQLiteAuditRepository:
             task_id=None,
             approval_id=None,
         )
-        await repo.save(entry)
+        await repo.append(entry)
 
-        results = await repo.query()
+        results = await repo.query(AuditFilterSpec())
         assert len(results) == 1
         result = results[0]
         assert result.agent_id is None
@@ -319,9 +322,9 @@ class TestSQLiteAuditRepository:
         )
         rules = ("rule-alpha", "rule-beta", "rule-gamma")
         entry = _make_entry(entry_id="ae-rules", matched_rules=rules)
-        await repo.save(entry)
+        await repo.append(entry)
 
-        results = await repo.query()
+        results = await repo.query(AuditFilterSpec())
         assert len(results) == 1
         assert results[0].matched_rules == rules
 
@@ -358,7 +361,7 @@ class TestSQLiteAuditRepository:
             migrated_db, write_context=make_private_write_context()
         )
         with pytest.raises(QueryError, match="deserialize"):
-            await repo.query()
+            await repo.query(AuditFilterSpec())
 
     async def test_query_null_agent_id_is_unfiltered(
         self, migrated_db: aiosqlite.Connection
@@ -369,22 +372,22 @@ class TestSQLiteAuditRepository:
         )
         e1 = _make_entry(entry_id="ae-with", agent_id="agent-x")
         e2 = _make_entry(entry_id="ae-without", agent_id=None)
-        await repo.save(e1)
-        await repo.save(e2)
+        await repo.append(e1)
+        await repo.append(e2)
 
-        results = await repo.query(agent_id=None)
+        results = await repo.query(AuditFilterSpec(agent_id=None))
         assert len(results) == 2
 
     async def test_save_append_only(self, migrated_db: aiosqlite.Connection) -> None:
-        """Saving same ID twice raises DuplicateRecordError (no upsert)."""
+        """Appending same ID twice raises DuplicateRecordError (no upsert)."""
         repo = SQLiteAuditRepository(
             migrated_db, write_context=make_private_write_context()
         )
         entry = _make_entry(entry_id="ae-dup")
-        await repo.save(entry)
+        await repo.append(entry)
 
         with pytest.raises(DuplicateRecordError):
-            await repo.save(entry)
+            await repo.append(entry)
 
     async def test_query_filter_by_until(
         self, migrated_db: aiosqlite.Connection
@@ -399,10 +402,10 @@ class TestSQLiteAuditRepository:
 
         e_now = _make_entry(entry_id="ae-now", timestamp=now)
         e_future = _make_entry(entry_id="ae-future", timestamp=future)
-        await repo.save(e_now)
-        await repo.save(e_future)
+        await repo.append(e_now)
+        await repo.append(e_future)
 
-        results = await repo.query(until=cutoff)
+        results = await repo.query(AuditFilterSpec(until=cutoff))
         assert len(results) == 1
         assert results[0].id == "ae-now"
 
@@ -415,7 +418,7 @@ class TestSQLiteAuditRepository:
         )
         base = datetime(2026, 3, 1, tzinfo=UTC)
         for i in range(5):
-            await repo.save(
+            await repo.append(
                 _make_entry(
                     entry_id=f"ae-{i}",
                     timestamp=base + timedelta(hours=i),
@@ -423,21 +426,21 @@ class TestSQLiteAuditRepository:
             )
 
         results = await repo.query(
-            since=base + timedelta(hours=1),
-            until=base + timedelta(hours=3),
+            AuditFilterSpec(
+                since=base + timedelta(hours=1),
+                until=base + timedelta(hours=3),
+            ),
         )
         assert {e.id for e in results} == {"ae-1", "ae-2", "ae-3"}
 
     async def test_query_until_before_since_raises(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        """until < since raises QueryError."""
-        repo = SQLiteAuditRepository(
-            migrated_db, write_context=make_private_write_context()
-        )
+        """An inverted since/until window is rejected at the filter-spec
+        boundary (model_validator), before query() is ever reached."""
         now = datetime.now(UTC)
-        with pytest.raises(QueryError, match="until"):
-            await repo.query(since=now, until=now - timedelta(hours=1))
+        with pytest.raises(ValidationError, match="until"):
+            AuditFilterSpec(since=now, until=now - timedelta(hours=1))
 
     async def test_since_boundary_inclusive(
         self, migrated_db: aiosqlite.Connection
@@ -448,9 +451,9 @@ class TestSQLiteAuditRepository:
         )
         cutoff = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
         entry = _make_entry(entry_id="ae-boundary", timestamp=cutoff)
-        await repo.save(entry)
+        await repo.append(entry)
 
-        results = await repo.query(since=cutoff)
+        results = await repo.query(AuditFilterSpec(since=cutoff))
         assert len(results) == 1
         assert results[0].id == "ae-boundary"
 
@@ -465,18 +468,18 @@ class TestSQLiteAuditRepository:
         offset = timezone(timedelta(hours=5, minutes=30))
         ts = datetime(2026, 3, 10, 12, 0, 0, tzinfo=offset)
         entry = _make_entry(entry_id="ae-tz", timestamp=ts)
-        await repo.save(entry)
+        await repo.append(entry)
 
         # Querying with UTC equivalent should find the entry
         utc_equiv = ts.astimezone(UTC)
-        results = await repo.query(since=utc_equiv)
+        results = await repo.query(AuditFilterSpec(since=utc_equiv))
         assert len(results) == 1
         assert results[0].id == "ae-tz"
 
     async def test_save_db_error_raises_query_error(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        """Generic sqlite3.Error during save raises QueryError."""
+        """Generic sqlite3.Error during append raises QueryError."""
         import sqlite3
 
         repo = SQLiteAuditRepository(
@@ -493,7 +496,7 @@ class TestSQLiteAuditRepository:
             ),
             pytest.raises(QueryError, match="Failed to save"),
         ):
-            await repo.save(entry)
+            await repo.append(entry)
 
     async def test_query_db_error_raises_query_error(
         self, migrated_db: aiosqlite.Connection
@@ -514,7 +517,7 @@ class TestSQLiteAuditRepository:
             ),
             pytest.raises(QueryError, match="Failed to query"),
         ):
-            await repo.query()
+            await repo.query(AuditFilterSpec())
 
     async def test_sqlite_audit_repo_satisfies_protocol(
         self, migrated_db: aiosqlite.Connection
@@ -539,13 +542,13 @@ class TestSQLiteAuditRepository:
             timestamp=now - timedelta(hours=2),
         )
         e_new = _make_entry(entry_id="ae-new", timestamp=now)
-        await repo.save(e_old)
-        await repo.save(e_new)
+        await repo.append(e_old)
+        await repo.append(e_new)
 
         deleted = await repo.purge_before(cutoff)
 
         assert deleted == 1
-        remaining = await repo.query()
+        remaining = await repo.query(AuditFilterSpec())
         assert len(remaining) == 1
         assert remaining[0].id == "ae-new"
 
@@ -558,12 +561,12 @@ class TestSQLiteAuditRepository:
         )
         ts = datetime.now(UTC)
         entry = _make_entry(entry_id="ae-at-cutoff", timestamp=ts)
-        await repo.save(entry)
+        await repo.append(entry)
 
         deleted = await repo.purge_before(ts)
 
         assert deleted == 0
-        remaining = await repo.query()
+        remaining = await repo.query(AuditFilterSpec())
         assert len(remaining) == 1
 
     async def test_purge_before_no_matches(
@@ -575,7 +578,7 @@ class TestSQLiteAuditRepository:
         )
         now = datetime.now(UTC)
         entry = _make_entry(entry_id="ae-recent", timestamp=now)
-        await repo.save(entry)
+        await repo.append(entry)
 
         deleted = await repo.purge_before(now - timedelta(days=1))
 
@@ -589,12 +592,12 @@ class TestSQLiteAuditRepository:
             migrated_db, write_context=make_private_write_context()
         )
         utc_now = datetime.now(UTC)
-        # Save one row an hour before "now" in UTC
+        # Append one row an hour before "now" in UTC
         entry = _make_entry(
             entry_id="ae-1",
             timestamp=utc_now - timedelta(hours=1),
         )
-        await repo.save(entry)
+        await repo.append(entry)
 
         # Pass cutoff in a non-UTC timezone (equivalent instant)
         offset = timezone(timedelta(hours=-5))

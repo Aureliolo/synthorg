@@ -7,6 +7,7 @@ override without rewriting the YAML packs.
 """
 
 import asyncio
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
     from synthorg.persistence.principle_override_protocol import (
         PrincipleOverrideRepository,
     )
+
+from synthorg.persistence.principle_override_protocol import PrincipleOverride
 
 logger = get_logger(__name__)
 
@@ -71,12 +74,16 @@ class PrincipleOverridePromptMutator:
             if operation_id
             else NotBlankStr("rollback")
         )
+        now = datetime.now(UTC)
+        entity = PrincipleOverride(
+            scope=typed_scope,
+            text=typed_text,
+            restored_from=provenance,
+            created_at=now,
+            updated_at=now,
+        )
         try:
-            await self._repo.save(
-                typed_scope,
-                typed_text,
-                restored_from=provenance,
-            )
+            await self._repo.save(entity)
         except MemoryError, RecursionError:
             raise
         except asyncio.CancelledError:

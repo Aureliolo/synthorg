@@ -1,9 +1,10 @@
 """Tests for SQLiteDecisionRepository."""
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from unittest.mock import patch
 from uuid import uuid4
 
+import aiosqlite
 import pytest
 
 from synthorg.core.enums import DecisionOutcome
@@ -12,9 +13,6 @@ from synthorg.engine.decisions import DecisionRecord
 from synthorg.persistence.decision_protocol import DecisionRepository
 from synthorg.persistence.sqlite.decision_repo import SQLiteDecisionRepository
 from tests._shared.persistence import make_private_write_context
-
-if TYPE_CHECKING:
-    import aiosqlite
 
 
 async def _append(  # noqa: PLR0913
@@ -502,3 +500,88 @@ class TestDecisionRecordSelfReviewInvariant:
                 recorded_at=datetime.now(UTC),
                 version=1,
             )
+
+
+@pytest.mark.unit
+class TestSQLiteDecisionRepositoryErrorPaths:
+    """DB failures in every read/write path translate to ``QueryError``."""
+
+    def _repo(self, migrated_db: aiosqlite.Connection) -> SQLiteDecisionRepository:
+        return SQLiteDecisionRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
+
+    async def test_append_with_next_version_translates_db_error(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        repo = self._repo(migrated_db)
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.append_with_next_version(
+                record_id="dr-e",
+                task_id="task-1",
+                approval_id=None,
+                executing_agent_id="alice",
+                reviewer_agent_id="bob",
+                decision=DecisionOutcome.APPROVED,
+                reason=None,
+                criteria_snapshot=(),
+                recorded_at=datetime.now(UTC),
+                metadata={},
+            )
+
+    async def test_get_translates_db_error(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        repo = self._repo(migrated_db)
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.get("dr-001")
+
+    async def test_query_translates_db_error(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        from synthorg.persistence.decision_protocol import (
+            DecisionFilterSpec,
+        )
+
+        repo = self._repo(migrated_db)
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.query(DecisionFilterSpec(), limit=10, offset=0)
+
+    async def test_list_by_task_translates_db_error(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        repo = self._repo(migrated_db)
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.list_by_task("task-1")
+
+    async def test_list_by_agent_translates_db_error(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        repo = self._repo(migrated_db)
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.list_by_agent("alice", role="executor")
+
+    async def test_purge_before_translates_db_error(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        repo = self._repo(migrated_db)
+        with (
+            patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
+            pytest.raises(QueryError),
+        ):
+            await repo.purge_before(datetime.now(UTC))

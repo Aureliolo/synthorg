@@ -17,10 +17,12 @@ from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
+    PERSISTENCE_RISK_OVERRIDE_DELETE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
@@ -138,6 +140,72 @@ class PostgresRiskOverrideRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[RiskTierOverride, ...]:
+        """List overrides ordered by id ascending (generic IdKeyed surface)."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
+                    "ORDER BY id LIMIT %s OFFSET %s",
+                    (limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = f"Failed to list risk overrides: {safe_error_description(exc)}"
+            logger.warning(
+                PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        results: list[RiskTierOverride] = []
+        for row in rows:
+            try:
+                results.append(_row_to_override(row))
+            except (ValueError, ValidationError, TypeError) as exc:
+                row_id = row.get("id") if row else "unknown"
+                msg = f"Failed to deserialize risk override row {row_id!r}"
+                logger.warning(
+                    PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
+                    row_id=row_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return tuple(results)
+
+    async def delete(self, override_id: NotBlankStr) -> bool:
+        """Delete an override by ID."""
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM risk_overrides WHERE id = %s",
+                    (override_id,),
+                )
+                deleted = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to delete risk override: {safe_error_description(exc)}"
+            logger.warning(
+                PERSISTENCE_RISK_OVERRIDE_DELETE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return deleted
 
     async def list_active(
         self,

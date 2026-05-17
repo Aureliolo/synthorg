@@ -1366,3 +1366,48 @@ CREATE TABLE principle_overrides (
     created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
     updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0)
 );
+
+-- WP-1 restart-safety tables: persist scheduler / cooldown / sandbox
+-- state across process restarts. Backed by single-row-per-key
+-- repositories; see the matching ``*_protocol.py`` files for the full
+-- semantics.
+
+-- Ceremony scheduler per-sprint snapshot. CeremonyScheduler owns four
+-- in-memory state attributes (completion_counters, fired_once_triggers,
+-- total_completions, velocity_history) describing the ceremony-trigger
+-- position of one active sprint. Persisted as one row keyed by
+-- sprint_id with JSON-encoded blob columns for the dict / set / tuple
+-- fields, written atomically under the scheduler's lock after every
+-- mutation and read back at activate_sprint() time.
+CREATE TABLE ceremony_scheduler_state (
+    sprint_id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(sprint_id)) > 0),
+    completion_counters_json TEXT NOT NULL,
+    fired_once_triggers_json TEXT NOT NULL,
+    total_completions INTEGER NOT NULL CHECK(total_completions >= 0),
+    velocity_history_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0)
+);
+
+-- MeetingScheduler per-meeting-type last-triggered timestamp for the
+-- recurring-meeting cooldown. Hydrated at scheduler start via
+-- load_all(); upserted after every successful trigger. Wall-clock
+-- timestamp (not monotonic) so the value remains meaningful across
+-- process boundaries. One row per meeting type (cardinality matches
+-- the static meeting catalogue), so no secondary index beyond the PK.
+CREATE TABLE meeting_cooldown (
+    meeting_type_name TEXT NOT NULL PRIMARY KEY
+        CHECK(length(trim(meeting_type_name)) > 0),
+    last_triggered_at TEXT NOT NULL CHECK(length(trim(last_triggered_at)) > 0)
+);
+
+-- Docker sandbox container tracking. The sandbox lifecycle persists
+-- one row per managed container (sandbox + optional paired sidecar)
+-- so a process restart can reconcile against the Docker daemon's
+-- label-filtered container list and clean up orphans on both sides.
+-- Queried via PK lookup (delete) and full-scan load_all() at start;
+-- no secondary indexes needed for the expected single-host fleet size.
+CREATE TABLE tracked_containers (
+    container_id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(container_id)) > 0),
+    sidecar_id TEXT CHECK(sidecar_id IS NULL OR length(trim(sidecar_id)) > 0),
+    created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0)
+);

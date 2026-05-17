@@ -6,27 +6,61 @@ synchronous checks from the request-handling fast path; the repository
 interface exposes durable read/write operations plus the cache.
 """
 
+from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import (
+    DEFAULT_PAGE_SIZE,
+    FilteredQueryRepository,
+    IdKeyedRepository,
+)
+from synthorg.persistence._shared.pagination import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from datetime import datetime
 
     from synthorg.core.auth.refresh_record import (
         RefreshConsumeOutcome,
     )
     from synthorg.core.auth.session import Session
 
+__all__ = [
+    "LockoutRepository",
+    "RefreshTokenRepository",
+    "SessionFilterSpec",
+    "SessionRepository",
+]
+
+
+class SessionFilterSpec(BaseModel):
+    """Filter spec for ``SessionRepository.query``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    user_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by session owner user ID",
+    )
+    revoked: bool | None = Field(
+        default=None,
+        description="Filter by revocation status",
+    )
+
 
 @runtime_checkable
-class SessionRepository(Protocol):
+class SessionRepository(
+    IdKeyedRepository["Session", NotBlankStr],
+    FilteredQueryRepository["Session", SessionFilterSpec],
+    Protocol,
+):
     """Durable session store with an in-memory revocation cache.
 
-    The ``is_revoked`` method is synchronous (O(1) set lookup) for use
-    on the request hot path without blocking the event loop.  All other
-    methods are async and hit the durable backend.
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`.
+    ``is_revoked`` is a synchronous O(1) revocation check on the auth
+    hot path; ``load_revoked`` preloads the in-memory cache at startup.
 
     Attributes:
         _revoked: In-memory cache of revoked session IDs.  Part of the
@@ -40,22 +74,105 @@ class SessionRepository(Protocol):
         """Load revoked session IDs from durable storage into memory."""
         ...
 
-    async def create(self, session: Session) -> None:
-        """Persist a new session."""
+    async def save(self, entity: Session) -> None:
+        """Persist a session (insert or update by session_id).
+
+        Args:
+            entity: The session to persist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
         ...
 
-    async def get(self, session_id: str) -> Session | None:
-        """Look up a session by ID, or return ``None`` if missing."""
+    async def get(self, entity_id: NotBlankStr) -> Session | None:
+        """Retrieve a session by session_id.
+
+        Args:
+            entity_id: The session identifier.
+
+        Returns:
+            The session, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
         ...
 
-    async def list_by_user(
+    async def list_items(
         self,
-        user_id: str,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List active sessions for a user, optionally paginated."""
+        """List every persisted session, paginated.
+
+        Canonical universe for this repository: **all** sessions,
+        active and revoked alike. No active-only filtering is applied
+        here -- callers that want only active sessions filter via
+        :meth:`query` with ``revoked=False``.
+
+        Args:
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Sessions ordered by session_id ascending (the stable
+            generic ``IdKeyedRepository`` ordering).
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def query(
+        self,
+        filter_spec: SessionFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
+        """List sessions matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters for user_id, revoked.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Matching sessions ordered by session_id ascending.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def count(self, filter_spec: SessionFilterSpec) -> int:
+        """Count sessions matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters.
+
+        Returns:
+            Total number of matching sessions.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        """Delete a session by session_id.
+
+        Args:
+            entity_id: The session identifier.
+
+        Returns:
+            ``True`` if the session was deleted, ``False`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
         ...
 
     async def list_all(
@@ -64,23 +181,55 @@ class SessionRepository(Protocol):
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List all active sessions, optionally paginated."""
+        """List sessions newest-first (audit/history ordering).
+
+        Same universe as :meth:`list_items` (all sessions, active and
+        revoked) -- this is purely an alternate ordering
+        (``created_at`` DESC instead of ``session_id`` ASC) for audit
+        dashboards that need most-recent-first history. It is not an
+        active-only vs all-sessions distinction; both methods return
+        the full set.
+        """
         ...
 
-    async def revoke(self, session_id: str) -> bool:
-        """Revoke a session by ID; return ``True`` if it existed."""
+    async def list_by_user(
+        self,
+        user_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
+        """List sessions for a user, newest-first (alternate-key view)."""
         ...
 
-    async def revoke_all_for_user(self, user_id: str) -> int:
-        """Revoke every active session for a user; return the count."""
+    async def revoke(self, session_id: NotBlankStr) -> bool:
+        """Mark a session as revoked. Returns True iff it existed.
+
+        Distinct from a generic save because the state transition also
+        updates the ``load_revoked``-backed in-memory set, keeping the
+        synchronous ``is_revoked`` hot-path check coherent.
+        """
+        ...
+
+    async def revoke_all_for_user(self, user_id: NotBlankStr) -> int:
+        """Revoke every active session for a user; return the count.
+
+        Enforces the session-revocation policy as a single domain
+        operation rather than a caller-orchestrated loop over saves.
+        """
         ...
 
     async def enforce_session_limit(
         self,
-        user_id: str,
+        user_id: NotBlankStr,
         max_sessions: int,
     ) -> int:
-        """Revoke oldest sessions when a user exceeds the concurrent limit."""
+        """Revoke oldest sessions when a user exceeds the concurrent limit.
+
+        Enforces the per-user session-concurrency invariant atomically;
+        the eviction choice (oldest-first) is domain policy the generic
+        save surface cannot express.
+        """
         ...
 
     def is_revoked(self, session_id: str) -> bool:
@@ -96,8 +245,12 @@ class SessionRepository(Protocol):
 class LockoutRepository(Protocol):
     """Account lockout store with an in-memory lock-cache for the hot path.
 
-    The ``is_locked`` method is synchronous (O(1) dict lookup) for use
-    on the login attempt hot path.
+    Specialised hot-path failure-tracking cache with custom semantics:
+    ``record_failure``/``record_success`` track attempts within a sliding
+    window and enforce a threshold-based lockout, while ``is_locked`` is
+    synchronous O(1) for the auth middleware. No CRUD operations apply
+    because failure records are implicit (not persistent entities) and
+    lockout state is computed on-the-fly from the attempt window.
     """
 
     async def load_locked(self) -> int:
@@ -142,7 +295,16 @@ class LockoutRepository(Protocol):
 
 @runtime_checkable
 class RefreshTokenRepository(Protocol):
-    """Refresh-token store with single-use rotation semantics."""
+    """Refresh-token store with single-use rotation semantics.
+
+    Refresh tokens are stored by hash (a primary key), but the
+    semantics are not standard CRUD: ``consume()`` is atomic
+    compare-and-set (mark-as-used only if not-yet-used, with
+    session-revocation check), and bulk revocation happens via
+    ``revoke_by_session``/``revoke_by_user`` with no individual delete.
+    The single-use contract and replay detection are domain invariants
+    that require custom operations.
+    """
 
     async def create(
         self,

@@ -87,16 +87,21 @@ class TestSQLiteOnDisk:
             currency="EUR",
             timestamp=datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
         )
-        await backend.cost_records.save(record)
+        await backend.cost_records.append(record)
 
         # Save message
-        await backend.messages.save(make_message(channel="test-channel"))
+        await backend.messages.append(make_message(channel="test-channel"))
 
         # Verify all persist
-        tasks = await backend.tasks.list_tasks()
+        from synthorg.persistence.cost_record_protocol import (
+            CostRecordFilterSpec,
+        )
+        from synthorg.persistence.task_protocol import TaskFilterSpec
+
+        tasks = await backend.tasks.query(TaskFilterSpec())
         assert len(tasks) == 1
 
-        records = await backend.cost_records.query()
+        records = await backend.cost_records.query(CostRecordFilterSpec())
         assert len(records) == 1
 
         history = await backend.messages.get_history("test-channel")
@@ -121,7 +126,11 @@ class TestSQLiteOnDisk:
         async def read_all() -> int:
             b = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
             await b.connect()
-            tasks = await b.tasks.list_tasks()
+            from synthorg.persistence.task_protocol import (
+                TaskFilterSpec,
+            )
+
+            tasks = await b.tasks.query(TaskFilterSpec())
             await b.disconnect()
             return len(tasks)
 

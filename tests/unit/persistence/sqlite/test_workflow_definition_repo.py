@@ -19,6 +19,9 @@ from synthorg.engine.workflow.definition import (
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,
 )
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionFilterSpec,
+)
 from tests._shared.persistence import make_private_write_context
 
 
@@ -242,7 +245,7 @@ class TestSQLiteWorkflowDefinitionRepository:
         await repo.save(defn_a)
         await repo.save(defn_b)
 
-        results = await repo.list_definitions()
+        results = await repo.query(WorkflowDefinitionFilterSpec())
         assert len(results) == 2
         ids = {d.id for d in results}
         assert ids == {"wf-a", "wf-b"}
@@ -264,8 +267,8 @@ class TestSQLiteWorkflowDefinitionRepository:
         await repo.save(defn_seq)
         await repo.save(defn_kanban)
 
-        results = await repo.list_definitions(
-            workflow_type=WorkflowType.KANBAN,
+        results = await repo.query(
+            WorkflowDefinitionFilterSpec(workflow_type=WorkflowType.KANBAN),
         )
         assert len(results) == 1
         assert results[0].id == "wf-kanban"

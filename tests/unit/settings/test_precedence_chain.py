@@ -20,7 +20,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
 from synthorg.settings.enums import SettingNamespace, SettingSource, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import SettingsRegistry
@@ -121,7 +122,7 @@ def _service_with(definition: SettingDefinition) -> tuple[SettingsService, Async
     repo = AsyncMock(spec=SettingsRepository)
     repo.get = AsyncMock(return_value=None)
     repo.get_namespace = AsyncMock(return_value=())
-    repo.get_all = AsyncMock(return_value=())
+    repo.list_items = AsyncMock(return_value=())
     registry = SettingsRegistry()
     registry.register(definition)
     svc = SettingsService(
@@ -160,7 +161,12 @@ async def test_db_beats_env_and_default(
 ) -> None:
     svc, repo = _service_with(case.factory())
     monkeypatch.setenv(case.env_var(), case.env_value)
-    repo.get.return_value = (case.db_value, "2026-03-16T10:00:00Z")
+    repo.get.return_value = SettingRow(
+        namespace=NotBlankStr(case.namespace),
+        key=NotBlankStr(case.key),
+        value=case.db_value,
+        updated_at="2026-03-16T10:00:00Z",
+    )
     result = await svc.get(case.namespace, case.key)
     assert result.value == case.db_value
     assert result.source == SettingSource.DATABASE

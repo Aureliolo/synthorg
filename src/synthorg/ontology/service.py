@@ -11,7 +11,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_VERSION_SNAPSHOT,
 )
 from synthorg.ontology.decorator import get_entity_registry
-from synthorg.ontology.errors import OntologyDuplicateError
+from synthorg.ontology.errors import OntologyDuplicateError, OntologyNotFoundError
 from synthorg.ontology.models import (
     EntityDefinition,
     EntityField,
@@ -200,7 +200,11 @@ class OntologyService:
         Raises:
             OntologyNotFoundError: If not found.
         """
-        return await self._backend.get(name)
+        entity = await self._backend.get(name)
+        if entity is None:
+            msg = f"Entity '{name}' not found"
+            raise OntologyNotFoundError(msg)
+        return entity
 
     async def list_entities(
         self,

@@ -2,7 +2,6 @@
 
 import contextlib
 import sqlite3
-from datetime import UTC, datetime
 
 import aiosqlite
 
@@ -15,15 +14,13 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED,
     PERSISTENCE_PRINCIPLE_OVERRIDE_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     format_iso_utc,
-    normalize_utc,
     parse_iso_utc,
+    validate_pagination_args,
 )
-from synthorg.persistence.principle_override_protocol import (
-    _DEFAULT_LIST_LIMIT_100,
-    PrincipleOverride,
-)
+from synthorg.persistence.principle_override_protocol import PrincipleOverride
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -41,17 +38,10 @@ class SQLitePrincipleOverrideRepository:
         self._db = db
         self._write_context = write_context
 
-    async def save(
-        self,
-        scope: NotBlankStr,
-        text: NotBlankStr,
-        *,
-        restored_from: NotBlankStr,
-        now: datetime | None = None,
-    ) -> None:
+    async def save(self, entity: PrincipleOverride) -> None:
         """Insert or update the override at ``scope``."""
-        moment = normalize_utc(now or datetime.now(UTC))
-        when = format_iso_utc(moment)
+        when = format_iso_utc(entity.created_at)
+        updated_when = format_iso_utc(entity.updated_at)
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -64,16 +54,22 @@ class SQLitePrincipleOverrideRepository:
                         restored_from = excluded.restored_from,
                         updated_at = excluded.updated_at
                     """,
-                    (str(scope), str(text), str(restored_from), when, when),
+                    (
+                        str(entity.scope),
+                        str(entity.text),
+                        str(entity.restored_from),
+                        when,
+                        updated_when,
+                    ),
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
-                msg = f"Failed to save principle override for scope {scope!r}"
+                msg = f"Failed to save principle override for scope {entity.scope!r}"
                 logger.warning(
                     PERSISTENCE_PRINCIPLE_OVERRIDE_SAVE_FAILED,
-                    scope=str(scope),
+                    scope=str(entity.scope),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -135,10 +131,13 @@ class SQLitePrincipleOverrideRepository:
     async def list_items(
         self,
         *,
-        limit: int = _DEFAULT_LIST_LIMIT_100,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[PrincipleOverride, ...]:
         """List all overrides ordered by ``scope`` ascending."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED
+        )
         try:
             cursor = await self._db.execute(
                 """

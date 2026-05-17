@@ -85,7 +85,7 @@ def make_checkpoint_callback(
                 turn_number=turn,
                 context_json=ctx.model_dump_json(),
             )
-            await checkpoint_repo.save(checkpoint)
+            await checkpoint_repo.append(checkpoint)
             logger.info(
                 CHECKPOINT_SAVED,
                 execution_id=ctx.execution_id,

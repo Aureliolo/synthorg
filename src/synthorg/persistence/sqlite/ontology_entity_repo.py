@@ -27,7 +27,11 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    validate_pagination_args,
+)
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -155,17 +159,66 @@ class SQLiteOntologyEntityRepository:
         # here would duplicate the audit trail every time multiple
         # callers share the repo (per CLAUDE.md persistence-boundary).
 
-    async def get(self, name: str) -> EntityDefinition:
-        """Retrieve an entity definition by name."""
+    async def save(self, entity: EntityDefinition) -> None:
+        """Upsert an entity definition by name.
+
+        Satisfies the generic ``IdKeyedRepository`` upsert contract:
+        an existing entity is updated rather than raising
+        ``OntologyDuplicateError`` (which ``register`` does for the
+        insert-only path).
+
+        A single ``INSERT ... ON CONFLICT(name) DO UPDATE`` is used so
+        the existence check and the write are one atomic statement;
+        a ``get``-then-``register``/``update`` sequence races with a
+        concurrent save on the same name. ``created_by`` / ``created_at``
+        are intentionally left untouched on conflict so the original
+        creator and creation time survive an upsert.
+        """
+        params = self._entity_to_params(entity)
+        async with self._write_context():
+            try:
+                await self._db.execute(
+                    """INSERT INTO entity_definitions
+                       (name, tier, source, definition, fields, constraints,
+                        disambiguation, relationships, created_by,
+                        created_at, updated_at)
+                       VALUES (:name, :tier, :source, :definition, :fields,
+                               :constraints, :disambiguation, :relationships,
+                               :created_by, :created_at, :updated_at)
+                       ON CONFLICT(name) DO UPDATE SET
+                           tier = excluded.tier,
+                           source = excluded.source,
+                           definition = excluded.definition,
+                           fields = excluded.fields,
+                           constraints = excluded.constraints,
+                           disambiguation = excluded.disambiguation,
+                           relationships = excluded.relationships,
+                           updated_at = excluded.updated_at""",
+                    params,
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to save entity '{entity.name}'"
+                logger.warning(
+                    ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
+                    entity_name=entity.name,
+                    op="save",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise OntologyError(msg) from exc
+
+    async def get(self, name: str) -> EntityDefinition | None:
+        """Retrieve an entity definition by name, or None if not found."""
         cursor = await self._db.execute(
             "SELECT * FROM entity_definitions WHERE name = :name",
             {"name": name},
         )
         row = await cursor.fetchone()
         if row is None:
-            msg = f"Entity '{name}' not found"
-            logger.warning(ONTOLOGY_ENTITY_NOT_FOUND, entity_name=name, op="get")
-            raise OntologyNotFoundError(msg)
+            return None
         return self._row_to_entity(row)
 
     async def update(self, entity: EntityDefinition) -> None:
@@ -211,24 +264,18 @@ class SQLiteOntologyEntityRepository:
                 )
                 raise OntologyError(msg) from exc
 
-    async def delete(self, name: str) -> None:
-        """Delete an entity definition by name."""
+    async def delete(self, name: str) -> bool:
+        """Delete an entity definition by name.
+
+        Returns ``True`` iff a row existed (generic IdKeyedRepository contract).
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM entity_definitions WHERE name = :name",
                     {"name": name},
                 )
-                if cursor.rowcount == 0:
-                    with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
-                        await self._db.rollback()
-                    msg = f"Entity '{name}' not found"
-                    logger.warning(
-                        ONTOLOGY_ENTITY_NOT_FOUND,
-                        entity_name=name,
-                        op="delete",
-                    )
-                    raise OntologyNotFoundError(msg)
+                existed = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -242,6 +289,27 @@ class SQLiteOntologyEntityRepository:
                     error=safe_error_description(exc),
                 )
                 raise OntologyError(msg) from exc
+            else:
+                return existed
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[EntityDefinition, ...]:
+        """List all entity definitions in name order."""
+        limit = validate_pagination_args(
+            limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
+        )
+        cursor = await self._db.execute(
+            """SELECT * FROM entity_definitions
+               ORDER BY name ASC
+               LIMIT :limit OFFSET :offset""",
+            {"limit": limit, "offset": offset},
+        )
+        rows = await cursor.fetchall()
+        return self._rows_to_entities(rows)
 
     async def list_entities(
         self,

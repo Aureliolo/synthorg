@@ -2,31 +2,80 @@
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pydantic import AwareDatetime  # noqa: TC002
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
 
 if TYPE_CHECKING:
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
 
 __all__ = [
+    "CheckpointFilterSpec",
     "CheckpointRepository",
     "HeartbeatRepository",
 ]
 
 
-@runtime_checkable
-class CheckpointRepository(Protocol):
-    """CRUD interface for checkpoint persistence."""
+class CheckpointFilterSpec(BaseModel):
+    """Filter spec for ``CheckpointRepository.query``."""
 
-    async def save(self, checkpoint: Checkpoint) -> None:
-        """Persist a checkpoint (insert or replace by ID).
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    execution_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter to a single execution",
+    )
+    task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter to a single task",
+    )
+
+
+@runtime_checkable
+class CheckpointRepository(
+    AppendOnlyRepository["Checkpoint", CheckpointFilterSpec],
+    Protocol,
+):
+    """Append-only persistence interface for checkpoint rows.
+
+    Composes :class:`AppendOnlyRepository`.
+
+    * ``get_latest`` returns the single newest row by ``turn_number``
+      under a filter; the generic ``query`` cannot express the
+      ``LIMIT 1 ORDER BY turn_number DESC`` shape efficiently.
+    * ``delete_by_execution`` is a batch delete keyed on
+      ``execution_id``; the generic ``purge_before(threshold)``
+      removes only by timestamp, not by execution scope.
+    """
+
+    async def append(self, checkpoint: Checkpoint) -> None:
+        """Persist a checkpoint row (append-only).
 
         Args:
             checkpoint: The checkpoint to persist.
 
         Raises:
             PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def query(
+        self,
+        filter_spec: CheckpointFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Checkpoint, ...]:
+        """Return checkpoints matching the filter, newest first."""
+        ...
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        """Delete checkpoints with ``saved_at < threshold``.
+
+        ``threshold`` must be timezone-aware UTC; naive datetimes are
+        rejected at the boundary so purge cut-offs do not depend on the
+        caller's local-time assumption.
         """
         ...
 
@@ -70,7 +119,18 @@ class CheckpointRepository(Protocol):
 
 @runtime_checkable
 class HeartbeatRepository(Protocol):
-    """CRUD interface for heartbeat persistence."""
+    """CRUD interface for heartbeat persistence.
+
+    Heartbeats are a "singleton per execution" (one row per
+    ``execution_id``) but the dominant access pattern is
+    :meth:`get_stale` (range query over ``last_heartbeat_at``), which
+    is not expressible in the generic categories. The save/get/delete
+    surface looks superficially like :class:`IdKeyedRepository`, but
+    composing that protocol would require ``list_items`` pagination
+    that no caller needs while still leaving ``get_stale`` outside the
+    generic surface. A fully bespoke protocol is simpler than splitting
+    awareness across two surfaces.
+    """
 
     async def save(self, heartbeat: Heartbeat) -> None:
         """Persist a heartbeat (upsert by execution_id).

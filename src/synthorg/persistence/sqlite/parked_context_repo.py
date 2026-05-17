@@ -17,6 +17,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 from synthorg.security.timeout.parked_context import ParkedContext
 
@@ -102,6 +104,37 @@ INSERT OR REPLACE INTO parked_contexts (
             return None
 
         return self._row_to_model(dict(row))
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        """List parked contexts in id order."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED
+        )
+        try:
+            cursor = await self._db.execute(
+                "SELECT id, execution_id, agent_id, task_id, approval_id, "
+                "parked_at, context_json, metadata "
+                "FROM parked_contexts ORDER BY id LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list parked contexts"
+            logger.warning(
+                PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+        results = tuple(self._row_to_model(dict(row)) for row in rows)
+        logger.debug(PERSISTENCE_PARKED_CONTEXT_QUERIED, count=len(results))
+        return results
 
     async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
         """Retrieve a parked context by approval ID."""

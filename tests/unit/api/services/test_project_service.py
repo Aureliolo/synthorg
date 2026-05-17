@@ -19,6 +19,9 @@ from synthorg.observability.events.api import (
     API_PROJECT_DELETED,
     API_PROJECT_UPDATED,
 )
+from synthorg.persistence.project_protocol import (
+    ProjectFilterSpec,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -47,19 +50,35 @@ class _FakeProjectRepo:
     async def get(self, project_id: NotBlankStr) -> Project | None:
         return self._rows.get(project_id)
 
-    async def list_projects(
+    async def list_items(
         self,
         *,
-        status: ProjectStatus | None = None,
-        lead: NotBlankStr | None = None,
         limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Project, ...]:
+        return await self.query(ProjectFilterSpec(), limit=limit, offset=offset)
+
+    async def query(
+        self,
+        filter_spec: ProjectFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Project, ...]:
         rows = sorted(self._rows.values(), key=lambda p: p.id)
-        if status is not None:
-            rows = [p for p in rows if p.status == status]
-        if lead is not None:
-            rows = [p for p in rows if p.lead == lead]
-        return tuple(rows[:limit])
+        if filter_spec.status is not None:
+            rows = [p for p in rows if p.status == filter_spec.status]
+        if filter_spec.lead is not None:
+            rows = [p for p in rows if p.lead == filter_spec.lead]
+        return tuple(rows[offset : offset + limit])
+
+    async def count(self, filter_spec: ProjectFilterSpec) -> int:
+        rows = list(self._rows.values())
+        if filter_spec.status is not None:
+            rows = [p for p in rows if p.status == filter_spec.status]
+        if filter_spec.lead is not None:
+            rows = [p for p in rows if p.lead == filter_spec.lead]
+        return len(rows)
 
     async def delete(self, project_id: NotBlankStr) -> bool:
         return self._rows.pop(project_id, None) is not None

@@ -65,11 +65,11 @@ def _checkpoint(
 
 class TestFineTuneCheckpointRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
-        await backend.fine_tune_runs.save_run(_run())
+        await backend.fine_tune_runs.save(_run())
         cp = _checkpoint()
-        await backend.fine_tune_checkpoints.save_checkpoint(cp)
+        await backend.fine_tune_checkpoints.save(cp)
 
-        fetched = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        fetched = await backend.fine_tune_checkpoints.get("cp-1")
         assert fetched is not None
         assert fetched.id == "cp-1"
         assert fetched.run_id == "run-1"
@@ -80,68 +80,68 @@ class TestFineTuneCheckpointRepository:
         assert fetched.created_at == cp.created_at
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
-        assert await backend.fine_tune_checkpoints.get_checkpoint("ghost") is None
+        assert await backend.fine_tune_checkpoints.get("ghost") is None
 
     async def test_save_checkpoint_upsert(self, backend: PersistenceBackend) -> None:
-        await backend.fine_tune_runs.save_run(_run())
+        await backend.fine_tune_runs.save(_run())
         cp = _checkpoint(doc_count=50)
-        await backend.fine_tune_checkpoints.save_checkpoint(cp)
+        await backend.fine_tune_checkpoints.save(cp)
 
         updated = cp.model_copy(update={"doc_count": 200, "size_bytes": 8192})
-        await backend.fine_tune_checkpoints.save_checkpoint(updated)
+        await backend.fine_tune_checkpoints.save(updated)
 
-        fetched = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        fetched = await backend.fine_tune_checkpoints.get("cp-1")
         assert fetched is not None
         assert fetched.doc_count == 200
         assert fetched.size_bytes == 8192
-        _, total = await backend.fine_tune_checkpoints.list_checkpoints()
+        _, total = await backend.fine_tune_checkpoints.list_items_page()
         assert total == 1
 
     async def test_list_checkpoints_empty(self, backend: PersistenceBackend) -> None:
-        rows, total = await backend.fine_tune_checkpoints.list_checkpoints()
+        rows, total = await backend.fine_tune_checkpoints.list_items_page()
         assert rows == ()
         assert total == 0
 
     async def test_list_checkpoints_orders_by_created_at_desc(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(
             _checkpoint(
                 "cp-old",
                 created_at=datetime(2026, 1, 1, tzinfo=UTC),
             ),
         )
-        await backend.fine_tune_checkpoints.save_checkpoint(
+        await backend.fine_tune_checkpoints.save(
             _checkpoint(
                 "cp-mid",
                 created_at=datetime(2026, 2, 1, tzinfo=UTC),
             ),
         )
-        await backend.fine_tune_checkpoints.save_checkpoint(
+        await backend.fine_tune_checkpoints.save(
             _checkpoint(
                 "cp-new",
                 created_at=datetime(2026, 3, 1, tzinfo=UTC),
             ),
         )
 
-        cps, total = await backend.fine_tune_checkpoints.list_checkpoints()
+        cps, total = await backend.fine_tune_checkpoints.list_items_page()
         assert total == 3
         assert [c.id for c in cps] == ["cp-new", "cp-mid", "cp-old"]
 
     async def test_list_checkpoints_pagination(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(_run())
+        await backend.fine_tune_runs.save(_run())
         for i in range(5):
-            await backend.fine_tune_checkpoints.save_checkpoint(
+            await backend.fine_tune_checkpoints.save(
                 _checkpoint(
                     f"cp-{i}",
                     created_at=datetime(2026, 1, i + 1, tzinfo=UTC),
                 ),
             )
 
-        page, total = await backend.fine_tune_checkpoints.list_checkpoints(
+        page, total = await backend.fine_tune_checkpoints.list_items_page(
             limit=2, offset=1
         )
         assert total == 5
@@ -150,117 +150,117 @@ class TestFineTuneCheckpointRepository:
     async def test_set_active_makes_exactly_one_active(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-2"))
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-2"))
 
         await backend.fine_tune_checkpoints.set_active("cp-2")
 
         active = await backend.fine_tune_checkpoints.get_active_checkpoint()
         assert active is not None
         assert active.id == "cp-2"
-        cp1 = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        cp1 = await backend.fine_tune_checkpoints.get("cp-1")
         assert cp1 is not None
         assert cp1.is_active is False
 
     async def test_set_active_switches_active_row(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-2"))
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-2"))
         await backend.fine_tune_checkpoints.set_active("cp-1")
         await backend.fine_tune_checkpoints.set_active("cp-2")
 
         active = await backend.fine_tune_checkpoints.get_active_checkpoint()
         assert active is not None
         assert active.id == "cp-2"
-        cp1 = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        cp1 = await backend.fine_tune_checkpoints.get("cp-1")
         assert cp1 is not None
         assert cp1.is_active is False
 
     async def test_set_active_unknown_id_raises(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(_run())
+        await backend.fine_tune_runs.save(_run())
         with pytest.raises(QueryError, match="not found"):
             await backend.fine_tune_checkpoints.set_active("ghost")
 
     async def test_deactivate_all(self, backend: PersistenceBackend) -> None:
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-2"))
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-2"))
         await backend.fine_tune_checkpoints.set_active("cp-2")
 
         await backend.fine_tune_checkpoints.deactivate_all()
 
         assert await backend.fine_tune_checkpoints.get_active_checkpoint() is None
-        cps, _ = await backend.fine_tune_checkpoints.list_checkpoints()
+        cps, _ = await backend.fine_tune_checkpoints.list_items_page()
         for cp in cps:
             assert cp.is_active is False
 
     async def test_deactivate_all_idempotent(self, backend: PersistenceBackend) -> None:
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
 
         await backend.fine_tune_checkpoints.deactivate_all()
         # Calling twice must not raise.
         await backend.fine_tune_checkpoints.deactivate_all()
 
-        cp = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        cp = await backend.fine_tune_checkpoints.get("cp-1")
         assert cp is not None
         assert cp.is_active is False
 
     async def test_delete_checkpoint(self, backend: PersistenceBackend) -> None:
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
 
-        await backend.fine_tune_checkpoints.delete_checkpoint("cp-1")
-        assert await backend.fine_tune_checkpoints.get_checkpoint("cp-1") is None
+        assert await backend.fine_tune_checkpoints.delete("cp-1") is True
+        assert await backend.fine_tune_checkpoints.get("cp-1") is None
 
     async def test_delete_missing_checkpoint_silent(
         self, backend: PersistenceBackend
     ) -> None:
         # Mirror SQLite semantics: deleting a non-existent checkpoint
-        # is a no-op (returns silently), not an error.
-        await backend.fine_tune_checkpoints.delete_checkpoint("ghost")
+        # is a no-op (returns False), not an error.
+        assert await backend.fine_tune_checkpoints.delete("ghost") is False
 
     async def test_delete_active_checkpoint_raises(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
         await backend.fine_tune_checkpoints.set_active("cp-1")
 
         with pytest.raises(QueryError, match="active"):
-            await backend.fine_tune_checkpoints.delete_checkpoint("cp-1")
+            await backend.fine_tune_checkpoints.delete("cp-1")
 
         # Active row still present after the failed delete.
-        cp = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        cp = await backend.fine_tune_checkpoints.get("cp-1")
         assert cp is not None
         assert cp.is_active is True
 
     async def test_get_active_checkpoint_returns_none_when_no_active(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
 
         assert await backend.fine_tune_checkpoints.get_active_checkpoint() is None
 
     async def test_eval_metrics_round_trip(self, backend: PersistenceBackend) -> None:
-        await backend.fine_tune_runs.save_run(_run())
+        await backend.fine_tune_runs.save(_run())
         metrics = EvalMetrics(
             ndcg_at_10=0.6,
             recall_at_10=0.7,
             base_ndcg_at_10=0.5,
             base_recall_at_10=0.6,
         )
-        await backend.fine_tune_checkpoints.save_checkpoint(
+        await backend.fine_tune_checkpoints.save(
             _checkpoint(eval_metrics=metrics),
         )
 
-        fetched = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        fetched = await backend.fine_tune_checkpoints.get("cp-1")
         assert fetched is not None
         assert fetched.eval_metrics is not None
         assert fetched.eval_metrics.ndcg_at_10 == 0.6
@@ -277,19 +277,19 @@ class TestFineTuneCheckpointRepository:
         # the driver error as QueryError.
         cp = _checkpoint(run_id="run-ghost")
         with pytest.raises(QueryError):
-            await backend.fine_tune_checkpoints.save_checkpoint(cp)
+            await backend.fine_tune_checkpoints.save(cp)
         # Partial insert must not leak.
-        assert await backend.fine_tune_checkpoints.get_checkpoint(cp.id) is None
+        assert await backend.fine_tune_checkpoints.get(cp.id) is None
 
     async def test_list_checkpoints_clamps_limit_and_offset(
         self, backend: PersistenceBackend
     ) -> None:
         # Mirrors the run-repo clamping test: limit=0 must clamp up to 1;
         # offset=-1 must clamp up to 0.
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(_checkpoint("cp-1"))
 
-        rows, total = await backend.fine_tune_checkpoints.list_checkpoints(
+        rows, total = await backend.fine_tune_checkpoints.list_items_page(
             limit=0, offset=-1
         )
         assert total == 1
@@ -302,12 +302,12 @@ class TestFineTuneCheckpointRepository:
         # The repository must accept a JSON string from the model and
         # return the same JSON string after a round-trip.
         payload = '{"deployed_at": "2026-01-01T00:00:00Z", "version": 7}'
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(
             _checkpoint(backup_config_json=payload),
         )
 
-        fetched = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        fetched = await backend.fine_tune_checkpoints.get("cp-1")
         assert fetched is not None
         assert fetched.backup_config_json is not None
         # Compare as JSON (Postgres JSONB normalises whitespace + key
@@ -338,12 +338,12 @@ class TestFineTuneCheckpointRepository:
         # model verbatim, which is not valid JSON text and broke any
         # ``json.loads()`` consumer (``MemoryService.rollback_checkpoint``
         # in particular).
-        await backend.fine_tune_runs.save_run(_run())
-        await backend.fine_tune_checkpoints.save_checkpoint(
+        await backend.fine_tune_runs.save(_run())
+        await backend.fine_tune_checkpoints.save(
             _checkpoint(backup_config_json=payload),
         )
 
-        fetched = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        fetched = await backend.fine_tune_checkpoints.get("cp-1")
         assert fetched is not None
         assert fetched.backup_config_json is not None
         # The round-tripped string must itself parse as valid JSON

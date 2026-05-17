@@ -9,12 +9,14 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
 )
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
     from synthorg.core.types import NotBlankStr
+    from synthorg.persistence.ontology_protocol import DriftReportFilterSpec
 
 
 def _import_dict_row() -> Any:
@@ -67,8 +69,8 @@ class PostgresOntologyDriftReportRepository:
         self._pool = pool
         self._dict_row = _import_dict_row()
 
-    async def store_report(self, report: DriftReport) -> None:
-        """Persist a drift report."""
+    async def append(self, event: DriftReport) -> None:
+        """Append one drift report (write-only; immutable once written)."""
         agents_json = json.dumps(
             [
                 {
@@ -76,7 +78,7 @@ class PostgresOntologyDriftReportRepository:
                     "divergence_score": a.divergence_score,
                     "details": a.details,
                 }
-                for a in report.divergent_agents
+                for a in event.divergent_agents
             ],
         )
         try:
@@ -87,19 +89,45 @@ class PostgresOntologyDriftReportRepository:
                     "recommendation, divergent_agents) "
                     "VALUES (%s, %s, %s, %s, %s)",
                     (
-                        report.entity_name,
-                        report.divergence_score,
-                        report.canonical_version,
-                        report.recommendation.value,
+                        event.entity_name,
+                        event.divergence_score,
+                        event.canonical_version,
+                        event.recommendation.value,
                         agents_json,
                     ),
                 )
         except Exception:
             logger.error(
                 ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
-                entity_name=report.entity_name,
+                entity_name=event.entity_name,
             )
             raise
+
+    async def query(
+        self,
+        filter_spec: DriftReportFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[DriftReport, ...]:
+        """Filtered drift-report query (not implemented).
+
+        Drift consumers use :meth:`get_latest` / :meth:`get_all_latest`;
+        the generic filtered ``query`` surface is unimplemented and
+        raises rather than silently returning an empty tuple, which
+        would mask the missing functionality from a caller.
+        """
+        msg = "OntologyDriftReportRepository.query is not implemented"
+        raise NotImplementedError(msg)
+
+    async def purge_before(self, threshold: Any) -> int:
+        """Retention purge of drift reports (not implemented).
+
+        Raises rather than silently reporting zero deletions, which
+        would let a retention caller believe a sweep ran.
+        """
+        msg = "OntologyDriftReportRepository.purge_before is not implemented"
+        raise NotImplementedError(msg)
 
     async def get_latest(
         self,

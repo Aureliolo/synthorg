@@ -6,14 +6,21 @@ are in ``hr_repositories.py`` within this package.
 
 import json
 import sqlite3
+from typing import TYPE_CHECKING
 
 import aiosqlite
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
+    from synthorg.persistence.message_protocol import MessageFilterSpec
+    from synthorg.persistence.task_protocol import TaskFilterSpec
 from pydantic import BaseModel, ValidationError
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import Message
-from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -40,7 +47,13 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_LISTED,
     PERSISTENCE_TASK_SAVE_FAILED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    format_iso_utc,
+    normalize_utc,
+    validate_pagination_args,
+)
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
     is_unique_constraint_error,
@@ -211,41 +224,24 @@ id, title, description, type, priority, project, created_by,
         logger.debug(PERSISTENCE_TASK_FETCHED, task_id=task_id, found=True)
         return self._row_to_task(row)
 
-    async def list_tasks(
+    async def list_items(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Task, ...]:
-        """List tasks with optional filters and pagination.
+        """List tasks with pagination (no filters).
 
         Ordering is deterministic on the primary key ``id`` so paginated
         callers see stable windows.
         """
-        clauses: list[str] = []
-        params: list[object] = []
-        if status is not None:
-            clauses.append("status = ?")
-            params.append(status.value)
-        if assigned_to is not None:
-            clauses.append("assigned_to = ?")
-            params.append(assigned_to)
-        if project is not None:
-            clauses.append("project = ?")
-            params.append(project)
-
-        query = f"SELECT {self._TASK_COLUMNS} FROM tasks"  # noqa: S608
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY id ASC"
-        query += " LIMIT ?"
-        params.append(int(limit))
-        if offset:
-            query += " OFFSET ?"
-            params.append(int(offset))
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
+        )
+        query = (
+            f"SELECT {self._TASK_COLUMNS} FROM tasks ORDER BY id ASC LIMIT ? OFFSET ?"  # noqa: S608
+        )
+        params: list[object] = [limit, offset]
 
         try:
             cursor = await self._db.execute(query, params)
@@ -262,25 +258,67 @@ id, title, description, type, priority, project, created_by,
         logger.debug(PERSISTENCE_TASK_LISTED, count=len(tasks))
         return tasks
 
-    async def count_tasks(
+    async def query(
         self,
+        filter_spec: TaskFilterSpec,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-    ) -> int:
-        """Count tasks matching the given filters."""
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Task, ...]:
+        """Query tasks matching the filter spec.
+
+        Ordering is deterministic on the primary key ``id`` so paginated
+        callers see stable windows.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
+        )
         clauses: list[str] = []
         params: list[object] = []
-        if status is not None:
+        if filter_spec.status is not None:
             clauses.append("status = ?")
-            params.append(status.value)
-        if assigned_to is not None:
+            params.append(filter_spec.status.value)
+        if filter_spec.assigned_to is not None:
             clauses.append("assigned_to = ?")
-            params.append(assigned_to)
-        if project is not None:
+            params.append(filter_spec.assigned_to)
+        if filter_spec.project is not None:
             clauses.append("project = ?")
-            params.append(project)
+            params.append(filter_spec.project)
+
+        query = f"SELECT {self._TASK_COLUMNS} FROM tasks"  # noqa: S608
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY id ASC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        try:
+            cursor = await self._db.execute(query, params)
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list tasks"
+            logger.warning(
+                PERSISTENCE_TASK_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        tasks = tuple(self._row_to_task(row) for row in rows)
+        logger.debug(PERSISTENCE_TASK_LISTED, count=len(tasks))
+        return tasks
+
+    async def count(self, filter_spec: TaskFilterSpec) -> int:
+        """Count tasks matching the given filter spec."""
+        clauses: list[str] = []
+        params: list[object] = []
+        if filter_spec.status is not None:
+            clauses.append("status = ?")
+            params.append(filter_spec.status.value)
+        if filter_spec.assigned_to is not None:
+            clauses.append("assigned_to = ?")
+            params.append(filter_spec.assigned_to)
+        if filter_spec.project is not None:
+            clauses.append("project = ?")
+            params.append(filter_spec.project)
 
         query = "SELECT COUNT(*) FROM tasks"
         if clauses:
@@ -344,11 +382,18 @@ class SQLiteCostRecordRepository:
         self._db = db
         self._write_context = write_context
 
-    async def save(self, record: CostRecord) -> None:
-        """Persist a cost record (append-only)."""
+    async def append(self, event: CostRecord) -> None:
+        """Persist a cost record (append-only per AppendOnlyRepository)."""
         async with self._write_context():
             try:
-                data = record.model_dump(mode="json")
+                data = event.model_dump(mode="json")
+                # Store a UTC-normalised ISO string so the string
+                # comparison in ``purge_before`` (which formats its
+                # threshold the same way) is correct regardless of the
+                # caller's original offset.
+                data["timestamp"] = format_iso_utc(
+                    normalize_utc(event.timestamp),
+                )
                 await self._db.execute(
                     """\
 INSERT INTO cost_records (
@@ -362,11 +407,11 @@ INSERT INTO cost_records (
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                msg = f"Failed to save cost record for agent {record.agent_id!r}"
+                msg = f"Failed to save cost record for agent {event.agent_id!r}"
                 logger.warning(
                     PERSISTENCE_COST_RECORD_SAVE_FAILED,
-                    agent_id=record.agent_id,
-                    task_id=record.task_id,
+                    agent_id=event.agent_id,
+                    task_id=event.task_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -374,21 +419,23 @@ INSERT INTO cost_records (
 
     async def query(
         self,
+        filter_spec: CostRecordFilterSpec,
         *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        """Query cost records with optional filters and pagination."""
+        """Query cost records matching filter spec with pagination."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_COST_RECORD_QUERY_FAILED
+        )
         clauses: list[str] = []
         params: list[object] = []
-        if agent_id is not None:
+        if filter_spec.agent_id is not None:
             clauses.append("agent_id = ?")
-            params.append(agent_id)
-        if task_id is not None:
+            params.append(filter_spec.agent_id)
+        if filter_spec.task_id is not None:
             clauses.append("task_id = ?")
-            params.append(task_id)
+            params.append(filter_spec.task_id)
 
         sql = """\
 SELECT agent_id, task_id, provider, model, input_tokens,
@@ -397,9 +444,8 @@ FROM cost_records"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
-        effective_offset = max(0, int(offset))
         sql += " LIMIT ? OFFSET ?"
-        params.extend([int(limit), effective_offset])
+        params.extend([limit, offset])
 
         try:
             cursor = await self._db.execute(sql, params)
@@ -502,6 +548,39 @@ FROM cost_records"""
         )
         return total
 
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete cost records with timestamp before threshold (retention).
+
+        ``threshold`` must be timezone-aware: a naive value compared
+        against UTC-formatted stored timestamps would silently delete
+        the wrong window.
+        """
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            logger.warning(
+                PERSISTENCE_COST_RECORD_QUERY_FAILED,
+                error="naive_threshold",
+                error_type="ValueError",
+            )
+            raise QueryError(msg)
+        aware_threshold = normalize_utc(threshold)
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM cost_records WHERE timestamp < ?",
+                    (format_iso_utc(aware_threshold),),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = "Failed to purge cost records by threshold"
+                logger.warning(
+                    PERSISTENCE_COST_RECORD_QUERY_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return cursor.rowcount
+
 
 class SQLiteMessageRepository:
     """SQLite implementation of the MessageRepository protocol.
@@ -546,8 +625,8 @@ class SQLiteMessageRepository:
                 rollback_failed=True,
             )
 
-    async def save(self, message: Message) -> None:
-        """Persist a message."""
+    async def append(self, message: Message) -> None:
+        """Persist a message (append-only per AppendOnlyRepository)."""
         data = message.model_dump(mode="json")
         msg_id = str(message.id)
 
@@ -564,14 +643,19 @@ INSERT INTO messages (
 )""",
                     {
                         "id": msg_id,
-                        "timestamp": data["timestamp"],
+                        # UTC-normalised ISO so ``purge_before`` /
+                        # ``get_history`` ordering compare correctly
+                        # regardless of the caller's original offset.
+                        "timestamp": format_iso_utc(
+                            normalize_utc(message.timestamp),
+                        ),
                         "sender": data["sender"],
                         "to": data["to"],
                         "type": data["type"],
                         "priority": data["priority"],
                         "channel": data["channel"],
                         "content": json.dumps(data["parts"]),
-                        "attachments": "[]",
+                        "attachments": json.dumps(data.get("attachments", [])),
                         "metadata": json.dumps(data["metadata"]),
                     },
                 )
@@ -610,7 +694,8 @@ INSERT INTO messages (
             data["from"] = data.pop("sender")
             # Parts are stored as JSON in the content column.
             data["parts"] = json.loads(data.pop("content"))
-            data.pop("attachments", None)
+            raw_attachments = data.get("attachments")
+            data["attachments"] = json.loads(raw_attachments) if raw_attachments else []
             data["metadata"] = json.loads(data["metadata"])
             return Message.model_validate(data)
         except (
@@ -670,8 +755,76 @@ ORDER BY timestamp DESC"""
         )
         return messages
 
+    async def query(
+        self,
+        filter_spec: MessageFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Message, ...]:
+        """Return messages matching the filter spec, newest first."""
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_MESSAGE_HISTORY_FAILED
+        )
+        sql = """\
+SELECT id, timestamp, sender, "to", type, priority,
+       channel, content, attachments, metadata
+FROM messages"""
+        params: list[object] = []
+        if filter_spec.channel is not None:
+            sql += " WHERE channel = ?"
+            params.append(filter_spec.channel)
+        sql += " ORDER BY timestamp DESC, id ASC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        try:
+            cursor = await self._db.execute(sql, params)
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to query messages"
+            logger.warning(
+                PERSISTENCE_MESSAGE_HISTORY_FAILED,
+                channel=filter_spec.channel,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(self._row_to_message(row) for row in rows)
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete messages with ``timestamp < threshold`` (retention).
+
+        ``threshold`` must be timezone-aware: a naive value compared
+        against UTC-formatted stored timestamps would silently delete
+        the wrong window.
+        """
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            logger.warning(
+                PERSISTENCE_MESSAGE_DELETE_FAILED,
+                error="naive_threshold",
+                error_type="ValueError",
+            )
+            raise QueryError(msg)
+        aware_threshold = normalize_utc(threshold)
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM messages WHERE timestamp < ?",
+                    (format_iso_utc(aware_threshold),),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = "Failed to purge messages by threshold"
+                logger.warning(
+                    PERSISTENCE_MESSAGE_DELETE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return cursor.rowcount
+
     async def delete(self, message_id: NotBlankStr) -> bool:
-        """Delete a single message by id.
+        """Delete a single message by id (bespoke per ADR D7, moderation).
 
         Returns ``True`` when a row was removed, ``False`` when the id
         did not exist. Concurrent writes are serialized through the

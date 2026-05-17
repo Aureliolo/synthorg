@@ -7,6 +7,7 @@ import pytest
 
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
+from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.sqlite.artifact_repo import SQLiteArtifactRepository
 from tests._shared.persistence import make_private_write_context
 
@@ -74,40 +75,49 @@ class TestSQLiteArtifactRepository:
         assert fetched is not None
         assert fetched.description == "Updated desc"
 
-    async def test_list_all(self, repo: SQLiteArtifactRepository) -> None:
+    async def test_list_items_returns_all(self, repo: SQLiteArtifactRepository) -> None:
         await repo.save(_make_artifact(artifact_id="a1"))
         await repo.save(_make_artifact(artifact_id="a2"))
-        result = await repo.list_artifacts()
+        result = await repo.list_items()
         assert len(result) == 2
 
-    async def test_list_filter_by_task_id(self, repo: SQLiteArtifactRepository) -> None:
+    async def test_query_filter_by_task_id(
+        self, repo: SQLiteArtifactRepository
+    ) -> None:
         await repo.save(_make_artifact(artifact_id="a1", task_id="task-1"))
         await repo.save(_make_artifact(artifact_id="a2", task_id="task-2"))
-        result = await repo.list_artifacts(task_id="task-1")
+        result = await repo.query(
+            ArtifactFilterSpec(task_id="task-1"),
+        )
         assert len(result) == 1
         assert result[0].task_id == "task-1"
 
-    async def test_list_filter_by_created_by(
-        self, repo: SQLiteArtifactRepository
+    async def test_query_filter_by_created_by(
+        self,
+        repo: SQLiteArtifactRepository,
     ) -> None:
         await repo.save(_make_artifact(artifact_id="a1", created_by="alice"))
         await repo.save(_make_artifact(artifact_id="a2", created_by="bob"))
-        result = await repo.list_artifacts(created_by="alice")
+        result = await repo.query(
+            ArtifactFilterSpec(created_by="alice"),
+        )
         assert len(result) == 1
         assert result[0].created_by == "alice"
 
-    async def test_list_filter_by_type(self, repo: SQLiteArtifactRepository) -> None:
+    async def test_query_filter_by_type(self, repo: SQLiteArtifactRepository) -> None:
         await repo.save(
             _make_artifact(artifact_id="a1", artifact_type=ArtifactType.CODE)
         )
         await repo.save(
             _make_artifact(artifact_id="a2", artifact_type=ArtifactType.TESTS)
         )
-        result = await repo.list_artifacts(artifact_type=ArtifactType.TESTS)
+        result = await repo.query(
+            ArtifactFilterSpec(artifact_type=ArtifactType.TESTS),
+        )
         assert len(result) == 1
         assert result[0].type is ArtifactType.TESTS
 
-    async def test_list_combined_filters(self, repo: SQLiteArtifactRepository) -> None:
+    async def test_query_combined_filters(self, repo: SQLiteArtifactRepository) -> None:
         await repo.save(
             _make_artifact(artifact_id="a1", task_id="task-1", created_by="alice")
         )
@@ -117,9 +127,18 @@ class TestSQLiteArtifactRepository:
         await repo.save(
             _make_artifact(artifact_id="a3", task_id="task-2", created_by="alice")
         )
-        result = await repo.list_artifacts(task_id="task-1", created_by="alice")
+        result = await repo.query(
+            ArtifactFilterSpec(task_id="task-1", created_by="alice"),
+        )
         assert len(result) == 1
         assert result[0].id == "a1"
+
+    async def test_count(self, repo: SQLiteArtifactRepository) -> None:
+        await repo.save(_make_artifact(artifact_id="a1", task_id="task-1"))
+        await repo.save(_make_artifact(artifact_id="a2", task_id="task-1"))
+        await repo.save(_make_artifact(artifact_id="a3", task_id="task-2"))
+        count = await repo.count(ArtifactFilterSpec(task_id="task-1"))
+        assert count == 2
 
     async def test_delete_existing(self, repo: SQLiteArtifactRepository) -> None:
         await repo.save(_make_artifact())

@@ -9,6 +9,7 @@ import pytest
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
+from synthorg.persistence.custom_rule_protocol import CustomRuleFilterSpec
 from synthorg.persistence.sqlite.custom_rule_repo import (
     SQLiteCustomRuleRepository,
 )
@@ -106,7 +107,7 @@ class TestSQLiteCustomRuleRepository:
         rule_b = _make_rule(name="beta-rule")
         await repo.save(rule_a)
         await repo.save(rule_b)
-        rules = await repo.list_rules()
+        rules = await repo.query(CustomRuleFilterSpec())
         assert len(rules) == 2
         assert rules[0].name == "alpha-rule"
         assert rules[1].name == "beta-rule"
@@ -119,7 +120,7 @@ class TestSQLiteCustomRuleRepository:
         disabled_rule = _make_rule(name="disabled-rule", enabled=False)
         await repo.save(enabled_rule)
         await repo.save(disabled_rule)
-        enabled = await repo.list_rules(enabled_only=True)
+        enabled = await repo.query(CustomRuleFilterSpec(enabled_only=True))
         assert len(enabled) == 1
         assert enabled[0].name == "enabled-rule"
 
@@ -127,7 +128,7 @@ class TestSQLiteCustomRuleRepository:
         self,
         repo: SQLiteCustomRuleRepository,
     ) -> None:
-        rules = await repo.list_rules()
+        rules = await repo.query(CustomRuleFilterSpec())
         assert rules == ()
 
     async def test_delete_found(

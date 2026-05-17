@@ -16,23 +16,38 @@ from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.setup import SETUP_AGENT_BOOTSTRAP_FAILED
+from synthorg.persistence._shared import paginate
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.core.auth.models import User
 
 logger = get_logger(__name__)
 
 
-async def _maybe_promote_first_owner(app_state: AppState) -> None:
-    """Promote the first user to owner if no owner exists.
+async def _find_first_user_when_no_owner(app_state: AppState) -> User | None:
+    """Return the first user iff no user anywhere holds ``OrgRole.OWNER``.
 
-    Idempotent: once at least one user holds ``OrgRole.OWNER`` the
-    function returns without modifying state.
+    Sweeps every page, not just the first ``DEFAULT_LIST_LIMIT`` rows:
+    an existing owner positioned past page one must still suppress the
+    promotion, otherwise the "idempotent once an owner exists" guarantee
+    breaks on installs with more than one page of users. Returns
+    ``None`` when an owner exists, when there are no users, or when the
+    sweep fails (all three mean "do not promote").
     """
-    if not app_state.has_persistence:
-        return
+    from synthorg.core.auth.models import OrgRole  # noqa: PLC0415
+
+    first: User | None = None
     try:
-        users = await app_state.persistence.users.list_users()
+        async for page in paginate(
+            lambda limit, offset: app_state.persistence.users.list_items(
+                limit=limit, offset=offset
+            ),
+        ):
+            if first is None:
+                first = page[0]
+            if any(OrgRole.OWNER in u.org_roles for u in page):
+                return None
     except asyncio.CancelledError:
         raise
     except MemoryError, RecursionError:
@@ -44,17 +59,24 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
-    if not users:
+        return None
+    return first
+
+
+async def _maybe_promote_first_owner(app_state: AppState) -> None:
+    """Promote the first user to owner if no owner exists.
+
+    Idempotent: once at least one user holds ``OrgRole.OWNER`` the
+    function returns without modifying state.
+    """
+    if not app_state.has_persistence:
         return
 
     from synthorg.core.auth.models import OrgRole  # noqa: PLC0415
 
-    has_owner = any(OrgRole.OWNER in u.org_roles for u in users)
-    if has_owner:
+    first = await _find_first_user_when_no_owner(app_state)
+    if first is None:
         return
-
-    first = users[0]
     promoted = first.model_copy(
         update={
             "org_roles": (*first.org_roles, OrgRole.OWNER),

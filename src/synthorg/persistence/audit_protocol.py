@@ -1,30 +1,85 @@
 """Audit repository protocol."""
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pydantic import AwareDatetime  # noqa: TC002
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-from synthorg.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
+from synthorg.security.models import AuditVerdictStr  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.security.models import AuditEntry
+
+__all__ = [
+    "AuditFilterSpec",
+    "AuditRepository",
+]
+
+
+class AuditFilterSpec(BaseModel):
+    """Filter spec for ``AuditRepository.query``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    agent_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by agent identifier",
+    )
+    action_type: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by action type string",
+    )
+    verdict: AuditVerdictStr | None = Field(
+        default=None,
+        description="Filter by verdict (allow/deny/escalate/output_scan)",
+    )
+    risk_level: ApprovalRiskLevel | None = Field(
+        default=None,
+        description="Filter by risk level",
+    )
+    since: AwareDatetime | None = Field(
+        default=None,
+        description="Only return entries at or after this timestamp",
+    )
+    until: AwareDatetime | None = Field(
+        default=None,
+        description="Only return entries at or before this timestamp",
+    )
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> AuditFilterSpec:
+        """Reject an inverted ``since``/``until`` window at the boundary."""
+        if (
+            self.since is not None
+            and self.until is not None
+            and self.until < self.since
+        ):
+            msg = f"until ({self.until}) must be >= since ({self.since})"
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable
-class AuditRepository(Protocol):
+class AuditRepository(
+    AppendOnlyRepository["AuditEntry", AuditFilterSpec],
+    Protocol,
+):
     """Append-only persistence + query interface for AuditEntry.
 
-    Audit entries are immutable records of security evaluations.
-    No update operations are provided to preserve audit integrity.
+    Composes :class:`AppendOnlyRepository`. Audit entries are immutable
+    records of security evaluations. No update operations are provided
+    to preserve audit integrity.
 
     The single delete-style operation is :meth:`purge_before`, the
     retention sweeper used to enforce the operator-configurable
-    ``security.audit_retention_days`` window.  This is a deliberate
-    exception, not a per-row mutation API; see :meth:`purge_before`
-    for the retention/forensic tradeoff.
+    ``security.audit_retention_days`` window. This is a deliberate
+    exception to the append-only rule; see :meth:`purge_before`
+    for the retention-vs-forensic tradeoff.
     """
 
-    async def save(self, entry: AuditEntry) -> None:
+    async def append(self, entry: AuditEntry) -> None:
         """Persist an audit entry (append-only).
 
         Args:
@@ -36,37 +91,28 @@ class AuditRepository(Protocol):
         """
         ...
 
-    async def query(  # noqa: PLR0913
+    async def query(
         self,
+        filter_spec: AuditFilterSpec,
         *,
-        agent_id: NotBlankStr | None = None,
-        action_type: NotBlankStr | None = None,
-        verdict: AuditVerdictStr | None = None,
-        risk_level: ApprovalRiskLevel | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[AuditEntry, ...]:
-        """Query audit entries with optional filters.
+        """Return audit entries matching the filter spec (paginated).
 
-        Filters are AND-combined. Results are ordered by timestamp
-        descending (newest first).
+        Results are ordered by timestamp descending (newest first).
 
         Args:
-            agent_id: Filter by agent identifier.
-            action_type: Filter by action type string.
-            verdict: Filter by verdict string.
-            risk_level: Filter by risk level.
-            since: Only return entries at or after this timestamp.
-            until: Only return entries at or before this timestamp.
+            filter_spec: Audit filter specification with optional filters.
             limit: Maximum number of entries to return (must be >= 1).
+            offset: Number of entries to skip (for pagination).
 
         Returns:
             Matching audit entries as a tuple.
 
         Raises:
             QueryError: If the operation fails, *limit* < 1, or
-                *until* is earlier than *since*.
+                *until* is earlier than *since* in the filter spec.
         """
         ...
 

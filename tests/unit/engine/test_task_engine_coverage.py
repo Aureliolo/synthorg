@@ -42,7 +42,7 @@ class TestInFlightResolution:
             await block.wait()
             await original_save(task)  # type: ignore[arg-type]
 
-        persistence.tasks.save = slow_save  # type: ignore[method-assign]
+        persistence.tasks.save = slow_save  # type: ignore[method-assign,assignment]
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
@@ -104,7 +104,7 @@ class TestProcessOneExceptionHandling:
             msg = "Unexpected persistence failure"
             raise RuntimeError(msg)
 
-        persistence.tasks.save = exploding_save  # type: ignore[method-assign]
+        persistence.tasks.save = exploding_save  # type: ignore[method-assign,assignment]
 
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
@@ -226,7 +226,7 @@ class TestProcessingLoopResilience:
                 raise RuntimeError(msg)
             await original_save(task)  # type: ignore[arg-type]
 
-        persistence.tasks.save = fail_first_save  # type: ignore[method-assign]
+        persistence.tasks.save = fail_first_save  # type: ignore[method-assign,assignment]
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()

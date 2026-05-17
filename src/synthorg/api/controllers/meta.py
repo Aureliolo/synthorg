@@ -122,7 +122,11 @@ class MetaController(Controller):
         # Append custom rules from persistence.
         repo = state.app_state.persistence.custom_rules
         try:
-            custom = await repo.list_rules()
+            from synthorg.persistence.custom_rule_protocol import (  # noqa: PLC0415
+                CustomRuleFilterSpec,
+            )
+
+            custom = await repo.query(CustomRuleFilterSpec())
         except (QueryError, NotImplementedError) as exc:
             logger.warning(
                 META_CUSTOM_RULE_LIST_FAILED,

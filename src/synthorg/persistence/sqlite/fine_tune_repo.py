@@ -20,8 +20,8 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_INTERRUPTED,
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
-from synthorg.persistence.fine_tune_protocol import _DEFAULT_LIST_LIMIT_50
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -120,8 +120,9 @@ class SQLiteFineTuneRunRepository:
         self._db = db
         self._write_context = write_context
 
-    async def save_run(self, run: FineTuneRun) -> None:
-        """Persist a run (upsert semantics)."""
+    async def save(self, entity: FineTuneRun) -> None:
+        """Upsert a run by id (idempotent semantics)."""
+        run = entity
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -165,8 +166,9 @@ class SQLiteFineTuneRunRepository:
                 )
                 raise QueryError(msg) from exc
 
-    async def get_run(self, run_id: str) -> FineTuneRun | None:
-        """Retrieve a run by ID."""
+    async def get(self, entity_id: str) -> FineTuneRun | None:
+        """Retrieve a run by id."""
+        run_id = entity_id
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM fine_tune_runs WHERE id = ?",
@@ -209,13 +211,38 @@ class SQLiteFineTuneRunRepository:
             return None
         return _run_from_row(row)
 
-    async def list_runs(
+    async def list_items(
         self,
         *,
-        limit: int = _DEFAULT_LIST_LIMIT_50,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[FineTuneRun, ...]:
+        """List runs in ascending id order (paginated)."""
+        limit = min(max(limit, 1), _MAX_LIST_LIMIT)
+        offset = max(offset, 0)
+        try:
+            cursor = await self._db.execute(
+                "SELECT * FROM fine_tune_runs ORDER BY id ASC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list fine-tune runs"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(_run_from_row(r) for r in rows)
+
+    async def list_items_page(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
-        """List runs ordered by start time descending.
+        """List runs ordered by start time descending with total count.
 
         Returns:
             Tuple of (runs, total_count).
@@ -244,6 +271,32 @@ class SQLiteFineTuneRunRepository:
             )
             raise QueryError(msg) from exc
         return tuple(_run_from_row(r) for r in rows), total
+
+    async def delete(self, entity_id: str) -> bool:
+        """Delete a run by id.
+
+        Returns:
+            ``True`` if deleted, ``False`` if not found.
+        """
+        run_id = entity_id
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM fine_tune_runs WHERE id = ?",
+                    (run_id,),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete fine-tune run {run_id}"
+                logger.warning(
+                    MEMORY_FINE_TUNE_PERSIST_FAILED,
+                    run_id=run_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            else:
+                return cursor.rowcount > 0
 
     async def update_run(self, run: FineTuneRun) -> None:
         """Update all mutable fields for a run."""
@@ -347,11 +400,9 @@ class SQLiteFineTuneCheckpointRepository:
         self._db = db
         self._write_context = write_context
 
-    async def save_checkpoint(
-        self,
-        checkpoint: CheckpointRecord,
-    ) -> None:
-        """Persist a checkpoint (upsert semantics)."""
+    async def save(self, entity: CheckpointRecord) -> None:
+        """Upsert a checkpoint by id (idempotent semantics)."""
+        checkpoint = entity
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -394,11 +445,9 @@ class SQLiteFineTuneCheckpointRepository:
                 )
                 raise QueryError(msg) from exc
 
-    async def get_checkpoint(
-        self,
-        checkpoint_id: str,
-    ) -> CheckpointRecord | None:
-        """Retrieve a checkpoint by ID."""
+    async def get(self, entity_id: str) -> CheckpointRecord | None:
+        """Retrieve a checkpoint by id."""
+        checkpoint_id = entity_id
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM fine_tune_checkpoints WHERE id = ?",
@@ -418,13 +467,38 @@ class SQLiteFineTuneCheckpointRepository:
             return None
         return _checkpoint_from_row(row)
 
-    async def list_checkpoints(
+    async def list_items(
         self,
         *,
-        limit: int = _DEFAULT_LIST_LIMIT_50,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[CheckpointRecord, ...]:
+        """List checkpoints in ascending id order (paginated)."""
+        limit = min(max(limit, 1), _MAX_LIST_LIMIT)
+        offset = max(offset, 0)
+        try:
+            cursor = await self._db.execute(
+                "SELECT * FROM fine_tune_checkpoints ORDER BY id ASC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list checkpoints"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(_checkpoint_from_row(r) for r in rows)
+
+    async def list_items_page(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[CheckpointRecord, ...], int]:
-        """List checkpoints ordered by creation time descending.
+        """List checkpoints ordered by creation time descending with total count.
 
         Returns:
             Tuple of (checkpoints, total_count).
@@ -511,15 +585,16 @@ class SQLiteFineTuneCheckpointRepository:
                 )
                 raise QueryError(msg) from exc
 
-    async def delete_checkpoint(
-        self,
-        checkpoint_id: str,
-    ) -> None:
-        """Delete a checkpoint. Raises if it is the active one.
+    async def delete(self, entity_id: str) -> bool:
+        """Delete a checkpoint by id.
 
-        Checks existence and active status before deleting to provide
-        clear error messages without TOCTOU races.
+        Raises when deleting the active checkpoint (domain invariant).
+        Returns ``False`` if checkpoint does not exist.
+
+        Returns:
+            ``True`` if deleted, ``False`` if not found.
         """
+        checkpoint_id = entity_id
         async with self._write_context():
             try:
                 check = await self._db.execute(
@@ -528,7 +603,7 @@ class SQLiteFineTuneCheckpointRepository:
                 )
                 row = await check.fetchone()
                 if row is None:
-                    return
+                    return False
                 if bool(row["is_active"]):
                     msg = f"Cannot delete active checkpoint {checkpoint_id}"
                     logger.warning(
@@ -561,6 +636,8 @@ class SQLiteFineTuneCheckpointRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
+            else:
+                return True
 
     async def get_active_checkpoint(
         self,

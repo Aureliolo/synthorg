@@ -6,32 +6,75 @@ repositories share the auth admin surface.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.auth.models import ApiKey, User  # noqa: TC001
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.core.auth.models import ApiKey, User
 from synthorg.core.auth.roles import HumanRole  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence._generics import (
+    DEFAULT_PAGE_SIZE,
+    FilteredQueryRepository,
+    IdKeyedRepository,
+)
+
+
+class UserFilterSpec(BaseModel):
+    """Filter spec for ``UserRepository.query``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    role: HumanRole | None = Field(
+        default=None,
+        description="Filter by user role",
+    )
+
+
+class ApiKeyFilterSpec(BaseModel):
+    """Filter spec for ``ApiKeyRepository.query``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    user_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by owner user ID",
+    )
+    revoked_only: bool = Field(
+        default=False,
+        description="If True, return only revoked keys; if False, return all keys",
+    )
 
 
 @runtime_checkable
-class UserRepository(Protocol):
-    """CRUD interface for User persistence."""
+class UserRepository(
+    IdKeyedRepository[User, NotBlankStr],
+    FilteredQueryRepository[User, UserFilterSpec],
+    Protocol,
+):
+    """CRUD + query interface for User persistence.
 
-    async def save(self, user: User) -> None:
-        """Persist a user (insert or update).
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`.
+    Bespoke methods:
+    - ``get_by_username``: alternate-key lookup on indexed username column
+    - ``count_by_role``: domain invariant (callers need role-count aggregate)
+    - ``list_after_id``: keyset cursor pagination for the dashboard
+    """
+
+    async def save(self, entity: User) -> None:
+        """Persist a user (insert or update by id).
 
         Args:
-            user: The user to persist.
+            entity: The user to persist.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def get(self, user_id: NotBlankStr) -> User | None:
-        """Retrieve a user by ID.
+    async def get(self, entity_id: NotBlankStr) -> User | None:
+        """Retrieve a user by its ID.
 
         Args:
-            user_id: The user identifier.
+            entity_id: The user identifier.
 
         Returns:
             The user, or ``None`` if not found.
@@ -42,7 +85,7 @@ class UserRepository(Protocol):
         ...
 
     async def get_by_username(self, username: NotBlankStr) -> User | None:
-        """Retrieve a user by username.
+        """Retrieve a user by username (D7: alternate-key performance).
 
         Args:
             username: The login username.
@@ -55,68 +98,82 @@ class UserRepository(Protocol):
         """
         ...
 
-    async def list_users(
+    async def list_items(
         self,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[User, ...]:
-        """List human users (excludes the system user).
-
-        Bounded by ``limit`` so an unauth'd caller cannot materialise an
-        unbounded tuple of users. For cursor-stable pagination across
-        large user bases use :meth:`list_users_paginated` instead.
+        """List human users (excludes the system user) with pagination.
 
         Args:
-            limit: Maximum users to return (default
-                :data:`DEFAULT_LIST_LIMIT`).
+            limit: Maximum users to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Human users as a tuple, capped at *limit* rows.
+            Human users ordered by id ascending.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def list_users_paginated(
+    async def list_after_id(
         self,
         *,
-        after_id: NotBlankStr | None,
-        limit: int,
+        after_id: NotBlankStr | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[User, ...]:
-        """List a page of human users using keyset pagination on ``id``.
+        """Keyset page of human users with ``id > after_id``.
 
-        Returns up to ``limit`` rows whose ``id > after_id`` (or all
-        rows when ``after_id`` is ``None``).  The keyset contract is
-        stable under concurrent inserts and deletes: new users
-        beyond the cursor land on a later page; deletions can only
-        shorten future pages, never duplicate or skip rows already
-        seen.  Offset-based pagination cannot make that guarantee.
-
-        ``id`` is the sort key (not ``created_at``) so the keyset is
-        unique on every row, even on bulk imports that collide on the
-        same timestamp.
+        Pushes the cursor predicate into the SQL layer so dashboard
+        pagination stays O(page) regardless of table size, instead of
+        loading a capped prefix and filtering in memory.
 
         Args:
-            after_id: Sort-key cursor.  ``None`` for the first page;
-                the previous page's last ``id`` for follow-up pages.
-            limit: Maximum rows to return.  Callers wanting an
-                ``has_more`` signal should pass ``limit + 1`` and
-                inspect the overflow.
+            after_id: Exclusive lower bound on ``id``; ``None`` returns
+                the first page.
+            limit: Maximum users to return (ascending ``id`` order).
 
         Returns:
-            Page of users in ascending ``id`` order.
+            Up to *limit* human users with ``id`` strictly greater than
+            ``after_id``, excluding the system user.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def count(self) -> int:
-        """Count the number of human users (excludes the system user).
+    async def query(
+        self,
+        filter_spec: UserFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[User, ...]:
+        """List users matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filter for role.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            Human user count.
+            Matching users ordered by id ascending.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def count(self, filter_spec: UserFilterSpec) -> int:
+        """Count users matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filter for role.
+
+        Returns:
+            Total number of matching users.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -124,7 +181,7 @@ class UserRepository(Protocol):
         ...
 
     async def count_by_role(self, role: HumanRole) -> int:
-        """Count users with a specific role.
+        """Count users with a specific role (D7: domain invariant).
 
         Args:
             role: The role to filter by.
@@ -137,11 +194,11 @@ class UserRepository(Protocol):
         """
         ...
 
-    async def delete(self, user_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a user by ID.
 
         Args:
-            user_id: The user identifier.
+            entity_id: The user identifier.
 
         Returns:
             ``True`` if deleted, ``False`` if not found.
@@ -153,25 +210,34 @@ class UserRepository(Protocol):
 
 
 @runtime_checkable
-class ApiKeyRepository(Protocol):
-    """CRUD interface for API key persistence."""
+class ApiKeyRepository(
+    IdKeyedRepository[ApiKey, NotBlankStr],
+    FilteredQueryRepository[ApiKey, ApiKeyFilterSpec],
+    Protocol,
+):
+    """CRUD + query interface for API key persistence.
 
-    async def save(self, key: ApiKey) -> None:
-        """Persist an API key.
+    Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
+    (ADR-0001). Bespoke method kept per D7:
+    - ``get_by_hash``: alternate-key lookup on indexed key_hash column
+    """
+
+    async def save(self, entity: ApiKey) -> None:
+        """Persist an API key (insert or update by id).
 
         Args:
-            key: The API key to persist.
+            entity: The API key to persist.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def get(self, key_id: NotBlankStr) -> ApiKey | None:
-        """Retrieve an API key by ID.
+    async def get(self, entity_id: NotBlankStr) -> ApiKey | None:
+        """Retrieve an API key by its ID.
 
         Args:
-            key_id: The key identifier.
+            entity_id: The key identifier.
 
         Returns:
             The API key, or ``None`` if not found.
@@ -182,7 +248,7 @@ class ApiKeyRepository(Protocol):
         ...
 
     async def get_by_hash(self, key_hash: NotBlankStr) -> ApiKey | None:
-        """Retrieve an API key by its hash.
+        """Retrieve an API key by its hash (D7: alternate-key performance).
 
         Args:
             key_hash: HMAC-SHA256 hex digest.
@@ -195,34 +261,67 @@ class ApiKeyRepository(Protocol):
         """
         ...
 
-    async def list_by_user(
+    async def list_items(
         self,
-        user_id: NotBlankStr,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
-        """List API keys belonging to a user, optionally paginated.
+        """List API keys with pagination.
 
         Args:
-            user_id: The owner user ID.
-            limit: Maximum keys to return (default
-                :data:`DEFAULT_LIST_LIMIT`). Must be >= 1.
-            offset: Keys to skip; applied before *limit*. Must be >= 0.
+            limit: Maximum keys to return.
+            offset: Rows to skip before the window.
 
         Returns:
-            API keys for the user, capped at *limit* rows.
+            API keys ordered by id ascending.
 
         Raises:
             PersistenceError: If the operation fails.
         """
         ...
 
-    async def delete(self, key_id: NotBlankStr) -> bool:
+    async def query(
+        self,
+        filter_spec: ApiKeyFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        """List API keys matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters for user_id and revoked_only.
+            limit: Maximum rows to return.
+            offset: Rows to skip before the window.
+
+        Returns:
+            Matching API keys ordered by id ascending.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def count(self, filter_spec: ApiKeyFilterSpec) -> int:
+        """Count API keys matching the filter spec.
+
+        Args:
+            filter_spec: Carries optional filters.
+
+        Returns:
+            Total number of matching API keys.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete an API key by ID.
 
         Args:
-            key_id: The key identifier.
+            entity_id: The key identifier.
 
         Returns:
             ``True`` if deleted, ``False`` if not found.

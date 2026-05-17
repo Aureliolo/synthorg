@@ -36,12 +36,12 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
-    DEFAULT_LIST_LIMIT,
     coerce_row_timestamp,
     format_iso_utc,
 )
-from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_5
+from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
 from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -436,7 +436,7 @@ class SQLiteOrgFactRepository:
         *,
         categories: frozenset[OrgFactCategory] | None = None,
         text: str | None = None,
-        limit: int = _DEFAULT_LIST_LIMIT_5,
+        limit: int = _DEFAULT_LIST_LIMIT_FACTS,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """Query active facts by category and/or text content."""
@@ -488,7 +488,7 @@ class SQLiteOrgFactRepository:
         self,
         category: OrgFactCategory,
         *,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """List all active facts in a category, optionally paginated."""

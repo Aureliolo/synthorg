@@ -182,6 +182,7 @@ PERSISTENCE_API_KEY_FETCHED: Final[str] = "persistence.api_key.fetched"
 PERSISTENCE_API_KEY_FETCH_FAILED: Final[str] = "persistence.api_key.fetch_failed"
 PERSISTENCE_API_KEY_LISTED: Final[str] = "persistence.api_key.listed"
 PERSISTENCE_API_KEY_LIST_FAILED: Final[str] = "persistence.api_key.list_failed"
+PERSISTENCE_API_KEY_COUNT_FAILED: Final[str] = "persistence.api_key.count_failed"
 PERSISTENCE_API_KEY_DELETED: Final[str] = "persistence.api_key.deleted"
 PERSISTENCE_API_KEY_DELETE_FAILED: Final[str] = "persistence.api_key.delete_failed"
 
@@ -230,6 +231,8 @@ PERSISTENCE_AGENT_STATE_ACTIVE_QUERIED: Final[str] = (
 PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED: Final[str] = (
     "persistence.agent_state.active_query_failed"
 )
+PERSISTENCE_AGENT_STATE_LISTED: Final[str] = "persistence.agent_state.listed"
+PERSISTENCE_AGENT_STATE_LIST_FAILED: Final[str] = "persistence.agent_state.list_failed"
 PERSISTENCE_AGENT_STATE_DELETED: Final[str] = "persistence.agent_state.deleted"
 PERSISTENCE_AGENT_STATE_DELETE_FAILED: Final[str] = (
     "persistence.agent_state.delete_failed"
@@ -390,9 +393,24 @@ PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED: Final[str] = (
 PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED: Final[str] = (
     "persistence.risk_override.revoke_failed"
 )
+PERSISTENCE_RISK_OVERRIDE_DELETE_FAILED: Final[str] = (
+    "persistence.risk_override.delete_failed"
+)
 PERSISTENCE_RISK_OVERRIDE_QUERIED: Final[str] = "persistence.risk_override.queried"
 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED: Final[str] = (
     "persistence.risk_override.query_failed"
+)
+
+# -- Preset override events -------------------------------------------------
+
+PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED: Final[str] = (
+    "persistence.preset_override.save_failed"
+)
+PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED: Final[str] = (
+    "persistence.preset_override.query_failed"
+)
+PERSISTENCE_PRESET_OVERRIDE_DELETE_FAILED: Final[str] = (
+    "persistence.preset_override.delete_failed"
 )
 
 # -- SSRF violation events --------------------------------------------------
@@ -476,6 +494,9 @@ PERSISTENCE_WEBHOOK_RECEIPT_LISTED: Final[str] = "persistence.webhook_receipt.li
 PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED: Final[str] = (
     "persistence.webhook_receipt.list_failed"
 )
+PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED: Final[str] = (
+    "persistence.webhook_receipt.delete_failed"
+)
 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP: Final[str] = "persistence.webhook_receipt.cleanup"
 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED: Final[str] = (
     "persistence.webhook_receipt.cleanup_failed"
@@ -499,6 +520,56 @@ PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED: Final[str] = (
 PERSISTENCE_CIRCUIT_BREAKER_DELETED: Final[str] = "persistence.circuit_breaker.deleted"
 PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED: Final[str] = (
     "persistence.circuit_breaker.delete_failed"
+)
+
+# Ceremony scheduler state events (per-sprint snapshot persistence)
+PERSISTENCE_CEREMONY_STATE_SAVED: Final[str] = "persistence.ceremony_state.saved"
+PERSISTENCE_CEREMONY_STATE_SAVE_FAILED: Final[str] = (
+    "persistence.ceremony_state.save_failed"
+)
+PERSISTENCE_CEREMONY_STATE_LOADED: Final[str] = "persistence.ceremony_state.loaded"
+PERSISTENCE_CEREMONY_STATE_LOAD_FAILED: Final[str] = (
+    "persistence.ceremony_state.load_failed"
+)
+PERSISTENCE_CEREMONY_STATE_DELETED: Final[str] = "persistence.ceremony_state.deleted"
+PERSISTENCE_CEREMONY_STATE_DELETE_FAILED: Final[str] = (
+    "persistence.ceremony_state.delete_failed"
+)
+
+# Meeting cooldown events (per-meeting-type last-triggered persistence)
+PERSISTENCE_MEETING_COOLDOWN_UPSERTED: Final[str] = (
+    "persistence.meeting_cooldown.upserted"
+)
+PERSISTENCE_MEETING_COOLDOWN_UPSERT_FAILED: Final[str] = (
+    "persistence.meeting_cooldown.upsert_failed"
+)
+PERSISTENCE_MEETING_COOLDOWN_LOADED: Final[str] = "persistence.meeting_cooldown.loaded"
+PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED: Final[str] = (
+    "persistence.meeting_cooldown.load_failed"
+)
+PERSISTENCE_MEETING_COOLDOWN_DELETED: Final[str] = (
+    "persistence.meeting_cooldown.deleted"
+)
+PERSISTENCE_MEETING_COOLDOWN_DELETE_FAILED: Final[str] = (
+    "persistence.meeting_cooldown.delete_failed"
+)
+
+# Tracked Docker container events (sandbox lifecycle persistence)
+PERSISTENCE_TRACKED_CONTAINER_SAVED: Final[str] = "persistence.tracked_container.saved"
+PERSISTENCE_TRACKED_CONTAINER_SAVE_FAILED: Final[str] = (
+    "persistence.tracked_container.save_failed"
+)
+PERSISTENCE_TRACKED_CONTAINER_LOADED: Final[str] = (
+    "persistence.tracked_container.loaded"
+)
+PERSISTENCE_TRACKED_CONTAINER_LOAD_FAILED: Final[str] = (
+    "persistence.tracked_container.load_failed"
+)
+PERSISTENCE_TRACKED_CONTAINER_DELETED: Final[str] = (
+    "persistence.tracked_container.deleted"
+)
+PERSISTENCE_TRACKED_CONTAINER_DELETE_FAILED: Final[str] = (
+    "persistence.tracked_container.delete_failed"
 )
 
 # Worker seen-claims events (TaskClaim idempotency dedup)

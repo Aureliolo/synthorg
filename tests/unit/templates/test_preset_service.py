@@ -5,6 +5,8 @@ import json
 import pytest
 
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.preset_protocol import Preset
 from synthorg.templates.preset_service import PersonalityPresetService
 from synthorg.templates.presets import PERSONALITY_PRESETS
 from tests.unit.api.fakes import FakePersonalityPresetRepository
@@ -57,11 +59,13 @@ class TestListAll:
         config = _make_valid_config()
         config_json = json.dumps(config, sort_keys=True)
         await repo.save(
-            "my_custom",
-            config_json,
-            "Custom",
-            "2026-03-31T00:00:00+00:00",
-            "2026-03-31T00:00:00+00:00",
+            Preset(
+                name=NotBlankStr("my_custom"),
+                config_json=config_json,
+                description="Custom",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
         )
         entries = await service.list_all()
         custom = [e for e in entries if e.source == "custom"]
@@ -102,11 +106,13 @@ class TestGet:
         config = _make_valid_config()
         config_json = json.dumps(config, sort_keys=True)
         await repo.save(
-            "my_custom",
-            config_json,
-            "Custom",
-            "2026-03-31T00:00:00+00:00",
-            "2026-03-31T00:00:00+00:00",
+            Preset(
+                name=NotBlankStr("my_custom"),
+                config_json=config_json,
+                description="Custom",
+                created_at="2026-03-31T00:00:00+00:00",
+                updated_at="2026-03-31T00:00:00+00:00",
+            )
         )
         entry = await service.get("my_custom")
         assert entry.source == "custom"
@@ -273,11 +279,13 @@ class TestFetchCustomPresetsMap:
 
         config = _make_valid_config()
         await repo.save(
-            name="test_preset",
-            config_json=json.dumps(config),
-            description="test",
-            created_at="2026-01-01T00:00:00+00:00",
-            updated_at="2026-01-01T00:00:00+00:00",
+            Preset(
+                name="test_preset",
+                config_json=json.dumps(config),
+                description="test",
+                created_at="2026-01-01T00:00:00+00:00",
+                updated_at="2026-01-01T00:00:00+00:00",
+            )
         )
         result = await fetch_custom_presets_map(repo)
         assert "test_preset" in result
@@ -292,11 +300,13 @@ class TestFetchCustomPresetsMap:
         config = _make_valid_config()
         for name in ("preset_a", "preset_b"):
             await repo.save(
-                name=name,
-                config_json=json.dumps(config),
-                description="test",
-                created_at="2026-01-01T00:00:00+00:00",
-                updated_at="2026-01-01T00:00:00+00:00",
+                Preset(
+                    name=NotBlankStr(name),
+                    config_json=json.dumps(config),
+                    description="test",
+                    created_at="2026-01-01T00:00:00+00:00",
+                    updated_at="2026-01-01T00:00:00+00:00",
+                )
             )
         result = await fetch_custom_presets_map(repo)
         assert len(result) == 2
@@ -312,18 +322,22 @@ class TestFetchCustomPresetsMap:
 
         config = _make_valid_config()
         await repo.save(
-            name="good_preset",
-            config_json=json.dumps(config),
-            description="good",
-            created_at="2026-01-01T00:00:00+00:00",
-            updated_at="2026-01-01T00:00:00+00:00",
+            Preset(
+                name="good_preset",
+                config_json=json.dumps(config),
+                description="good",
+                created_at="2026-01-01T00:00:00+00:00",
+                updated_at="2026-01-01T00:00:00+00:00",
+            )
         )
         await repo.save(
-            name="corrupt_preset",
-            config_json="{not valid json",
-            description="corrupt",
-            created_at="2026-01-01T00:00:00+00:00",
-            updated_at="2026-01-01T00:00:00+00:00",
+            Preset(
+                name="corrupt_preset",
+                config_json="{not valid json",
+                description="corrupt",
+                created_at="2026-01-01T00:00:00+00:00",
+                updated_at="2026-01-01T00:00:00+00:00",
+            )
         )
         result = await fetch_custom_presets_map(repo)
         assert "good_preset" in result
@@ -338,11 +352,13 @@ class TestFetchCustomPresetsMap:
 
         config = _make_valid_config()
         await repo.save(
-            name="My_Preset",
-            config_json=json.dumps(config),
-            description="test",
-            created_at="2026-01-01T00:00:00+00:00",
-            updated_at="2026-01-01T00:00:00+00:00",
+            Preset(
+                name="My_Preset",
+                config_json=json.dumps(config),
+                description="test",
+                created_at="2026-01-01T00:00:00+00:00",
+                updated_at="2026-01-01T00:00:00+00:00",
+            )
         )
         result = await fetch_custom_presets_map(repo)
         assert "my_preset" in result

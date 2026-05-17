@@ -3,9 +3,14 @@
 import pytest
 
 from synthorg.core.enums import ProjectStatus
-from synthorg.core.persistence_errors import DuplicateRecordError, RecordNotFoundError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    QueryError,
+    RecordNotFoundError,
+)
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration
@@ -51,15 +56,15 @@ class TestProjectRepository:
         assert fetched is not None
         assert fetched.name == "Renamed"
 
-    async def test_list_all(self, backend: PersistenceBackend) -> None:
+    async def test_list_items_in_id_order(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project(project_id="p1"))
         await backend.projects.save(_project(project_id="p2"))
 
-        rows = await backend.projects.list_projects()
-        ids = {r.id for r in rows}
-        assert {"p1", "p2"} <= ids
+        rows = await backend.projects.list_items()
+        ids = [r.id for r in rows if r.id in ("p1", "p2")]
+        assert ids == ["p1", "p2"]
 
-    async def test_list_filter_by_status(self, backend: PersistenceBackend) -> None:
+    async def test_query_filter_by_status(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(
             _project(project_id="active", status=ProjectStatus.ACTIVE),
         )
@@ -67,25 +72,30 @@ class TestProjectRepository:
             _project(project_id="planning", status=ProjectStatus.PLANNING),
         )
 
-        rows = await backend.projects.list_projects(status=ProjectStatus.ACTIVE)
+        rows = await backend.projects.query(
+            ProjectFilterSpec(status=ProjectStatus.ACTIVE),
+        )
         ids = {r.id for r in rows}
         assert "active" in ids
         assert "planning" not in ids
 
-    async def test_list_filter_by_lead(self, backend: PersistenceBackend) -> None:
+    async def test_query_filter_by_lead(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project(project_id="alpha", lead="alice"))
         await backend.projects.save(_project(project_id="beta", lead="bob"))
 
-        rows = await backend.projects.list_projects(lead=NotBlankStr("alice"))
+        rows = await backend.projects.query(
+            ProjectFilterSpec(lead=NotBlankStr("alice")),
+        )
         assert [r.id for r in rows] == ["alpha"]
 
-    async def test_list_projects_respects_limit(
-        self, backend: PersistenceBackend
-    ) -> None:
+    async def test_query_respects_limit(self, backend: PersistenceBackend) -> None:
         for i in range(5):
             await backend.projects.save(_project(project_id=f"p-{i:02d}"))
 
-        rows = await backend.projects.list_projects(limit=3)
+        rows = await backend.projects.query(
+            ProjectFilterSpec(),
+            limit=3,
+        )
         assert len(rows) == 3
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
@@ -127,3 +137,28 @@ class TestProjectRepository:
     async def test_update_rejects_missing(self, backend: PersistenceBackend) -> None:
         with pytest.raises(RecordNotFoundError):
             await backend.projects.update(_project(project_id="p-ghost"))
+
+    async def test_list_items_empty(self, backend: PersistenceBackend) -> None:
+        assert await backend.projects.list_items() == ()
+
+    @pytest.mark.parametrize(
+        ("limit", "offset"),
+        [(0, 0), (-1, 0), (1, -1)],
+    )
+    async def test_list_items_rejects_invalid_pagination(
+        self, backend: PersistenceBackend, limit: int, offset: int
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.projects.list_items(limit=limit, offset=offset)
+
+    @pytest.mark.parametrize(
+        ("limit", "offset"),
+        [(0, 0), (-1, 0), (1, -1)],
+    )
+    async def test_query_rejects_invalid_pagination(
+        self, backend: PersistenceBackend, limit: int, offset: int
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.projects.query(
+                ProjectFilterSpec(), limit=limit, offset=offset
+            )

@@ -66,12 +66,12 @@ class InMemoryBackend:
         self._store: dict[str, dict[str, MemoryEntry]] = {}
         self._connected = False
         self._connect_lock = asyncio.Lock()
-        # Hot-path lock guarding _store mutations.  Without it, two
-        # concurrent store() calls for the same agent can race
-        # between the setdefault() / capacity check and the assign,
-        # silently exceeding max_memories_per_agent.  Separate from
-        # the connect_lock so connect()/disconnect() do not serialise
-        # store/retrieve traffic.
+        # Hot-path lock guarding _store reads AND writes.  Every method
+        # that touches _store (store / retrieve / get / delete / count)
+        # acquires this lock so concurrent traffic cannot observe a
+        # half-applied mutation or race a delete against a concurrent
+        # store / retrieve. Separate from _connect_lock so connect /
+        # disconnect do not serialise hot-path traffic.
         self._store_lock = asyncio.Lock()
 
     # -- Lifecycle ----------------------------------------------------
@@ -238,11 +238,12 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        agent_store = self._store.get(str(agent_id), {})
         now = datetime.now(UTC)
-        matches = [e for e in agent_store.values() if _matches(e, query, now)]
-        matches.sort(key=lambda e: e.created_at, reverse=True)
-        result = tuple(matches[: query.limit])
+        async with self._store_lock:
+            agent_store = self._store.get(str(agent_id), {})
+            matches = [e for e in agent_store.values() if _matches(e, query, now)]
+            matches.sort(key=lambda e: e.created_at, reverse=True)
+            result = tuple(matches[: query.limit])
         logger.debug(
             MEMORY_ENTRY_RETRIEVED,
             backend="inmemory",
@@ -269,9 +270,10 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        entry = self._store.get(str(agent_id), {}).get(
-            str(memory_id),
-        )
+        async with self._store_lock:
+            entry = self._store.get(str(agent_id), {}).get(
+                str(memory_id),
+            )
         if entry is not None:
             if _is_expired(entry, datetime.now(UTC)):
                 return None
@@ -301,8 +303,9 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        agent_store = self._store.get(str(agent_id), {})
-        entry = agent_store.pop(str(memory_id), None)
+        async with self._store_lock:
+            agent_store = self._store.get(str(agent_id), {})
+            entry = agent_store.pop(str(memory_id), None)
         if entry is not None:
             logger.debug(
                 MEMORY_ENTRY_DELETED,
@@ -332,16 +335,17 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        agent_store = self._store.get(str(agent_id), {})
         now = datetime.now(UTC)
-        if category is None:
-            total = sum(1 for e in agent_store.values() if not _is_expired(e, now))
-        else:
-            total = sum(
-                1
-                for e in agent_store.values()
-                if e.category == category and not _is_expired(e, now)
-            )
+        async with self._store_lock:
+            agent_store = self._store.get(str(agent_id), {})
+            if category is None:
+                total = sum(1 for e in agent_store.values() if not _is_expired(e, now))
+            else:
+                total = sum(
+                    1
+                    for e in agent_store.values()
+                    if e.category == category and not _is_expired(e, now)
+                )
         logger.debug(
             MEMORY_ENTRY_COUNTED,
             backend="inmemory",
@@ -353,8 +357,13 @@ class InMemoryBackend:
 
     # -- Extra (not in protocol) --------------------------------------
 
-    def clear(self, agent_id: NotBlankStr) -> int:
+    async def clear(self, agent_id: NotBlankStr) -> int:
         """Remove all memories for an agent (session cleanup).
+
+        Acquires ``_store_lock`` so the pop does not race a concurrent
+        ``store`` / ``retrieve`` / ``delete`` / ``count`` on the same
+        agent's store; the rest of the public surface is async and
+        holds the same lock.
 
         Args:
             agent_id: Agent whose memories to clear.
@@ -362,8 +371,9 @@ class InMemoryBackend:
         Returns:
             Number of entries removed.
         """
-        agent_store = self._store.pop(str(agent_id), {})
-        return len(agent_store)
+        async with self._store_lock:
+            agent_store = self._store.pop(str(agent_id), {})
+            return len(agent_store)
 
 
 # -- Filter helpers (module-private) ----------------------------------

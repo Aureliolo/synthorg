@@ -18,7 +18,10 @@ import pytest
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.approval_protocol import ApprovalRepository
+from synthorg.persistence.approval_protocol import (
+    ApprovalFilterSpec,
+    ApprovalRepository,
+)
 from synthorg.persistence.postgres.approval_repo import (
     PostgresApprovalRepository,
 )
@@ -158,21 +161,20 @@ class TestApprovalRepository:
         ids = {r.id for r in rows}
         assert {"a", "b"} <= ids
 
-    async def test_list_items_filter_by_status(
-        self, backend: PersistenceBackend
-    ) -> None:
+    async def test_query_filter_by_status(self, backend: PersistenceBackend) -> None:
         repo = _approval_repo(backend)
         pending = _make_item(approval_id="p", status=ApprovalStatus.PENDING)
         approved = _make_item(approval_id="a", status=ApprovalStatus.APPROVED)
         await repo.save(pending)
         await repo.save(approved)
 
-        only_pending = await repo.list_items(status=ApprovalStatus.PENDING)
+        filter_spec = ApprovalFilterSpec(status=ApprovalStatus.PENDING)
+        only_pending = await repo.query(filter_spec)
         ids = {r.id for r in only_pending}
         assert "p" in ids
         assert "a" not in ids
 
-    async def test_list_items_filter_by_risk_level(
+    async def test_query_filter_by_risk_level(
         self, backend: PersistenceBackend
     ) -> None:
         repo = _approval_repo(backend)
@@ -181,12 +183,13 @@ class TestApprovalRepository:
         await repo.save(high)
         await repo.save(crit)
 
-        only_critical = await repo.list_items(risk_level=ApprovalRiskLevel.CRITICAL)
+        filter_spec = ApprovalFilterSpec(risk_level=ApprovalRiskLevel.CRITICAL)
+        only_critical = await repo.query(filter_spec)
         ids = {r.id for r in only_critical}
         assert "c" in ids
         assert "h" not in ids
 
-    async def test_list_items_filter_by_action_type(
+    async def test_query_filter_by_action_type(
         self, backend: PersistenceBackend
     ) -> None:
         repo = _approval_repo(backend)
@@ -197,14 +200,13 @@ class TestApprovalRepository:
             _make_item(approval_id="deploy", action_type="deploy:production"),
         )
 
-        hires = await repo.list_items(action_type="scaling:hire")
+        filter_spec = ApprovalFilterSpec(action_type=NotBlankStr("scaling:hire"))
+        hires = await repo.query(filter_spec)
         ids = {r.id for r in hires}
         assert "hire" in ids
         assert "deploy" not in ids
 
-    async def test_list_items_combined_filters(
-        self, backend: PersistenceBackend
-    ) -> None:
+    async def test_query_combined_filters(self, backend: PersistenceBackend) -> None:
         repo = _approval_repo(backend)
         match = _make_item(
             approval_id="match",
@@ -227,11 +229,12 @@ class TestApprovalRepository:
         for item in (match, wrong_status, wrong_risk):
             await repo.save(item)
 
-        rows = await repo.list_items(
+        filter_spec = ApprovalFilterSpec(
             status=ApprovalStatus.PENDING,
             risk_level=ApprovalRiskLevel.HIGH,
-            action_type="deploy:production",
+            action_type=NotBlankStr("deploy:production"),
         )
+        rows = await repo.query(filter_spec)
         ids = {r.id for r in rows}
         assert ids == {"match"}
 
@@ -455,3 +458,86 @@ class TestApprovalRepository:
         )
         assert len(items) == 1
         assert items[0].id == "approval-dup-001"
+
+    async def test_count_returns_total(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        await repo.save(_make_item(approval_id="c1", status=ApprovalStatus.PENDING))
+        await repo.save(_make_item(approval_id="c2", status=ApprovalStatus.PENDING))
+        await repo.save(_make_item(approval_id="c3", status=ApprovalStatus.APPROVED))
+
+        count = await repo.count(ApprovalFilterSpec())
+        assert count >= 3
+
+    async def test_count_filter_by_status(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        await repo.save(_make_item(approval_id="c1", status=ApprovalStatus.PENDING))
+        await repo.save(_make_item(approval_id="c2", status=ApprovalStatus.PENDING))
+        await repo.save(_make_item(approval_id="c3", status=ApprovalStatus.APPROVED))
+
+        pending_count = await repo.count(
+            ApprovalFilterSpec(status=ApprovalStatus.PENDING)
+        )
+        approved_count = await repo.count(
+            ApprovalFilterSpec(status=ApprovalStatus.APPROVED)
+        )
+        assert pending_count >= 2
+        assert approved_count >= 1
+
+    async def test_transition_if_flips_state_atomically(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        pending = _make_item(approval_id="trans-pending", status=ApprovalStatus.PENDING)
+        await repo.save(pending)
+
+        result = await repo.transition_if(
+            pending.id,
+            from_state=ApprovalStatus.PENDING,
+            to_state=ApprovalStatus.EXPIRED,
+        )
+        assert result is True
+
+        fetched = await repo.get(pending.id)
+        assert fetched is not None
+        assert fetched.status is ApprovalStatus.EXPIRED
+
+    async def test_transition_if_returns_false_on_state_mismatch(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        approved = _make_item(
+            approval_id="trans-approved", status=ApprovalStatus.APPROVED
+        )
+        await repo.save(approved)
+
+        result = await repo.transition_if(
+            approved.id,
+            from_state=ApprovalStatus.PENDING,
+            to_state=ApprovalStatus.EXPIRED,
+        )
+        assert result is False
+
+        fetched = await repo.get(approved.id)
+        assert fetched is not None
+        assert fetched.status is ApprovalStatus.APPROVED
+
+    async def test_transition_if_returns_false_on_missing_row(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+
+        result = await repo.transition_if(
+            NotBlankStr("trans-missing"),
+            from_state=ApprovalStatus.PENDING,
+            to_state=ApprovalStatus.EXPIRED,
+        )
+        assert result is False

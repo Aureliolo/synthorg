@@ -26,7 +26,8 @@ from synthorg.observability.events.preset import (
     PRESET_VALIDATION_FAILED,
 )
 from synthorg.persistence.preset_protocol import (
-    PersonalityPresetRepository,  # noqa: TC001
+    PersonalityPresetRepository,
+    Preset,
 )
 from synthorg.templates.preset_models import PresetSource
 from synthorg.templates.presets import PERSONALITY_PRESETS
@@ -197,15 +198,16 @@ class PersonalityPresetService:
         for name, preset in PERSONALITY_PRESETS.items():
             entries[name] = _builtin_to_entry(name, dict(preset))
 
-        for row in await self._repo.list_all():
-            config = _parse_config_json(row.config_json, row.name)
-            entries[row.name] = PresetEntry(
-                name=NotBlankStr(row.name),
+        presets = await self._repo.list_items()
+        for custom in presets:
+            config = _parse_config_json(custom.config_json, custom.name)
+            entries[custom.name] = PresetEntry(
+                name=custom.name,
                 source=PresetSource.CUSTOM,
                 config=config,
-                description=row.description,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
+                description=custom.description,
+                created_at=custom.created_at,
+                updated_at=custom.updated_at,
             )
 
         return tuple(entries[k] for k in sorted(entries))
@@ -295,11 +297,13 @@ class PersonalityPresetService:
         now = datetime.now(UTC).isoformat()
 
         await self._repo.save(
-            NotBlankStr(key),
-            config_json,
-            description,
-            now,
-            now,
+            Preset(
+                name=NotBlankStr(key),
+                config_json=config_json,
+                description=description,
+                created_at=now,
+                updated_at=now,
+            )
         )
         logger.info(PRESET_CREATED, preset_name=key)
 
@@ -356,11 +360,13 @@ class PersonalityPresetService:
         now = datetime.now(UTC).isoformat()
 
         await self._repo.save(
-            NotBlankStr(key),
-            config_json,
-            description,
-            existing.created_at,
-            now,
+            Preset(
+                name=NotBlankStr(key),
+                config_json=config_json,
+                description=description,
+                created_at=existing.created_at,
+                updated_at=now,
+            )
         )
         logger.info(PRESET_UPDATED, preset_name=key)
 
@@ -419,8 +425,8 @@ async def fetch_custom_presets_map(
     result as ``custom_presets`` to :func:`render_template` or
     :func:`expand_template_agents`.
 
-    Rows with corrupt JSON are logged and skipped -- a single bad
-    row does not prevent the remaining presets from loading.
+    Presets with corrupt JSON are logged and skipped -- a single bad
+    preset does not prevent the remaining presets from loading.
 
     Args:
         repo: Personality preset repository.
@@ -428,18 +434,16 @@ async def fetch_custom_presets_map(
     Returns:
         Mapping of lowercased preset names to personality config dicts.
     """
-    rows = await repo.list_all()
+    presets = await repo.list_items()
     result: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        key = normalize_ascii_lowercase(str(row.name))
+    for preset in presets:
+        key = normalize_ascii_lowercase(str(preset.name))
         try:
-            decoded = json.loads(row.config_json)
+            decoded = json.loads(preset.config_json)
         except json.JSONDecodeError as exc:
-            # Bind the exception and use the structured-warning form
-            # so the full traceback doesn't bypass redaction.
             logger.warning(
                 PRESET_VALIDATION_FAILED,
-                preset_name=row.name,
+                preset_name=preset.name,
                 reason="corrupt_json_in_fetch_map",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -448,7 +452,7 @@ async def fetch_custom_presets_map(
         if not isinstance(decoded, dict):
             logger.error(
                 PRESET_VALIDATION_FAILED,
-                preset_name=row.name,
+                preset_name=preset.name,
                 reason="non_object_config_in_fetch_map",
             )
             continue

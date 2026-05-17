@@ -889,28 +889,22 @@ After all fixes:
 - If a fix requires test changes, change the tests too
 - If a fix introduces new code paths, add test coverage
 
-## Phase 8: Post-Fix Verification
+## Phase 8: Stage (verification is delegated to the commit/push hooks)
 
-Run automated checks again (same conditional gating as Phase 2):
+**Do NOT manually re-run `ruff` / `mypy` / `pytest` / `eslint` here.** The Phase 2 initial run already informed the review agents; re-running the full suite before the commit is pure duplicated wall-clock. Phase 10's `git commit` + `git push` fire this repo's real gates:
 
-**Python checks (steps 1-4):** Run only if `src_py` or `test_py` files were changed or modified during Phase 7.
+- **pre-commit stage** (on `git commit`): `ruff`, `ruff-format`.
+- **pre-push stage** (on `git push`): `mypy` (affected, `run_affected_mypy.py`), `pytest-unit` (affected, `run_affected_tests.py`), `eslint-web`, `go-vet` / `go-test`, plus every convention gate.
 
-1. `uv run ruff check src/ tests/`
-2. `uv run ruff format src/ tests/`
-3. `uv run mypy --num-workers=4 src/ tests/`
-4. `uv run python -m pytest tests/ -n 8`
+A failing hook aborts the commit/push **locally** (nothing reaches the remote or a PR), and the affected-subset hooks are faster than a manual full run. The `skip:` list in `.pre-commit-config.yaml` only suppresses these on pre-commit.ci (the cloud mirror); locally they all run.
 
-**Web dashboard checks (steps 5-7):** Run only if `web_src` or `web_test` files were changed or modified during Phase 7.
-
-5. `npm --prefix web run lint`
-6. `npm --prefix web run type-check`
-7. `npm --prefix web run test`
-
-If anything fails, fix and re-run. Stage all changes after passing:
+Just stage:
 
 ```bash
 git add -A
 ```
+
+If Phase 10's commit or push is then rejected by a hook, Phase 10 step 6 owns the fix-forward loop (fix the real issue, NEW commit, re-push; never `--no-verify`, never `--amend`).
 
 ## Phase 9: Polish Pass (code-simplifier)
 
@@ -918,9 +912,7 @@ git add -A
 
 1. Launch `code-simplifier` on all modified files
 2. If it suggests improvements, apply them
-3. Re-run verification (same conditional gating as Phase 8):
-   - If `src_py` or `test_py` changed: `uv run ruff check src/ tests/` + `uv run ruff format src/ tests/` + `uv run mypy --num-workers=4 src/ tests/` + `uv run python -m pytest tests/ -n 8`
-   - If `web_src` or `web_test` changed: `npm --prefix web run lint` + `npm --prefix web run type-check` + `npm --prefix web run test`
+3. `git add -A`. Do NOT manually re-run ruff/mypy/pytest/eslint; Phase 10's commit + push hooks gate the final state (see Phase 8). A hook rejection there is handled by Phase 10 step 6's fix-forward loop.
 
 ## Phase 10: Commit + Push + Create PR
 
@@ -964,7 +956,7 @@ git add -A
    - Review coverage note (agents run, findings count)
    - Issue linkage (`closes #N`) if user provided an issue number as argument or commits reference one
 
-6. **If commit fails due to pre-commit hooks:** fix the issue and create a NEW commit. **NEVER use `--no-verify`.**
+6. **If the commit or the push is rejected by a hook** (pre-commit: ruff/ruff-format; pre-push: mypy-affected, pytest-unit-affected, eslint-web, go, convention gates): triage the hook output, fix the real issue, create a NEW commit, and re-push. **NEVER use `--no-verify`, never `--amend`.** If a hook failure cannot be fixed in this pass, surface it to the user rather than bypassing.
 
 ## Phase 11: Summary
 

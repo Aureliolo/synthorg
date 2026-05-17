@@ -35,42 +35,4 @@ def _make_fact(
     )
 
 
-# Minimal DDL for unit-test fixtures.  Real deployments run yoyo
-# migrations; these tests only need the two tables the repository
-# touches so fixtures stay self-contained.
-_OP_LOG_DDL = """
-CREATE TABLE IF NOT EXISTS org_facts_operation_log (
-    operation_id TEXT PRIMARY KEY,
-    fact_id TEXT NOT NULL,
-    operation_type TEXT NOT NULL CHECK(operation_type IN ('PUBLISH', 'RETRACT')),
-    content TEXT,
-    tags TEXT NOT NULL DEFAULT '[]',
-    author_agent_id TEXT,
-    author_seniority TEXT,
-    author_is_human INTEGER NOT NULL DEFAULT 0,
-    author_autonomy_level TEXT,
-    category TEXT,
-    timestamp TEXT NOT NULL,
-    version INTEGER NOT NULL,
-    UNIQUE(fact_id, version)
-)
-"""
-_SNAPSHOT_DDL = """
-CREATE TABLE IF NOT EXISTS org_facts_snapshot (
-    fact_id TEXT PRIMARY KEY,
-    content TEXT NOT NULL,
-    category TEXT NOT NULL,
-    tags TEXT NOT NULL DEFAULT '[]',
-    author_agent_id TEXT,
-    author_seniority TEXT,
-    author_is_human INTEGER NOT NULL DEFAULT 0,
-    author_autonomy_level TEXT,
-    created_at TEXT NOT NULL,
-    retracted_at TEXT,
-    version INTEGER NOT NULL
-)
-"""
-
-
-# Keep the old export name so tests that aliased it don't break.
 SQLiteOrgFactStore = SQLiteOrgFactRepository

@@ -13,6 +13,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from synthorg.core.enums import WorkflowType, WorkflowValueType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
+# ``RollbackWorkflowRequest`` is sourced from
+# ``synthorg.versioning.models`` so the rollback service can validate
+# the same input shape without importing from the API layer; re-exported
+# here for HTTP controllers.
+from synthorg.versioning.models import (
+    RollbackWorkflowRequest as RollbackWorkflowRequest,  # noqa: PLC0414
+)
+
 _SEMVER_RE = re.compile(
     r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$",
 )
@@ -302,26 +310,4 @@ class CreateFromBlueprintRequest(BaseModel):
         default=None,
         max_length=4096,
         description="Description override",
-    )
-
-
-class RollbackWorkflowRequest(BaseModel):
-    """Request body for rolling back a workflow to a previous version.
-
-    Attributes:
-        target_version: Snapshot version number to restore content from
-            (monotonic counter in the workflow_definition_versions table).
-        expected_revision: Current definition revision for optimistic
-            concurrency on the live workflow_definitions row.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    target_version: int = Field(
-        ge=1,
-        description="Snapshot version to rollback to",
-    )
-    expected_revision: int = Field(
-        ge=1,
-        description=("Optimistic concurrency guard on the definition revision"),
     )
