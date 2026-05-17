@@ -4,11 +4,12 @@ from typing import Any
 
 import pytest
 
+from synthorg.core.registry import StrategyFactoryNotFoundError
 from synthorg.settings.enums import SettingNamespace, SettingType
 from synthorg.settings.errors import SettingValidationError
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.type_validators import (
-    TYPE_VALIDATORS,
+    _TYPE_VALIDATOR_REGISTRY,
     validate_by_type,
 )
 
@@ -77,12 +78,12 @@ class TestRegistryShape:
     """The registry must be total over SettingType."""
 
     def test_registry_covers_every_setting_type(self) -> None:
-        assert set(TYPE_VALIDATORS.keys()) == set(SettingType)
+        assert set(_TYPE_VALIDATOR_REGISTRY.names()) == {t.value for t in SettingType}
 
-    def test_registry_raises_keyerror_for_unknown_type(self) -> None:
+    def test_registry_raises_for_unknown_type(self) -> None:
         """Defensive: registry-lookup, not silent fall-through, governs dispatch."""
-        with pytest.raises(KeyError):
-            _ = TYPE_VALIDATORS[object()]  # type: ignore[index]
+        with pytest.raises(StrategyFactoryNotFoundError):
+            _TYPE_VALIDATOR_REGISTRY.get("nonexistent_setting_type")
 
 
 # ── STRING (no-op) ───────────────────────────────────────────────
