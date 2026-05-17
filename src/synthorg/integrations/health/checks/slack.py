@@ -1,12 +1,12 @@
 """Slack API health check."""
 
 import re
-import time
 from datetime import UTC, datetime
 from typing import Final
 
 import httpx
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     Connection,
@@ -37,8 +37,14 @@ class SlackHealthCheck:
             authenticate (returns UNKNOWN).
     """
 
-    def __init__(self, catalog: ConnectionCatalog | None = None) -> None:
+    def __init__(
+        self,
+        catalog: ConnectionCatalog | None = None,
+        *,
+        clock: Clock | None = None,
+    ) -> None:
         self._catalog = catalog
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     def bind_catalog(self, catalog: ConnectionCatalog) -> None:
         """Bind a catalog after construction.
@@ -144,7 +150,7 @@ class SlackHealthCheck:
         base_url: str,
     ) -> HealthReport:
         """Execute the ``auth.test`` call and interpret the response."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 resp = await client.post(
@@ -152,7 +158,7 @@ class SlackHealthCheck:
                     headers={"Authorization": f"Bearer {token}"},
                 )
         except httpx.HTTPError as exc:
-            elapsed = (time.monotonic() - start) * 1000
+            elapsed = (self._clock.monotonic() - start) * 1000
             scrubbed = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,
@@ -168,7 +174,7 @@ class SlackHealthCheck:
                 checked_at=datetime.now(UTC),
             )
 
-        elapsed = (time.monotonic() - start) * 1000
+        elapsed = (self._clock.monotonic() - start) * 1000
         if resp.is_error:
             logger.warning(
                 HEALTH_CHECK_FAILED,
