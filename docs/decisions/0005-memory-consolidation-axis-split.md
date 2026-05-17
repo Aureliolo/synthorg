@@ -39,54 +39,97 @@ with no compatibility layer.
 Decompose into two orthogonal protocols plus a composite, all under
 `memory/consolidation/`:
 
+All three current strategies share an identical selection step
+(group by `category`, drop groups below `group_threshold`, keep the
+entry with the highest `relevance_score` -- `None` treated as `0.0` --
+with most-recent `created_at` as the tiebreak). They differ only in
+how the to-remove set becomes a stored summary. So the split is **one
+selector, a family of ops**, not a selector-per-strategy:
+
 ```python
 @runtime_checkable
 class EntrySelector(Protocol):
-    async def select(
-        self, entries: tuple[MemoryEntry, ...], *, agent_id: NotBlankStr
-    ) -> SelectionResult: ...
-        # SelectionResult: tuple of groups, each (kept, to_consolidate)
+    def select(
+        self, entries: tuple[MemoryEntry, ...]
+    ) -> tuple[SelectionGroup, ...]: ...
+        # SelectionGroup: (category, kept: MemoryEntry,
+        #                  to_remove: tuple[MemoryEntry, ...])
 
 @runtime_checkable
 class ConsolidationOp(Protocol):
     async def consolidate(
-        self, removed: tuple[MemoryEntry, ...], *, context: OpContext
-    ) -> ConsolidatedEntry: ...
+        self,
+        to_remove: tuple[MemoryEntry, ...],
+        *,
+        agent_id: NotBlankStr,
+        category: MemoryCategory,
+        context: ConsolidationContext,
+    ) -> OpResult: ...
+```
+
+`OpResult` is the contract that preserves byte-identical behaviour
+across the truncation-driven deletion subset (LLM strategy):
+
+```python
+@dataclass(frozen=True, slots=True)
+class OpResult:
+    content: str
+    # subset of to_remove the summary actually represents; the
+    # Composite deletes THIS, not the selector's full to_remove, so
+    # entries dropped by LLM prompt truncation stay in the backend
+    # for the next pass (preserves the existing contract exactly).
+    represented: tuple[MemoryEntry, ...]
+    # summary tags: ("consolidated",) for ConcatenationOp;
+    # ("consolidated", "llm-synthesized"|"concat-fallback") for
+    # LLMSynthesisOp; ("consolidated", "mode:extractive"|
+    # "mode:abstractive") for DensityRoutingOp.
+    tags: tuple[str, ...]
+    # DualMode-only; empty tuple for every other op. Threading it
+    # here keeps ConsolidationResult.mode_assignments byte-identical.
+    mode_assignments: tuple[ArchivalModeAssignment, ...] = ()
 ```
 
 `CompositeConsolidationStrategy(selector, op)` satisfies the existing
 `ConsolidationStrategy` Protocol, so `MemoryConsolidationService` is
-unchanged at the callsite.
+unchanged at the callsite. It runs the selector, then per group:
+calls the op, stores `OpResult.content` with `OpResult.tags`, and
+deletes exactly `OpResult.represented` (best-effort, matching the
+existing per-strategy delete-failure tolerance).
 
 ### Implementations
 
-Selectors:
+Selector (one):
 
-- `HighestRelevanceSelector`: group by category, keep top relevance,
-  recency tiebreak (the Simple/LLM selection logic, written once).
-- `DensityClassifierSelector`: group by category, sparse/dense
-  majority-vote classification carried on `SelectionResult` group
-  metadata.
+- `HighestRelevanceSelector(group_threshold)`: the shared
+  category-group + relevance/recency selection, written once. Density
+  classification is **not** selection -- in DualMode it decides which
+  op processes a group, so it lives in the op, not the selector.
 
 Operations:
 
-- `ConcatenationOp`: truncated concatenation (Simple's operation; the
-  shared fallback for `LLMSynthesisOp`).
-- `AbstractiveSummarizationOp`: LLM abstractive summary.
-- `ExtractivePreservationOp`: key-fact extraction.
-- `LLMSynthesisOp`: LLM synthesis with trajectory context;
-  concatenation fallback on LLM failure or empty result.
-- `DensityRoutingOp`: routes dense groups to `ExtractivePreservationOp`
-  and sparse groups to `AbstractiveSummarizationOp`. Density routing is
-  intrinsic to this operation (it consumes the selector's density
-  metadata), so it stays one op rather than being pushed into the
-  selector.
+- `ConcatenationOp`: truncated bullet concatenation (Simple's
+  operation; also the shared fallback inside `LLMSynthesisOp`).
+- `AbstractiveSummarizationOp`: wraps the existing
+  `AbstractiveSummarizer` (per-entry LLM summary, `TaskGroup` fan-out).
+- `ExtractivePreservationOp`: wraps the existing `ExtractivePreserver`
+  (key-fact extraction).
+- `LLMSynthesisOp`: LLM synthesis with trajectory context + the
+  truncation accounting; concatenation fallback on LLM failure or
+  empty result. Reports the truncation-survivor subset via
+  `OpResult.represented`.
+- `DensityRoutingOp(classifier, extractive_op, abstractive_op)`:
+  majority-vote density classification over the group, then delegates
+  to the extractive or abstractive op and stamps the
+  `mode:<...>` tag + `mode_assignments`. Routing is intrinsic to this
+  op; it composes the other two ops rather than duplicating them.
 
 ### The three existing strategies become composites
 
 - Simple = `Composite(HighestRelevanceSelector, ConcatenationOp)`
 - LLM = `Composite(HighestRelevanceSelector, LLMSynthesisOp)`
-- DualMode = `Composite(DensityClassifierSelector, DensityRoutingOp)`
+- DualMode = `Composite(HighestRelevanceSelector,
+  DensityRoutingOp(classifier, ExtractivePreservationOp,
+  AbstractiveSummarizationOp))`
 
 No monolithic class is kept; no adapter wraps an old class. The three
 public strategy names resolve to composite instances via the factory.
@@ -103,21 +146,35 @@ no longer hand-injected in app bootstrap.
 
 ## Migration mechanics
 
-1. Define `EntrySelector`, `ConsolidationOp`, `SelectionResult`,
-   `OpContext`, `ConsolidatedEntry` (reuse the existing result models
-   where shapes already match).
-2. Extract selectors and ops from the three strategy bodies; delete the
-   monolithic strategy classes.
-3. Add `CompositeConsolidationStrategy`; add the discriminator + the
-   factory (registry-backed).
-4. Wire the factory into service construction; remove the hand-injection.
-5. Reshape `tests/unit/memory/consolidation/test_*_strategy.py` into
-   (a) per-selector tests, (b) per-op tests, (c) composite integration
-   tests asserting Simple / DualMode / LLM produce byte-identical
-   output to the pre-split behaviour on golden inputs. This test
-   reshape is substantial and is part of the deliverable, not a
-   follow-up.
-6. Update `docs/design/memory-consistency.md` with the axis-split
+Ordered to make behaviour regressions impossible to land silently --
+this is the highest-risk refactor in WP-4:
+
+1. Byte-identical golden regression tests against the **current**
+   monolithic Simple / DualMode / LLM (fixed inputs -> exact
+   `ConsolidationResult`, including an oversized-batch LLM input that
+   triggers `max_total_user_content_chars` truncation so the
+   deletion-subset contract is pinned). These pass against today's
+   code and must stay green through every later step.
+2. Define `EntrySelector`, `ConsolidationOp`, `SelectionGroup`,
+   `ConsolidationContext`, `OpResult`; add `HighestRelevanceSelector`,
+   the four ops, `DensityRoutingOp`, and
+   `CompositeConsolidationStrategy` as **new modules without touching
+   the three existing strategy classes**.
+3. Convert Simple to the composite; delete the monolith; golden green.
+4. Convert DualMode (`DensityRoutingOp`); delete monolith; golden
+   green (asserts `mode_assignments` byte-identical).
+5. Convert LLM (`LLMSynthesisOp` with the `represented` subset
+   contract); delete monolith; golden green (the truncation case
+   guards this step).
+6. Add `ConsolidationStrategyType` discriminator + the
+   `StrEnum`-keyed `StrategyRegistry` factory (ADR-0002); wire it
+   into `MemoryConsolidationService` construction; remove the
+   hand-injection.
+7. Reshape `tests/unit/memory/consolidation/test_*_strategy.py` into
+   per-selector + per-op + composite tests; the step-1 golden tests
+   remain as the byte-identical guard. Substantial; part of the
+   deliverable, not a follow-up.
+8. Update `docs/design/memory-consistency.md` with the axis-split
    section and `docs/reference/pluggable-subsystems.md` catalogue.
 
 ## Compat scope
