@@ -875,6 +875,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/auth/refresh": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Rotate the refresh token */
+        readonly post: operations["ApiV1AuthRefreshRefresh"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/auth/sessions": {
         readonly parameters: {
             readonly query?: never;
@@ -14352,6 +14369,33 @@ export interface operations {
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1AuthRefreshRefresh: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CookieSessionResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

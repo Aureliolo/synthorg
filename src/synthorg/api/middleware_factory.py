@@ -202,6 +202,11 @@ def _build_auth_exclude_paths(
     # as a fail-safe even when operators override
     # ``auth.exclude_paths`` with a custom list.
     logout_path = f"^{prefix}/auth/logout$"
+    # Refresh-token rotation runs precisely when the access token is
+    # expired, so it cannot itself require a valid access token. Kept
+    # in the fail-safe set (like login/logout) so a custom
+    # ``auth.exclude_paths`` cannot lock clients out of rotation.
+    refresh_path = f"^{prefix}/auth/refresh$"
     # The OAuth provider redirects the user's browser here without a
     # session cookie, so the global auth middleware has to let it
     # through. CSRF protection is handled by the state token the
@@ -226,6 +231,7 @@ def _build_auth_exclude_paths(
             "^/api$",
             f"^{prefix}/auth/setup$",
             f"^{prefix}/auth/login$",
+            refresh_path,
             logout_path,
             setup_status_path,
             oauth_callback_path,
@@ -248,6 +254,7 @@ def _build_auth_exclude_paths(
         logout_path,
         auth_setup_path,
         auth_login_path,
+        refresh_path,
         ws_path,
         oauth_callback_path,
     ]

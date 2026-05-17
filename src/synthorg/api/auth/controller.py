@@ -40,6 +40,7 @@ from synthorg.core.domain_errors import (
     AccountLockedError,
     ConflictError,
     NotFoundError,
+    RefreshTokenInvalidError,
     UnauthorizedError,
     ValidationError,
 )
@@ -54,6 +55,8 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_LOCKOUT_CLEARED,
     SECURITY_AUTH_PASSWORD_CHANGED,
+    SECURITY_AUTH_REFRESH_CONSUMED,
+    SECURITY_AUTH_REFRESH_REJECTED,
     SECURITY_AUTH_SETUP_COMPLETE,
     SECURITY_AUTH_TOKEN_ISSUED,
     SECURITY_SESSION_FORCE_LOGOUT,
@@ -367,6 +370,90 @@ class AuthController(Controller):
                 session_id=session_id,
                 user_id=user.id,
             ),
+        )
+
+    @post(
+        "/refresh",
+        status_code=200,
+        summary="Rotate the refresh token",
+        middleware=[_AUTH_RATE_LIMIT.middleware],
+    )
+    async def refresh(
+        self,
+        request: Request[Any, Any, Any],
+    ) -> Response[ApiResponse[CookieSessionResponse]]:
+        """Rotate a single-use refresh token into a fresh session JWT.
+
+        Unauthenticated by design: the access token is expected to be
+        expired (that is the whole point of refresh), so this path is
+        in the auth-middleware exclude set. CSRF double-submit is
+        intentionally NOT required here: the refresh cookie is scoped
+        to this narrow path with ``SameSite``, and ``consume()`` is a
+        single-use compare-and-set that makes a replayed cookie inert.
+        The reject matrix + ``SECURITY_AUTH_REFRESH_REJECTED`` audit
+        live in :meth:`AuthService.rotate_refresh_token`; this handler
+        is a thin cookie adapter (mirrors ``login``).
+        """
+        app_state = request.app.state["app_state"]
+        auth_service: AuthService = app_state.auth_service
+        auth_config = get_auth_config(app_state)
+
+        if not app_state.has_refresh_store:
+            logger.warning(
+                SECURITY_AUTH_REFRESH_REJECTED,
+                reason="refresh_store_unavailable",
+            )
+            raise RefreshTokenInvalidError
+
+        raw_refresh = request.cookies.get(auth_config.refresh_cookie_name, "")
+        is_revoked = (
+            app_state.session_store.is_revoked if app_state.has_session_store else None
+        )
+        rotation = await auth_service.rotate_refresh_token(
+            raw_refresh_token=raw_refresh,
+            refresh_store=app_state.refresh_store,
+            users=app_state.persistence.users,
+            is_session_revoked=is_revoked,
+        )
+
+        # Same session id: refresh the server-side session record so
+        # its expiry tracks the new access token (upsert by id).
+        await create_session_record(
+            request,
+            app_state,
+            rotation.session_id,
+            rotation.user,
+            rotation.expires_in,
+        )
+
+        cookies = await make_session_cookies(
+            rotation.token,
+            rotation.expires_in,
+            auth_config,
+            app_state=app_state,
+            session_id=rotation.session_id,
+            user_id=rotation.user.id,
+        )
+        # Emit AFTER ``make_session_cookies`` persisted the rotated
+        # refresh row (state-transition events log post-write).
+        logger.info(
+            SECURITY_AUTH_REFRESH_CONSUMED,
+            user_id=rotation.user.id,
+            session_id=rotation.session_id,
+        )
+        logger.info(
+            SECURITY_AUTH_TOKEN_ISSUED,
+            user_id=rotation.user.id,
+            username=rotation.user.username,
+        )
+        return Response(
+            content=ApiResponse(
+                data=CookieSessionResponse(
+                    expires_in=rotation.expires_in,
+                    must_change_password=rotation.user.must_change_password,
+                ),
+            ),
+            cookies=cookies,
         )
 
     @post(

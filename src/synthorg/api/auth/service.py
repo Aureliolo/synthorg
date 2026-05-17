@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 import argon2
 import jwt
+from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.auth.claims import JwtClaims
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
@@ -17,16 +18,24 @@ from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.boundary import parse_typed
 from synthorg.core.auth.models import User  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole
-from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.domain_errors import (
+    RefreshTokenInvalidError,
+    ServiceUnavailableError,
+)
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_REFRESH_CREATED,
+    SECURITY_AUTH_REFRESH_REJECTED,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from synthorg.core.auth.config import AuthConfig
+    from synthorg.persistence.auth_protocol import RefreshTokenRepository
+    from synthorg.persistence.user_protocol import UserRepository
 
 logger = get_logger(__name__)
 
@@ -47,6 +56,23 @@ _hasher = argon2.PasswordHasher(
     hash_len=32,
     salt_len=16,
 )
+
+
+class RefreshRotation(BaseModel):
+    """Result of a successful refresh-token rotation.
+
+    The controller turns this into the session/csrf/refresh cookies
+    and emits the post-persistence ``SECURITY_AUTH_REFRESH_CONSUMED``
+    audit event. ``session_id`` is the *original* session id (the
+    access token rotated in place), not a freshly minted one.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    token: str
+    expires_in: int
+    session_id: str
+    user: User
 
 
 class AuthService:
@@ -179,6 +205,8 @@ class AuthService:
     def create_token(
         self,
         user: User,
+        *,
+        session_id: str | None = None,
     ) -> tuple[str, int, str]:
         """Create a JWT for the given **human** user.
 
@@ -209,6 +237,12 @@ class AuthService:
 
         Args:
             user: Authenticated human user.
+            session_id: Reuse this session id (``jti``) instead of
+                minting a fresh one. Refresh-token rotation passes the
+                consumed record's session id so the access token
+                rotates *within* the existing session rather than
+                spawning a new one (which would orphan the old
+                session and saturate ``max_concurrent_sessions``).
 
         Returns:
             Tuple of (encoded JWT, expiry seconds, session ID).
@@ -228,7 +262,7 @@ class AuthService:
         secret = self._require_secret("create_token")
         now = datetime.now(UTC)
         expiry_seconds = self._config.jwt_expiry_minutes * 60
-        session_id = uuid.uuid4().hex
+        session_id = session_id if session_id is not None else uuid.uuid4().hex
         pwd_sig = hashlib.sha256(
             user.password_hash.encode(),
         ).hexdigest()[:16]
@@ -339,6 +373,90 @@ class AuthService:
             SECURITY_AUTH_REFRESH_CREATED,
             session_id=session_id,
             user_id=user_id,
+        )
+
+    async def rotate_refresh_token(
+        self,
+        *,
+        raw_refresh_token: str,
+        refresh_store: RefreshTokenRepository,
+        users: UserRepository,
+        is_session_revoked: Callable[[str], bool] | None,
+    ) -> RefreshRotation:
+        """Single-use refresh rotation: consume, validate, re-mint.
+
+        The reject matrix lives here (not the controller) so it is
+        unit-testable without the full app: a missing / replayed /
+        expired refresh token or a revoked session emits
+        ``SECURITY_AUTH_REFRESH_REJECTED`` (typed reason) and raises
+        :class:`RefreshTokenInvalidError` (HTTP 401, code 1005). The
+        success path re-mints the access token *within the consumed
+        record's session* so rotation does not orphan the session or
+        saturate ``max_concurrent_sessions``.
+
+        ``SECURITY_AUTH_REFRESH_CONSUMED`` is emitted by the caller
+        AFTER the rotated refresh row is persisted (state-transition
+        events log after the write), so it is intentionally not
+        emitted here.
+
+        Args:
+            raw_refresh_token: The opaque refresh cookie value.
+            refresh_store: Repository providing single-use
+                ``consume`` (CAS + replay + session-revocation).
+            users: User repository for the post-consume owner lookup.
+            is_session_revoked: Predicate passed into ``consume`` so
+                a revoked session rejects rotation.
+
+        Returns:
+            A :class:`RefreshRotation` with the new access token and
+            the preserved session id.
+
+        Raises:
+            RefreshTokenInvalidError: For any reject path (missing
+                cookie, consume rejection, or owner deleted between
+                issuance and rotation).
+        """
+        if not raw_refresh_token:
+            logger.warning(SECURITY_AUTH_REFRESH_REJECTED, reason="cookie_missing")
+            raise RefreshTokenInvalidError
+
+        token_hash = self.hash_api_key(raw_refresh_token)
+        outcome = await refresh_store.consume(
+            token_hash,
+            is_session_revoked=is_session_revoked,
+        )
+        if outcome.reject_reason is not None:
+            logger.warning(
+                SECURITY_AUTH_REFRESH_REJECTED,
+                reason=outcome.reject_reason.value,
+            )
+            raise RefreshTokenInvalidError
+
+        record = outcome.record
+        # RefreshConsumeOutcome's validator guarantees exactly one of
+        # record / reject_reason is set; reject_reason was None above.
+        assert record is not None  # noqa: S101 -- model invariant
+
+        user = await users.get(record.user_id)
+        if user is None:
+            # The token row is already marked used; it cannot be
+            # un-consumed. Reject so a deleted owner cannot rotate.
+            logger.warning(
+                SECURITY_AUTH_REFRESH_REJECTED,
+                reason="user_not_found_after_consume",
+                user_id=record.user_id,
+            )
+            raise RefreshTokenInvalidError
+
+        token, expires_in, session_id = self.create_token(
+            user,
+            session_id=record.session_id,
+        )
+        return RefreshRotation(
+            token=token,
+            expires_in=expires_in,
+            session_id=session_id,
+            user=user,
         )
 
     def hash_api_key(self, raw_key: str) -> str:
