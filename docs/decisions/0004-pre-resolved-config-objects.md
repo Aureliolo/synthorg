@@ -58,13 +58,39 @@ This PR performs the full sweep (big-bang), not a single pilot:
    (The plan's `OptionalSettingsGate` item is dropped: no such class or
    concept exists in `src/synthorg/`; it was an aspirational plan
    reference, verified absent during implementation.)
-3. Full sweep: every service constructed with `config_resolver=` that
-   performs per-call `ConfigResolver.get_*`. The implementation
-   inventory is built by enumerating `config_resolver.get_` across
-   `src/synthorg/` and grouping by owning service / namespace. Each
-   group gets one `<Ns>BridgeConfig` frozen model, a
-   `ConfigResolver.get_<ns>_bridge_config()` builder, `AppState`
-   slot + accessors, and a `settings/subscribers/<ns>_bridge_subscriber.py`.
+3. Full sweep: the inventory was built by enumerating
+   `config_resolver.get_*` across `src/synthorg/` and classifying each
+   call site. The outcome is **not** "every site becomes a frozen
+   bridge" -- it is "every config-dependent service uses the canonical
+   mechanism appropriate to its tier":
+
+   - **Frozen `<Ns>BridgeConfig` + AppState slot + hot-swap
+     subscriber** (the new pattern): `api`, `workers`, `memory`.
+   - **Resolve-once `set_config_resolver` at boot** (cluster-2,
+     task #2, already shipped): `OAuthTokenManager`,
+     `WebhookEventBridge`, `MessageBusBridge`, `JetStreamMessageBus`
+     history params, the escalation notifiers. These are built before
+     `AppState`; the setter + start-time resolve is their canonical
+     form (mirrored by the dispatcher's late-bound provider).
+   - **Cat-2 boot knob** (`resolve_init_value`, env > default): the
+     worker subprocess `executor_http_timeout_seconds` and the
+     `CoordinationMetricsStore` ring-buffer cap -- consumers with no
+     `SettingsService` in scope.
+   - **Deliberately per-call, preserved by invariant** (NOT swept):
+     loop kill-switches (`*_enabled` gates whose fail-open semantics
+     ADR-0004's first invariant protects), the company-snapshot ETag
+     live reads in `org_mutations` (a frozen snapshot would make the
+     ETag stale by construction), the `health_prober` per-cycle
+     provider+port reads (the loop re-reads each cycle -- that IS the
+     hot-reload mechanism), and the agent-engine personality
+     fail-open per-prompt reads. Forcing these into frozen snapshots
+     would regress documented behaviour, not improve it.
+
+   Conditionally-wired settings whose only consumer is an opt-in
+   subsystem (the distributed dispatcher behind `queue.enabled` +
+   `synthorg[distributed]`) carry the gate's sanctioned
+   `# lint-allow: bootstrap-wiring` marker rather than a fake
+   unconditional start.
 
 ### Invariants preserved
 

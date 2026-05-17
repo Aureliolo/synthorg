@@ -58,7 +58,7 @@ _r.register(
         min_value=1,
         max_value=10,
     )
-)
+)  # lint-allow: bootstrap-wiring -- optional distributed-dispatch consumer
 
 _r.register(
     SettingDefinition(
@@ -76,7 +76,7 @@ _r.register(
         min_value=0.01,
         max_value=10.0,
     )
-)
+)  # lint-allow: bootstrap-wiring -- optional distributed-dispatch consumer
 
 _r.register(
     SettingDefinition(
@@ -95,7 +95,7 @@ _r.register(
         min_value=0.1,
         max_value=60.0,
     )
-)
+)  # lint-allow: bootstrap-wiring -- optional distributed-dispatch consumer
 
 _r.register(
     SettingDefinition(
