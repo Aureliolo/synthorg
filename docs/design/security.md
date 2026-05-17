@@ -314,6 +314,37 @@ shutdown-time mechanism.
       calls (`request_human_approval`). Approval decision returned as `ToolResult`,
       semantically correct (approval IS the tool's return value).
 
+### Risk-tier classifier plugin surface
+
+The `RiskTierClassifier` protocol (`security/timeout/protocol.py`,
+`classify(action_type) -> ApprovalRiskLevel`) is a pluggable subsystem
+following the `security/trust/` pattern: a `StrEnum` discriminator +
+frozen config + safe default + `StrategyRegistry` factory.
+
+| `RiskClassifierType` | Implementation | Behaviour |
+|---|---|---|
+| `DEFAULT` | `DefaultRiskTierClassifier` | Static action-type -> tier map; unknown -> HIGH (D19). Byte-identical with the pre-plugin behaviour. |
+| `WORKLOAD_ADAPTIVE` | `WorkloadAdaptiveRiskClassifier` | Wraps a base classifier; elevates one tier when an injected in-flight probe (`Callable[[], int]`) is at/above `workload_threshold`. CRITICAL is the ceiling. |
+| `OPERATOR_CONFIGURABLE` | `OperatorConfigurableRiskClassifier` | Classifies from an operator-defined `action_type -> tier` map; unknown -> HIGH (D19 fail-safe). |
+| `TIME_BASED` | `TimeBasedRiskElevationClassifier` | Wraps a base classifier; elevates one tier inside a configured off-hours window (wraps midnight) and/or weekends. Uses the `Clock` seam. |
+
+Selection: `RiskClassifierConfig` (frozen, on `TieredTimeoutConfig.risk_classifier`,
+default `kind=DEFAULT`) + `RiskClassifierDeps` (the in-flight probe and
+`Clock` collaborators that cannot live in frozen config).
+`risk_classifier_factory.build_risk_tier_classifier(config, deps)`
+dispatches via the `StrEnum`-keyed `StrategyRegistry`; a non-default
+kind missing its required dependency raises `RiskClassifierConfigError`
+at construction (fail fast).
+
+The factory is wired at the tiered-timeout-policy seam
+(`timeout/factory.py::create_timeout_policy`). The two other
+`DefaultRiskTierClassifier()` consumers -- `SecOpsService.risk_classifier`
+and the `request_human_approval` tool wrapper in
+`engine/_security_factory.py` -- remain on the hardcoded default for
+now; moving them to the factory is the natural next step once a
+`SecurityConfig.risk_classifier` field is designed (out of scope for
+the plugin-surface deliverable, which is the timeout policy seam).
+
 !!! info "EvidencePackage (HITL Approval Payload)"
     `ApprovalItem.evidence_package` (optional `EvidencePackage | None`) carries a structured
     approval payload for human review. See

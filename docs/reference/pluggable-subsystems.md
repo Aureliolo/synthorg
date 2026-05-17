@@ -14,7 +14,7 @@ On-demand reference. The rule in `CLAUDE.md` is: new cross-cutting subsystems fo
 
 Three registry classes replace the hand-rolled `if config.type == "...": ... elif ...` chains every factory used to carry. Each is immutable after construction (`MappingProxyType`-backed) and emits structured `registry.*` events for built / lookup / failure paths.
 
-- `synthorg.core.registry.StrategyRegistry[T]`: generic strategy dispatch keyed by a `config.type` discriminator. Used across the codebase by factories for pruning, propagation, identity store, evolution triggers, evolution proposers, execution loops, training source selectors, training curation, procedural capture, notification sinks, secret backends, sandbox backends, per-op rate-limit stores, per-op inflight stores, and memory-consolidation strategies (selector + op composite, ADR-0005).
+- `synthorg.core.registry.StrategyRegistry[T]`: generic strategy dispatch keyed by a `config.type` discriminator. Used across the codebase by factories for pruning, propagation, identity store, evolution triggers, evolution proposers, execution loops, training source selectors, training curation, procedural capture, notification sinks, secret backends, sandbox backends, per-op rate-limit stores, per-op inflight stores, memory-consolidation strategies (selector + op composite, ADR-0005), and risk-tier classifiers (timeout policy seam, REWORK #9).
 - `synthorg.persistence.registry.PersistenceBackendRegistry`: domain-specific dispatch keyed by `PersistenceConfig.backend`; preserves the lazy import of the optional `postgres` extra.
 - `synthorg.memory.registry.MemoryBackendRegistry`: domain-specific dispatch keyed by `CompanyMemoryConfig.backend`; the composite-backend child loop reuses a separate "leaf" registry to keep the wiring acyclic.
 
@@ -123,6 +123,13 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `memory/consolidation/composite.py::CompositeConsolidationStrategy`: selector + op aggregator (`parallel=True` for LLM cross-group `TaskGroup` fan-out).
 - `memory/consolidation/config.py::ConsolidationStrategyType` (`SIMPLE` / `DUAL_MODE` / `LLM`): discriminator.
 - `memory/consolidation/factory.py::build_consolidation_strategy()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `MemoryConfigError` surfaces missing op-specific deps at construction.
+
+### Risk-tier classifier (timeout policy seam, REWORK #9)
+
+- `security/timeout/protocol.py::RiskTierClassifier` Protocol (`classify(action_type) -> ApprovalRiskLevel`).
+- Impls: `risk_tier_classifier.py::DefaultRiskTierClassifier` (safe default), `workload_adaptive.py::WorkloadAdaptiveRiskClassifier`, `operator_configurable.py::OperatorConfigurableRiskClassifier`, `time_based_elevation.py::TimeBasedRiskElevationClassifier`.
+- `risk_classifier_config.py::RiskClassifierType` discriminator + frozen `RiskClassifierConfig` + `RiskClassifierDeps` (in-flight probe / `Clock` collaborators).
+- `risk_classifier_factory.py::build_risk_tier_classifier()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `RiskClassifierConfigError` surfaces a missing required dep. Wired at `timeout/factory.py::create_timeout_policy` (tiered seam); `SecOpsService` + approval-tool consumers stay on the default pending a `SecurityConfig.risk_classifier` field.
 
 ### Conflict detector
 
