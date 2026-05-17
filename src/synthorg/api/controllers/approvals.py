@@ -38,6 +38,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
+from synthorg.core.actor_context import require_actor
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
@@ -307,6 +308,23 @@ def _publish_approval_event(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+
+
+def _decided_attribution() -> tuple[str, str]:
+    """Resolve ``(decided_by, decided_by_user_id)`` from the actor seam.
+
+    RFC#3 / ADR-0003: the decision attribution comes from the actor
+    bound by ``AuthContextMiddleware`` (``label`` == username,
+    ``actor_id`` == immutable user id) rather than being re-derived
+    from the request's auth user. Values are byte-identical to the
+    previous ``auth_user.username`` / ``auth_user.user_id`` derivation,
+    so the persisted row and observability stream are unchanged.
+
+    Returns:
+        ``(decided_by, decided_by_user_id)``.
+    """
+    actor = require_actor()
+    return actor.label or actor.actor_id, actor.actor_id
 
 
 def _resolve_decision(
@@ -735,14 +753,15 @@ class ApprovalsController(Controller):
         app_state: AppState = state.app_state
         item = await _get_approval_or_404(app_state, approval_id)
 
-        auth_user = _resolve_decision(request, item, approval_id)
+        _resolve_decision(request, item, approval_id)
+        decided_by, decided_by_user_id = _decided_attribution()
         now = datetime.now(UTC)
         previous_status = item.status
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.APPROVED,
                 "decided_at": now,
-                "decided_by": auth_user.username,
+                "decided_by": decided_by,
                 "decision_reason": data.comment,
             },
         )
@@ -764,8 +783,8 @@ class ApprovalsController(Controller):
             approval_id,
             updated,
             approved=True,
-            decided_by=auth_user.username,
-            decided_by_user_id=auth_user.user_id,
+            decided_by=decided_by,
+            decided_by_user_id=decided_by_user_id,
             previous_status=previous_status,
             decision_reason=data.comment,
             ws_event=WsEventType.APPROVAL_APPROVED,
@@ -816,14 +835,15 @@ class ApprovalsController(Controller):
         app_state: AppState = state.app_state
         item = await _get_approval_or_404(app_state, approval_id)
 
-        auth_user = _resolve_decision(request, item, approval_id)
+        _resolve_decision(request, item, approval_id)
+        decided_by, decided_by_user_id = _decided_attribution()
         now = datetime.now(UTC)
         previous_status = item.status
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.REJECTED,
                 "decided_at": now,
-                "decided_by": auth_user.username,
+                "decided_by": decided_by,
                 "decision_reason": data.reason,
             },
         )
@@ -842,8 +862,8 @@ class ApprovalsController(Controller):
             approval_id,
             updated,
             approved=False,
-            decided_by=auth_user.username,
-            decided_by_user_id=auth_user.user_id,
+            decided_by=decided_by,
+            decided_by_user_id=decided_by_user_id,
             previous_status=previous_status,
             decision_reason=data.reason,
             ws_event=WsEventType.APPROVAL_REJECTED,
