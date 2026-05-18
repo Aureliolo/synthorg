@@ -74,11 +74,15 @@ export const agentsHandlers = [
     ),
   ),
   http.post('/api/v1/agents/:agentId/autonomy', async ({ params, request }) => {
-    const body = (await request.json()) as {
-      level?: string
-      reason?: unknown
-    }
-    if (!body.level) {
+    // request.json() can yield null / array / primitive; normalize to
+    // an object so the property reads below cannot throw and the
+    // handler still mirrors the API's 400/422 validation path.
+    const raw: unknown = await request.json()
+    const body: { level?: unknown; reason?: unknown } =
+      raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+        ? (raw as { level?: unknown; reason?: unknown })
+        : {}
+    if (typeof body.level !== 'string' || body.level.length === 0) {
       return HttpResponse.json(apiError("Field 'level' is required"), {
         status: 400,
       })

@@ -40,9 +40,35 @@ from synthorg.observability.events.security import (
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.core.approval import ApprovalItem
     from synthorg.engine.review_gate import ReviewGateService
 
 logger = get_logger(__name__)
+
+
+async def _reread_approval_item(
+    app_state: AppState,
+    approval_id: str,
+) -> ApprovalItem | None:
+    """Re-read the just-decided approval, degrading to ``None`` on error.
+
+    The decision is already persisted by the caller; a failed reread
+    must not 500 the request. Returning ``None`` routes the caller to
+    the parked-context probe fallback instead of a hard dependency.
+    """
+    try:
+        return await app_state.approval_store.get(approval_id)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="approval reread failed; falling back to parked-context probe",
+        )
+        return None
 
 
 async def try_mid_execution_resume(
@@ -81,7 +107,7 @@ async def try_mid_execution_resume(
     """
     from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
 
-    item = await app_state.approval_store.get(approval_id)
+    item = await _reread_approval_item(app_state, approval_id)
     if item is not None:
         # Deterministic primary path: the source was fixed when the
         # approval was created, so routing cannot flip on a transient

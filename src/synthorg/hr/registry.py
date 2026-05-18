@@ -35,6 +35,7 @@ from synthorg.observability.events.hr import (
     HR_REGISTRY_STATUS_UPDATED,
 )
 from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,
     SECURITY_AUTONOMY_PROMOTION_DENIED,
     SECURITY_AUTONOMY_PROMOTION_GRANTED,
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
@@ -728,28 +729,55 @@ class AgentRegistryService:
 
         approval_enqueued = False
         if approval_store is not None:
-            await approval_store.add(
-                _ApprovalItem(
-                    id=approval_id,
-                    action_type="autonomy:promote",
-                    title=title,
-                    description=update.reason,
-                    requested_by=requested_by,
-                    risk_level=ApprovalRiskLevel.HIGH,
-                    # Auto-decided: the queue stays the apply driver and
-                    # the audit trail is intact. ``decided_at`` /
-                    # ``decided_by`` satisfy the APPROVED invariant.
-                    status=ApprovalStatus.APPROVED,
-                    created_at=now,
-                    decided_at=now,
-                    decided_by=f"strategy:{update.granted_by_strategy}",
-                    metadata={
-                        **base_metadata,
-                        "granted_by_strategy": str(update.granted_by_strategy),
-                    },
-                ),
-            )
-            approval_enqueued = True
+            # Dual-write resolution: the autonomy mutation above is the
+            # source of truth and is already persisted via _snapshot.
+            # The APPROVED row is a best-effort audit artifact -- if its
+            # write fails we log loudly and report the (correct)
+            # promotion, rather than roll back a valid state change or
+            # 5xx the caller. Reordering add-before-mutate (round-7
+            # ask) only moves the dual-write window and reintroduces
+            # the round-6 false-APPROVED-audit defect; soft-failing the
+            # audit write dissolves the ping-pong.
+            try:
+                await approval_store.add(
+                    _ApprovalItem(
+                        id=approval_id,
+                        action_type="autonomy:promote",
+                        title=title,
+                        description=update.reason,
+                        requested_by=requested_by,
+                        risk_level=ApprovalRiskLevel.HIGH,
+                        # Auto-decided: the queue stays the apply driver
+                        # and the audit trail is intact. ``decided_at``
+                        # / ``decided_by`` satisfy the APPROVED
+                        # invariant.
+                        status=ApprovalStatus.APPROVED,
+                        created_at=now,
+                        decided_at=now,
+                        decided_by=f"strategy:{update.granted_by_strategy}",
+                        metadata={
+                            **base_metadata,
+                            "granted_by_strategy": str(
+                                update.granted_by_strategy,
+                            ),
+                        },
+                    ),
+                )
+                approval_enqueued = True
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.error(
+                    SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,
+                    agent_id=key,
+                    approval_id=approval_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note=(
+                        "autonomy promotion applied; audit row write "
+                        "failed -- promotion is the source of truth"
+                    ),
+                )
         result_id = approval_id if approval_enqueued else None
         # State transition logged AFTER the persistence write.
         logger.info(
