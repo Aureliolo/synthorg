@@ -729,15 +729,14 @@ class AgentRegistryService:
 
         approval_enqueued = False
         if approval_store is not None:
-            # Dual-write resolution: the autonomy mutation above is the
-            # source of truth and is already persisted via _snapshot.
-            # The APPROVED row is a best-effort audit artifact -- if its
+            # Dual-write: the autonomy mutation above is the source of
+            # truth and is already persisted via _snapshot. The
+            # APPROVED row is a best-effort audit artifact -- if its
             # write fails we log loudly and report the (correct)
             # promotion, rather than roll back a valid state change or
-            # 5xx the caller. Reordering add-before-mutate (round-7
-            # ask) only moves the dual-write window and reintroduces
-            # the round-6 false-APPROVED-audit defect; soft-failing the
-            # audit write dissolves the ping-pong.
+            # 5xx the caller. Any add/mutate ordering only moves the
+            # failure window; soft-failing the audit write is what
+            # makes the operation safe regardless of order.
             try:
                 await approval_store.add(
                     _ApprovalItem(
