@@ -46,7 +46,6 @@ from typing import TYPE_CHECKING, Final, Literal
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-SCAN_ROOT = Path("src/synthorg")
 MANIFEST = Path("scripts/_ghost_wiring_manifest.txt")
 
 _State = Literal["ENFORCED", "PENDING"]
@@ -110,9 +109,12 @@ def _parse_manifest(path: Path) -> list[ManifestEntry]:
 
 
 def _iter_runtime_py(repo_root: Path) -> Iterable[Path]:
-    base = repo_root / SCAN_ROOT
-    if base.is_dir():
-        yield from sorted(base.rglob("*.py"))
+    paths: set[Path] = set()
+    for prefix in RUNTIME_PREFIXES:
+        base = repo_root / prefix
+        if base.is_dir():
+            paths.update(base.rglob("*.py"))
+    yield from sorted(paths)
 
 
 @dataclass(frozen=True)
@@ -172,8 +174,6 @@ def _scan_sites(repo_root: Path, symbols: set[str]) -> _Sites:
     defs: dict[str, set[str]] = {s: set() for s in symbols}
     for py in _iter_runtime_py(repo_root):
         rel = py.relative_to(repo_root).as_posix()
-        if not any(rel.startswith(p) for p in RUNTIME_PREFIXES):
-            continue
         try:
             tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         except (OSError, UnicodeDecodeError) as exc:

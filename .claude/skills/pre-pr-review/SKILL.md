@@ -760,7 +760,7 @@ For `mini-pass-missing-event-constants` and `mini-pass-race-conditions`, also in
 **Skip condition:** skip the mini-pass only when the diff has zero relevant `.py` changes for any of the six agents after scope expansion above. Concretely:
 
 - skip the mini-pass entirely when the diff is `docs/`-only, `web/`-only, or `cli/`-only AND has zero `.py` changes under `src/synthorg/` AND zero `.py` changes under `tests/`;
-- when the diff touches `tests/` Python files but has zero `.py` changes under `src/synthorg/`, run only `mini-pass-missing-event-constants` and `mini-pass-race-conditions` (the two agents whose scope already extends into `tests/`) and skip the other three;
+- when the diff touches `tests/` Python files but has zero `.py` changes under `src/synthorg/`, run only `mini-pass-missing-event-constants` and `mini-pass-race-conditions` (the two agents whose scope already extends into `tests/`) and skip the other four;
 - `mini-pass-unwired-settings` runs whenever EITHER `src/synthorg/settings/definitions/` OR `src/synthorg/api/lifecycle_helpers.py` changed (settings can be defined in one PR and ghost-wired in another -- requiring both is too narrow).
 - `mini-pass-ghost-wiring` runs whenever any `.py` under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` changed (a PR that adds a new runtime class/factory/store/endpoint without wiring it at boot is exactly the regression this catches). Skip it only when the diff has zero `.py` changes under those runtime modules.
 
@@ -787,8 +787,8 @@ those, independently of the triage gate.
 subagent registry is built once at session start and is NOT hot-reloaded
 when `.claude/agents/*.md` changes. A file that fails YAML frontmatter
 parsing is dropped **silently** (no warning). The known recurring cause
-is an unquoted `description:` scalar containing an internal `: `
-(colon-space), which YAML misparses as a nested mapping; this has
+is an unquoted `description:` scalar containing an internal `:`
+followed by a space, which YAML misparses as a nested mapping; this has
 silently disabled review agents before (issues #1871 / #1875).
 Mitigation in the agent files themselves: keep every `.claude/agents/*.md`
 `description:` value double-quoted.
@@ -802,7 +802,7 @@ Surface, in chat: (a) which agents are unavailable, (b) the root cause
 added after this session began), (c) the remediation (`restart Claude
 Code` to rebuild the registry; if it persists, inspect the missing
 agent's `.claude/agents/<name>.md` frontmatter for an unquoted
-`description:` containing an internal `: ` and double-quote it). Only
+`description:` containing an internal `:` followed by a space, and double-quote it). Only
 after surfacing this, run each missing agent via
 `subagent_type: general-purpose` seeded with the **verbatim body of its
 `.claude/agents/<name>.md`** (highest-fidelity fallback: identical
