@@ -231,8 +231,18 @@ async def _wire_approval_gate(
     # The boot gate bypasses the engine's _make_approval_gate(), so the
     # configured approval-interrupt timeout must be threaded in here
     # explicitly or any non-default setting is silently ignored once
-    # the shared gate is in use.
-    engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+    # the shared gate is in use. When the resolver is not yet wired
+    # (early boot / minimal test states) fall back to the
+    # EngineBridgeConfig seed default rather than failing gate wiring.
+    if app_state.has_config_resolver:
+        engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+        interrupt_timeout = engine_bridge.approval_interrupt_timeout_seconds
+    else:
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            EngineBridgeConfig,
+        )
+
+        interrupt_timeout = EngineBridgeConfig().approval_interrupt_timeout_seconds
     gate = ApprovalGate(
         park_service=ParkService(),
         parked_context_repo=parked_repo,
@@ -243,7 +253,7 @@ async def _wire_approval_gate(
         ),
         event_hub=app_state.event_stream_hub,
         interrupt_store=app_state.interrupt_store,
-        interrupt_timeout_seconds=engine_bridge.approval_interrupt_timeout_seconds,
+        interrupt_timeout_seconds=interrupt_timeout,
     )
     app_state.set_approval_gate(gate)
     logger.info(
