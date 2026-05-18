@@ -122,3 +122,47 @@ class TestStateMachineDisplayLabel:
         )
         with pytest.raises(ValueError, match="Invalid My Fancy Label transition"):
             machine.validate(_Color.RED, _Color.BLUE)
+
+
+@pytest.mark.unit
+class TestStateMachinePathTo:
+    """``path_to`` returns the shortest valid hop sequence (BFS)."""
+
+    def test_same_state_is_empty_path(self) -> None:
+        machine = _make_machine()
+        assert machine.path_to(_Color.RED, _Color.RED) == ()
+
+    def test_single_hop(self) -> None:
+        machine = _make_machine()
+        assert machine.path_to(_Color.RED, _Color.GREEN) == (_Color.GREEN,)
+
+    def test_multi_hop_is_shortest(self) -> None:
+        machine = _make_machine()
+        # RED -> GREEN -> BLUE is the only (and shortest) route.
+        assert machine.path_to(_Color.RED, _Color.BLUE) == (
+            _Color.GREEN,
+            _Color.BLUE,
+        )
+
+    def test_terminal_source_is_unreachable(self) -> None:
+        machine = _make_machine()
+        assert machine.path_to(_Color.BLUE, _Color.RED) is None
+
+    def test_unknown_source_is_none(self) -> None:
+        machine: StateMachine[_Color] = StateMachine(
+            {_Color.RED: frozenset({_Color.GREEN})},
+            name="color",
+            invalid_event="x",
+            config_event="y",
+        )
+        # GREEN has no table entry -> no path can originate from it.
+        assert machine.path_to(_Color.GREEN, _Color.RED) is None
+
+    def test_every_hop_in_path_is_individually_valid(self) -> None:
+        machine = _make_machine()
+        path = machine.path_to(_Color.RED, _Color.BLUE)
+        assert path is not None
+        cursor = _Color.RED
+        for hop in path:
+            machine.validate(cursor, hop)  # raises if any hop is illegal
+            cursor = hop

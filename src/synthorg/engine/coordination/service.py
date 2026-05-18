@@ -8,12 +8,13 @@ rollup → update parent task.
 from collections.abc import (
     Callable,  # noqa: TC003 -- runtime-read by typing.get_type_hints()
 )
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import CoordinationTopology, TaskStatus
+from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.attribution import (
     AgentContribution,
     CoordinationResultWithAttribution,
@@ -57,6 +58,12 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
+
+# Requester recorded on coordinator-driven parent-task transitions, and
+# the synthetic assignee stamped on the parent when the lifecycle forces
+# it through ASSIGNED (the parent is owned by the coordinating context,
+# not a single agent -- subtasks carry the real per-agent assignments).
+_COORDINATOR_ACTOR: Final[str] = "coordinator"
 
 
 class MultiAgentCoordinator:
@@ -786,38 +793,121 @@ class MultiAgentCoordinator:
 
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
         try:
-            mutation = TransitionTaskMutation(
-                request_id=str(uuid4()),
-                requested_by="coordinator",
-                task_id=context.task.id,
-                target_status=rollup.derived_parent_status,
-                reason=(
-                    f"Coordination rollup: "
-                    f"{rollup.completed}/{rollup.total} completed, "
-                    f"{rollup.failed}/{rollup.total} failed"
-                ),
-            )
-            result = await self._task_engine.submit(mutation)
-            elapsed = self._clock.monotonic() - start
+            # Read the live parent: its status may have advanced since
+            # ``context.task`` was captured, and the rollup-derived
+            # status is often several valid hops away (a freshly CREATED
+            # parent must pass through ASSIGNED -> IN_PROGRESS before any
+            # terminal status; a fully-completed coordination must pass
+            # through IN_REVIEW before COMPLETED). A single blind
+            # transition to the derived status would be rejected by the
+            # task state machine, so walk the shortest valid path
+            # instead.
+            live_task = await self._task_engine.get_task(context.task.id)
+            if live_task is None:
+                elapsed = self._clock.monotonic() - start
+                note = f"Parent task {context.task.id!r} not found"
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase=phase_name,
+                    error=note,
+                )
+                phases.append(
+                    CoordinationPhaseResult(
+                        phase=phase_name,
+                        success=False,
+                        duration_seconds=elapsed,
+                        error=note,
+                    )
+                )
+                return
 
-            if result.success:
+            target = rollup.derived_parent_status
+            path = transition_path(live_task.status, target)
+            if path is None:
+                elapsed = self._clock.monotonic() - start
+                note = (
+                    f"Parent status {live_task.status.value!r} cannot "
+                    f"reach rollup status {target.value!r}: no valid "
+                    f"lifecycle path (parent already terminal or "
+                    f"externally finalised)"
+                )
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase=phase_name,
+                    error=note,
+                )
+                phases.append(
+                    CoordinationPhaseResult(
+                        phase=phase_name,
+                        success=False,
+                        duration_seconds=elapsed,
+                        error=note,
+                    )
+                )
+                return
+
+            rollup_reason = (
+                f"Coordination rollup: "
+                f"{rollup.completed}/{rollup.total} completed, "
+                f"{rollup.failed}/{rollup.total} failed"
+            )
+            # Each intermediate hop exists only because the lifecycle
+            # mandates it; it carries a lifecycle-advance reason so the
+            # status history stays legible, and the final hop carries the
+            # rollup summary. ``path`` is ``()`` when the parent is
+            # already at the derived status -- the loop is then a no-op
+            # and the phase records a successful no-op.
+            last_error: str | None = None
+            completed_hops = 0
+            for index, hop in enumerate(path):
+                is_final = index == len(path) - 1
+                # The Task model requires a non-null ``assigned_to`` for
+                # ASSIGNED (and it then persists across later hops). The
+                # coordinated parent has no single owning agent, so stamp
+                # the coordinator sentinel on the forced ASSIGNED hop.
+                overrides: dict[str, object] = (
+                    {"assigned_to": _COORDINATOR_ACTOR}
+                    if hop is TaskStatus.ASSIGNED
+                    else {}
+                )
+                mutation = TransitionTaskMutation(
+                    request_id=str(uuid4()),
+                    requested_by=_COORDINATOR_ACTOR,
+                    task_id=context.task.id,
+                    target_status=hop,
+                    reason=(
+                        rollup_reason if is_final else "Coordination lifecycle advance"
+                    ),
+                    overrides=overrides,
+                )
+                result = await self._task_engine.submit(mutation)
+                if not result.success:
+                    last_error = result.error
+                    break
+                completed_hops += 1
+
+            elapsed = self._clock.monotonic() - start
+            success = last_error is None
+            if success:
                 logger.info(
                     COORDINATION_PHASE_COMPLETED,
                     phase=phase_name,
                     duration_seconds=elapsed,
+                    hops=completed_hops,
                 )
             else:
                 logger.warning(
                     COORDINATION_PHASE_FAILED,
                     phase=phase_name,
-                    error=result.error,
+                    error=last_error,
+                    hops_completed=completed_hops,
                 )
             phases.append(
                 CoordinationPhaseResult(
                     phase=phase_name,
-                    success=result.success,
+                    success=success,
                     duration_seconds=elapsed,
-                    error=result.error,
+                    error=last_error,
                 )
             )
         except MemoryError, RecursionError:

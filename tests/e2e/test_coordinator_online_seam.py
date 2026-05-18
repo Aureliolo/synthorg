@@ -277,5 +277,12 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
     assert result.status_rollup.total == 2
     phase_names = {p.phase for p in result.phases}
     assert {"decompose", "route", "rollup"} <= phase_names
+    # The parent began as freshly CREATED; the coordinator walked it
+    # through the valid lifecycle so the rollup-derived status was
+    # reachable, instead of attempting one invalid hop and recording a
+    # failed update_parent phase.
+    update_parent = next((p for p in result.phases if p.phase == "update_parent"), None)
+    assert update_parent is not None
+    assert update_parent.success, update_parent.error
     assert result.total_duration_seconds >= 0.0
     assert isinstance(attributed.agent_contributions, tuple)

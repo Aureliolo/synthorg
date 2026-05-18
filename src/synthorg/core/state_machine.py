@@ -21,6 +21,7 @@ Usage::
         _MACHINE.validate(current, target)
 """
 
+from collections import deque
 from copy import deepcopy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
@@ -198,3 +199,51 @@ class StateMachine[S: _HasValue]:
                 current_state=current.value,
                 target_state=target.value,
             )
+
+    def path_to(self, current: S, target: S) -> tuple[S, ...] | None:
+        """Return the shortest valid hop sequence from ``current`` to ``target``.
+
+        Breadth-first over the transition table, so the result is a
+        minimal-length path. Used by callers that must drive an entity
+        through the lifecycle (rather than assert a single hop), e.g.
+        the coordinator advancing a parent task to its rollup-derived
+        status when it may still be several valid hops away.
+
+        Args:
+            current: The current state.
+            target: The desired state.
+
+        Returns:
+            ``()`` when ``current == target`` (nothing to do); a tuple
+            of the intermediate states followed by ``target`` (each hop
+            individually valid per the table) when a path exists; or
+            ``None`` when ``current`` is unknown to the table or no path
+            exists (e.g. ``current`` is terminal and not ``target``).
+        """
+        if current == target:
+            return ()
+        if current not in self._transitions:
+            return None
+        # BFS; ``came_from`` maps each discovered state to its
+        # predecessor so the path can be reconstructed once ``target``
+        # is reached.
+        came_from: dict[S, S] = {}
+        queue: deque[S] = deque((current,))
+        seen: set[S] = {current}
+        while queue:
+            state = queue.popleft()
+            for nxt in self._transitions.get(state, frozenset()):
+                if nxt in seen:
+                    continue
+                came_from[nxt] = state
+                if nxt == target:
+                    hops: list[S] = [target]
+                    cursor = target
+                    while came_from[cursor] != current:
+                        cursor = came_from[cursor]
+                        hops.append(cursor)
+                    hops.reverse()
+                    return tuple(hops)
+                seen.add(nxt)
+                queue.append(nxt)
+        return None
