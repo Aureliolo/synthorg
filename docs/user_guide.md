@@ -86,7 +86,7 @@ The backend validates that a company and at least one provider exist before allo
 To start fresh, use `synthorg wipe` (offers an interactive backup, wipes all data, and optionally restarts with a clean slate to re-open the setup wizard) or delete the `api.setup_complete` setting via the settings API.
 
 !!! info "Honest status"
-    The platform, dashboard, CLI, and setup wizard are built and available. The autonomous agent runtime that makes the organisation execute work end to end is in active development and not yet wired, so a configured company does not yet run agents. See the [Roadmap](roadmap/index.md) for exactly what is available now versus in active development.
+    The platform, dashboard, CLI, and setup wizard are built and available. The autonomous agent runtime that makes the organisation execute work end-to-end is in active development and not yet wired, so a configured company does not yet run agents. See the [Roadmap](roadmap/index.md) for exactly what is available now versus in active development.
 
 ## Templates
 

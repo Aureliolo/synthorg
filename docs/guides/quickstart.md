@@ -148,8 +148,7 @@ Once the wizard completes, the dashboard loads and you will see:
 
 Today the task is created and advances through its lifecycle states. An agent
 does not yet pick it up and execute it: that is the agent runtime, which is in
-active development. See the [roadmap](https://synthorg.io/docs/roadmap/) for
-current status.
+active development. See the [Roadmap](../roadmap/index.md) for current status.
 
 ---
 
