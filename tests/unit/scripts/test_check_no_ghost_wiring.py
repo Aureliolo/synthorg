@@ -175,6 +175,15 @@ def test_malformed_manifest_clean_exit_not_traceback(
     assert "cannot read manifest" in out
 
 
+def test_manifest_line_without_delimiter_rejected(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A valid-looking head with no ` -- ` note delimiter is fail-closed."""
+    _seed(tmp_path, manifest="ENFORCED Foo #123 extra text\n")
+    assert _MODULE._run(tmp_path) == 1
+    assert "cannot read manifest" in capsys.readouterr().out
+
+
 def test_syntax_error_in_src_fails_closed(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

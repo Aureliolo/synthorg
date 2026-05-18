@@ -51,8 +51,11 @@ MANIFEST = Path("scripts/_ghost_wiring_manifest.txt")
 _State = Literal["ENFORCED", "PENDING"]
 _VALID_STATES: Final[tuple[_State, ...]] = ("ENFORCED", "PENDING")
 
-# "<STATE> <symbol> <issue>" -- the three required head fields before " -- ".
-_MIN_MANIFEST_FIELDS: Final[int] = 3
+# "<STATE> <symbol> <issue>" -- the exact head fields before " -- ".
+_MANIFEST_HEAD_FIELDS: Final[int] = 3
+
+# The mandatory delimiter between the manifest head and its note.
+_MANIFEST_DELIM: Final[str] = " -- "
 
 # Cap on construction sites listed in a PENDING-symbol advisory nudge.
 _MAX_NUDGE_SITES: Final[int] = 3
@@ -88,9 +91,13 @@ def _parse_manifest(path: Path) -> list[ManifestEntry]:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        head, _, note = line.partition(" -- ")
+        head, sep, note = line.partition(_MANIFEST_DELIM)
         parts = head.split()
-        if len(parts) < _MIN_MANIFEST_FIELDS or parts[0] not in _VALID_STATES:
+        if (
+            sep != _MANIFEST_DELIM
+            or len(parts) != _MANIFEST_HEAD_FIELDS
+            or parts[0] not in _VALID_STATES
+        ):
             msg = (
                 f"{path}:{idx}: malformed manifest line "
                 f"(expect '<STATE> <symbol> <issue> -- <note>'): {raw!r}"
