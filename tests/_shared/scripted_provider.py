@@ -80,6 +80,14 @@ class ScriptedProvider:
         error: Exception | None = None,
         capabilities: ModelCapabilities | None = None,
     ) -> None:
+        configured = (
+            int(responses is not None)
+            + int(response is not None)
+            + int(error is not None)
+        )
+        if configured > 1:
+            msg = "ScriptedProvider accepts only one of: responses, response, or error"
+            raise ValueError(msg)
         self._capabilities = copy.deepcopy(capabilities or TEST_CAPABILITIES)
         self._strategy: ScriptedResponseStrategy | None
         if responses is not None:
@@ -152,7 +160,7 @@ class ScriptedProvider:
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Return the configured capabilities regardless of ``model``."""
         del model
-        return self._capabilities
+        return copy.deepcopy(self._capabilities)
 
     async def batch_get_capabilities(
         self,

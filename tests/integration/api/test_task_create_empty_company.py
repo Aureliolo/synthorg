@@ -42,6 +42,8 @@ def _authed(app: Any) -> Generator[TestClient[Any]]:
         )
         assert resp.status_code == 201, resp.text
         session_token, csrf_token = _extract_auth_cookies(resp)
+        assert session_token, "Missing session cookie from /api/v1/auth/setup"
+        assert csrf_token, "Missing csrf_token cookie from /api/v1/auth/setup"
         client.headers["Cookie"] = f"session={session_token}; csrf_token={csrf_token}"
         client.headers["X-CSRF-Token"] = csrf_token
         yield client

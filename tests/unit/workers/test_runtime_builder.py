@@ -8,7 +8,6 @@ import pytest
 from synthorg.api.state import AppState
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
-from synthorg.core.clock import SystemClock
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.registry import ProviderRegistry
@@ -18,7 +17,7 @@ from synthorg.workers.execution_service import (
     NoProviderExecutionService,
 )
 from synthorg.workers.runtime_builder import build_worker_execution_service
-from tests._shared import mock_of
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -66,7 +65,7 @@ class TestProviderPresentSwitch:
             task_engine=mock_of[TaskEngine](),
             agent_registry=AgentRegistryService(),
             approval_store=None,
-            clock=SystemClock(),
+            clock=FakeClock(),
             event_stream_hub=None,
             interrupt_store=None,
             has_cost_tracker=False,
@@ -99,7 +98,7 @@ class TestProviderPresentSwitch:
             task_engine=mock_of[TaskEngine](),
             agent_registry=AgentRegistryService(),
             approval_store=None,
-            clock=SystemClock(),
+            clock=FakeClock(),
             event_stream_hub=None,
             interrupt_store=None,
             has_cost_tracker=False,
@@ -131,7 +130,7 @@ class TestProviderPresentSwitch:
             task_engine=mock_of[TaskEngine](),
             agent_registry=AgentRegistryService(),
             approval_store=None,
-            clock=SystemClock(),
+            clock=FakeClock(),
             event_stream_hub=None,
             interrupt_store=None,
             has_cost_tracker=False,
