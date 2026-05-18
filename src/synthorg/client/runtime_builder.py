@@ -73,14 +73,10 @@ def _resolve_intake_settings(env: Mapping[str, str]) -> tuple[str, str | None]:
             SettingNamespace.SIMULATIONS, _INTAKE_STRATEGY_KEY, env=env
         ).value
     )
-    model = (
-        str(
-            resolve_init_value(
-                SettingNamespace.SIMULATIONS, _INTAKE_MODEL_KEY, env=env
-            ).value
-        )
-        or None
-    )
+    raw_model = resolve_init_value(
+        SettingNamespace.SIMULATIONS, _INTAKE_MODEL_KEY, env=env
+    ).value
+    model = None if raw_model is None else str(raw_model).strip() or None
     return strategy, model
 
 
