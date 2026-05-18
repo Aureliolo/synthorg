@@ -83,10 +83,23 @@ class _GitError(Exception):
     """Raised when a required git command fails."""
 
 
-def _git(*args: str) -> str:
-    """Run a git command and return stripped stdout.
+def _git(*args: str, strip: bool = True) -> str:
+    """Run a git command and return its stdout.
 
-    Raises ``_GitError`` on non-zero exit so callers fail closed.
+    Args:
+        args: Git argv tokens.
+        strip: When ``True`` (default) the whole stdout blob is
+            ``str.strip()``-ed for convenience. Callers parsing
+            ``--porcelain`` output MUST pass ``strip=False``: porcelain
+            v1 status codes are two columns and the first column is a
+            space for worktree-only modifications (`` M path``).
+            Stripping the blob eats that leading space on the first
+            line, shifting every fixed-index slice by one (so
+            ``scripts/...`` parses as ``cripts/...`` and the subsequent
+            ``git restore`` fails on a bogus pathspec).
+
+    Raises:
+        _GitError: On non-zero exit so callers fail closed.
     """
     result = subprocess.run(
         ["git", *args],
@@ -98,7 +111,7 @@ def _git(*args: str) -> str:
     if result.returncode != 0:
         msg = f"git {' '.join(args)} failed: {result.stderr.strip()}"
         raise _GitError(msg)
-    return result.stdout.strip()
+    return result.stdout.strip() if strip else result.stdout
 
 
 def _merge_base() -> str:
@@ -839,7 +852,7 @@ def _tracked_dirty_paths() -> set[str]:
     this guard's job. Renames (``R``) carry ``orig -> new``; both sides
     are recorded so a hook-induced rename is fully reconciled.
     """
-    porcelain = _git("status", "--porcelain")
+    porcelain = _git("status", "--porcelain", strip=False)
     paths: set[str] = set()
     for line in porcelain.splitlines():
         if not line or line.startswith("??"):

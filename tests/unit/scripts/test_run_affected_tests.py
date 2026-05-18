@@ -899,10 +899,12 @@ class _FakeGit:
         self._restore_raises = restore_raises
         self._status_raises = status_raises
         self.calls: list[tuple[str, ...]] = []
+        self.status_strip: list[bool] = []
 
-    def __call__(self, *args: str) -> str:
+    def __call__(self, *args: str, strip: bool = True) -> str:
         self.calls.append(args)
         if args[:2] == ("status", "--porcelain"):
+            self.status_strip.append(strip)
             if self._status_raises:
                 msg = "git status unreadable"
                 raise _MODULE._GitError(msg)
@@ -935,6 +937,26 @@ def test_tracked_dirty_paths_excludes_untracked_and_parses_rename(
         "tests/new_test.py",
     }
     assert "scripts/git-hooks/" not in result
+
+
+def test_tracked_dirty_paths_requests_unstripped_porcelain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression: a worktree-only modification's porcelain code is
+    # `` M path`` (leading space). When the whole stdout blob is
+    # str.strip()-ed, the first line loses that space and the fixed
+    # index-3 slice yields ``cripts/...`` for ``scripts/...``, so the
+    # follow-up ``git restore`` fails on a bogus pathspec and the push
+    # aborts. The parser MUST request unstripped output.
+    fake = _FakeGit([" M scripts/git-hooks/_run-hook.sh\nD  tests/x_test.py"])
+    monkeypatch.setattr(_MODULE, "_git", fake)
+    result = _MODULE._tracked_dirty_paths()
+    assert result == {
+        "scripts/git-hooks/_run-hook.sh",
+        "tests/x_test.py",
+    }
+    assert "cripts/git-hooks/_run-hook.sh" not in result
+    assert fake.status_strip == [False]
 
 
 def test_reconcile_noop_when_nothing_newly_dirtied(
@@ -993,7 +1015,7 @@ def test_reconcile_fails_closed_when_post_status_unreadable(
 def test_main_skips_reconcile_when_pre_snapshot_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def _raise(*_args: str) -> str:
+    def _raise(*_args: str, strip: bool = True) -> str:
         msg = "no git"
         raise _MODULE._GitError(msg)
 
