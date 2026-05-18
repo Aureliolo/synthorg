@@ -101,10 +101,16 @@ application state; the autonomy controller consults it on every
 change request (the D6 seniority rule is enforced first, then the
 request is enqueued as an approval, the queue being the apply
 driver). With the `HUMAN_ONLY` default every promotion pends for
-human review. The performance / risk-budget signal providers the
-`PERFORMANCE_GATED` and `BUDGET_AWARE` strategies require are not
-wired by the boot seam: selecting one of those kinds without
-supplying its provider fails fast at construction.
+human review. The strategy verdict is enforced, not audit-only: a
+strategy that returns `True` from `request_promotion` produces an
+auto-decided approval item (`status=APPROVED`,
+`decided_by="strategy:<name>"`, `decided_at` set) and the registry
+applies the level change immediately, so the queue remains the apply
+driver and the audit trail stays intact while a non-`HUMAN_ONLY`
+strategy actually takes effect. The performance / risk-budget signal
+providers the `PERFORMANCE_GATED` and `BUDGET_AWARE` strategies
+require are not wired by the boot seam: selecting one of those kinds
+without supplying its provider fails fast at construction.
 
 ## Security Operations Agent
 

@@ -192,9 +192,12 @@ class AutonomyController(Controller):
             requested_level,
         )
 
-        # The approval queue is the designed apply driver: enqueue a
-        # real ApprovalItem (visible in /approvals). The strategy
-        # verdict rides along for audit.
+        # The approval queue stays the apply driver, but the strategy
+        # verdict is now enforced, not audit-only: a granting strategy
+        # produces an auto-decided (APPROVED) item and the registry
+        # applies the level change. ``granted_by_strategy`` carries the
+        # strategy's class name so the auto-decision is attributable;
+        # ``None`` (HUMAN_ONLY) keeps the request pending for a human.
         result = await app_state.agent_registry.update_autonomy(
             agent_key,
             AutonomyUpdate(
@@ -204,6 +207,9 @@ class AutonomyController(Controller):
                 # bound at the HTTP boundary, so attribute the request
                 # to them for audit instead of dropping it as None.
                 requested_by=NotBlankStr(resolve_decided_by()),
+                granted_by_strategy=(
+                    NotBlankStr(type(strategy).__name__) if strategy_granted else None
+                ),
             ),
             approval_store=app_state.approval_store,
         )

@@ -36,6 +36,7 @@ from synthorg.observability.events.hr import (
 )
 from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_DENIED,
+    SECURITY_AUTONOMY_PROMOTION_GRANTED,
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
@@ -641,6 +642,12 @@ class AgentRegistryService:
             requested_by=update.requested_by,
         )
 
+        # The strategy verdict is enforced, not audit-only: a granting
+        # strategy auto-decides the approval and the level change is
+        # applied here; the HUMAN_ONLY default leaves it pending.
+        granted = update.granted_by_strategy is not None
+        now = datetime.now(UTC)
+
         approval_id: str | None = None
         approval_enqueued = False
         if approval_store is not None:
@@ -659,6 +666,14 @@ class AgentRegistryService:
             # log lines and audit trails.
             approval_id = f"approval-{uuid.uuid4().hex[:16]}"
             requested_by = update.requested_by or "system"
+            decided_by = f"strategy:{update.granted_by_strategy}" if granted else None
+            metadata = {
+                "agent_id": key,
+                "current_level": current_level.value,
+                "requested_level": update.requested_level.value,
+            }
+            if granted:
+                metadata["granted_by_strategy"] = str(update.granted_by_strategy)
             item = _ApprovalItem(
                 id=approval_id,
                 action_type="autonomy:promote",
@@ -669,32 +684,66 @@ class AgentRegistryService:
                 description=update.reason,
                 requested_by=requested_by,
                 risk_level=ApprovalRiskLevel.HIGH,
-                status=ApprovalStatus.PENDING,
-                created_at=datetime.now(UTC),
-                metadata={
-                    "agent_id": key,
-                    "current_level": current_level.value,
-                    "requested_level": update.requested_level.value,
-                },
+                # A granting strategy produces an auto-decided
+                # (APPROVED) item -- the queue stays the apply driver
+                # and the audit trail is intact. ``decided_at`` /
+                # ``decided_by`` satisfy ApprovalItem's APPROVED
+                # invariant.
+                status=(ApprovalStatus.APPROVED if granted else ApprovalStatus.PENDING),
+                created_at=now,
+                decided_at=now if granted else None,
+                decided_by=decided_by,
+                metadata=metadata,
             )
             await approval_store.add(item)
             approval_enqueued = True
 
-        # Mirror REST: every change pends; nothing mutates the agent's
-        # identity here.  The approval queue drives any subsequent
-        # apply, which is out of scope for META-MCP-3.
-        logger.info(
-            SECURITY_AUTONOMY_PROMOTION_DENIED,
-            agent_id=key,
-            requested_level=update.requested_level.value,
-            reason="Autonomy level changes require human approval",
-        )
+        if not granted:
+            # HUMAN_ONLY (default): the request pends; nothing mutates
+            # the agent's identity until a human decides.
+            logger.info(
+                SECURITY_AUTONOMY_PROMOTION_DENIED,
+                agent_id=key,
+                requested_level=update.requested_level.value,
+                reason="Autonomy level changes require human approval",
+            )
+            return AutonomyUpdateResult(
+                agent_id=key,
+                current_level=current_level,
+                requested_level=update.requested_level,
+                promotion_pending=True,
+                approval_enqueued=approval_enqueued,
+                approval_id=approval_id,
+            )
 
+        # Strategy granted: apply the level change now.
+        async with self._lock:
+            live = self._agents.get(key)
+            if live is None:
+                msg = f"Agent {agent_id!r} not found in registry"
+                raise AgentNotFoundError(msg)
+            applied = live.model_copy(
+                update={"autonomy_level": update.requested_level},
+            )
+            self._agents[key] = applied
+        await self._snapshot(
+            applied,
+            saved_by=f"autonomy_strategy_grant:{key}",
+        )
+        # State transition logged AFTER the persistence write.
+        logger.info(
+            SECURITY_AUTONOMY_PROMOTION_GRANTED,
+            agent_id=key,
+            previous_level=current_level.value,
+            requested_level=update.requested_level.value,
+            granted_by_strategy=str(update.granted_by_strategy),
+            approval_id=approval_id,
+        )
         return AutonomyUpdateResult(
             agent_id=key,
-            current_level=current_level,
+            current_level=update.requested_level,
             requested_level=update.requested_level,
-            promotion_pending=True,
+            promotion_pending=False,
             approval_enqueued=approval_enqueued,
             approval_id=approval_id,
         )

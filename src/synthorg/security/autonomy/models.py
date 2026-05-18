@@ -260,6 +260,16 @@ class AutonomyUpdate(BaseModel):
         default=None,
         description="Identifier of the requesting actor",
     )
+    granted_by_strategy: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "When set, the AutonomyChangeStrategy granted this change "
+            "immediately (its name, for audit attribution). The registry "
+            "then applies the level change and records an auto-decided "
+            "APPROVED approval item instead of pending for human review. "
+            "``None`` (the HUMAN_ONLY default) keeps the request pending."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_reason_length(self) -> Self:
