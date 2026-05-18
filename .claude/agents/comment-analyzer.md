@@ -1,6 +1,6 @@
 ---
 name: comment-analyzer
-description: Reviews code comments for accuracy, completeness, and long-term maintainability. Verifies factual claims against actual code, flags misleading examples / outdated TODOs, suggests removals for comments that restate obvious code. Output: Critical Issues (factually wrong) / Improvement Opportunities / Recommended Removals. Advisory only -- never edits code.
+description: "Reviews code comments for accuracy, completeness, and long-term maintainability. Verifies factual claims against actual code, flags misleading examples / outdated TODOs, suggests removals for comments that restate obvious code. Output: Critical Issues (factually wrong) / Improvement Opportunities / Recommended Removals. Advisory only -- never edits code."
 model: sonnet
 color: green
 ---

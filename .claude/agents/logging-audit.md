@@ -1,6 +1,6 @@
 ---
 name: logging-audit
-description: Audits logging practices against SynthOrg logging conventions: logger setup, event constants, structured kwargs, log levels, secret redaction, and logging-coverage suggestions for error paths and state transitions. Use for changes in src/synthorg/.
+description: "Audits logging practices against SynthOrg logging conventions: logger setup, event constants, structured kwargs, log levels, secret redaction, and logging-coverage suggestions for error paths and state transitions. Use for changes in src/synthorg/."
 model: sonnet
 color: blue
 tools: Read, Grep, Glob

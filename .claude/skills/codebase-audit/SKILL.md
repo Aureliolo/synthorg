@@ -1,12 +1,12 @@
 ---
-description: "Full codebase audit: launches 158 specialized agents (slot 14 retired) to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
+description: "Full codebase audit: launches 159 specialized agents (slots 01-159) to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
 argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only]"
 allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
 # /codebase-audit: Full Codebase Audit
 
-Launch 158 specialized agents (agent slots 01-159 minus the retired slot 14) to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
+Launch 159 specialized agents (agent slots 01-159) to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
 
 ## Key Principles
 
@@ -25,8 +25,8 @@ Launch 158 specialized agents (agent slots 01-159 minus the retired slot 14) to 
 
 | Argument | Directories | Agents |
 |----------|-------------|-------------|
-| `full` (default) | All | All 158 agents (slots 01-159, slot 14 retired) |
-| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-13, 15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153, 154-155, 157 (slot 14 retired) |
+| `full` (default) | All | All 159 agents (slots 01-159) |
+| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-13, 14, 15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153, 154-155, 157 |
 | `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150, 154-155, 156 |
 | `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142, 154-155, 158 |
 | `docs/` | `docs/`, `site/`, `src/synthorg/` | 17, 20, 42, 48-51, 73-86, 103-104, 107-108, 123, 159 |
@@ -312,7 +312,9 @@ Before calling Write on your finding file, perform a self-review pass:
    none of those exist in the repo.
 
 3. If your draft is over 30 findings, sample 5 random ones and verify them
-   in full. Past haiku runs of agent 14 emitted 84 findings, ALL false
+   in full. Past haiku runs of the retired regex unused-exports agent
+   (former slot 14, now reassigned to ghost-wiring) emitted 84 findings,
+   ALL false
    positives -- the prompt's first 5 verification samples would have caught
    the pattern (regex misses type annotations / framework DI / factory
    returns / `__all__` / isinstance / star imports). If your sample shows
@@ -346,15 +348,15 @@ template).
 
 ### Streaming Pool Execution
 
-Maintain a **rolling pool of 10 active agents** at all times. Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send agents 01-10 in a single message (10 parallel `run_in_background: true` calls). Then for each completion notification, launch the next pending agent. Continue until all 158 active agents (slots 01-159, skipping retired slot 14) have completed.
+Maintain a **rolling pool of 10 active agents** at all times. Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send agents 01-10 in a single message (10 parallel `run_in_background: true` calls). Then for each completion notification, launch the next pending agent. Continue until all 159 active agents (slots 01-159) have completed.
 
 This pipelines I/O and end-to-end runtime: a slow Wave 1 agent never blocks Wave 2-31 from starting, and the model spends notification cycles dispatching new work instead of idling. Skill agents are independent (each writes its own file), so order-of-completion does not matter -- only that the pool stays saturated until the queue drains.
 
 **Pool size rationale**: 10 active agents matches what one main-loop cycle can usefully dispatch and track without notification fatigue. Going wider (20+) increases context spent on notification handling; going narrower (5) under-utilizes the agent runtime.
 
-**Order**: agents 01 → 159 in numeric order, skipping the retired slot 14 (158 launches total). Skipping forward when a later agent is "more interesting" wastes the streaming property -- the pool drains itself naturally.
+**Order**: agents 01 → 159 in numeric order (159 launches total). Skipping forward when a later agent is "more interesting" wastes the streaming property -- the pool drains itself naturally.
 
-**Progress reporting**: every 10 completions, report "N/{AGENTS_LAUNCHED} done" to the user where `{AGENTS_LAUNCHED}` is the total for the current scope (158 for `full` -- slot 14 retired -- fewer for scoped runs). Do not report per-completion -- that is too chatty.
+**Progress reporting**: every 10 completions, report "N/{AGENTS_LAUNCHED} done" to the user where `{AGENTS_LAUNCHED}` is the total for the current scope (159 for `full`, fewer for scoped runs). Do not report per-completion -- that is too chatty.
 
 The 18-batch grouping (A-R) below is retained ONLY as a reference for which agent IDs map to which wave, not as a scheduling boundary:
 
@@ -674,23 +676,68 @@ list of HIGH-CONFIDENCE confirmed mismatches is far more useful than 44
 findings with 80% FP rate.
 ```
 
-### Wave 3: Dead Code & Unused (2 agents -- agent 14 retired 2026-05-15)
+### Wave 3: Dead Code & Unused (3 agents)
 
-**Agent 14 RETIRED**: see Retired Agents table. Replacement (`vulture` + pre-push gate) is planned but not yet wired; the agent stays retired because regex-based detection is unsalvageable.
+Slot 14's original `unused-python-exports` (regex-based) was retired
+2026-05-15 as unsalvageable (see Retired Agents table). The slot is
+reassigned to a semantic ghost-wiring detector -- a different concern that
+reasons about runtime reachability rather than grepping imports, so the
+retirement rationale does not apply.
 
-<!-- ORIGINAL AGENT 14 PROMPT RETAINED FOR REFERENCE; DO NOT LAUNCH
-
-**Agent 14: unused-python-exports** (sonnet)
-File: `_audit/latest/findings/14-unused-python-exports.md`
+**Agent 14: ghost-wiring** (opus)
+File: `_audit/latest/findings/14-ghost-wiring.md`
 
 ```text
-Find public functions and classes in src/synthorg/ that are not imported by
-any other module, not re-exported in __init__.py, and not referenced in tests/.
-Exclude: __init__ methods, property descriptors, __repr__/__str__, metaclass
-methods, enum members, Pydantic field definitions. Severity: medium.
+Find runtime components that are defined and (often) unit-tested but never
+constructed/called in the shipped src/ boot path, so they can never run in a
+real deployment. This is the EPIC #1955 / #1951 defect class: a whole agent
+runtime (AgentEngine, the multi-agent coordinator, coordination metrics, the
+intake engine) shipped unreachable for a long time because nothing checked
+"if it ships, it must be reachable".
 
+SCOPE RULE (avoid a false-positive flood -- this is mandatory): only flag
+symbols in runtime modules expected to be wired at boot:
+src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/.
+Public library / Pydantic / API-schema / args / DTO / enum types meant for
+external or framework instantiation (Litestar dependency injection, factory
+returns, __all__ re-exports, Protocol structural use, test fixtures) are
+OUT OF SCOPE -- do not flag them. When unsure whether a symbol is
+"runtime-wired-at-boot" vs "library type", do NOT flag it.
+
+Detect these four patterns:
+
+(a) Constructed 0x in src/: a class/factory defined under a runtime module
+    and exercised in tests/ but with zero construction/call sites anywhere
+    in src/synthorg/ outside its own defining module. Trace app.py /
+    auto_wire.py / lifecycle*.py and any worker/CLI-launched entrypoint to
+    confirm it is genuinely never built at boot. (e.g. AgentEngine,
+    build_coordinator, IntakeEngine, BaselineStore,
+    CoordinationMetricsCollector). Severity: critical.
+
+(b) Boot-wired but never fed: a store/sink/collector constructed at boot
+    and exposed via a read API, whose producer side (.record/.add/.write/
+    .collect handoff) is never called in src/. A store nothing writes to.
+    (e.g. the #1954 CoordinationMetricsStore, the approval-queue producer).
+    Severity: high.
+
+(c) Endpoint always unreachable: a controller/route gated on
+    has_X / app_state.X / a config flag where X is never wired at boot, so
+    it always 503s/404s in the shipped product. (e.g. /coordinate while
+    app_state.coordinator is None; /simulations + /requests while
+    has_simulation_runtime is always False). Severity: high.
+
+(d) Setting with no consumer: a registered SettingDefinition whose resolved
+    value is read by no component that is actually constructed at boot.
+    Cross-check scripts/check_setting_to_startup_trace.py. Severity: medium.
+
+For each finding give file:line of the definition, the boot path you traced
+to prove non-reachability, which pattern (a-d), and whether
+scripts/_ghost_wiring_manifest.txt already tracks the symbol (if it is
+ENFORCED there and you still find it unreachable, that is a gate escape --
+flag critical; if PENDING, note it is a known in-flight ghost, severity
+info). Do not flag symbols whose manifest line is PENDING as new problems --
+they are already tracked by EPIC #1955.
 ```
--->
 
 **Agent 15: unused-dto-fields** (sonnet)
 File: `_audit/latest/findings/15-unused-dto-fields.md`
@@ -3713,7 +3760,7 @@ These concerns are already enforced by hooks, linters, or external tooling today
 | changelog-release-notes | `release-please` (automated) |
 | changelog-releases-parity | `release-please` (automated) |
 | tests-without-assertions (slot 98) | Retired 2026-04-20. Regex-based detection cannot distinguish helper-function assertions, `pytest.raises`/guard-raises patterns, or Pydantic validation-raises from truly empty tests. Produced ~93% false positives in validation (14/15 sampled findings were valid tests). Rely on coverage + mutation testing for vacuous-test detection instead. |
-| unused-python-exports (slot 14) | Retired 2026-05-15. Regex-based detection cannot see type annotations, Litestar framework dependency injection (`data: SomeRequestModel`), factory pattern returns (only `build_x()` imported, not the `X` class returned), `__all__` re-exports, isinstance / typing.Protocol structural usage, or test fixture return types. 2026-05-15 run produced 84 findings, 100% false-positive (validate-batch-01 sampled 28, found 0 confirmed). Use `vulture` for Python dead-code detection (add to dev deps + pre-push gate) or `ruff` `F401` for unused imports. The semantic gap between "imported by name" and "used at runtime via framework / annotation / Protocol structural matching" is too wide for regex. The original prompt is kept commented in Wave 3 for reference only. |
+| unused-python-exports (slot 14) | Retired 2026-05-15. Regex-based detection cannot see type annotations, Litestar framework dependency injection (`data: SomeRequestModel`), factory pattern returns (only `build_x()` imported, not the `X` class returned), `__all__` re-exports, isinstance / typing.Protocol structural usage, or test fixture return types. 2026-05-15 run produced 84 findings, 100% false-positive (validate-batch-01 sampled 28, found 0 confirmed). Use `vulture` for Python dead-code detection (add to dev deps + pre-push gate) or `ruff` `F401` for unused imports. The semantic gap between "imported by name" and "used at runtime via framework / annotation / Protocol structural matching" is too wide for regex. Slot 14 has since been reassigned to the semantic `ghost-wiring` agent (a different concern: runtime reachability, not unused exports); the original regex prompt is preserved in this row's history only. |
 
 ### Planned Retirements
 
@@ -3738,7 +3785,7 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 **Required on every run. Every single finding gets validated. There is no severity threshold, no scope cap, no opt-out, no "spot-check" shortcut.** Validation runs on all findings (critical, high, medium, low, AND info) uniformly. This skill is for huge audits; the false-positive filter must apply to every finding so INDEX.md is not contaminated by un-validated noise. If an audit agent emits 400 findings of one type, all 400 get validated -- not a sample, not a top-N, not a severity-gated subset.
 
-After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (158 for `full` with slot 14 retired, fewer for scoped runs).
+After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (159 for `full`, fewer for scoped runs).
 
 ### Process
 
@@ -4087,7 +4134,7 @@ Also write `_audit/latest/findings.json` (machine-readable):
 {
   "run_id": "<run-id-timestamp>",
   "scope": "full",
-  "agents_launched": 158,
+  "agents_launched": 159,
   "validation": {"validated": 412, "false_positives": 67, "intentional": 12},
   "findings": [
     {
@@ -4174,7 +4221,7 @@ Optional, best-effort. Each agent can have a golden-input test:
 
 A new command `/codebase-audit self-test` runs each agent against its golden input and verifies it finds the seeded issue. Catches prompt rot.
 
-Bootstrap: not all 158 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
+Bootstrap: not all 159 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
 
 If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 
@@ -4249,7 +4296,7 @@ Document specific issues observed in named runs so future runs avoid repeating t
 
 ### 2026-05-15 run
 
-- **Agent 14 (`unused-python-exports`) had ~100% FP rate** (84 findings, 0 confirmed in validate-batch-01). Regex/grep cannot see Litestar framework dependency injection (`data: SomeRequestModel` parameter binding), factory pattern returns (only the factory imported), type annotations using the symbol, `__all__` re-exports, isinstance / Protocol structural matching, or test fixture return types. RETIRED in this skill version; the original prompt is commented out in Wave 3 for reference; replacement is `vulture` for Python dead-code detection.
+- **Agent 14 (`unused-python-exports`) had ~100% FP rate** (84 findings, 0 confirmed in validate-batch-01). Regex/grep cannot see Litestar framework dependency injection (`data: SomeRequestModel` parameter binding), factory pattern returns (only the factory imported), type annotations using the symbol, `__all__` re-exports, isinstance / Protocol structural matching, or test fixture return types. RETIRED as a regex agent; slot 14 is now reassigned to the semantic `ghost-wiring` agent (runtime-reachability, the EPIC #1955 defect class). For Python dead-code detection specifically, use `vulture` (planned dev-dep + pre-push gate); that concern is intentionally not what slot 14 does now.
 
 - **Agent 30 (`missing-settings-bridge`) had ~70% FP rate** (~40 of ~57 findings overturned in validate-batch-05). Root cause: the prompt asked "values that SHOULD be configurable" without criteria. Agents flagged every `Final[int|float]` constant. Internal protocol-boundary values (shutdown drain, NATS payload max, JWT expiry, audit retention) got swept in. Fixed via tighter prompt criteria (operator-tunable knob definition + exclusion list) + 15-finding cap.
 

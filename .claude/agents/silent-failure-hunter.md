@@ -1,6 +1,6 @@
 ---
 name: silent-failure-hunter
-description: Audits error handling for silent failures, broad catch blocks, inadequate logging, unjustified fallbacks, and mock fallbacks in production. Severity: CRITICAL (silent failure / broad catch) / HIGH (poor error message / unjustified fallback) / MEDIUM (missing context). Reports location + severity + hidden errors + user impact + recommended fix + corrected example.
+description: "Audits error handling for silent failures, broad catch blocks, inadequate logging, unjustified fallbacks, and mock fallbacks in production. Severity: CRITICAL (silent failure / broad catch) / HIGH (poor error message / unjustified fallback) / MEDIUM (missing context). Reports location + severity + hidden errors + user impact + recommended fix + corrected example."
 model: sonnet
 color: yellow
 ---

@@ -1,6 +1,6 @@
 ---
 name: test-quality-reviewer
-description: Reviews test code for quality, correctness, and adherence to SynthOrg testing conventions: test isolation, mock correctness, markers, parametrize, assertion quality, vendor-name policy, flaky patterns, and web-dashboard test rules. Use for changes under tests/ or web/src/**/*.test.*.
+description: "Reviews test code for quality, correctness, and adherence to SynthOrg testing conventions: test isolation, mock correctness, markers, parametrize, assertion quality, vendor-name policy, flaky patterns, and web-dashboard test rules. Use for changes under tests/ or web/src/**/*.test.*."
 model: sonnet
 color: green
 tools: Read, Grep, Glob
