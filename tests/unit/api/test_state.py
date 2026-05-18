@@ -171,6 +171,49 @@ class TestAppStateCoordinator:
         state = _make_state(coordinator=coordinator)
         assert state.has_coordinator is True
 
+    def test_set_coordinator_attaches_when_none(self) -> None:
+        from unittest.mock import MagicMock
+
+        coordinator = MagicMock(spec=MultiAgentCoordinator)
+        state = _make_state(coordinator=None)
+        state.set_coordinator(coordinator)
+        assert state.coordinator is coordinator
+        assert state.has_coordinator is True
+
+    def test_set_coordinator_is_once_only(self) -> None:
+        from unittest.mock import MagicMock
+
+        first = MagicMock(spec=MultiAgentCoordinator)
+        second = MagicMock(spec=MultiAgentCoordinator)
+        state = _make_state(coordinator=first)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_coordinator(second)
+
+    def test_swap_coordinator_attaches_when_none(self) -> None:
+        from unittest.mock import MagicMock
+
+        coordinator = MagicMock(spec=MultiAgentCoordinator)
+        state = _make_state(coordinator=None)
+        state.swap_coordinator(coordinator)
+        assert state.coordinator is coordinator
+
+    def test_swap_coordinator_replaces_existing(self) -> None:
+        from unittest.mock import MagicMock
+
+        first = MagicMock(spec=MultiAgentCoordinator)
+        second = MagicMock(spec=MultiAgentCoordinator)
+        state = _make_state(coordinator=first)
+        state.swap_coordinator(second)
+        assert state.coordinator is second
+
+    def test_swap_coordinator_noop_when_identical(self) -> None:
+        from unittest.mock import MagicMock
+
+        coordinator = MagicMock(spec=MultiAgentCoordinator)
+        state = _make_state(coordinator=coordinator)
+        state.swap_coordinator(coordinator)
+        assert state.coordinator is coordinator
+
 
 @pytest.mark.unit
 class TestAppStateAgentRegistry:

@@ -139,27 +139,41 @@ async def post_setup_reinit(app_state: AppState) -> None:
             )
             raise
 
-    # 3. Rebuild + hot-swap the worker execution service so a provider
-    #    added after an empty-company start wakes the agent runtime
-    #    live, with no process restart. Raise on failure so the caller
-    #    keeps ``setup_complete=false`` rather than presenting a
-    #    half-configured runtime as complete.
+    # 3. Rebuild + hot-swap BOTH runtime services so a provider added
+    #    after an empty-company start wakes the whole runtime live.
+    await _rebuild_runtime_services(app_state)
+
+
+async def _rebuild_runtime_services(app_state: AppState) -> None:
+    """Rebuild and hot-swap the worker execution service + coordinator.
+
+    A provider added after an empty-company start must wake the whole
+    runtime live, with no process restart -- otherwise ``/coordinate``
+    would stay 503 even though the worker seam came online. Raises on
+    failure so :func:`post_setup_reinit`'s caller keeps
+    ``setup_complete=false`` rather than presenting a half-configured
+    runtime as complete.
+    """
     try:
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
-            build_worker_execution_service,
+            build_runtime_services,
         )
 
-        service = await build_worker_execution_service(
+        services = await build_runtime_services(
             app_state,
             workspace_root=app_state.agent_workspace_root,
         )
-        app_state.swap_worker_execution_service(service)
+        app_state.swap_worker_execution_service(
+            services.worker_execution_service,
+        )
+        if services.coordinator is not None:
+            app_state.swap_coordinator(services.coordinator)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
         logger.warning(
             SETUP_AGENT_BOOTSTRAP_FAILED,
-            context="worker_execution_service_rebuild",
+            context="runtime_services_rebuild",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

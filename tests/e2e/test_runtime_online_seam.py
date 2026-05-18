@@ -1,8 +1,8 @@
 """Acceptance: the agent runtime is online behind the provider switch.
 
 Drives a real task through the ``WorkerExecutionService.execute_once``
-seam built by the production ``build_worker_execution_service`` (the
-exact code the boot hook runs) -- not ``AgentEngine.run`` directly.
+seam built by the production ``build_runtime_services`` (the exact
+code the boot hook runs) -- not ``AgentEngine.run`` directly.
 With a provider configured a real agent runs via the deterministic
 ``ScriptedDriver`` and the minimal safety spine is exercised end to
 end: the SecOps interceptor consults the autonomy/rule verdict on the
@@ -54,7 +54,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.execution_service import AgentEngineExecutionService
-from synthorg.workers.runtime_builder import build_worker_execution_service
+from synthorg.workers.runtime_builder import build_runtime_services
 from tests._shared import mock_of
 from tests._shared.scripted_provider import (
     make_e2e_identity,
@@ -131,15 +131,18 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
         clock=SystemClock(),
         event_stream_hub=None,
         interrupt_store=None,
+        agent_workspace_root=tmp_path,
         has_cost_tracker=False,
         has_audit_log=False,
         has_memory_backend=False,
+        has_performance_tracker=False,
     )
 
-    service = await build_worker_execution_service(
+    runtime = await build_runtime_services(
         app_state,
         workspace_root=tmp_path,
     )
+    service = runtime.worker_execution_service
     assert isinstance(service, AgentEngineExecutionService)
 
     created = await task_engine.create_task(

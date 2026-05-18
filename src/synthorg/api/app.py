@@ -992,25 +992,28 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         effective_config=effective_config,
     )
 
-    _worker_service_installed = False
+    _runtime_services_installed = False
 
-    async def _install_worker_execution_service() -> None:
-        # Installs the worker execution service behind the
-        # provider-present switch. Appended first (runs immediately
+    async def _install_runtime_services() -> None:
+        # Installs the worker execution service AND the multi-agent
+        # coordinator behind the single provider-present switch, both
+        # sharing one boot AgentEngine. Appended first (runs immediately
         # after the core startup hooks that connect persistence and
         # wire SettingsService / ConfigResolver), and before any other
         # appended hook, so the once-only ``set_worker_execution_service``
-        # cannot lose a race with the property's lazy lifecycle-only
-        # default. With no provider this installs the empty-company
-        # backstop; a provider added later swaps in the live service via
-        # ``post_setup_reinit`` (no restart). The closure flag keeps the
-        # one-shot ``set_`` idempotent across a lifespan re-entry
-        # (shared-app test fixtures), mirroring ``_wire_chief_of_staff_chat``.
-        nonlocal _worker_service_installed
-        if _worker_service_installed:
+        # / ``set_coordinator`` cannot lose a race with the
+        # worker-service property's lazy lifecycle-only default. With no
+        # provider this installs the empty-company backstop and no
+        # coordinator (``/coordinate`` honestly 503s); a provider added
+        # later swaps both in via ``post_setup_reinit`` (no restart). The
+        # closure flag keeps the one-shot ``set_`` calls idempotent
+        # across a lifespan re-entry (shared-app test fixtures),
+        # mirroring ``_wire_chief_of_staff_chat``.
+        nonlocal _runtime_services_installed
+        if _runtime_services_installed:
             return
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
-            build_worker_execution_service,
+            build_runtime_services,
         )
 
         # Pin the sandbox workspace onto the mounted data volume in an
@@ -1022,7 +1025,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             app_state.set_agent_workspace_root(env_workspace_root)
 
         try:
-            service = await build_worker_execution_service(
+            services = await build_runtime_services(
                 app_state,
                 workspace_root=app_state.agent_workspace_root,
             )
@@ -1031,16 +1034,25 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         except Exception as exc:
             logger.error(
                 API_APP_STARTUP,
-                service="worker_execution_service",
-                note="failed to build the worker execution service at boot",
+                service="runtime_services",
+                note="failed to build the runtime services at boot",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
-        app_state.set_worker_execution_service(service)
-        _worker_service_installed = True
+        app_state.set_worker_execution_service(
+            services.worker_execution_service,
+        )
+        # An explicitly injected coordinator (``create_app(coordinator=)``
+        # in tests / custom DI) wins over the autowired one, matching the
+        # injection-over-autowire convention used across ``create_app``.
+        # ``set_coordinator`` is once-only, so only wire the built one
+        # when none was injected.
+        if services.coordinator is not None and not app_state.has_coordinator:
+            app_state.set_coordinator(services.coordinator)
+        _runtime_services_installed = True
 
-    startup = [*startup, _install_worker_execution_service]
+    startup = [*startup, _install_runtime_services]
 
     # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for
     # opt-in, defaults to disabled). Attach to app_state so the health
