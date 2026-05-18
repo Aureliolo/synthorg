@@ -11,6 +11,7 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ForbiddenError, NotFoundError
 from synthorg.core.enums import AutonomyLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr
@@ -199,7 +200,10 @@ class AutonomyController(Controller):
             AutonomyUpdate(
                 requested_level=requested_level,
                 reason=data.reason,
-                requested_by=None,
+                # Guarded by require_ceo_or_manager: the human actor is
+                # bound at the HTTP boundary, so attribute the request
+                # to them for audit instead of dropping it as None.
+                requested_by=NotBlankStr(resolve_decided_by()),
             ),
             approval_store=app_state.approval_store,
         )

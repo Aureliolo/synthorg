@@ -5,6 +5,7 @@ and trust level changes for agents.
 """
 
 import asyncio
+import threading
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -72,6 +73,33 @@ class TrustService:
         # apply_trust_change is similarly non-atomic. Lock the full
         # read-modify-write region in both methods.
         self._state_lock = asyncio.Lock()
+        # First-run initialisation is reached from the synchronous
+        # tool-invoker factory seam (``_trust_narrowed_tools``), which
+        # cannot acquire the async ``_state_lock``. A separate
+        # synchronous lock makes the get-or-create atomic so two
+        # concurrent first-run requests for the same agent cannot both
+        # observe an absent state and double-initialise it (TOCTOU).
+        self._init_lock = threading.Lock()
+
+    def get_or_initialize_agent(self, agent_id: NotBlankStr) -> TrustState:
+        """Return the agent's trust state, creating it atomically once.
+
+        The check-and-create is guarded by a synchronous lock so a
+        concurrent first run for the same agent observes a single
+        initialisation (and a single ``created_at``) rather than racing
+        between :meth:`get_trust_state` and :meth:`initialize_agent`.
+
+        Args:
+            agent_id: Agent identifier.
+
+        Returns:
+            The existing trust state, or a freshly initialised one.
+        """
+        with self._init_lock:
+            existing = self._trust_states.get(str(agent_id))
+            if existing is not None:
+                return existing
+            return self.initialize_agent(agent_id)
 
     def initialize_agent(self, agent_id: NotBlankStr) -> TrustState:
         """Create initial trust state for a new agent.

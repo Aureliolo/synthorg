@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.registry import AgentRegistryService
@@ -71,6 +72,7 @@ class TestUpdateAutonomy:
         self,
         test_client: TestClient[Any],
         agent_registry: AgentRegistryService,
+        approval_store: ApprovalStore,
     ) -> None:
         agent_id = uuid4()
         await agent_registry.register(
@@ -88,6 +90,17 @@ class TestUpdateAutonomy:
         assert data["agent_id"] == str(agent_id)
         # HUMAN_ONLY: every change pends for human approval.
         assert data["promotion_pending"] is True
+
+        # Prove the controller reached the real approval pipeline (the
+        # old stubbed path returned promotion_pending without enqueuing
+        # anything). A single PENDING autonomy:promote item for this
+        # agent must now exist, attributed to the authenticated caller
+        # rather than the "system" fallback.
+        items = await approval_store.list_items()
+        promote = [i for i in items if i.action_type == "autonomy:promote"]
+        assert len(promote) == 1
+        assert promote[0].metadata["agent_id"] == str(agent_id)
+        assert promote[0].requested_by != "system"
 
     async def test_seniority_violation_forbidden(
         self,

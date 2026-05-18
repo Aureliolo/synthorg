@@ -502,12 +502,21 @@ class AgentEngineExecutionService:
         """
         gate = self._engine._approval_gate  # noqa: SLF001
         if gate is None:
+            # The decision is already persisted by the controller, so
+            # returning here would strand the parked run permanently
+            # (a successful-looking no-op). Raise so the background
+            # registry records a real failure the operator can act on.
             logger.error(
                 APPROVAL_GATE_RESUME_FAILED,
                 approval_id=approval_id,
                 reason="engine_has_no_approval_gate",
             )
-            return
+            msg = (
+                f"Approval {approval_id!r} has a parked context but the "
+                f"agent engine has no approval gate; cannot resume "
+                f"execution."
+            )
+            raise AgentRuntimeNotConfiguredError(msg)
         resumed = await gate.resume_context(approval_id)
         if resumed is None:
             # The decision is already persisted by the controller, so

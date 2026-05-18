@@ -23,9 +23,13 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
+    from synthorg.core.task import Task
     from synthorg.engine.context import AgentContext
+    from synthorg.engine.prompt import SystemPrompt
     from synthorg.engine.run_result import AgentRunResult
     from synthorg.security.autonomy.models import EffectiveAutonomy
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -141,12 +145,12 @@ class AgentEngineResumeMixin:
 
     def _build_resume_runtime(
         self,
-        identity: Any,
-        task: Any,
+        identity: AgentIdentity,
+        task: Task,
         *,
         task_id: str,
         effective_autonomy: EffectiveAutonomy | None,
-    ) -> tuple[Any, Any]:
+    ) -> tuple[ToolInvokerProtocol | None, SystemPrompt]:
         """Build the resumed run's tool invoker and system prompt.
 
         Extracted from :meth:`resume_parked_run` so that method stays
@@ -180,14 +184,14 @@ class AgentEngineResumeMixin:
     async def _resume_execute(  # noqa: PLR0913
         self,
         *,
-        identity: Any,
-        task: Any,
+        identity: AgentIdentity,
+        task: Task,
         agent_id: str,
         task_id: str,
         approval_id: str,
-        ctx: Any,
-        system_prompt: Any,
-        tool_invoker: Any,
+        ctx: AgentContext,
+        system_prompt: SystemPrompt,
+        tool_invoker: ToolInvokerProtocol | None,
         effective_autonomy: EffectiveAutonomy | None,
         start: float,
         timeout_seconds: float | None,

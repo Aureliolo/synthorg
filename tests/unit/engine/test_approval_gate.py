@@ -7,6 +7,7 @@ import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.errors import ExecutionStateError
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.security.timeout.park_service import ParkService
 from synthorg.security.timeout.parked_context import ParkedContext
@@ -327,15 +328,18 @@ class TestResumeContext:
         with pytest.raises(RuntimeError, match="delete failed"):
             await gate.resume_context("approval-1")
 
-    async def test_delete_returned_false_is_benign_and_resumes(
+    async def test_delete_returned_false_aborts_resume(
         self,
         park_service: MagicMock,
         parked_mock: MagicMock,
         repo: AsyncMock,
     ) -> None:
-        """``delete()`` False = row already absent: no duplicate risk.
+        """``delete()`` False after a successful load = race lost.
 
-        With nothing left to re-resume, resume proceeds normally.
+        The row existed at load time, so a ``False`` delete means a
+        concurrent resume removed it first and already owns this
+        context. Continuing would execute the same deserialized
+        context twice; resume must fail closed instead.
         """
         restored_ctx = MagicMock()
         park_service.resume.return_value = restored_ctx
@@ -347,11 +351,11 @@ class TestResumeContext:
             parked_context_repo=repo,
         )
 
-        result = await gate.resume_context("approval-1")
-        assert result is not None
-        ctx, parked_id = result
-        assert ctx is restored_ctx
-        assert parked_id == "parked-1"
+        with pytest.raises(
+            ExecutionStateError,
+            match="aborting resume to avoid duplicate execution",
+        ):
+            await gate.resume_context("approval-1")
 
 
 class TestBuildResumeMessage:

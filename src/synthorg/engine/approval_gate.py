@@ -26,6 +26,7 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import AgUiEventType
+from synthorg.engine.errors import ExecutionStateError
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
@@ -527,14 +528,25 @@ class ApprovalGate:
 
         if not deleted:
             # ``delete()`` returned False = the row was already absent
-            # (no exception). Nothing remains to re-resume, so this is
-            # benign; log for visibility and continue.
-            logger.warning(
+            # when we tried to delete it, even though ``_load_parked``
+            # had just found it. The only thing that removes a parked
+            # row between load and delete is a concurrent resume that
+            # won the race -- that resume already owns this context, so
+            # continuing here would hand the same deserialized context
+            # to a second caller and execute it twice. Fail closed.
+            logger.error(
                 APPROVAL_GATE_RESUME_DELETE_FAILED,
                 approval_id=approval_id,
                 parked_id=parked.id,
-                note="delete() returned False -- parked row already absent",
+                note="delete() returned False -- aborting resume to "
+                "avoid duplicate execution",
             )
+            msg = (
+                f"Parked record {parked.id!r} was already absent during "
+                f"resume cleanup for approval {approval_id!r}; aborting "
+                f"resume to avoid duplicate execution"
+            )
+            raise ExecutionStateError(msg)
 
     @staticmethod
     def build_resume_message(

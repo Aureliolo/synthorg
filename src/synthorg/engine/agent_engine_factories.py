@@ -203,9 +203,12 @@ class AgentEngineFactoriesMixin:
         if self._trust_service is None:
             return identity.tools
         agent_key = str(identity.id)
-        state = self._trust_service.get_trust_state(agent_key)
-        if state is None:
-            state = self._trust_service.initialize_agent(agent_key)
+        had_state = self._trust_service.get_trust_state(agent_key) is not None
+        # Atomic get-or-create: a concurrent first run for the same
+        # agent cannot double-initialise it (TOCTOU on the previous
+        # get-then-initialize pair).
+        state = self._trust_service.get_or_initialize_agent(agent_key)
+        if not had_state:
             logger.info(
                 TRUST_AGENT_AUTO_INITIALIZED,
                 agent_id=agent_key,
