@@ -104,6 +104,14 @@ def _build_intake_with_fallback(
         )
     except UnknownStrategyError as exc:
         if requested_strategy == _DEFAULT_STRATEGY:
+            logger.error(
+                CLIENT_SIMULATION_RUNTIME_WIRED,
+                requested_strategy=requested_strategy,
+                effective_strategy=_DEFAULT_STRATEGY,
+                reason="default direct strategy failed during boot",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
