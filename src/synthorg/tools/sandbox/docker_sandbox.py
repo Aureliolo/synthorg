@@ -542,6 +542,7 @@ class DockerSandbox(
             return await strategy.acquire(
                 owner_id=owner_key,
                 create_fn=create_fn,
+                destroy_fn=self._destroy_handle,
             )
         return await create_fn()
 

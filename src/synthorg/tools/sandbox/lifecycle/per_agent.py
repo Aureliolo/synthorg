@@ -66,12 +66,18 @@ class PerAgentStrategy:
         *,
         owner_id: str,
         create_fn: Callable[[], Awaitable[ContainerHandle]],
+        destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
     ) -> ContainerHandle:
         """Return an existing container or create a new one.
 
         Args:
             owner_id: Opaque identifier for the lifecycle owner.
             create_fn: Async factory that creates a fresh container.
+            destroy_fn: Async callback to stop and remove the losing
+                handle when a concurrent first-acquire races for the
+                same owner.  Recorded for ``owner_id`` so a later
+                ``release`` / timer teardown destroys the warm container
+                even if no explicit ``release`` ran first.
 
         Returns:
             A ``ContainerHandle`` ready for command execution.
@@ -94,9 +100,12 @@ class PerAgentStrategy:
         handle = await create_fn()
 
         loser: ContainerHandle | None = None
-        loser_destroy: Callable[[ContainerHandle], Awaitable[None]] | None = None
 
         async with self._lock:
+            # Record the destroy callback up front so the loser path
+            # (and any later release/timer teardown) always has one,
+            # even when no explicit release ran before this acquire.
+            self._destroy_fns[owner_id] = destroy_fn
             # Re-check: a concurrent acquire may have won the race.
             if owner_id in self._containers:
                 existing = self._containers[owner_id]
@@ -111,7 +120,6 @@ class PerAgentStrategy:
                 )
                 self._last_used[owner_id] = self._clock.monotonic()
                 loser = handle
-                loser_destroy = self._destroy_fns.get(owner_id)
             else:
                 existing = None
                 self._containers[owner_id] = handle
@@ -126,27 +134,18 @@ class PerAgentStrategy:
 
         # Destroy the losing handle outside the lock.
         if loser is not None:
-            if loser_destroy is not None:
-                try:
-                    await loser_destroy(loser)
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as exc:
-                    logger.warning(
-                        SANDBOX_LIFECYCLE_DESTROY_FAILED,
-                        strategy="per-agent",
-                        owner_id=owner_id,
-                        container_id=loser.container_id,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
-            else:
+            try:
+                await destroy_fn(loser)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-agent",
                     owner_id=owner_id,
                     container_id=loser.container_id,
-                    reason="no destroy_fn available for losing handle",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         return existing if existing is not None else handle

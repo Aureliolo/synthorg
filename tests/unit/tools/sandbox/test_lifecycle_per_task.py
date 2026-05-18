@@ -1,5 +1,7 @@
 """Tests for per-task lifecycle strategy."""
 
+import asyncio
+
 import pytest
 
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
@@ -10,6 +12,10 @@ pytestmark = pytest.mark.unit
 
 def _make_handle(cid: str = "c1") -> ContainerHandle:
     return ContainerHandle(container_id=cid)
+
+
+async def _noop_destroy(_handle: ContainerHandle) -> None:
+    """Destroy callback for acquire() when no race is exercised."""
 
 
 class TestPerTaskAcquire:
@@ -25,6 +31,7 @@ class TestPerTaskAcquire:
         handle = await strategy.acquire(
             owner_id="task-1",
             create_fn=create_fn,
+            destroy_fn=_noop_destroy,
         )
         assert handle is created
 
@@ -36,8 +43,12 @@ class TestPerTaskAcquire:
             calls.append(1)
             return _make_handle(f"c-{len(calls)}")
 
-        h1 = await strategy.acquire(owner_id="task-1", create_fn=create_fn)
-        h2 = await strategy.acquire(owner_id="task-1", create_fn=create_fn)
+        h1 = await strategy.acquire(
+            owner_id="task-1", create_fn=create_fn, destroy_fn=_noop_destroy
+        )
+        h2 = await strategy.acquire(
+            owner_id="task-1", create_fn=create_fn, destroy_fn=_noop_destroy
+        )
         assert h1 is h2
         assert len(calls) == 1
 
@@ -49,10 +60,45 @@ class TestPerTaskAcquire:
             calls.append(1)
             return _make_handle(f"c-{len(calls)}")
 
-        h1 = await strategy.acquire(owner_id="task-1", create_fn=create_fn)
-        h2 = await strategy.acquire(owner_id="task-2", create_fn=create_fn)
+        h1 = await strategy.acquire(
+            owner_id="task-1", create_fn=create_fn, destroy_fn=_noop_destroy
+        )
+        h2 = await strategy.acquire(
+            owner_id="task-2", create_fn=create_fn, destroy_fn=_noop_destroy
+        )
         assert h1 is not h2
         assert len(calls) == 2
+
+    async def test_concurrent_first_acquire_destroys_loser(self) -> None:
+        """A racing first-acquire tears the losing container down."""
+        strategy = PerTaskStrategy()
+        created: list[ContainerHandle] = []
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            # Yield so both callers pass the initial empty check and
+            # each create a distinct handle before either re-locks.
+            await asyncio.sleep(0)
+            handle = _make_handle(f"race-{len(created)}")
+            created.append(handle)
+            return handle
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        h1, h2 = await asyncio.gather(
+            strategy.acquire(owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn),
+            strategy.acquire(owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn),
+        )
+        # Both callers see the same retained container; the other one
+        # is destroyed rather than leaked.
+        assert h1 is h2
+        assert len(created) == 2
+        assert len(destroyed) == 1
+        retained = h1.container_id
+        assert destroyed == [
+            c.container_id for c in created if c.container_id != retained
+        ]
 
 
 class TestPerTaskRelease:
@@ -69,7 +115,9 @@ class TestPerTaskRelease:
         async def destroy_fn(h: ContainerHandle) -> None:
             destroyed.append(h)
 
-        await strategy.acquire(owner_id="t1", create_fn=create_fn)
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn
+        )
         await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
         assert destroyed == [handle]
 
@@ -97,9 +145,13 @@ class TestPerTaskRelease:
         async def destroy_fn(h: ContainerHandle) -> None:
             pass
 
-        h1 = await strategy.acquire(owner_id="t1", create_fn=create_fn)
+        h1 = await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn
+        )
         await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
-        h2 = await strategy.acquire(owner_id="t1", create_fn=create_fn)
+        h2 = await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn
+        )
         assert h1 is not h2
         assert len(calls) == 2
 
@@ -120,10 +172,12 @@ class TestPerTaskCleanup:
         await strategy.acquire(
             owner_id="t1",
             create_fn=lambda: make("c1"),
+            destroy_fn=destroy_fn,
         )
         await strategy.acquire(
             owner_id="t2",
             create_fn=lambda: make("c2"),
+            destroy_fn=destroy_fn,
         )
         await strategy.cleanup_all(destroy_fn=destroy_fn)
         assert sorted(destroyed) == ["c1", "c2"]
@@ -155,10 +209,12 @@ class TestPerTaskCleanup:
         await strategy.acquire(
             owner_id="t1",
             create_fn=lambda: make("c1"),
+            destroy_fn=destroy_fn,
         )
         await strategy.acquire(
             owner_id="t2",
             create_fn=lambda: make("c2"),
+            destroy_fn=destroy_fn,
         )
         await strategy.cleanup_all(destroy_fn=destroy_fn)
         assert "c2" in destroyed
@@ -178,7 +234,9 @@ class TestPerTaskDoubleRelease:
         async def destroy_fn(h: ContainerHandle) -> None:
             destroyed.append(h.container_id)
 
-        await strategy.acquire(owner_id="t1", create_fn=create_fn)
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn
+        )
         await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
         await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
         assert destroyed == ["double-rel"]

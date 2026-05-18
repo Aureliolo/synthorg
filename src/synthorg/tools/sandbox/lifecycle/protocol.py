@@ -61,6 +61,7 @@ class SandboxLifecycleStrategy(Protocol):
         *,
         owner_id: str,
         create_fn: Callable[[], Awaitable[ContainerHandle]],
+        destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
     ) -> ContainerHandle:
         """Get an existing container or create a new one for *owner_id*.
 
@@ -68,6 +69,11 @@ class SandboxLifecycleStrategy(Protocol):
             owner_id: Opaque identifier for the lifecycle owner (agent ID,
                 task ID, or a per-call UUID).
             create_fn: Async factory that creates a fresh container.
+            destroy_fn: Async callback that stops and removes a container
+                (and its sidecar, if any).  A reuse strategy that loses a
+                concurrent first-acquire race for *owner_id* uses this to
+                tear down the extra handle immediately, so a parallel
+                burst for one owner cannot leak warm containers.
 
         Returns:
             A ``ContainerHandle`` ready for command execution.

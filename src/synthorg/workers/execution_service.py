@@ -621,12 +621,22 @@ class AgentEngineExecutionService:
             ctx.identity,
             task_id=task_id,
         )
-        await self._engine.resume_parked_run(
-            parked_context=ctx,
-            approval_id=approval_id,
-            decision_message=decision_message,
-            effective_autonomy=effective_autonomy,
-        )
+        try:
+            await self._engine.resume_parked_run(
+                parked_context=ctx,
+                approval_id=approval_id,
+                decision_message=decision_message,
+                effective_autonomy=effective_autonomy,
+            )
+        finally:
+            # The resumed run can acquire a reusable sandbox container
+            # just like execute_once(); release the lifecycle owner at
+            # this boundary too (regardless of outcome) so per-task
+            # destroys it now and per-agent starts its grace timer.
+            await self._release_sandbox_owner(
+                identity=ctx.identity,
+                task_id=task_id,
+            )
 
     async def drain_resume_tasks(
         self,

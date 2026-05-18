@@ -367,13 +367,23 @@ class DockerSandboxExecMixin:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
+            sidecar_removed = True
             if sidecar_id:
-                await self._remove_container(docker, sidecar_id)
-            removed = await self._remove_container(docker, container_id)
-            # Keep the tracked entry (which carries sidecar_id) when
-            # removal fails so cleanup()'s sweep can retry both rather
-            # than orphaning the container and its paired sidecar.
-            if removed:
+                sidecar_removed = await self._remove_container(
+                    docker,
+                    sidecar_id,
+                )
+            container_removed = await self._remove_container(
+                docker,
+                container_id,
+            )
+            # The tracked entry carries sidecar_id, so drop it only when
+            # BOTH the container and its paired sidecar are confirmed
+            # gone; otherwise a failed sidecar delete with a successful
+            # container delete would orphan the sidecar untracked.
+            # Keeping the entry lets cleanup()'s sweep retry the
+            # survivor.
+            if container_removed and sidecar_removed:
                 await self._untrack_container(container_id)
             error_desc = safe_error_description(exc)
             logger.warning(
