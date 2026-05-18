@@ -17,9 +17,10 @@ function buildRequest(
       title: 'Add CSV export to the dashboard',
       description:
         'Operators need a CSV download for the past-30-days task table.',
-      task_type: 'feature',
+      task_type: 'development',
       priority: 'medium',
       estimated_complexity: 'medium',
+      acceptance_criteria: ['CSV download returns the past-30-days rows'],
     },
     status,
     created_at: '2026-04-29T12:00:00Z',

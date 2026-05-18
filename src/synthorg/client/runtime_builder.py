@@ -33,6 +33,9 @@ from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.engine.intake.protocol import IntakeStrategy
+    from synthorg.engine.task_engine import TaskEngine
     from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
@@ -59,71 +62,52 @@ def _select_provider(app_state: AppState) -> CompletionProvider | None:
     return registry.get(names[0])
 
 
-def build_client_simulation_runtime(
-    app_state: AppState,
-    *,
-    env: Mapping[str, str] = os.environ,
-) -> ClientSimulationState:
-    """Construct the boot client-simulation runtime state.
+def _resolve_intake_settings(env: Mapping[str, str]) -> tuple[str, str | None]:
+    """Resolve ``(strategy, model)`` from the ``simulations`` namespace.
 
-    Resolves the intake strategy / model from the ``simulations``
-    settings namespace (env > default), builds the strategy via
-    :func:`build_intake_strategy`, and returns a
-    :class:`ClientSimulationState` carrying a live
-    :class:`IntakeEngine` and a single-stage
-    :class:`ReviewPipeline` (``InternalReviewStage`` only:
-    ``ClientReviewStage`` needs a per-request client, not available
-    generically at boot).
-
-    An ``agent`` strategy that cannot be satisfied (no provider or no
-    model) degrades to ``direct`` with a WARNING rather than failing
-    boot, so a misconfigured non-default strategy never bricks the
-    runtime. A ``direct`` failure is a real defect and propagates.
-
-    Args:
-        app_state: Live application state. ``task_engine`` must be set
-            (the caller gates on this); ``provider_registry`` and
-            ``cost_tracker`` are consulted when present.
-        env: Environment mapping for the bootstrap resolver. Defaults
-            to ``os.environ``; tests pass an explicit dict.
-
-    Returns:
-        A populated :class:`ClientSimulationState`.
+    Boot-site read (env > registered default) via the bootstrap
+    resolver; ``ConfigResolver`` is not wired at construction.
     """
-    task_engine = app_state.task_engine
-    requested_strategy = str(
+    strategy = str(
         resolve_init_value(
-            SettingNamespace.SIMULATIONS,
-            _INTAKE_STRATEGY_KEY,
-            env=env,
+            SettingNamespace.SIMULATIONS, _INTAKE_STRATEGY_KEY, env=env
         ).value
     )
-    resolved_model = str(
-        resolve_init_value(
-            SettingNamespace.SIMULATIONS,
-            _INTAKE_MODEL_KEY,
-            env=env,
-        ).value
+    model = (
+        str(
+            resolve_init_value(
+                SettingNamespace.SIMULATIONS, _INTAKE_MODEL_KEY, env=env
+            ).value
+        )
+        or None
     )
-    provider = _select_provider(app_state)
-    cost_tracker = app_state.cost_tracker if app_state.has_cost_tracker else None
+    return strategy, model
 
-    config = IntakeConfig(
-        strategy=requested_strategy,
-        model=resolved_model or None,
-    )
+
+def _build_intake_with_fallback(
+    *,
+    requested_strategy: str,
+    model: str | None,
+    task_engine: TaskEngine,
+    provider: CompletionProvider | None,
+    cost_tracker: CostTracker | None,
+) -> tuple[IntakeStrategy, str]:
+    """Build the requested intake strategy, degrading ``agent`` to ``direct``.
+
+    A non-default strategy that cannot be satisfied (no provider / no
+    model) degrades to ``direct`` with a WARNING so a misconfigured
+    choice never bricks boot. A ``direct`` failure is a real defect
+    and propagates unchanged.
+    """
     try:
         strategy = build_intake_strategy(
-            config,
+            IntakeConfig(strategy=requested_strategy, model=model),
             task_engine=task_engine,
             provider=provider,
             cost_tracker=cost_tracker,
         )
-        effective_strategy = requested_strategy
     except UnknownStrategyError as exc:
         if requested_strategy == _DEFAULT_STRATEGY:
-            # A failure building the default strategy is a real bug
-            # (TaskEngine contract broken), not a config-degrade case.
             raise
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
@@ -133,13 +117,41 @@ def build_client_simulation_runtime(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        strategy = build_intake_strategy(
+        fallback = build_intake_strategy(
             IntakeConfig(strategy=_DEFAULT_STRATEGY),
             task_engine=task_engine,
         )
-        effective_strategy = _DEFAULT_STRATEGY
+        return fallback, _DEFAULT_STRATEGY
+    else:
+        return strategy, requested_strategy
 
-    intake_engine = IntakeEngine(strategy=strategy)
+
+def build_client_simulation_runtime(
+    app_state: AppState,
+    *,
+    env: Mapping[str, str] = os.environ,
+) -> ClientSimulationState:
+    """Construct the boot client-simulation runtime state.
+
+    Default ``direct`` intake makes no LLM call (works for an empty
+    company). The review pipeline is ``InternalReviewStage`` only:
+    ``ClientReviewStage`` needs a per-request client, unavailable
+    generically at boot. ``app_state.task_engine`` must be set (the
+    caller gates on this); ``provider_registry`` / ``cost_tracker``
+    are consulted when present. ``env`` overrides ``os.environ`` for
+    tests.
+    """
+    task_engine = app_state.task_engine
+    requested_strategy, model = _resolve_intake_settings(env)
+    provider = _select_provider(app_state)
+    cost_tracker = app_state.cost_tracker if app_state.has_cost_tracker else None
+    strategy, effective_strategy = _build_intake_with_fallback(
+        requested_strategy=requested_strategy,
+        model=model,
+        task_engine=task_engine,
+        provider=provider,
+        cost_tracker=cost_tracker,
+    )
     review_pipeline = ReviewPipeline(stages=(InternalReviewStage(),))
     logger.info(
         CLIENT_SIMULATION_RUNTIME_WIRED,
@@ -149,6 +161,6 @@ def build_client_simulation_runtime(
         review_stages=list(review_pipeline.stage_names),
     )
     return ClientSimulationState(
-        intake_engine=intake_engine,
+        intake_engine=IntakeEngine(strategy=strategy),
         review_pipeline=review_pipeline,
     )

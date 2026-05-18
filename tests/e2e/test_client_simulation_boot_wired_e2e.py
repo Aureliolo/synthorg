@@ -199,9 +199,19 @@ class TestBootWiredDirectIntakeHarness:
         # the first generated requirement). DirectIntake accepts every
         # request, so every requirement becomes a real task; the review
         # stage then runs on each created task.
-        assert metrics.total_requirements == 2
-        assert metrics.total_tasks_created == 2
-        assert metrics.tasks_accepted + metrics.tasks_rejected == 2
+        assert metrics.total_requirements == 2, (
+            f"expected 2 requirements (2 rounds x 1 client), got "
+            f"{metrics.total_requirements}"
+        )
+        assert metrics.total_tasks_created == 2, (
+            f"intake should create a task per requirement, got "
+            f"{metrics.total_tasks_created}"
+        )
+        assert metrics.tasks_accepted + metrics.tasks_rejected == 2, (
+            f"every created task should be reviewed, got "
+            f"{metrics.tasks_accepted} accepted + {metrics.tasks_rejected} "
+            f"rejected"
+        )
 
 
 class TestBootWiredAgentIntakeHarness:
@@ -243,6 +253,16 @@ class TestBootWiredAgentIntakeHarness:
         # The scripted provider returns ``{"accepted": true}`` for every
         # triage call, so AgentIntake accepts every requirement and
         # creates a task -- deterministic, zero real LLM spend.
-        assert metrics.total_requirements == 2
-        assert metrics.total_tasks_created == 2
-        assert metrics.tasks_accepted + metrics.tasks_rejected == 2
+        assert metrics.total_requirements == 2, (
+            f"expected 2 requirements (2 rounds x 1 client), got "
+            f"{metrics.total_requirements}"
+        )
+        assert metrics.total_tasks_created == 2, (
+            f"intake should create a task per requirement, got "
+            f"{metrics.total_tasks_created}"
+        )
+        assert metrics.tasks_accepted + metrics.tasks_rejected == 2, (
+            f"every created task should be reviewed, got "
+            f"{metrics.tasks_accepted} accepted + {metrics.tasks_rejected} "
+            f"rejected"
+        )

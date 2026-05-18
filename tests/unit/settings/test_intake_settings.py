@@ -17,16 +17,18 @@ from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace, SettingSource, SettingType
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
 def service() -> SettingsService:
-    repo = AsyncMock(spec=SettingsRepository)
-    repo.get.return_value = None
-    repo.get_namespace.return_value = ()
-    repo.list_items.return_value = ()
+    repo = mock_of[SettingsRepository](
+        get=AsyncMock(spec=SettingsRepository.get, return_value=None),
+        get_namespace=AsyncMock(spec=SettingsRepository.get_namespace, return_value=()),
+        list_items=AsyncMock(spec=SettingsRepository.list_items, return_value=()),
+    )
     return SettingsService(repository=repo, registry=get_registry())
 
 

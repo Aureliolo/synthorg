@@ -1,22 +1,15 @@
-"""Semantic ontology subsystem for the SynthOrg framework.
-
-Re-exports the public API: models, decorator, protocol, config,
-errors, service, and versioning factory.
+"""Semantic ontology subsystem public API.
 
 ``OntologyService`` and ``OntologyEntityRepository`` are exported
-lazily (PEP 562 ``__getattr__``). Eagerly importing them here pulled
-``synthorg.persistence`` -> ``synthorg.security`` at ontology-package
-import time, which closed a cross-package cycle: a low-level leaf
-model (``budget.cost_record``) only needs the lightweight
-``@ontology_entity`` decorator, but importing it ran this package
-``__init__`` and dragged persistence/security/providers, deadlocking
-whenever ``synthorg.client`` (or any consumer) was imported before
-``synthorg.api.app``. The public API is unchanged: ``from
-synthorg.ontology import OntologyService`` still works, resolved on
-first access.
+lazily (PEP 562) so importing the lightweight ``@ontology_entity``
+decorator does not pull ``persistence`` -> ``security`` at package
+import time; that eager edge closes a cross-package import cycle.
+``from synthorg.ontology import OntologyService`` still works,
+resolved and cached on first access.
 """
 
-from typing import TYPE_CHECKING
+import threading
+from typing import TYPE_CHECKING, Final
 
 from synthorg.ontology.config import (
     DelegationGuardConfig,
@@ -68,18 +61,29 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
 }
 
 
+_LAZY_EXPORT_LOCK: Final[threading.Lock] = threading.Lock()
+
+
 def __getattr__(name: str) -> object:
-    """Resolve lazily-exported symbols on first access (PEP 562)."""
-    target = _LAZY_EXPORTS.get(name)
-    if target is None:
+    """Resolve and cache a lazily-exported symbol on first access (PEP 562).
+
+    The cache write into ``globals()`` is guarded so concurrent
+    first-access from multiple threads cannot double-import the heavy
+    submodule or overwrite the cached object mid-write (mirrors
+    :mod:`synthorg.tools.mcp`).
+    """
+    if name not in _LAZY_EXPORTS:
         msg = f"module {__name__!r} has no attribute {name!r}"
         raise AttributeError(msg)
     import importlib  # noqa: PLC0415
 
-    module_path, attr = target
-    value = getattr(importlib.import_module(module_path), attr)
-    globals()[name] = value
-    return value
+    with _LAZY_EXPORT_LOCK:
+        if name in globals():
+            return globals()[name]
+        module_path, attr = _LAZY_EXPORTS[name]
+        value = getattr(importlib.import_module(module_path), attr)
+        globals()[name] = value
+        return value
 
 
 def __dir__() -> list[str]:

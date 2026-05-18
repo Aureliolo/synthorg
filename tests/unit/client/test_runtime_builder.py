@@ -6,6 +6,7 @@ agent-missing-collaborators) and ``build_client_simulation_runtime``
 """
 
 import pytest
+import structlog
 
 from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
@@ -13,6 +14,7 @@ from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.engine.intake.strategies import AgentIntake, DirectIntake
 from synthorg.engine.review.stages.internal import InternalReviewStage
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.registry import ProviderRegistry
 from tests._shared import mock_of
@@ -101,12 +103,24 @@ class TestBuildClientSimulationRuntime:
             has_task_engine=True,
             has_active_provider=False,
         )
-        state = build_client_simulation_runtime(
-            app_state,
-            env={"SYNTHORG_SIMULATIONS_INTAKE_STRATEGY": "agent"},
-        )
+        with structlog.testing.capture_logs() as cap:
+            state = build_client_simulation_runtime(
+                app_state,
+                env={"SYNTHORG_SIMULATIONS_INTAKE_STRATEGY": "agent"},
+            )
         assert state.intake_engine is not None
         assert isinstance(state.intake_engine.strategy, DirectIntake)
+        # The degradation must be observable: a WARNING naming the
+        # requested vs effective strategy, not a silent swap.
+        degrade = [
+            e
+            for e in cap
+            if e.get("event") == CLIENT_SIMULATION_RUNTIME_WIRED
+            and e.get("log_level") == "warning"
+        ]
+        assert degrade, "agent->direct degradation did not emit a WARNING"
+        assert degrade[0]["requested_strategy"] == "agent"
+        assert degrade[0]["effective_strategy"] == "direct"
 
     def test_agent_selected_with_provider_uses_agent_intake(self) -> None:
         from synthorg.api.state import AppState
@@ -132,6 +146,30 @@ class TestBuildClientSimulationRuntime:
         )
         assert state.intake_engine is not None
         assert isinstance(state.intake_engine.strategy, AgentIntake)
+
+    def test_default_strategy_build_failure_propagates(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A failed *default* strategy build is a real bug: it must not
+        be swallowed by the agent->direct degrade path."""
+        from synthorg.api.state import AppState
+        from synthorg.client import runtime_builder
+
+        def _boom(*_args: object, **_kwargs: object) -> object:
+            msg = "forced direct-strategy build failure"
+            raise UnknownStrategyError(msg)
+
+        monkeypatch.setattr(runtime_builder, "build_intake_strategy", _boom)
+        app_state = mock_of[AppState](
+            task_engine=mock_of[TaskEngine](),
+            has_task_engine=True,
+            has_active_provider=False,
+        )
+        # Default strategy is "direct"; the except branch must re-raise
+        # rather than recurse into a fallback.
+        with pytest.raises(UnknownStrategyError):
+            runtime_builder.build_client_simulation_runtime(app_state, env={})
 
 
 def test_internal_stage_name_contract() -> None:

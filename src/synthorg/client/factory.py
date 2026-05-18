@@ -8,7 +8,7 @@ silently falls through to a no-op default.
 """
 
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, NoReturn
 
 from synthorg.client.adapters import (
     DirectAdapter,
@@ -123,6 +123,24 @@ def _require_non_blank(
         raise UnknownStrategyError(msg) from exc
 
 
+def _raise_unknown_strategy(
+    *,
+    label: str,
+    factory: str,
+    strategy: str,
+    expected: frozenset[str],
+) -> NoReturn:
+    """Log and raise :class:`UnknownStrategyError` for a bad discriminator."""
+    logger.warning(
+        CLIENT_FACTORY_UNKNOWN_STRATEGY,
+        factory=factory,
+        strategy=strategy,
+        expected=sorted(expected),
+    )
+    msg = f"unknown {label} strategy {strategy!r}; expected one of {sorted(expected)}"
+    raise UnknownStrategyError(msg)
+
+
 _REQ_GEN_FACTORY = "requirement_generator"
 
 
@@ -206,34 +224,16 @@ def build_requirement_generator(
     model: NotBlankStr | None = None,
     cost_tracker: CostTracker | None = None,
 ) -> RequirementGenerator:
-    """Construct a ``RequirementGenerator`` from configuration.
+    """Construct a ``RequirementGenerator`` from ``config.strategy``.
 
-    Dispatches on ``config.strategy``:
-
-    * ``template`` -> ``TemplateGenerator``
-    * ``llm`` -> ``LLMGenerator`` (requires ``provider`` + ``model``;
-      threads ``cost_tracker`` through so the chokepoint records each
-      generated batch).
-    * ``dataset`` -> ``DatasetGenerator`` (requires ``dataset_path``)
-    * ``procedural`` -> ``ProceduralGenerator``
-    * ``hybrid`` is **intentionally excluded** from factory dispatch:
-      ``HybridGenerator`` composes multiple generators with weights
-      and has no single-argument factory, so it must be constructed
-      manually. Passing ``strategy="hybrid"`` here raises
-      ``UnknownStrategyError``.
-
-    Args:
-        config: Strategy + per-strategy configuration.
-        provider: LLM provider used by the ``llm`` strategy.
-            Ignored by other strategies.
-        model: Model identifier used by the ``llm`` strategy when
-            the config does not pin one.  Ignored by other strategies.
-        cost_tracker: Optional :class:`CostTracker` propagated to
-            the ``llm`` strategy so cost-recording (`CostRecord`) is
-            emitted on each generated batch.  Ignored by all other
-            strategies (template / dataset / procedural don't talk
-            to a provider).  When ``None``, the ``llm`` strategy
-            still works -- the chokepoint just stays silent.
+    ``template`` -> ``TemplateGenerator``; ``llm`` -> ``LLMGenerator``
+    (needs ``provider`` + ``model``; ``cost_tracker`` threaded through
+    so the chokepoint records each batch); ``dataset`` ->
+    ``DatasetGenerator`` (needs ``dataset_path``); ``procedural`` ->
+    ``ProceduralGenerator``. ``hybrid`` is intentionally excluded
+    (``HybridGenerator`` composes weighted generators and has no
+    single-argument factory); passing it raises
+    :class:`UnknownStrategyError`.
     """
     strategy = str(config.strategy)
     if strategy == "template":
@@ -252,17 +252,12 @@ def build_requirement_generator(
         return ProceduralGenerator()
     if strategy == "hybrid":
         return _reject_hybrid_generator(config, strategy)
-    logger.warning(
-        CLIENT_FACTORY_UNKNOWN_STRATEGY,
+    _raise_unknown_strategy(
+        label="requirement generator",
         factory=_REQ_GEN_FACTORY,
         strategy=strategy,
-        expected=sorted(_GENERATOR_STRATEGIES),
+        expected=_GENERATOR_STRATEGIES,
     )
-    msg = (
-        f"unknown requirement generator strategy {strategy!r}; "
-        f"expected one of {sorted(_GENERATOR_STRATEGIES)}"
-    )
-    raise UnknownStrategyError(msg)
 
 
 def build_feedback_strategy(
@@ -405,6 +400,39 @@ def build_entry_point_strategy(
     raise UnknownStrategyError(msg)
 
 
+def _build_agent_intake(
+    config: IntakeConfig,
+    *,
+    task_engine: TaskEngine,
+    provider: CompletionProvider | None,
+    cost_tracker: CostTracker | None,
+) -> IntakeStrategy:
+    """Build the LLM-triage ``AgentIntake`` (needs provider + model)."""
+    from synthorg.engine.intake import AgentIntake  # noqa: PLC0415
+
+    if provider is None:
+        logger.warning(
+            CLIENT_FACTORY_UNKNOWN_STRATEGY,
+            factory=_INTAKE_FACTORY,
+            strategy="agent",
+            missing="provider",
+        )
+        msg = "agent intake strategy requires a completion provider"
+        raise UnknownStrategyError(msg)
+    model = _require_non_blank(
+        config.model,
+        factory=_INTAKE_FACTORY,
+        strategy="agent",
+        field="model",
+    )
+    return AgentIntake(
+        task_engine=task_engine,
+        provider=provider,
+        model=NotBlankStr(model),
+        cost_tracker=cost_tracker,
+    )
+
+
 def build_intake_strategy(
     config: IntakeConfig,
     *,
@@ -414,78 +442,29 @@ def build_intake_strategy(
 ) -> IntakeStrategy:
     """Construct an ``IntakeStrategy`` from ``config.strategy``.
 
-    Dispatches on ``config.strategy`` in ``{direct, agent}``:
-
-    * ``direct`` -> :class:`DirectIntake` (no LLM; creates a task per
-      accepted request via ``task_engine``).
-    * ``agent`` -> :class:`AgentIntake` (LLM-driven triage). Requires a
-      ``provider`` and a non-blank ``config.model``.
-
-    Misconfiguration fails loudly with :class:`UnknownStrategyError`
-    rather than silently falling back to a default; the caller (the
-    client-simulation runtime builder) decides whether an ``agent``
-    misconfiguration should degrade to ``direct``.
-
-    Args:
-        config: Intake configuration carrying the strategy
-            discriminator and (for ``agent``) the model id.
-        task_engine: Task engine used to create tasks on acceptance.
-        provider: Completion provider for the ``agent`` strategy.
-            Required when ``config.strategy == "agent"``.
-        cost_tracker: Optional cost tracker threaded into
-            :class:`AgentIntake` so its LLM calls emit cost records.
-
-    Returns:
-        The concrete intake strategy implementation.
-
-    Raises:
-        UnknownStrategyError: If ``config.strategy`` is unknown, or
-            ``agent`` is selected without a provider or model.
+    ``direct`` -> :class:`DirectIntake` (no LLM). ``agent`` ->
+    :class:`AgentIntake` (LLM triage; needs ``provider`` and a
+    non-blank ``config.model``). Misconfiguration fails loudly with
+    :class:`UnknownStrategyError`; the caller decides whether to
+    degrade. ``cost_tracker`` is threaded into ``AgentIntake``.
     """
-    # Lazy import: ``synthorg.engine.intake`` pulls the provider /
-    # prompt-safety / task-engine graph. ``synthorg.client`` is imported
-    # at process start (CLI / API boot); a module-top import here would
-    # force that heavy subtree at client-package import time even for
-    # callers that never touch intake. PLC0415 is the sanctioned
-    # cross-subsystem-wiring pattern in this codebase.
-    from synthorg.engine.intake import (  # noqa: PLC0415
-        AgentIntake,
-        DirectIntake,
-    )
+    # Lazy: synthorg.engine.intake pulls the provider/prompt-safety
+    # graph; keep it off the synthorg.client package-import path.
+    from synthorg.engine.intake import DirectIntake  # noqa: PLC0415
 
     strategy = config.strategy
     if strategy == "direct":
         return DirectIntake(task_engine=task_engine)
     if strategy == "agent":
-        if provider is None:
-            logger.warning(
-                CLIENT_FACTORY_UNKNOWN_STRATEGY,
-                factory=_INTAKE_FACTORY,
-                strategy=strategy,
-                missing="provider",
-            )
-            msg = "agent intake strategy requires a completion provider"
-            raise UnknownStrategyError(msg)
-        model = _require_non_blank(
-            config.model,
-            factory=_INTAKE_FACTORY,
-            strategy=strategy,
-            field="model",
-        )
-        return AgentIntake(
+        return _build_agent_intake(
+            config,
             task_engine=task_engine,
             provider=provider,
-            model=NotBlankStr(model),
             cost_tracker=cost_tracker,
         )
-    logger.warning(
-        CLIENT_FACTORY_UNKNOWN_STRATEGY,
+    _raise_unknown_strategy(
+        label="intake",
         factory=_INTAKE_FACTORY,
         strategy=strategy,
-        expected=sorted(_INTAKE_STRATEGIES),
+        expected=_INTAKE_STRATEGIES,
     )
-    msg = (
-        f"unknown intake strategy {strategy!r}; "
-        f"expected one of {sorted(_INTAKE_STRATEGIES)}"
-    )
-    raise UnknownStrategyError(msg)

@@ -17,7 +17,7 @@ import type {
   listSimulations,
   rejectRequest,
   scopeRequest,
-  SimulationStatus,
+  SimulationStatusResponse,
   startSimulation,
   submitRequest,
   TaskRequirement,
@@ -60,8 +60,8 @@ export function buildRequest(overrides: Partial<ClientRequest> = {}): ClientRequ
 }
 
 export function buildSimulation(
-  overrides: Partial<SimulationStatus> = {},
-): SimulationStatus {
+  overrides: Partial<SimulationStatusResponse> = {},
+): SimulationStatusResponse {
   return {
     simulation_id: 'sim-default',
     status: 'idle',
@@ -187,7 +187,9 @@ export const clientsHandlers = [
     ),
   ),
   http.post('/api/v1/simulations/', async ({ request }) => {
-    const body = (await request.json()) as { config?: SimulationStatus['config'] }
+    const body = (await request.json()) as {
+      config?: SimulationStatusResponse['config']
+    }
     return HttpResponse.json(
       successFor<typeof startSimulation>(
         buildSimulation({

@@ -5,11 +5,17 @@ project conventions. Used to configure simulation runs, client
 pools, requirement generators, and feedback strategies.
 """
 
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+# Acceptance band for the AI/human/hybrid pool-ratio sum: floating
+# point makes an exact == 1.0 check brittle, so a +/-1% tolerance is
+# allowed around the unit sum.
+_RATIO_SUM_TOLERANCE_LOW: Final[float] = 0.99
+_RATIO_SUM_TOLERANCE_HIGH: Final[float] = 1.01
 
 
 class RequirementGeneratorConfig(BaseModel):
@@ -123,9 +129,7 @@ class ClientPoolConfig(BaseModel):
     def _validate_ratio_sum(self) -> Self:
         """Ensure ratios sum to approximately 1.0."""
         total = self.ai_ratio + self.human_ratio + self.hybrid_ratio
-        _tolerance_low = 0.99
-        _tolerance_high = 1.01
-        if not (_tolerance_low <= total <= _tolerance_high):
+        if not (_RATIO_SUM_TOLERANCE_LOW <= total <= _RATIO_SUM_TOLERANCE_HIGH):
             msg = (
                 f"Ratios must sum to approximately 1.0, got "
                 f"{self.ai_ratio} + {self.human_ratio} + "

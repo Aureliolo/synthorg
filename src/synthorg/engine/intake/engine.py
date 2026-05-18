@@ -8,6 +8,8 @@ from synthorg.observability.events.client import (
     CLIENT_REQUEST_APPROVED,
     CLIENT_REQUEST_REJECTED,
     CLIENT_REQUEST_SCOPED,
+    CLIENT_REQUEST_TRANSITION_CONFIG_ERROR,
+    CLIENT_REQUEST_TRANSITION_INVALID,
     CLIENT_REQUEST_TRIAGING,
 )
 from synthorg.observability.events.review_pipeline import (
@@ -67,6 +69,14 @@ class IntakeEngine:
             ValueError: If ``request.status`` is not ``SUBMITTED``.
         """
         if request.status is not RequestStatus.SUBMITTED:
+            logger.warning(
+                CLIENT_REQUEST_TRANSITION_INVALID,
+                request_id=request.request_id,
+                client_id=request.client_id,
+                from_status=request.status.value,
+                expected=RequestStatus.SUBMITTED.value,
+                operation="process",
+            )
             msg = (
                 "IntakeEngine.process requires SUBMITTED request, "
                 f"got {request.status.value!r}"
@@ -115,6 +125,14 @@ class IntakeEngine:
             ValueError: If ``request.status`` is not ``SCOPING``.
         """
         if request.status is not RequestStatus.SCOPING:
+            logger.warning(
+                CLIENT_REQUEST_TRANSITION_INVALID,
+                request_id=request.request_id,
+                client_id=request.client_id,
+                from_status=request.status.value,
+                expected=RequestStatus.SCOPING.value,
+                operation="finalize_scoped",
+            )
             msg = (
                 "IntakeEngine.finalize_scoped requires SCOPING request, "
                 f"got {request.status.value!r}"
@@ -131,6 +149,12 @@ class IntakeEngine:
         result: IntakeResult,
     ) -> tuple[ClientRequest, IntakeResult]:
         if result.task_id is None:
+            logger.error(
+                CLIENT_REQUEST_TRANSITION_CONFIG_ERROR,
+                request_id=request.request_id,
+                client_id=request.client_id,
+                reason="accepted intake result missing task_id",
+            )
             msg = "Accepted intake result missing task_id"
             raise ValueError(msg)
         approved = request.with_status(RequestStatus.APPROVED)
