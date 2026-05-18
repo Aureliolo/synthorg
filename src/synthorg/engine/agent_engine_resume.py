@@ -17,6 +17,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_COMPLETED,
+    APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_STARTED,
 )
 from synthorg.providers.enums import MessageRole
@@ -99,7 +100,7 @@ class AgentEngineResumeMixin:
                 f"task_execution; a parked agent must be task-bound"
             )
             logger.error(
-                APPROVAL_GATE_RESUME_STARTED,
+                APPROVAL_GATE_RESUME_FAILED,
                 approval_id=approval_id,
                 note=msg,
             )
