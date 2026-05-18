@@ -611,7 +611,7 @@ class SubprocessSandbox:
         """Subprocesses are ephemeral -- no resources to release."""
         logger.debug(SANDBOX_CLEANUP, backend="subprocess")
 
-    async def release_owner(self, owner_id: str) -> None:
+    async def release_owner(self, owner_id: NotBlankStr) -> None:
         """No-op -- subprocesses hold no per-owner resources."""
 
     async def health_check(self) -> bool:

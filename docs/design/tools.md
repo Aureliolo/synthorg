@@ -57,7 +57,7 @@ isolation for high-risk tools.
 | Backend | Isolation | Latency | Dependencies | Status |
 |---------|-----------|---------|--------------|--------|
 | `SubprocessSandbox` | Process-level: env filtering (allowlist + denylist), restricted PATH (configurable via `extra_safe_path_prefixes`), workspace-scoped cwd, timeout + process-group kill, library injection var blocking, explicit transport cleanup on Windows | ~ms | None | Implemented |
-| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network (default) or sidecar-based host:port allowlist (dual-layer DNS + DNAT transparent proxy), resource limits (CPU/memory/time) | ~1-2s cold start | Docker | Implemented |
+| `DockerSandbox` | Container-level: keep-alive container reused per the configured lifecycle strategy (`per-agent` default; `per-call` for maximum isolation), mounted workspace, no network (default) or sidecar-based host:port allowlist (dual-layer DNS + DNAT transparent proxy), resource limits (CPU/memory/time) | ~1-2s on first acquire; reused warm thereafter | Docker | Implemented |
 | `K8sSandbox` | Pod-level: per-agent containers, namespace isolation, resource quotas, network policies | ~2-5s | Kubernetes | Planned |
 
 ???+ note "Default Layered Sandbox Configuration"
@@ -93,7 +93,7 @@ isolation for high-risk tools.
         sidecar_pids_limit: 32             # PID cap for the stdio sidecar helper
         sidecar_tmpfs_size: "8m"           # tmpfs for the stdio sidecar helper
         mount_mode: "ro"                   # read-only by default
-        auto_remove: true                  # ephemeral -- container removed after execution
+        auto_remove: true                  # remove the container once its lifecycle strategy tears it down
       k8s:                                 # planned -- per-agent pod isolation
         namespace: "synthorg-agents"
         resource_requests:
