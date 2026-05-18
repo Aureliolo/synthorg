@@ -22,6 +22,7 @@ _CREATE_TABLE = """
         description TEXT NOT NULL,
         requested_by TEXT NOT NULL,
         risk_level TEXT NOT NULL DEFAULT 'medium',
+        source TEXT NOT NULL DEFAULT 'review_gate',
         status TEXT NOT NULL DEFAULT 'pending',
         created_at TEXT NOT NULL,
         expires_at TEXT,

@@ -1149,6 +1149,9 @@ CREATE TABLE approvals (
     risk_level TEXT NOT NULL DEFAULT 'medium' CHECK (
         risk_level IN ('low', 'medium', 'high', 'critical')
     ),
+    source TEXT NOT NULL DEFAULT 'review_gate' CHECK (
+        source IN ('parked_context', 'review_gate')
+    ),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
         status IN ('pending', 'approved', 'rejected', 'expired')
     ),

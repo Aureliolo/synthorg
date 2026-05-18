@@ -128,6 +128,15 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
         task_engine=task_engine,
         agent_registry=agent_registry,
         approval_store=approval_store,
+        # No boot-shared gate / trust service is pre-wired here, so the
+        # engine builds its own ApprovalGate from ``approval_store``
+        # (the path this acceptance test exercises). Leaving these as
+        # ``mock_of`` defaults would inject a MagicMock gate that the
+        # ``_approval_gate`` factory returns unconditionally, defeating
+        # the store-backed fallback and crashing park serialization.
+        approval_gate=None,
+        has_trust_service=False,
+        trust_service=None,
         clock=SystemClock(),
         event_stream_hub=None,
         interrupt_store=None,

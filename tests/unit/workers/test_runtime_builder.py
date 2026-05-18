@@ -67,6 +67,7 @@ def _provider_app_state(
             has_audit_log=False,
             has_memory_backend=False,
             has_performance_tracker=False,
+            has_trust_service=False,
         ),
     )
 

@@ -35,7 +35,9 @@ from synthorg.observability.events.hr import (
     HR_REGISTRY_STATUS_UPDATED,
 )
 from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,
     SECURITY_AUTONOMY_PROMOTION_DENIED,
+    SECURITY_AUTONOMY_PROMOTION_GRANTED,
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
@@ -641,62 +643,157 @@ class AgentRegistryService:
             requested_by=update.requested_by,
         )
 
-        approval_id: str | None = None
-        approval_enqueued = False
-        if approval_store is not None:
-            # Local import breaks the import cycle:
-            # ``synthorg.core.approval`` -> ``synthorg.ontology.decorator`` ->
-            # ... -> ``synthorg.communication.meeting.participant`` ->
-            # ``synthorg.hr.registry``. The class is only needed inside this
-            # branch, so deferring the import to call time keeps module
-            # bootstrap acyclic without weakening the call-site contract.
-            from synthorg.core.approval import (  # noqa: PLC0415
-                ApprovalItem as _ApprovalItem,
-            )
-
-            # 16 hex chars (64 bits) keeps collision probability negligible
-            # for approval-queue volumes while still fitting compactly into
-            # log lines and audit trails.
-            approval_id = f"approval-{uuid.uuid4().hex[:16]}"
-            requested_by = update.requested_by or "system"
-            item = _ApprovalItem(
-                id=approval_id,
-                action_type="autonomy:promote",
-                title=(
-                    f"Autonomy change for {key}: "
-                    f"{current_level.value} -> {update.requested_level.value}"
-                ),
-                description=update.reason,
-                requested_by=requested_by,
-                risk_level=ApprovalRiskLevel.HIGH,
-                status=ApprovalStatus.PENDING,
-                created_at=datetime.now(UTC),
-                metadata={
-                    "agent_id": key,
-                    "current_level": current_level.value,
-                    "requested_level": update.requested_level.value,
-                },
-            )
-            await approval_store.add(item)
-            approval_enqueued = True
-
-        # Mirror REST: every change pends; nothing mutates the agent's
-        # identity here.  The approval queue drives any subsequent
-        # apply, which is out of scope for META-MCP-3.
-        logger.info(
-            SECURITY_AUTONOMY_PROMOTION_DENIED,
-            agent_id=key,
-            requested_level=update.requested_level.value,
-            reason="Autonomy level changes require human approval",
+        # The strategy verdict is enforced, not audit-only: a granting
+        # strategy auto-decides the approval and the level change is
+        # applied here; the HUMAN_ONLY default leaves it pending.
+        granted = update.granted_by_strategy is not None
+        now = datetime.now(UTC)
+        # 16 hex chars (64 bits) keeps collision probability negligible
+        # for approval-queue volumes while still fitting compactly into
+        # log lines and audit trails.
+        approval_id = f"approval-{uuid.uuid4().hex[:16]}"
+        # Local import breaks the import cycle:
+        # ``synthorg.core.approval`` -> ``synthorg.ontology.decorator`` ->
+        # ... -> ``synthorg.communication.meeting.participant`` ->
+        # ``synthorg.hr.registry``. Deferring to call time keeps module
+        # bootstrap acyclic without weakening the call-site contract.
+        from synthorg.core.approval import (  # noqa: PLC0415
+            ApprovalItem as _ApprovalItem,
         )
 
+        requested_by = update.requested_by or "system"
+        base_metadata = {
+            "agent_id": key,
+            "current_level": current_level.value,
+            "requested_level": update.requested_level.value,
+        }
+        title = (
+            f"Autonomy change for {key}: "
+            f"{current_level.value} -> {update.requested_level.value}"
+        )
+
+        if not granted:
+            # HUMAN_ONLY (default): the request pends; nothing mutates
+            # the agent's identity until a human decides. A PENDING row
+            # is non-terminal, so persisting it before any mutation is
+            # the designed behaviour, not a false audit.
+            approval_enqueued = False
+            if approval_store is not None:
+                await approval_store.add(
+                    _ApprovalItem(
+                        id=approval_id,
+                        action_type="autonomy:promote",
+                        title=title,
+                        description=update.reason,
+                        requested_by=requested_by,
+                        risk_level=ApprovalRiskLevel.HIGH,
+                        status=ApprovalStatus.PENDING,
+                        created_at=now,
+                        metadata=base_metadata,
+                    ),
+                )
+                approval_enqueued = True
+            logger.info(
+                SECURITY_AUTONOMY_PROMOTION_DENIED,
+                agent_id=key,
+                requested_level=update.requested_level.value,
+                reason="Autonomy level changes require human approval",
+            )
+            return AutonomyUpdateResult(
+                agent_id=key,
+                current_level=current_level,
+                requested_level=update.requested_level,
+                promotion_pending=True,
+                approval_enqueued=approval_enqueued,
+                approval_id=approval_id if approval_enqueued else None,
+            )
+
+        # Strategy granted: apply the level change FIRST so a terminal
+        # (APPROVED) approval row is only persisted once the mutation
+        # has actually succeeded -- otherwise a failure in the await
+        # gap (agent unregistered / registry cleared) would leave an
+        # APPROVED audit row claiming a promotion that never happened.
+        async with self._lock:
+            live = self._agents.get(key)
+            if live is None:
+                msg = f"Agent {agent_id!r} not found in registry"
+                raise AgentNotFoundError(msg)
+            applied = live.model_copy(
+                update={"autonomy_level": update.requested_level},
+            )
+            self._agents[key] = applied
+        await self._snapshot(
+            applied,
+            saved_by=f"autonomy_strategy_grant:{key}",
+        )
+
+        approval_enqueued = False
+        if approval_store is not None:
+            # Dual-write: the autonomy mutation above is the source of
+            # truth and is already persisted via _snapshot. The
+            # APPROVED row is a best-effort audit artifact -- if its
+            # write fails we log loudly and report the (correct)
+            # promotion, rather than roll back a valid state change or
+            # 5xx the caller. Any add/mutate ordering only moves the
+            # failure window; soft-failing the audit write is what
+            # makes the operation safe regardless of order.
+            try:
+                await approval_store.add(
+                    _ApprovalItem(
+                        id=approval_id,
+                        action_type="autonomy:promote",
+                        title=title,
+                        description=update.reason,
+                        requested_by=requested_by,
+                        risk_level=ApprovalRiskLevel.HIGH,
+                        # Auto-decided: the queue stays the apply driver
+                        # and the audit trail is intact. ``decided_at``
+                        # / ``decided_by`` satisfy the APPROVED
+                        # invariant.
+                        status=ApprovalStatus.APPROVED,
+                        created_at=now,
+                        decided_at=now,
+                        decided_by=f"strategy:{update.granted_by_strategy}",
+                        metadata={
+                            **base_metadata,
+                            "granted_by_strategy": str(
+                                update.granted_by_strategy,
+                            ),
+                        },
+                    ),
+                )
+                approval_enqueued = True
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.error(
+                    SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,
+                    agent_id=key,
+                    approval_id=approval_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note=(
+                        "autonomy promotion applied; audit row write "
+                        "failed -- promotion is the source of truth"
+                    ),
+                )
+        result_id = approval_id if approval_enqueued else None
+        # State transition logged AFTER the persistence write.
+        logger.info(
+            SECURITY_AUTONOMY_PROMOTION_GRANTED,
+            agent_id=key,
+            previous_level=current_level.value,
+            requested_level=update.requested_level.value,
+            granted_by_strategy=str(update.granted_by_strategy),
+            approval_id=result_id,
+        )
         return AutonomyUpdateResult(
             agent_id=key,
-            current_level=current_level,
+            current_level=update.requested_level,
             requested_level=update.requested_level,
-            promotion_pending=True,
+            promotion_pending=False,
             approval_enqueued=approval_enqueued,
-            approval_id=approval_id,
+            approval_id=result_id,
         )
 
     async def agent_count(self) -> int:

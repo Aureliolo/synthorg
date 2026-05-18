@@ -116,6 +116,9 @@ from synthorg.providers.management.service import (
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
 from synthorg.security.audit import AuditLog  # noqa: TC001
+from synthorg.security.autonomy.protocol import (
+    AutonomyChangeStrategy,  # noqa: TC001
+)
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.security.trust.service import TrustService  # noqa: TC001
 from synthorg.settings.bridge_configs import (
@@ -188,6 +191,7 @@ class AppState(AppStateServicesMixin):
         "_auth_revalidate_max_failures",
         "_auth_revalidate_window_seconds",
         "_auth_service",
+        "_autonomy_change_strategy",
         "_backup_facade_service",
         "_backup_service",
         "_bridge_config_applied",
@@ -344,6 +348,7 @@ class AppState(AppStateServicesMixin):
         ontology_service: OntologyService | None = None,
         audit_log: AuditLog | None = None,
         trust_service: TrustService | None = None,
+        autonomy_change_strategy: AutonomyChangeStrategy | None = None,
         coordination_metrics_store: CoordinationMetricsStore | None = None,
         connection_catalog: ConnectionCatalog | None = None,
         oauth_token_manager: OAuthTokenManager | None = None,
@@ -383,6 +388,7 @@ class AppState(AppStateServicesMixin):
         self._agent_registry = agent_registry
         self._performance_tracker = performance_tracker
         self._trust_service = trust_service
+        self._autonomy_change_strategy = autonomy_change_strategy
         self._telemetry_collector: TelemetryCollector | None = None
         self._report_service: AutomatedReportService | None = None
         self._meeting_orchestrator = meeting_orchestrator
@@ -1047,6 +1053,18 @@ class AppState(AppStateServicesMixin):
         """Return approval gate, or None if not configured."""
         return self._approval_gate
 
+    def set_approval_gate(self, gate: ApprovalGate) -> None:
+        """Wire the single boot ApprovalGate (once-only).
+
+        Constructed in ``lifecycle_builder`` once persistence is
+        connected and shared by both governance sides: the engine
+        (park, injected via ``runtime_builder``) and the ``/approvals``
+        controller (resume, read via :attr:`approval_gate`). One gate
+        over one ``ParkedContextRepository`` is the invariant that lets
+        a parked context actually resume.
+        """
+        self._set_once("_approval_gate", gate, "Approval gate")
+
     @property
     def event_stream_hub(self) -> EventStreamHub | None:
         """Return event stream hub, or None if not configured."""
@@ -1279,6 +1297,19 @@ class AppState(AppStateServicesMixin):
     def has_trust_service(self) -> bool:
         """Check whether the trust service is configured."""
         return self._trust_service is not None
+
+    @property
+    def autonomy_change_strategy(self) -> AutonomyChangeStrategy:
+        """Return the configured autonomy-change strategy or raise 503."""
+        return self._require_service(
+            self._autonomy_change_strategy,
+            "autonomy_change_strategy",
+        )
+
+    @property
+    def has_autonomy_change_strategy(self) -> bool:
+        """Check whether the autonomy-change strategy is configured."""
+        return self._autonomy_change_strategy is not None
 
     @property
     def has_telemetry_collector(self) -> bool:

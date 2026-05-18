@@ -7,6 +7,9 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.security.autonomy.change_strategy_config import (
+    AutonomyStrategyConfig,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
 
@@ -151,13 +154,21 @@ class AutonomyConfig(BaseModel):
             "Default company autonomy level. Ships as 'supervised' so"
             " most state-mutating agent actions queue for approval;"
             " raise to 'semi' or 'full' once operators trust the"
-            " organization. Kept in sync with the"
+            " organisation. Kept in sync with the"
             " ``company.autonomy_level`` SettingDefinition default."
         ),
     )
     presets: dict[str, AutonomyPreset] = Field(
         default_factory=lambda: dict(BUILTIN_PRESETS),
         description="Available autonomy presets",
+    )
+    change_strategy: AutonomyStrategyConfig = Field(
+        default_factory=AutonomyStrategyConfig,
+        description=(
+            "Runtime autonomy-change strategy selection (promotion /"
+            " downgrade / recovery). Default kind=HUMAN_ONLY: every"
+            " promotion request routes through human approval."
+        ),
     )
 
     @model_validator(mode="before")
@@ -248,6 +259,16 @@ class AutonomyUpdate(BaseModel):
     requested_by: NotBlankStr | None = Field(
         default=None,
         description="Identifier of the requesting actor",
+    )
+    granted_by_strategy: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "When set, the AutonomyChangeStrategy granted this change "
+            "immediately (its name, for audit attribution). The registry "
+            "then applies the level change and records an auto-decided "
+            "APPROVED approval item instead of pending for human review. "
+            "``None`` (the HUMAN_ONLY default) keeps the request pending."
+        ),
     )
 
     @model_validator(mode="after")

@@ -17,6 +17,7 @@ from pydantic import (
 
 from synthorg.core.enums import (
     ApprovalRiskLevel,
+    ApprovalSource,
     ApprovalStatus,
 )
 from synthorg.core.evidence import EvidencePackage  # noqa: TC001
@@ -42,6 +43,12 @@ class ApprovalItem(BaseModel):
         decided_by: Who made the decision (set on approve/reject).
         decision_reason: Reason for the decision (required on reject).
         task_id: Optional associated task identifier.
+        source: Origin discriminator fixed at creation. Routes a
+            decided approval deterministically (parked-context resume
+            vs. review gate) without a live parked-context probe.
+            Defaults to ``REVIEW_GATE``; the two park producers (SecOps
+            escalation and the ``request_human_approval`` tool) set
+            ``PARKED_CONTEXT``.
         metadata: Additional key-value metadata.
     """
 
@@ -53,6 +60,7 @@ class ApprovalItem(BaseModel):
     description: NotBlankStr
     requested_by: NotBlankStr
     risk_level: ApprovalRiskLevel
+    source: ApprovalSource = ApprovalSource.REVIEW_GATE
     status: ApprovalStatus = ApprovalStatus.PENDING
     created_at: AwareDatetime
     expires_at: AwareDatetime | None = None

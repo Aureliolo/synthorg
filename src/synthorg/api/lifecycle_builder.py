@@ -195,6 +195,74 @@ async def _wire_workflow_observer(
     task_engine.register_observer(observer)  # type: ignore[attr-defined]
 
 
+async def _wire_approval_gate(
+    persistence: PersistenceBackend | None,
+    app_state: AppState,
+) -> None:
+    """Construct the single boot ApprovalGate once persistence connects.
+
+    One gate, shared by both governance sides: the engine parks blocked
+    contexts (the gate is injected into ``AgentEngine`` by
+    ``runtime_builder``) and the ``/approvals`` controller resumes them
+    (read via ``app_state.approval_gate``). Park and resume must operate
+    on the same gate over the same ``ParkedContextRepository`` or a
+    parked context can never be found again on the decision side.
+
+    Idempotent: a re-entered lifespan (shared-app test fixtures) skips
+    when a gate is already wired. When persistence is absent or not
+    connected the gate is still constructed (with no parked repo) so the
+    single-gate invariant and the review-gate flow hold; resume of a
+    persisted context is simply unavailable without a backend.
+    """
+    if app_state.approval_gate is not None:
+        return
+    from synthorg.engine.approval_gate import ApprovalGate  # noqa: PLC0415
+    from synthorg.security.timeout.park_service import (  # noqa: PLC0415
+        ParkService,
+    )
+
+    parked_repo = None
+    if (
+        persistence is not None
+        and getattr(persistence, "is_connected", False)
+        and hasattr(persistence, "parked_contexts")
+    ):
+        parked_repo = persistence.parked_contexts
+    # The boot gate bypasses the engine's _make_approval_gate(), so the
+    # configured approval-interrupt timeout must be threaded in here
+    # explicitly or any non-default setting is silently ignored once
+    # the shared gate is in use. When the resolver is not yet wired
+    # (early boot / minimal test states) fall back to the
+    # EngineBridgeConfig seed default rather than failing gate wiring.
+    if app_state.has_config_resolver:
+        engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+        interrupt_timeout = engine_bridge.approval_interrupt_timeout_seconds
+    else:
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            EngineBridgeConfig,
+        )
+
+        interrupt_timeout = EngineBridgeConfig().approval_interrupt_timeout_seconds
+    gate = ApprovalGate(
+        park_service=ParkService(),
+        parked_context_repo=parked_repo,
+        notification_dispatcher=(
+            app_state.notification_dispatcher
+            if app_state.has_notification_dispatcher
+            else None
+        ),
+        event_hub=app_state.event_stream_hub,
+        interrupt_store=app_state.interrupt_store,
+        interrupt_timeout_seconds=interrupt_timeout,
+    )
+    app_state.set_approval_gate(gate)
+    logger.info(
+        API_SERVICE_AUTO_WIRED,
+        service="approval_gate",
+        has_parked_context_repo=parked_repo is not None,
+    )
+
+
 def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
@@ -629,6 +697,34 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 )
                 raise
 
+        # Single boot ApprovalGate: wired here (after persistence
+        # connects, before the appended worker-execution-service install
+        # hook reads ``app_state.approval_gate``) so the engine parks
+        # and the /approvals controller resumes on one gate. Non-fatal:
+        # a failure degrades to the review-gate flow rather than aborting
+        # boot, matching the other persistence-bound auto-wires.
+        try:
+            await _wire_approval_gate(persistence, app_state)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # In provider-present mode the engine WILL run agents and
+            # park them; if the shared gate is unset the runtime builds
+            # its own private gate from _approval_store, splitting park
+            # and resume across instances so parked runs can never be
+            # resumed via /approvals. A boot that "succeeds" into that
+            # state is worse than a clear failure -- abort. Without a
+            # provider no agent runs, so the review-gate degrade is
+            # acceptable and stays a warning.
+            logger.warning(
+                API_SERVICE_AUTO_WIRE_FAILED,
+                service="approval_gate",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            if app_state.has_active_provider:
+                raise
+
         # When an external caller already supplied a
         # ``TrainingService`` to ``create_app()``, we skip the
         # auto-wire below but the injected service still owns a live
@@ -891,6 +987,20 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         # or raises. Mirrors the ``on_startup`` emission at the top of
         # that function.
         logger.info(API_APP_SHUTDOWN, version=__version__)
+        # Drain in-flight parked-context resumes (background tasks
+        # spawned off the /approvals path) before teardown so an
+        # approved resume is not silently dropped mid-flight. Read the
+        # private slot rather than the property so shutdown does not
+        # lazily construct the lifecycle-baseline default; only the
+        # agent-runtime service exposes ``drain_resume_tasks``.
+        _wes = getattr(app_state, "_worker_execution_service", None)
+        _drain_resumes = getattr(_wes, "drain_resume_tasks", None)
+        if callable(_drain_resumes):
+            await _try_stop(
+                cast("Awaitable[None]", _drain_resumes()),
+                API_APP_SHUTDOWN,
+                "Failed to drain in-flight parked-context resumes",
+            )
         # Disconnect training memory backend if auto-wired.
         if _training_memory_backend is not None:
             # If this backend was published to ``app_state.memory_backend``

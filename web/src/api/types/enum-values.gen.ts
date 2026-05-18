@@ -37,6 +37,12 @@ export const APPROVAL_RISK_LEVEL_VALUES = [
 ] as const
 export type ApprovalRiskLevel = (typeof APPROVAL_RISK_LEVEL_VALUES)[number]
 
+export const APPROVAL_SOURCE_VALUES = [
+    'parked_context',
+    'review_gate',
+] as const
+export type ApprovalSource = (typeof APPROVAL_SOURCE_VALUES)[number]
+
 export const APPROVAL_STATUS_VALUES = [
     'pending',
     'approved',
@@ -77,6 +83,14 @@ export const AUTONOMY_LEVEL_VALUES = [
     'locked',
 ] as const
 export type AutonomyLevel = (typeof AUTONOMY_LEVEL_VALUES)[number]
+
+export const AUTONOMY_STRATEGY_TYPE_VALUES = [
+    'human_only',
+    'performance_gated',
+    'budget_aware',
+    'escalation_chain',
+] as const
+export type AutonomyStrategyType = (typeof AUTONOMY_STRATEGY_TYPE_VALUES)[number]
 
 export const BACKUP_COMPONENT_VALUES = [
     'persistence',

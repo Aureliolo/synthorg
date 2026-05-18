@@ -193,6 +193,10 @@ SECURITY_AUTONOMY_PROMOTION_REQUESTED: Final[str] = (
     "security.autonomy.promotion.requested"
 )
 SECURITY_AUTONOMY_PROMOTION_DENIED: Final[str] = "security.autonomy.promotion.denied"
+SECURITY_AUTONOMY_PROMOTION_GRANTED: Final[str] = "security.autonomy.promotion.granted"
+SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED: Final[str] = (
+    "security.autonomy.promotion.audit_failed"
+)
 SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED: Final[str] = (
     "security.autonomy.downgrade.triggered"
 )

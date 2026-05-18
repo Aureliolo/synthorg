@@ -579,6 +579,27 @@ class ApprovalRiskLevel(StrEnum):
     CRITICAL = "critical"
 
 
+class ApprovalSource(StrEnum):
+    """Origin of an approval item, fixed at creation.
+
+    Routing of a decided approval (mid-execution resume vs. review
+    gate) keys off this persisted discriminator rather than a live
+    parked-context probe, so the flow is deterministic even when the
+    parked-context backend is momentarily unavailable.
+
+    Attributes:
+        PARKED_CONTEXT: Backs a parked agent execution context (SecOps
+            escalation or the ``request_human_approval`` tool); the
+            decision resumes the parked run.
+        REVIEW_GATE: Any other approval (autonomy, hiring, promotion,
+            pruning, scaling, training, signals, ...); the decision
+            drives the review-gate transition. Default.
+    """
+
+    PARKED_CONTEXT = "parked_context"
+    REVIEW_GATE = "review_gate"
+
+
 class ConflictType(StrEnum):
     """Type of merge conflict detected during workspace merges."""
 

@@ -25,6 +25,10 @@
 
 ENFORCED AgentEngine #1956 -- runtime root; construct at boot behind the provider switch
 ENFORCED build_coordinator #1958 -- called by workers.runtime_builder.build_runtime_services behind the provider switch
+ENFORCED ApprovalGate #1957 -- one gate wired at boot in lifecycle_builder, injected into AgentEngine; engine parks, /approvals resumes
+ENFORCED TrustService #1957 -- built at boot (non-DISABLED strategy), injected into AgentEngine; narrows tool permissions at the invoker seam
+ENFORCED build_mcp_self_consumer #1957 -- called in runtime_builder; agent invokes SynthOrg's own MCP tools trust-scoped with actor fail-closed
+ENFORCED build_autonomy_change_strategy #1957 -- built at boot in app_builders, attached to AppState; autonomy controller routes through it
 PENDING BaselineStore #1959 -- construct at boot (window from budget.baseline_window_size)
 PENDING CoordinationMetricsCollector #1959 -- construct at boot, thread into execution
 ENFORCED IntakeEngine #1961 -- wired at boot via client/runtime_builder.build_client_simulation_runtime

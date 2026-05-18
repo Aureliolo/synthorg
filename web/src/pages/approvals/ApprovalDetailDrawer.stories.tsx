@@ -10,6 +10,7 @@ const base: ApprovalResponse = {
   description: 'Deploy the latest authentication service changes to the production environment. This includes the new OAuth2 flow and session management updates.',
   requested_by: 'agent-eng-lead',
   risk_level: 'critical',
+  source: 'review_gate',
   status: 'pending',
   task_id: 'task-auth-deploy',
   metadata: { environment: 'production', service: 'auth-service', version: '2.3.0' },

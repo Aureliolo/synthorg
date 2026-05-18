@@ -15,6 +15,7 @@ from synthorg.providers.models import (
     ToolCall,
     ToolResult,
 )
+from tests._shared import mock_of
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 
 pytestmark = pytest.mark.unit
@@ -49,6 +50,65 @@ def _make_tool_invoker(
     )
     invoker.pending_escalations = escalations
     return invoker
+
+
+class TestParkedConversationShape:
+    """The parked conversation already answers the escalated tool call.
+
+    Load-bearing invariant for the resume-injection design: the loop
+    appends the TOOL result message for the escalated call *before*
+    the park check, so the parked conversation has no dangling
+    unanswered tool call. Resume therefore injects the decision as a
+    follow-up SYSTEM message (``ApprovalGate.build_resume_message``),
+    not a second ToolResult for the same ``tool_call_id`` (which would
+    duplicate it and malform the message stream). If a refactor moves
+    the park check before the tool-result append, this test fails and
+    the resume-injection strategy must be revisited.
+    """
+
+    async def test_parked_context_last_message_is_tool_result(self) -> None:
+        from synthorg.core.enums import TaskStatus
+        from synthorg.engine.context import AgentContext
+        from synthorg.providers.enums import MessageRole
+
+        from .conftest import make_assignment_agent, make_assignment_task
+
+        identity = make_assignment_agent("test-agent")
+        task = make_assignment_task(
+            id="task-1",
+            assigned_to="test-agent",
+            status=TaskStatus.IN_PROGRESS,
+        )
+        ctx = AgentContext.from_identity(identity, task=task)
+        escalation = _make_escalation()
+        invoker = _make_tool_invoker(escalations=(escalation,))
+        response = _make_response_with_tool_calls()
+
+        captured: dict[str, AgentContext] = {}
+
+        async def _capture_park(**kwargs: object) -> MagicMock:
+            captured["ctx"] = kwargs["context"]  # type: ignore[assignment]
+            return MagicMock(id="parked-1")
+
+        gate = mock_of[ApprovalGate](
+            should_park=MagicMock(return_value=escalation),
+            park_context=AsyncMock(side_effect=_capture_park),
+        )
+
+        await execute_tool_calls(
+            ctx,
+            invoker,
+            response,
+            1,
+            [],
+            approval_gate=gate,
+        )
+
+        parked_ctx = captured["ctx"]
+        last = parked_ctx.conversation[-1]
+        assert last.role == MessageRole.TOOL
+        assert last.tool_result is not None
+        assert last.tool_result.tool_call_id == "tc-1"
 
 
 class TestExecuteToolCallsNoGate:

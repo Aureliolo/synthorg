@@ -23,7 +23,9 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,
     SECURITY_AUTONOMY_PROMOTION_DENIED,
+    SECURITY_AUTONOMY_PROMOTION_GRANTED,
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.security.autonomy.models import AutonomyUpdate
@@ -143,6 +145,94 @@ class TestUpdateAutonomy:
         assert item.risk_level == ApprovalRiskLevel.HIGH
         assert item.status == ApprovalStatus.PENDING
         assert item.id == result.approval_id
+
+    @pytest.mark.unit
+    async def test_strategy_grant_auto_decides_and_applies(self) -> None:
+        """A granting strategy auto-decides the item and applies the level.
+
+        ``granted_by_strategy`` set => the approval is recorded APPROVED
+        (decided by the strategy, audit intact) and the agent's
+        autonomy level is mutated immediately rather than pending.
+        """
+        identity = _make_identity()
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        store = _RecordingApprovalStore()
+
+        with structlog.testing.capture_logs() as logs:
+            result = await registry.update_autonomy(
+                str(identity.id),
+                AutonomyUpdate(
+                    requested_level=AutonomyLevel.SEMI,
+                    reason="strategy granted promotion",
+                    requested_by="alice",
+                    granted_by_strategy="TestStrategy",
+                ),
+                approval_store=store,
+            )
+
+        assert result.promotion_pending is False
+        assert result.current_level == AutonomyLevel.SEMI
+        assert result.requested_level == AutonomyLevel.SEMI
+        item = store.added[0]
+        assert item.status == ApprovalStatus.APPROVED
+        assert item.decided_by == "strategy:TestStrategy"
+        assert item.decided_at is not None
+        assert item.metadata["granted_by_strategy"] == "TestStrategy"
+        # The level change was actually applied to the stored identity.
+        applied = await registry.get(NotBlankStr(str(identity.id)))
+        assert applied is not None
+        assert applied.autonomy_level == AutonomyLevel.SEMI
+        events = {e.get("event") for e in logs}
+        assert SECURITY_AUTONOMY_PROMOTION_GRANTED in events
+        assert SECURITY_AUTONOMY_PROMOTION_DENIED not in events
+
+    @pytest.mark.unit
+    async def test_strategy_grant_audit_write_fails_soft(self) -> None:
+        """A failed APPROVED-audit write must NOT undo the promotion.
+
+        The autonomy mutation is the source of truth (already
+        snapshotted); a best-effort audit-row write that raises is
+        logged loudly and reported as not-enqueued, never rolled back
+        nor surfaced as a 5xx. Dual-write resolution: rolling back a
+        correct promotion (or erroring while it is live) is worse than
+        a missing audit row.
+        """
+
+        class _RaisingApprovalStore(_RecordingApprovalStore):
+            async def add(self, item: ApprovalItem) -> None:
+                msg = "approval backend down"
+                raise RuntimeError(msg)
+
+        identity = _make_identity()
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        store = _RaisingApprovalStore()
+
+        with structlog.testing.capture_logs() as logs:
+            result = await registry.update_autonomy(
+                str(identity.id),
+                AutonomyUpdate(
+                    requested_level=AutonomyLevel.SEMI,
+                    reason="strategy granted promotion",
+                    requested_by="alice",
+                    granted_by_strategy="TestStrategy",
+                ),
+                approval_store=store,
+            )
+
+        # Promotion is the source of truth: applied + reported success,
+        # audit just degraded.
+        assert result.promotion_pending is False
+        assert result.current_level == AutonomyLevel.SEMI
+        assert result.approval_enqueued is False
+        assert result.approval_id is None
+        applied = await registry.get(NotBlankStr(str(identity.id)))
+        assert applied is not None
+        assert applied.autonomy_level == AutonomyLevel.SEMI
+        events = {e.get("event") for e in logs}
+        assert SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED in events
+        assert SECURITY_AUTONOMY_PROMOTION_GRANTED in events
 
     @pytest.mark.unit
     async def test_unknown_agent_raises(self) -> None:

@@ -15,6 +15,7 @@ import type {
 } from '@/api/types/approvals'
 import {
   APPROVAL_RISK_LEVEL_VALUES,
+  APPROVAL_SOURCE_VALUES,
   APPROVAL_STATUS_VALUES,
   URGENCY_LEVEL_VALUES,
 } from '@/api/types/enums'
@@ -153,6 +154,12 @@ function isApprovalShape(
     typeof c.status === 'string' &&
     typeof c.title === 'string' &&
     typeof c.risk_level === 'string' &&
+    // Presence-as-string (same contract as the other enum fields):
+    // a pre-upgrade frame missing ``source`` is rejected here rather
+    // than silently coerced to 'review_gate' by sanitizeWsEnum, while
+    // an unknown-but-present value still gets the forward-compat
+    // allowlist + fallback in sanitizeApproval.
+    typeof c.source === 'string' &&
     typeof c.urgency_level === 'string' &&
     typeof c.action_type === 'string' &&
     typeof c.description === 'string' &&
@@ -268,6 +275,10 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
     risk_level: sanitizeWsEnum(c.risk_level, APPROVAL_RISK_LEVEL_VALUES, 'low', {
       maxLen: 64,
       field: 'approval.risk_level',
+    }),
+    source: sanitizeWsEnum(c.source, APPROVAL_SOURCE_VALUES, 'review_gate', {
+      maxLen: 64,
+      field: 'approval.source',
     }),
     status: sanitizeWsEnum(c.status, APPROVAL_STATUS_VALUES, 'pending', {
       maxLen: 64,

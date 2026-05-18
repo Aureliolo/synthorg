@@ -73,6 +73,35 @@ class TrustService:
         # read-modify-write region in both methods.
         self._state_lock = asyncio.Lock()
 
+    def get_or_initialize_agent(self, agent_id: NotBlankStr) -> TrustState:
+        """Return the agent's trust state, creating it once on first sight.
+
+        Single lock discipline: ``_state_lock`` is the only lock over
+        ``_trust_states`` / ``_change_history``. This synchronous
+        get-or-create needs no lock of its own and must not introduce a
+        second one -- it is reached only from the synchronous
+        tool-invoker seam, which runs in the event-loop thread with no
+        ``await`` between the check and the create, so it is atomic with
+        respect to every coroutine (the async RMW paths can only
+        suspend at an ``await``, which this method never reaches). The
+        async paths (`evaluate_agent`, `apply_trust_change`,
+        `check_decay`) only ever touch an agent that has *already* been
+        initialised, so they never race this first-sight create for the
+        same key. Reads (`get_trust_state`, `get_change_history`) return
+        an immutable ``TrustState`` / a fresh tuple snapshot, so an
+        unlocked read observes one consistent value, never a torn one.
+
+        Args:
+            agent_id: Agent identifier.
+
+        Returns:
+            The existing trust state, or a freshly initialised one.
+        """
+        existing = self._trust_states.get(str(agent_id))
+        if existing is not None:
+            return existing
+        return self.initialize_agent(agent_id)
+
     def initialize_agent(self, agent_id: NotBlankStr) -> TrustState:
         """Create initial trust state for a new agent.
 
@@ -295,15 +324,21 @@ class TrustService:
         """
         result = await self.evaluate_agent(agent_id, snapshot)
 
-        # Update decay check timestamp *after* evaluation
+        # Update decay check timestamp *after* evaluation. The
+        # read-modify-write must hold ``_state_lock``: ``evaluate_agent``
+        # awaited above, so a concurrent locked writer
+        # (``apply_trust_change`` / ``evaluate_agent``) could have
+        # updated this key in the gap; an unlocked RMW here would
+        # clobber that update with a stale base.
         key = str(agent_id)
-        state = self._trust_states.get(key)
-        if state is not None:
-            now = datetime.now(UTC)
-            updated = state.model_copy(
-                update={"last_decay_check_at": now},
-            )
-            self._trust_states[key] = updated
+        async with self._state_lock:
+            state = self._trust_states.get(key)
+            if state is not None:
+                now = datetime.now(UTC)
+                updated = state.model_copy(
+                    update={"last_decay_check_at": now},
+                )
+                self._trust_states[key] = updated
 
         return result
 

@@ -74,10 +74,28 @@ export const agentsHandlers = [
     ),
   ),
   http.post('/api/v1/agents/:agentId/autonomy', async ({ params, request }) => {
-    const body = (await request.json()) as { level?: string }
-    if (!body.level) {
+    // request.json() can yield null / array / primitive; normalize to
+    // an object so the property reads below cannot throw and the
+    // handler still mirrors the API's 400/422 validation path.
+    const raw: unknown = await request.json()
+    const body: { level?: unknown; reason?: unknown } =
+      raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+        ? (raw as { level?: unknown; reason?: unknown })
+        : {}
+    if (typeof body.level !== 'string' || body.level.length === 0) {
       return HttpResponse.json(apiError("Field 'level' is required"), {
         status: 400,
+      })
+    }
+    // Backend requires a non-blank reason (>= 3 non-whitespace chars);
+    // mirror it so tests cannot pass a body the API would 422. Guard
+    // the type first -- a non-string payload must hit the 422 path,
+    // not throw on .trim().
+    const reason =
+      typeof body.reason === 'string' ? body.reason.trim() : ''
+    if (reason.length < 3) {
+      return HttpResponse.json(apiError("Field 'reason' is required"), {
+        status: 422,
       })
     }
     const allowed: readonly AutonomyLevel[] = [

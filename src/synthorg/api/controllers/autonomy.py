@@ -1,23 +1,36 @@
 """Autonomy controller -- runtime autonomy level management."""
 
+from typing import Final, Self
+
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.actor_context import resolve_decided_by
+from synthorg.core.domain_errors import ForbiddenError, NotFoundError
 from synthorg.core.enums import AutonomyLevel  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_DENIED,
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
+from synthorg.security.action_types import ActionTypeRegistry
+from synthorg.security.autonomy.models import AutonomyUpdate
+from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)
+
+# Minimum non-whitespace characters in an autonomy-change reason.
+# Mirrors ``AutonomyUpdate`` so the request body is self-validating
+# (rejected at the API boundary, not late in registry construction).
+_MIN_REASON_LENGTH: Final[int] = 3
+_MAX_REASON_LENGTH: Final[int] = 2048
 
 
 class AutonomyLevelRequest(BaseModel):
@@ -30,6 +43,30 @@ class AutonomyLevelRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     level: AutonomyLevel = Field(description="Requested autonomy level")
+    reason: NotBlankStr = Field(
+        max_length=_MAX_REASON_LENGTH,
+        description=(
+            "Justification for the change, recorded on the approval"
+            " item so the audit trail explains why. At least 3"
+            " non-whitespace characters after stripping."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_reason_length(self) -> Self:
+        """Reject reasons below the non-whitespace minimum.
+
+        Mirrors ``AutonomyUpdate`` so an under-length reason is a 4xx
+        at the request boundary rather than a late failure in registry
+        construction.
+        """
+        if len(self.reason.strip()) < _MIN_REASON_LENGTH:
+            msg = (
+                f"reason must contain at least {_MIN_REASON_LENGTH} "
+                f"non-whitespace characters"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class AutonomyLevelResponse(BaseModel):
@@ -96,10 +133,13 @@ class AutonomyController(Controller):
     ) -> ApiResponse[AutonomyLevelResponse]:
         """Request an autonomy level change for an agent.
 
-        Validates seniority constraints and routes through the
-        configured ``AutonomyChangeStrategy``.  Returns 200 with the
-        current level.  If the change requires human approval, the
-        response includes ``promotion_pending=True``.
+        Enforces the D6 seniority constraint, consults the configured
+        :class:`AutonomyChangeStrategy` (wired at boot; default
+        ``HUMAN_ONLY``), and enqueues a real approval item -- the
+        approval queue is the apply driver per the Security design
+        spec. With ``HUMAN_ONLY`` every request pends for human
+        review; the strategy's verdict is carried for audit so an
+        auto-grant strategy is observable.
 
         Args:
             state: Application state.
@@ -108,32 +148,85 @@ class AutonomyController(Controller):
 
         Returns:
             Updated autonomy level info.
+
+        Raises:
+            NotFoundError: The agent is not registered (404).
+            ForbiddenError: The agent's seniority cannot hold the
+                requested autonomy level (D6) (403).
         """
         app_state: AppState = state.app_state
-        current_level = await app_state.config_resolver.get_autonomy_level()
+        agent_key = NotBlankStr(str(agent_id))
         requested_level = data.level
+
+        identity = await app_state.agent_registry.get(agent_key)
+        if identity is None:
+            logger.warning(
+                SECURITY_AUTONOMY_PROMOTION_DENIED,
+                agent_id=agent_key,
+                requested_level=requested_level.value,
+                reason="agent_not_registered",
+            )
+            msg = "Agent not found"
+            raise NotFoundError(msg)
+
+        resolver = AutonomyResolver(
+            registry=ActionTypeRegistry(),
+            config=app_state.config.config.autonomy,
+        )
+        try:
+            resolver.validate_seniority(identity.level, requested_level)
+        except ValueError as exc:
+            # Detail already logged by the resolver
+            # (AUTONOMY_SENIORITY_VIOLATION); return a generic 403 so
+            # the seniority policy is not leaked verbatim.
+            forbidden_msg = (
+                "Agent seniority does not permit the requested autonomy level"
+            )
+            raise ForbiddenError(forbidden_msg) from exc
+
+        # Consult the boot-wired strategy. HUMAN_ONLY always returns
+        # False (pending); an opt-in auto-grant strategy returns True.
+        strategy = app_state.autonomy_change_strategy
+        strategy_granted = strategy.request_promotion(
+            agent_key,
+            requested_level,
+        )
+
+        # The approval queue stays the apply driver, but the strategy
+        # verdict is now enforced, not audit-only: a granting strategy
+        # produces an auto-decided (APPROVED) item and the registry
+        # applies the level change. ``granted_by_strategy`` carries the
+        # strategy's class name so the auto-decision is attributable;
+        # ``None`` (HUMAN_ONLY) keeps the request pending for a human.
+        result = await app_state.agent_registry.update_autonomy(
+            agent_key,
+            AutonomyUpdate(
+                requested_level=requested_level,
+                reason=data.reason,
+                # Guarded by require_ceo_or_manager: the human actor is
+                # bound at the HTTP boundary, so attribute the request
+                # to them for audit instead of dropping it as None.
+                requested_by=NotBlankStr(resolve_decided_by()),
+                granted_by_strategy=(
+                    NotBlankStr(type(strategy).__name__) if strategy_granted else None
+                ),
+            ),
+            approval_store=app_state.approval_store,
+        )
 
         logger.info(
             SECURITY_AUTONOMY_PROMOTION_REQUESTED,
-            agent_id=agent_id,
+            agent_id=agent_key,
             requested_level=requested_level.value,
-            current_level=current_level.value,
-        )
-
-        # All changes route through human approval -- return current
-        # level with pending status.  The AutonomyChangeStrategy will
-        # apply the change when the approval system is wired up.
-        logger.info(
-            SECURITY_AUTONOMY_PROMOTION_DENIED,
-            agent_id=agent_id,
-            requested_level=requested_level.value,
-            reason="Autonomy level changes require human approval",
+            current_level=result.current_level.value,
+            strategy_granted=strategy_granted,
+            approval_id=result.approval_id,
         )
 
         return ApiResponse(
             data=AutonomyLevelResponse(
                 agent_id=agent_id,
-                level=current_level,
-                promotion_pending=True,
+                level=result.current_level,
+                promotion_pending=result.promotion_pending,
             ),
         )
