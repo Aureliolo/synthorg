@@ -89,6 +89,7 @@ export const ErrorCode = {
     BACKUP_MANIFEST_ERROR: 8013,
     SETTINGS_ENCRYPTION_ERROR: 8014,
     SINK_CONFIG_VALIDATION_ERROR: 8015,
+    WORKER_DEAD_LETTER_ERROR: 8016,
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

@@ -146,6 +146,9 @@ def queue_config() -> QueueConfig:
     return QueueConfig(
         enabled=True,
         ack_wait_seconds=30,
+        # Below ack_wait so the working-ack extension fires in time
+        # (QueueConfig now enforces heartbeat < ack_wait).
+        heartbeat_interval_seconds=10,
         max_deliver=5,
     )
 

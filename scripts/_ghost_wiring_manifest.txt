@@ -33,3 +33,7 @@ PENDING BaselineStore #1959 -- construct at boot (window from budget.baseline_wi
 PENDING CoordinationMetricsCollector #1959 -- construct at boot, thread into execution
 ENFORCED IntakeEngine #1961 -- wired at boot via client/runtime_builder.build_client_simulation_runtime
 ENFORCED create_lifecycle_strategy #1965 -- constructed at boot in workers/runtime_builder._build_tool_registry and injected into the Docker sandbox backend
+ENFORCED build_distributed_backend_services #1966 -- called in api/auto_wire._register_distributed_dispatcher behind queue.enabled; builds the dead-letter consumer + dedup pruner + heartbeat subscriber bundle
+ENFORCED DeadLetterConsumer #1966 -- constructed by workers.backend_services.build_distributed_backend_services; drains the dead subject and fails exhausted tasks (no-loss closure)
+ENFORCED SeenClaimsPruner #1966 -- constructed by workers.backend_services.build_distributed_backend_services; bounds the seen_claims dedup table
+ENFORCED WorkerHeartbeatSubscriber #1966 -- constructed by workers.backend_services.build_distributed_backend_services; surfaces worker liveness in the log pipeline

@@ -70,6 +70,7 @@ _BACKUP_SHUTDOWN_SECONDS: float = 5.0
 _SETTINGS_DISPATCHER_SHUTDOWN_SECONDS: float = 2.0
 _BRIDGE_SHUTDOWN_SECONDS: float = 2.0
 _DISTRIBUTED_QUEUE_SHUTDOWN_SECONDS: float = 3.0
+_DISTRIBUTED_BUNDLE_SHUTDOWN_SECONDS: float = 3.0
 _MESSAGE_BUS_SHUTDOWN_SECONDS: float = 3.0
 _PERSISTENCE_SHUTDOWN_SECONDS: float = 5.0
 _APPROVAL_TIMEOUT_SHUTDOWN_SECONDS: float = 1.0
@@ -175,6 +176,8 @@ async def _cleanup_on_failure(  # noqa: PLR0913, C901
     started_task_engine: bool = False,
     distributed_task_queue: _AsyncStartStop | None = None,
     started_distributed_task_queue: bool = False,
+    distributed_backend_services: _AsyncStartStop | None = None,
+    started_distributed_backend_services: bool = False,
     meeting_scheduler: MeetingScheduler | None = None,
     started_meeting_scheduler: bool = False,
     backup_service: BackupService | None = None,
@@ -218,6 +221,15 @@ async def _cleanup_on_failure(  # noqa: PLR0913, C901
             bridge.stop(),
             API_APP_STARTUP,
             "Cleanup: failed to stop message bus bridge",
+        )
+    if (
+        started_distributed_backend_services
+        and distributed_backend_services is not None
+    ):
+        await _try_stop(
+            distributed_backend_services.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop distributed backend services",
         )
     if started_distributed_task_queue and distributed_task_queue is not None:
         logger.info(
@@ -459,10 +471,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
     started_settings_dispatcher = False
     started_task_engine = False
     started_distributed_task_queue = False
+    started_distributed_backend_services = False
     started_meeting_scheduler = False
     started_backup_service = False
     started_approval_timeout_scheduler = False
     distributed_task_queue = app_state.distributed_task_queue
+    distributed_backend_services = app_state.distributed_backend_services
     try:
         if persistence is not None:
             try:
@@ -575,6 +589,26 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             logger.info(
                 API_APP_STARTUP,
                 service="distributed_task_queue",
+                phase="started",
+            )
+        if distributed_backend_services is not None:
+            # Started AFTER the queue connects: the dead-letter consumer
+            # and heartbeat subscriber pull/subscribe over the same
+            # NATS connection the queue owns.
+            try:
+                await distributed_backend_services.start()
+            except Exception as exc:
+                logger.warning(
+                    API_APP_STARTUP,
+                    note="Failed to start distributed backend services",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise
+            started_distributed_backend_services = True
+            logger.info(
+                API_APP_STARTUP,
+                service="distributed_backend_services",
                 phase="started",
             )
         # ``is not True`` (rather than ``not obj._running``) is deliberate:
@@ -734,6 +768,8 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             started_task_engine=started_task_engine,
             distributed_task_queue=distributed_task_queue,
             started_distributed_task_queue=started_distributed_task_queue,
+            distributed_backend_services=distributed_backend_services,
+            started_distributed_backend_services=started_distributed_backend_services,
             meeting_scheduler=meeting_scheduler,
             started_meeting_scheduler=started_meeting_scheduler,
             backup_service=backup_service,
@@ -755,6 +791,7 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
     persistence: PersistenceBackend | None,
     performance_tracker: PerformanceTracker | None = None,
     distributed_task_queue: _AsyncStartStop | None = None,
+    distributed_backend_services: _AsyncStartStop | None = None,
 ) -> None:
     """Stop services in reverse startup order.
 
@@ -850,6 +887,17 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             "Failed to stop message bus bridge",
             timeout=_BRIDGE_SHUTDOWN_SECONDS,
             service="bus_bridge",
+        )
+    # Backend distributed-path bundle stops before the queue: its
+    # dead-letter consumer + heartbeat subscriber read over the queue's
+    # NATS connection, so they must release it before the queue drains.
+    if distributed_backend_services is not None:
+        await _try_stop(
+            distributed_backend_services.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop distributed backend services",
+            timeout=_DISTRIBUTED_BUNDLE_SHUTDOWN_SECONDS,
+            service="distributed_backend_services",
         )
     # Distributed task queue stops after bridge but before the bus so
     # the NATS connection it shares is still alive during drain. This

@@ -212,11 +212,11 @@ A second JetStream stream named `SYNTHORG_TASKS` with `WorkQueuePolicy` retentio
 Workers are separate Python processes launched via `synthorg worker start` (Phase 4 adds the Go CLI wrapper). Each worker:
 
 1. **Connects** to NATS and to the backend HTTP API (separate connections; NATS for claim, HTTP for transitions).
-2. **Claims** a ready task by fetching from `SYNTHORG_TASKS` with a durable consumer. Manual ack. `ack_wait` is configurable (default 300 seconds).
-3. **Executes** the task via the same agent runtime code used by the in-process path today, reusing the existing agent execution machinery. No duplicated logic.
-4. **Transitions** the task on success or failure by calling the backend HTTP API (`PATCH /api/v1/tasks/{id}`), which routes through the normal `TaskEngine` mutation queue. Single-writer preserved.
+2. **Claims** a ready task by fetching from `SYNTHORG_TASKS` with a durable consumer. Manual ack. `ack_wait` is configurable (default 300 seconds), bounded below the consumer's `max_ack_pending` so a slow pool throttles intake instead of buffering unboundedly.
+3. **Executes** the task via the same agent runtime code used by the in-process path today, reusing the existing agent execution machinery. No duplicated logic. While the executor runs, the worker sends a periodic working-ack (JetStream `in_progress`) every `heartbeat_interval_seconds` so an execution longer than `ack_wait` does not lapse the deadline and trigger a concurrent redelivery. `heartbeat_interval_seconds` is validated to be strictly below `ack_wait_seconds` so the first extension always lands before the deadline.
+4. **Transitions** the task on success or failure by calling the backend HTTP API (`POST /api/v1/tasks/{id}/execute`), which routes through the normal `TaskEngine` mutation queue. Single-writer preserved.
 5. **Acks** the NATS message on successful transition. Nacks on execution failure to trigger redelivery.
-6. **Heartbeats** on a background task by publishing to `synthorg.workers.heartbeat.<worker_id>` at the configured interval. Stale workers can be detected by lease expiry.
+6. **Heartbeats** on a background task by publishing a `WorkerHeartbeat` to `synthorg.workers.heartbeat.<worker_id>` at `heartbeat_interval_seconds`. This is a **core NATS** publish (at-most-once), not JetStream: it must never enter the `WorkQueuePolicy` task stream. The backend's heartbeat subscriber observes these and surfaces liveness through the structured-log pipeline (`workers.heartbeat_subscriber.observed` per beat, `workers.heartbeat_subscriber.worker_stale` when a previously-seen worker stops beating). Crash-recovery correctness does NOT depend on the heartbeat: a dead worker's in-flight claim is redelivered by JetStream `ack_wait`. The heartbeat is operator visibility only.
 
 ### Single-writer preservation
 
@@ -226,9 +226,9 @@ The distributed worker preserves this by calling the backend HTTP API for every 
 
 ### Failure handling
 
-- **Execution failure (retryable)**: worker nacks the NATS message. JetStream redelivers after `ack_wait`. After `max_deliver` attempts (default 3), JetStream routes to the dead-letter subject `synthorg.tasks.dead.<task_id>`. The dispatcher subscribes to the dead-letter subject and transitions the task to `FAILED` with a terminal-failure reason.
-- **Worker crash**: the NATS consumer's ack deadline expires, JetStream redelivers to another worker automatically. No application-level liveness code needed.
-- **Execution failure (terminal)**: worker calls `PATCH /api/v1/tasks/{id}` with a terminal-failure transition and acks. The task ends in `FAILED` without another redelivery.
+- **Execution failure (retryable)**: worker nacks the NATS message. JetStream redelivers after `ack_wait`. `WorkQueuePolicy` does **not** route to a dead subject when `max_deliver` is exhausted; it terminates the message. So on the **final** delivery (`num_delivered == max_deliver`) the worker itself republishes the claim to `synthorg.tasks.dead.<task_id>` and then terminal-acks. The publish-then-ack ordering is load-bearing: a failed republish leaves the claim un-acked and raises loudly rather than silently dropping the task. The backend's `DeadLetterConsumer` (its own durable consumer on the dead subject) transitions the task to `FAILED`, deduplicating on the claim's idempotency key so a redelivered dead message never double-transitions. This in-process consumer goes through `TaskEngine.transition_task`, the same single-writer mutation path the dispatcher observes.
+- **Worker crash**: the NATS consumer's ack deadline expires, JetStream redelivers to another worker automatically. No application-level liveness code needed for correctness.
+- **Execution failure (terminal)**: worker resolves the task through `POST /api/v1/tasks/{id}/execute` and acks. The task ends in a terminal status without another redelivery.
 
 ### Dispatcher hook
 
@@ -247,6 +247,13 @@ Because the dispatcher only observes and publishes, the engine's single-writer p
 ### Defaults
 
 `internal` is and stays the default in `MessageBusConfig.backend` and in the Go CLI `synthorg init` picker. Existing deployments that do nothing see zero behavior change: same bus implementation, same single-process execution, same config file.
+
+The distributed **task queue** is governed by a separate switch, `config.queue.enabled`, and **ships `false`**. This is the deliberate, validated shipped default:
+
+- **Single-node (the default, `queue.enabled: false`)**: tasks dispatch in-process through the `TaskEngine` mutation queue. No NATS container, no worker processes, lowest latency. This is correct for one synthetic organisation on one host and is what the overwhelming majority of deployments should run. Nothing in this section applies to them.
+- **Multi-instance (opt in, `queue.enabled: true`)**: required only when execution must span processes or hosts. The operator sets `queue.enabled: true`, points `communication.message_bus.nats` at a reachable NATS JetStream server, and runs one or more worker pools via `synthorg worker start`. With the switch off the dispatcher observer, the JetStream queue, the dead-letter consumer, the dedup pruner, and the heartbeat subscriber are never constructed, so the in-process path is byte-identical to a build without the distributed code.
+
+The default is `false` because the distributed path costs an extra service to operate and a network hop per dispatch for a capability most deployments never need; turning it on is a conscious scaling decision, not a default users back into.
 
 ### Config
 
@@ -267,9 +274,19 @@ communication:
       # (unchanged from default set)
     retention:
       max_messages_per_channel: 1000   # unchanged, passed through to MaxMsgsPerSubject
+
+queue:
+  enabled: true              # opt in; ships false (single-node default)
+  ack_wait_seconds: 300      # JetStream ack deadline before redelivery
+  max_deliver: 3             # deliveries before the worker dead-letters the claim
+  heartbeat_interval_seconds: 30   # working-ack + liveness cadence; MUST be < ack_wait_seconds
+  max_ack_pending: 16        # backpressure: max unacked claims in flight
+  stream_max_msgs: 100000    # work-queue stream message cap
+  stream_max_bytes: 1073741824   # work-queue stream byte cap (1 GiB)
+  prune_interval_seconds: 3600   # cadence the backend prunes expired dedup rows
 ```
 
-The `nats` sub-block is required when `backend` is `nats` (validated at config load time). When `backend` is `internal`, the `nats` sub-block is ignored if present.
+The `nats` sub-block is required when `backend` is `nats` (validated at config load time). When `backend` is `internal`, the `nats` sub-block is ignored if present. The `queue` block is independent of the bus `backend`: `queue.enabled: true` additionally requires a reachable `communication.message_bus.nats` server. `heartbeat_interval_seconds` is validated strictly below `ack_wait_seconds` at config load so the working-ack always fires before the ack deadline.
 
 ### CLI picker at `synthorg init`
 
@@ -339,6 +356,20 @@ The NATS backend adds three events scoped to connection lifecycle:
 
 These are scoped to the NATS backend. The in-memory backend never emits them (there is no connection).
 
+### Task-queue events
+
+The distributed task path emits structured events under
+`synthorg.observability.events.workers` (variable always `logger`).
+Operator-relevant ones:
+
+- `workers.worker.claim_dead_lettered` (WARNING): a claim exhausted `max_deliver` and was republished to the dead subject by the worker.
+- `workers.dead_letter.transitioned` (WARNING): the dead-letter consumer drove a dead-lettered task to `FAILED`.
+- `workers.dead_letter.duplicate_suppressed` (INFO): a redelivered dead message was deduped (no double-transition).
+- `workers.dead_letter.failed` (ERROR): a dead claim could not be proven failed; paired with a raised `WorkerDeadLetterError` so the loss is loud, never silent.
+- `workers.worker.ack_extend_failed` (WARNING): a working-ack send failed (non-fatal; the next one or JetStream redelivery recovers).
+- `workers.heartbeat_subscriber.observed` (INFO) / `workers.heartbeat_subscriber.worker_stale` (WARNING): worker liveness, the structured-log substitute for a scrape gauge (no Prometheus worker series ships).
+- `workers.seen_claims_pruner.pruned` (INFO): count of expired dedup rows reclaimed.
+
 ### External inspection
 
 Once NATS is running, operators can inspect bus state without a Python interpreter:
@@ -347,6 +378,8 @@ Once NATS is running, operators can inspect bus state without a Python interpret
 - `nats stream info SYNTHORG_BUS`: message counts, subject cardinality, retention policy
 - `nats consumer ls SYNTHORG_BUS`: per-(channel, subscriber) durable consumers with pending / delivered / ack-pending counts
 - `nats sub 'synthorg.bus.channel.>'`: tail messages across all bus channels in real time
+- `nats consumer report SYNTHORG_TASKS`: per-consumer pending / ack-pending for the work queue and its dead-letter consumer (the backpressure + dead-letter view)
+- `nats sub 'synthorg.workers.heartbeat.>'`: tail worker liveness beats directly (the heartbeat is core NATS, not JetStream, so it does not appear under `nats stream`)
 - `docker compose exec nats wget -qO- localhost:8222/varz`: NATS monitoring HTTP endpoint, exposes Prometheus-compatible metrics (not mapped to a host port by default; use a compose override if external access is needed)
 
 ---

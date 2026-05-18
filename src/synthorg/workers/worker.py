@@ -25,12 +25,17 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
+    WORKERS_ACK_EXTEND_FAILED,
+    WORKERS_CLAIM_DEAD_LETTERED,
     WORKERS_CLAIM_RECEIVED,
+    WORKERS_DEAD_LETTER_PUBLISH_FAILED,
     WORKERS_DEDUP_LOOKUP_FAILED,
     WORKERS_DEDUP_MARK_FAILED,
     WORKERS_DUPLICATE_CLAIM_SUPPRESSED,
     WORKERS_EXECUTOR_FAILED,
     WORKERS_FINALIZE_FAILED,
+    WORKERS_HEARTBEAT_FAILED,
+    WORKERS_HEARTBEAT_SENT,
     WORKERS_POOL_STARTED,
     WORKERS_WORKER_STARTED,
     WORKERS_WORKER_STOPPED,
@@ -41,6 +46,10 @@ from synthorg.workers.claim import (
     TaskClaimStatus,
 )
 from synthorg.workers.config import QueueConfig  # noqa: TC001
+from synthorg.workers.heartbeat_models import (
+    HEARTBEAT_SUBJECT_PREFIX,
+    WorkerHeartbeat,
+)
 
 if TYPE_CHECKING:
     from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
@@ -114,6 +123,10 @@ class Worker:
             * float(queue_config.max_deliver)
             * _DEDUP_TTL_SAFETY_MULTIPLIER
         )
+        self._heartbeat_interval: float = float(
+            queue_config.heartbeat_interval_seconds,
+        )
+        self._claims_done = 0
         self._running = False
         # Eager init: ``stop()`` may set the event before ``run()`` has
         # ever entered the loop, so a half-published attribute would
@@ -150,11 +163,15 @@ class Worker:
             self._stop_event.clear()
             logger.info(WORKERS_WORKER_STARTED, worker_id=self._worker_id)
 
+        heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         try:
             # lint-allow: long-running-loop-kill-switch -- _stop_event drives shutdown.
             while not self._stop_event.is_set():
                 await self._run_once()
         finally:
+            heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat_task
             async with self._lifecycle_lock:
                 self._running = False
                 logger.info(WORKERS_WORKER_STOPPED, worker_id=self._worker_id)
@@ -191,7 +208,7 @@ class Worker:
         if await self._is_completed(claim):
             await self._finalize_claim(raw, TaskClaimStatus.SUCCESS)
             return
-        status = await self._execute_claim(claim)
+        status = await self._execute_claim(claim, raw)
         # Mark before ack: a crash between ``_mark_completed`` and
         # ``_finalize_claim`` still leaves the row in place, so the
         # JetStream redelivery (triggered by the missing ack) observes
@@ -200,7 +217,61 @@ class Worker:
         # raced redelivery.
         if status in {TaskClaimStatus.SUCCESS, TaskClaimStatus.FAILED}:
             await self._mark_completed(claim)
+            await self._finalize_claim(raw, status)
+            self._claims_done += 1
+            return
+        # status == RETRY. WorkQueuePolicy does NOT route to the dead
+        # subject on max_deliver -- it terminates the message, silently
+        # losing the task. On the final delivery the worker republishes
+        # the claim to the dead-letter subject (the DeadLetterConsumer
+        # then transitions the task to FAILED) instead of nacking into
+        # a silent drop.
+        if self._is_final_delivery(raw):
+            await self._dead_letter(claim, raw)
+            self._claims_done += 1
+            return
         await self._finalize_claim(raw, status)
+
+    def _is_final_delivery(self, raw: Any) -> bool:
+        """Return ``True`` when this is the last allowed delivery.
+
+        ``raw.metadata.num_delivered`` is the 1-based delivery count
+        JetStream stamps on each message. On the ``max_deliver``-th
+        delivery a further nack would exhaust the budget and terminate
+        the message with no dead-letter routing, so the worker must
+        dead-letter here instead.
+        """
+        metadata = getattr(raw, "metadata", None)
+        num_delivered = getattr(metadata, "num_delivered", 0)
+        return int(num_delivered) >= self._queue_config.max_deliver
+
+    async def _dead_letter(self, claim: TaskClaim, raw: Any) -> None:
+        """Republish an exhausted claim to the DLQ, then terminal-ack.
+
+        Publish-then-ack ordering: if ``publish_dead`` fails the claim
+        is left un-acked and the failure is fatal (re-raised), so the
+        operator sees a loud error rather than a silently lost task.
+        Acking only after a successful republish guarantees the
+        DeadLetterConsumer will observe the claim and fail the task.
+        """
+        try:
+            await self._task_queue.publish_dead(claim)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                WORKERS_DEAD_LETTER_PUBLISH_FAILED,
+                worker_id=self._worker_id,
+                task_id=claim.task_id,
+            )
+            raise
+        await self._finalize_claim(raw, TaskClaimStatus.SUCCESS)
+        logger.warning(
+            WORKERS_CLAIM_DEAD_LETTERED,
+            worker_id=self._worker_id,
+            task_id=claim.task_id,
+            idempotency_key=claim.idempotency_key,
+        )
 
     async def _is_completed(self, claim: TaskClaim) -> bool:
         """Return ``True`` if the claim has already completed.
@@ -266,13 +337,36 @@ class Worker:
                 error=safe_error_description(exc),
             )
 
-    async def _execute_claim(self, claim: TaskClaim) -> TaskClaimStatus:
-        """Invoke the executor, translating exceptions into RETRY."""
+    async def _execute_claim(
+        self,
+        claim: TaskClaim,
+        raw: Any,
+    ) -> TaskClaimStatus:
+        """Invoke the executor with a concurrent ack-extension loop.
+
+        Real agent execution can outrun ``ack_wait``. A sibling
+        :meth:`_extend_ack_loop` working-acks the JetStream message
+        every ``heartbeat_interval_seconds`` so the deadline never
+        lapses mid-execution (which would redeliver the claim and run
+        the agent a second time concurrently, since dedup only marks
+        AFTER a terminal outcome). The extender is cancelled the moment
+        the executor returns.
+        """
         logger.info(
             WORKERS_CLAIM_RECEIVED,
             worker_id=self._worker_id,
             task_id=claim.task_id,
         )
+        extender = asyncio.create_task(self._extend_ack_loop(raw))
+        try:
+            return await self._invoke_executor(claim)
+        finally:
+            extender.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await extender
+
+    async def _invoke_executor(self, claim: TaskClaim) -> TaskClaimStatus:
+        """Run the injected executor, translating exceptions into RETRY."""
         try:
             return await self._executor(claim)
         except Exception:
@@ -282,6 +376,75 @@ class Worker:
                 task_id=claim.task_id,
             )
             return TaskClaimStatus.RETRY
+
+    async def _extend_ack_loop(self, raw: Any) -> None:
+        """Working-ack *raw* every heartbeat interval until cancelled.
+
+        Sleep-first: the first extension lands one interval in, well
+        before ``ack_wait`` (validated ``heartbeat_interval_seconds <
+        ack_wait_seconds``). An ``in_progress`` failure is non-fatal:
+        the executor outcome still drives finalize, and a single missed
+        extension is recovered by the next one or by JetStream
+        redelivery if the worker dies.
+        """
+        # lint-allow: long-running-loop-kill-switch -- cancelled by
+        # _execute_claim's finally the moment the executor returns.
+        while True:
+            await self._clock.sleep(self._heartbeat_interval)
+            try:
+                await JetStreamTaskQueue.in_progress(raw)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    WORKERS_ACK_EXTEND_FAILED,
+                    worker_id=self._worker_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+
+    async def _heartbeat_loop(self) -> None:
+        """Emit a liveness beat every heartbeat interval until cancelled.
+
+        Runs for the worker's whole lifetime (not per-claim) so an idle
+        worker still proves liveness. Cancelled from :meth:`run`'s
+        ``finally``. At-most-once core-NATS publish: a missed beat is
+        recovered by the next one and never affects correctness.
+        """
+        # lint-allow: long-running-loop-kill-switch -- cancelled by
+        # run()'s finally; the claim loop's _stop_event drives shutdown.
+        while True:
+            await self._emit_heartbeat()
+            await self._clock.sleep(self._heartbeat_interval)
+
+    async def _emit_heartbeat(self) -> None:
+        """Publish one :class:`WorkerHeartbeat`; failures are non-fatal."""
+        subject = f"{HEARTBEAT_SUBJECT_PREFIX}.{self._worker_id}"
+        beat = WorkerHeartbeat(
+            worker_id=NotBlankStr(self._worker_id),
+            emitted_at=self._clock.now(),
+            claims_done=self._claims_done,
+        )
+        try:
+            await self._task_queue.core_publish(
+                subject,
+                beat.model_dump_json().encode("utf-8"),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                WORKERS_HEARTBEAT_FAILED,
+                worker_id=self._worker_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        logger.debug(
+            WORKERS_HEARTBEAT_SENT,
+            worker_id=self._worker_id,
+            claims_done=self._claims_done,
+        )
 
     async def _finalize_claim(
         self,

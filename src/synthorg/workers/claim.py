@@ -149,6 +149,10 @@ class JetStreamTaskQueue:
         self._client: Any = None
         self._js: Any = None
         self._sub: Any = None
+        # Lazily created on first ``next_dead`` so worker processes
+        # (which never consume the dead subject) don't register an
+        # unused durable consumer.
+        self._dead_sub: Any = None
         self._running = False
         # Per docs/reference/lifecycle-sync.md: serialize start/stop +
         # _running check-and-set under a dedicated lifecycle lock so a
@@ -233,18 +237,10 @@ class JetStreamTaskQueue:
         """
         async with self._lifecycle_lock:
             self._running = False
-            if self._sub is not None:
-                try:
-                    await self._sub.unsubscribe()
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as exc:
-                    logger.warning(
-                        WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
-                self._sub = None
+            await self._safe_unsubscribe(self._sub)
+            self._sub = None
+            await self._safe_unsubscribe(self._dead_sub)
+            self._dead_sub = None
             if self._client is not None:
                 try:
                     await asyncio.wait_for(
@@ -280,18 +276,10 @@ class JetStreamTaskQueue:
 
     async def _drain_partial(self) -> None:
         """Tear down any half-initialised connection/consumer after a failed start."""
-        if self._sub is not None:
-            try:
-                await self._sub.unsubscribe()
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-            self._sub = None
+        await self._safe_unsubscribe(self._sub)
+        self._sub = None
+        await self._safe_unsubscribe(self._dead_sub)
+        self._dead_sub = None
         if self._client is not None:
             try:
                 await self._client.drain()
@@ -356,6 +344,8 @@ class JetStreamTaskQueue:
             ],
             retention=RetentionPolicy.WORK_QUEUE,
             storage=StorageType.FILE,
+            max_msgs=self._queue_config.stream_max_msgs,
+            max_bytes=self._queue_config.stream_max_bytes,
         )
         try:
             try:
@@ -393,6 +383,7 @@ class JetStreamTaskQueue:
             durable_name=self._durable_name,
             ack_wait=float(self._queue_config.ack_wait_seconds),
             max_deliver=self._queue_config.max_deliver,
+            max_ack_pending=self._queue_config.max_ack_pending,
             filter_subject=subject,
         )
         try:
@@ -429,6 +420,78 @@ class JetStreamTaskQueue:
         subject = f"{self._queue_config.ready_subject_prefix}.{claim.task_id}"
         payload = claim.model_dump_json().encode("utf-8")
         await self._js.publish(subject, payload)
+
+    async def publish_dead(self, claim: TaskClaim) -> None:
+        """Republish a claim to the dead-letter subject.
+
+        Called by the worker on the final delivery of a claim that
+        exhausted ``max_deliver``. ``WorkQueuePolicy`` does NOT route
+        to the dead subject on its own (it terminates the message), so
+        without this republish the task would be silently lost. The
+        :class:`~synthorg.workers.dead_letter.DeadLetterConsumer`
+        consumes this subject and transitions the task to ``FAILED``.
+
+        Args:
+            claim: The exhausted claim to route to the DLQ.
+        """
+        if self._js is None:
+            logger.warning(
+                WORKERS_QUEUE_NOT_RUNNING,
+                operation="publish_dead",
+                task_id=claim.task_id,
+            )
+            msg = "Task queue is not running"
+            raise BusStreamError(msg)
+        subject = f"{self._queue_config.dead_subject_prefix}.{claim.task_id}"
+        payload = claim.model_dump_json().encode("utf-8")
+        await self._js.publish(subject, payload)
+
+    async def core_publish(self, subject: str, payload: bytes) -> None:
+        """Publish on the core NATS connection (NOT JetStream).
+
+        At-most-once, fire-and-forget: there is no stream, no consumer,
+        and no ack. Used for worker liveness heartbeats, where the
+        correct semantic is "the next beat arrives in N seconds" rather
+        than durable delivery. Deliberately bypasses ``self._js`` so a
+        heartbeat never enters the ``WorkQueuePolicy`` task stream
+        (which would require acking and pollute the work queue).
+
+        Args:
+            subject: Core NATS subject to publish to.
+            payload: Encoded message body.
+        """
+        if self._client is None:
+            logger.warning(
+                WORKERS_QUEUE_NOT_RUNNING,
+                operation="core_publish",
+            )
+            msg = "Task queue is not running"
+            raise BusStreamError(msg)
+        await self._client.publish(subject, payload)
+
+    async def core_subscribe(
+        self,
+        subject: str,
+        cb: Any,
+    ) -> Any:
+        """Subscribe on the core NATS connection (NOT JetStream).
+
+        Companion to :meth:`core_publish`: used by the backend's
+        heartbeat subscriber. Returns the raw NATS subscription so the
+        caller can ``unsubscribe()`` it on shutdown.
+
+        Args:
+            subject: Core subject (supports ``>`` wildcard).
+            cb: Async callback invoked with each raw NATS message.
+        """
+        if self._client is None:
+            logger.warning(
+                WORKERS_QUEUE_NOT_RUNNING,
+                operation="core_subscribe",
+            )
+            msg = "Task queue is not running"
+            raise BusStreamError(msg)
+        return await self._client.subscribe(subject, cb=cb)
 
     async def next_claim(
         self,
@@ -496,6 +559,127 @@ class JetStreamTaskQueue:
             return None
         return claim, raw
 
+    async def _ensure_dead_consumer(self) -> None:
+        """Lazily create the durable pull consumer for the dead subject.
+
+        Separate durable name + filter subject from the ready consumer
+        so dead-letter delivery does not contend with normal claims.
+        Idempotent: a second call is a no-op once ``_dead_sub`` exists.
+        """
+        if self._dead_sub is not None:
+            return
+        from nats.errors import Error as NatsError  # noqa: PLC0415
+        from nats.js.api import ConsumerConfig  # noqa: PLC0415
+
+        if self._js is None:
+            msg = "JetStream context not initialized"
+            raise BusStreamError(msg)
+
+        subject = f"{self._queue_config.dead_subject_prefix}.>"
+        durable = f"{self._durable_name}_dead"
+        consumer_config = ConsumerConfig(
+            durable_name=durable,
+            ack_wait=float(self._queue_config.ack_wait_seconds),
+            max_deliver=self._queue_config.max_deliver,
+            max_ack_pending=self._queue_config.max_ack_pending,
+            filter_subject=subject,
+        )
+        try:
+            self._dead_sub = await self._js.pull_subscribe(
+                subject=subject,
+                durable=durable,
+                stream=self._queue_config.stream_name,
+                config=consumer_config,
+            )
+        except NatsError as exc:
+            msg = (
+                f"Failed to create dead-letter consumer {durable}: "
+                f"{safe_error_description(exc)}"
+            )
+            raise BusStreamError(
+                msg,
+                context={
+                    "stream": self._queue_config.stream_name,
+                    "consumer": durable,
+                },
+            ) from exc
+
+    async def next_dead(
+        self,
+        timeout: float,  # noqa: ASYNC109
+    ) -> tuple[TaskClaim, Any] | None:
+        """Fetch the next dead-lettered claim, or ``None`` on timeout.
+
+        Mirrors :meth:`next_claim` (oversize / malformed payloads are
+        terminally acked so a poison dead message cannot wedge the
+        dead-letter consumer) but reads the dead-subject consumer.
+        """
+        from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
+
+        await self._ensure_dead_consumer()
+        try:
+            msgs = await self._dead_sub.fetch(batch=1, timeout=timeout)
+        except NatsTimeoutError:
+            return None
+        if not msgs:
+            return None
+        raw = msgs[0]
+        if len(raw.data) > _MAX_CLAIM_PAYLOAD_BYTES:
+            logger.warning(
+                WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
+                reason="dead_payload_too_large",
+                size=len(raw.data),
+                limit=_MAX_CLAIM_PAYLOAD_BYTES,
+            )
+            await self._safe_ack_poison(raw)
+            return None
+        try:
+            claim = TaskClaim.model_validate_json(raw.data.decode("utf-8"))
+        except ValueError:
+            logger.warning(
+                WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
+                reason="dead_validation_failed",
+                size=len(raw.data),
+            )
+            await self._safe_ack_poison(raw)
+            return None
+        return claim, raw
+
+    @staticmethod
+    async def _safe_unsubscribe(sub: Any) -> None:
+        """Unsubscribe *sub* if present; log (never raise) on failure.
+
+        Shared by ``stop()`` (ready + dead consumers) and
+        ``_drain_partial()`` so teardown stays single-sourced and the
+        complexity of ``stop()`` stays within the gate ceiling.
+        """
+        if sub is None:
+            return
+        try:
+            await sub.unsubscribe()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+    @staticmethod
+    async def _safe_ack_poison(raw: Any) -> None:
+        """Terminally ack an unparseable message; log if the ack fails."""
+        try:
+            await raw.ack()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
     @staticmethod
     async def ack(raw: Any) -> None:
         """Acknowledge successful processing of a claim."""
@@ -508,3 +692,14 @@ class JetStreamTaskQueue:
             await raw.nak(delay=delay_seconds)
         else:
             await raw.nak()
+
+    @staticmethod
+    async def in_progress(raw: Any) -> None:
+        """Send a working-ack, resetting the JetStream ack deadline.
+
+        The worker calls this periodically while the executor runs so a
+        task whose execution exceeds ``ack_wait`` does not get
+        redelivered mid-flight (which would run the agent a second time
+        concurrently, since dedup only marks AFTER a terminal outcome).
+        """
+        await raw.in_progress()
