@@ -321,7 +321,6 @@ etc.).
         - straggler_gap                    # computed from per-agent turn times
         - token_speedup_ratio              # computed from token usage + speedup
         - message_overhead                 # computed from pairwise message counts
-      baseline_window: 50                  # number of SAS runs to establish baseline for Ae
       error_taxonomy:
         enabled: false                     # opt-in -- enable for targeted diagnosis
         categories:

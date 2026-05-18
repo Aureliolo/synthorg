@@ -170,3 +170,38 @@ class TestResolveBudgetInt:
         assert (
             _resolve_budget_int("coordination_metrics_max_entries") == expected_default
         )
+
+
+@pytest.mark.unit
+class TestResolveBaselineWindowSize:
+    """Cat-2 boot resolution for ``budget.baseline_window_size``.
+
+    The ``BaselineStore`` sliding window is sized before the
+    ``SettingsService`` connects, so the value is env > registered
+    default via the bootstrap resolver.
+    """
+
+    _ENV = "SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE"
+
+    def test_env_set_to_valid_int(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV, "120")
+        assert _resolve_budget_int("baseline_window_size") == 120
+
+    def test_env_unset_returns_registered_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv(self._ENV, raising=False)
+        assert _resolve_budget_int("baseline_window_size") == 50
+
+    def test_invalid_int_falls_through_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv(self._ENV, raising=False)
+        expected_default = _resolve_budget_int("baseline_window_size")
+        monkeypatch.setenv(self._ENV, "not-a-number")
+        assert _resolve_budget_int("baseline_window_size") == expected_default

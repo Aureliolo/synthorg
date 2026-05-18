@@ -170,3 +170,29 @@ _r.register(
         max_value=1_000_000,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="baseline_window_size",
+        type=SettingType.INTEGER,
+        default="50",
+        description=(
+            "Sliding-window size for single-agent baseline records used"
+            " to derive the multi-agent coordination baselines (Ec, O%,"
+            " Ae). Sizes a fixed-length deque at BaselineStore"
+            " construction; sourced from the"
+            " SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE env var > default at"
+            " API-process start. Read-only post-init: resizing the"
+            " window at runtime would discard accumulated baselines, so"
+            " a change requires a restart."
+        ),
+        group="Coordination",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE",
+        min_value=1,
+        max_value=1_000_000,
+    )
+)

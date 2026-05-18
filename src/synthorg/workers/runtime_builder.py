@@ -26,6 +26,8 @@ restart.
 import asyncio
 from typing import TYPE_CHECKING, NamedTuple
 
+from synthorg.budget.baseline_store import BaselineStore
+from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
@@ -36,6 +38,9 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
+from synthorg.settings.bootstrap_resolver import resolve_init_value
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_int
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.factory import build_sandbox_backends
@@ -64,6 +69,55 @@ _GIT_TIMEOUT_NS: str = "tools"
 _GIT_TIMEOUT_KEY: str = "git_command_timeout_seconds"
 _DECOMPOSITION_NS: str = "coordination"
 _DECOMPOSITION_KEY: str = "decomposition_model"
+_BASELINE_WINDOW_KEY: str = "baseline_window_size"
+
+
+def _resolve_baseline_window_size() -> int:
+    """Resolve ``budget.baseline_window_size`` at boot.
+
+    Cat-2 boot knob (``read_only_post_init``): the ``BaselineStore``
+    sliding window is sized once at construction, so the value is
+    sourced env > registered default via the bootstrap resolver (a
+    runtime change requires a restart). Mirrors ``app._resolve_budget_int``
+    for ``coordination_metrics_max_entries``.
+    """
+    resolved = resolve_init_value(
+        SettingNamespace.BUDGET,
+        _BASELINE_WINDOW_KEY,
+        parse=parse_int,
+    )
+    return int(resolved.value)
+
+
+def _construct_coordination_collector(
+    app_state: AppState,
+) -> CoordinationMetricsCollector | None:
+    """Build the shared coordination-metrics collector, or ``None``.
+
+    Requires a live ``CostTracker`` (the collector's only non-optional
+    dependency). Without one - the empty/degraded path - no collector
+    is built and the metrics pipeline stays a no-op, mirroring the
+    ``_construct_agent_engine`` optional-dependency guards. The single
+    instance returned is threaded into both the single-agent
+    ``AgentEngine`` and the multi-agent coordinator so one
+    ``BaselineStore`` accumulates the single-agent baselines the
+    multi-agent metrics compare against.
+    """
+    if not app_state.has_cost_tracker:
+        return None
+    baseline_store = BaselineStore(window_size=_resolve_baseline_window_size())
+    return CoordinationMetricsCollector(
+        config=app_state.config.coordination_metrics,
+        cost_tracker=app_state.cost_tracker,
+        message_bus=(app_state.message_bus if app_state.has_message_bus else None),
+        baseline_store=baseline_store,
+        metrics_store=(
+            app_state.coordination_metrics_store
+            if app_state.has_coordination_metrics_store
+            else None
+        ),
+        clock=app_state.clock,
+    )
 
 
 class RuntimeServices(NamedTuple):
@@ -172,14 +226,19 @@ def _construct_agent_engine(
     provider: CompletionProvider,
     registry: ProviderRegistry,
     tool_registry: ToolRegistry,
+    coordination_metrics_collector: CoordinationMetricsCollector | None,
 ) -> AgentEngine:
     """Assemble the boot ``AgentEngine`` from live application state.
 
     A single instance is shared by the worker execution service and the
     coordinator's parallel executor so both consumers observe the same
-    interrupt store, event stream hub, and clock seam.
+    interrupt store, event stream hub, and clock seam. The same
+    ``coordination_metrics_collector`` is shared too, so single-agent
+    runs accumulate the baselines the multi-agent metrics compare
+    against.
     """
     return AgentEngine(
+        coordination_metrics_collector=coordination_metrics_collector,
         provider=provider,
         provider_registry=registry,
         tool_registry=tool_registry,
@@ -283,6 +342,7 @@ async def _build_runtime_coordinator(
     app_state: AppState,
     engine: AgentEngine,
     provider: CompletionProvider,
+    coordination_metrics_collector: CoordinationMetricsCollector | None,
 ) -> MultiAgentCoordinator:
     """Build the multi-agent coordinator sharing the boot engine.
 
@@ -319,6 +379,7 @@ async def _build_runtime_coordinator(
         workspace_config=workspace_config,
         performance_tracker=performance_tracker,
         routing_scorer_config=routing_scorer_config,
+        coordination_metrics_collector=coordination_metrics_collector,
     )
     logger.info(
         API_APP_STARTUP,
@@ -364,11 +425,13 @@ async def build_runtime_services(
         app_state,
         workspace_root,
     )
+    coordination_metrics_collector = _construct_coordination_collector(app_state)
     engine = _construct_agent_engine(
         app_state,
         provider,
         registry,
         tool_registry,
+        coordination_metrics_collector,
     )
     autonomy_resolver = AutonomyResolver(
         registry=ActionTypeRegistry(),
@@ -378,6 +441,7 @@ async def build_runtime_services(
         app_state,
         engine,
         provider,
+        coordination_metrics_collector,
     )
     logger.info(
         API_APP_STARTUP,

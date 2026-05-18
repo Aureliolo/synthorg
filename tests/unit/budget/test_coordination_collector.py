@@ -15,8 +15,10 @@ from synthorg.budget.coordination_config import (
     OrchestrationAlertThresholds,
 )
 from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.providers.enums import FinishReason
+from tests._shared import FakeClock
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -771,3 +773,111 @@ class TestMetricIsolation:
             team_size=1,
         )
         assert isinstance(result, CoordinationMetrics)
+
+
+# ---------------------------------------------------------------------------
+# CoordinationMetricsStore write (collector owns the store)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestStoreWrite:
+    """The collector writes a CoordinationMetricsRecord for multi-agent runs."""
+
+    async def test_multi_agent_writes_one_record(self) -> None:
+        metrics_store = CoordinationMetricsStore()
+        clock = FakeClock()
+        collector = CoordinationMetricsCollector(
+            config=_config(),
+            cost_tracker=_cost_tracker(),
+            baseline_store=_baseline_store(),
+            metrics_store=metrics_store,
+            clock=clock,
+        )
+        result = await collector.collect(
+            execution_result=_execution_result(_turn(), _turn(), _turn()),
+            agent_id="lead-agent",
+            task_id="task-42",
+            team_size=3,
+            is_multi_agent=True,
+        )
+        assert metrics_store.count() == 1
+        records, total = metrics_store.query(limit=10)
+        assert total == 1
+        record = records[0]
+        assert record.task_id == "task-42"
+        # Multi-agent is a system-level run: no single lead agent.
+        assert record.agent_id is None
+        assert record.team_size == 3
+        assert record.computed_at == clock.now()
+        assert record.metrics is result
+
+    async def test_single_agent_writes_no_record(self) -> None:
+        metrics_store = CoordinationMetricsStore()
+        collector = CoordinationMetricsCollector(
+            config=_config(),
+            cost_tracker=_cost_tracker(),
+            baseline_store=_baseline_store(pre_populated=False),
+            metrics_store=metrics_store,
+            clock=FakeClock(),
+        )
+        await collector.collect(
+            execution_result=_execution_result(_turn(), _turn()),
+            agent_id="agent-1",
+            task_id="task-1",
+            is_multi_agent=False,
+        )
+        assert metrics_store.count() == 0
+
+    async def test_no_store_does_not_raise(self) -> None:
+        collector = CoordinationMetricsCollector(
+            config=_config(),
+            cost_tracker=_cost_tracker(),
+            baseline_store=_baseline_store(),
+            metrics_store=None,
+        )
+        result = await collector.collect(
+            execution_result=_execution_result(_turn(), _turn()),
+            agent_id="lead-agent",
+            task_id="task-1",
+            team_size=2,
+            is_multi_agent=True,
+        )
+        assert isinstance(result, CoordinationMetrics)
+
+    async def test_disabled_collector_writes_no_record(self) -> None:
+        metrics_store = CoordinationMetricsStore()
+        collector = CoordinationMetricsCollector(
+            config=_config(enabled=False),
+            cost_tracker=_cost_tracker(),
+            baseline_store=_baseline_store(),
+            metrics_store=metrics_store,
+            clock=FakeClock(),
+        )
+        await collector.collect(
+            execution_result=_execution_result(_turn(), _turn()),
+            agent_id="lead-agent",
+            task_id="task-1",
+            team_size=2,
+            is_multi_agent=True,
+        )
+        assert metrics_store.count() == 0
+
+    async def test_record_written_even_when_all_metrics_skipped(self) -> None:
+        """A multi-agent run still records the (possibly sparse) metrics."""
+        metrics_store = CoordinationMetricsStore()
+        collector = CoordinationMetricsCollector(
+            config=_config(),
+            cost_tracker=_cost_tracker(),
+            baseline_store=_baseline_store(pre_populated=False),
+            metrics_store=metrics_store,
+            clock=FakeClock(),
+        )
+        await collector.collect(
+            execution_result=_execution_result(_turn()),
+            agent_id="lead-agent",
+            task_id="task-1",
+            team_size=1,
+            is_multi_agent=True,
+        )
+        assert metrics_store.count() == 1

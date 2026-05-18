@@ -296,7 +296,6 @@ class TestCoordinationMetricsConfig:
         config = CoordinationMetricsConfig()
         assert config.enabled is False
         assert len(config.collect) == 9
-        assert config.baseline_window == 50
         assert config.error_taxonomy.enabled is False
         assert config.orchestration_alerts.info == 0.30
 
@@ -310,18 +309,6 @@ class TestCoordinationMetricsConfig:
         )
         assert config.enabled is True
         assert len(config.collect) == 2
-
-    def test_custom_baseline_window(self) -> None:
-        config = CoordinationMetricsConfig(baseline_window=100)
-        assert config.baseline_window == 100
-
-    def test_zero_baseline_window_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CoordinationMetricsConfig(baseline_window=0)
-
-    def test_negative_baseline_window_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CoordinationMetricsConfig(baseline_window=-1)
 
     def test_frozen(self) -> None:
         config = CoordinationMetricsConfig()

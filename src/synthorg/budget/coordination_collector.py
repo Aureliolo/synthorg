@@ -37,6 +37,8 @@ from synthorg.budget.coordination_metrics import (
     compute_straggler_gap,
     compute_token_speedup_ratio,
 )
+from synthorg.budget.coordination_store import CoordinationMetricsRecord
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_ALERT_FIRED,
@@ -53,6 +55,7 @@ from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
     from synthorg.budget.baseline_store import BaselineStore
+    from synthorg.budget.coordination_store import CoordinationMetricsStore
     from synthorg.budget.tracker import CostTracker
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.engine.loop_protocol import ExecutionResult
@@ -133,6 +136,12 @@ class CoordinationMetricsCollector:
         baseline_store: Optional store for single-agent baselines.
             When ``None``, efficiency, overhead, and error_amplification
             are skipped (no comparison data).
+        metrics_store: Optional store the computed multi-agent metrics
+            are recorded into. When ``None``, metrics are returned but
+            not persisted (the ``/coordination/metrics`` API stays
+            empty).
+        clock: Clock seam for the record timestamp. Defaults to
+            ``SystemClock``; tests inject ``FakeClock``.
     """
 
     def __init__(  # noqa: PLR0913
@@ -144,6 +153,8 @@ class CoordinationMetricsCollector:
         notification_dispatcher: NotificationDispatcher | None = None,
         similarity_computer: SimilarityComputer | None = None,
         baseline_store: BaselineStore | None = None,
+        metrics_store: CoordinationMetricsStore | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._config = config
         self._cost_tracker = cost_tracker
@@ -151,6 +162,8 @@ class CoordinationMetricsCollector:
         self._notification_dispatcher = notification_dispatcher
         self._similarity_computer = similarity_computer
         self._baseline_store = baseline_store
+        self._metrics_store = metrics_store
+        self._clock: Clock = clock or SystemClock()
 
     def _is_enabled(self, metric: CoordinationMetricName) -> bool:
         """Return True if the metric is in config.collect."""
@@ -359,7 +372,42 @@ class CoordinationMetricsCollector:
         )
 
         await self._fire_alerts(metrics, agent_id=agent_id, task_id=task_id)
+        self._record_metrics(task_id, team_size, metrics)
         return metrics
+
+    def _record_metrics(
+        self,
+        task_id: str,
+        team_size: int,
+        metrics: CoordinationMetrics,
+    ) -> None:
+        """Persist multi-agent metrics into the store when one is wired.
+
+        Multi-agent coordination is a system-level run with no single
+        lead agent, so ``agent_id`` is ``None``.  Never fatal: a store
+        write failure must not fail an already-completed run.
+        """
+        if self._metrics_store is None:
+            return
+        try:
+            record = CoordinationMetricsRecord(
+                task_id=task_id,
+                agent_id=None,
+                computed_at=self._clock.now(),
+                team_size=team_size,
+                metrics=metrics,
+            )
+            self._metrics_store.record(record)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="record_persist",
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     # Private collection helpers
 

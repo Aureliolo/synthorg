@@ -41,6 +41,9 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.budget.coordination_collector import (
+        CoordinationMetricsCollector,
+    )
     from synthorg.engine.coordination.dispatcher_types import DispatchResult
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.decomposition.models import (
@@ -58,6 +61,12 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
+
+# Logging actor for the multi-agent (system-level) metrics collection.
+# The recorded ``CoordinationMetricsRecord`` carries ``agent_id=None``
+# (no single lead in a coordinated run); this label only tags the
+# collector's observability events / overhead alerts.
+_COORDINATOR_ACTOR: str = "coordinator"
 
 
 class MultiAgentCoordinator:
@@ -98,11 +107,16 @@ class MultiAgentCoordinator:
             rebuilding the coordinator. Falls back to
             ``CoordinationTopology.SAS`` (the historical default)
             when ``None`` is supplied.
+        coordination_metrics_collector: Optional collector invoked
+            post-completion to compute and record the multi-agent
+            coordination metrics. ``None`` disables collection (never
+            fatal: a collector failure cannot fail a completed run).
     """
 
     __slots__ = (
         "_clock",
         "_coordination_chain",
+        "_coordination_metrics_collector",
         "_decomposition_service",
         "_default_topology_provider",
         "_parallel_executor",
@@ -124,8 +138,10 @@ class MultiAgentCoordinator:
         coordination_chain: CoordinationMiddlewareChain | None = None,
         default_topology_provider: Callable[[], CoordinationTopology] | None = None,
         clock: Clock | None = None,
+        coordination_metrics_collector: CoordinationMetricsCollector | None = None,
     ) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._coordination_metrics_collector = coordination_metrics_collector
         self._decomposition_service = decomposition_service
         self._routing_service = routing_service
         self._parallel_executor = parallel_executor
@@ -445,10 +461,75 @@ class MultiAgentCoordinator:
                     context="post_completion_tracker_write",
                 )
 
+        await self._collect_coordination_metrics(
+            task_id=task.id,
+            dispatch_result=dispatch_result,
+        )
+
         return CoordinationResultWithAttribution(
             result=result,
             agent_contributions=contributions,
         )
+
+    async def _collect_coordination_metrics(
+        self,
+        *,
+        task_id: str,
+        dispatch_result: DispatchResult,
+    ) -> None:
+        """Compute and record the multi-agent coordination metrics.
+
+        Never fatal: a collector failure must not fail an already
+        completed coordination run (mirrors the ``_performance_tracker``
+        guard above). Skipped when no collector is wired or no sub-agent
+        produced a result. The aggregate ``ExecutionResult`` carries the
+        team-wide turn records (``model_copy`` off a real sub-agent
+        result, swapping only ``turns`` -- the collector reads nothing
+        else off it) so ``turns_mas`` is the total reasoning turns
+        across the system.
+        """
+        collector = self._coordination_metrics_collector
+        if collector is None:
+            return
+        results = [
+            outcome.result
+            for wave in dispatch_result.waves
+            if wave.execution_result is not None
+            for outcome in wave.execution_result.outcomes
+            if outcome.result is not None
+        ]
+        if not results:
+            return
+        aggregate_turns = tuple(
+            turn for r in results for turn in r.execution_result.turns
+        )
+        aggregate = results[0].execution_result.model_copy(
+            update={"turns": aggregate_turns},
+        )
+        agent_durations = tuple((r.agent_id, r.duration_seconds) for r in results)
+        agent_outputs = tuple(
+            r.completion_summary for r in results if r.completion_summary
+        )
+        team_size = len({r.agent_id for r in results})
+        try:
+            await collector.collect(
+                execution_result=aggregate,
+                agent_id=_COORDINATOR_ACTOR,
+                task_id=task_id,
+                team_size=team_size,
+                agent_durations=agent_durations,
+                agent_outputs=agent_outputs,
+                is_multi_agent=True,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORDINATION_CLEANUP_FAILED,
+                parent_task_id=task_id,
+                error=safe_error_description(exc),
+                context="post_completion_coordination_metrics",
+            )
 
     async def _phase_decompose(
         self,

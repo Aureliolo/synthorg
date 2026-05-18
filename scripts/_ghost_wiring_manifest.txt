@@ -29,8 +29,8 @@ ENFORCED ApprovalGate #1957 -- one gate wired at boot in lifecycle_builder, inje
 ENFORCED TrustService #1957 -- built at boot (non-DISABLED strategy), injected into AgentEngine; narrows tool permissions at the invoker seam
 ENFORCED build_mcp_self_consumer #1957 -- called in runtime_builder; agent invokes SynthOrg's own MCP tools trust-scoped with actor fail-closed
 ENFORCED build_autonomy_change_strategy #1957 -- built at boot in app_builders, attached to AppState; autonomy controller routes through it
-PENDING BaselineStore #1959 -- construct at boot (window from budget.baseline_window_size)
-PENDING CoordinationMetricsCollector #1959 -- construct at boot, thread into execution
+ENFORCED BaselineStore #1959 -- construct at boot (window from budget.baseline_window_size)
+ENFORCED CoordinationMetricsCollector #1959 -- construct at boot, thread into execution
 ENFORCED IntakeEngine #1961 -- wired at boot via client/runtime_builder.build_client_simulation_runtime
 ENFORCED create_lifecycle_strategy #1965 -- constructed at boot in workers/runtime_builder._build_tool_registry and injected into the Docker sandbox backend
 ENFORCED build_distributed_backend_services #1966 -- called in api/auto_wire._register_distributed_dispatcher behind queue.enabled; builds the dead-letter consumer + dedup pruner + heartbeat subscriber bundle
