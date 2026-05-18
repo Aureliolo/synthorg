@@ -3,12 +3,12 @@
 from pathlib import Path
 
 import pytest
-import structlog
 from structlog.testing import capture_logs
 
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.workers.execution_service import NoProviderExecutionService
 from tests._shared import mock_of
 
@@ -50,10 +50,10 @@ class TestSwapWorkerExecutionService:
         assert any(e.get("transition") == "noop" for e in logs)
 
     def test_swap_replaces_lazy_default(self) -> None:
-        structlog.reset_defaults()
         state = _app_state()
-        # Force the lazy default to materialise first.
-        with pytest.raises(Exception):  # noqa: B017, PT011 -- task_engine 503
+        # Force the lazy default to materialise first; it needs a
+        # task_engine, which an injected app does not configure.
+        with pytest.raises(ServiceUnavailableError):
             _ = state.worker_execution_service
         replacement = NoProviderExecutionService()
         state.swap_worker_execution_service(replacement)

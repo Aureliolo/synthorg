@@ -25,7 +25,7 @@ def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
     session = ""
     csrf = ""
     for k, v in resp.headers.multi_items():
-        if k != "set-cookie":
+        if k.lower() != "set-cookie":
             continue
         if v.startswith("session="):
             session = v.split("session=")[1].split(";")[0]

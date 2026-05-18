@@ -10,7 +10,7 @@ import os
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 # ``ChannelsPlugin`` appears in the public signatures of the helpers
 # below. Under PEP 649 lazy annotations, ``typing.get_type_hints()``
@@ -44,6 +44,9 @@ from synthorg.observability.events.prompt import (
 )
 
 logger = get_logger(__name__)
+
+_AGENT_WORKSPACES_SUBDIR: Final[str] = "agent-workspaces"
+_POSTGRES_VOLUME_DATA_DIR: Final[str] = "/data"
 
 
 def _make_expire_callback(
@@ -104,7 +107,7 @@ def _resolve_artifact_dir_env() -> str:
     """
     artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
     if not artifact_dir_str:
-        return "/data"
+        return _POSTGRES_VOLUME_DATA_DIR
     artifact_path = Path(artifact_dir_str)
     if not artifact_path.is_absolute():
         msg = (
@@ -140,12 +143,21 @@ def resolve_agent_workspace_root_env() -> Path | None:
     """
     artifact_dir = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
     if artifact_dir:
-        return Path(_resolve_artifact_dir_env()) / "agent-workspaces"
+        return Path(_resolve_artifact_dir_env()) / _AGENT_WORKSPACES_SUBDIR
     db_path = os.environ.get("SYNTHORG_DB_PATH", "").strip()
     if db_path:
-        return Path(db_path).parent / "agent-workspaces"
+        db_path_obj = Path(db_path)
+        if not db_path_obj.is_absolute():
+            msg = (
+                f"SYNTHORG_DB_PATH={db_path!r} must be an absolute path when "
+                f"deriving the agent workspace root so sandbox writes land on "
+                f"the mounted data volume, not the process working directory"
+            )
+            logger.warning(API_APP_STARTUP, error=msg, reason="non_absolute_db_path")
+            raise ValueError(msg)
+        return db_path_obj.parent / _AGENT_WORKSPACES_SUBDIR
     if os.environ.get("SYNTHORG_DATABASE_URL", "").strip():
-        return Path("/data") / "agent-workspaces"
+        return Path(_POSTGRES_VOLUME_DATA_DIR) / _AGENT_WORKSPACES_SUBDIR
     return None
 
 

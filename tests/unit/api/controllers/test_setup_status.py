@@ -9,6 +9,7 @@ from litestar.testing import TestClient
 
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.roles import HumanRole
+from synthorg.providers.registry import ProviderRegistry
 
 _DEFAULT_MIN_PW = AuthConfig.model_fields["min_password_length"].default
 
@@ -22,14 +23,20 @@ class TestSetupStatus:
         test_client: TestClient[Any],
     ) -> None:
         """With pre-seeded users, needs_admin is False."""
-        resp = test_client.get("/api/v1/setup/status")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["success"] is True
-        data = body["data"]
-        assert data["needs_admin"] is False
-        assert data["needs_setup"] is True
-        assert data["has_providers"] is False
+        app_state = test_client.app.state.app_state
+        original_registry = app_state._provider_registry
+        app_state._provider_registry = ProviderRegistry({})
+        try:
+            resp = test_client.get("/api/v1/setup/status")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["success"] is True
+            data = body["data"]
+            assert data["needs_admin"] is False
+            assert data["needs_setup"] is True
+            assert data["has_providers"] is False
+        finally:
+            app_state._provider_registry = original_registry
 
     def test_status_without_auth_header(
         self,

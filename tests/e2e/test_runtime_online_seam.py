@@ -16,6 +16,7 @@ teardown cannot mask the behaviour under assertion.
 """
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 import pytest
 from structlog.testing import capture_logs
@@ -91,7 +92,7 @@ async def task_engine(
 async def test_runtime_executes_task_through_seam_with_safety_spine(
     persistence: FakePersistenceBackend,
     task_engine: TaskEngine,
-    tmp_path: object,
+    tmp_path: Path,
 ) -> None:
     # Scripted agent: turn 1 asks to list a directory. Under LOCKED
     # autonomy the SecOps interceptor routes that tool action to the
@@ -137,7 +138,7 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
 
     service = await build_worker_execution_service(
         app_state,
-        workspace_root=tmp_path,  # type: ignore[arg-type]
+        workspace_root=tmp_path,
     )
     assert isinstance(service, AgentEngineExecutionService)
 

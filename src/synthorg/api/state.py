@@ -10,7 +10,7 @@ import tempfile
 import threading
 from collections import OrderedDict
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService  # noqa: TC001
@@ -156,6 +156,8 @@ if TYPE_CHECKING:
     from synthorg.workers.claim import JetStreamTaskQueue
 
 logger = get_logger(__name__)
+
+_DEFAULT_WORKSPACE_TEMP_SUBDIR: Final[str] = "synthorg-agent-workspaces"
 
 
 class AppState(AppStateServicesMixin):
@@ -923,7 +925,7 @@ class AppState(AppStateServicesMixin):
         """
         if self._agent_workspace_root is not None:
             return self._agent_workspace_root
-        return Path(tempfile.gettempdir()) / "synthorg-agent-workspaces"
+        return Path(tempfile.gettempdir()) / _DEFAULT_WORKSPACE_TEMP_SUBDIR
 
     def set_agent_workspace_root(self, path: Path) -> None:
         """Pin the agent workspace root (once-only, startup)."""

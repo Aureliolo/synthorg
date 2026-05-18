@@ -296,12 +296,21 @@ class AgentEngineExecutionService:
         task_id: str,
     ) -> AgentIdentity:
         """Resolve the task's assigned agent identity, or raise."""
-        if assigned_to:
-            identity = await self._agent_registry.get(assigned_to)
-            if identity is None:
-                identity = await self._agent_registry.get_by_name(assigned_to)
-            if identity is not None:
-                return identity
+        if not assigned_to:
+            logger.warning(
+                WORKERS_EXECUTION_SERVICE_NO_OP,
+                task_id=task_id,
+                reason="task_unassigned",
+            )
+            msg = f"Task {task_id!r} is not assigned to any agent."
+            raise NotFoundError(msg)
+
+        identity = await self._agent_registry.get(assigned_to)
+        if identity is None:
+            identity = await self._agent_registry.get_by_name(assigned_to)
+        if identity is not None:
+            return identity
+
         logger.warning(
             WORKERS_EXECUTION_SERVICE_NO_OP,
             task_id=task_id,

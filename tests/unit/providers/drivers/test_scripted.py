@@ -7,7 +7,6 @@ strategies, factory registration, and the safety WARNING.
 """
 
 import pytest
-import structlog
 from structlog.testing import capture_logs
 
 from synthorg.config.provider_schema import ProviderConfig
@@ -125,7 +124,6 @@ class TestFactoryRegistration:
 
 class TestSafetyWarning:
     def test_warns_on_construction(self) -> None:
-        structlog.reset_defaults()
         with capture_logs() as logs:
             ScriptedDriver(strategy=DeterministicResponseStrategy())
         assert any(entry.get("log_level") == "warning" for entry in logs)

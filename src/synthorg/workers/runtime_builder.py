@@ -19,7 +19,6 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.security.action_types import ActionTypeRegistry
-from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.registry import ToolRegistry
@@ -127,7 +126,7 @@ async def build_worker_execution_service(
     )
     autonomy_resolver = AutonomyResolver(
         registry=ActionTypeRegistry(),
-        config=AutonomyConfig(),
+        config=app_state.config.config.autonomy,
     )
     logger.info(
         API_APP_STARTUP,
