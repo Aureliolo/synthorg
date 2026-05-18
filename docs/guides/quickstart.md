@@ -147,8 +147,9 @@ Once the wizard completes, the dashboard loads and you will see:
     Replace `<your-jwt-token>` with the JWT from your admin session. See the [REST API Reference](../openapi/index.md) for authentication details.
 
 Today the task is created and advances through its lifecycle states. An agent
-does not yet pick it up and execute it: that is the agent runtime, in active
-development ([EPIC #1955](https://github.com/Aureliolo/synthorg/issues/1955)).
+does not yet pick it up and execute it: that is the agent runtime, which is in
+active development. See the [roadmap](https://synthorg.io/docs/roadmap/) for
+current status.
 
 ---
 

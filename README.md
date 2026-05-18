@@ -19,7 +19,7 @@ SynthOrg is a self-contained, self-hostable platform for **synthetic organisatio
 
 It is provider-agnostic (<!--RS:providers_via_litellm-->2700+<!--/RS--> LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and licensed BUSL-1.1 (converts to Apache 2.0 at the Change Date).
 
-> **Project status (read this).** The framework and infrastructure are built and tested (<!--RS:tests-->30,000+<!--/RS--> tests, 80%+ coverage): API, dashboard, CLI, dual-backend persistence, the provider layer, and every subsystem as importable, unit-tested components. The autonomous agent **runtime** that makes the organisation actually execute work is **in active development** and tracked openly on the [roadmap](https://synthorg.io/docs/roadmap/) and the [issue tracker](https://github.com/Aureliolo/synthorg/issues). Today, starting SynthOrg brings up the platform and dashboard; running a company end to end is the work in flight. We would rather you see exactly what is built versus in progress than discover it later.
+> **Project status (read this).** The framework and infrastructure are built and tested (<!--RS:tests-->31,000+<!--/RS--> tests, 80%+ coverage): API, dashboard, CLI, dual-backend persistence, the provider layer, and every subsystem as importable, unit-tested components. The autonomous agent **runtime** that makes the organisation actually execute work is **in active development** and tracked openly on the [roadmap](https://synthorg.io/docs/roadmap/) and the [issue tracker](https://github.com/Aureliolo/synthorg/issues). Today, starting SynthOrg brings up the platform and dashboard; running a company end to end is the work in flight. We would rather you see exactly what is built versus in progress than discover it later.
 
 ## What is available now
 
@@ -38,11 +38,11 @@ A tested platform you can run, inspect, and build on:
 
 These are the capabilities that make SynthOrg an autonomous studio. They are designed and largely written as components, but not yet wired into a running product. Each is tracked in the open:
 
-- **Agent runtime online** ([EPIC #1955](https://github.com/Aureliolo/synthorg/issues/1955)): agents actually executing tasks (LLM + sandboxed tools) under a minimal safety spine. This is the foundational item everything else depends on.
-- **Conversational org interface** ([EPIC #1967](https://github.com/Aureliolo/synthorg/issues/1967)): talk to the company in natural language; it clarifies, proposes, and (later) acts under governance.
-- **Autonomous product studio substrate** ([EPIC #1973](https://github.com/Aureliolo/synthorg/issues/1973)): persistent project workspace with pluggable git, brownfield codebase intake, living documentation, and a deep requirements interview.
-- **Best-in-class operate tier** ([EPIC #1979](https://github.com/Aureliolo/synthorg/issues/1979)): a golden-company benchmark, mission control with run replay, a cost forecast/kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
-- **Agent capability layer** ([EPIC #1987](https://github.com/Aureliolo/synthorg/issues/1987)): a knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing, and more.
+- **Agent runtime online**: agents actually executing tasks (LLM + sandboxed tools) under a minimal safety spine. This is the foundational item everything else depends on.
+- **Conversational org interface**: talk to the company in natural language; it clarifies, proposes, and (later) acts under governance.
+- **Autonomous product studio substrate**: persistent project workspace with pluggable git, brownfield codebase intake, living documentation, and a deep requirements interview.
+- **Best-in-class operate tier**: a golden-company benchmark, mission control with run replay, a cost forecast/kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
+- **Agent capability layer**: a knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing, and more.
 
 Until the runtime lands, multi-agent coordination, coordination metrics, the intake engine, autonomy/trust enforcement on a live run, and the self-improvement loop are designed and unit-tested but not exercised end to end. The design for each lives in the [Design Specification](https://synthorg.io/docs/design/).
 
