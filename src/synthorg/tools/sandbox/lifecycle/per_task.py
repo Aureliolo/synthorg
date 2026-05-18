@@ -95,7 +95,15 @@ class PerTaskStrategy:
             action="destroy",
             container_id=handle.container_id,
         )
-        await destroy_fn(handle)
+        try:
+            await destroy_fn(handle)
+        except Exception:
+            logger.warning(
+                SANDBOX_LIFECYCLE_DESTROY_FAILED,
+                strategy="per-task",
+                owner_id=owner_id,
+                container_id=handle.container_id,
+            )
 
     async def cleanup_all(
         self,

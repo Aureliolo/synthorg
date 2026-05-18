@@ -70,6 +70,7 @@ class TestReusesContainer:
             PerTaskStrategy(),
             PerAgentStrategy(SandboxLifecycleConfig(strategy="per-agent")),
         ],
+        ids=["per_call", "per_task", "per_agent"],
     )
     def test_all_satisfy_runtime_checkable_protocol(
         self,

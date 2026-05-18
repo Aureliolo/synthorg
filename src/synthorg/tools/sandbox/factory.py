@@ -11,7 +11,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.registry import StrategyRegistry
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_FACTORY_BUILD_FAILED,
     SANDBOX_FACTORY_BUILT,
@@ -65,11 +65,13 @@ def _build_subprocess_backend(
             config=config.subprocess,
             workspace=workspace,
         )
-    except Exception:
+    except Exception as exc:
         logger.error(
             SANDBOX_FACTORY_BUILD_FAILED,
             backend="subprocess",
             workspace=str(workspace),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
 
@@ -88,11 +90,13 @@ def _build_docker_backend(
             tracked_container_repo=tracked_container_repo,
             lifecycle_strategy=lifecycle_strategy,
         )
-    except Exception:
+    except Exception as exc:
         logger.error(
             SANDBOX_FACTORY_BUILD_FAILED,
             backend="docker",
             workspace=str(workspace),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
 
@@ -297,5 +301,7 @@ async def cleanup_sandbox_backends(
             logger.error(
                 SANDBOX_FACTORY_CLEANUP_FAILED,
                 backend=name,
-                error=f"unhandled exception during cleanup: {result!r}",
+                reason="unhandled_exception_during_cleanup",
+                error_type=type(result).__name__,
+                error=safe_error_description(result),
             )

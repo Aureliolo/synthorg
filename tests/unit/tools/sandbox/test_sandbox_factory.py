@@ -20,8 +20,9 @@ from synthorg.tools.sandbox.factory import (
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
+pytestmark = pytest.mark.unit
 
-@pytest.mark.unit
+
 class TestBuildSandboxBackends:
     """Tests for build_sandbox_backends()."""
 
@@ -161,7 +162,6 @@ class TestBuildSandboxBackends:
         assert backends["docker"] is mock_docker_cls.return_value
 
 
-@pytest.mark.unit
 class TestResolveSandboxForCategory:
     """Tests for resolve_sandbox_for_category()."""
 
@@ -251,7 +251,6 @@ class TestResolveSandboxForCategory:
             )
 
 
-@pytest.mark.unit
 class TestCleanupSandboxBackends:
     """Tests for cleanup_sandbox_backends()."""
 
@@ -310,7 +309,6 @@ class TestCleanupSandboxBackends:
         assert call_args[1]["backend"] == "broken"
 
 
-@pytest.mark.unit
 class TestMergeGvisorDefaults:
     """Tests for merge_gvisor_defaults()."""
 

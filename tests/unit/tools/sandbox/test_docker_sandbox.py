@@ -598,6 +598,7 @@ class TestMemoryLimitParsing:
             ("1024", 1024),
             ("2G", 2 * 1024**3),
         ],
+        ids=["512m", "1g", "256k", "1024-bytes", "2G-uppercase"],
     )
     def test_parse_memory_limit(
         self,
@@ -609,6 +610,7 @@ class TestMemoryLimitParsing:
     @pytest.mark.parametrize(
         "invalid_limit",
         ["", "   ", "abc", "512x", "0m", "-1g"],
+        ids=["empty", "whitespace", "non-numeric", "bad-suffix", "zero", "negative"],
     )
     def test_parse_memory_limit_invalid(
         self,
