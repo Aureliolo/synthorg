@@ -692,8 +692,6 @@ class AgentRegistryService:
                     ),
                 )
                 approval_enqueued = True
-            else:
-                approval_id = None
             logger.info(
                 SECURITY_AUTONOMY_PROMOTION_DENIED,
                 agent_id=key,
@@ -706,7 +704,7 @@ class AgentRegistryService:
                 requested_level=update.requested_level,
                 promotion_pending=True,
                 approval_enqueued=approval_enqueued,
-                approval_id=approval_id,
+                approval_id=approval_id if approval_enqueued else None,
             )
 
         # Strategy granted: apply the level change FIRST so a terminal
@@ -752,8 +750,7 @@ class AgentRegistryService:
                 ),
             )
             approval_enqueued = True
-        else:
-            approval_id = None
+        result_id = approval_id if approval_enqueued else None
         # State transition logged AFTER the persistence write.
         logger.info(
             SECURITY_AUTONOMY_PROMOTION_GRANTED,
@@ -761,7 +758,7 @@ class AgentRegistryService:
             previous_level=current_level.value,
             requested_level=update.requested_level.value,
             granted_by_strategy=str(update.granted_by_strategy),
-            approval_id=approval_id,
+            approval_id=result_id,
         )
         return AutonomyUpdateResult(
             agent_id=key,
@@ -769,7 +766,7 @@ class AgentRegistryService:
             requested_level=update.requested_level,
             promotion_pending=False,
             approval_enqueued=approval_enqueued,
-            approval_id=approval_id,
+            approval_id=result_id,
         )
 
     async def agent_count(self) -> int:

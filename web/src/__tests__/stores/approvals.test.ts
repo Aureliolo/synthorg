@@ -446,7 +446,8 @@ describe('handleWsEvent', () => {
     // A frame from before the source field shipped: isApprovalShape
     // must reject it rather than let sanitizeWsEnum silently coerce
     // the missing field to 'review_gate' (misstated provenance).
-    const { source: _omit, ...noSource } = makeApproval('no-source')
+    const noSource: Record<string, unknown> = { ...makeApproval('no-source') }
+    delete noSource.source
     const event = makeWsEvent(noSource as Partial<ApprovalResponse>)
     useApprovalsStore.getState().handleWsEvent(event)
     expect(useApprovalsStore.getState().approvals).toHaveLength(0)
