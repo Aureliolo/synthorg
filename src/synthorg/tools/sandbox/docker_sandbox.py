@@ -1038,6 +1038,11 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         """
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
+        # Bounded: drains until the exec stream hits EOF (read_out()
+        # returns None when the exec'd command exits), and the sole
+        # caller wraps this in asyncio.wait_for(timeout) so a hung
+        # command is cancelled at the lifecycle-resolved timeout.
+        # lint-allow: long-running-loop-kill-switch -- EOF + caller timeout.
         while True:
             message = await stream.read_out()
             if message is None:
