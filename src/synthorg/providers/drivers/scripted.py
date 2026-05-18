@@ -21,6 +21,7 @@ protocol.  Three strategies ship:
 """
 
 import hashlib
+import threading
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from synthorg.core.domain_errors import DomainError
@@ -123,11 +124,12 @@ class DeterministicResponseStrategy:
 class SequencedResponseStrategy:
     """Replay a fixed tuple of responses in order."""
 
-    __slots__ = ("_index", "_responses")
+    __slots__ = ("_index", "_lock", "_responses")
 
     def __init__(self, responses: tuple[CompletionResponse, ...]) -> None:
         self._responses = responses
         self._index = 0
+        self._lock = threading.Lock()
 
     def next_response(
         self,
@@ -136,17 +138,22 @@ class SequencedResponseStrategy:
         tools: list[ToolDefinition] | None,
         config: CompletionConfig | None,
     ) -> CompletionResponse:
-        """Return the next response, or raise when exhausted."""
+        """Return the next response, or raise when exhausted.
+
+        The check-and-advance is guarded so concurrent agent runs
+        sharing one scripted provider cannot skip or replay a response.
+        """
         del messages, model, tools, config
-        if self._index >= len(self._responses):
-            msg = (
-                f"SequencedResponseStrategy exhausted: call "
-                f"#{self._index + 1} but only {len(self._responses)} "
-                f"responses were scripted"
-            )
-            raise ScriptedProviderExhaustedError(msg)
-        response = self._responses[self._index]
-        self._index += 1
+        with self._lock:
+            if self._index >= len(self._responses):
+                msg = (
+                    f"SequencedResponseStrategy exhausted: call "
+                    f"#{self._index + 1} but only {len(self._responses)} "
+                    f"responses were scripted"
+                )
+                raise ScriptedProviderExhaustedError(msg)
+            response = self._responses[self._index]
+            self._index += 1
         return response
 
 
@@ -189,6 +196,12 @@ class ScriptedDriver(BaseCompletionProvider):
     ``ProviderRegistry.from_config`` (driver ``"scripted"``), which calls
     ``ScriptedDriver(provider_name, config)`` and uses the safe
     deterministic default strategy.
+
+    ``config`` is accepted for factory-signature parity but ignored:
+    behaviour is controlled by ``strategy=``, not provider config.
+    ``super().__init__()`` is called with no arguments deliberately;
+    a deterministic provider needs no retry handler or rate limiter
+    (the base class defaults suffice and never fire on local replay).
     """
 
     def __init__(

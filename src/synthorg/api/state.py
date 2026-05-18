@@ -81,7 +81,11 @@ from synthorg.notifications.dispatcher import (
     NotificationDispatcher,  # noqa: TC001
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_SERVICE_AUTO_WIRED,
+    API_SERVICE_UNAVAILABLE,
+)
 from synthorg.observability.prometheus_collector import (
     PrometheusCollector,  # noqa: TC001
 )
@@ -433,6 +437,7 @@ class AppState(AppStateServicesMixin):
         # before any explicit ``set_*`` call, so the bare None check
         # without a lock could construct two instances and lose state.
         self._lazy_service_lock: threading.Lock = threading.Lock()
+        self._provider_registry_lock: threading.Lock = threading.Lock()
         # Lazily constructed against an in-memory repository so the
         # ``/experiments`` controller works out of the box; deployments
         # swap in a durable repository via ``set_experiment_service``.
@@ -850,6 +855,12 @@ class AppState(AppStateServicesMixin):
                     self._worker_execution_service = LifecycleAdvancingExecutionService(
                         task_engine=self.task_engine,
                     )
+                    logger.info(
+                        API_SERVICE_AUTO_WIRED,
+                        service="worker_execution_service",
+                        implementation="LifecycleAdvancingExecutionService",
+                        note="lazy baseline; boot install did not run first",
+                    )
         return self._worker_execution_service
 
     def set_worker_execution_service(
@@ -873,35 +884,42 @@ class AppState(AppStateServicesMixin):
     ) -> None:
         """Replace the worker execution service (hot-reload).
 
-        Unlike :meth:`set_worker_execution_service` (boot, once-only),
-        this intentionally replaces an already-wired service so a
-        provider added after an empty-company start brings the runtime
-        online with no restart (setup-reinit path). The seam is not
-        bypassed -- the swap goes through this method, and the
-        ``WorkerExecutionService`` contract is unchanged.
+        Distinct from :meth:`set_worker_execution_service`, which is
+        once-only: this method replaces an already-wired service so a
+        provider configured against an empty company brings the runtime
+        online without a restart. The swap goes through this seam, and
+        the ``WorkerExecutionService`` contract is unchanged.
+
+        Holds ``_lazy_service_lock`` so the write is synchronised
+        against the property's lazy-construction read; otherwise an
+        in-flight execute could race the reinit-wake swap.
         """
-        previous = self._worker_execution_service
-        if previous is service:
-            transition = "noop"
-        elif previous is None:
-            transition = "attached"
-        else:
-            transition = "replaced"
-        self._worker_execution_service = service
-        logger.info(
-            API_APP_STARTUP,
-            service="worker_execution_service",
-            transition=transition,
-        )
+        with self._lazy_service_lock:
+            previous = self._worker_execution_service
+            if previous is service:
+                transition = "noop"
+            elif previous is None:
+                transition = "attached"
+            else:
+                transition = "replaced"
+            self._worker_execution_service = service
+            logger.info(
+                API_APP_STARTUP,
+                service="worker_execution_service",
+                transition=transition,
+            )
 
     @property
     def agent_workspace_root(self) -> Path:
         """Filesystem root the agent's file-system / sandbox tools use.
 
-        Pinned once at startup from the runtime data directory
-        (env-aware) via :meth:`set_agent_workspace_root`. Falls back to
-        a process-stable temp directory so dev / empty-company runs
-        still have a valid absolute workspace.
+        The env-driven deployment startup path pins this once to the
+        runtime data directory via :meth:`set_agent_workspace_root`
+        (see ``resolve_agent_workspace_root_env``). Injected / dev /
+        empty-company apps set no env data dir and fall back to a
+        process-stable temp directory, so the workspace is always a
+        valid absolute path and the reinit-wake rebuild resolves the
+        same directory.
         """
         if self._agent_workspace_root is not None:
             return self._agent_workspace_root
@@ -931,6 +949,12 @@ class AppState(AppStateServicesMixin):
                     self._experiment_service = ExperimentService(
                         repository=InMemoryExperimentRepository(),
                         clock=self.clock,
+                    )
+                    logger.info(
+                        API_SERVICE_AUTO_WIRED,
+                        service="experiment_service",
+                        implementation="ExperimentService",
+                        note="lazy in-memory repository; no durable backend set",
                     )
         return self._experiment_service
 

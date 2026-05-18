@@ -157,3 +157,81 @@ class TestAgentEngineExecutionService:
 
         assert engine_run.await_args is not None
         assert engine_run.await_args.kwargs["effective_autonomy"] is None
+
+    async def test_identity_resolved_by_name_fallback(self) -> None:
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity).model_copy(
+            update={"assigned_to": identity.name},
+        )
+        post = task.model_copy(update={"status": TaskStatus.IN_REVIEW})
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        engine_run = AsyncMock(return_value=_run_result())
+        service = await self._make_service(
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(side_effect=[task, post]),
+            ),
+            agent_registry=registry,
+            engine=mock_of[AgentEngine](run=engine_run),
+        )
+
+        await service.execute_once(
+            task_id=task.id,
+            previous_status="assigned",
+            new_status="in_progress",
+            idempotency_key="k",
+            requested_by="user",
+        )
+
+        assert engine_run.await_args is not None
+        # Resolved via get_by_name (id lookup misses on a name string).
+        assert engine_run.await_args.kwargs["identity"] is identity
+
+    async def test_none_autonomy_resolver_passes_none(self) -> None:
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        post = task.model_copy(update={"status": TaskStatus.IN_REVIEW})
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        engine_run = AsyncMock(return_value=_run_result())
+        service = AgentEngineExecutionService(
+            engine=mock_of[AgentEngine](run=engine_run),
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(side_effect=[task, post]),
+            ),
+            agent_registry=registry,
+            autonomy_resolver=None,
+        )
+
+        await service.execute_once(
+            task_id=task.id,
+            previous_status=None,
+            new_status="assigned",
+            idempotency_key="k",
+            requested_by="user",
+        )
+
+        assert engine_run.await_args is not None
+        assert engine_run.await_args.kwargs["effective_autonomy"] is None
+
+    async def test_task_missing_post_run_raises(self) -> None:
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        service = await self._make_service(
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(side_effect=[task, None]),
+            ),
+            agent_registry=registry,
+            engine=mock_of[AgentEngine](run=AsyncMock(return_value=_run_result())),
+        )
+
+        with pytest.raises(NotFoundError, match="after execution"):
+            await service.execute_once(
+                task_id=task.id,
+                previous_status="assigned",
+                new_status="in_progress",
+                idempotency_key="k",
+                requested_by="user",
+            )

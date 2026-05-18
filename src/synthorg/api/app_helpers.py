@@ -123,6 +123,32 @@ def _resolve_artifact_dir_env() -> str:
     return artifact_dir_str
 
 
+def resolve_agent_workspace_root_env() -> Path | None:
+    """Resolve the agent sandbox workspace root from the environment.
+
+    Returns ``<runtime data dir>/agent-workspaces`` when an env-driven
+    deployment is in effect, so the agent's file-system / sandbox tools
+    write onto the mounted data volume rather than a process temp dir.
+    Returns ``None`` for injected / dev apps (no deployment env vars),
+    where :attr:`AppState.agent_workspace_root` keeps its documented
+    process-stable temp fallback.
+
+    Precedence mirrors the persistence env resolution:
+    ``SYNTHORG_ARTIFACT_DIR`` (explicit), then ``SYNTHORG_DB_PATH``
+    parent (sqlite volume), then ``/data`` when only
+    ``SYNTHORG_DATABASE_URL`` is set (postgres compose volume).
+    """
+    artifact_dir = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
+    if artifact_dir:
+        return Path(_resolve_artifact_dir_env()) / "agent-workspaces"
+    db_path = os.environ.get("SYNTHORG_DB_PATH", "").strip()
+    if db_path:
+        return Path(db_path).parent / "agent-workspaces"
+    if os.environ.get("SYNTHORG_DATABASE_URL", "").strip():
+        return Path("/data") / "agent-workspaces"
+    return None
+
+
 def _make_meeting_publisher(
     channels_plugin: ChannelsPlugin,
 ) -> Callable[[str, dict[str, Any]], None]:

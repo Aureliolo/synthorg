@@ -7,9 +7,9 @@ in an :class:`AgentEngineExecutionService`. With no provider it returns
 an :class:`NoProviderExecutionService` so the execute seam fails loudly
 instead of silently walking status labels.
 
-The same builder backs both the boot install and the post-setup
-re-init wake, so a provider added after an empty-company start brings
-the runtime online with no restart.
+The same builder serves the boot install and the setup-reinit
+rebuild, so configuring a provider brings the runtime online without
+a process restart.
 """
 
 import asyncio

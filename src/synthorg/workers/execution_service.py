@@ -6,6 +6,12 @@ When the worker pool fetches a JetStream claim, it posts to
 seam: the controller does not care which implementation is wired, only
 that ``execute_once`` returns the post-execution :class:`Task`.
 
+:mod:`synthorg.workers.runtime_builder` selects the implementation
+behind the provider-present switch (``AgentEngineExecutionService``
+when a provider is configured, ``NoProviderExecutionService``
+otherwise) and installs it through the
+``AppState.worker_execution_service`` seam.
+
 Three implementations live here:
 
 * :class:`AgentEngineExecutionService` -- the real agent runtime.
@@ -20,11 +26,12 @@ Three implementations live here:
 * :class:`LifecycleAdvancingExecutionService` -- the lifecycle-only
   baseline: it advances the task status without invoking an LLM. Used by
   the dispatcher / queue / worker integration tests that pin the claim
-  round-trip, and as the property's lazy fallback before the boot hook
-  installs the real service.
+  round-trip, and the implementation the
+  ``AppState.worker_execution_service`` property lazily self-constructs
+  when no explicit service has been installed.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
@@ -42,6 +49,7 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_COMPLETED,
     WORKERS_EXECUTION_SERVICE_NO_OP,
     WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
+    WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
 )
 
 if TYPE_CHECKING:
@@ -54,13 +62,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_EXECUTABLE_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
-    {
-        TaskStatus.ASSIGNED,
-        TaskStatus.IN_PROGRESS,
-    }
-)
-
 
 class WorkerExecutionService(Protocol):
     """Contract for the worker-callable execution surface.
@@ -71,7 +72,7 @@ class WorkerExecutionService(Protocol):
     :class:`NoProviderExecutionService` otherwise.
     :class:`LifecycleAdvancingExecutionService` is the lifecycle-only
     baseline the dispatcher / queue / worker integration tests pin and
-    the property's lazy fallback before the boot hook runs.
+    the property's lazy fallback when no explicit service is installed.
     """
 
     async def execute_once(
@@ -102,11 +103,11 @@ class LifecycleAdvancingExecutionService:
     terminal-or-not response and acks accordingly.
 
     This is what the dispatcher + queue + worker integration tests pin,
-    and the lazy fallback the ``AppState.worker_execution_service``
-    property self-constructs before the boot hook installs the real
-    :class:`AgentEngineExecutionService`. The real agent runtime is a
-    sibling class in this module, selected by the runtime builder
-    behind the provider-present switch.
+    and the fallback the ``AppState.worker_execution_service`` property
+    lazily self-constructs when no explicit service is installed. The
+    real agent runtime is a sibling class in this module,
+    :class:`AgentEngineExecutionService`, selected by the runtime
+    builder behind the provider-present switch.
     """
 
     __slots__ = ("_task_engine",)
@@ -133,7 +134,7 @@ class LifecycleAdvancingExecutionService:
         task = await self._task_engine.get_task(task_id)
         if task is None:
             logger.warning(
-                WORKERS_EXECUTION_SERVICE_NO_OP,
+                WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
                 task_id=task_id,
                 reason="task_not_found",
                 previous_status=previous_status,
@@ -188,9 +189,6 @@ class LifecycleAdvancingExecutionService:
             return TaskStatus.IN_REVIEW
         if current == TaskStatus.IN_REVIEW:
             return TaskStatus.COMPLETED
-        if current in _EXECUTABLE_STATUSES:
-            # Defensive: unreachable today but documented contract.
-            return None
         return None
 
 
@@ -201,10 +199,10 @@ class AgentEngineExecutionService:
     delegates execution to a fully-wired :class:`AgentEngine` (LLM +
     tools + per-call sandbox + memory, governed by the SecOps safety
     spine), and returns the post-execution task. The engine performs
-    its own ``ASSIGNED`` -> ``IN_PROGRESS`` transition and syncs every
-    subsequent transition to the ``TaskEngine`` incrementally, so this
-    service must NOT pre-walk the lifecycle: it hands the task to the
-    engine as-is and re-reads the authoritative post-run state.
+    its own ``ASSIGNED`` -> ``IN_PROGRESS`` transition and syncs its
+    post-execution transitions to the ``TaskEngine``, so this service
+    must NOT pre-walk the lifecycle: it hands the task to the engine
+    as-is and re-reads the authoritative post-run state.
     """
 
     __slots__ = ("_agent_registry", "_autonomy_resolver", "_engine", "_task_engine")
@@ -235,7 +233,7 @@ class AgentEngineExecutionService:
         task = await self._task_engine.get_task(task_id)
         if task is None:
             logger.warning(
-                WORKERS_EXECUTION_SERVICE_NO_OP,
+                WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
                 task_id=task_id,
                 reason="task_not_found",
                 previous_status=previous_status,
@@ -277,7 +275,7 @@ class AgentEngineExecutionService:
         post = await self._task_engine.get_task(task_id)
         if post is None:
             logger.warning(
-                WORKERS_EXECUTION_SERVICE_NO_OP,
+                WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
                 task_id=task_id,
                 reason="task_missing_post_run",
             )

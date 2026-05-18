@@ -5,84 +5,20 @@ must be rejected with a clear 409 message instead of creating a task
 that can never execute. With a provider present, creation succeeds.
 """
 
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import Generator
 from typing import Any
 
 import pytest
 from litestar.testing import TestClient
 
-from synthorg.api.app import create_app
-from synthorg.api.auth.service import AuthService
-from synthorg.budget.tracker import CostTracker
-from synthorg.config.provider_schema import ProviderConfig
-from synthorg.config.schema import RootConfig
-from synthorg.hr.registry import AgentRegistryService
-from synthorg.providers.registry import ProviderRegistry
-from synthorg.settings.registry import get_registry
-from synthorg.settings.service import SettingsService
+from tests.integration.api.conftest import build_runtime_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 pytestmark = pytest.mark.integration
 
-_TEST_JWT_SECRET = "integration-test-secret-at-least-32-characters"
-_TEST_SETTINGS_KEY = "lKzZcMznksIF8A_2HFFUnKxhxhz9_bxTvVJoZ6mvZrk="
+_COMPANY_NAME = "empty-company-test"
 _USERNAME = "admin"
 _PASSWORD = "secure-pass-12chars"
-
-
-@pytest.fixture(autouse=True)
-def _required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SYNTHORG_JWT_SECRET", _TEST_JWT_SECRET)
-    monkeypatch.setenv("SYNTHORG_SETTINGS_KEY", _TEST_SETTINGS_KEY)
-
-
-@pytest.fixture
-async def fake_persistence() -> AsyncGenerator[FakePersistenceBackend]:
-    backend = FakePersistenceBackend()
-    await backend.connect()
-    yield backend
-    await backend.disconnect()
-
-
-@pytest.fixture
-async def fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
-    bus = FakeMessageBus()
-    await bus.start()
-    yield bus
-    await bus.stop()
-
-
-def _build_app(
-    fake_persistence: FakePersistenceBackend,
-    fake_message_bus: FakeMessageBus,
-    *,
-    with_provider: bool,
-) -> Any:
-    root_config = RootConfig(company_name="empty-company-test")
-    auth_service = AuthService(
-        root_config.api.auth.model_copy(update={"jwt_secret": _TEST_JWT_SECRET}),
-    )
-    settings_service = SettingsService(
-        repository=fake_persistence.settings,
-        registry=get_registry(),
-    )
-    provider_registry = (
-        ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
-        )
-        if with_provider
-        else None
-    )
-    return create_app(
-        config=root_config,
-        persistence=fake_persistence,
-        message_bus=fake_message_bus,
-        cost_tracker=CostTracker(),
-        auth_service=auth_service,
-        agent_registry=AgentRegistryService(),
-        settings_service=settings_service,
-        provider_registry=provider_registry,
-    )
 
 
 def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
@@ -117,7 +53,12 @@ def empty_company_client(
     fake_message_bus: FakeMessageBus,
 ) -> Generator[TestClient[Any]]:
     yield from _authed(
-        _build_app(fake_persistence, fake_message_bus, with_provider=False)
+        build_runtime_app(
+            fake_persistence,
+            fake_message_bus,
+            with_provider=False,
+            company_name=_COMPANY_NAME,
+        )
     )
 
 
@@ -127,7 +68,12 @@ def provider_company_client(
     fake_message_bus: FakeMessageBus,
 ) -> Generator[TestClient[Any]]:
     yield from _authed(
-        _build_app(fake_persistence, fake_message_bus, with_provider=True)
+        build_runtime_app(
+            fake_persistence,
+            fake_message_bus,
+            with_provider=True,
+            company_name=_COMPANY_NAME,
+        )
     )
 
 
@@ -148,10 +94,14 @@ class TestEmptyCompanyRejectsTaskCreation:
     ) -> None:
         resp = empty_company_client.post("/api/v1/tasks", json=_task_payload())
         assert resp.status_code == 409, resp.text
-        body = resp.json()
-        assert "provider" in resp.text.lower()
-        assert "empty mode" in resp.text.lower()
-        assert body["error_detail"]["error_code"] == 4014
+        detail = resp.json()["error_detail"]
+        # error_code is the stable contract; the message text is a
+        # secondary, human-facing check against the structured field
+        # (not the whole HTTP body, which could match incidentally).
+        assert detail["error_code"] == 4014
+        message = (detail.get("detail") or detail.get("error_message") or "").lower()
+        assert "provider" in message
+        assert "empty mode" in message
 
     def test_provider_present_allows_creation(
         self,

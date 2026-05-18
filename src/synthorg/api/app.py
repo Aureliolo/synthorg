@@ -30,6 +30,7 @@ from synthorg.api.app_helpers import (
     _make_expire_callback,
     _make_meeting_publisher,
     _resolve_artifact_dir_env,
+    resolve_agent_workspace_root_env,
 )
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.controller_helpers import require_password_changed
@@ -979,7 +980,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     _worker_service_installed = False
 
     async def _install_worker_execution_service() -> None:
-        # The flip: install the real agent runtime behind the
+        # Installs the worker execution service behind the
         # provider-present switch. Appended first (runs immediately
         # after the core startup hooks that connect persistence and
         # wire SettingsService / ConfigResolver), and before any other
@@ -997,10 +998,30 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             build_worker_execution_service,
         )
 
-        service = await build_worker_execution_service(
-            app_state,
-            workspace_root=app_state.agent_workspace_root,
-        )
+        # Pin the sandbox workspace onto the mounted data volume in an
+        # env-driven deployment so agent file/sandbox tools persist with
+        # the runtime data, not a process temp dir. Injected/dev apps
+        # return None and keep the documented temp fallback.
+        env_workspace_root = resolve_agent_workspace_root_env()
+        if env_workspace_root is not None:
+            app_state.set_agent_workspace_root(env_workspace_root)
+
+        try:
+            service = await build_worker_execution_service(
+                app_state,
+                workspace_root=app_state.agent_workspace_root,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.error(
+                API_APP_STARTUP,
+                service="worker_execution_service",
+                note="failed to build the worker execution service at boot",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         app_state.set_worker_execution_service(service)
         _worker_service_installed = True
 

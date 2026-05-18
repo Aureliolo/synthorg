@@ -124,6 +124,11 @@ def coordination_client(
         registry=get_registry(),
     )
 
+    # A scripted provider so the company is not empty-company: task
+    # creation is rejected (409) without an active provider.
+    from synthorg.config.provider_schema import ProviderConfig
+    from synthorg.providers.registry import ProviderRegistry
+
     app = create_app(
         config=root_config,
         persistence=fake_persistence,
@@ -134,6 +139,9 @@ def coordination_client(
         coordinator=mock_coordinator,
         agent_registry=local_agent_registry,
         settings_service=settings_service,
+        provider_registry=ProviderRegistry.from_config(
+            {"test-provider": ProviderConfig(driver="scripted")},
+        ),
     )
     with TestClient(app) as client:
         client.headers.update(make_auth_headers("ceo"))

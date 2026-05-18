@@ -176,6 +176,9 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
         e for e in logs if e.get("event") == WORKERS_EXECUTION_SERVICE_AGENT_RUN
     ]
     assert agent_run, "agent run was not logged -- runtime not online"
+    # The agent actually executed LLM turns (not a zero-turn no-op):
+    # direct proof the runtime ran, not merely that the spine fired.
+    assert agent_run[0]["total_turns"] >= 1
     assert agent_run[0]["termination_reason"] == TerminationReason.PARKED.value
 
     # The SecOps interceptor consulted the verdict (distinct from the

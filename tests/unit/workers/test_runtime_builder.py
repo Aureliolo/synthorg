@@ -78,3 +78,73 @@ class TestProviderPresentSwitch:
             workspace_root=tmp_path,
         )
         assert isinstance(service, AgentEngineExecutionService)
+
+    async def test_multiple_providers_warns_and_selects_first(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        registry = ProviderRegistry.from_config(
+            {
+                "test-provider": ProviderConfig(driver="scripted"),
+                "test-provider-2": ProviderConfig(driver="scripted"),
+            }
+        )
+        app_state = mock_of[AppState](
+            has_active_provider=True,
+            provider_registry=registry,
+            config=RootConfig(company_name="test-corp"),
+            config_resolver=mock_of[ConfigResolver](
+                get_float=AsyncMock(return_value=30.0),
+            ),
+            task_engine=mock_of[TaskEngine](),
+            agent_registry=AgentRegistryService(),
+            approval_store=None,
+            clock=SystemClock(),
+            event_stream_hub=None,
+            interrupt_store=None,
+            has_cost_tracker=False,
+            has_audit_log=False,
+            has_memory_backend=False,
+        )
+        # Exercises the >1-provider branch (warning + first-provider
+        # selection); it must still build a live runtime, not reject.
+        service = await build_worker_execution_service(
+            app_state,
+            workspace_root=tmp_path,
+        )
+        assert isinstance(service, AgentEngineExecutionService)
+
+    async def test_builds_nonexistent_deep_workspace_path(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        registry = ProviderRegistry.from_config(
+            {"test-provider": ProviderConfig(driver="scripted")}
+        )
+        app_state = mock_of[AppState](
+            has_active_provider=True,
+            provider_registry=registry,
+            config=RootConfig(company_name="test-corp"),
+            config_resolver=mock_of[ConfigResolver](
+                get_float=AsyncMock(return_value=30.0),
+            ),
+            task_engine=mock_of[TaskEngine](),
+            agent_registry=AgentRegistryService(),
+            approval_store=None,
+            clock=SystemClock(),
+            event_stream_hub=None,
+            interrupt_store=None,
+            has_cost_tracker=False,
+            has_audit_log=False,
+            has_memory_backend=False,
+        )
+        deep = tmp_path / "missing" / "agent" / "workspace"
+        assert not deep.exists()
+
+        service = await build_worker_execution_service(
+            app_state,
+            workspace_root=deep,
+        )
+
+        assert isinstance(service, AgentEngineExecutionService)
+        assert deep.is_dir()
