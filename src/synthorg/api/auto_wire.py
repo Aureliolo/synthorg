@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.ontology.service import OntologyService
     from synthorg.persistence.protocol import PersistenceBackend
+    from synthorg.providers.cassette import CassetteConfig
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
     from synthorg.settings.service import SettingsService
@@ -198,12 +199,46 @@ def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:
     return tracker
 
 
+def _resolve_cassette_config() -> CassetteConfig | None:
+    """Resolve the boot-time cassette config (Cat-2: env > default).
+
+    Returns ``None`` when the seam is inert so the registry holds the
+    concrete drivers unchanged. Uses the sanctioned pre-init bootstrap
+    resolver -- no ``os.environ`` read in provider code.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    from synthorg.providers.cassette import (  # noqa: PLC0415
+        CassetteConfig,
+        CassetteMode,
+    )
+    from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
+        resolve_init_value,
+    )
+    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
+    mode_raw = str(
+        resolve_init_value(SettingNamespace.PROVIDERS, "cassette_mode").value
+    ).strip()
+    mode = CassetteMode(mode_raw)
+    if mode is CassetteMode.OFF:
+        return None
+    path_resolved = resolve_init_value(
+        SettingNamespace.PROVIDERS, "cassette_path"
+    ).value
+    path = Path(str(path_resolved)) if path_resolved else None
+    return CassetteConfig(mode=mode, path=path)
+
+
 def _wire_provider_registry(
     effective_config: RootConfig,
 ) -> ProviderRegistry:
     """Create a ProviderRegistry from config."""
     try:
-        registry = ProviderRegistry.from_config(effective_config.providers)
+        registry = ProviderRegistry.from_config(
+            effective_config.providers,
+            cassette=_resolve_cassette_config(),
+        )
     except Exception as exc:
         logger.error(
             API_APP_STARTUP,

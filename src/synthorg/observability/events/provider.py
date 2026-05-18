@@ -133,6 +133,13 @@ PROVIDER_COST_RECORDED: Final[str] = "provider.cost.recorded"
 PROVIDER_COST_SKIPPED: Final[str] = "provider.cost.skipped"
 PROVIDER_COST_FAILED: Final[str] = "provider.cost.failed"
 
+# ── Provider cassette record / replay ────────────────────────
+PROVIDER_CASSETTE_DRIVER_WRAPPED: Final[str] = "provider.cassette.driver_wrapped"
+PROVIDER_CASSETTE_RECORDED: Final[str] = "provider.cassette.recorded"
+PROVIDER_CASSETTE_REPLAYED: Final[str] = "provider.cassette.replayed"
+PROVIDER_CASSETTE_MISS: Final[str] = "provider.cassette.miss"
+PROVIDER_CASSETTE_SESSION_FLUSHED: Final[str] = "provider.cassette.session_flushed"
+
 # ── Local model management ──────────────────────────────────
 PROVIDER_MODEL_PULL_STARTED: Final[str] = "provider.model.pull_started"
 PROVIDER_MODEL_PULL_COMPLETED: Final[str] = "provider.model.pull_completed"
