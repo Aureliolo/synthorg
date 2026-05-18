@@ -21,6 +21,7 @@ from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
+from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -731,6 +732,77 @@ class TestDockerSandboxContainerErrorHandling:
             ),
         ):
             await sandbox.execute(command="echo", args=("test",))
+
+
+class TestDestroyHandleTrackingSafety:
+    """``_destroy_handle`` must not orphan a container on partial removal."""
+
+    async def test_keeps_tracked_when_sidecar_removal_fails(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        sandbox_obj = MagicMock()
+        sandbox_obj.delete = AsyncMock()
+        sidecar_obj = MagicMock()
+        sidecar_obj.delete = AsyncMock(side_effect=RuntimeError("daemon hiccup"))
+
+        mock_docker = _make_mock_docker()
+
+        def _by_id(container_id: str) -> MagicMock:
+            return sidecar_obj if container_id == "sidecar-1" else sandbox_obj
+
+        mock_docker.containers.container = MagicMock(side_effect=_by_id)
+
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+        sandbox._tracked_containers = {"sandbox-1": "sidecar-1"}
+        handle = ContainerHandle(
+            container_id="sandbox-1",
+            sidecar_id="sidecar-1",
+        )
+
+        await sandbox._destroy_handle(handle)
+
+        # Sidecar removal failed, so the anchor (which carries the
+        # sidecar id) must survive for cleanup()'s sweep to retry.
+        assert sandbox._tracked_containers == {"sandbox-1": "sidecar-1"}
+        sidecar_obj.delete.assert_awaited()
+
+    async def test_untracks_when_both_removed(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        obj = MagicMock()
+        obj.delete = AsyncMock()
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.container = MagicMock(return_value=obj)
+
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+        sandbox._tracked_containers = {"sandbox-2": "sidecar-2"}
+        handle = ContainerHandle(
+            container_id="sandbox-2",
+            sidecar_id="sidecar-2",
+        )
+
+        await sandbox._destroy_handle(handle)
+
+        assert sandbox._tracked_containers == {}
+
+
+class TestExecReturncode:
+    """``_exec_returncode`` swallows ordinary errors, not catastrophic ones."""
+
+    async def test_reraises_memory_error(self) -> None:
+        exec_obj = MagicMock()
+        exec_obj.inspect = AsyncMock(side_effect=MemoryError)
+        with pytest.raises(MemoryError):
+            await DockerSandbox._exec_returncode(exec_obj, "cid123")
+
+    async def test_returns_minus_one_on_ordinary_error(self) -> None:
+        exec_obj = MagicMock()
+        exec_obj.inspect = AsyncMock(side_effect=RuntimeError("inspect boom"))
+        assert await DockerSandbox._exec_returncode(exec_obj, "cid123") == -1
 
 
 # ── Sidecar lifecycle ──────────────────────────────────────────

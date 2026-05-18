@@ -369,8 +369,12 @@ class DockerSandboxExecMixin:
         except Exception as exc:
             if sidecar_id:
                 await self._remove_container(docker, sidecar_id)
-            await self._remove_container(docker, container_id)
-            await self._untrack_container(container_id)
+            removed = await self._remove_container(docker, container_id)
+            # Keep the tracked entry (which carries sidecar_id) when
+            # removal fails so cleanup()'s sweep can retry both rather
+            # than orphaning the container and its paired sidecar.
+            if removed:
+                await self._untrack_container(container_id)
             error_desc = safe_error_description(exc)
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
@@ -654,6 +658,8 @@ class DockerSandboxExecMixin:
         """Return the exec exit code, or ``-1`` if it cannot be read."""
         try:
             info = await exec_obj.inspect()
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 DOCKER_EXEC_INSPECT_FAILED,
@@ -721,8 +727,7 @@ class DockerSandboxExecMixin:
             docker,
             handle.container_id,
         )
-        if sandbox_removed:
-            await self._untrack_container(handle.container_id)
+        sidecar_removed = True
         if handle.sidecar_id:
             sidecar_removed = await self._remove_container(
                 docker,
@@ -739,6 +744,13 @@ class DockerSandboxExecMixin:
                     sidecar_id=handle.sidecar_id[:12],
                     error="removal failed, sidecar remains tracked",
                 )
+        # Drop the tracked anchor only once BOTH the sandbox and its
+        # paired sidecar are confirmed gone; the entry carries the
+        # sidecar id, so untracking on a failed sidecar removal would
+        # orphan it (the "remains tracked" warning would also be a
+        # lie). Keeping it lets cleanup()'s sweep retry the survivor.
+        if sandbox_removed and sidecar_removed:
+            await self._untrack_container(handle.container_id)
 
     async def _collect_and_ship_logs(
         self,
