@@ -11,8 +11,6 @@ the multi-agent coordinator, so ``has_coordinator`` reflects provider
 presence: true with a provider, false on the empty-company backstop.
 """
 
-from unittest.mock import MagicMock
-
 import pytest
 from litestar.testing import TestClient
 
@@ -22,6 +20,7 @@ from synthorg.workers.execution_service import (
     LifecycleAdvancingExecutionService,
     NoProviderExecutionService,
 )
+from tests._shared import mock_of
 from tests.integration.api.conftest import build_runtime_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -81,7 +80,7 @@ def test_injected_coordinator_wins_over_autowired(
     coordinator instead of overwriting it with the autowired one (the
     injection-over-autowire convention), even with a provider present.
     """
-    injected = MagicMock(spec=MultiAgentCoordinator)
+    injected = mock_of[MultiAgentCoordinator]()
     app = build_runtime_app(
         fake_persistence,
         fake_message_bus,
