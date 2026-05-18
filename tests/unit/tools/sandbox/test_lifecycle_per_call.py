@@ -12,6 +12,10 @@ def _make_handle(cid: str = "c1") -> ContainerHandle:
     return ContainerHandle(container_id=cid)
 
 
+async def _noop_destroy(_handle: ContainerHandle) -> None:
+    """Destroy callback for acquire() (per-call never loses a race)."""
+
+
 class TestPerCallAcquire:
     """acquire() always creates a new container."""
 
@@ -25,6 +29,7 @@ class TestPerCallAcquire:
         handle = await strategy.acquire(
             owner_id="agent-1",
             create_fn=create_fn,
+            destroy_fn=_noop_destroy,
         )
         assert handle is created
 
@@ -36,8 +41,12 @@ class TestPerCallAcquire:
             calls.append(1)
             return _make_handle(f"c-{len(calls)}")
 
-        h1 = await strategy.acquire(owner_id="a", create_fn=create_fn)
-        h2 = await strategy.acquire(owner_id="a", create_fn=create_fn)
+        h1 = await strategy.acquire(
+            owner_id="a", create_fn=create_fn, destroy_fn=_noop_destroy
+        )
+        h2 = await strategy.acquire(
+            owner_id="a", create_fn=create_fn, destroy_fn=_noop_destroy
+        )
         assert h1 is not h2
         assert len(calls) == 2
 

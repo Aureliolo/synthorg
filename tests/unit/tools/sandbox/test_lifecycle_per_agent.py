@@ -38,6 +38,10 @@ def _make_handle(cid: str = "c1") -> ContainerHandle:
     return ContainerHandle(container_id=cid)
 
 
+async def _noop_destroy(_handle: ContainerHandle) -> None:
+    """Destroy callback for acquire() when no race is exercised."""
+
+
 def _make_strategy(
     grace: float = 0.1,
     max_idle: float = 300.0,
@@ -63,6 +67,7 @@ class TestPerAgentAcquire:
         handle = await strategy.acquire(
             owner_id="agent-1",
             create_fn=create_fn,
+            destroy_fn=_noop_destroy,
         )
         assert handle is created
 
@@ -77,10 +82,12 @@ class TestPerAgentAcquire:
         h1 = await strategy.acquire(
             owner_id="agent-1",
             create_fn=create_fn,
+            destroy_fn=_noop_destroy,
         )
         h2 = await strategy.acquire(
             owner_id="agent-1",
             create_fn=create_fn,
+            destroy_fn=_noop_destroy,
         )
         assert h1 is h2
         assert len(calls) == 1
@@ -96,13 +103,47 @@ class TestPerAgentAcquire:
         h1 = await strategy.acquire(
             owner_id="a1",
             create_fn=create_fn,
+            destroy_fn=_noop_destroy,
         )
         h2 = await strategy.acquire(
             owner_id="a2",
             create_fn=create_fn,
+            destroy_fn=_noop_destroy,
         )
         assert h1 is not h2
         assert len(calls) == 2
+
+    async def test_concurrent_first_acquire_destroys_loser(self) -> None:
+        """A racing first-acquire tears the losing container down.
+
+        Regression: the loser path used to read ``_destroy_fns`` which
+        was only populated by ``release()``, so a parallel first
+        acquire leaked the extra warm container.
+        """
+        strategy = _make_strategy()
+        created: list[ContainerHandle] = []
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            await asyncio.sleep(0)
+            handle = _make_handle(f"race-{len(created)}")
+            created.append(handle)
+            return handle
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        h1, h2 = await asyncio.gather(
+            strategy.acquire(owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn),
+            strategy.acquire(owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn),
+        )
+        assert h1 is h2
+        assert len(created) == 2
+        assert len(destroyed) == 1
+        retained = h1.container_id
+        assert destroyed == [
+            c.container_id for c in created if c.container_id != retained
+        ]
 
 
 class TestPerAgentRelease:
@@ -119,7 +160,9 @@ class TestPerAgentRelease:
         async def destroy_fn(h: ContainerHandle) -> None:
             destroyed.append(h.container_id)
 
-        await strategy.acquire(owner_id="a1", create_fn=create_fn)
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+        )
         await strategy.release(
             owner_id="a1",
             destroy_fn=destroy_fn,
@@ -150,6 +193,7 @@ class TestPerAgentRelease:
         h1 = await strategy.acquire(
             owner_id="a1",
             create_fn=create_fn,
+            destroy_fn=destroy_fn,
         )
         await strategy.release(
             owner_id="a1",
@@ -159,6 +203,7 @@ class TestPerAgentRelease:
         h2 = await strategy.acquire(
             owner_id="a1",
             create_fn=create_fn,
+            destroy_fn=destroy_fn,
         )
         assert h1 is h2
         assert len(calls) == 1
@@ -197,10 +242,12 @@ class TestPerAgentCleanup:
         await strategy.acquire(
             owner_id="a1",
             create_fn=lambda: make("c1"),
+            destroy_fn=destroy_fn,
         )
         await strategy.acquire(
             owner_id="a2",
             create_fn=lambda: make("c2"),
+            destroy_fn=destroy_fn,
         )
         await strategy.cleanup_all(destroy_fn=destroy_fn)
         assert sorted(destroyed) == ["c1", "c2"]
@@ -218,6 +265,7 @@ class TestPerAgentCleanup:
         await strategy.acquire(
             owner_id="a1",
             create_fn=create_fn,
+            destroy_fn=destroy_fn,
         )
         await strategy.release(
             owner_id="a1",
@@ -255,10 +303,12 @@ class TestPerAgentCleanup:
         await strategy.acquire(
             owner_id="a1",
             create_fn=lambda: make("c1"),
+            destroy_fn=destroy_fn,
         )
         await strategy.acquire(
             owner_id="a2",
             create_fn=lambda: make("c2"),
+            destroy_fn=destroy_fn,
         )
         await strategy.cleanup_all(destroy_fn=destroy_fn)
         assert "c2" in destroyed
@@ -279,7 +329,9 @@ class TestPerAgentIdleTimeout:
         async def destroy_fn(h: ContainerHandle) -> None:
             destroyed.append(h.container_id)
 
-        await strategy.acquire(owner_id="a1", create_fn=create_fn)
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+        )
         await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
         # Idle timer's polling loop reads the clock under the
         # strategy lock and sleeps the remaining duration. With
@@ -306,7 +358,9 @@ class TestPerAgentIdleTimeout:
         async def destroy_fn(h: ContainerHandle) -> None:
             _ = h
 
-        await strategy.acquire(owner_id="a1", create_fn=create_fn)
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+        )
         # _reset_idle_timer returns early when max_idle <= 0, so no
         # task is scheduled. Settle the loop to be sure nothing runs,
         # then confirm the FakeClock was never armed: any call to
@@ -315,7 +369,9 @@ class TestPerAgentIdleTimeout:
         # acquire-time tracking-only check would miss.
         await _settle()
         assert clock.sleep_calls == ()
-        h2 = await strategy.acquire(owner_id="a1", create_fn=create_fn)
+        h2 = await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+        )
         assert h2.container_id == "no-idle"
         assert clock.sleep_calls == ()
         await strategy.cleanup_all(destroy_fn=destroy_fn)
@@ -336,7 +392,9 @@ class TestPerAgentGraceDestroyFailure:
             msg = "container already removed"
             raise RuntimeError(msg)
 
-        await strategy.acquire(owner_id="a1", create_fn=create_fn)
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+        )
         await strategy.release(
             owner_id="a1",
             destroy_fn=destroy_fn,
@@ -350,7 +408,9 @@ class TestPerAgentGraceDestroyFailure:
             calls.append(1)
             return _make_handle("replacement")
 
-        h = await strategy.acquire(owner_id="a1", create_fn=new_create)
+        h = await strategy.acquire(
+            owner_id="a1", create_fn=new_create, destroy_fn=destroy_fn
+        )
         assert h.container_id == "replacement"
         assert len(calls) == 1
         await strategy.cleanup_all(destroy_fn=destroy_fn)

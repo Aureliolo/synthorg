@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 import pytest
+import structlog.contextvars
 
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import (
@@ -17,11 +18,90 @@ from synthorg.tools.sandbox.docker_sandbox import (
     _to_posix_bind_path,
 )
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
+from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
+from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
+from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
+from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 _DOCKER_MODULE = "synthorg.tools.sandbox.docker_sandbox.aiodocker"
 
 # ── Helpers ──────────────────────────────────────────────────────
+
+
+class _FakeExecMessage:
+    """Mimics ``aiodocker.stream.Message`` (``stream``/``data``)."""
+
+    def __init__(self, stream: int, data: bytes) -> None:
+        self.stream = stream
+        self.data = data
+
+
+def _make_exec_stream(
+    *,
+    stdout: bytes = b"output line\n",
+    stderr: bytes = b"",
+    hang: bool = False,
+) -> MagicMock:
+    """Build a fake aiodocker exec ``Stream``.
+
+    ``read_out()`` yields multiplexed frames (stream 1 = stdout, 2 =
+    stderr) then ``None`` at EOF, matching the real protocol.  With
+    ``hang=True`` it blocks forever so ``asyncio.wait_for`` drives the
+    timeout path deterministically.
+    """
+    stream = MagicMock()
+    frames: list[_FakeExecMessage | None] = []
+    if stdout:
+        frames.append(_FakeExecMessage(1, stdout))
+    if stderr:
+        frames.append(_FakeExecMessage(2, stderr))
+    frames.append(None)
+
+    if hang:
+
+        async def _read_out() -> _FakeExecMessage | None:
+            await asyncio.Event().wait()  # never set -> wait_for cancels
+            return None  # pragma: no cover - unreachable
+
+        stream.read_out = _read_out
+    else:
+        stream.read_out = AsyncMock(side_effect=frames)
+    stream.close = AsyncMock()
+    return stream
+
+
+def _install_exec(
+    container_obj: MagicMock,
+    *,
+    stdout: bytes = b"output line\n",
+    stderr: bytes = b"",
+    exit_code: int = 0,
+    hang: bool = False,
+) -> None:
+    """Wire ``container.exec()`` -> ``Exec.start()/inspect()`` fakes.
+
+    ``container.exec`` is awaited (returns the ``Exec``); ``Exec.start``
+    is synchronous and returns the stream; ``Exec.inspect`` is awaited
+    and yields the exit code.
+    """
+
+    def _new_exec(*_args: object, **_kwargs: object) -> MagicMock:
+        # A fresh Exec + Stream per ``container.exec()`` call so a
+        # reused container (per-agent / per-task) gets a non-exhausted
+        # stream on every successive tool call.
+        exec_obj = MagicMock()
+        stream = _make_exec_stream(
+            stdout=stdout,
+            stderr=stderr,
+            hang=hang,
+        )
+        exec_obj.start = MagicMock(return_value=stream)
+        exec_obj.inspect = AsyncMock(return_value={"ExitCode": exit_code})
+        return exec_obj
+
+    container_obj.exec = AsyncMock(side_effect=_new_exec)
 
 
 def _make_mock_docker() -> MagicMock:
@@ -50,6 +130,7 @@ def _make_mock_docker() -> MagicMock:
     mock_container_obj.log = AsyncMock(return_value=["output line\n"])
     mock_container_obj.stop = AsyncMock()
     mock_container_obj.delete = AsyncMock()
+    _install_exec(mock_container_obj)
 
     mock_containers.container = MagicMock(
         return_value=mock_container_obj,
@@ -155,11 +236,11 @@ class TestDockerSandboxExecute:
     async def test_execute_failure(self, tmp_path: Path) -> None:
         mock_docker = _make_mock_docker()
         container_obj = mock_docker.containers.container()
-        container_obj.wait = AsyncMock(
-            return_value={"StatusCode": 1},
-        )
-        container_obj.log = AsyncMock(
-            return_value=["error occurred\n"],
+        _install_exec(
+            container_obj,
+            stdout=b"",
+            stderr=b"error occurred\n",
+            exit_code=1,
         )
 
         sandbox = DockerSandbox(workspace=tmp_path)
@@ -172,16 +253,12 @@ class TestDockerSandboxExecute:
 
         assert not result.success
         assert result.returncode == 1
+        assert result.stderr == "error occurred\n"
 
     async def test_execute_timeout(self, tmp_path: Path) -> None:
         mock_docker = _make_mock_docker()
         container_obj = mock_docker.containers.container()
-        container_obj.wait = AsyncMock(
-            side_effect=asyncio.TimeoutError,
-        )
-        container_obj.log = AsyncMock(
-            return_value=["partial output\n"],
-        )
+        _install_exec(container_obj, hang=True)
 
         sandbox = DockerSandbox(workspace=tmp_path)
 
@@ -303,10 +380,7 @@ class TestDockerSandboxExecute:
     ) -> None:
         mock_docker = _make_mock_docker()
         container_obj = mock_docker.containers.container()
-        container_obj.wait = AsyncMock(
-            return_value={"StatusCode": 137},
-        )
-        container_obj.log = AsyncMock(return_value=[""])
+        _install_exec(container_obj, stdout=b"", exit_code=137)
 
         sandbox = DockerSandbox(workspace=tmp_path)
 
@@ -525,6 +599,7 @@ class TestMemoryLimitParsing:
             ("1024", 1024),
             ("2G", 2 * 1024**3),
         ],
+        ids=["512m", "1g", "256k", "1024-bytes", "2G-uppercase"],
     )
     def test_parse_memory_limit(
         self,
@@ -536,6 +611,7 @@ class TestMemoryLimitParsing:
     @pytest.mark.parametrize(
         "invalid_limit",
         ["", "   ", "abc", "512x", "0m", "-1g"],
+        ids=["empty", "whitespace", "non-numeric", "bad-suffix", "zero", "negative"],
     )
     def test_parse_memory_limit_invalid(
         self,
@@ -658,6 +734,77 @@ class TestDockerSandboxContainerErrorHandling:
             await sandbox.execute(command="echo", args=("test",))
 
 
+class TestDestroyHandleTrackingSafety:
+    """``_destroy_handle`` must not orphan a container on partial removal."""
+
+    async def test_keeps_tracked_when_sidecar_removal_fails(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        sandbox_obj = MagicMock()
+        sandbox_obj.delete = AsyncMock()
+        sidecar_obj = MagicMock()
+        sidecar_obj.delete = AsyncMock(side_effect=RuntimeError("daemon hiccup"))
+
+        mock_docker = _make_mock_docker()
+
+        def _by_id(container_id: str) -> MagicMock:
+            return sidecar_obj if container_id == "sidecar-1" else sandbox_obj
+
+        mock_docker.containers.container = MagicMock(side_effect=_by_id)
+
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+        sandbox._tracked_containers = {"sandbox-1": "sidecar-1"}
+        handle = ContainerHandle(
+            container_id="sandbox-1",
+            sidecar_id="sidecar-1",
+        )
+
+        await sandbox._destroy_handle(handle)
+
+        # Sidecar removal failed, so the anchor (which carries the
+        # sidecar id) must survive for cleanup()'s sweep to retry.
+        assert sandbox._tracked_containers == {"sandbox-1": "sidecar-1"}
+        sidecar_obj.delete.assert_awaited()
+
+    async def test_untracks_when_both_removed(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        obj = MagicMock()
+        obj.delete = AsyncMock()
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.container = MagicMock(return_value=obj)
+
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+        sandbox._tracked_containers = {"sandbox-2": "sidecar-2"}
+        handle = ContainerHandle(
+            container_id="sandbox-2",
+            sidecar_id="sidecar-2",
+        )
+
+        await sandbox._destroy_handle(handle)
+
+        assert sandbox._tracked_containers == {}
+
+
+class TestExecReturncode:
+    """``_exec_returncode`` swallows ordinary errors, not catastrophic ones."""
+
+    async def test_reraises_memory_error(self) -> None:
+        exec_obj = MagicMock()
+        exec_obj.inspect = AsyncMock(side_effect=MemoryError)
+        with pytest.raises(MemoryError):
+            await DockerSandbox._exec_returncode(exec_obj, "cid123")
+
+    async def test_returns_minus_one_on_ordinary_error(self) -> None:
+        exec_obj = MagicMock()
+        exec_obj.inspect = AsyncMock(side_effect=RuntimeError("inspect boom"))
+        assert await DockerSandbox._exec_returncode(exec_obj, "cid123") == -1
+
+
 # ── Sidecar lifecycle ──────────────────────────────────────────
 
 
@@ -697,12 +844,9 @@ def _make_mock_docker_with_sidecar() -> MagicMock:
     sandbox_container = MagicMock()
     sandbox_container.id = "sandbox_abc123"
     sandbox_container.start = AsyncMock()
-    sandbox_container.wait = AsyncMock(
-        return_value={"StatusCode": 0},
-    )
-    sandbox_container.log = AsyncMock(return_value=["sidecar ok\n"])
     sandbox_container.stop = AsyncMock()
     sandbox_container.delete = AsyncMock()
+    _install_exec(sandbox_container, stdout=b"sidecar ok\n")
 
     # create() returns sidecar first, then sandbox.
     mock_docker.containers.create = AsyncMock(
@@ -913,12 +1057,9 @@ class TestSidecarLifecycle:
         sandbox_container = MagicMock()
         sandbox_container.id = "sandbox_allowall"
         sandbox_container.start = AsyncMock()
-        sandbox_container.wait = AsyncMock(
-            return_value={"StatusCode": 0},
-        )
-        sandbox_container.log = AsyncMock(return_value=["ok\n"])
         sandbox_container.stop = AsyncMock()
         sandbox_container.delete = AsyncMock()
+        _install_exec(sandbox_container, stdout=b"ok\n")
 
         mock_docker = _make_mock_docker()
         mock_docker.containers.create = AsyncMock(
@@ -969,3 +1110,261 @@ class TestSidecarLifecycle:
         assert result.success
         # Only one create call (sandbox, no sidecar).
         assert mock_docker.containers.create.await_count == 1
+
+
+# -- Lifecycle dispatch (per-agent / per-task / per-call) ----------------
+
+
+def _per_agent_sandbox(
+    tmp_path: Path,
+    clock: FakeClock,
+    *,
+    grace: float = 1.0,
+) -> DockerSandbox:
+    """A DockerSandbox wired with a FakeClock-driven per-agent strategy.
+
+    ``max_idle_seconds=0.0`` disables the idle timer so grace teardown
+    is the only path and the test stays deterministic.
+    """
+    lifecycle = SandboxLifecycleConfig(
+        strategy="per-agent",
+        grace_period_seconds=grace,
+        max_idle_seconds=0.0,
+    )
+    return DockerSandbox(
+        config=DockerSandboxConfig(lifecycle=lifecycle),
+        workspace=tmp_path,
+        clock=clock,
+        lifecycle_strategy=PerAgentStrategy(lifecycle, clock=clock),
+    )
+
+
+def _per_task_sandbox(tmp_path: Path) -> DockerSandbox:
+    """A DockerSandbox wired with a per-task strategy.
+
+    Per-task destroys on release with no grace timer, so no clock seam
+    is needed for deterministic behaviour.
+    """
+    lifecycle = SandboxLifecycleConfig(strategy="per-task")
+    return DockerSandbox(
+        config=DockerSandboxConfig(lifecycle=lifecycle),
+        workspace=tmp_path,
+        lifecycle_strategy=PerTaskStrategy(),
+    )
+
+
+class TestLifecycleDispatch:
+    """``execute`` honours owner_id and dispatches to the strategy."""
+
+    async def test_per_agent_reuses_one_container(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        clock = FakeClock()
+        sandbox = _per_agent_sandbox(tmp_path, clock)
+        container_obj = mock_docker.containers.container()
+
+        with _patch_aiodocker(mock_docker):
+            r1 = await sandbox.execute(
+                command="echo",
+                args=("a",),
+                owner_id="agent-1",
+            )
+            r2 = await sandbox.execute(
+                command="echo",
+                args=("b",),
+                owner_id="agent-1",
+            )
+
+            # Reused: the container was created once and never
+            # destroyed between the two tool calls.
+            assert mock_docker.containers.create.await_count == 1
+            assert r1.container_id == r2.container_id == "abc123def456"
+            container_obj.delete.assert_not_awaited()
+
+    async def test_per_agent_grace_teardown_after_release(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        clock = FakeClock()
+        sandbox = _per_agent_sandbox(tmp_path, clock, grace=30.0)
+        container_obj = mock_docker.containers.container()
+
+        with _patch_aiodocker(mock_docker):
+            await sandbox.execute(
+                command="echo",
+                args=("a",),
+                owner_id="agent-1",
+            )
+            container_obj.delete.assert_not_awaited()
+
+            await sandbox.release_owner("agent-1")
+            # FakeClock.sleep returns immediately (advancing virtual
+            # time), so pumping the loop lets the grace task expire.
+            for _ in range(20):
+                await asyncio.sleep(0)
+
+            container_obj.delete.assert_awaited()
+            assert clock.sleep_calls == (30.0,)
+
+    async def test_per_task_reuses_then_destroys_on_release(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        lifecycle = SandboxLifecycleConfig(strategy="per-task")
+        sandbox = DockerSandbox(
+            config=DockerSandboxConfig(lifecycle=lifecycle),
+            workspace=tmp_path,
+            lifecycle_strategy=PerTaskStrategy(),
+        )
+        container_obj = mock_docker.containers.container()
+
+        with _patch_aiodocker(mock_docker):
+            await sandbox.execute(
+                command="echo",
+                args=("a",),
+                owner_id="task-1",
+            )
+            await sandbox.execute(
+                command="echo",
+                args=("b",),
+                owner_id="task-1",
+            )
+            assert mock_docker.containers.create.await_count == 1
+            container_obj.delete.assert_not_awaited()
+
+            # Per-task release destroys immediately (no grace).
+            await sandbox.release_owner("task-1")
+            container_obj.delete.assert_awaited()
+
+    async def test_per_call_default_is_ephemeral(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        # No strategy injected -> PerCallStrategy regardless of the
+        # config default strategy.
+        sandbox = DockerSandbox(workspace=tmp_path)
+        container_obj = mock_docker.containers.container()
+
+        with _patch_aiodocker(mock_docker):
+            await sandbox.execute(command="echo", args=("a",))
+            await sandbox.execute(command="echo", args=("b",))
+
+        # A fresh container per call, each destroyed.
+        assert mock_docker.containers.create.await_count == 2
+        assert container_obj.delete.await_count == 2
+        assert sandbox._tracked_containers == {}
+
+    async def test_explicit_owner_id_overrides_contextvars(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        clock = FakeClock()
+        sandbox = _per_agent_sandbox(tmp_path, clock)
+
+        tokens = structlog.contextvars.bind_contextvars(
+            agent_id="ctx-agent",
+        )
+        try:
+            with _patch_aiodocker(mock_docker):
+                await sandbox.execute(
+                    command="echo",
+                    args=("a",),
+                    owner_id="explicit-1",
+                )
+                await sandbox.execute(
+                    command="echo",
+                    args=("b",),
+                    owner_id="explicit-1",
+                )
+            # Keyed by the explicit owner, not the contextvar:
+            # reuse proves the explicit id won.
+            assert mock_docker.containers.create.await_count == 1
+        finally:
+            structlog.contextvars.reset_contextvars(**tokens)
+
+    async def test_contextvar_fallback_when_no_owner_id(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        clock = FakeClock()
+        sandbox = _per_agent_sandbox(tmp_path, clock)
+
+        tokens = structlog.contextvars.bind_contextvars(
+            agent_id="ctx-agent",
+        )
+        try:
+            with _patch_aiodocker(mock_docker):
+                await sandbox.execute(command="echo", args=("a",))
+                await sandbox.execute(command="echo", args=("b",))
+            # Derived owner from the correlation context -> reuse.
+            assert mock_docker.containers.create.await_count == 1
+        finally:
+            structlog.contextvars.reset_contextvars(**tokens)
+
+    async def test_contextvar_fallback_when_no_owner_id_per_task(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        sandbox = _per_task_sandbox(tmp_path)
+
+        tokens = structlog.contextvars.bind_contextvars(
+            task_id="ctx-task",
+        )
+        try:
+            with _patch_aiodocker(mock_docker):
+                await sandbox.execute(command="echo", args=("a",))
+                await sandbox.execute(command="echo", args=("b",))
+            # Owner derived from task_id correlation context -> reuse.
+            assert mock_docker.containers.create.await_count == 1
+        finally:
+            structlog.contextvars.reset_contextvars(**tokens)
+
+    async def test_reuse_degrades_to_ephemeral_without_owner(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        clock = FakeClock()
+        sandbox = _per_agent_sandbox(tmp_path, clock)
+        container_obj = mock_docker.containers.container()
+
+        # per-agent configured but no owner_id and no correlation
+        # context -> degrade to ephemeral per-call (no leak, destroyed).
+        with _patch_aiodocker(mock_docker):
+            await sandbox.execute(command="echo", args=("a",))
+            await sandbox.execute(command="echo", args=("b",))
+
+        assert mock_docker.containers.create.await_count == 2
+        assert container_obj.delete.await_count == 2
+        assert sandbox._tracked_containers == {}
+
+    async def test_cleanup_destroys_warm_container(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        clock = FakeClock()
+        sandbox = _per_agent_sandbox(tmp_path, clock)
+        container_obj = mock_docker.containers.container()
+
+        with _patch_aiodocker(mock_docker):
+            await sandbox.execute(
+                command="echo",
+                args=("a",),
+                owner_id="agent-1",
+            )
+            container_obj.delete.assert_not_awaited()
+
+            await sandbox.cleanup()
+
+        container_obj.delete.assert_awaited()
+        mock_docker.close.assert_awaited_once()
+        assert sandbox._tracked_containers == {}

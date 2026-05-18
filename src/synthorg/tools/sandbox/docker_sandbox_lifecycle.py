@@ -25,6 +25,11 @@ from synthorg.observability.events.docker import (
 if TYPE_CHECKING:
     import aiodocker.containers
 
+    from synthorg.tools.sandbox.lifecycle.protocol import (
+        ContainerHandle,
+        SandboxLifecycleStrategy,
+    )
+
 logger = get_logger(__name__)
 
 _STOP_TIMEOUT_SECONDS: Final[int] = 5
@@ -36,8 +41,15 @@ class DockerSandboxLifecycleMixin:
 
     _docker: aiodocker.Docker | None
     _tracked_containers: dict[str, str | None]
+    _lifecycle_strategy: SandboxLifecycleStrategy
 
     async def _ensure_docker(self) -> aiodocker.Docker:  # pragma: no cover
+        raise NotImplementedError
+
+    async def _destroy_handle(
+        self,
+        handle: ContainerHandle,
+    ) -> None:  # pragma: no cover - implemented on the concrete sandbox
         raise NotImplementedError
 
     async def _safe_collect_logs(
@@ -166,6 +178,24 @@ class DockerSandboxLifecycleMixin:
             DOCKER_CLEANUP,
             tracked_count=len(self._tracked_containers),
         )
+        # Destroy any strategy-owned warm containers and cancel their
+        # grace/idle timers first.  ``_destroy_handle`` untracks each
+        # container, so the tracked-container sweep below only handles
+        # anything the strategy did not own (e.g. an in-flight per-call
+        # container during an abrupt shutdown).
+        try:
+            await self._lifecycle_strategy.cleanup_all(
+                destroy_fn=self._destroy_handle,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                DOCKER_CLEANUP,
+                reason="lifecycle_cleanup_all_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
         if self._docker is not None:
             for sandbox_id, sidecar_id in list(
                 self._tracked_containers.items(),

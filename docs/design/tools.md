@@ -57,7 +57,7 @@ isolation for high-risk tools.
 | Backend | Isolation | Latency | Dependencies | Status |
 |---------|-----------|---------|--------------|--------|
 | `SubprocessSandbox` | Process-level: env filtering (allowlist + denylist), restricted PATH (configurable via `extra_safe_path_prefixes`), workspace-scoped cwd, timeout + process-group kill, library injection var blocking, explicit transport cleanup on Windows | ~ms | None | Implemented |
-| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network (default) or sidecar-based host:port allowlist (dual-layer DNS + DNAT transparent proxy), resource limits (CPU/memory/time) | ~1-2s cold start | Docker | Implemented |
+| `DockerSandbox` | Container-level: keep-alive container reused per the configured lifecycle strategy (`per-agent` default; `per-call` for maximum isolation), mounted workspace, no network (default) or sidecar-based host:port allowlist (dual-layer DNS + DNAT transparent proxy), resource limits (CPU/memory/time) | ~1-2s on first acquire; reused warm thereafter | Docker | Implemented |
 | `K8sSandbox` | Pod-level: per-agent containers, namespace isolation, resource quotas, network policies | ~2-5s | Kubernetes | Planned |
 
 ???+ note "Default Layered Sandbox Configuration"
@@ -93,7 +93,7 @@ isolation for high-risk tools.
         sidecar_pids_limit: 32             # PID cap for the stdio sidecar helper
         sidecar_tmpfs_size: "8m"           # tmpfs for the stdio sidecar helper
         mount_mode: "ro"                   # read-only by default
-        auto_remove: true                  # ephemeral -- container removed after execution
+        auto_remove: true                  # remove the container once its lifecycle strategy tears it down
       k8s:                                 # planned -- per-agent pod isolation
         namespace: "synthorg-agents"
         resource_requests:
@@ -176,11 +176,24 @@ Strategy selection via `sandboxing.docker.lifecycle.strategy` in `SandboxingConf
 The sidecar container shares the sandbox container's lifetime (created and destroyed
 together, since they share a network namespace).
 
-> **Status**: The lifecycle protocol, config, factory, and three strategy
-> implementations are complete. Integration into `DockerSandbox.execute()` is
-> in progress; the `owner_id` parameter is accepted and the config field is
-> wired, but the Docker backend does not yet dispatch to the lifecycle strategy.
-> Until wired, all executions use the current per-call ephemeral behaviour.
+The configured default is `per-agent` (the `strategy` field default in
+`SandboxLifecycleConfig`); the table above is authoritative. The strategy is
+constructed at boot (`workers/runtime_builder`) with the application clock and
+injected into `DockerSandbox` via the sandbox factory. Each tool call runs as
+a `docker exec` inside a long-lived idle container (`tail -f /dev/null`
+entrypoint) the strategy acquires; per-agent and per-task reuse the container
+across calls while per-call destroys it immediately after the single exec. The
+lifecycle owner is resolved from an explicit `owner_id`, else the structlog
+correlation context (`agent_id` for per-agent, `task_id` for per-task). The
+per-call degradation below is a per-invocation safety fallback, not a change
+of the configured default: when a reuse strategy cannot derive an owner for a
+given call, that single call degrades to ephemeral per-call behaviour while
+the configured strategy stays in force for calls that can resolve an owner. `AgentEngineExecutionService` releases the owner at the
+task boundary (per-task destroys immediately; per-agent starts the grace
+timer so a subsequent task for the same agent within the window re-acquires
+the warm container); `DockerSandbox.cleanup()` destroys all strategy-owned
+containers via `cleanup_all()`. Containers carry the `synthorg.managed=true`
+label so the reconciliation pass reclaims any orphaned on an unclean exit.
 
 ## Git Clone SSRF Prevention
 

@@ -1,8 +1,10 @@
 """Docker-based sandbox backend.
 
-Executes commands inside ephemeral Docker containers with workspace
-mount, resource limits, network isolation, and timeout management.
-Uses ``aiodocker`` for asynchronous Docker daemon communication.
+Executes commands inside Docker containers with workspace mount,
+resource limits, network isolation, and timeout management.  Uses
+``aiodocker`` for asynchronous Docker daemon communication.  The
+keep-alive container + ``docker exec`` execution and lifecycle-strategy
+dispatch live in :class:`DockerSandboxExecMixin`.
 """
 
 import asyncio
@@ -11,46 +13,43 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
 
 import aiodocker
-import aiodocker.containers
+import structlog.contextvars
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
-    DOCKER_CONTAINER_CREATED,
     DOCKER_DAEMON_UNAVAILABLE,
     DOCKER_EXECUTE_FAILED,
     DOCKER_EXECUTE_START,
-    DOCKER_EXECUTE_TIMEOUT,
 )
 from synthorg.observability.events.sandbox import (
-    SANDBOX_CONTAINER_LOGS_COLLECTED,
+    SANDBOX_CONTAINER_TRACK_FAILED,
+    SANDBOX_CONTAINER_UNTRACK_FAILED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
-    SANDBOX_SIDECAR_REMOVE_FAILED,
-    SANDBOX_SIDECAR_REMOVED,
-    SANDBOX_SIDECAR_STARTED,
-)
-from synthorg.tools.sandbox.container_log_shipper import (
-    build_correlation_env,
-    collect_sidecar_logs,
-    ship_container_logs,
 )
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
     DockerSandboxLifecycleMixin,
 )
 from synthorg.tools.sandbox.docker_sandbox_sidecar import DockerSandboxSidecarMixin
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
-from synthorg.tools.sandbox.result import SandboxResult
+from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Awaitable, Callable, Mapping
 
     from synthorg.observability.config import ContainerLogShippingConfig
     from synthorg.persistence.tracked_container_protocol import (
         TrackedContainerRepository,
     )
+    from synthorg.tools.sandbox.lifecycle.protocol import (
+        ContainerHandle,
+        SandboxLifecycleStrategy,
+    )
+    from synthorg.tools.sandbox.result import SandboxResult
     from synthorg.tools.sandbox.runtime_resolver import SandboxRuntimeResolver
 
 _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
@@ -106,19 +105,24 @@ def _to_posix_bind_path(path: Path) -> str:
     return str(path)
 
 
-class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
+class DockerSandbox(
+    DockerSandboxExecMixin,
+    DockerSandboxSidecarMixin,
+    DockerSandboxLifecycleMixin,
+):
     """Docker sandbox backend.
 
-    Runs commands in ephemeral Docker containers with workspace mounts,
-    resource limits (memory, CPU), network isolation, and timeout
-    management.
+    Runs commands in Docker containers with workspace mounts, resource
+    limits (memory, CPU), network isolation, and timeout management.
+    Container creation, exec, lifecycle dispatch, and teardown are
+    provided by :class:`DockerSandboxExecMixin`.
 
     Attributes:
         config: Docker sandbox configuration.
         workspace: Absolute path to the workspace root directory.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         config: DockerSandboxConfig | None = None,
@@ -126,6 +130,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         log_shipping_config: ContainerLogShippingConfig | None = None,
         clock: Clock | None = None,
         tracked_container_repo: TrackedContainerRepository | None = None,
+        lifecycle_strategy: SandboxLifecycleStrategy | None = None,
     ) -> None:
         """Initialize the Docker sandbox.
 
@@ -137,6 +142,11 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             clock: Time source for execution-duration measurements.
                 Defaults to ``SystemClock()``; tests inject ``FakeClock``
                 to drive elapsed-ms assertions deterministically.
+            lifecycle_strategy: Container lifecycle strategy governing
+                reuse and teardown. Defaults to ``PerCallStrategy`` (the
+                ephemeral per-call behaviour) when omitted so direct
+                construction stays per-call; the boot path injects the
+                config-selected strategy via the sandbox factory.
             tracked_container_repo: Optional persistence handle. When
                 provided, every mutation of ``_tracked_containers`` is
                 mirrored to the backing store so a crashed process can
@@ -166,6 +176,9 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         self._lock = asyncio.Lock()
         self._clock = clock or SystemClock()
         self._credential_manager = SandboxCredentialManager()
+        self._lifecycle_strategy: SandboxLifecycleStrategy = (
+            lifecycle_strategy if lifecycle_strategy is not None else PerCallStrategy()
+        )
         self._runtime_resolver: SandboxRuntimeResolver | None = None
         if log_shipping_config is None:
             from synthorg.observability.config import (  # noqa: PLC0415
@@ -213,9 +226,8 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             raise
         except Exception as exc:
             logger.warning(
-                DOCKER_EXECUTE_FAILED,
+                SANDBOX_CONTAINER_TRACK_FAILED,
                 container_id=container_id[:12],
-                reason="tracked_container_save_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -232,9 +244,8 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             raise
         except Exception as exc:
             logger.warning(
-                DOCKER_EXECUTE_FAILED,
+                SANDBOX_CONTAINER_UNTRACK_FAILED,
                 container_id=container_id[:12],
-                reason="tracked_container_delete_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -326,6 +337,28 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         rel = cwd.resolve().relative_to(self._workspace)
         return str(PurePosixPath(_CONTAINER_WORKSPACE) / rel)
 
+    def _merged_env_list(
+        self,
+        env_overrides: Mapping[str, str] | None,
+    ) -> list[str]:
+        """Sanitise + validate env and overlay correlation IDs.
+
+        Delegates to ``_resolve_exec_env`` (the single source of truth
+        for the env policy: credential sanitising, reserved-variable
+        rejection, correlation-ID overlay) and renders the merged
+        mapping as ``KEY=VALUE`` entries for container creation.
+
+        Correlation IDs win over user-supplied duplicates.
+
+        Args:
+            env_overrides: User-supplied environment, or ``None``.
+
+        Returns:
+            ``KEY=VALUE`` entries for the container ``Env``.
+        """
+        merged = self._resolve_exec_env(env_overrides)
+        return [f"{k}={v}" for k, v in merged.items()]
+
     def _build_container_config(  # noqa: PLR0913
         self,
         *,
@@ -347,28 +380,13 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             category: Tool category for runtime resolution.
             network_mode: Override the default network mode. Used to
                 set ``container:<sidecar_id>`` when sidecar
-            owner_id: Lifecycle owner for container labeling.
                 enforcement is active.
+            owner_id: Lifecycle owner for container labeling.
 
         Returns:
             A dict suitable for ``aiodocker`` container creation.
         """
-        sanitized = (
-            self._credential_manager.sanitize_env(env_overrides)
-            if env_overrides
-            else None
-        )
-        env_list = self._validate_env(sanitized)
-        correlation_env = build_correlation_env()
-        # Merge: correlation IDs override user-supplied duplicates.
-        merged: dict[str, str] = {}
-        for entry in env_list:
-            key, _, value = entry.partition("=")
-            merged[key] = value
-        for entry in correlation_env:
-            key, _, value = entry.partition("=")
-            merged[key] = value
-        env_list = [f"{k}={v}" for k, v in merged.items()]
+        env_list = self._merged_env_list(env_overrides)
         host_config = self._build_host_config(category=category)
         if network_mode is not None:
             host_config["NetworkMode"] = network_mode
@@ -384,7 +402,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         }
         if owner_id is not None:
             labels["synthorg.sandbox.owner_id"] = owner_id
-        container_config: dict[str, Any] = {
+        return {
             "Image": self._config.image,
             "Cmd": [command, *args],
             "WorkingDir": container_cwd,
@@ -394,7 +412,6 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             "AttachStdout": True,
             "AttachStderr": True,
         }
-        return container_config
 
     def _validate_env(
         self,
@@ -500,6 +517,49 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             raise ValueError(msg)
         return result
 
+    @property
+    def lifecycle_strategy(self) -> SandboxLifecycleStrategy:
+        """The container lifecycle strategy in effect for this backend."""
+        return self._lifecycle_strategy
+
+    async def _acquire_owner_handle(
+        self,
+        *,
+        owner_key: str,
+        strategy_owns: bool,
+        create_fn: Callable[[], Awaitable[ContainerHandle]],
+    ) -> ContainerHandle:
+        """Acquire a container for *owner_key* per the strategy.
+
+        Reuse strategies with a stable owner and per-call both route
+        through ``strategy.acquire`` (per-call's acquire just wraps
+        ``create_fn`` and emits the per-call lifecycle events).  Degraded
+        reuse (a reuse strategy configured but no stable owner) bypasses
+        the strategy entirely so no dangling owner entry leaks.
+        """
+        strategy = self._lifecycle_strategy
+        if strategy_owns or not strategy.reuses_container:
+            return await strategy.acquire(
+                owner_id=owner_key,
+                create_fn=create_fn,
+                destroy_fn=self._destroy_handle,
+            )
+        return await create_fn()
+
+    async def _teardown_unowned(
+        self,
+        owner_key: str,
+        handle: ContainerHandle,
+    ) -> None:
+        """Destroy a container the strategy does not own (per-call/degraded)."""
+        strategy = self._lifecycle_strategy
+        if not strategy.reuses_container:
+            await strategy.release(
+                owner_id=owner_key,
+                destroy_fn=self._destroy_handle,
+            )
+        await self._destroy_handle(handle)
+
     async def execute(  # noqa: PLR0913
         self,
         *,
@@ -513,32 +573,46 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
     ) -> SandboxResult:
         """Execute a command inside a Docker container.
 
+        Acquires a container for the resolved lifecycle owner via the
+        configured :class:`SandboxLifecycleStrategy`, runs *command* in
+        it via ``docker exec``, then either destroys the container
+        (per-call / degraded) or leaves it for the strategy to tear
+        down (per-agent grace, per-task release, shutdown cleanup).
+
         Args:
             command: Executable name or path.
             args: Command arguments.
             cwd: Working directory (defaults to workspace root).
             env_overrides: Extra env vars (only these -- no host leakage).
-            timeout: Seconds before the container is killed. Clamped
+            timeout: Seconds before the command is killed. Clamped
                 to ``config.timeout_seconds`` if larger.
             category: Tool category for per-category runtime selection.
             owner_id: Lifecycle owner (agent ID, task ID, or ``None``).
+                When ``None`` and a reuse strategy is configured the
+                owner is derived from the structlog correlation context
+                (``agent_id`` for per-agent, ``task_id`` for per-task);
+                if neither is available the call degrades to ephemeral
+                per-call semantics.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
 
         Raises:
             SandboxStartError: If the Docker daemon or image is unavailable.
-            SandboxError: If cwd is outside the workspace boundary.
+            SandboxError: If cwd is outside the workspace boundary or
+                *env_overrides* set reserved sandbox control variables.
         """
         work_dir = cwd if cwd is not None else self._workspace
         self._validate_cwd(work_dir)
-
         effective_timeout = min(
             timeout if timeout is not None else self._config.timeout_seconds,
             self._config.timeout_seconds,
         )
         container_cwd = self._resolve_cwd_in_container(cwd)
-
+        # Validate / resolve the per-command env BEFORE any container
+        # work so a reserved-variable rejection never leaks a container.
+        exec_env = self._resolve_exec_env(env_overrides)
+        owner_key, strategy_owns = self._resolve_lifecycle(owner_id)
         logger.debug(
             DOCKER_EXECUTE_START,
             command=command,
@@ -546,337 +620,56 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             cwd=container_cwd,
             timeout=effective_timeout,
             image=self._config.image,
+            owner_id=owner_key,
         )
-
         docker = await self._ensure_docker()
-        return await self._run_container(
-            docker=docker,
-            command=command,
-            args=args,
-            container_cwd=container_cwd,
-            env_overrides=env_overrides,
-            timeout=effective_timeout,
-            category=category,
-            owner_id=owner_id,
-        )
 
-    async def _run_container(  # noqa: C901, PLR0912, PLR0913, PLR0915
-        self,
-        *,
-        docker: aiodocker.Docker,
-        command: str,
-        args: tuple[str, ...],
-        container_cwd: str,
-        env_overrides: Mapping[str, str] | None,
-        timeout: float,  # noqa: ASYNC109
-        category: str = "",
-        owner_id: str | None = None,
-    ) -> SandboxResult:
-        """Create, start, and wait for a container.
-
-        Args:
-            docker: Docker client.
-            command: Executable name or path.
-            args: Command arguments.
-            container_cwd: Container working directory.
-            env_overrides: Environment variables.
-            timeout: Timeout in seconds.
-            category: Tool category for runtime resolution.
-            owner_id: Lifecycle owner for container labeling and
-                lifecycle strategy dispatch.
-
-        Returns:
-            A ``SandboxResult`` with captured output and exit status.
-        """
-        # Create sidecar if network enforcement is needed.
-        sidecar_id: str | None = None
-        network_mode: str | None = None
-
-        if self._needs_sidecar():
-            sidecar_id = await self._create_sidecar(docker)
-            # Track sidecar immediately so cleanup() can find it
-            # even if start/health-check fails or is cancelled. The
-            # ``_sidecar:`` prefix marks this entry as transient; the
-            # DB repo only learns about the sandbox container, never
-            # the temp sidecar key.
-            await self._track_container(f"_sidecar:{sidecar_id}", None)
-            try:
-                sidecar_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
-                await sidecar_obj.start()
-                logger.debug(
-                    SANDBOX_SIDECAR_STARTED,
-                    sidecar_id=sidecar_id[:12],
-                )
-                await self._wait_sidecar_healthy(docker, sidecar_id)
-            except MemoryError, RecursionError:
-                # Catastrophic interpreter errors are subclasses of
-                # ``Exception``, so they would be caught by the
-                # ``except Exception`` arm below and silently wrapped
-                # into ``SandboxStartError``. Re-raise them here after
-                # the sidecar cleanup so the original semantics are
-                # preserved.
-                removed = await self._remove_container(
-                    docker,
-                    sidecar_id,
-                )
-                if removed:
-                    await self._untrack_container(f"_sidecar:{sidecar_id}")
-                raise
-            except Exception as exc:
-                # Clean up the sidecar before wrapping ordinary
-                # failures into ``SandboxStartError``. The
-                # ``BaseException`` clause below covers
-                # ``CancelledError`` / ``SystemExit`` /
-                # ``KeyboardInterrupt`` -- those are not subclasses of
-                # ``Exception`` and propagate without wrapping.
-                removed = await self._remove_container(
-                    docker,
-                    sidecar_id,
-                )
-                if removed:
-                    await self._untrack_container(f"_sidecar:{sidecar_id}")
-                msg = f"Sidecar startup failed: {safe_error_description(exc)}"
-                raise SandboxStartError(msg) from exc
-            except BaseException:
-                # Cancellation / SystemExit / KeyboardInterrupt: still
-                # clean up the sidecar but propagate the original
-                # BaseException so caller cancellation semantics are
-                # preserved (do NOT wrap as SandboxStartError).
-                removed = await self._remove_container(
-                    docker,
-                    sidecar_id,
-                )
-                if removed:
-                    await self._untrack_container(f"_sidecar:{sidecar_id}")
-                raise
-            # Don't pop the _sidecar: temp key yet -- keep it tracked
-            # until the sandbox container is created and takes over.
-            network_mode = f"container:{sidecar_id}"
-
-        config = self._build_container_config(
-            command=command,
-            args=args,
-            container_cwd=container_cwd,
-            env_overrides=env_overrides,
-            category=category,
-            network_mode=network_mode,
-            owner_id=owner_id,
-        )
-
-        try:
-            container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            if sidecar_id:
-                removed = await self._remove_container(
-                    docker,
-                    sidecar_id,
-                )
-                if removed:
-                    await self._untrack_container(f"_sidecar:{sidecar_id}")
-            error_desc = safe_error_description(exc)
-            msg = f"Failed to create container: {error_desc}"
-            logger.warning(
-                DOCKER_EXECUTE_FAILED,
-                command=command,
-                error_type=type(exc).__name__,
-                error=error_desc,
+        async def _create() -> ContainerHandle:
+            return await self._create_keepalive_handle(
+                docker=docker,
+                container_cwd=container_cwd,
+                env_overrides=env_overrides,
+                category=category,
+                owner_label=owner_key,
             )
-            raise SandboxStartError(msg) from exc
 
-        container_id = container.id
-        await self._track_container(container_id, sidecar_id)
-        # Sandbox now tracks the sidecar -- remove the temp key.
-        if sidecar_id:
-            await self._untrack_container(f"_sidecar:{sidecar_id}")
-        logger.debug(
-            DOCKER_CONTAINER_CREATED,
-            container_id=container_id[:12],
-            image=self._config.image,
+        handle = await self._acquire_owner_handle(
+            owner_key=owner_key,
+            strategy_owns=strategy_owns,
+            create_fn=_create,
         )
 
         cfg = self._log_shipping_config
         sidecar_logs: tuple[dict[str, Any], ...] = ()
         result: SandboxResult | None = None
         try:
-            result = await self._start_and_wait(
+            result = await self._exec_command(
                 docker=docker,
-                container_id=container_id,
+                handle=handle,
                 command=command,
                 args=args,
-                timeout=timeout,
+                container_cwd=container_cwd,
+                exec_env=exec_env,
+                timeout=effective_timeout,
             )
         finally:
-            # Collect sidecar logs BEFORE container removal
-            # (best-effort -- never blocks cleanup).
-            if sidecar_id and cfg.enabled:
-                try:
-                    sidecar_logs = await collect_sidecar_logs(
-                        docker,
-                        sidecar_id,
-                        config=cfg,
-                    )
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    logger.debug(
-                        SANDBOX_CONTAINER_LOGS_COLLECTED,
-                        sidecar_id=sidecar_id[:12],
-                        status="collection_error_in_cleanup",
-                    )
-
-            # Ship collected logs even on execution failure so
-            # sidecar network decisions are always observable.
-            _stdout = result.stdout if result is not None else ""
-            _stderr = result.stderr if result is not None else ""
-            _ms = (result.execution_time_ms or 0) if result is not None else 0
-            await ship_container_logs(
-                config=cfg,
-                container_id=container_id,
-                sidecar_id=sidecar_id,
-                stdout=_stdout,
-                stderr=_stderr,
-                sidecar_logs=sidecar_logs,
-                execution_time_ms=_ms,
+            sidecar_logs = await self._collect_and_ship_logs(
+                docker=docker,
+                handle=handle,
+                cfg=cfg,
+                result=result,
             )
+            if not strategy_owns:
+                await self._teardown_unowned(owner_key, handle)
 
-            sandbox_removed = await self._remove_container(
-                docker,
-                container_id,
-            )
-            if sandbox_removed:
-                await self._untrack_container(container_id)
-            if sidecar_id:
-                sidecar_removed = await self._remove_container(
-                    docker,
-                    sidecar_id,
-                )
-                if sidecar_removed:
-                    logger.debug(
-                        SANDBOX_SIDECAR_REMOVED,
-                        sidecar_id=sidecar_id[:12],
-                    )
-                else:
-                    logger.warning(
-                        SANDBOX_SIDECAR_REMOVE_FAILED,
-                        sidecar_id=sidecar_id[:12],
-                        error="removal failed, sidecar remains tracked",
-                    )
-
-        # Enrich result with sidecar data and agent context.
-        # (Unreachable when _start_and_wait raises -- exception
-        # propagates through finally.)
+        # Unreachable when _exec_command raises -- the exception
+        # propagates through the finally above.
         assert result is not None  # noqa: S101
-        import structlog.contextvars  # noqa: PLC0415
-
         ctx = structlog.contextvars.get_contextvars()
         return result.model_copy(
             update={
-                "sidecar_id": sidecar_id,
+                "sidecar_id": handle.sidecar_id,
                 "sidecar_logs": sidecar_logs,
                 "agent_id": ctx.get("agent_id"),
             },
         )
-
-    async def _start_and_wait(
-        self,
-        *,
-        docker: aiodocker.Docker,
-        container_id: str,
-        command: str,
-        args: tuple[str, ...],
-        timeout: float,  # noqa: ASYNC109
-    ) -> SandboxResult:
-        """Start a container and wait for completion or timeout.
-
-        Args:
-            docker: Docker client.
-            container_id: Container ID.
-            command: Command (for logging).
-            args: Args (for logging).
-            timeout: Timeout in seconds.
-
-        Returns:
-            A ``SandboxResult``.
-        """
-        container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
-        try:
-            await container_obj.start()
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            error_desc = safe_error_description(exc)
-            msg = f"Failed to start container {container_id[:12]}: {error_desc}"
-            logger.warning(
-                DOCKER_EXECUTE_FAILED,
-                container_id=container_id[:12],
-                error_type=type(exc).__name__,
-                error=error_desc,
-            )
-            raise SandboxStartError(msg) from exc
-
-        start_mono = self._clock.monotonic()
-        timed_out, returncode = await self._wait_for_exit(
-            docker=docker,
-            container_obj=container_obj,
-            container_id=container_id,
-            timeout=timeout,
-        )
-        elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
-
-        stdout, stderr = await self._safe_collect_logs(
-            container_obj,
-            container_id,
-        )
-        self._log_execution_outcome(
-            command,
-            args,
-            container_id,
-            returncode,
-            stderr,
-        )
-        if timed_out:
-            return SandboxResult(
-                stdout=stdout,
-                stderr=stderr or f"Container timed out after {timeout}s",
-                returncode=returncode,
-                timed_out=True,
-                container_id=container_id,
-                execution_time_ms=elapsed_ms,
-            )
-        return SandboxResult(
-            stdout=stdout,
-            stderr=stderr,
-            returncode=returncode,
-            container_id=container_id,
-            execution_time_ms=elapsed_ms,
-        )
-
-    async def _wait_for_exit(
-        self,
-        *,
-        docker: aiodocker.Docker,
-        container_obj: aiodocker.containers.DockerContainer,
-        container_id: str,
-        timeout: float,  # noqa: ASYNC109
-    ) -> tuple[bool, int]:
-        """Wait for the container to exit or timeout.
-
-        Returns:
-            Tuple of (timed_out, returncode).
-        """
-        try:
-            response = await asyncio.wait_for(
-                container_obj.wait(),
-                timeout=timeout,
-            )
-            return (False, response.get("StatusCode", -1))
-        except TimeoutError:
-            logger.warning(
-                DOCKER_EXECUTE_TIMEOUT,
-                container_id=container_id[:12],
-                timeout=timeout,
-            )
-            await self._stop_container(docker, container_id)
-            return (True, -1)

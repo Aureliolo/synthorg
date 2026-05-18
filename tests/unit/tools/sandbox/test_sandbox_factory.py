@@ -17,11 +17,13 @@ from synthorg.tools.sandbox.factory import (
     merge_gvisor_defaults,
     resolve_sandbox_for_category,
 )
+from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
+pytestmark = pytest.mark.unit
 
-@pytest.mark.unit
+
 class TestBuildSandboxBackends:
     """Tests for build_sandbox_backends()."""
 
@@ -58,6 +60,34 @@ class TestBuildSandboxBackends:
             config=config.docker,
             workspace=tmp_path,
             tracked_container_repo=None,
+            lifecycle_strategy=None,
+        )
+
+    @patch("synthorg.tools.sandbox.factory.DockerSandbox")
+    def test_injected_lifecycle_strategy_forwarded_to_docker(
+        self,
+        mock_docker_cls: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """A provided lifecycle strategy is forwarded to DockerSandbox.
+
+        The ``None`` cases only prove the fallback; this guards the
+        boot-time wiring that injects the configured strategy so it
+        cannot regress silently.
+        """
+        strategy = PerCallStrategy()
+        config = SandboxingConfig(default_backend="docker")
+        build_sandbox_backends(
+            config=config,
+            workspace=tmp_path,
+            lifecycle_strategy=strategy,
+        )
+
+        mock_docker_cls.assert_called_once_with(
+            config=config.docker,
+            workspace=tmp_path,
+            tracked_container_repo=None,
+            lifecycle_strategy=strategy,
         )
 
     @patch("synthorg.tools.sandbox.factory.DockerSandbox")
@@ -117,6 +147,7 @@ class TestBuildSandboxBackends:
             config=docker_config,
             workspace=tmp_path,
             tracked_container_repo=None,
+            lifecycle_strategy=None,
         )
 
     @patch("synthorg.tools.sandbox.factory.SubprocessSandbox")
@@ -159,7 +190,6 @@ class TestBuildSandboxBackends:
         assert backends["docker"] is mock_docker_cls.return_value
 
 
-@pytest.mark.unit
 class TestResolveSandboxForCategory:
     """Tests for resolve_sandbox_for_category()."""
 
@@ -249,7 +279,6 @@ class TestResolveSandboxForCategory:
             )
 
 
-@pytest.mark.unit
 class TestCleanupSandboxBackends:
     """Tests for cleanup_sandbox_backends()."""
 
@@ -308,7 +337,6 @@ class TestCleanupSandboxBackends:
         assert call_args[1]["backend"] == "broken"
 
 
-@pytest.mark.unit
 class TestMergeGvisorDefaults:
     """Tests for merge_gvisor_defaults()."""
 

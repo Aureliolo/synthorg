@@ -43,3 +43,10 @@ SANDBOX_LIFECYCLE_GRACE_EXPIRED: Final[str] = "sandbox.lifecycle.grace.expired"
 SANDBOX_LIFECYCLE_CLEANUP: Final[str] = "sandbox.lifecycle.cleanup"
 SANDBOX_LIFECYCLE_IDLE_EXPIRED: Final[str] = "sandbox.lifecycle.idle.expired"
 SANDBOX_LIFECYCLE_DESTROY_FAILED: Final[str] = "sandbox.lifecycle.destroy_failed"
+SANDBOX_LIFECYCLE_DISPATCH: Final[str] = "sandbox.lifecycle.dispatch"
+SANDBOX_LIFECYCLE_OWNER_DEGRADED: Final[str] = "sandbox.lifecycle.owner.degraded"
+SANDBOX_CONTAINER_TRACK_FAILED: Final[str] = "sandbox.container.track.failed"
+SANDBOX_CONTAINER_UNTRACK_FAILED: Final[str] = "sandbox.container.untrack.failed"
+SANDBOX_CONTAINER_LOGS_COLLECT_FAILED: Final[str] = (
+    "sandbox.container.logs.collect.failed"
+)

@@ -25,6 +25,12 @@ from synthorg.observability.events.workers import (
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.autonomy.resolver import AutonomyResolver
+from synthorg.tools.sandbox.lifecycle.config import (
+    STRATEGY_PER_AGENT,
+    STRATEGY_PER_CALL,
+    STRATEGY_PER_TASK,
+)
+from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     LifecycleAdvancingExecutionService,
@@ -434,3 +440,119 @@ class TestDispatchResume:
                 decided_by="admin",
                 decision_reason=None,
             )
+
+
+class TestSandboxOwnerRelease:
+    """The task boundary releases the sandbox lifecycle owner."""
+
+    async def _service(
+        self,
+        *,
+        sandbox_backend: SandboxBackend | None,
+        strategy_kind: str,
+    ) -> tuple[AgentEngineExecutionService, object, object]:
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        post = task.model_copy(update={"status": TaskStatus.IN_REVIEW})
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        service = AgentEngineExecutionService(
+            engine=mock_of[AgentEngine](
+                run=AsyncMock(return_value=_run_result()),
+            ),
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(side_effect=[task, post]),
+            ),
+            agent_registry=registry,
+            sandbox_backend=sandbox_backend,
+            lifecycle_strategy_kind=strategy_kind,
+        )
+        return service, identity, task
+
+    async def _run(self, service: AgentEngineExecutionService, task: object) -> None:
+        await service.execute_once(
+            task_id=task.id,  # type: ignore[attr-defined]
+            previous_status="assigned",
+            new_status="in_progress",
+            idempotency_key="k",
+            requested_by="user",
+        )
+
+    async def test_per_agent_releases_agent_id(self) -> None:
+        release = AsyncMock()
+        backend = mock_of[SandboxBackend](release_owner=release)
+        service, identity, task = await self._service(
+            sandbox_backend=backend,
+            strategy_kind=STRATEGY_PER_AGENT,
+        )
+        await self._run(service, task)
+        release.assert_awaited_once_with(str(identity.id))  # type: ignore[attr-defined]
+
+    async def test_per_task_releases_task_id(self) -> None:
+        release = AsyncMock()
+        backend = mock_of[SandboxBackend](release_owner=release)
+        service, _identity, task = await self._service(
+            sandbox_backend=backend,
+            strategy_kind=STRATEGY_PER_TASK,
+        )
+        await self._run(service, task)
+        release.assert_awaited_once_with(task.id)  # type: ignore[attr-defined]
+
+    async def test_per_call_does_not_release(self) -> None:
+        release = AsyncMock()
+        backend = mock_of[SandboxBackend](release_owner=release)
+        service, _identity, task = await self._service(
+            sandbox_backend=backend,
+            strategy_kind=STRATEGY_PER_CALL,
+        )
+        await self._run(service, task)
+        release.assert_not_awaited()
+
+    async def test_no_backend_is_a_noop(self) -> None:
+        service, _identity, task = await self._service(
+            sandbox_backend=None,
+            strategy_kind=STRATEGY_PER_AGENT,
+        )
+        # Must not raise despite no backend wired.
+        await self._run(service, task)
+
+    async def test_release_failure_is_swallowed(self) -> None:
+        release = AsyncMock(side_effect=RuntimeError("docker gone"))
+        backend = mock_of[SandboxBackend](release_owner=release)
+        service, _identity, task = await self._service(
+            sandbox_backend=backend,
+            strategy_kind=STRATEGY_PER_TASK,
+        )
+        # A failing release must not fail an otherwise-good task.
+        await self._run(service, task)
+        release.assert_awaited_once()
+
+    async def test_release_runs_when_engine_run_raises(self) -> None:
+        # Contract: release at the task boundary regardless of outcome.
+        # A failing agent run must still release the sandbox owner.
+        release = AsyncMock()
+        backend = mock_of[SandboxBackend](release_owner=release)
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        service = AgentEngineExecutionService(
+            engine=mock_of[AgentEngine](
+                run=AsyncMock(side_effect=RuntimeError("engine boom")),
+            ),
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(return_value=task),
+            ),
+            agent_registry=registry,
+            sandbox_backend=backend,
+            lifecycle_strategy_kind=STRATEGY_PER_TASK,
+        )
+        with pytest.raises(RuntimeError, match="engine boom"):
+            await service.execute_once(
+                task_id=task.id,
+                previous_status="assigned",
+                new_status="in_progress",
+                idempotency_key="k",
+                requested_by="user",
+            )
+        release.assert_awaited_once_with(task.id)

@@ -611,6 +611,9 @@ class SubprocessSandbox:
         """Subprocesses are ephemeral -- no resources to release."""
         logger.debug(SANDBOX_CLEANUP, backend="subprocess")
 
+    async def release_owner(self, owner_id: NotBlankStr) -> None:
+        """No-op -- subprocesses hold no per-owner resources."""
+
     async def health_check(self) -> bool:
         """Return ``True`` if the workspace directory exists."""
         healthy = self._workspace.is_dir()
