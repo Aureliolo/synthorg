@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import CoordinationTopology
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.routing.models import AutoTopologyConfig
 from synthorg.settings.enums import SettingNamespace
@@ -33,6 +33,8 @@ class CoordinationSectionConfig(BaseModel):
         enable_workspace_isolation: Create isolated workspaces for
             multi-agent execution.
         base_branch: Git branch to use for workspace isolation.
+        decomposition_model: LLM model identifier for the
+            coordinator's task decomposition strategy.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -62,6 +64,11 @@ class CoordinationSectionConfig(BaseModel):
             namespace=SettingNamespace.COORDINATION,
             key="base_branch",
         ),
+        MirrorField(
+            field="decomposition_model",
+            namespace=SettingNamespace.COORDINATION,
+            key="decomposition_model",
+        ),
     )
 
     topology: CoordinationTopology = Field(
@@ -88,6 +95,17 @@ class CoordinationSectionConfig(BaseModel):
     base_branch: NotBlankStr = Field(
         default="main",
         description="Git branch for workspace isolation",
+    )
+    decomposition_model: NotBlankStr = Field(
+        default=NotBlankStr("example-medium-001"),
+        description=(
+            "LLM model identifier used by the coordinator's task "
+            "decomposition strategy. Resolved against the first "
+            "registered provider at boot. Overrideable via the "
+            "SYNTHORG_COORDINATION_DECOMPOSITION_MODEL environment "
+            "variable (precedence: DB > env > this code default), "
+            "applied on the next coordinator rebuild."
+        ),
     )
 
     @model_validator(mode="before")

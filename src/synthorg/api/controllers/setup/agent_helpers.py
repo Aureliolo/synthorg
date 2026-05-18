@@ -139,31 +139,61 @@ async def post_setup_reinit(app_state: AppState) -> None:
             )
             raise
 
-    # 3. Rebuild + hot-swap the worker execution service so a provider
-    #    added after an empty-company start wakes the agent runtime
-    #    live, with no process restart. Raise on failure so the caller
-    #    keeps ``setup_complete=false`` rather than presenting a
-    #    half-configured runtime as complete.
+    # 3. Rebuild + hot-swap BOTH runtime services so a provider added
+    #    after an empty-company start wakes the whole runtime live.
+    await _rebuild_runtime_services(app_state)
+
+
+async def _rebuild_runtime_services(app_state: AppState) -> None:
+    """Rebuild and hot-swap both runtime services (worker execution + coordinator).
+
+    Invoked after provider configuration to bring the full agent runtime
+    online without a process restart. Swaps the worker execution service
+    and the multi-agent coordinator so ``/coordinate`` stops returning
+    503 and the worker-callable execute endpoint uses the new provider.
+
+    Raises on failure (either a typed ``RuntimeServicesBuildError`` or a
+    wrapped exception) so :func:`post_setup_reinit` can keep the setup flag
+    as incomplete. A half-configured runtime reporting itself as complete is
+    worse than a clear error the operator can retry after fixing the
+    underlying provider configuration.
+    """
     try:
+        from synthorg.engine.errors import (  # noqa: PLC0415
+            RuntimeServicesBuildError,
+        )
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
-            build_worker_execution_service,
+            build_runtime_services,
         )
 
-        service = await build_worker_execution_service(
+        services = await build_runtime_services(
             app_state,
             workspace_root=app_state.agent_workspace_root,
         )
-        app_state.swap_worker_execution_service(service)
+        app_state.swap_worker_execution_service(
+            services.worker_execution_service,
+        )
+        if services.coordinator is not None:
+            app_state.swap_coordinator(services.coordinator)
     except MemoryError, RecursionError:
         raise
+    except RuntimeServicesBuildError:
+        # Already a typed domain error (logged at its origin); re-raise
+        # unchanged so post_setup_reinit keeps setup_complete=false.
+        raise
     except Exception as exc:
-        logger.warning(
+        # Critical: a provider was configured but the runtime failed to
+        # wire. ERROR (not WARNING) so monitoring/operator dashboards
+        # alert; wrapped in a domain error so the /setup/complete
+        # controller can map it to an actionable status.
+        logger.error(
             SETUP_AGENT_BOOTSTRAP_FAILED,
-            context="worker_execution_service_rebuild",
+            context="runtime_services_rebuild",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise
+        msg = "Runtime services failed to rebuild after provider config"
+        raise RuntimeServicesBuildError(msg) from exc
 
 
 async def check_needs_admin(

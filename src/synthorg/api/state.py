@@ -1149,8 +1149,90 @@ class AppState(AppStateServicesMixin):
 
     @property
     def has_coordinator(self) -> bool:
-        """Check whether the coordinator is configured."""
+        """Check whether the coordinator is configured.
+
+        Unsynchronised by design: a single reference read is atomic
+        under CPython and ``swap_coordinator`` only ever reassigns one
+        already-set coordinator for another, so a concurrent reader sees
+        a consistent old-or-new instance (both non-None). The only
+        ``None -> set`` flip happens once at boot before HTTP traffic.
+        Locking this hot read (the ``/coordinate`` gate calls it per
+        request) would add cost for a benign snapshot.
+        """
         return self._coordinator is not None
+
+    def set_coordinator(self, coordinator: MultiAgentCoordinator) -> None:
+        """Attach the multi-agent coordinator (once-only, boot only).
+
+        Once-only: a second set raises, matching the
+        ``worker_execution_service`` seam. The boot runtime-services
+        hook uses :meth:`set_coordinator_if_absent` instead so an
+        explicitly injected coordinator wins; this strict variant is
+        retained for callers that require the once-only guarantee.
+        Hot-reload after setup uses :meth:`swap_coordinator`.
+        """
+        self._set_once("_coordinator", coordinator, "Coordinator")
+
+    def set_coordinator_if_absent(
+        self,
+        coordinator: MultiAgentCoordinator,
+    ) -> bool:
+        """Attach the coordinator only if none is configured (atomic).
+
+        The boot runtime-services hook calls this unconditionally behind
+        the provider-present switch, so ``/coordinate`` stops returning
+        503 once a provider is configured. An explicitly injected
+        coordinator (constructor ``coordinator=``) is already set and
+        wins: this is a logged no-op then. The check-and-set is atomic
+        under ``_lazy_service_lock`` so the boot install cannot race a
+        concurrent ``swap_coordinator`` or property read (eliminating the
+        former check-then-act at the call site).
+
+        Returns:
+            ``True`` if this call installed the coordinator, ``False``
+            if one was already configured (injected) and kept.
+        """
+        with self._lazy_service_lock:
+            if self._coordinator is not None:
+                logger.info(
+                    API_APP_STARTUP,
+                    service="coordinator",
+                    transition="skipped_injected",
+                )
+                return False
+            self._coordinator = coordinator
+            logger.info(
+                API_APP_STARTUP,
+                service="coordinator",
+                transition="attached",
+            )
+            return True
+
+    def swap_coordinator(self, coordinator: MultiAgentCoordinator) -> None:
+        """Replace the coordinator (hot-reload).
+
+        Distinct from :meth:`set_coordinator`, which is once-only: this
+        replaces an already-wired coordinator so a provider configured
+        against an empty-company start brings ``/coordinate`` online
+        without a restart (``post_setup_reinit``). Holds
+        ``_lazy_service_lock`` so the write is synchronised against
+        concurrent property reads, mirroring
+        :meth:`swap_worker_execution_service`.
+        """
+        with self._lazy_service_lock:
+            previous = self._coordinator
+            if previous is coordinator:
+                transition = "noop"
+            elif previous is None:
+                transition = "attached"
+            else:
+                transition = "replaced"
+            self._coordinator = coordinator
+            logger.info(
+                API_APP_STARTUP,
+                service="coordinator",
+                transition=transition,
+            )
 
     @property
     def performance_tracker(self) -> PerformanceTracker:
@@ -1159,6 +1241,11 @@ class AppState(AppStateServicesMixin):
             self._performance_tracker,
             "performance_tracker",
         )
+
+    @property
+    def has_performance_tracker(self) -> bool:
+        """Check whether the performance tracker is configured."""
+        return self._performance_tracker is not None
 
     @property
     def agent_registry(self) -> AgentRegistryService:

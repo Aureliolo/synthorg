@@ -1,6 +1,7 @@
-"""Unit tests for the provider-present worker-execution-service switch."""
+"""Unit tests for the provider-present runtime-services switch."""
 
 from pathlib import Path
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -8,59 +9,52 @@ import pytest
 from synthorg.api.state import AppState
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
+from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
 )
-from synthorg.workers.runtime_builder import build_worker_execution_service
+from synthorg.workers.runtime_builder import (
+    RuntimeServices,
+    build_runtime_services,
+)
 from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
 
 
-class TestProviderPresentSwitch:
-    async def test_no_provider_returns_no_provider_service(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        app_state = mock_of[AppState](has_active_provider=False)
-        service = await build_worker_execution_service(
-            app_state,
-            workspace_root=tmp_path,
-        )
-        assert isinstance(service, NoProviderExecutionService)
+def _provider_app_state(
+    registry: ProviderRegistry,
+    workspace: Path,
+    *,
+    bridge_config_error: Exception | None = None,
+) -> AppState:
+    """Build a mocked AppState for the provider-present path.
 
-    async def test_empty_registry_returns_no_provider_service(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        app_state = mock_of[AppState](
-            has_active_provider=True,
-            provider_registry=ProviderRegistry({}),
-        )
-        service = await build_worker_execution_service(
-            app_state,
-            workspace_root=tmp_path,
-        )
-        assert isinstance(service, NoProviderExecutionService)
-
-    async def test_provider_present_returns_agent_engine_service(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        registry = ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
-        )
-        app_state = mock_of[AppState](
+    ``bridge_config_error`` makes ``get_engine_bridge_config`` raise, to
+    exercise the fail-open routing-scorer-config resolve branch.
+    """
+    if bridge_config_error is None:
+        bridge_mock = AsyncMock(return_value=EngineBridgeConfig())
+    else:
+        bridge_mock = AsyncMock(side_effect=bridge_config_error)
+    # ``mock_of[T](...)`` is ``Any`` by design; cast back to the spec so
+    # the helper keeps a precise signature for its callers.
+    return cast(
+        "AppState",
+        mock_of[AppState](
             has_active_provider=True,
             provider_registry=registry,
             config=RootConfig(company_name="test-corp"),
             config_resolver=mock_of[ConfigResolver](
                 get_float=AsyncMock(return_value=30.0),
+                get_str=AsyncMock(return_value="example-medium-001"),
+                get_engine_bridge_config=bridge_mock,
             ),
             task_engine=mock_of[TaskEngine](),
             agent_registry=AgentRegistryService(),
@@ -68,15 +62,121 @@ class TestProviderPresentSwitch:
             clock=FakeClock(),
             event_stream_hub=None,
             interrupt_store=None,
+            agent_workspace_root=workspace,
             has_cost_tracker=False,
             has_audit_log=False,
             has_memory_backend=False,
-        )
-        service = await build_worker_execution_service(
+            has_performance_tracker=False,
+        ),
+    )
+
+
+class TestProviderPresentSwitch:
+    async def test_no_provider_returns_no_provider_runtime(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        app_state = mock_of[AppState](has_active_provider=False)
+        result = await build_runtime_services(
             app_state,
             workspace_root=tmp_path,
         )
-        assert isinstance(service, AgentEngineExecutionService)
+        assert isinstance(result, RuntimeServices)
+        assert isinstance(
+            result.worker_execution_service,
+            NoProviderExecutionService,
+        )
+        assert result.coordinator is None
+
+    async def test_empty_registry_returns_no_provider_runtime(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        app_state = mock_of[AppState](
+            has_active_provider=True,
+            provider_registry=ProviderRegistry({}),
+        )
+        result = await build_runtime_services(
+            app_state,
+            workspace_root=tmp_path,
+        )
+        assert isinstance(
+            result.worker_execution_service,
+            NoProviderExecutionService,
+        )
+        assert result.coordinator is None
+
+    async def test_provider_present_returns_runtime_pair(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        registry = ProviderRegistry.from_config(
+            {"test-provider": ProviderConfig(driver="scripted")}
+        )
+        app_state = _provider_app_state(registry, tmp_path)
+
+        result = await build_runtime_services(
+            app_state,
+            workspace_root=tmp_path,
+        )
+
+        assert isinstance(
+            result.worker_execution_service,
+            AgentEngineExecutionService,
+        )
+        assert isinstance(result.coordinator, MultiAgentCoordinator)
+
+    async def test_worker_and_coordinator_share_one_engine(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        registry = ProviderRegistry.from_config(
+            {"test-provider": ProviderConfig(driver="scripted")}
+        )
+        app_state = _provider_app_state(registry, tmp_path)
+
+        result = await build_runtime_services(
+            app_state,
+            workspace_root=tmp_path,
+        )
+
+        worker = result.worker_execution_service
+        coordinator = result.coordinator
+        assert isinstance(worker, AgentEngineExecutionService)
+        assert coordinator is not None
+        # The coordinator's parallel executor must run sub-agents on the
+        # exact same boot AgentEngine as the worker execute seam.
+        assert coordinator._parallel_executor._engine is worker._engine
+
+    async def test_scorer_config_resolve_failure_is_fail_open(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """A bridge-config resolve failure must not break the build.
+
+        ``_resolve_routing_scorer_config`` fails open (returns ``None``)
+        so the coordinator is still built; the factory falls back to
+        ``task_assignment_config.min_score``.
+        """
+        registry = ProviderRegistry.from_config(
+            {"test-provider": ProviderConfig(driver="scripted")}
+        )
+        app_state = _provider_app_state(
+            registry,
+            tmp_path,
+            bridge_config_error=RuntimeError("settings backend down"),
+        )
+
+        result = await build_runtime_services(
+            app_state,
+            workspace_root=tmp_path,
+        )
+
+        assert isinstance(
+            result.worker_execution_service,
+            AgentEngineExecutionService,
+        )
+        assert isinstance(result.coordinator, MultiAgentCoordinator)
 
     async def test_multiple_providers_warns_and_selects_first(
         self,
@@ -88,30 +188,18 @@ class TestProviderPresentSwitch:
                 "test-provider-2": ProviderConfig(driver="scripted"),
             }
         )
-        app_state = mock_of[AppState](
-            has_active_provider=True,
-            provider_registry=registry,
-            config=RootConfig(company_name="test-corp"),
-            config_resolver=mock_of[ConfigResolver](
-                get_float=AsyncMock(return_value=30.0),
-            ),
-            task_engine=mock_of[TaskEngine](),
-            agent_registry=AgentRegistryService(),
-            approval_store=None,
-            clock=FakeClock(),
-            event_stream_hub=None,
-            interrupt_store=None,
-            has_cost_tracker=False,
-            has_audit_log=False,
-            has_memory_backend=False,
-        )
+        app_state = _provider_app_state(registry, tmp_path)
         # Exercises the >1-provider branch (warning + first-provider
         # selection); it must still build a live runtime, not reject.
-        service = await build_worker_execution_service(
+        result = await build_runtime_services(
             app_state,
             workspace_root=tmp_path,
         )
-        assert isinstance(service, AgentEngineExecutionService)
+        assert isinstance(
+            result.worker_execution_service,
+            AgentEngineExecutionService,
+        )
+        assert isinstance(result.coordinator, MultiAgentCoordinator)
 
     async def test_builds_nonexistent_deep_workspace_path(
         self,
@@ -120,30 +208,18 @@ class TestProviderPresentSwitch:
         registry = ProviderRegistry.from_config(
             {"test-provider": ProviderConfig(driver="scripted")}
         )
-        app_state = mock_of[AppState](
-            has_active_provider=True,
-            provider_registry=registry,
-            config=RootConfig(company_name="test-corp"),
-            config_resolver=mock_of[ConfigResolver](
-                get_float=AsyncMock(return_value=30.0),
-            ),
-            task_engine=mock_of[TaskEngine](),
-            agent_registry=AgentRegistryService(),
-            approval_store=None,
-            clock=FakeClock(),
-            event_stream_hub=None,
-            interrupt_store=None,
-            has_cost_tracker=False,
-            has_audit_log=False,
-            has_memory_backend=False,
-        )
         deep = tmp_path / "missing" / "agent" / "workspace"
+        app_state = _provider_app_state(registry, deep)
         assert not deep.exists()
 
-        service = await build_worker_execution_service(
+        result = await build_runtime_services(
             app_state,
             workspace_root=deep,
         )
 
-        assert isinstance(service, AgentEngineExecutionService)
+        assert isinstance(
+            result.worker_execution_service,
+            AgentEngineExecutionService,
+        )
+        assert isinstance(result.coordinator, MultiAgentCoordinator)
         assert deep.is_dir()

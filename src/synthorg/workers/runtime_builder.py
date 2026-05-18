@@ -1,22 +1,37 @@
-"""Provider-present switch: build the worker execution service.
+"""Provider-present switch: build the boot runtime services.
 
 This is the construction site for the agent runtime. With a provider
-configured it assembles one boot-time :class:`AgentEngine` (LLM +
-sandboxed tools + memory, governed by the SecOps safety spine) wrapped
-in an :class:`AgentEngineExecutionService`. With no provider it returns
-an :class:`NoProviderExecutionService` so the execute seam fails loudly
-instead of silently walking status labels.
+configured it assembles ONE boot-time :class:`AgentEngine` (LLM +
+sandboxed tools + memory, governed by the SecOps safety spine) and
+shares that single engine between two consumers:
+
+* an :class:`AgentEngineExecutionService` (the worker-callable execute
+  seam), and
+* a :class:`~synthorg.engine.coordination.service.MultiAgentCoordinator`
+  built via :func:`~synthorg.engine.coordination.factory.build_coordinator`,
+  whose :class:`~synthorg.engine.parallel.ParallelExecutor` runs sub-agents
+  on the same engine.
+
+With no provider it returns a :class:`NoProviderExecutionService` and a
+``None`` coordinator, so the execute seam fails loudly and
+``/coordinate`` honestly 503s instead of silently walking status
+labels.
 
 The same builder serves the boot install and the setup-reinit
-rebuild, so configuring a provider brings the runtime online without
-a process restart.
+rebuild, so configuring a provider brings the whole runtime (worker
+execution AND multi-agent coordination) online without a process
+restart.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.observability import get_logger
+from synthorg.engine.coordination.factory import build_coordinator
+from synthorg.engine.routing.scorer import RoutingScorerConfig
+from synthorg.engine.workspace.config import WorkspaceIsolationConfig
+from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
@@ -32,6 +47,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from synthorg.api.state import AppState
+    from synthorg.engine.coordination.service import MultiAgentCoordinator
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
 
@@ -39,6 +55,29 @@ logger = get_logger(__name__)
 
 _WEB_TIMEOUT_NS: str = "tools"
 _WEB_TIMEOUT_KEY: str = "web_request_timeout_seconds"
+_GIT_TIMEOUT_NS: str = "tools"
+_GIT_TIMEOUT_KEY: str = "git_command_timeout_seconds"
+_DECOMPOSITION_NS: str = "coordination"
+_DECOMPOSITION_KEY: str = "decomposition_model"
+
+
+class RuntimeServices(NamedTuple):
+    """The pair of runtime services built behind the provider switch.
+
+    INVARIANT (enforced by construction in :func:`build_runtime_services`,
+    not by the type): when ``coordinator`` is not ``None`` it and
+    ``worker_execution_service`` share the *same* boot
+    :class:`AgentEngine` instance, so worker tasks and coordinator
+    sub-agents observe one interrupt store, event-stream hub, and clock
+    seam. A divergent engine would split agent state silently;
+    ``tests/unit/workers/test_runtime_builder.py`` asserts the identity.
+    ``coordinator`` is ``None`` only in the empty-company (no-provider)
+    case, where ``worker_execution_service`` is a
+    :class:`NoProviderExecutionService`.
+    """
+
+    worker_execution_service: WorkerExecutionService
+    coordinator: MultiAgentCoordinator | None
 
 
 def _select_active_provider(
@@ -52,7 +91,7 @@ def _select_active_provider(
     if not app_state.has_active_provider:
         logger.info(
             API_APP_STARTUP,
-            service="worker_execution_service",
+            service="runtime_services",
             mode="no_provider",
             note="empty company -- task execution rejected at the seam",
         )
@@ -63,7 +102,7 @@ def _select_active_provider(
     if not names:
         logger.info(
             API_APP_STARTUP,
-            service="worker_execution_service",
+            service="runtime_services",
             mode="no_provider",
             note="provider registry present but empty",
         )
@@ -71,7 +110,7 @@ def _select_active_provider(
     if len(names) > 1:
         logger.warning(
             API_APP_STARTUP,
-            service="worker_execution_service",
+            service="runtime_services",
             note=(
                 "multiple providers registered; the boot AgentEngine "
                 "runs every agent against the first provider -- "
@@ -111,7 +150,12 @@ def _construct_agent_engine(
     registry: ProviderRegistry,
     tool_registry: ToolRegistry,
 ) -> AgentEngine:
-    """Assemble the boot ``AgentEngine`` from live application state."""
+    """Assemble the boot ``AgentEngine`` from live application state.
+
+    A single instance is shared by the worker execution service and the
+    coordinator's parallel executor so both consumers observe the same
+    interrupt store, event stream hub, and clock seam.
+    """
     return AgentEngine(
         provider=provider,
         provider_registry=registry,
@@ -131,12 +175,136 @@ def _construct_agent_engine(
     )
 
 
-async def build_worker_execution_service(
+async def _build_workspace_strategy(
+    app_state: AppState,
+) -> tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig]:
+    """Build the git-worktree workspace isolation strategy + config.
+
+    The strategy operates on ``app_state.agent_workspace_root`` (the
+    same directory the worker runtime's sandbox tools use). Git
+    subprocess invocations are bounded by the operator-tuned
+    ``tools.git_command_timeout_seconds`` so a hung worktree command
+    cannot stall a coordination wave. Construction (here, at boot) never
+    touches git; a real repository is only required later, when a
+    coordination wave first invokes ``workspace_service.setup_group()``
+    during dispatch, and only when ``enable_workspace_isolation`` is set
+    and the wave has multiple subtasks.
+    """
+    ws_config = WorkspaceIsolationConfig()
+    git_timeout = await app_state.config_resolver.get_float(
+        _GIT_TIMEOUT_NS,
+        _GIT_TIMEOUT_KEY,
+    )
+    strategy = PlannerWorktreeStrategy(
+        config=ws_config.planner_worktrees,
+        repo_root=app_state.agent_workspace_root,
+        cmd_timeout=git_timeout,
+        clock=app_state.clock,
+    )
+    return strategy, ws_config
+
+
+async def _resolve_routing_scorer_config(
+    app_state: AppState,
+) -> RoutingScorerConfig | None:
+    """Project routing-scorer weights out of the engine bridge config.
+
+    Fail-open: a bridge-resolution failure (missing setting, validation
+    error, persistence flake) or a projection failure keeps the
+    coordinator buildable by returning ``None`` so the factory falls
+    back to ``task_assignment_config.min_score``. Mirrors the fail-open
+    pattern used by ``auto_create_template_agents._resolve_matcher_config``
+    and ``post_setup_reinit``. The resolve and projection stages are
+    caught separately so the log says which one failed (a persistent
+    config bug vs a transient resolver flake are diagnosed differently).
+    """
+    try:
+        bridge = await app_state.config_resolver.get_engine_bridge_config()
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="coordinator",
+            context="routing_scorer_config_resolve",
+            note="engine bridge config unavailable; using scorer defaults",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+    try:
+        return RoutingScorerConfig.from_bridge_config(bridge)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="coordinator",
+            context="routing_scorer_config_projection",
+            note="scorer config projection failed; using scorer defaults",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+
+
+async def _build_runtime_coordinator(
+    app_state: AppState,
+    engine: AgentEngine,
+    provider: CompletionProvider,
+) -> MultiAgentCoordinator:
+    """Build the multi-agent coordinator sharing the boot engine.
+
+    Resolves the operator-tuned decomposition model and routing-scorer
+    weights, wires real git-worktree workspace isolation, then delegates
+    to the unit-tested :func:`build_coordinator` factory. The three
+    resolution steps are independent, so they run concurrently under a
+    ``TaskGroup`` to keep boot latency down (structured concurrency: any
+    failure cancels the siblings and propagates).
+    """
+    async with asyncio.TaskGroup() as tg:
+        model_task = tg.create_task(
+            app_state.config_resolver.get_str(
+                _DECOMPOSITION_NS,
+                _DECOMPOSITION_KEY,
+            )
+        )
+        scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
+        workspace_task = tg.create_task(_build_workspace_strategy(app_state))
+    decomposition_model = model_task.result()
+    routing_scorer_config = scorer_task.result()
+    workspace_strategy, workspace_config = workspace_task.result()
+    performance_tracker = (
+        app_state.performance_tracker if app_state.has_performance_tracker else None
+    )
+    coordinator = build_coordinator(
+        config=app_state.config.coordination,
+        engine=engine,
+        task_assignment_config=app_state.config.task_assignment,
+        provider=provider,
+        decomposition_model=decomposition_model,
+        task_engine=app_state.task_engine,
+        workspace_strategy=workspace_strategy,
+        workspace_config=workspace_config,
+        performance_tracker=performance_tracker,
+        routing_scorer_config=routing_scorer_config,
+    )
+    logger.info(
+        API_APP_STARTUP,
+        service="coordinator",
+        mode="multi_agent",
+        decomposition_model=decomposition_model,
+        topology=app_state.config.coordination.topology.value,
+    )
+    return coordinator
+
+
+async def build_runtime_services(
     app_state: AppState,
     *,
     workspace_root: Path,
-) -> WorkerExecutionService:
-    """Return the worker execution service for the current provider state.
+) -> RuntimeServices:
+    """Return the runtime services for the current provider state.
 
     Args:
         app_state: Live application state (provider registry, task
@@ -147,12 +315,17 @@ async def build_worker_execution_service(
             re-init path rebuilds against the same directory.
 
     Returns:
-        ``AgentEngineExecutionService`` when a provider is registered,
-        otherwise ``NoProviderExecutionService``.
+        ``RuntimeServices`` with an ``AgentEngineExecutionService`` and a
+        live ``MultiAgentCoordinator`` (both sharing one
+        ``AgentEngine``) when a provider is registered; otherwise a
+        ``NoProviderExecutionService`` and a ``None`` coordinator.
     """
     selected = _select_active_provider(app_state)
     if selected is None:
-        return NoProviderExecutionService()
+        return RuntimeServices(
+            worker_execution_service=NoProviderExecutionService(),
+            coordinator=None,
+        )
     registry, names = selected
     provider = registry.get(names[0])
 
@@ -170,16 +343,25 @@ async def build_worker_execution_service(
         registry=ActionTypeRegistry(),
         config=app_state.config.config.autonomy,
     )
+    coordinator = await _build_runtime_coordinator(
+        app_state,
+        engine,
+        provider,
+    )
     logger.info(
         API_APP_STARTUP,
-        service="worker_execution_service",
+        service="runtime_services",
         mode="agent_engine",
         provider=names[0],
         tool_count=tool_count,
     )
-    return AgentEngineExecutionService(
+    worker_execution_service = AgentEngineExecutionService(
         engine=engine,
         task_engine=app_state.task_engine,
         agent_registry=app_state.agent_registry,
         autonomy_resolver=autonomy_resolver,
+    )
+    return RuntimeServices(
+        worker_execution_service=worker_execution_service,
+        coordinator=coordinator,
     )

@@ -7,7 +7,7 @@ description: Agent crash recovery, graceful shutdown protocol, concurrent worksp
 
 !!! warning "Designed behaviour; runtime in active development"
 
-    This page is the source of truth for the **designed** behaviour of this subsystem. Multi-agent coordination is not wired into a running product yet (the `/coordinate` path is not active); this is in active development (see the [Roadmap](../roadmap/index.md)). The code described here is built and unit-tested as components but not yet run by a live agent.
+    This page is the source of truth for the **designed** behaviour of this subsystem. The multi-agent coordinator is wired at boot behind the provider-present switch: with a provider configured, `/coordinate` runs decompose, route, parallel execution, then rollup end to end; an empty company (no provider) still returns 503. The surrounding resilience features on this page (crash recovery with checkpoint resume, graceful shutdown, the self-improvement loop) remain in active development (see the [Roadmap](../roadmap/index.md)).
 
 This page covers system-level features that span multiple agents and protect against failure: crash recovery with checkpoint resume, graceful shutdown strategies, concurrent workspace isolation (Git worktrees / virtual filesystem / per-branch), and multi-agent coordination topology (centralized, decentralized, context-dependent dispatchers).
 

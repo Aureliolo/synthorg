@@ -14,6 +14,7 @@ from synthorg.core.enums import (
     TaskStatus,
     TaskStructure,
 )
+from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (
     CoordinationContext,
@@ -345,6 +346,10 @@ class TestMultiAgentCoordinator:
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         task_engine = AsyncMock()
+        # The parent is freshly CREATED, so the coordinator walks the
+        # full lifecycle (CREATED -> ASSIGNED -> IN_PROGRESS ->
+        # IN_REVIEW -> COMPLETED) to reach the COMPLETED rollup status.
+        task_engine.get_task.return_value = make_assignment_task(id="parent-1")
         task_engine.submit.return_value = TaskMutationResult(
             request_id="req-1",
             success=True,
@@ -373,7 +378,14 @@ class TestMultiAgentCoordinator:
         attributed = await coordinator.coordinate(ctx)
 
         assert attributed.is_success
-        task_engine.submit.assert_called_once()
+        # One submit per valid lifecycle hop to COMPLETED, in order.
+        expected = transition_path(TaskStatus.CREATED, TaskStatus.COMPLETED)
+        assert expected is not None
+        assert task_engine.submit.await_count == len(expected)
+        submitted = [
+            call.args[0].target_status for call in task_engine.submit.await_args_list
+        ]
+        assert submitted == list(expected)
 
     @pytest.mark.unit
     async def test_no_task_engine_skips_update(self) -> None:
@@ -606,6 +618,7 @@ class TestMultiAgentCoordinator:
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         task_engine = AsyncMock()
+        task_engine.get_task.return_value = make_assignment_task(id="parent-1")
         task_engine.submit.return_value = TaskMutationResult(
             request_id="req-1",
             success=False,
@@ -643,6 +656,7 @@ class TestMultiAgentCoordinator:
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         task_engine = AsyncMock()
+        task_engine.get_task.return_value = make_assignment_task(id="parent-1")
         task_engine.submit.side_effect = RuntimeError("engine down")
 
         coordinator = _make_coordinator(

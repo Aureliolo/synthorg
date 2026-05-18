@@ -272,6 +272,17 @@ class CoordinationPhaseError(CoordinationError):
         self.partial_phases: tuple[CoordinationPhaseResult, ...] = partial_phases
 
 
+class RuntimeServicesBuildError(EngineError):
+    """Raised when the boot/reinit runtime-services build fails.
+
+    Wraps the underlying failure from ``build_runtime_services`` (provider
+    registry, tool registry, agent engine, or coordinator factory) so the
+    boot hook and the ``/setup/complete`` controller see a typed domain
+    error instead of a raw exception. The original cause is preserved via
+    ``raise ... from exc``.
+    """
+
+
 class WorkflowExecutionError(EngineError):
     """Base exception for workflow execution failures."""
 

@@ -59,12 +59,14 @@ def build_runtime_app(
     *,
     with_provider: bool,
     company_name: str,
+    coordinator: Any = None,
 ) -> Any:
     """Build an app for provider-present-switch integration tests.
 
     ``with_provider`` registers one scripted provider so the company is
     not empty; otherwise no registry is passed and task creation is
-    rejected at the controller.
+    rejected at the controller. ``coordinator`` injects an explicit
+    coordinator so the injection-over-autowire convention can be tested.
     """
     root_config = RootConfig(company_name=company_name)
     auth_service = AuthService(
@@ -90,6 +92,7 @@ def build_runtime_app(
         agent_registry=AgentRegistryService(),
         settings_service=settings_service,
         provider_registry=provider_registry,
+        coordinator=coordinator,
     )
 
 

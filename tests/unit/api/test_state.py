@@ -14,6 +14,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.training.service import TrainingService
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 from tests.unit.api.fakes import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -110,9 +111,7 @@ class TestAppStateTaskEngine:
             _ = state.task_engine
 
     def test_task_engine_returns_when_set(self) -> None:
-        from unittest.mock import MagicMock
-
-        engine = MagicMock(spec=TaskEngine)
+        engine = mock_of[TaskEngine]()
         state = _make_state(task_engine=engine)
         assert state.task_engine is engine
 
@@ -121,24 +120,18 @@ class TestAppStateTaskEngine:
         assert state.has_task_engine is False
 
     def test_has_task_engine_true_when_set(self) -> None:
-        from unittest.mock import MagicMock
-
-        engine = MagicMock(spec=TaskEngine)
+        engine = mock_of[TaskEngine]()
         state = _make_state(task_engine=engine)
         assert state.has_task_engine is True
 
     def test_set_task_engine_succeeds_once(self) -> None:
-        from unittest.mock import MagicMock
-
-        engine = MagicMock(spec=TaskEngine)
+        engine = mock_of[TaskEngine]()
         state = _make_state()
         state.set_task_engine(engine)
         assert state.task_engine is engine
 
     def test_set_task_engine_twice_raises(self) -> None:
-        from unittest.mock import MagicMock
-
-        engine = MagicMock(spec=TaskEngine)
+        engine = mock_of[TaskEngine]()
         state = _make_state(task_engine=engine)
         with pytest.raises(RuntimeError, match="already configured"):
             state.set_task_engine(engine)
@@ -154,9 +147,7 @@ class TestAppStateCoordinator:
             _ = state.coordinator
 
     def test_coordinator_returns_when_set(self) -> None:
-        from unittest.mock import MagicMock
-
-        coordinator = MagicMock(spec=MultiAgentCoordinator)
+        coordinator = mock_of[MultiAgentCoordinator]()
         state = _make_state(coordinator=coordinator)
         assert state.coordinator is coordinator
 
@@ -165,11 +156,58 @@ class TestAppStateCoordinator:
         assert state.has_coordinator is False
 
     def test_has_coordinator_true_when_set(self) -> None:
-        from unittest.mock import MagicMock
-
-        coordinator = MagicMock(spec=MultiAgentCoordinator)
+        coordinator = mock_of[MultiAgentCoordinator]()
         state = _make_state(coordinator=coordinator)
         assert state.has_coordinator is True
+
+    def test_set_coordinator_attaches_when_none(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        state = _make_state(coordinator=None)
+        state.set_coordinator(coordinator)
+        assert state.coordinator is coordinator
+        assert state.has_coordinator is True
+
+    def test_set_coordinator_is_once_only(self) -> None:
+        first = mock_of[MultiAgentCoordinator]()
+        second = mock_of[MultiAgentCoordinator]()
+        state = _make_state(coordinator=first)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_coordinator(second)
+
+    def test_set_coordinator_if_absent_installs_when_none(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        state = _make_state(coordinator=None)
+        installed = state.set_coordinator_if_absent(coordinator)
+        assert installed is True
+        assert state.coordinator is coordinator
+
+    def test_set_coordinator_if_absent_keeps_injected(self) -> None:
+        injected = mock_of[MultiAgentCoordinator]()
+        autowired = mock_of[MultiAgentCoordinator]()
+        state = _make_state(coordinator=injected)
+        installed = state.set_coordinator_if_absent(autowired)
+        # Injection-over-autowire: the injected one wins, no raise.
+        assert installed is False
+        assert state.coordinator is injected
+
+    def test_swap_coordinator_attaches_when_none(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        state = _make_state(coordinator=None)
+        state.swap_coordinator(coordinator)
+        assert state.coordinator is coordinator
+
+    def test_swap_coordinator_replaces_existing(self) -> None:
+        first = mock_of[MultiAgentCoordinator]()
+        second = mock_of[MultiAgentCoordinator]()
+        state = _make_state(coordinator=first)
+        state.swap_coordinator(second)
+        assert state.coordinator is second
+
+    def test_swap_coordinator_noop_when_identical(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        state = _make_state(coordinator=coordinator)
+        state.swap_coordinator(coordinator)
+        assert state.coordinator is coordinator
 
 
 @pytest.mark.unit
@@ -253,17 +291,13 @@ class TestAppStateReviewGateService:
         assert state.review_gate_service is None
 
     def test_set_review_gate_service_succeeds_once(self) -> None:
-        from unittest.mock import MagicMock
-
-        svc = MagicMock(spec=ReviewGateService)
+        svc = mock_of[ReviewGateService]()
         state = _make_state()
         state.set_review_gate_service(svc)
         assert state.review_gate_service is svc
 
     def test_set_review_gate_service_twice_raises(self) -> None:
-        from unittest.mock import MagicMock
-
-        svc = MagicMock(spec=ReviewGateService)
+        svc = mock_of[ReviewGateService]()
         state = _make_state()
         state.set_review_gate_service(svc)
         with pytest.raises(RuntimeError, match="already configured"):
@@ -279,17 +313,13 @@ class TestAppStateApprovalTimeoutScheduler:
         assert state.approval_timeout_scheduler is None
 
     def test_set_approval_timeout_scheduler_succeeds_once(self) -> None:
-        from unittest.mock import MagicMock
-
-        scheduler = MagicMock(spec=ApprovalTimeoutScheduler)
+        scheduler = mock_of[ApprovalTimeoutScheduler]()
         state = _make_state()
         state.set_approval_timeout_scheduler(scheduler)
         assert state.approval_timeout_scheduler is scheduler
 
     def test_set_approval_timeout_scheduler_twice_raises(self) -> None:
-        from unittest.mock import MagicMock
-
-        scheduler = MagicMock(spec=ApprovalTimeoutScheduler)
+        scheduler = mock_of[ApprovalTimeoutScheduler]()
         state = _make_state()
         state.set_approval_timeout_scheduler(scheduler)
         with pytest.raises(RuntimeError, match="already configured"):

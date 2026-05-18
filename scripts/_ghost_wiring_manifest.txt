@@ -24,7 +24,7 @@
 # instantiated/called). Bare name match on ast.Call(func=Name|Attribute).
 
 ENFORCED AgentEngine #1956 -- runtime root; construct at boot behind the provider switch
-PENDING build_coordinator #1958 -- call at boot to populate app_state.coordinator
+ENFORCED build_coordinator #1958 -- called by workers.runtime_builder.build_runtime_services behind the provider switch
 PENDING BaselineStore #1959 -- construct at boot (window from budget.baseline_window_size)
 PENDING CoordinationMetricsCollector #1959 -- construct at boot, thread into execution
 ENFORCED IntakeEngine #1961 -- wired at boot via client/runtime_builder.build_client_simulation_runtime

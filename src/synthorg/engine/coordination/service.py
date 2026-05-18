@@ -1,19 +1,18 @@
 """Multi-agent coordination service.
 
-Orchestrates the end-to-end pipeline: decompose → route → resolve
-topology → dispatch (workspace setup → execute waves → merge) →
-rollup → update parent task.
+Orchestrates: decompose, route, resolve topology, dispatch, rollup,
+update parent. Rollup + parent lifecycle walk live in
+:mod:`synthorg.engine.coordination.parent_rollup`.
 """
 
 from collections.abc import (
     Callable,  # noqa: TC003 -- runtime-read by typing.get_type_hints()
 )
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import CoordinationTopology, TaskStatus
+from synthorg.core.enums import CoordinationTopology
 from synthorg.engine.coordination.attribution import (
     AgentContribution,
     CoordinationResultWithAttribution,
@@ -24,8 +23,11 @@ from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationResult,
 )
+from synthorg.engine.coordination.parent_rollup import (
+    compute_status_rollup,
+    run_update_parent_phase,
+)
 from synthorg.engine.errors import CoordinationPhaseError
-from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_CLEANUP_FAILED,
@@ -43,7 +45,6 @@ if TYPE_CHECKING:
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.decomposition.models import (
         DecompositionResult,
-        SubtaskStatusRollup,
     )
     from synthorg.engine.decomposition.service import DecompositionService
     from synthorg.engine.middleware.coordination_protocol import (
@@ -320,7 +321,14 @@ class MultiAgentCoordinator:
             phases.extend(dispatch_result.phases)
 
             # Rollup
-            rollup = self._phase_rollup(context, dispatch_result, decomp_result, phases)
+            rollup = compute_status_rollup(
+                decomposition_service=self._decomposition_service,
+                clock=self._clock,
+                context=context,
+                dispatch_result=dispatch_result,
+                decomp_result=decomp_result,
+                phases=phases,
+            )
 
             # Middleware: after_rollup
             if mw_chain is not None:
@@ -344,7 +352,13 @@ class MultiAgentCoordinator:
                 rollup = mw_ctx.status_rollup
 
             # Update parent task
-            await self._phase_update_parent(context, rollup, phases)
+            await run_update_parent_phase(
+                task_engine=self._task_engine,
+                clock=self._clock,
+                context=context,
+                rollup=rollup,
+                phases=phases,
+            )
 
             total_duration = self._clock.monotonic() - pipeline_start
             wave_results = tuple(
@@ -676,165 +690,3 @@ class MultiAgentCoordinator:
                 phase=phase_name,
                 partial_phases=tuple(phases),
             ) from exc
-
-    def _phase_rollup(
-        self,
-        context: CoordinationContext,
-        dispatch_result: DispatchResult,
-        decomp_result: DecompositionResult,
-        phases: list[CoordinationPhaseResult],
-    ) -> SubtaskStatusRollup | None:
-        """Compute status rollup from execution outcomes.
-
-        Includes all expected subtasks -- those missing from waves
-        (unroutable, blocked by prerequisites, or skipped by
-        fail-fast) are counted as BLOCKED.
-        """
-        start = self._clock.monotonic()
-        phase_name = "rollup"
-
-        logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
-        try:
-            # Collect statuses from wave outcomes
-            statuses: list[TaskStatus] = []
-            for wave in dispatch_result.waves:
-                if wave.execution_result is None:
-                    statuses.extend(TaskStatus.BLOCKED for _ in wave.subtask_ids)
-                    continue
-
-                for outcome in wave.execution_result.outcomes:
-                    if outcome.is_success:
-                        statuses.append(TaskStatus.COMPLETED)
-                    else:
-                        statuses.append(TaskStatus.FAILED)
-
-            # Fill missing subtasks as BLOCKED (unroutable,
-            # blocked prerequisites, or fail-fast skipped)
-            expected_count = len(decomp_result.plan.subtasks)
-            missing_count = expected_count - len(statuses)
-            if missing_count > 0:
-                statuses.extend(TaskStatus.BLOCKED for _ in range(missing_count))
-
-            rollup = self._decomposition_service.rollup_status(
-                context.task.id,
-                tuple(statuses),
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            elapsed = self._clock.monotonic() - start
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=phase_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            phases.append(
-                CoordinationPhaseResult(
-                    phase=phase_name,
-                    success=False,
-                    duration_seconds=elapsed,
-                    error=safe_error_description(exc),
-                )
-            )
-            return None
-
-        elapsed = self._clock.monotonic() - start
-        phases.append(
-            CoordinationPhaseResult(
-                phase=phase_name,
-                success=True,
-                duration_seconds=elapsed,
-            )
-        )
-        logger.info(
-            COORDINATION_PHASE_COMPLETED,
-            phase=phase_name,
-            duration_seconds=elapsed,
-        )
-        return rollup
-
-    async def _phase_update_parent(
-        self,
-        context: CoordinationContext,
-        rollup: SubtaskStatusRollup | None,
-        phases: list[CoordinationPhaseResult],
-    ) -> None:
-        """Update parent task status via TaskEngine if available."""
-        if self._task_engine is None:
-            return
-        if rollup is None:
-            phase_name = "update_parent"
-            note = "Skipped -- rollup is None (rollup phase failed)"
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=phase_name,
-                note=note,
-            )
-            phases.append(
-                CoordinationPhaseResult(
-                    phase=phase_name,
-                    success=False,
-                    duration_seconds=0.0,
-                    error=note,
-                )
-            )
-            return
-
-        start = self._clock.monotonic()
-        phase_name = "update_parent"
-
-        logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
-        try:
-            mutation = TransitionTaskMutation(
-                request_id=str(uuid4()),
-                requested_by="coordinator",
-                task_id=context.task.id,
-                target_status=rollup.derived_parent_status,
-                reason=(
-                    f"Coordination rollup: "
-                    f"{rollup.completed}/{rollup.total} completed, "
-                    f"{rollup.failed}/{rollup.total} failed"
-                ),
-            )
-            result = await self._task_engine.submit(mutation)
-            elapsed = self._clock.monotonic() - start
-
-            if result.success:
-                logger.info(
-                    COORDINATION_PHASE_COMPLETED,
-                    phase=phase_name,
-                    duration_seconds=elapsed,
-                )
-            else:
-                logger.warning(
-                    COORDINATION_PHASE_FAILED,
-                    phase=phase_name,
-                    error=result.error,
-                )
-            phases.append(
-                CoordinationPhaseResult(
-                    phase=phase_name,
-                    success=result.success,
-                    duration_seconds=elapsed,
-                    error=result.error,
-                )
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            elapsed = self._clock.monotonic() - start
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=phase_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            phases.append(
-                CoordinationPhaseResult(
-                    phase=phase_name,
-                    success=False,
-                    duration_seconds=elapsed,
-                    error=safe_error_description(exc),
-                )
-            )

@@ -98,3 +98,22 @@ def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
             is not in :data:`VALID_TRANSITIONS`.
     """
     _MACHINE.validate(current, target)
+
+
+def transition_path(
+    current: TaskStatus,
+    target: TaskStatus,
+) -> tuple[TaskStatus, ...] | None:
+    """Return the shortest valid hop sequence from *current* to *target*.
+
+    Args:
+        current: The current task status.
+        target: The desired task status.
+
+    Returns:
+        ``()`` when already at *target*; a tuple of intermediate
+        statuses ending in *target* (each hop individually valid) when
+        a lifecycle path exists; or ``None`` when *target* is
+        unreachable from *current* (e.g. *current* is terminal).
+    """
+    return _MACHINE.path_to(current, target)

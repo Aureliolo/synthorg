@@ -4,7 +4,11 @@ import pytest
 import structlog
 
 from synthorg.core.enums import TaskStatus
-from synthorg.core.task_transitions import VALID_TRANSITIONS, validate_transition
+from synthorg.core.task_transitions import (
+    VALID_TRANSITIONS,
+    transition_path,
+    validate_transition,
+)
 from synthorg.observability.events.task import TASK_TRANSITION_INVALID
 
 # ── Valid Transitions ─────────────────────────────────────────────
@@ -238,3 +242,45 @@ class TestTransitionGuardEdgeCases:
         )
         with pytest.raises(ValueError, match="has no entry"):
             empty_machine.validate(TaskStatus.CREATED, TaskStatus.ASSIGNED)
+
+
+@pytest.mark.unit
+class TestTransitionPath:
+    """``transition_path`` walks the real task lifecycle."""
+
+    def test_same_status_is_empty(self) -> None:
+        assert transition_path(TaskStatus.IN_PROGRESS, TaskStatus.IN_PROGRESS) == ()
+
+    def test_created_to_completed_routes_through_review(self) -> None:
+        # A fully-completed coordination on a freshly CREATED parent:
+        # COMPLETED is only reachable via IN_REVIEW.
+        assert transition_path(TaskStatus.CREATED, TaskStatus.COMPLETED) == (
+            TaskStatus.ASSIGNED,
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.IN_REVIEW,
+            TaskStatus.COMPLETED,
+        )
+
+    def test_created_to_failed_is_shortest(self) -> None:
+        # ASSIGNED can fail directly, so the shortest route skips
+        # IN_PROGRESS: CREATED -> ASSIGNED -> FAILED.
+        assert transition_path(TaskStatus.CREATED, TaskStatus.FAILED) == (
+            TaskStatus.ASSIGNED,
+            TaskStatus.FAILED,
+        )
+
+    def test_in_progress_to_failed_single_hop(self) -> None:
+        assert transition_path(TaskStatus.IN_PROGRESS, TaskStatus.FAILED) == (
+            TaskStatus.FAILED,
+        )
+
+    def test_terminal_source_is_unreachable(self) -> None:
+        assert transition_path(TaskStatus.COMPLETED, TaskStatus.FAILED) is None
+
+    def test_every_hop_is_individually_valid(self) -> None:
+        path = transition_path(TaskStatus.CREATED, TaskStatus.COMPLETED)
+        assert path is not None
+        cursor = TaskStatus.CREATED
+        for hop in path:
+            validate_transition(cursor, hop)  # raises if any hop illegal
+            cursor = hop

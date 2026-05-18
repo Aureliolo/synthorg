@@ -6,6 +6,7 @@ Translates decomposition results and routing decisions into
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.enums import TaskStatus
 from synthorg.engine.decomposition.dag import DependencyGraph
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.parallel_models import (
@@ -131,10 +132,30 @@ def build_execution_waves(
             if worktree_path:
                 resource_claims = (worktree_path,)
 
+            # The decomposition service creates every subtask in
+            # CREATED. Routing has now selected an agent, so promote the
+            # subtask to ASSIGNED bound to that agent: the execution
+            # engine only runs ASSIGNED/IN_PROGRESS tasks whose
+            # ``assigned_to`` matches the running agent, and without this
+            # every dispatched sub-agent would be rejected at the engine
+            # seam (the orchestration would run but no agent work would).
+            # The CREATED -> ASSIGNED transition is deliberately not
+            # validated here: this is an in-memory ``model_copy`` for
+            # dispatch, and the task-engine submit seam enforces the
+            # state machine when the subtask actually runs. Validating
+            # eagerly here would reject legitimately re-dispatched
+            # subtasks that are not in CREATED.
+            assigned_task = task.model_copy(
+                update={
+                    "status": TaskStatus.ASSIGNED,
+                    "assigned_to": str(candidate.agent_identity.id),
+                }
+            )
+
             assignments.append(
                 AgentAssignment(
                     identity=candidate.agent_identity,
-                    task=task,
+                    task=assigned_task,
                     resource_claims=resource_claims,
                 )
             )

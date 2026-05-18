@@ -56,6 +56,22 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="decomposition_model",
+        type=SettingType.STRING,
+        default="example-medium-001",
+        description=(
+            "LLM model identifier the coordinator's task decomposition"
+            " strategy invokes against the first registered provider."
+            " Resolved at boot; a runtime change applies on the next"
+            " coordinator rebuild (provider re-init)."
+        ),
+        group="General",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="department_policy_cas_retry_attempts",
         type=SettingType.INTEGER,
         default="3",
