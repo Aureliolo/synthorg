@@ -1,5 +1,6 @@
 """Tests for approvals controller helper functions."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -57,8 +58,13 @@ def _make_pending_item(
     )
 
 
-def _store(item: ApprovalItem | None) -> ApprovalStore:
-    """A typed approval-store double whose ``get`` returns *item*."""
+def _store(item: ApprovalItem | None) -> Any:
+    """An approval-store double (``mock_of[ApprovalStore]``).
+
+    Return type is ``Any`` to match ``mock_of``'s deliberate static
+    signature (it returns ``Any`` so call sites need no cast); callers
+    assign it to the typed ``app_state.approval_store`` slot.
+    """
     return mock_of[ApprovalStore](get=AsyncMock(return_value=item))
 
 
