@@ -526,3 +526,33 @@ class TestSandboxOwnerRelease:
         # A failing release must not fail an otherwise-good task.
         await self._run(service, task)
         release.assert_awaited_once()
+
+    async def test_release_runs_when_engine_run_raises(self) -> None:
+        # Contract: release at the task boundary regardless of outcome.
+        # A failing agent run must still release the sandbox owner.
+        release = AsyncMock()
+        backend = mock_of[SandboxBackend](release_owner=release)
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        service = AgentEngineExecutionService(
+            engine=mock_of[AgentEngine](
+                run=AsyncMock(side_effect=RuntimeError("engine boom")),
+            ),
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(return_value=task),
+            ),
+            agent_registry=registry,
+            sandbox_backend=backend,
+            lifecycle_strategy_kind=STRATEGY_PER_TASK,
+        )
+        with pytest.raises(RuntimeError, match="engine boom"):
+            await service.execute_once(
+                task_id=task.id,
+                previous_status="assigned",
+                new_status="in_progress",
+                idempotency_key="k",
+                requested_by="user",
+            )
+        release.assert_awaited_once_with(task.id)

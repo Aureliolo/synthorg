@@ -63,7 +63,7 @@ class SandboxBackend(Protocol):
         """
         ...
 
-    async def release_owner(self, owner_id: str) -> None:
+    async def release_owner(self, owner_id: NotBlankStr) -> None:
         """Signal that *owner_id* no longer needs its sandbox resources.
 
         Wired at the owner boundary (task completion / agent stop).

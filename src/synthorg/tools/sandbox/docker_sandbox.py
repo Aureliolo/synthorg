@@ -28,7 +28,6 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_UNTRACK_FAILED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
 )
-from synthorg.tools.sandbox.container_log_shipper import build_correlation_env
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
@@ -344,6 +343,11 @@ class DockerSandbox(
     ) -> list[str]:
         """Sanitise + validate env and overlay correlation IDs.
 
+        Delegates to ``_resolve_exec_env`` (the single source of truth
+        for the env policy: credential sanitising, reserved-variable
+        rejection, correlation-ID overlay) and renders the merged
+        mapping as ``KEY=VALUE`` entries for container creation.
+
         Correlation IDs win over user-supplied duplicates.
 
         Args:
@@ -352,18 +356,7 @@ class DockerSandbox(
         Returns:
             ``KEY=VALUE`` entries for the container ``Env``.
         """
-        sanitized = (
-            self._credential_manager.sanitize_env(env_overrides)
-            if env_overrides
-            else None
-        )
-        merged: dict[str, str] = {}
-        for entry in self._validate_env(sanitized):
-            key, _, value = entry.partition("=")
-            merged[key] = value
-        for entry in build_correlation_env():
-            key, _, value = entry.partition("=")
-            merged[key] = value
+        merged = self._resolve_exec_env(env_overrides)
         return [f"{k}={v}" for k, v in merged.items()]
 
     def _build_container_config(  # noqa: PLR0913

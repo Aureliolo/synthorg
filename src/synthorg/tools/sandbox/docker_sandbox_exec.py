@@ -783,13 +783,26 @@ class DockerSandboxExecMixin:
         _stdout = result.stdout if result is not None else ""
         _stderr = result.stderr if result is not None else ""
         _ms = (result.execution_time_ms or 0) if result is not None else 0
-        await ship_container_logs(
-            config=cfg,
-            container_id=handle.container_id,
-            sidecar_id=handle.sidecar_id,
-            stdout=_stdout,
-            stderr=_stderr,
-            sidecar_logs=sidecar_logs,
-            execution_time_ms=_ms,
-        )
+        try:
+            await ship_container_logs(
+                config=cfg,
+                container_id=handle.container_id,
+                sidecar_id=handle.sidecar_id,
+                stdout=_stdout,
+                stderr=_stderr,
+                sidecar_logs=sidecar_logs,
+                execution_time_ms=_ms,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Honour the "never raises ordinary errors" contract: a
+            # shipping failure must not propagate into execute()'s
+            # finally and skip _teardown_unowned (container leak).
+            logger.warning(
+                SANDBOX_CONTAINER_LOGS_COLLECT_FAILED,
+                container_id=handle.container_id[:12],
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
         return sidecar_logs

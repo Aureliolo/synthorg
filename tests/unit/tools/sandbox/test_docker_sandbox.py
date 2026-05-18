@@ -1067,6 +1067,20 @@ def _per_agent_sandbox(
     )
 
 
+def _per_task_sandbox(tmp_path: Path) -> DockerSandbox:
+    """A DockerSandbox wired with a per-task strategy.
+
+    Per-task destroys on release with no grace timer, so no clock seam
+    is needed for deterministic behaviour.
+    """
+    lifecycle = SandboxLifecycleConfig(strategy="per-task")
+    return DockerSandbox(
+        config=DockerSandboxConfig(lifecycle=lifecycle),
+        workspace=tmp_path,
+        lifecycle_strategy=PerTaskStrategy(),
+    )
+
+
 class TestLifecycleDispatch:
     """``execute`` honours owner_id and dispatches to the strategy."""
 
@@ -1218,6 +1232,25 @@ class TestLifecycleDispatch:
                 await sandbox.execute(command="echo", args=("a",))
                 await sandbox.execute(command="echo", args=("b",))
             # Derived owner from the correlation context -> reuse.
+            assert mock_docker.containers.create.await_count == 1
+        finally:
+            structlog.contextvars.reset_contextvars(**tokens)
+
+    async def test_contextvar_fallback_when_no_owner_id_per_task(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        sandbox = _per_task_sandbox(tmp_path)
+
+        tokens = structlog.contextvars.bind_contextvars(
+            task_id="ctx-task",
+        )
+        try:
+            with _patch_aiodocker(mock_docker):
+                await sandbox.execute(command="echo", args=("a",))
+                await sandbox.execute(command="echo", args=("b",))
+            # Owner derived from task_id correlation context -> reuse.
             assert mock_docker.containers.create.await_count == 1
         finally:
             structlog.contextvars.reset_contextvars(**tokens)

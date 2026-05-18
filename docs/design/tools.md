@@ -176,15 +176,19 @@ Strategy selection via `sandboxing.docker.lifecycle.strategy` in `SandboxingConf
 The sidecar container shares the sandbox container's lifetime (created and destroyed
 together, since they share a network namespace).
 
-The strategy is constructed at boot (`workers/runtime_builder`) with the
-application clock and injected into `DockerSandbox` via the sandbox factory.
-Each tool call runs as a `docker exec` inside a long-lived idle container
-(`tail -f /dev/null` entrypoint) the strategy acquires; per-agent and per-task
-reuse the container across calls while per-call destroys it immediately after
-the single exec. The lifecycle owner is resolved from an explicit `owner_id`,
-else the structlog correlation context (`agent_id` for per-agent, `task_id`
-for per-task); with no owner derivable a reuse strategy degrades safely to
-ephemeral per-call. `AgentEngineExecutionService` releases the owner at the
+The configured default is `per-agent` (the `strategy` field default in
+`SandboxLifecycleConfig`); the table above is authoritative. The strategy is
+constructed at boot (`workers/runtime_builder`) with the application clock and
+injected into `DockerSandbox` via the sandbox factory. Each tool call runs as
+a `docker exec` inside a long-lived idle container (`tail -f /dev/null`
+entrypoint) the strategy acquires; per-agent and per-task reuse the container
+across calls while per-call destroys it immediately after the single exec. The
+lifecycle owner is resolved from an explicit `owner_id`, else the structlog
+correlation context (`agent_id` for per-agent, `task_id` for per-task). The
+per-call degradation below is a per-invocation safety fallback, not a change
+of the configured default: when a reuse strategy cannot derive an owner for a
+given call, that single call degrades to ephemeral per-call behaviour while
+the configured strategy stays in force for calls that can resolve an owner. `AgentEngineExecutionService` releases the owner at the
 task boundary (per-task destroys immediately; per-agent starts the grace
 timer so a subsequent task for the same agent within the window re-acquires
 the warm container); `DockerSandbox.cleanup()` destroys all strategy-owned

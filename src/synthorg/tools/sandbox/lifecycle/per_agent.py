@@ -10,7 +10,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
     SANDBOX_LIFECYCLE_CLEANUP,
@@ -129,12 +129,16 @@ class PerAgentStrategy:
             if loser_destroy is not None:
                 try:
                     await loser_destroy(loser)
-                except Exception:
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
                     logger.warning(
                         SANDBOX_LIFECYCLE_DESTROY_FAILED,
                         strategy="per-agent",
                         owner_id=owner_id,
                         container_id=loser.container_id,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
             else:
                 logger.warning(
@@ -194,12 +198,16 @@ class PerAgentStrategy:
                     )
                     try:
                         await destroy_fn(handle)
-                    except Exception:
+                    except MemoryError, RecursionError:
+                        raise
+                    except Exception as exc:
                         logger.warning(
                             SANDBOX_LIFECYCLE_DESTROY_FAILED,
                             strategy="per-agent",
                             owner_id=owner_id,
                             container_id=handle.container_id,
+                            error_type=type(exc).__name__,
+                            error=safe_error_description(exc),
                         )
 
             self._timers[owner_id] = asyncio.create_task(
@@ -241,11 +249,15 @@ class PerAgentStrategy:
         for handle in handles:
             try:
                 await destroy_fn(handle)
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-agent",
                     container_id=handle.container_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         logger.info(
@@ -307,11 +319,15 @@ class PerAgentStrategy:
                 )
                 try:
                     await destroy_fn(handle)
-                except Exception:
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
                     logger.warning(
                         SANDBOX_LIFECYCLE_DESTROY_FAILED,
                         strategy="per-agent",
                         owner_id=owner_id,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
         self._idle_timers[owner_id] = asyncio.create_task(

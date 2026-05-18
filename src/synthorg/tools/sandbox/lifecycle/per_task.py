@@ -8,7 +8,7 @@ are clean cuts with no grace period.
 import asyncio
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
     SANDBOX_LIFECYCLE_CLEANUP,
@@ -97,12 +97,22 @@ class PerTaskStrategy:
         )
         try:
             await destroy_fn(handle)
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # The handle was already popped above; reinstate it (without
+            # clobbering a concurrent re-acquire) so a live container
+            # stays tracked and cleanup_all() can retry destruction
+            # instead of orphaning it.
+            async with self._lock:
+                self._containers.setdefault(owner_id, handle)
             logger.warning(
                 SANDBOX_LIFECYCLE_DESTROY_FAILED,
                 strategy="per-task",
                 owner_id=owner_id,
                 container_id=handle.container_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def cleanup_all(
@@ -119,11 +129,15 @@ class PerTaskStrategy:
         for handle in handles:
             try:
                 await destroy_fn(handle)
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-task",
                     container_id=handle.container_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         logger.info(
