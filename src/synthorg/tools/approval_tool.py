@@ -158,6 +158,7 @@ class RequestHumanApprovalTool(BaseTool):
         """
         try:
             from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
+            from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
 
             item = ApprovalItem(
                 id=approval_id,
@@ -166,6 +167,9 @@ class RequestHumanApprovalTool(BaseTool):
                 description=description,
                 requested_by=self._agent_id,
                 risk_level=risk_level,
+                # This tool parks the agent until the decision arrives;
+                # route the decision via the mid-execution resume path.
+                source=ApprovalSource.PARKED_CONTEXT,
                 created_at=datetime.now(UTC),
                 task_id=self._task_id,
                 metadata={"source": "request_human_approval"},

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import (
     preflight_review_gate,
     try_review_gate_transition,
@@ -23,18 +24,24 @@ from synthorg.core.domain_errors import (
     ServiceUnavailableError,
     UnauthorizedError,
 )
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.engine.errors import (
     SelfReviewError,
     TaskInternalError,
     TaskNotFoundError,
     TaskVersionConflictError,
 )
+from synthorg.workers.execution_service import WorkerExecutionService
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _make_pending_item(approval_id: str = "approval-1") -> ApprovalItem:
+def _make_pending_item(
+    approval_id: str = "approval-1",
+    *,
+    source: ApprovalSource = ApprovalSource.REVIEW_GATE,
+) -> ApprovalItem:
     from datetime import UTC, datetime
 
     return ApprovalItem(
@@ -44,9 +51,15 @@ def _make_pending_item(approval_id: str = "approval-1") -> ApprovalItem:
         description="Deploy v2.0",
         requested_by="agent-1",
         risk_level=ApprovalRiskLevel.HIGH,
+        source=source,
         status=ApprovalStatus.PENDING,
         created_at=datetime.now(UTC),
     )
+
+
+def _store(item: ApprovalItem | None) -> ApprovalStore:
+    """A typed approval-store double whose ``get`` returns *item*."""
+    return mock_of[ApprovalStore](get=AsyncMock(return_value=item))
 
 
 def _make_request(*, user: object = None) -> MagicMock:
@@ -122,6 +135,7 @@ class TestSignalResumeIntent:
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = None
         app_state.review_gate_service = None
+        app_state.approval_store = _store(_make_pending_item())
         await _signal_resume_intent(
             app_state,
             "approval-1",
@@ -132,11 +146,16 @@ class TestSignalResumeIntent:
     async def test_flow1_parked_context_dispatches_and_skips_review(
         self,
     ) -> None:
-        """A parked context dispatches a resume; Flow 2 is skipped."""
+        """A parked-context-sourced approval dispatches a resume.
+
+        Routing is deterministic off the persisted ``source``; the
+        live ``has_parked_context`` probe is not consulted.
+        """
         mock_gate = MagicMock()
         mock_gate.has_parked_context = AsyncMock(return_value=True)
-        mock_worker = MagicMock()
-        mock_worker.dispatch_resume = AsyncMock()
+        mock_worker = mock_of[WorkerExecutionService](
+            dispatch_resume=AsyncMock(),
+        )
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
@@ -144,6 +163,9 @@ class TestSignalResumeIntent:
         app_state.approval_gate = mock_gate
         app_state.worker_execution_service = mock_worker
         app_state.review_gate_service = mock_review
+        app_state.approval_store = _store(
+            _make_pending_item(source=ApprovalSource.PARKED_CONTEXT),
+        )
 
         await _signal_resume_intent(
             app_state,
@@ -153,7 +175,8 @@ class TestSignalResumeIntent:
             task_id="task-1",
         )
 
-        mock_gate.has_parked_context.assert_awaited_once_with("approval-1")
+        # Deterministic source routing: the probe is bypassed.
+        mock_gate.has_parked_context.assert_not_awaited()
         mock_worker.dispatch_resume.assert_awaited_once_with(
             approval_id="approval-1",
             approved=True,
@@ -163,12 +186,13 @@ class TestSignalResumeIntent:
         # Flow 2 must NOT run -- the mid-execution flow owns this id.
         mock_review.complete_review.assert_not_awaited()
 
-    async def test_flow1_no_parked_context_falls_through(self) -> None:
-        """No parked context -> Flow 2 (review gate) runs."""
+    async def test_flow1_review_gate_source_falls_through(self) -> None:
+        """A review-gate-sourced approval -> Flow 2 (review gate) runs."""
         mock_gate = MagicMock()
         mock_gate.has_parked_context = AsyncMock(return_value=False)
-        mock_worker = MagicMock()
-        mock_worker.dispatch_resume = AsyncMock()
+        mock_worker = mock_of[WorkerExecutionService](
+            dispatch_resume=AsyncMock(),
+        )
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
@@ -176,6 +200,9 @@ class TestSignalResumeIntent:
         app_state.approval_gate = mock_gate
         app_state.worker_execution_service = mock_worker
         app_state.review_gate_service = mock_review
+        app_state.approval_store = _store(
+            _make_pending_item(source=ApprovalSource.REVIEW_GATE),
+        )
 
         await _signal_resume_intent(
             app_state,
@@ -199,7 +226,9 @@ class TestSignalResumeIntent:
         """An indeterminate existence check does NOT fall through.
 
         A parked context may still exist, so running the review-gate
-        transition would double-handle the decision.
+        transition would double-handle the decision. The probe is the
+        fallback path, reached only when the approval row cannot be
+        re-read (``get`` returns ``None``).
         """
         mock_gate = MagicMock()
         mock_gate.has_parked_context = AsyncMock(
@@ -211,6 +240,7 @@ class TestSignalResumeIntent:
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = mock_gate
         app_state.review_gate_service = mock_review
+        app_state.approval_store = _store(None)
 
         await _signal_resume_intent(
             app_state,
@@ -229,19 +259,21 @@ class TestSignalResumeIntent:
         worker dispatch failure must not 5xx the approve/reject
         response, and must still suppress the review-gate fall-through.
         """
-        mock_gate = MagicMock()
-        mock_gate.has_parked_context = AsyncMock(return_value=True)
-        mock_worker = MagicMock()
-        mock_worker.dispatch_resume = AsyncMock(
-            side_effect=RuntimeError("runtime not configured"),
+        mock_worker = mock_of[WorkerExecutionService](
+            dispatch_resume=AsyncMock(
+                side_effect=RuntimeError("runtime not configured"),
+            ),
         )
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
         app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = mock_gate
+        app_state.approval_gate = MagicMock()
         app_state.worker_execution_service = mock_worker
         app_state.review_gate_service = mock_review
+        app_state.approval_store = _store(
+            _make_pending_item(source=ApprovalSource.PARKED_CONTEXT),
+        )
 
         await _signal_resume_intent(
             app_state,
@@ -251,6 +283,10 @@ class TestSignalResumeIntent:
             task_id="task-1",
         )
 
+        # The dispatch path must actually have run (otherwise the test
+        # would pass even if _signal_resume_intent returned before
+        # awaiting dispatch_resume, never exercising the swallow).
+        mock_worker.dispatch_resume.assert_awaited_once()
         mock_review.complete_review.assert_not_awaited()
 
     async def test_flow2_review_gate_called_with_task_id(self) -> None:
@@ -261,6 +297,7 @@ class TestSignalResumeIntent:
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = None
         app_state.review_gate_service = mock_review
+        app_state.approval_store = _store(_make_pending_item())
 
         await _signal_resume_intent(
             app_state,
@@ -288,6 +325,7 @@ class TestSignalResumeIntent:
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = None
         app_state.review_gate_service = mock_review
+        app_state.approval_store = _store(_make_pending_item())
 
         await _signal_resume_intent(
             app_state,
@@ -318,6 +356,7 @@ class TestSignalResumeIntent:
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = None
         app_state.review_gate_service = mock_review
+        app_state.approval_store = _store(_make_pending_item())
 
         with pytest.raises(RuntimeError, match="transition failed"):
             await _signal_resume_intent(
@@ -338,7 +377,7 @@ class TestSignalResumeIntent:
     async def test_flow1_memory_error_propagates(
         self, error_cls: type[BaseException]
     ) -> None:
-        """MemoryError/RecursionError from the existence check propagates."""
+        """MemoryError/RecursionError from the fallback probe propagates."""
         mock_gate = MagicMock()
         mock_gate.has_parked_context = AsyncMock(
             side_effect=error_cls("fatal"),
@@ -347,6 +386,7 @@ class TestSignalResumeIntent:
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = mock_gate
         app_state.review_gate_service = None
+        app_state.approval_store = _store(None)
 
         with pytest.raises(error_cls):
             await _signal_resume_intent(
@@ -373,6 +413,7 @@ class TestSignalResumeIntent:
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = None
         app_state.review_gate_service = mock_review
+        app_state.approval_store = _store(_make_pending_item())
 
         with pytest.raises(error_cls):
             await _signal_resume_intent(

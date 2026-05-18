@@ -5761,6 +5761,7 @@ export type components = {
             readonly risk_level: components["schemas"]["ApprovalRiskLevel"];
             /** @description Seconds until expiry (null if no TTL set) */
             readonly seconds_remaining: number | null;
+            readonly source: components["schemas"]["ApprovalSource"];
             readonly status: components["schemas"]["ApprovalStatus"];
             readonly task_id: string | null;
             readonly title: string;
@@ -5772,6 +5773,26 @@ export type components = {
          * @enum {string}
          */
         readonly ApprovalRiskLevel: "low" | "medium" | "high" | "critical";
+        /**
+         * ApprovalSource
+         * @description Origin of an approval item, fixed at creation.
+         *
+         *     Routing of a decided approval (mid-execution resume vs. review
+         *     gate) keys off this persisted discriminator rather than a live
+         *     parked-context probe, so the flow is deterministic even when the
+         *     parked-context backend is momentarily unavailable.
+         *
+         *     Attributes:
+         *         PARKED_CONTEXT: Backs a parked agent execution context (SecOps
+         *             escalation or the ``request_human_approval`` tool); the
+         *             decision resumes the parked run.
+         *         REVIEW_GATE: Any other approval (autonomy, hiring, promotion,
+         *             pruning, scaling, training, signals, ...); the decision
+         *             drives the review-gate transition. Default.
+         * @default review_gate
+         * @enum {string}
+         */
+        readonly ApprovalSource: "parked_context" | "review_gate";
         /**
          * ApprovalStatus
          * @description Status of a human approval item.

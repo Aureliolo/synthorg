@@ -19,7 +19,7 @@ from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
@@ -44,19 +44,20 @@ _MAX_PAGE_LIMIT: int = 1_000
 
 _SELECT_COLS = (
     "id, action_type, title, description, requested_by, risk_level, "
-    "status, created_at, expires_at, decided_at, decided_by, "
+    "source, status, created_at, expires_at, decided_at, decided_by, "
     "decision_reason, task_id, evidence_package, metadata"
 )
 
 _APPROVALS_UPSERT_SQL = f"""
     INSERT INTO approvals ({_SELECT_COLS})
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (id) DO UPDATE SET
         action_type = EXCLUDED.action_type,
         title = EXCLUDED.title,
         description = EXCLUDED.description,
         requested_by = EXCLUDED.requested_by,
         risk_level = EXCLUDED.risk_level,
+        source = EXCLUDED.source,
         status = EXCLUDED.status,
         expires_at = EXCLUDED.expires_at,
         decided_at = EXCLUDED.decided_at,
@@ -119,6 +120,7 @@ def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
             description=str(row["description"]),
             requested_by=str(row["requested_by"]),
             risk_level=ApprovalRiskLevel(str(row["risk_level"])),
+            source=ApprovalSource(str(row["source"])),
             status=ApprovalStatus(str(row["status"])),
             created_at=created_at,
             expires_at=expires_at,
@@ -183,6 +185,7 @@ class PostgresApprovalRepository:
             item.description,
             item.requested_by,
             item.risk_level.value,
+            item.source.value,
             item.status.value,
             item.created_at,
             item.expires_at,
@@ -254,6 +257,7 @@ class PostgresApprovalRepository:
                     item.description,
                     item.requested_by,
                     item.risk_level.value,
+                    item.source.value,
                     item.status.value,
                     item.created_at,
                     item.expires_at,

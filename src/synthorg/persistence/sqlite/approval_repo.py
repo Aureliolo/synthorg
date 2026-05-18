@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
@@ -38,16 +38,17 @@ _MAX_PAGE_LIMIT: int = 1_000
 _APPROVALS_UPSERT_SQL = """
     INSERT INTO approvals (
         id, action_type, title, description, requested_by,
-        risk_level, status, created_at, expires_at,
+        risk_level, source, status, created_at, expires_at,
         decided_at, decided_by, decision_reason,
         task_id, evidence_package, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
         action_type = excluded.action_type,
         title = excluded.title,
         description = excluded.description,
         requested_by = excluded.requested_by,
         risk_level = excluded.risk_level,
+        source = excluded.source,
         status = excluded.status,
         expires_at = excluded.expires_at,
         decided_at = excluded.decided_at,
@@ -117,6 +118,7 @@ def _row_to_item(row: Row) -> ApprovalItem:
             description=str(row["description"]),
             requested_by=str(row["requested_by"]),
             risk_level=ApprovalRiskLevel(str(row["risk_level"])),
+            source=ApprovalSource(str(row["source"])),
             status=ApprovalStatus(str(row["status"])),
             created_at=coerce_row_timestamp(row["created_at"]),
             expires_at=(
@@ -214,6 +216,7 @@ class SQLiteApprovalRepository:
             item.description,
             item.requested_by,
             item.risk_level.value,
+            item.source.value,
             item.status.value,
             format_iso_utc(item.created_at),
             format_iso_utc(item.expires_at) if item.expires_at else None,
@@ -392,7 +395,7 @@ class SQLiteApprovalRepository:
         """
         sql = """
             SELECT id, action_type, title, description, requested_by,
-                   risk_level, status, created_at, expires_at,
+                   risk_level, source, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
                    task_id, evidence_package, metadata
             FROM approvals WHERE id = ?
@@ -429,7 +432,7 @@ class SQLiteApprovalRepository:
         # parameters in the ``execute`` call below.
         sql = f"""
             SELECT id, action_type, title, description, requested_by,
-                   risk_level, status, created_at, expires_at,
+                   risk_level, source, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
                    task_id, evidence_package, metadata
             FROM approvals WHERE id IN ({placeholders})
@@ -481,7 +484,7 @@ class SQLiteApprovalRepository:
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
         sql = """
             SELECT id, action_type, title, description, requested_by,
-                   risk_level, status, created_at, expires_at,
+                   risk_level, source, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
                    task_id, evidence_package, metadata
             FROM approvals
@@ -550,7 +553,7 @@ class SQLiteApprovalRepository:
         params.extend([effective_limit, offset])
         sql = f"""
             SELECT id, action_type, title, description, requested_by,
-                   risk_level, status, created_at, expires_at,
+                   risk_level, source, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
                    task_id, evidence_package, metadata
             FROM approvals WHERE {where}

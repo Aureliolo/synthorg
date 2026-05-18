@@ -63,34 +63,54 @@ async def try_mid_execution_resume(
     is not blocked by a full agent re-run (the decision is already
     persisted by the caller before this runs).
 
+    Routing is deterministic off the approval's persisted
+    :attr:`ApprovalItem.source` discriminator (fixed at creation), not
+    a live parked-context probe: ``PARKED_CONTEXT`` means this flow
+    owns the decision, anything else falls through to the review gate.
+    The legacy ``has_parked_context`` probe is kept only as a logged
+    fallback for the degenerate case where the just-decided approval
+    cannot be re-read (it should always be present here, since the
+    caller persisted the decision immediately before).
+
     Returns ``True`` when the mid-execution flow is responsible for
-    this approval (a parked context exists, or the existence check
-    failed and one may still exist) so the caller does not also run
-    the review-gate transition. Returns ``False`` only when there is
-    definitively no parked context (e.g. a hiring/promotion approval),
-    so the caller falls through to the review gate.
+    this approval so the caller does not also run the review-gate
+    transition. Returns ``False`` when the approval is review-gate
+    bound (e.g. a hiring/promotion approval) so the caller falls
+    through to the review gate.
     """
-    gate = app_state.approval_gate
-    if gate is None:
-        return False
-    try:
-        has_parked = await gate.has_parked_context(approval_id)
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            APPROVAL_GATE_RESUME_FAILED,
-            approval_id=approval_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="parked-context existence check failed",
-        )
-        # Indeterminate: a parked context may still exist, so do NOT
-        # fall through to the review gate (that would double-handle
-        # the decision).
-        return True
-    if not has_parked:
-        return False
+    from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
+
+    item = await app_state.approval_store.get(approval_id)
+    if item is not None:
+        # Deterministic primary path: the source was fixed when the
+        # approval was created, so routing cannot flip on a transient
+        # parked-context backend outage.
+        if item.source is not ApprovalSource.PARKED_CONTEXT:
+            return False
+    else:
+        # Fallback only: the decision was just persisted by the caller,
+        # so a missing item is unexpected. Probe the gate to avoid
+        # stranding a possibly-parked approval in the review gate.
+        gate = app_state.approval_gate
+        if gate is None:
+            return False
+        try:
+            has_parked = await gate.has_parked_context(approval_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                APPROVAL_GATE_RESUME_FAILED,
+                approval_id=approval_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="approval item missing; parked-context probe failed",
+            )
+            # Indeterminate: a parked context may still exist, so do
+            # NOT fall through to the review gate (double-handle).
+            return True
+        if not has_parked:
+            return False
     try:
         await app_state.worker_execution_service.dispatch_resume(
             approval_id=approval_id,

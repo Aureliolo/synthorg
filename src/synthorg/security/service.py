@@ -586,6 +586,7 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         # function-local avoids re-entering core.approval while it is
         # still being initialized.
         from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
+        from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
 
         item = ApprovalItem(
             id=approval_id,
@@ -594,6 +595,10 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             description=description,
             requested_by=context.agent_id or "system",
             risk_level=verdict.risk_level,
+            # A SecOps escalation parks the agent's execution context;
+            # the decision resumes that parked run, so route it via the
+            # mid-execution resume path deterministically.
+            source=ApprovalSource.PARKED_CONTEXT,
             status=ApprovalStatus.PENDING,
             created_at=now,
             task_id=context.task_id,
