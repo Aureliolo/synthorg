@@ -5,7 +5,6 @@ and trust level changes for agents.
 """
 
 import asyncio
-import threading
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -73,21 +72,24 @@ class TrustService:
         # apply_trust_change is similarly non-atomic. Lock the full
         # read-modify-write region in both methods.
         self._state_lock = asyncio.Lock()
-        # First-run initialisation is reached from the synchronous
-        # tool-invoker factory seam (``_trust_narrowed_tools``), which
-        # cannot acquire the async ``_state_lock``. A separate
-        # synchronous lock makes the get-or-create atomic so two
-        # concurrent first-run requests for the same agent cannot both
-        # observe an absent state and double-initialise it (TOCTOU).
-        self._init_lock = threading.Lock()
 
     def get_or_initialize_agent(self, agent_id: NotBlankStr) -> TrustState:
-        """Return the agent's trust state, creating it atomically once.
+        """Return the agent's trust state, creating it once on first sight.
 
-        The check-and-create is guarded by a synchronous lock so a
-        concurrent first run for the same agent observes a single
-        initialisation (and a single ``created_at``) rather than racing
-        between :meth:`get_trust_state` and :meth:`initialize_agent`.
+        Single lock discipline: ``_state_lock`` is the only lock over
+        ``_trust_states`` / ``_change_history``. This synchronous
+        get-or-create needs no lock of its own and must not introduce a
+        second one -- it is reached only from the synchronous
+        tool-invoker seam, which runs in the event-loop thread with no
+        ``await`` between the check and the create, so it is atomic with
+        respect to every coroutine (the async RMW paths can only
+        suspend at an ``await``, which this method never reaches). The
+        async paths (`evaluate_agent`, `apply_trust_change`,
+        `check_decay`) only ever touch an agent that has *already* been
+        initialised, so they never race this first-sight create for the
+        same key. Reads (`get_trust_state`, `get_change_history`) return
+        an immutable ``TrustState`` / a fresh tuple snapshot, so an
+        unlocked read observes one consistent value, never a torn one.
 
         Args:
             agent_id: Agent identifier.
@@ -95,11 +97,10 @@ class TrustService:
         Returns:
             The existing trust state, or a freshly initialised one.
         """
-        with self._init_lock:
-            existing = self._trust_states.get(str(agent_id))
-            if existing is not None:
-                return existing
-            return self.initialize_agent(agent_id)
+        existing = self._trust_states.get(str(agent_id))
+        if existing is not None:
+            return existing
+        return self.initialize_agent(agent_id)
 
     def initialize_agent(self, agent_id: NotBlankStr) -> TrustState:
         """Create initial trust state for a new agent.

@@ -15,6 +15,7 @@ from synthorg.providers.models import (
     ToolCall,
     ToolResult,
 )
+from tests._shared import mock_of
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 
 pytestmark = pytest.mark.unit
@@ -89,9 +90,10 @@ class TestParkedConversationShape:
             captured["ctx"] = kwargs["context"]  # type: ignore[assignment]
             return MagicMock(id="parked-1")
 
-        gate = MagicMock(spec=ApprovalGate)
-        gate.should_park.return_value = escalation
-        gate.park_context = AsyncMock(side_effect=_capture_park)
+        gate = mock_of[ApprovalGate](
+            should_park=MagicMock(return_value=escalation),
+            park_context=AsyncMock(side_effect=_capture_park),
+        )
 
         await execute_tool_calls(
             ctx,

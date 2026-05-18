@@ -16,6 +16,9 @@ from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_RESUME_FAILED,
+)
 from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_FAILED,
 )
@@ -377,6 +380,35 @@ class TestDispatchResume:
         await service.drain_resume_tasks()
 
         engine.resume_parked_run.assert_not_awaited()
+
+    async def test_dispatch_missing_approval_gate_fails_loud(self) -> None:
+        """gate is None -> fail loud, never silently strand the run.
+
+        The decision is already persisted by the controller, so the
+        resume must surface APPROVAL_GATE_RESUME_FAILED (via the
+        background-task registry) and must NOT proceed into
+        ``resume_parked_run`` rather than returning a successful no-op.
+        """
+        engine = _StubEngine(gate=None)
+        service = self._service(engine)
+
+        with capture_logs() as logs:
+            await service.dispatch_resume(
+                approval_id="approval-1",
+                approved=True,
+                decided_by="admin",
+                decision_reason=None,
+            )
+            await service.drain_resume_tasks()
+
+        engine.resume_parked_run.assert_not_awaited()
+        failed = [
+            e
+            for e in logs
+            if e.get("event") == APPROVAL_GATE_RESUME_FAILED
+            and e.get("reason") == "engine_has_no_approval_gate"
+        ]
+        assert failed, "missing-gate resume did not log a loud failure"
 
     async def test_no_provider_dispatch_resume_rejects(self) -> None:
         service = NoProviderExecutionService()

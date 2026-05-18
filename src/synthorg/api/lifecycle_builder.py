@@ -228,6 +228,11 @@ async def _wire_approval_gate(
         and hasattr(persistence, "parked_contexts")
     ):
         parked_repo = persistence.parked_contexts
+    # The boot gate bypasses the engine's _make_approval_gate(), so the
+    # configured approval-interrupt timeout must be threaded in here
+    # explicitly or any non-default setting is silently ignored once
+    # the shared gate is in use.
+    engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
     gate = ApprovalGate(
         park_service=ParkService(),
         parked_context_repo=parked_repo,
@@ -238,6 +243,7 @@ async def _wire_approval_gate(
         ),
         event_hub=app_state.event_stream_hub,
         interrupt_store=app_state.interrupt_store,
+        interrupt_timeout_seconds=engine_bridge.approval_interrupt_timeout_seconds,
     )
     app_state.set_approval_gate(gate)
     logger.info(
@@ -692,12 +698,22 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
+            # In provider-present mode the engine WILL run agents and
+            # park them; if the shared gate is unset the runtime builds
+            # its own private gate from _approval_store, splitting park
+            # and resume across instances so parked runs can never be
+            # resumed via /approvals. A boot that "succeeds" into that
+            # state is worse than a clear failure -- abort. Without a
+            # provider no agent runs, so the review-gate degrade is
+            # acceptable and stays a warning.
             logger.warning(
                 API_SERVICE_AUTO_WIRE_FAILED,
                 service="approval_gate",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            if app_state.has_active_provider:
+                raise
 
         # When an external caller already supplied a
         # ``TrainingService`` to ``create_app()``, we skip the
