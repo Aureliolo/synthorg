@@ -282,6 +282,7 @@ class SQLiteApprovalRepository:
                     item.description,
                     item.requested_by,
                     item.risk_level.value,
+                    item.source.value,
                     item.status.value,
                     format_iso_utc(item.created_at),
                     format_iso_utc(item.expires_at) if item.expires_at else None,
