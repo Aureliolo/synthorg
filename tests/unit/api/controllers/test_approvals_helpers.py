@@ -256,6 +256,9 @@ class TestSignalResumeIntent:
             task_id="task-1",
         )
 
+        # The fallback probe must actually have been exercised
+        # (item is None -> probe), not short-circuited before it.
+        mock_gate.has_parked_context.assert_awaited_once_with("approval-1")
         mock_review.complete_review.assert_not_awaited()
 
     async def test_flow1_dispatch_failure_is_swallowed_not_5xx(self) -> None:

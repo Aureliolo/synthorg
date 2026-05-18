@@ -9,6 +9,7 @@ const base: ApprovalResponse = {
   description: 'Deploy to production environment',
   requested_by: 'agent-eng',
   risk_level: 'critical',
+  source: 'review_gate',
   status: 'pending',
   task_id: null,
   metadata: {},

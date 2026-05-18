@@ -154,7 +154,7 @@ class AutonomyConfig(BaseModel):
             "Default company autonomy level. Ships as 'supervised' so"
             " most state-mutating agent actions queue for approval;"
             " raise to 'semi' or 'full' once operators trust the"
-            " organization. Kept in sync with the"
+            " organisation. Kept in sync with the"
             " ``company.autonomy_level`` SettingDefinition default."
         ),
     )

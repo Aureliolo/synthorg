@@ -15,6 +15,7 @@ import type {
 } from '@/api/types/approvals'
 import {
   APPROVAL_RISK_LEVEL_VALUES,
+  APPROVAL_SOURCE_VALUES,
   APPROVAL_STATUS_VALUES,
   URGENCY_LEVEL_VALUES,
 } from '@/api/types/enums'
@@ -268,6 +269,10 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
     risk_level: sanitizeWsEnum(c.risk_level, APPROVAL_RISK_LEVEL_VALUES, 'low', {
       maxLen: 64,
       field: 'approval.risk_level',
+    }),
+    source: sanitizeWsEnum(c.source, APPROVAL_SOURCE_VALUES, 'review_gate', {
+      maxLen: 64,
+      field: 'approval.source',
     }),
     status: sanitizeWsEnum(c.status, APPROVAL_STATUS_VALUES, 'pending', {
       maxLen: 64,

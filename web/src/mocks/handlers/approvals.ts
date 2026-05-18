@@ -20,6 +20,7 @@ export function buildApproval(
     description: 'Default approval stub',
     requested_by: 'agent-default',
     risk_level: 'low',
+    source: 'review_gate',
     status: 'pending',
     task_id: null,
     metadata: {},

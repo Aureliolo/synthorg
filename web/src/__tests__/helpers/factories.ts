@@ -234,6 +234,7 @@ export function makeApproval(id: string, overrides?: Partial<ApprovalResponse>):
     description: 'Test approval description',
     requested_by: 'agent-eng',
     risk_level: 'medium',
+    source: 'review_gate',
     status: 'pending',
     task_id: null,
     metadata: {},
