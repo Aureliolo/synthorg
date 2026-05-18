@@ -6,9 +6,9 @@ An empty company boots with no provider: the worker seam is the
 ``/setup/complete`` runs, ``post_setup_reinit`` must rebuild the
 runtime services and hot-swap in BOTH the live worker execution
 service AND the multi-agent coordinator, so ``/coordinate`` comes
-online without a process restart. A wake that brought only the worker
-seam online (the pre-#1958 behaviour) would leave ``/coordinate``
-permanently 503 until a restart.
+online without a process restart. Waking only the worker seam would
+leave ``/coordinate`` permanently 503 until a restart, so the rebuild
+must swap both.
 """
 
 import pytest
@@ -53,9 +53,8 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
 
         # Operator configures a provider: the provider registry becomes
         # populated (the state post_setup_reinit's provider-reload step
-        # produces). The #1958 delta under test is that the subsequent
-        # runtime-services rebuild now wakes the coordinator too, not
-        # just the worker seam.
+        # produces), so the subsequent runtime-services rebuild must wake
+        # the coordinator as well as the worker seam.
         app_state.swap_provider_registry(
             ProviderRegistry.from_config(
                 {"test-provider": ProviderConfig(driver="scripted")},

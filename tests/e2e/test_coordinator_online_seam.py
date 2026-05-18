@@ -8,8 +8,8 @@ dispatch -> rollup. The scripted provider is the simulation harness:
 its branching strategy returns a valid decomposition plan when called
 with the ``submit_decomposition_plan`` tool, and a plain STOP
 completion for every sub-agent turn, so the whole pipeline runs without
-a live LLM. ``/coordinate`` no longer 503s; a real
-``CoordinationResult`` comes back with every pipeline phase recorded.
+a live LLM. ``/coordinate`` returns a real ``CoordinationResult`` with
+every pipeline phase recorded rather than a 503.
 
 Workspace isolation is wired at boot (``PlannerWorktreeStrategy``) but
 the per-run config disables it so the pipeline never touches git: this
@@ -259,9 +259,10 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
     assert routed_agents == {"alice", "bob"}
     # Parallel dispatch ran and the sub-agents ACTUALLY executed: both
     # subtasks were promoted CREATED -> ASSIGNED for their routed agent,
-    # so the engine ran them and produced an AgentRunResult instead of
-    # rejecting them at the seam. Before the dispatch-path fix, every
-    # outcome carried an ExecutionStateError and ``result`` was None.
+    # so the engine ran each one and produced an AgentRunResult. A
+    # subtask still in CREATED would be rejected at the engine seam with
+    # an ExecutionStateError and a ``None`` result, so a non-None result
+    # is the proof the dispatch path assigned it.
     assert len(result.waves) >= 1
     executed = [
         outcome
