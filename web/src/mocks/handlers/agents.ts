@@ -74,10 +74,20 @@ export const agentsHandlers = [
     ),
   ),
   http.post('/api/v1/agents/:agentId/autonomy', async ({ params, request }) => {
-    const body = (await request.json()) as { level?: string }
+    const body = (await request.json()) as {
+      level?: string
+      reason?: string
+    }
     if (!body.level) {
       return HttpResponse.json(apiError("Field 'level' is required"), {
         status: 400,
+      })
+    }
+    // Backend requires a non-blank reason (>= 3 non-whitespace chars);
+    // mirror it so tests cannot pass a body the API would 422.
+    if (!body.reason || body.reason.trim().length < 3) {
+      return HttpResponse.json(apiError("Field 'reason' is required"), {
+        status: 422,
       })
     }
     const allowed: readonly AutonomyLevel[] = [

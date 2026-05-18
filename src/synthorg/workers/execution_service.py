@@ -72,8 +72,11 @@ logger = get_logger(__name__)
 
 # Bounded wait for in-flight parked-context resumes during shutdown
 # before they are cancelled, so a slow resume cannot stall process
-# teardown indefinitely.
-_RESUME_DRAIN_TIMEOUT_SECONDS: Final[float] = 5.0
+# teardown indefinitely. Sized to let a typical resumed turn finish
+# (a 5s budget routinely cancelled mid-LLM-call); the registry logs a
+# WARNING with the pending count on timeout so a cancelled resume is
+# never silent.
+_RESUME_DRAIN_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 class WorkerExecutionService(Protocol):
@@ -507,10 +510,18 @@ class AgentEngineExecutionService:
             return
         resumed = await gate.resume_context(approval_id)
         if resumed is None:
-            logger.info(
+            # The decision is already persisted by the controller, so
+            # "approved but no parked context to resume" is an
+            # operationally meaningful dead-end (the agent will never
+            # pick the work back up), not a routine event: log WARNING
+            # so it is visible, not buried at INFO.
+            logger.warning(
                 APPROVAL_GATE_NO_PARKED_CONTEXT,
                 approval_id=approval_id,
-                note="resume dispatched but no parked context found",
+                approved=approved,
+                decided_by=decided_by,
+                note="resume dispatched but no parked context found; "
+                "decision persisted, agent will not resume",
             )
             return
         ctx, _ = resumed

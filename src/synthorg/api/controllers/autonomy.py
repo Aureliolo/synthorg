@@ -1,8 +1,10 @@
 """Autonomy controller -- runtime autonomy level management."""
 
+from typing import Final, Self
+
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
@@ -14,6 +16,7 @@ from synthorg.core.enums import AutonomyLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_PROMOTION_DENIED,
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.security.action_types import ActionTypeRegistry
@@ -21,6 +24,12 @@ from synthorg.security.autonomy.models import AutonomyUpdate
 from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)
+
+# Minimum non-whitespace characters in an autonomy-change reason.
+# Mirrors ``AutonomyUpdate`` so the request body is self-validating
+# (rejected at the API boundary, not late in registry construction).
+_MIN_REASON_LENGTH: Final[int] = 3
+_MAX_REASON_LENGTH: Final[int] = 2048
 
 
 class AutonomyLevelRequest(BaseModel):
@@ -34,11 +43,29 @@ class AutonomyLevelRequest(BaseModel):
 
     level: AutonomyLevel = Field(description="Requested autonomy level")
     reason: NotBlankStr = Field(
+        max_length=_MAX_REASON_LENGTH,
         description=(
-            "Justification for the change. Recorded on the approval"
-            " item so the audit trail explains why."
+            "Justification for the change, recorded on the approval"
+            " item so the audit trail explains why. At least 3"
+            " non-whitespace characters after stripping."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_reason_length(self) -> Self:
+        """Reject reasons below the non-whitespace minimum.
+
+        Mirrors ``AutonomyUpdate`` so an under-length reason is a 4xx
+        at the request boundary rather than a late failure in registry
+        construction.
+        """
+        if len(self.reason.strip()) < _MIN_REASON_LENGTH:
+            msg = (
+                f"reason must contain at least {_MIN_REASON_LENGTH} "
+                f"non-whitespace characters"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class AutonomyLevelResponse(BaseModel):
@@ -132,6 +159,12 @@ class AutonomyController(Controller):
 
         identity = await app_state.agent_registry.get(agent_key)
         if identity is None:
+            logger.warning(
+                SECURITY_AUTONOMY_PROMOTION_DENIED,
+                agent_id=agent_key,
+                requested_level=requested_level.value,
+                reason="agent_not_registered",
+            )
             msg = "Agent not found"
             raise NotFoundError(msg)
 

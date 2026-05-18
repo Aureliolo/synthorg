@@ -5971,7 +5971,7 @@ export type components = {
         /** AutonomyLevelRequest */
         readonly AutonomyLevelRequest: {
             readonly level: components["schemas"]["AutonomyLevel"];
-            /** @description Justification for the change. Recorded on the approval item so the audit trail explains why. */
+            /** @description Justification for the change, recorded on the approval item so the audit trail explains why. At least 3 non-whitespace characters after stripping. */
             readonly reason: string;
         };
         /** AutonomyLevelResponse */

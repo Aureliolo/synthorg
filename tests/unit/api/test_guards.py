@@ -186,6 +186,8 @@ class TestRequireRoles:
             headers=make_auth_headers(role),
         )
         if allowed:
-            assert response.status_code not in (401, 403)
+            # Guard passed; the handler then 404s on the unknown
+            # ``test-agent`` (proof the guard did not block).
+            assert response.status_code == 404
         else:
             assert response.status_code == 403

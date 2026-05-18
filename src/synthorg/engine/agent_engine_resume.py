@@ -119,23 +119,11 @@ class AgentEngineResumeMixin:
                     content=decision_message,
                 ),
             )
-            tool_invoker = self._make_tool_invoker(
+            tool_invoker, system_prompt = self._build_resume_runtime(
                 identity,
+                task,
                 task_id=task_id,
                 effective_autonomy=effective_autonomy,
-            )
-            currency = (
-                self._budget_enforcer.currency
-                if self._budget_enforcer is not None
-                else DEFAULT_CURRENCY
-            )
-            system_prompt = build_system_prompt(
-                agent=identity,
-                task=task,
-                l1_summaries=(tool_invoker.get_l1_summaries() if tool_invoker else ()),
-                effective_autonomy=effective_autonomy,
-                currency=currency,
-                model_tier=identity.model.model_tier,
             )
             return await self._resume_execute(
                 identity=identity,
@@ -150,6 +138,44 @@ class AgentEngineResumeMixin:
                 start=start,
                 timeout_seconds=timeout_seconds,
             )
+
+    def _build_resume_runtime(
+        self,
+        identity: Any,
+        task: Any,
+        *,
+        task_id: str,
+        effective_autonomy: EffectiveAutonomy | None,
+    ) -> tuple[Any, Any]:
+        """Build the resumed run's tool invoker and system prompt.
+
+        Extracted from :meth:`resume_parked_run` so that method stays
+        focused on context restoration + decision injection. The
+        system prompt is rebuilt (not restored) because it is
+        deterministic from identity/task and the original is already
+        present verbatim in the restored conversation; rebuilding here
+        avoids re-firing the personality-trim notification a fresh
+        ``_prepare_context`` would.
+        """
+        tool_invoker = self._make_tool_invoker(
+            identity,
+            task_id=task_id,
+            effective_autonomy=effective_autonomy,
+        )
+        currency = (
+            self._budget_enforcer.currency
+            if self._budget_enforcer is not None
+            else DEFAULT_CURRENCY
+        )
+        system_prompt = build_system_prompt(
+            agent=identity,
+            task=task,
+            l1_summaries=(tool_invoker.get_l1_summaries() if tool_invoker else ()),
+            effective_autonomy=effective_autonomy,
+            currency=currency,
+            model_tier=identity.model.model_tier,
+        )
+        return tool_invoker, system_prompt
 
     async def _resume_execute(  # noqa: PLR0913
         self,
