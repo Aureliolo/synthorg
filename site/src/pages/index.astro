@@ -8,10 +8,10 @@ import ParticleNetwork from "../components/ParticleNetwork.astro";
 import ScrollSyncPanel from "../components/ScrollSyncPanel.astro";
 import DashboardPreview from "../components/islands/DashboardPreview";
 
-const description = "Framework for building synthetic organizations, autonomous AI agents orchestrated as a virtual company";
+const description = "An autonomous product studio you operate: a self-hostable platform where a synthetic organisation of role-based AI agents is designed to plan and deliver products under budgets and governance. Platform built and tested; the agent runtime is in active development.";
 ---
 
-<Base title="SynthOrg | Build Synthetic Organizations" description={description} enableRecaptcha={true}>
+<Base title="SynthOrg | Autonomous Product Studio" description={description} enableRecaptcha={true}>
   <!-- ============================================================ -->
   <!-- HERO (Dark) -->
   <!-- ============================================================ -->
@@ -21,22 +21,23 @@ const description = "Framework for building synthetic organizations, autonomous 
     <div class="relative z-10 max-w-4xl mx-auto text-center">
       <!-- Eyebrow -->
       <p class="text-sm tracking-widest text-violet-400 mb-6 font-mono">
-        Python 3.14+ &middot; BSL 1.1 &middot; Source Available
+        Python 3.14+ &middot; BUSL 1.1 &middot; Source Available
       </p>
 
       <!-- Headline -->
       <h1 class="text-5xl md:text-7xl font-bold leading-tight mb-6">
-        What if your company had
+        An autonomous product studio
         <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
-          infinite, tireless employees?
+          you operate.
         </span>
       </h1>
 
       <!-- Subtext -->
       <p class="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
-        A Python framework for building synthetic organizations, autonomous AI agents
-        with real roles, personalities, budgets, memory, and enterprise-grade governance.
-        Define a company in YAML. Watch it run.
+        Describe a product to build, or hand it an existing codebase: a synthetic
+        organisation of role-based AI agents, with budgets, memory, and governance,
+        is designed to plan and deliver it. The platform is built and tested; the
+        agent runtime that runs the organisation is in active development, in the open.
       </p>
 
       <!-- CTAs -->
@@ -69,9 +70,10 @@ const description = "Framework for building synthetic organizations, autonomous 
   <section class="py-4 px-6 bg-gradient-to-r from-violet-600/10 via-teal-600/10 to-violet-600/10 border-y border-violet-500/20">
     <div class="max-w-4xl mx-auto text-center">
       <p class="text-sm text-gray-300">
-        <span class="font-semibold text-violet-400">Early Access:</span>
-        SynthOrg is under active development. Some features shown are planned but not yet fully implemented.
-        <a href="https://github.com/Aureliolo/synthorg" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Follow on GitHub</a> ·
+        <span class="font-semibold text-violet-400">Honest status:</span>
+        The platform, infrastructure, and subsystem libraries are built and tested. The autonomous agent runtime that makes the organisation execute work end to end is in active development and tracked in the open. Capability sections on this page are marked as available now or in active development.
+        <a href="/docs/roadmap/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Roadmap</a> ·
+        <a href="https://github.com/Aureliolo/synthorg/issues" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Issue tracker</a> ·
         <a href="#contact" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Get in touch</a>
       </p>
     </div>
@@ -115,7 +117,7 @@ const description = "Framework for building synthetic organizations, autonomous 
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">What Makes SynthOrg Different</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-12">
-        Not just agent orchestration -- a complete organizational system with HR, governance, personality-driven teams, and enterprise-grade cost controls.
+        Not just agent orchestration. SynthOrg is designed as a complete organisational system: HR, governance, personality-driven teams, and cost controls, modelled as a real company rather than a chain of function calls.
       </p>
       <FeatureShowcase />
     </div>
@@ -127,7 +129,7 @@ const description = "Framework for building synthetic organizations, autonomous 
   <section class="py-16 px-6">
     <div class="max-w-5xl mx-auto text-center">
       <h2 class="text-3xl md:text-4xl font-bold mb-4">Architecture</h2>
-      <p class="text-gray-400 mb-12">Modular, protocol-driven. Every component is pluggable.</p>
+      <p class="text-gray-400 mb-12">The designed, modular, protocol-driven architecture. Every component is pluggable and built as tested code; the agent runtime that drives it end to end is in active development.</p>
 
       <ExpandableArchitecture />
 
@@ -144,19 +146,21 @@ const description = "Framework for building synthetic organizations, autonomous 
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Security-First by Design</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
-        Autonomous agents need guardrails. SynthOrg embeds security at every layer,
-        from the application runtime to the CI/CD pipeline and container infrastructure.
+        Autonomous agents need guardrails. The CI/CD pipeline and container
+        infrastructure security below is in place today; the application-runtime
+        guardrails are designed and unit-tested, and become active with the agent
+        runtime (in active development).
       </p>
 
       <div class="grid md:grid-cols-3 gap-8">
         <!-- Runtime Security -->
         <a href="/docs/security/#application-security" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128737;</div>
-          <h3 class="text-xl font-semibold mb-3">Runtime Protection</h3>
-          <p class="text-gray-400 mb-4">Hybrid SecOps: rule engine fast-path handles ~95% of actions in sub-millisecond, with an LLM evaluator for uncertain edge cases. 25+ classified action types, four autonomy tiers (full, semi, supervised, locked).</p>
+          <h3 class="text-xl font-semibold mb-3">Runtime Protection <span class="text-xs font-normal text-violet-400">(in active development)</span></h3>
+          <p class="text-gray-400 mb-4">Designed hybrid SecOps: a fail-closed rule-engine fast-path with an LLM evaluator for uncertain cases, classified action types, and four autonomy tiers (full, semi, supervised, locked). Implemented and unit-tested as components; enforced on a live run once the agent runtime lands.</p>
           <ul class="text-sm text-gray-400 space-y-1">
             <li>Fail-closed rule engine + LLM fallback evaluator</li>
-            <li>4 autonomy tiers with progressive trust</li>
+            <li>Four autonomy tiers with progressive trust</li>
             <li>Output scanning with redaction policies</li>
             <li>Persistent audit trail for every decision</li>
           </ul>
@@ -202,7 +206,12 @@ const description = "Framework for building synthetic organizations, autonomous 
   <!-- ============================================================ -->
   <section class="py-16 px-6">
     <div class="max-w-6xl mx-auto">
-      <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">Use Cases</h2>
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Use Cases</h2>
+      <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
+        The studio is designed for organisations like these. They describe the
+        target shape of a SynthOrg company, not validated end-to-end runs; the
+        agent runtime that executes them is in active development.
+      </p>
 
       <UseCaseCards />
     </div>
@@ -215,7 +224,7 @@ const description = "Framework for building synthetic organizations, autonomous 
     <div class="max-w-5xl mx-auto text-center">
       <h2 class="text-3xl md:text-4xl font-bold mb-4">See the Dashboard</h2>
       <p class="text-gray-400 mb-12 max-w-2xl mx-auto">
-        Monitor agents, tasks, budgets, and communications in real time, all from a single dashboard.
+        The React 19 dashboard for agents, tasks, budgets, and communications, with live WebSocket updates. Shipped today; it becomes a live operations view as the agent runtime comes online.
       </p>
       <DashboardPreview client:visible />
     </div>
@@ -326,8 +335,8 @@ const description = "Framework for building synthetic organizations, autonomous 
   <section class="py-16 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1025]">
     <div class="max-w-3xl mx-auto text-center">
       <h2 class="text-3xl md:text-5xl font-bold mb-6">
-        Build something that thinks
-        <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">like a team.</span>
+        Operate a company
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">that builds.</span>
       </h2>
 
       <a

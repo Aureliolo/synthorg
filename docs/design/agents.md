@@ -5,6 +5,10 @@ description: Agent identity system. Personality dimensions, structured skill mod
 
 # Agents
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The autonomous agent runtime that exercises it end to end is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
+
 Every agent is a composition of **immutable config** (identity, personality, skills, model, tool permissions, authority) and **mutable runtime state** (execution status, active task, cost accumulation). This page covers the identity layer. The HR lifecycle (seniority, hiring, firing, performance, evolution) lives on a dedicated [HR & Agent Lifecycle](hr-lifecycle.md) page.
 
 ## Agent Identity Card

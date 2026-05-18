@@ -5,7 +5,11 @@ description: Seniority and authority levels, role catalog, dynamic roles, hiring
 
 # HR & Agent Lifecycle
 
-This page covers the operational lifecycle of every agent in a synthetic organization, from hiring through performance tracking, promotion, evolution, and offboarding. The HR subsystem is how SynthOrg simulates a workforce: closed-loop hiring when new skills are needed, performance-driven pruning when agents fail to deliver, and pluggable evolution for agents that need to adapt their identity.
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The autonomous agent runtime that exercises it end to end is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
+
+This page covers the operational lifecycle of every agent in a synthetic organisation, from hiring through performance tracking, promotion, evolution, and offboarding. The HR subsystem is how SynthOrg simulates a workforce: closed-loop hiring when new skills are needed, performance-driven pruning when agents fail to deliver, and pluggable evolution for agents that need to adapt their identity.
 
 See [Agents](agents.md) for the identity layer (personality, skills, tool namespaces, identity versioning).
 

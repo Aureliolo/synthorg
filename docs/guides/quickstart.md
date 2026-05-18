@@ -1,17 +1,26 @@
 ---
 title: Quickstart Tutorial
-description: Get a synthetic organization running in under 5 minutes.
+description: Stand up the SynthOrg platform and configure a company in about 5 minutes.
 ---
 
 # Quickstart Tutorial
 
-This tutorial walks you through installing SynthOrg, choosing a template, and running your first synthetic organization, all in about 5 minutes.
+This tutorial walks you through installing SynthOrg, starting the platform,
+and configuring your first company, in about 5 minutes.
+
+!!! warning "Honest status"
+    The platform, dashboard, CLI, and setup wizard below work today. The
+    autonomous agent runtime that executes work is in active development and
+    not yet wired: a task you submit advances through its lifecycle states,
+    but an agent does not yet execute it. The "designed flow" section makes
+    the distinction explicit. See the [Roadmap](../roadmap/index.md).
 
 ---
 
-## What You Will Build
+## What You Will Configure
 
-You will create a **Solo Builder** organization: a lean two-agent team designed for rapid prototyping.
+You will configure a **Solo Builder** organisation: a lean two-agent team
+designed for rapid prototyping.
 
 ```mermaid
 graph TD
@@ -20,7 +29,10 @@ graph TD
     CEO --> DEV
 ```
 
-The CEO handles strategy and task decomposition while the Full-Stack Developer writes code and builds features. Both operate with full autonomy and event-driven communication, with no approval gates or hierarchy overhead.
+By design, the CEO handles strategy and task decomposition while the
+Full-Stack Developer writes code and builds features. That execution
+behaviour is the runtime work in active development; the steps below set up
+the company that will run it.
 
 ---
 
@@ -109,16 +121,16 @@ On a fresh install, the **setup wizard** appears. Pick **Guided Setup** and step
 Once the wizard completes, the dashboard loads and you will see:
 
 - **Agents**: the CEO and Full-Stack Developer, each with their personality and model assignment
-- **Organization status**: health indicators for your synthetic company
-- **Task board**: currently empty, ready for your first task
+- **Organisation status**: health indicators for the platform
+- **Task board**: empty, ready to accept tasks
 
 ---
 
-## Step 5: Submit Your First Task
+## Step 5: Submit a Task
 
 === "Dashboard"
 
-    Use the task board in the dashboard to create a new task. Give it a title and description, and the engine will route it to the appropriate agent.
+    Use the task board in the dashboard to create a new task. Give it a title and description.
 
 === "API"
 
@@ -134,11 +146,16 @@ Once the wizard completes, the dashboard loads and you will see:
 
     Replace `<your-jwt-token>` with the JWT from your admin session. See the [REST API Reference](../openapi/index.md) for authentication details.
 
+Today the task is created and advances through its lifecycle states. An agent
+does not yet pick it up and execute it: that is the agent runtime, which is in
+active development. See the [Roadmap](../roadmap/index.md) for current status.
+
 ---
 
-## What Happened
+## The Designed Flow (in active development)
 
-When you submitted a task, the SynthOrg engine processed it through a multi-step pipeline:
+This is what submitting a task is **designed** to do once the agent runtime
+is wired. It is not what happens end to end today.
 
 ```mermaid
 sequenceDiagram
@@ -160,10 +177,10 @@ sequenceDiagram
     Engine-->>You: Result available
 ```
 
-1. **Task created**: the engine validates the task and puts it in the queue.
-2. **Task routed**: the routing strategy (default: `role_based`) matches the task to the best-suited agent.
-3. **Agent executes**: the assigned agent uses its configured LLM model in a ReAct loop (Think, Act, Observe).
-4. **Result returned**: the completed task and its artifacts are available in the dashboard and API.
+1. **Task created**: the engine validates the task and queues it. (Works today.)
+2. **Task routed**: a routing strategy matches the task to the best-suited agent. (Designed; in active development.)
+3. **Agent executes**: the assigned agent uses its configured LLM in a ReAct loop. (Designed; in active development.)
+4. **Result returned**: the completed task and its artifacts appear in the dashboard and API. (Designed; in active development.)
 
 ---
 
@@ -181,7 +198,8 @@ Your data persists in the `synthorg-data` Docker volume and will be available ne
 
 ## Next Steps
 
-- [Company Configuration](company-config.md): customize every aspect of your organization via YAML
+- [Company Configuration](company-config.md): customise every aspect of your organisation via YAML
 - [Agent Roles & Hierarchy](agents.md): add more agents, define departments, configure personality
 - [Budget & Cost Control](budget.md): set spending limits and auto-downgrade policies
 - [Deployment (Docker)](deployment.md): production hardening and operations
+- [Roadmap](../roadmap/index.md): what is available now versus in active development

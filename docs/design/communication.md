@@ -5,6 +5,10 @@ description: Message bus architecture, communication patterns, standards, messag
 
 # Communication
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The autonomous agent runtime that exercises it end to end is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
+
 The communication architecture defines how agents exchange information. This
 page covers transport-level concerns: patterns, standards, the message
 contract, and bus configuration. Federation, orchestration, and the event

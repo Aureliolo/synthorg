@@ -5,6 +5,10 @@ description: Task lifecycle, task definition, workflow types (sequential, parall
 
 # Task & Workflow Engine
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The autonomous agent runtime that exercises it end to end is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
+
 The task and workflow engine orchestrates how work flows through a synthetic
 organization, from task creation and assignment through to review and
 completion. This page covers the task-engine core: lifecycle, workflows,

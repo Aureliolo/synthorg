@@ -5,6 +5,10 @@ description: Tool categories, concurrent execution model, layered sandboxing, MC
 
 # Tools & Capabilities
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. Tool execution runs via the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
+
 Agents act on the world through tools. SynthOrg defines a pluggable tool system with 12+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role, seniority, and autonomy tier permit.
 
 ## Tool Categories

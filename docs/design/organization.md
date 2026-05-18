@@ -5,6 +5,10 @@ description: Company types, organizational hierarchy, department configuration, 
 
 # Organization & Templates
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The template and configuration system is available now; the running-organisation behaviour it configures depends on the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)).
+
 ## Company Types
 
 SynthOrg provides pre-built company templates for common organizational patterns:

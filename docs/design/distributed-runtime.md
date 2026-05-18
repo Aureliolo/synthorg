@@ -5,6 +5,10 @@ description: Pluggable distributed bus backend design, NATS JetStream first impl
 
 # Distributed Runtime
 
+!!! warning "Designed behaviour; runtime in active development"
+
+    This page is the source of truth for the **designed** behaviour of this subsystem. The dispatch plumbing (NATS JetStream queue and worker pool) exists, but the task-execute endpoint currently advances task state without invoking an agent; end-to-end distributed execution depends on the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)).
+
 SynthOrg runs in a single Python process by default. Agents communicate over an in-memory `MessageBus` (per-(channel, subscriber) `asyncio.Queue`) and the `TaskEngine` dispatches work through its own single-writer mutation queue inside that same process. For a laptop running one synthetic org, this is the right answer: lowest latency, no extra containers, nothing to operate.
 
 This page describes the **first distributed backend** that plugs into the existing `MessageBus` protocol without changing it, and the **distributed task queue** that sits on top of that backend. Both are opt-in. The in-memory path stays the default and must remain byte-identical in behavior for users who do not turn on distribution.

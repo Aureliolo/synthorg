@@ -1,13 +1,12 @@
 # SynthOrg Documentation
 
-**Framework for building synthetic organizations**, autonomous AI agents orchestrated as a virtual company.
+**An autonomous product studio you operate**: a self-hostable platform where a synthetic organisation of role-based AI agents is designed to plan and deliver products under budgets and governance.
 
-SynthOrg lets you define agents with roles, hierarchy, budgets, and tools, then orchestrate them to collaborate on complex tasks as a virtual organization.
+SynthOrg lets you define agents with roles, hierarchy, budgets, and tools as a virtual organisation. The platform, infrastructure, and subsystem libraries are built and tested; the agent runtime that makes the organisation execute work is in active development.
 
-!!! warning "Under Active Development"
+!!! warning "Honest status: the agent runtime is in active development"
 
-    SynthOrg is under active development. Many features described in the design specification
-    are planned but not yet implemented. See the [Roadmap](roadmap/index.md) for current status.
+    The platform, dashboard, CLI, persistence, and subsystem libraries are built and tested. The autonomous agent runtime that runs the organisation end to end is **not yet wired** and is the focus of current work. Design-specification pages describe intended behaviour and mark per-area status; treat any gap between a spec and the code as the work, not the spec. See the [Roadmap](roadmap/index.md) for exactly what is available now versus in active development.
 
 ---
 
@@ -19,7 +18,7 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools, then 
 
     ---
 
-    Pick a template and run your first synthetic org via Docker.
+    Pick a template and stand up the SynthOrg platform via Docker.
 
     [:octicons-arrow-right-24: User Guide](user_guide.md)
 
@@ -45,7 +44,7 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools, then 
 
 ## Design Specification
 
-The design spec covers the full architecture of SynthOrg, from agent identity to budget enforcement:
+The design spec covers the full intended architecture of SynthOrg, from agent identity to budget enforcement. It is the source of truth for designed behaviour; each area marks its current wiring status, since the agent runtime is in active development.
 
 <div class="grid cards" markdown>
 
@@ -109,16 +108,20 @@ The design spec covers the full architecture of SynthOrg, from agent identity to
 
 ---
 
-## Key Features
+## Key capabilities (designed)
 
-- **Agent Orchestration**: define agents with roles, models, and tools. The engine handles task decomposition, routing, and collaboration.
-- **Budget Enforcement**: per-agent cost limits, auto-downgrade to cheaper models, spending reports, and CFO-level cost optimization.
-- **Security & Trust**: SecOps agent, fail-closed rule engine, progressive trust (4 strategies), autonomy levels, and audit logging.
-- **Memory**: per-agent and shared organizational memory with retrieval pipeline, consolidation, and archival.
-- **Communication**: message bus, delegation, conflict resolution (4 strategies), and meeting protocols.
-- **HR Engine**: hiring, firing, onboarding, offboarding, performance tracking, and promotion criteria.
-- **Tool Integration**: built-in tools (file system, git, sandbox, code runner) plus MCP bridge for external tools.
-- **LLM Providers**: provider-agnostic via LiteLLM. Routing strategies, retry/rate-limiting, capability matching.
+These describe the designed system. The provider layer is shipped; the
+others are built and unit-tested as components and run via the agent runtime,
+which is in active development (see the [Roadmap](roadmap/index.md)).
+
+- **Agent Orchestration**: agents with roles, models, and tools; designed task decomposition, routing, and collaboration.
+- **Budget Enforcement**: designed per-agent cost limits, auto-downgrade to cheaper models, spending reports, and CFO-level cost optimisation.
+- **Security & Trust**: designed SecOps agent, fail-closed rule engine, progressive trust, autonomy levels, and audit logging.
+- **Memory**: designed per-agent and shared organisational memory with retrieval pipeline, consolidation, and archival.
+- **Communication**: designed message bus, delegation, conflict resolution, and meeting protocols.
+- **HR Engine**: designed hiring, firing, onboarding, offboarding, performance tracking, and promotion criteria.
+- **Tool Integration**: built-in tools (file system, git, sandbox, code runner) plus an MCP bridge for external tools.
+- **LLM Providers** (available now): provider-agnostic via LiteLLM, with routing strategies, retry/rate-limiting, and capability matching.
 
 ---
 
@@ -138,5 +141,5 @@ The design spec covers the full architecture of SynthOrg, from agent identity to
 ## Links
 
 - [GitHub Repository](https://github.com/Aureliolo/synthorg)
-- [License](https://github.com/Aureliolo/synthorg/blob/main/LICENSE) (BSL 1.1, source available; free production use for non-competing small orgs; converts to Apache 2.0 three years after release) <!-- lint-allow: doc-numeric-macros -- "Apache 2.0" is a license version, not a stat claim -->
-- [Licensing & Usage](licensing.md): what's permitted, why BSL, and how to get a commercial license
+- [License](https://github.com/Aureliolo/synthorg/blob/main/LICENSE) (BUSL 1.1, source available; free production use for non-competing small organisations; converts to Apache 2.0 at the Change Date) <!-- lint-allow: doc-numeric-macros -- "Apache 2.0" is a license version, not a stat claim -->
+- [Licensing & Usage](licensing.md): what is permitted, why BUSL, and how to get a commercial license
