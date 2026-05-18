@@ -8,6 +8,7 @@ from synthorg.client.config import (
     ClientSimulationConfig,
     ContinuousModeConfig,
     FeedbackConfig,
+    IntakeConfig,
     RequirementGeneratorConfig,
     SimulationRunnerConfig,
 )
@@ -111,6 +112,33 @@ class TestContinuousModeConfig:
             ContinuousModeConfig(request_interval_sec=0.0)
 
 
+class TestIntakeConfig:
+    """Tests for IntakeConfig."""
+
+    def test_defaults(self) -> None:
+        config = IntakeConfig()
+        assert config.strategy == "direct"
+        assert config.model is None
+
+    def test_agent_strategy_with_model(self) -> None:
+        config = IntakeConfig(strategy="agent", model="test-model-001")
+        assert config.strategy == "agent"
+        assert config.model == "test-model-001"
+
+    def test_frozen(self) -> None:
+        config = IntakeConfig()
+        with pytest.raises(ValidationError):
+            config.strategy = "agent"  # type: ignore[misc]
+
+    def test_extra_forbid(self) -> None:
+        with pytest.raises(ValidationError):
+            IntakeConfig(unknown="x")  # type: ignore[call-arg]
+
+    def test_blank_strategy_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            IntakeConfig(strategy="  ")
+
+
 class TestClientSimulationConfig:
     """Tests for the top-level ClientSimulationConfig."""
 
@@ -121,6 +149,8 @@ class TestClientSimulationConfig:
         assert isinstance(config.feedback, FeedbackConfig)
         assert isinstance(config.runner, SimulationRunnerConfig)
         assert isinstance(config.continuous, ContinuousModeConfig)
+        assert isinstance(config.intake, IntakeConfig)
+        assert config.intake.strategy == "direct"
 
     def test_frozen(self) -> None:
         config = ClientSimulationConfig()

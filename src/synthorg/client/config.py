@@ -207,6 +207,31 @@ class ReportConfig(BaseModel):
     )
 
 
+class IntakeConfig(BaseModel):
+    """Configuration for the intake strategy.
+
+    Attributes:
+        strategy: Strategy identifier dispatched by
+            ``build_intake_strategy``: ``direct`` (no LLM, creates a
+            task per accepted request) or ``agent`` (LLM-driven triage
+            via a completion provider).
+        model: Model identifier passed to the agent intake strategy.
+            Only consulted when ``strategy == "agent"``; ignored by
+            the ``direct`` strategy.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    strategy: NotBlankStr = Field(
+        default="direct",
+        description="Intake strategy identifier (direct or agent)",
+    )
+    model: NotBlankStr | None = Field(
+        default=None,
+        description="Model id for the agent intake strategy",
+    )
+
+
 class ClientSimulationConfig(BaseModel):
     """Top-level client simulation configuration.
 
@@ -219,6 +244,7 @@ class ClientSimulationConfig(BaseModel):
         report: Report format configuration.
         runner: Simulation runner configuration.
         continuous: Continuous mode configuration.
+        intake: Intake strategy configuration.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -246,4 +272,8 @@ class ClientSimulationConfig(BaseModel):
     continuous: ContinuousModeConfig = Field(
         default_factory=ContinuousModeConfig,
         description="Continuous mode configuration",
+    )
+    intake: IntakeConfig = Field(
+        default_factory=IntakeConfig,
+        description="Intake strategy configuration",
     )

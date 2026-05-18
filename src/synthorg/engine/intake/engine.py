@@ -38,6 +38,16 @@ class IntakeEngine:
         """
         self._strategy = strategy
 
+    @property
+    def strategy(self) -> IntakeStrategy:
+        """Return the configured intake strategy.
+
+        Read-only introspection seam used by the client-simulation
+        runtime builder and its tests to assert which strategy was
+        wired at boot without reaching into a private attribute.
+        """
+        return self._strategy
+
     async def process(
         self,
         request: ClientRequest,

@@ -5,10 +5,6 @@ description: Synthetic client framework for generating task requirements, review
 
 # Client Simulation
 
-!!! warning "Designed behaviour; runtime in active development"
-
-    This page is the source of truth for the **designed** behaviour of this subsystem. The intake engine and simulation runtime are not wired into the shipped product yet; this is in active development (see the [Roadmap](../roadmap/index.md)). The code described here is built and unit-tested as components but not yet run end to end.
-
 The client simulation subsystem generates synthetic workloads that exercise the full
 task lifecycle end-to-end. Simulated clients (AI-driven, human, or hybrid) submit task
 requirements through an intake pipeline and review completed deliverables via a
@@ -195,6 +191,23 @@ through `TASK_CREATED`. It routes requests to a configured `IntakeStrategy`:
 - **AgentIntake**: routes to an intake agent (PM/Account Manager) for
   triage, scoping, and approval before task creation.
 
+### Boot wiring
+
+`synthorg.client.runtime_builder.build_client_simulation_runtime`
+constructs the `IntakeEngine` (plus a single-stage `ReviewPipeline`
+of `InternalReviewStage`) during app construction whenever a
+`TaskEngine` is present, and `create_app` attaches the resulting
+`ClientSimulationState` so `has_simulation_runtime` is true and the
+`/simulations` + `/requests` controllers register. The strategy is
+selected from the `simulations` settings namespace
+(`intake_strategy` ∈ {`direct`, `agent`}, `intake_model`) via the
+bootstrap resolver (env > registered default); the choice is baked
+in at startup (`read_only_post_init`). The default `direct` strategy
+makes no LLM calls, so the runtime comes online for an empty company.
+A selected `agent` strategy that cannot be satisfied (no provider or
+no model) degrades to `direct` with a warning rather than failing
+boot.
+
 ---
 
 ## Task Source Tracking
@@ -272,6 +285,7 @@ discriminator rather than silently falling back to a default.
 | `ReportConfig.strategy` | `build_report_strategy()` | `summary` → `SummaryReport`, `detailed` → `DetailedReport`, `json_export` → `JsonExportReport`, `metrics_only` → `MetricsOnlyReport` |
 | `ClientPoolConfig.selection_strategy` | `build_client_pool_strategy()` | `round_robin` → `RoundRobinStrategy`, `weighted_random` → `WeightedRandomStrategy`, `domain_matched` → `DomainMatchedStrategy` |
 | `adapter` arg (intake entry point) | `build_entry_point_strategy(adapter, *, project_id=None)` | `direct` → `DirectAdapter`, `project` → `ProjectAdapter`, `intake` → `IntakeAdapter` |
+| `IntakeConfig.strategy` | `build_intake_strategy(config, *, task_engine, provider=None, cost_tracker=None)` | `direct` → `DirectIntake`, `agent` → `AgentIntake` |
 
 The factories follow the project-wide pluggable-subsystems pattern
 (protocol + strategy + factory + config discriminator). No silent

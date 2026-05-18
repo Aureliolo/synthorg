@@ -522,6 +522,16 @@ export const REPORT_PERIOD_VALUES = [
 ] as const
 export type ReportPeriod = (typeof REPORT_PERIOD_VALUES)[number]
 
+export const REQUEST_STATUS_VALUES = [
+    'submitted',
+    'triaging',
+    'scoping',
+    'approved',
+    'task_created',
+    'cancelled',
+] as const
+export type RequestStatus = (typeof REQUEST_STATUS_VALUES)[number]
+
 export const RESUME_DECISION_VALUES = [
     'approve',
     'reject',
