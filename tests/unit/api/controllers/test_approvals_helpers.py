@@ -218,6 +218,9 @@ class TestSignalResumeIntent:
             task_id="task-1",
         )
 
+        # Deterministic source routing: REVIEW_GATE-sourced approvals
+        # must bypass the parked-context probe entirely.
+        mock_gate.has_parked_context.assert_not_awaited()
         mock_worker.dispatch_resume.assert_not_awaited()
         mock_review.complete_review.assert_awaited_once_with(
             task_id="task-1",
