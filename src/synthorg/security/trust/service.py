@@ -324,15 +324,21 @@ class TrustService:
         """
         result = await self.evaluate_agent(agent_id, snapshot)
 
-        # Update decay check timestamp *after* evaluation
+        # Update decay check timestamp *after* evaluation. The
+        # read-modify-write must hold ``_state_lock``: ``evaluate_agent``
+        # awaited above, so a concurrent locked writer
+        # (``apply_trust_change`` / ``evaluate_agent``) could have
+        # updated this key in the gap; an unlocked RMW here would
+        # clobber that update with a stale base.
         key = str(agent_id)
-        state = self._trust_states.get(key)
-        if state is not None:
-            now = datetime.now(UTC)
-            updated = state.model_copy(
-                update={"last_decay_check_at": now},
-            )
-            self._trust_states[key] = updated
+        async with self._state_lock:
+            state = self._trust_states.get(key)
+            if state is not None:
+                now = datetime.now(UTC)
+                updated = state.model_copy(
+                    update={"last_decay_check_at": now},
+                )
+                self._trust_states[key] = updated
 
         return result
 

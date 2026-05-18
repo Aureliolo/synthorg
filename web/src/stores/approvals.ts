@@ -154,6 +154,12 @@ function isApprovalShape(
     typeof c.status === 'string' &&
     typeof c.title === 'string' &&
     typeof c.risk_level === 'string' &&
+    // Presence-as-string (same contract as the other enum fields):
+    // a pre-upgrade frame missing ``source`` is rejected here rather
+    // than silently coerced to 'review_gate' by sanitizeWsEnum, while
+    // an unknown-but-present value still gets the forward-compat
+    // allowlist + fallback in sanitizeApproval.
+    typeof c.source === 'string' &&
     typeof c.urgency_level === 'string' &&
     typeof c.action_type === 'string' &&
     typeof c.description === 'string' &&

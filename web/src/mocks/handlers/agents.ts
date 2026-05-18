@@ -76,7 +76,7 @@ export const agentsHandlers = [
   http.post('/api/v1/agents/:agentId/autonomy', async ({ params, request }) => {
     const body = (await request.json()) as {
       level?: string
-      reason?: string
+      reason?: unknown
     }
     if (!body.level) {
       return HttpResponse.json(apiError("Field 'level' is required"), {
@@ -84,8 +84,12 @@ export const agentsHandlers = [
       })
     }
     // Backend requires a non-blank reason (>= 3 non-whitespace chars);
-    // mirror it so tests cannot pass a body the API would 422.
-    if (!body.reason || body.reason.trim().length < 3) {
+    // mirror it so tests cannot pass a body the API would 422. Guard
+    // the type first -- a non-string payload must hit the 422 path,
+    // not throw on .trim().
+    const reason =
+      typeof body.reason === 'string' ? body.reason.trim() : ''
+    if (reason.length < 3) {
       return HttpResponse.json(apiError("Field 'reason' is required"), {
         status: 422,
       })

@@ -46,6 +46,7 @@ export {
   type ActivityEventType,
   type AgentStatus,
   type ApprovalRiskLevel,
+  type ApprovalSource,
   type ApprovalStatus,
   type ArtifactType,
   type AutonomyLevel,

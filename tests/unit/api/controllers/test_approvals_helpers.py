@@ -19,6 +19,7 @@ from synthorg.api.controllers.approvals import (
 from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import (
+    AgentRuntimeNotConfiguredError,
     ConflictError,
     ForbiddenError,
     NotFoundError,
@@ -298,6 +299,43 @@ class TestSignalResumeIntent:
         # The dispatch path must actually have run (otherwise the test
         # would pass even if _signal_resume_intent returned before
         # awaiting dispatch_resume, never exercising the swallow).
+        mock_worker.dispatch_resume.assert_awaited_once()
+        mock_review.complete_review.assert_not_awaited()
+
+    async def test_flow1_runtime_not_configured_propagates(self) -> None:
+        """A runtime-misconfig dispatch failure must NOT be swallowed.
+
+        AgentRuntimeNotConfiguredError means the parked run can never
+        resume; returning True (handled) would silently strand it. It
+        must propagate so the controller surfaces the real error.
+        """
+        mock_worker = mock_of[WorkerExecutionService](
+            dispatch_resume=AsyncMock(
+                side_effect=AgentRuntimeNotConfiguredError(
+                    "no engine to resume into",
+                ),
+            ),
+        )
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock()
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = MagicMock()
+        app_state.worker_execution_service = mock_worker
+        app_state.review_gate_service = mock_review
+        app_state.approval_store = _store(
+            _make_pending_item(source=ApprovalSource.PARKED_CONTEXT),
+        )
+
+        with pytest.raises(AgentRuntimeNotConfiguredError):
+            await _signal_resume_intent(
+                app_state,
+                "approval-1",
+                approved=True,
+                decided_by="admin",
+                task_id="task-1",
+            )
+
         mock_worker.dispatch_resume.assert_awaited_once()
         mock_review.complete_review.assert_not_awaited()
 

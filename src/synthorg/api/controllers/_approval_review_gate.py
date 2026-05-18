@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import (
+    AgentRuntimeNotConfiguredError,
     ConflictError,
     ForbiddenError,
     NotFoundError,
@@ -120,11 +121,25 @@ async def try_mid_execution_resume(
         )
     except MemoryError, RecursionError:
         raise
+    except AgentRuntimeNotConfiguredError:
+        # A runtime-misconfiguration failure means the parked run can
+        # NEVER resume (no engine/provider to resume into). Swallowing
+        # it and returning True would mark the approval handled while
+        # the work is silently stranded. Propagate so the controller
+        # surfaces the real error instead of a false success.
+        logger.error(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            note="resume dispatch failed -- runtime not configured",
+        )
+        raise
     except Exception as exc:
-        # The decision is already persisted; a dispatch failure must
-        # not 5xx the approve/reject response. Log loudly so the
-        # operator can re-trigger -- the parked record is still intact
-        # (resume_context has not run yet on this path).
+        # A transient dispatch failure (e.g. background-spawn hiccup)
+        # must not 5xx the approve/reject response and must still
+        # suppress the review-gate fall-through (the parked record is
+        # intact -- resume_context has not run on this path -- so the
+        # operator can re-trigger). Distinct from the hard
+        # runtime-misconfiguration case re-raised above.
         logger.error(
             APPROVAL_GATE_RESUME_FAILED,
             approval_id=approval_id,

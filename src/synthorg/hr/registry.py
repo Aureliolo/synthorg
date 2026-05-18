@@ -647,60 +647,53 @@ class AgentRegistryService:
         # applied here; the HUMAN_ONLY default leaves it pending.
         granted = update.granted_by_strategy is not None
         now = datetime.now(UTC)
+        # 16 hex chars (64 bits) keeps collision probability negligible
+        # for approval-queue volumes while still fitting compactly into
+        # log lines and audit trails.
+        approval_id = f"approval-{uuid.uuid4().hex[:16]}"
+        # Local import breaks the import cycle:
+        # ``synthorg.core.approval`` -> ``synthorg.ontology.decorator`` ->
+        # ... -> ``synthorg.communication.meeting.participant`` ->
+        # ``synthorg.hr.registry``. Deferring to call time keeps module
+        # bootstrap acyclic without weakening the call-site contract.
+        from synthorg.core.approval import (  # noqa: PLC0415
+            ApprovalItem as _ApprovalItem,
+        )
 
-        approval_id: str | None = None
-        approval_enqueued = False
-        if approval_store is not None:
-            # Local import breaks the import cycle:
-            # ``synthorg.core.approval`` -> ``synthorg.ontology.decorator`` ->
-            # ... -> ``synthorg.communication.meeting.participant`` ->
-            # ``synthorg.hr.registry``. The class is only needed inside this
-            # branch, so deferring the import to call time keeps module
-            # bootstrap acyclic without weakening the call-site contract.
-            from synthorg.core.approval import (  # noqa: PLC0415
-                ApprovalItem as _ApprovalItem,
-            )
-
-            # 16 hex chars (64 bits) keeps collision probability negligible
-            # for approval-queue volumes while still fitting compactly into
-            # log lines and audit trails.
-            approval_id = f"approval-{uuid.uuid4().hex[:16]}"
-            requested_by = update.requested_by or "system"
-            decided_by = f"strategy:{update.granted_by_strategy}" if granted else None
-            metadata = {
-                "agent_id": key,
-                "current_level": current_level.value,
-                "requested_level": update.requested_level.value,
-            }
-            if granted:
-                metadata["granted_by_strategy"] = str(update.granted_by_strategy)
-            item = _ApprovalItem(
-                id=approval_id,
-                action_type="autonomy:promote",
-                title=(
-                    f"Autonomy change for {key}: "
-                    f"{current_level.value} -> {update.requested_level.value}"
-                ),
-                description=update.reason,
-                requested_by=requested_by,
-                risk_level=ApprovalRiskLevel.HIGH,
-                # A granting strategy produces an auto-decided
-                # (APPROVED) item -- the queue stays the apply driver
-                # and the audit trail is intact. ``decided_at`` /
-                # ``decided_by`` satisfy ApprovalItem's APPROVED
-                # invariant.
-                status=(ApprovalStatus.APPROVED if granted else ApprovalStatus.PENDING),
-                created_at=now,
-                decided_at=now if granted else None,
-                decided_by=decided_by,
-                metadata=metadata,
-            )
-            await approval_store.add(item)
-            approval_enqueued = True
+        requested_by = update.requested_by or "system"
+        base_metadata = {
+            "agent_id": key,
+            "current_level": current_level.value,
+            "requested_level": update.requested_level.value,
+        }
+        title = (
+            f"Autonomy change for {key}: "
+            f"{current_level.value} -> {update.requested_level.value}"
+        )
 
         if not granted:
             # HUMAN_ONLY (default): the request pends; nothing mutates
-            # the agent's identity until a human decides.
+            # the agent's identity until a human decides. A PENDING row
+            # is non-terminal, so persisting it before any mutation is
+            # the designed behaviour, not a false audit.
+            approval_enqueued = False
+            if approval_store is not None:
+                await approval_store.add(
+                    _ApprovalItem(
+                        id=approval_id,
+                        action_type="autonomy:promote",
+                        title=title,
+                        description=update.reason,
+                        requested_by=requested_by,
+                        risk_level=ApprovalRiskLevel.HIGH,
+                        status=ApprovalStatus.PENDING,
+                        created_at=now,
+                        metadata=base_metadata,
+                    ),
+                )
+                approval_enqueued = True
+            else:
+                approval_id = None
             logger.info(
                 SECURITY_AUTONOMY_PROMOTION_DENIED,
                 agent_id=key,
@@ -716,7 +709,11 @@ class AgentRegistryService:
                 approval_id=approval_id,
             )
 
-        # Strategy granted: apply the level change now.
+        # Strategy granted: apply the level change FIRST so a terminal
+        # (APPROVED) approval row is only persisted once the mutation
+        # has actually succeeded -- otherwise a failure in the await
+        # gap (agent unregistered / registry cleared) would leave an
+        # APPROVED audit row claiming a promotion that never happened.
         async with self._lock:
             live = self._agents.get(key)
             if live is None:
@@ -730,6 +727,33 @@ class AgentRegistryService:
             applied,
             saved_by=f"autonomy_strategy_grant:{key}",
         )
+
+        approval_enqueued = False
+        if approval_store is not None:
+            await approval_store.add(
+                _ApprovalItem(
+                    id=approval_id,
+                    action_type="autonomy:promote",
+                    title=title,
+                    description=update.reason,
+                    requested_by=requested_by,
+                    risk_level=ApprovalRiskLevel.HIGH,
+                    # Auto-decided: the queue stays the apply driver and
+                    # the audit trail is intact. ``decided_at`` /
+                    # ``decided_by`` satisfy the APPROVED invariant.
+                    status=ApprovalStatus.APPROVED,
+                    created_at=now,
+                    decided_at=now,
+                    decided_by=f"strategy:{update.granted_by_strategy}",
+                    metadata={
+                        **base_metadata,
+                        "granted_by_strategy": str(update.granted_by_strategy),
+                    },
+                ),
+            )
+            approval_enqueued = True
+        else:
+            approval_id = None
         # State transition logged AFTER the persistence write.
         logger.info(
             SECURITY_AUTONOMY_PROMOTION_GRANTED,

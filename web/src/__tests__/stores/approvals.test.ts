@@ -440,6 +440,19 @@ describe('handleWsEvent', () => {
     errorSpy.mockRestore()
   })
 
+  it('rejects a pre-upgrade approval frame missing source', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // A frame from before the source field shipped: isApprovalShape
+    // must reject it rather than let sanitizeWsEnum silently coerce
+    // the missing field to 'review_gate' (misstated provenance).
+    const { source: _omit, ...noSource } = makeApproval('no-source')
+    const event = makeWsEvent(noSource as Partial<ApprovalResponse>)
+    useApprovalsStore.getState().handleWsEvent(event)
+    expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
   it('skips upsert when sanitized id collapses to empty', () => {
     useApprovalsStore.setState({ approvals: [] })
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
