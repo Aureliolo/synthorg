@@ -58,6 +58,7 @@ class TestBuildSandboxBackends:
             config=config.docker,
             workspace=tmp_path,
             tracked_container_repo=None,
+            lifecycle_strategy=None,
         )
 
     @patch("synthorg.tools.sandbox.factory.DockerSandbox")
@@ -117,6 +118,7 @@ class TestBuildSandboxBackends:
             config=docker_config,
             workspace=tmp_path,
             tracked_container_repo=None,
+            lifecycle_strategy=None,
         )
 
     @patch("synthorg.tools.sandbox.factory.SubprocessSandbox")

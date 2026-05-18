@@ -31,6 +31,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.tracked_container_protocol import (
         TrackedContainerRepository,
     )
+    from synthorg.tools.sandbox.lifecycle.protocol import (
+        SandboxLifecycleStrategy,
+    )
     from synthorg.tools.sandbox.protocol import SandboxBackend
     from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
@@ -51,10 +54,12 @@ def _build_subprocess_backend(
     config: SandboxingConfig,
     workspace: Path,
     tracked_container_repo: TrackedContainerRepository | None = None,
+    lifecycle_strategy: SandboxLifecycleStrategy | None = None,
 ) -> SandboxBackend:
-    # Subprocess backend has no Docker containers to track; the repo
-    # parameter is accepted to keep a uniform registry signature.
-    del tracked_container_repo
+    # Subprocess backend has no Docker containers to track or reuse;
+    # the repo / lifecycle parameters are accepted to keep a uniform
+    # registry signature.
+    del tracked_container_repo, lifecycle_strategy
     try:
         return SubprocessSandbox(
             config=config.subprocess,
@@ -74,12 +79,14 @@ def _build_docker_backend(
     config: SandboxingConfig,
     workspace: Path,
     tracked_container_repo: TrackedContainerRepository | None = None,
+    lifecycle_strategy: SandboxLifecycleStrategy | None = None,
 ) -> SandboxBackend:
     try:
         return DockerSandbox(
             config=config.docker,
             workspace=workspace,
             tracked_container_repo=tracked_container_repo,
+            lifecycle_strategy=lifecycle_strategy,
         )
     except Exception:
         logger.error(
@@ -106,6 +113,7 @@ def build_sandbox_backends(
     config: SandboxingConfig,
     workspace: Path,
     tracked_container_repo: TrackedContainerRepository | None = None,
+    lifecycle_strategy: SandboxLifecycleStrategy | None = None,
 ) -> MappingProxyType[str, SandboxBackend]:
     """Build only the backend instances actually referenced by *config*.
 
@@ -119,6 +127,10 @@ def build_sandbox_backends(
         tracked_container_repo: Optional persistence handle wired into
             the Docker backend so container tracking survives restart.
             Subprocess backend ignores it.
+        lifecycle_strategy: Optional container lifecycle strategy
+            injected into the Docker backend (per-agent / per-task /
+            per-call).  When ``None`` the Docker backend defaults to
+            per-call.  Subprocess backend ignores it.
 
     Returns:
         A read-only mapping of backend name to backend instance.
@@ -146,6 +158,7 @@ def build_sandbox_backends(
             config=config,
             workspace=workspace,
             tracked_container_repo=tracked_container_repo,
+            lifecycle_strategy=lifecycle_strategy,
         )
         for name in sorted(needed)
     }

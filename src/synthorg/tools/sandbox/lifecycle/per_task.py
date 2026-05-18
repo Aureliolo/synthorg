@@ -32,6 +32,11 @@ class PerTaskStrategy:
         self._containers: dict[str, ContainerHandle] = {}
         self._lock = asyncio.Lock()
 
+    @property
+    def reuses_container(self) -> bool:
+        """``True`` -- one container per task, destroyed on release."""
+        return True
+
     async def acquire(
         self,
         *,

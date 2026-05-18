@@ -43,6 +43,19 @@ class SandboxLifecycleStrategy(Protocol):
     from Docker internals via a ``create_fn`` callback.
     """
 
+    @property
+    def reuses_container(self) -> bool:
+        """Whether containers outlive a single ``execute()`` call.
+
+        ``False`` (``per-call``): the backend owns teardown and destroys
+        the container immediately after each tool call.  ``True``
+        (``per-agent`` / ``per-task``): the strategy owns teardown via
+        ``release`` (grace / immediate), the idle timer, or
+        ``cleanup_all``; the backend must NOT destroy the container in
+        its own ``execute()`` finally block.
+        """
+        ...
+
     async def acquire(
         self,
         *,

@@ -35,6 +35,9 @@ class _FakeSandbox:
     async def cleanup(self) -> None:
         pass
 
+    async def release_owner(self, owner_id: str) -> None:
+        pass
+
     async def health_check(self) -> bool:
         return True
 

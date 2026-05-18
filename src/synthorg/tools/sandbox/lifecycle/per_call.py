@@ -25,6 +25,11 @@ logger = get_logger(__name__)
 class PerCallStrategy:
     """Create a new container for every ``execute()`` call."""
 
+    @property
+    def reuses_container(self) -> bool:
+        """``False`` -- the backend destroys the container per call."""
+        return False
+
     async def acquire(
         self,
         *,

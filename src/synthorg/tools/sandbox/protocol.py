@@ -63,6 +63,22 @@ class SandboxBackend(Protocol):
         """
         ...
 
+    async def release_owner(self, owner_id: str) -> None:
+        """Signal that *owner_id* no longer needs its sandbox resources.
+
+        Wired at the owner boundary (task completion / agent stop).
+        Backends with reusable containers (Docker) dispatch this to
+        their lifecycle strategy (per-agent grace, per-task immediate
+        destroy, per-call no-op).  Backends without per-owner resources
+        (subprocess) treat it as a no-op.
+
+        Args:
+            owner_id: The same identifier passed as ``owner_id`` to
+                ``execute`` (agent ID for per-agent, task ID for
+                per-task).
+        """
+        ...
+
     async def health_check(self) -> bool:
         """Return ``True`` if the backend is operational.
 

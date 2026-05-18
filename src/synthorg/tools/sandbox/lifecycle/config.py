@@ -1,8 +1,15 @@
 """Sandbox lifecycle configuration model."""
 
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Canonical strategy discriminators.  Single source of truth so the
+# string never drifts across the factory, the Docker backend's owner
+# resolution, and the execution-service release boundary.
+STRATEGY_PER_AGENT: Final[str] = "per-agent"
+STRATEGY_PER_TASK: Final[str] = "per-task"
+STRATEGY_PER_CALL: Final[str] = "per-call"
 
 
 class SandboxLifecycleConfig(BaseModel):

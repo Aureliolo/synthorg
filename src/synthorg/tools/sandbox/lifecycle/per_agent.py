@@ -56,6 +56,11 @@ class PerAgentStrategy:
         self._destroy_fns: dict[str, Callable[[ContainerHandle], Awaitable[None]]] = {}
         self._lock = asyncio.Lock()
 
+    @property
+    def reuses_container(self) -> bool:
+        """``True`` -- one warm container per agent (grace teardown)."""
+        return True
+
     async def acquire(
         self,
         *,

@@ -80,3 +80,9 @@ WORKERS_EXECUTION_SERVICE_NO_PROVIDER: Final[str] = (
     "workers.execution_service.no_provider"
 )
 WORKERS_EXECUTION_SERVICE_FAILED: Final[str] = "workers.execution_service.failed"
+WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED: Final[str] = (
+    "workers.execution_service.sandbox_released"
+)
+WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED: Final[str] = (
+    "workers.execution_service.sandbox_release_failed"
+)

@@ -32,3 +32,4 @@ ENFORCED build_autonomy_change_strategy #1957 -- built at boot in app_builders, 
 PENDING BaselineStore #1959 -- construct at boot (window from budget.baseline_window_size)
 PENDING CoordinationMetricsCollector #1959 -- construct at boot, thread into execution
 ENFORCED IntakeEngine #1961 -- wired at boot via client/runtime_builder.build_client_simulation_runtime
+ENFORCED create_lifecycle_strategy #1965 -- constructed at boot in workers/runtime_builder._build_tool_registry and injected into the Docker sandbox backend

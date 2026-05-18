@@ -38,6 +38,8 @@ from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.sandbox.factory import build_sandbox_backends
+from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
@@ -45,12 +47,14 @@ from synthorg.workers.execution_service import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from synthorg.api.state import AppState
     from synthorg.engine.coordination.service import MultiAgentCoordinator
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
+    from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 
@@ -126,8 +130,16 @@ def _select_active_provider(
 async def _build_tool_registry(
     app_state: AppState,
     workspace_root: Path,
-) -> tuple[ToolRegistry, int]:
-    """Create the sandbox workspace and the config-driven tool registry."""
+) -> tuple[ToolRegistry, int, Mapping[str, SandboxBackend]]:
+    """Create the sandbox workspace and the config-driven tool registry.
+
+    Constructs the config-selected sandbox lifecycle strategy
+    (per-agent / per-task / per-call) at the boot site with the
+    application clock, builds the per-category sandbox backends with it
+    injected, then wires the tool registry against those backends.  The
+    backends mapping is returned so the execution service can release
+    the lifecycle owner at the task boundary and shut backends down.
+    """
     await asyncio.to_thread(
         workspace_root.mkdir,
         parents=True,
@@ -137,12 +149,22 @@ async def _build_tool_registry(
         _WEB_TIMEOUT_NS,
         _WEB_TIMEOUT_KEY,
     )
+    lifecycle_strategy = create_lifecycle_strategy(
+        app_state.config.sandboxing.docker.lifecycle,
+        clock=app_state.clock,
+    )
+    sandbox_backends = build_sandbox_backends(
+        config=app_state.config.sandboxing,
+        workspace=workspace_root,
+        lifecycle_strategy=lifecycle_strategy,
+    )
     tools = build_default_tools_from_config(
         workspace=workspace_root,
         config=app_state.config,
+        sandbox_backends=sandbox_backends,
         web_request_timeout=web_request_timeout,
     )
-    return ToolRegistry(list(tools)), len(tools)
+    return ToolRegistry(list(tools)), len(tools), sandbox_backends
 
 
 def _construct_agent_engine(
@@ -338,7 +360,7 @@ async def build_runtime_services(
     registry, names = selected
     provider = registry.get(names[0])
 
-    tool_registry, tool_count = await _build_tool_registry(
+    tool_registry, tool_count, sandbox_backends = await _build_tool_registry(
         app_state,
         workspace_root,
     )
@@ -369,6 +391,8 @@ async def build_runtime_services(
         task_engine=app_state.task_engine,
         agent_registry=app_state.agent_registry,
         autonomy_resolver=autonomy_resolver,
+        sandbox_backend=sandbox_backends.get("docker"),
+        lifecycle_strategy_kind=(app_state.config.sandboxing.docker.lifecycle.strategy),
     )
     return RuntimeServices(
         worker_execution_service=worker_execution_service,

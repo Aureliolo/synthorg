@@ -57,7 +57,14 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_FAILED,
     WORKERS_EXECUTION_SERVICE_NO_OP,
     WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
+    WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED,
+    WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED,
     WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
+)
+from synthorg.tools.sandbox.lifecycle.config import (
+    STRATEGY_PER_AGENT,
+    STRATEGY_PER_CALL,
+    STRATEGY_PER_TASK,
 )
 
 if TYPE_CHECKING:
@@ -67,6 +74,7 @@ if TYPE_CHECKING:
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.security.autonomy.models import EffectiveAutonomy
     from synthorg.security.autonomy.resolver import AutonomyResolver
+    from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 
@@ -276,17 +284,21 @@ class AgentEngineExecutionService:
         "_agent_registry",
         "_autonomy_resolver",
         "_engine",
+        "_lifecycle_strategy_kind",
         "_resume_tasks",
+        "_sandbox_backend",
         "_task_engine",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         engine: AgentEngine,
         task_engine: TaskEngine,
         agent_registry: AgentRegistryService,
         autonomy_resolver: AutonomyResolver | None = None,
+        sandbox_backend: SandboxBackend | None = None,
+        lifecycle_strategy_kind: str = STRATEGY_PER_CALL,
     ) -> None:
         self._engine = engine
         self._task_engine = task_engine
@@ -297,6 +309,11 @@ class AgentEngineExecutionService:
         # re-run. Tracked so a crashed resume surfaces in logs and is
         # drained on shutdown instead of vanishing as a GC warning.
         self._resume_tasks = BackgroundTaskRegistry(owner="approval.resume")
+        # Sandbox backend whose lifecycle owner is released at the task
+        # boundary.  ``None`` when no Docker backend is wired (e.g. an
+        # all-subprocess config); release is then skipped entirely.
+        self._sandbox_backend = sandbox_backend
+        self._lifecycle_strategy_kind = lifecycle_strategy_kind
 
     async def execute_once(
         self,
@@ -352,6 +369,16 @@ class AgentEngineExecutionService:
                 error=safe_error_description(exc),
             )
             raise
+        finally:
+            # Release the sandbox lifecycle owner at the task boundary
+            # regardless of run outcome: per-task destroys the container
+            # now, per-agent starts the grace timer (a subsequent task
+            # for the same agent within the window re-acquires the warm
+            # container), per-call is a no-op.
+            await self._release_sandbox_owner(
+                identity=identity,
+                task_id=task_id,
+            )
         logger.info(
             WORKERS_EXECUTION_SERVICE_AGENT_RUN,
             task_id=task_id,
@@ -413,6 +440,55 @@ class AgentEngineExecutionService:
             f"bootstrapped before submitting work."
         )
         raise AgentRuntimeNotConfiguredError(msg)
+
+    async def _release_sandbox_owner(
+        self,
+        *,
+        identity: AgentIdentity,
+        task_id: str,
+    ) -> None:
+        """Release the sandbox lifecycle owner at the task boundary.
+
+        Picks the owner key matching the configured strategy
+        (``agent_id`` for per-agent, ``task_id`` for per-task) and
+        dispatches to the backend.  Per-call needs no release.  Failures
+        are logged and swallowed: sandbox teardown must never fail an
+        otherwise-successful task.
+
+        Args:
+            identity: The agent that ran the task.
+            task_id: The task that just completed.
+        """
+        backend = self._sandbox_backend
+        if backend is None:
+            return
+        if self._lifecycle_strategy_kind == STRATEGY_PER_AGENT:
+            owner_id = str(identity.id)
+        elif self._lifecycle_strategy_kind == STRATEGY_PER_TASK:
+            owner_id = task_id
+        else:
+            return
+        try:
+            await backend.release_owner(owner_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED,
+                task_id=task_id,
+                agent_id=str(identity.id),
+                strategy=self._lifecycle_strategy_kind,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        logger.info(
+            WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED,
+            task_id=task_id,
+            agent_id=str(identity.id),
+            strategy=self._lifecycle_strategy_kind,
+            owner_id=owner_id,
+        )
 
     def _resolve_autonomy(
         self,

@@ -176,11 +176,20 @@ Strategy selection via `sandboxing.docker.lifecycle.strategy` in `SandboxingConf
 The sidecar container shares the sandbox container's lifetime (created and destroyed
 together, since they share a network namespace).
 
-> **Status**: The lifecycle protocol, config, factory, and three strategy
-> implementations are complete. Integration into `DockerSandbox.execute()` is
-> in progress; the `owner_id` parameter is accepted and the config field is
-> wired, but the Docker backend does not yet dispatch to the lifecycle strategy.
-> Until wired, all executions use the current per-call ephemeral behaviour.
+The strategy is constructed at boot (`workers/runtime_builder`) with the
+application clock and injected into `DockerSandbox` via the sandbox factory.
+Each tool call runs as a `docker exec` inside a long-lived idle container
+(`tail -f /dev/null` entrypoint) the strategy acquires; per-agent and per-task
+reuse the container across calls while per-call destroys it immediately after
+the single exec. The lifecycle owner is resolved from an explicit `owner_id`,
+else the structlog correlation context (`agent_id` for per-agent, `task_id`
+for per-task); with no owner derivable a reuse strategy degrades safely to
+ephemeral per-call. `AgentEngineExecutionService` releases the owner at the
+task boundary (per-task destroys immediately; per-agent starts the grace
+timer so a subsequent task for the same agent within the window re-acquires
+the warm container); `DockerSandbox.cleanup()` destroys all strategy-owned
+containers via `cleanup_all()`. Containers carry the `synthorg.managed=true`
+label so the reconciliation pass reclaims any orphaned on an unclean exit.
 
 ## Git Clone SSRF Prevention
 
