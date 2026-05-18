@@ -79,3 +79,4 @@ WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED: Final[str] = (
 WORKERS_EXECUTION_SERVICE_NO_PROVIDER: Final[str] = (
     "workers.execution_service.no_provider"
 )
+WORKERS_EXECUTION_SERVICE_FAILED: Final[str] = "workers.execution_service.failed"

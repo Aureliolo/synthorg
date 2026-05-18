@@ -73,3 +73,8 @@ class TestAgentWorkspaceRoot:
         assert state.agent_workspace_root == tmp_path
         with pytest.raises(RuntimeError):
             state.set_agent_workspace_root(tmp_path / "other")
+
+    def test_set_rejects_relative_path(self) -> None:
+        state = _app_state()
+        with pytest.raises(ValueError, match="absolute path"):
+            state.set_agent_workspace_root(Path("relative/workspace"))

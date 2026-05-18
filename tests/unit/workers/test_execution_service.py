@@ -3,14 +3,22 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
-from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError, NotFoundError
+from synthorg.core.domain_errors import (
+    AgentRuntimeNotConfiguredError,
+    ConflictError,
+    NotFoundError,
+)
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.observability.events.workers import (
+    WORKERS_EXECUTION_SERVICE_FAILED,
+)
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.autonomy.resolver import AutonomyResolver
@@ -95,6 +103,56 @@ class TestAgentEngineExecutionService:
                 idempotency_key="k",
                 requested_by="user",
             )
+
+    async def test_unassigned_task_raises_conflict(self) -> None:
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity).model_copy(
+            update={"assigned_to": None},
+        )
+        task_engine = mock_of[TaskEngine](get_task=AsyncMock(return_value=task))
+        service = await self._make_service(
+            task_engine=task_engine,
+            agent_registry=AgentRegistryService(),
+            engine=mock_of[AgentEngine](run=AsyncMock()),
+        )
+        with pytest.raises(ConflictError, match="not assigned"):
+            await service.execute_once(
+                task_id=task.id,
+                previous_status=None,
+                new_status="assigned",
+                idempotency_key="k",
+                requested_by="user",
+            )
+
+    async def test_engine_run_failure_logs_and_reraises(self) -> None:
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        engine_run = AsyncMock(side_effect=RuntimeError("provider boom"))
+        task_engine = mock_of[TaskEngine](get_task=AsyncMock(return_value=task))
+        service = await self._make_service(
+            task_engine=task_engine,
+            agent_registry=registry,
+            engine=mock_of[AgentEngine](run=engine_run),
+        )
+
+        with capture_logs() as logs, pytest.raises(RuntimeError, match="boom"):
+            await service.execute_once(
+                task_id=task.id,
+                previous_status="assigned",
+                new_status="in_progress",
+                idempotency_key="k",
+                requested_by="user",
+            )
+
+        assert any(
+            entry.get("log_level") == "error"
+            and entry.get("event") == WORKERS_EXECUTION_SERVICE_FAILED
+            and entry.get("task_id") == task.id
+            and entry.get("agent_id") == str(identity.id)
+            for entry in logs
+        )
 
     async def test_happy_path_runs_engine_and_returns_post_state(self) -> None:
         identity = make_e2e_identity()

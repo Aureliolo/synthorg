@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
+    ConflictError,
     NotFoundError,
 )
 from synthorg.core.enums import TaskStatus
@@ -47,6 +48,7 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_ATTEMPTED,
     WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED,
     WORKERS_EXECUTION_SERVICE_COMPLETED,
+    WORKERS_EXECUTION_SERVICE_FAILED,
     WORKERS_EXECUTION_SERVICE_NO_OP,
     WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
     WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
@@ -257,11 +259,23 @@ class AgentEngineExecutionService:
             requested_by=requested_by,
         )
 
-        run_result = await self._engine.run(
-            identity=identity,
-            task=task,
-            effective_autonomy=effective_autonomy,
-        )
+        try:
+            run_result = await self._engine.run(
+                identity=identity,
+                task=task,
+                effective_autonomy=effective_autonomy,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.error(
+                WORKERS_EXECUTION_SERVICE_FAILED,
+                task_id=task_id,
+                agent_id=str(identity.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.info(
             WORKERS_EXECUTION_SERVICE_AGENT_RUN,
             task_id=task_id,
@@ -303,7 +317,7 @@ class AgentEngineExecutionService:
                 reason="task_unassigned",
             )
             msg = f"Task {task_id!r} is not assigned to any agent."
-            raise NotFoundError(msg)
+            raise ConflictError(msg)
 
         identity = await self._agent_registry.get(assigned_to)
         if identity is None:

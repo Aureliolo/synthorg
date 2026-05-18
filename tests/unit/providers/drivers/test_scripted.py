@@ -10,6 +10,9 @@ import pytest
 from structlog.testing import capture_logs
 
 from synthorg.config.provider_schema import ProviderConfig
+from synthorg.observability.events.provider import (
+    PROVIDER_SCRIPTED_DRIVER_INSTANTIATED,
+)
 from synthorg.providers.drivers.scripted import (
     DeterministicResponseStrategy,
     ScriptedDriver,
@@ -126,4 +129,9 @@ class TestSafetyWarning:
     def test_warns_on_construction(self) -> None:
         with capture_logs() as logs:
             ScriptedDriver(strategy=DeterministicResponseStrategy())
-        assert any(entry.get("log_level") == "warning" for entry in logs)
+        assert any(
+            entry.get("log_level") == "warning"
+            and entry.get("event") == PROVIDER_SCRIPTED_DRIVER_INSTANTIATED
+            and entry.get("strategy") == "DeterministicResponseStrategy"
+            for entry in logs
+        )

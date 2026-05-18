@@ -928,7 +928,20 @@ class AppState(AppStateServicesMixin):
         return Path(tempfile.gettempdir()) / _DEFAULT_WORKSPACE_TEMP_SUBDIR
 
     def set_agent_workspace_root(self, path: Path) -> None:
-        """Pin the agent workspace root (once-only, startup)."""
+        """Pin the agent workspace root (once-only, startup).
+
+        Rejects relative paths so agent filesystem/sandbox tools cannot
+        be routed to a cwd-relative location instead of the mounted
+        data volume.
+        """
+        if not path.is_absolute():
+            msg = f"Agent workspace root must be an absolute path, got {path!r}"
+            logger.warning(
+                API_APP_STARTUP,
+                service="agent_workspace_root",
+                reason="non_absolute_workspace_root",
+            )
+            raise ValueError(msg)
         self._set_once(
             "_agent_workspace_root",
             path,
