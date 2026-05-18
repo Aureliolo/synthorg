@@ -44,7 +44,8 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
         app_state = client.app.state["app_state"]
 
         # Empty company at boot: no coordinator, backstop worker seam.
-        assert app_state.has_coordinator is False
+        coordinator_at_boot = app_state.has_coordinator
+        assert coordinator_at_boot is False
         assert isinstance(
             app_state.worker_execution_service,
             NoProviderExecutionService,
@@ -64,10 +65,11 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
         await post_setup_reinit(app_state)
 
         # Both runtime services are now live, no restart.
-        assert app_state.has_active_provider is True
-        assert app_state.has_coordinator is True
-        assert isinstance(app_state.coordinator, MultiAgentCoordinator)
-        assert isinstance(
-            app_state.worker_execution_service,
-            AgentEngineExecutionService,
-        )
+        active_provider = app_state.has_active_provider
+        coordinator_after_wake = app_state.has_coordinator
+        assert active_provider is True
+        assert coordinator_after_wake is True
+        coordinator = app_state.coordinator
+        worker = app_state.worker_execution_service
+        assert isinstance(coordinator, MultiAgentCoordinator)
+        assert isinstance(worker, AgentEngineExecutionService)

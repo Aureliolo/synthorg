@@ -1,6 +1,7 @@
 """Unit tests for the provider-present runtime-services switch."""
 
 from pathlib import Path
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -29,28 +30,33 @@ pytestmark = pytest.mark.unit
 
 def _provider_app_state(registry: ProviderRegistry, workspace: Path) -> AppState:
     """Build a mocked AppState for the provider-present path."""
-    return mock_of[AppState](
-        has_active_provider=True,
-        provider_registry=registry,
-        config=RootConfig(company_name="test-corp"),
-        config_resolver=mock_of[ConfigResolver](
-            get_float=AsyncMock(return_value=30.0),
-            get_str=AsyncMock(return_value="example-medium-001"),
-            get_engine_bridge_config=AsyncMock(
-                return_value=EngineBridgeConfig(),
+    # ``mock_of[T](...)`` is ``Any`` by design; cast back to the spec so
+    # the helper keeps a precise signature for its callers.
+    return cast(
+        "AppState",
+        mock_of[AppState](
+            has_active_provider=True,
+            provider_registry=registry,
+            config=RootConfig(company_name="test-corp"),
+            config_resolver=mock_of[ConfigResolver](
+                get_float=AsyncMock(return_value=30.0),
+                get_str=AsyncMock(return_value="example-medium-001"),
+                get_engine_bridge_config=AsyncMock(
+                    return_value=EngineBridgeConfig(),
+                ),
             ),
+            task_engine=mock_of[TaskEngine](),
+            agent_registry=AgentRegistryService(),
+            approval_store=None,
+            clock=FakeClock(),
+            event_stream_hub=None,
+            interrupt_store=None,
+            agent_workspace_root=workspace,
+            has_cost_tracker=False,
+            has_audit_log=False,
+            has_memory_backend=False,
+            has_performance_tracker=False,
         ),
-        task_engine=mock_of[TaskEngine](),
-        agent_registry=AgentRegistryService(),
-        approval_store=None,
-        clock=FakeClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
-        agent_workspace_root=workspace,
-        has_cost_tracker=False,
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
     )
 
 
